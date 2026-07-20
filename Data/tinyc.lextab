@@ -1,0 +1,550 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
+# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
+# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
+# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <program>                        = { <funcdef> } .
+
+ <funcdef>                        = <funcHead> <block> .
+
+ <funcHead>                       = "int" <defName> "(" <paramList> ")" .
+
+ <paramList>                      = [ <param> { "," <param> } ] .
+
+ <param>                          = "int" <paramName> .
+
+ <block>                          = "{" { <statement> } "}" .
+
+ <statement>                      = <varDecl> 
+                                  | <ifStmt> 
+                                  | <whileStmt> 
+                                  | <returnStmt> 
+                                  | <block> 
+                                  | <callStmt> 
+                                  | <assignStmt> .
+
+ <varDecl>                        = "int" <localName> [ "=" <varInit> ] ";" .
+
+ <varInit>                        = <expr> .
+
+ <assignStmt>                     = <target> "=" <expr> ";" .
+
+ <callStmt>                       = <call> ";" .
+
+ <returnStmt>                     = "return" [ <retVal> ] ";" .
+
+ <retVal>                         = <expr> .
+
+ <ifStmt>                         = <ifKw> "(" <ifCond> ")" <thenPart> [ <elseKw> <elsePart> ] .
+
+ <ifKw>                           = "if" .
+
+ <elseKw>                         = "else" .
+
+ <ifCond>                         = <expr> .
+
+ <thenPart>                       = <statement> .
+
+ <elsePart>                       = <statement> .
+
+ <whileStmt>                      = <whileKw> "(" <whileCond> ")" <whileBody> .
+
+ <whileKw>                        = "while" .
+
+ <whileCond>                      = <expr> .
+
+ <whileBody>                      = <statement> .
+
+ <expr>                           = <addExpr> [ <relop> <addExpr> ] .
+
+ <relop>                          = "<=" 
+                                  | ">=" 
+                                  | "==" 
+                                  | "!=" 
+                                  | "<" 
+                                  | ">" .
+
+ <addExpr>                        = <term> { <addop> <term> } .
+
+ <addop>                          = "+" 
+                                  | "-" .
+
+ <term>                           = <factor> { <mulop> <factor> } .
+
+ <mulop>                          = "*" 
+                                  | "/" .
+
+ <factor>                         = "(" <expr> ")" 
+                                  | <call> 
+                                  | <varRef> 
+                                  | <number> 
+                                  | <negFactor> .
+
+ <negFactor>                      = "-" <factor> .
+
+ <call>                           = <funcName> "(" <argList> ")" .
+
+ <argList>                        = [ <arg> { "," <arg> } ] .
+
+ <arg>                            = <expr> .
+
+ <target>                         = <ident> .
+
+ <varRef>                         = <ident> .
+
+ <defName>                        = <ident> .
+
+ <paramName>                      = <ident> .
+
+ <localName>                      = <ident> .
+
+ <funcName>                       = <ident> .
+
+ <ident>                          = <letter> { <letter> 
+                                  | <digit> } .
+
+ <number>                         = <digit> { <digit> } .
+
+ <letter>                         = "a"~"z" 
+                                  | "A"~"Z" 
+                                  | "_" .
+
+ <digit>                          = "0"~"9" .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "int"
+1    TS   "("
+2    TS   ")"
+3    TS   ","
+4    TS   "{"
+5    TS   "}"
+6    TS   "="
+7    TS   ";"
+8    TS   "return"
+9    TS   "if"
+10   TS   "else"
+11   TS   "while"
+12   TS   "<="
+13   TS   ">="
+14   TS   "=="
+15   TS   "!="
+16   TS   "<"
+17   TS   ">"
+18   TS   "+"
+19   TS   "-"
+20   TS   "*"
+21   TS   "/"
+22   RNG  "a"~"z"
+23   RNG  "A"~"Z"
+24   TS   "_"
+25   RNG  "0"~"9"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           program
+1    1           funcdef
+2    3           funcHead
+3    8           paramList
+4    11          param
+5    13          block
+6    16          statement
+7    23          varDecl
+8    28          varInit
+9    29          assignStmt
+10   33          callStmt
+11   35          returnStmt
+12   38          retVal
+13   39          ifStmt
+14   46          ifKw
+15   47          elseKw
+16   48          ifCond
+17   49          thenPart
+18   50          elsePart
+19   51          whileStmt
+20   56          whileKw
+21   57          whileCond
+22   58          whileBody
+23   59          expr
+24   62          relop
+25   68          addExpr
+26   71          addop
+27   73          term
+28   76          mulop
+29   78          factor
+30   85          negFactor
+31   87          call
+32   91          argList
+33   94          arg
+34   95          target
+35   96          varRef
+36   97          defName
+37   98          paramName
+38   99          localName
+39   100         funcName
+40   101         ident
+41   104         number
+42   106         letter
+43   109         digit
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
+0     0     -1    1     0     0     program          NTS  funcdef
+1     2     -2    3     0     0     funcdef          NTS  funcHead
+2     -1    -3    13    0     0     -                NTS  block
+3     4     -2    -1    0     0     funcHead         TS   "int"
+4     5     -3    97    0     0     -                NTS  defName
+5     6     -3    -1    0     0     -                TS   "("
+6     7     -3    8     0     0     -                NTS  paramList
+7     -1    -3    -1    0     0     -                TS   ")"
+8     9     -1    11    0     0     paramList        NTS  param
+9     10    -1    -1    0     0     -                TS   ","
+10    9     -3    11    0     0     -                NTS  param
+11    12    -2    -1    0     0     param            TS   "int"
+12    -1    -3    98    0     0     -                NTS  paramName
+13    14    -2    -1    0     0     block            TS   "{"
+14    14    15    16    0     0     -                NTS  statement
+15    -1    -3    -1    0     0     -                TS   "}"
+16    -1    17    23    0     0     statement        NTS  varDecl
+17    -1    18    39    0     0     -                NTS  ifStmt
+18    -1    19    51    0     0     -                NTS  whileStmt
+19    -1    20    35    0     0     -                NTS  returnStmt
+20    -1    21    13    0     0     -                NTS  block
+21    -1    22    33    0     0     -                NTS  callStmt
+22    -1    -2    29    0     0     -                NTS  assignStmt
+23    24    -2    -1    0     0     varDecl          TS   "int"
+24    25    -3    99    0     0     -                NTS  localName
+25    26    27    -1    0     0     -                TS   "="
+26    27    -3    28    0     0     -                NTS  varInit
+27    -1    -3    -1    0     0     -                TS   ";"
+28    -1    -2    59    0     0     varInit          NTS  expr
+29    30    -2    95    0     0     assignStmt       NTS  target
+30    31    -3    -1    0     0     -                TS   "="
+31    32    -3    59    0     0     -                NTS  expr
+32    -1    -3    -1    0     0     -                TS   ";"
+33    34    -2    87    0     0     callStmt         NTS  call
+34    -1    -3    -1    0     0     -                TS   ";"
+35    36    -2    -1    0     0     returnStmt       TS   "return"
+36    37    37    38    0     0     -                NTS  retVal
+37    -1    -3    -1    0     0     -                TS   ";"
+38    -1    -2    59    0     0     retVal           NTS  expr
+39    40    -2    46    0     0     ifStmt           NTS  ifKw
+40    41    -3    -1    0     0     -                TS   "("
+41    42    -3    48    0     0     -                NTS  ifCond
+42    43    -3    -1    0     0     -                TS   ")"
+43    44    -3    49    0     0     -                NTS  thenPart
+44    45    -1    47    0     0     -                NTS  elseKw
+45    -1    -3    50    0     0     -                NTS  elsePart
+46    -1    -2    -1    0     0     ifKw             TS   "if"
+47    -1    -2    -1    0     0     elseKw           TS   "else"
+48    -1    -2    59    0     0     ifCond           NTS  expr
+49    -1    -2    16    0     0     thenPart         NTS  statement
+50    -1    -2    16    0     0     elsePart         NTS  statement
+51    52    -2    56    0     0     whileStmt        NTS  whileKw
+52    53    -3    -1    0     0     -                TS   "("
+53    54    -3    57    0     0     -                NTS  whileCond
+54    55    -3    -1    0     0     -                TS   ")"
+55    -1    -3    58    0     0     -                NTS  whileBody
+56    -1    -2    -1    0     0     whileKw          TS   "while"
+57    -1    -2    59    0     0     whileCond        NTS  expr
+58    -1    -2    16    0     0     whileBody        NTS  statement
+59    60    -2    68    0     0     expr             NTS  addExpr
+60    61    -1    62    0     0     -                NTS  relop
+61    -1    -3    68    0     0     -                NTS  addExpr
+62    -1    63    -1    0     0     relop            TS   "<="
+63    -1    64    -1    0     0     -                TS   ">="
+64    -1    65    -1    0     0     -                TS   "=="
+65    -1    66    -1    0     0     -                TS   "!="
+66    -1    67    -1    0     0     -                TS   "<"
+67    -1    -2    -1    0     0     -                TS   ">"
+68    69    -2    73    0     0     addExpr          NTS  term
+69    70    -1    71    0     0     -                NTS  addop
+70    69    -3    73    0     0     -                NTS  term
+71    -1    72    -1    0     0     addop            TS   "+"
+72    -1    -2    -1    0     0     -                TS   "-"
+73    74    -2    78    0     0     term             NTS  factor
+74    75    -1    76    0     0     -                NTS  mulop
+75    74    -3    78    0     0     -                NTS  factor
+76    -1    77    -1    0     0     mulop            TS   "*"
+77    -1    -2    -1    0     0     -                TS   "/"
+78    79    81    -1    0     0     factor           TS   "("
+79    80    -3    59    0     0     -                NTS  expr
+80    -1    -3    -1    0     0     -                TS   ")"
+81    -1    82    87    0     0     -                NTS  call
+82    -1    83    96    0     0     -                NTS  varRef
+83    -1    84    104   0     0     -                NTS  number
+84    -1    -2    85    0     0     -                NTS  negFactor
+85    86    -2    -1    0     0     negFactor        TS   "-"
+86    -1    -3    78    0     0     -                NTS  factor
+87    88    -2    100   0     0     call             NTS  funcName
+88    89    -3    -1    0     0     -                TS   "("
+89    90    -3    91    0     0     -                NTS  argList
+90    -1    -3    -1    0     0     -                TS   ")"
+91    92    -1    94    0     0     argList          NTS  arg
+92    93    -1    -1    0     0     -                TS   ","
+93    92    -3    94    0     0     -                NTS  arg
+94    -1    -2    59    0     0     arg              NTS  expr
+95    -1    -2    101   0     0     target           NTS  ident
+96    -1    -2    101   0     0     varRef           NTS  ident
+97    -1    -2    101   0     0     defName          NTS  ident
+98    -1    -2    101   0     0     paramName        NTS  ident
+99    -1    -2    101   0     0     localName        NTS  ident
+100   -1    -2    101   0     0     funcName         NTS  ident
+101   102   -2    106   0     0     ident            NTS  letter
+102   102   103   106   0     0     -                NTS  letter
+103   102   -1    109   0     0     -                NTS  digit
+104   105   -2    109   0     0     number           NTS  digit
+105   105   -1    109   0     0     -                NTS  digit
+106   -1    107   -1    97    122   letter           RNG  "a"~"z"
+107   -1    108   -1    65    90    -                RNG  "A"~"Z"
+108   -1    -2    -1    0     0     -                TS   "_"
+109   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+[ENDE]
+
+[LEXER]
+WHITESPACE = " \t\r\n"
+TOKEN ident
+TOKEN number
+COMMENT LINE = "//"
+COMMENT BLOCK = "/*" "*/"
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
+[ENDE]
+
+[NUTZER-CODE]
+# Tiny-C Frontend (Meilenstein 1): Aktionen emittieren Stack-IR nach stdout.
+# Siehe docs/ARCHITEKTUR.md Kapitel 10. Nur ROUTINE C (IR-Emission), analog calcexpr.
+ACTION AFTER defName CALL tc_defname
+ACTION AFTER paramName CALL tc_param
+ACTION AFTER funcHead CALL tc_funcbegin
+ACTION AFTER funcdef CALL tc_funcend
+ACTION AFTER localName CALL tc_local
+ACTION AFTER varInit CALL tc_varinit
+ACTION AFTER number CALL tc_number
+ACTION AFTER varRef CALL tc_varref
+ACTION AFTER negFactor CALL tc_neg
+ACTION AFTER addop CALL tc_addop
+ACTION AFTER term CALL tc_term
+ACTION AFTER mulop CALL tc_mulop
+ACTION AFTER factor CALL tc_factor
+ACTION AFTER relop CALL tc_relop
+ACTION AFTER expr CALL tc_expr
+ACTION AFTER target CALL tc_target
+ACTION AFTER assignStmt CALL tc_assign
+ACTION AFTER funcName CALL tc_callname
+ACTION AFTER arg CALL tc_arg
+ACTION AFTER call CALL tc_call
+ACTION AFTER callStmt CALL tc_callstmt
+ACTION AFTER retVal CALL tc_retval
+ACTION AFTER returnStmt CALL tc_return
+ROUTINE C tc_defname
+/* ---- Tiny-C Frontend: globaler Zustand + Helfer (ARCHITEKTUR.md Kap.10) ---- */
+static char tcNames[64][32];        /* lokale Variablen der aktuellen Funktion */
+static int  tcLocalCount = 0;
+static char tcFuncName[32];
+static char tcCallName[32];
+static char tcPendingAdd = 0;       /* '+' oder '-' */
+static char tcPendingMul = 0;       /* '*' oder '/' */
+static char tcRel0 = 0, tcRel1 = 0; /* Relop-Zeichen; tcRel1==0 wenn einstellig */
+static int  tcTargetSlot = -1;
+static int  tcArgCount = 0;
+static int  tcRetHasVal = 0;
+static int  tcLastWasPrint = 0;
+static void tcCopy(char* dst, const char* s, const char* e) {
+	int n = 0; const char* q;
+	for (q = s; q < e && n < 31; q++) dst[n++] = *q;
+	dst[n] = 0;
+}
+static int tcEq(const char* a, const char* b) {
+	while (*a && *b) { if (*a != *b) return 0; a++; b++; }
+	return *a == *b;
+}
+static int tcLookup(const char* s, const char* e) {
+	char name[32]; int i; tcCopy(name, s, e);
+	for (i = 0; i < tcLocalCount; i++) if (tcEq(tcNames[i], name)) return i;
+	return -1;
+}
+static long tcNum(const char* s, const char* e) {
+	long v = 0; const char* q;
+	for (q = s; q < e; q++) v = v * 10 + (*q - '0');
+	return v;
+}
+void tc_defname(const char* start, const char* end) {
+	tcLocalCount = 0;
+	tcCopy(tcFuncName, start, end);
+}
+END
+ROUTINE C tc_param
+void tc_param(const char* start, const char* end) {
+	tcCopy(tcNames[tcLocalCount], start, end);
+	tcLocalCount++;
+}
+END
+ROUTINE C tc_funcbegin
+void tc_funcbegin(const char* start, const char* end) {
+	(void)start; (void)end;
+	printf("FUNC %s %d\n", tcFuncName, tcLocalCount);
+}
+END
+ROUTINE C tc_funcend
+void tc_funcend(const char* start, const char* end) {
+	(void)start; (void)end;
+	/* Fallthrough-Rueckgabe 0 absichern; ein explizites return davor ist harmlos */
+	printf("PUSH 0\nRET\nENDFUNC\n");
+}
+END
+ROUTINE C tc_local
+void tc_local(const char* start, const char* end) {
+	tcCopy(tcNames[tcLocalCount], start, end);
+	tcLocalCount++;
+}
+END
+ROUTINE C tc_varinit
+void tc_varinit(const char* start, const char* end) {
+	(void)start; (void)end;
+	printf("STOREL %d\n", tcLocalCount - 1);
+}
+END
+ROUTINE C tc_number
+void tc_number(const char* start, const char* end) {
+	printf("PUSH %ld\n", tcNum(start, end));
+}
+END
+ROUTINE C tc_varref
+void tc_varref(const char* start, const char* end) {
+	printf("LOADL %d\n", tcLookup(start, end));
+}
+END
+ROUTINE C tc_neg
+void tc_neg(const char* start, const char* end) {
+	(void)start; (void)end;
+	printf("NEG\n");
+}
+END
+ROUTINE C tc_addop
+void tc_addop(const char* start, const char* end) {
+	(void)end;
+	tcPendingAdd = *start;
+}
+END
+ROUTINE C tc_term
+void tc_term(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (tcPendingAdd) {
+		printf("%s", tcPendingAdd == '+' ? "ADD\n" : "SUB\n");
+		tcPendingAdd = 0;
+	}
+}
+END
+ROUTINE C tc_mulop
+void tc_mulop(const char* start, const char* end) {
+	(void)end;
+	tcPendingMul = *start;
+}
+END
+ROUTINE C tc_factor
+void tc_factor(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (tcPendingMul) {
+		printf("%s", tcPendingMul == '*' ? "MUL\n" : "DIV\n");
+		tcPendingMul = 0;
+	}
+}
+END
+ROUTINE C tc_relop
+void tc_relop(const char* start, const char* end) {
+	tcRel0 = start[0];
+	tcRel1 = (end - start > 1) ? start[1] : 0;
+}
+END
+ROUTINE C tc_expr
+void tc_expr(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (tcRel0) {
+		if (tcRel1 == '=') {
+			if (tcRel0 == '<') printf("CMPLE\n");
+			else if (tcRel0 == '>') printf("CMPGE\n");
+			else if (tcRel0 == '=') printf("CMPEQ\n");
+			else if (tcRel0 == '!') printf("CMPNE\n");
+		} else {
+			if (tcRel0 == '<') printf("CMPLT\n");
+			else if (tcRel0 == '>') printf("CMPGT\n");
+		}
+		tcRel0 = 0; tcRel1 = 0;
+	}
+}
+END
+ROUTINE C tc_target
+void tc_target(const char* start, const char* end) {
+	tcTargetSlot = tcLookup(start, end);
+}
+END
+ROUTINE C tc_assign
+void tc_assign(const char* start, const char* end) {
+	(void)start; (void)end;
+	printf("STOREL %d\n", tcTargetSlot);
+}
+END
+ROUTINE C tc_callname
+void tc_callname(const char* start, const char* end) {
+	tcCopy(tcCallName, start, end);
+	tcArgCount = 0;
+}
+END
+ROUTINE C tc_arg
+void tc_arg(const char* start, const char* end) {
+	(void)start; (void)end;
+	tcArgCount++;
+}
+END
+ROUTINE C tc_call
+void tc_call(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (tcEq(tcCallName, "putint")) {
+		printf("PRINT\n");
+		tcLastWasPrint = 1;
+	} else {
+		printf("CALL %s %d\n", tcCallName, tcArgCount);
+		tcLastWasPrint = 0;
+	}
+}
+END
+ROUTINE C tc_callstmt
+void tc_callstmt(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (!tcLastWasPrint) printf("DROP\n");
+}
+END
+ROUTINE C tc_retval
+void tc_retval(const char* start, const char* end) {
+	(void)start; (void)end;
+	tcRetHasVal = 1;
+}
+END
+ROUTINE C tc_return
+void tc_return(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (!tcRetHasVal) printf("PUSH 0\n");
+	printf("RET\n");
+	tcRetHasVal = 0;
+}
+END
+[ENDE]

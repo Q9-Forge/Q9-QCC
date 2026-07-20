@@ -698,3 +698,33 @@ wird ohnehin ueber die Programm-Tests validiert.
   Sprung-Emission).
 - putint als echter OS-9-Trap (I$Write) statt PRINT: M4/M5.
 - typedef/Praeprozessor/Declarator-Syntax: bewusst ausserhalb Tiny-C (10.1).
+
+### 10.12 Umsetzungsstand Meilenstein 1 (2026-07-20, FERTIG)
+
+M1 laeuft end-to-end: Data/tinyc.ebnf -> generierter Parser (Data/tinyc_p.c,
+ROUTINE-C-Aktionen im [NUTZER-CODE] von Data/tinyc.lextab) -> Stack-IR nach stdout
+-> tools/tinyvm.py fuehrt sie aus. runtests.sh Abschnitt 12 prueft 9 Programme
+(Ausdruecke mit Praezedenz/Assoziativitaet, Klammern, unaeres Minus, C-Division,
+lokale Variablen, Kommentare, Relationen) gegen erwartete Werte. KEIN Tool-Change
+noetig (Bestaetigung von 10.9), nur Grammatik + [NUTZER-CODE] + VM.
+
+Verfeinerung gegenueber 10.3: die generische Deklarations-Huelle declName wurde in
+DREI rollenspezifische Huellen gesplittet, weil dasselbe declName sonst fuer
+Funktionsname, Parameter UND lokale Variable feuert (jede mit eigener Slot-Semantik):
+- defName   = ident.  Funktionsname (setzt Slot-Zaehler auf 0 zurueck, merkt Namen)
+- paramName = ident.  Parameter     (belegt Slot 0..nargs-1)
+- localName = ident.  lokale Var     (belegt Folge-Slots)
+Das ist wieder exakt das Polymorphie-Muster aus 9.4d, nur eine Ebene feiner.
+
+IR-Emission (bestaetigtes calcexpr-Muster, nur EMIT statt rechnen): number->PUSH,
+varRef->LOADL, addop/mulop gemerkt und in term/factor als ADD/SUB/MUL/DIV emittiert,
+negFactor->NEG, relop in expr als CMPxx, target-Slot gemerkt und in assignStmt als
+STOREL, varInit->STOREL auf zuletzt deklarierten Slot, funcHead->FUNC name nargs,
+funcdef->PUSH 0/RET/ENDFUNC (Fallthrough-Rueckgabe). putint(x) wird als PRINT
+emittiert (Builtin), sonstige Aufrufe als CALL name nargs (fuer M3 vorbereitet;
+Call-Frame-Stack fuer Schachtelung folgt dort).
+
+NOCH NICHT in M1 (wie geplant): Kontrollfluss if/while (M2), echte Funktionsaufrufe
+mit Rekursion (M3), 68k/OS-9-Backend ir2m68k (M4). Die Grammatik deckt if/while/
+return/Funktionen bereits strukturell ab; nur die zugehoerigen Emissions-Aktionen
+(Label/Sprung, Call-Frame-Stack) fehlen noch.
