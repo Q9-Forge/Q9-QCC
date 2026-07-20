@@ -1,0 +1,73 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
+# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
+# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
+# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <stmt>                           = <tag> "1" 
+                                  | <tag> "2" .
+
+ <tag>                            = "T" .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "1"
+1    TS   "2"
+2    TS   "T"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           stmt
+1    4           tag
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
+0     1     2     4     0     0     stmt             NTS  tag
+1     -1    -3    -1    0     0     -                TS   "1"
+2     3     -2    4     0     0     -                NTS  tag
+3     -1    -3    -1    0     0     -                TS   "2"
+4     -1    -2    -1    0     0     tag              TS   "T"
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+[ENDE]
+
+[LEXER]
+# Optional: aktiviert Whitespace-/Kommentar-Behandlung im ERZEUGTEN Parser.
+# WHITESPACE = " \t\r\n"
+# TOKEN ident            (Regel wird lexikalisch: Zeichen muessen adjazent sein)
+# COMMENT LINE = "//"
+# COMMENT BLOCK = "(*" "*)"          (NESTED vor '=' erlaubt Schachtelung)
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
+[ENDE]
+
+[NUTZER-CODE]
+# Reproduktion des Backtracking-Rollback-Problems (ARCHITEKTUR.md §9.4): "tag" feuert
+# beim ERSTEN Alternativversuch von stmt (tag "1"), der dann an "2" statt "1" scheitert;
+# stmt weicht auf die zweite Alternative (tag "2") aus, tag matcht dabei ERNEUT. OHNE
+# Rollback der Aktions-Nebeneffekte zaehlt note_tag bei "T2" faelschlich 2x statt 1x.
+ACTION AFTER tag CALL note_tag
+ROUTINE C note_tag
+static int tagCount = 0;
+void note_tag(const char* start, const char* end) {
+	(void)start; (void)end;
+	tagCount++;
+	printf("TAG#%d\n", tagCount);
+}
+END
+[ENDE]

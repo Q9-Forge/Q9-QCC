@@ -1,0 +1,279 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
+# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
+# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
+# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <module>                         = "VAR" { <declItem> } "BEGIN" <stmts> "END" .
+
+ <declItem>                       = <declName> ";" .
+
+ <declName>                       = <ident> .
+
+ <stmts>                          = <stmt> { ";" <stmt> } .
+
+ <stmt>                           = <target> ":=" <expr> .
+
+ <target>                         = <ident> .
+
+ <expr>                           = <simpleExpr> .
+
+ <simpleExpr>                     = <term> { <addop> <term> } .
+
+ <term>                           = <factor> { <mulop> <factor> } .
+
+ <factor>                         = <varRef> 
+                                  | <number> .
+
+ <varRef>                         = <ident> .
+
+ <number>                         = <digit> { <digit> } .
+
+ <addop>                          = "+" 
+                                  | "-" .
+
+ <mulop>                          = "*" 
+                                  | "/" .
+
+ <ident>                          = <identLetter> { <identLetter> 
+                                  | <digit> } .
+
+ <identLetter>                    = "a"~"z" 
+                                  | "A"~"Z" .
+
+ <digit>                          = "0"~"9" .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "VAR"
+1    TS   "BEGIN"
+2    TS   "END"
+3    TS   ";"
+4    TS   ":="
+5    TS   "+"
+6    TS   "-"
+7    TS   "*"
+8    TS   "/"
+9    RNG  "a"~"z"
+10   RNG  "A"~"Z"
+11   RNG  "0"~"9"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           module
+1    5           declItem
+2    7           declName
+3    8           stmts
+4    11          stmt
+5    14          target
+6    15          expr
+7    16          simpleExpr
+8    19          term
+9    22          factor
+10   24          varRef
+11   25          number
+12   27          addop
+13   29          mulop
+14   31          ident
+15   34          identLetter
+16   36          digit
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
+0     1     -2    -1    0     0     module           TS   "VAR"
+1     1     2     5     0     0     -                NTS  declItem
+2     3     -3    -1    0     0     -                TS   "BEGIN"
+3     4     -3    8     0     0     -                NTS  stmts
+4     -1    -3    -1    0     0     -                TS   "END"
+5     6     -2    7     0     0     declItem         NTS  declName
+6     -1    -3    -1    0     0     -                TS   ";"
+7     -1    -2    31    0     0     declName         NTS  ident
+8     9     -2    11    0     0     stmts            NTS  stmt
+9     10    -1    -1    0     0     -                TS   ";"
+10    9     -3    11    0     0     -                NTS  stmt
+11    12    -2    14    0     0     stmt             NTS  target
+12    13    -3    -1    0     0     -                TS   ":="
+13    -1    -3    15    0     0     -                NTS  expr
+14    -1    -2    31    0     0     target           NTS  ident
+15    -1    -2    16    0     0     expr             NTS  simpleExpr
+16    17    -2    19    0     0     simpleExpr       NTS  term
+17    18    -1    27    0     0     -                NTS  addop
+18    17    -3    19    0     0     -                NTS  term
+19    20    -2    22    0     0     term             NTS  factor
+20    21    -1    29    0     0     -                NTS  mulop
+21    20    -3    22    0     0     -                NTS  factor
+22    -1    23    24    0     0     factor           NTS  varRef
+23    -1    -2    25    0     0     -                NTS  number
+24    -1    -2    31    0     0     varRef           NTS  ident
+25    26    -2    36    0     0     number           NTS  digit
+26    26    -1    36    0     0     -                NTS  digit
+27    -1    28    -1    0     0     addop            TS   "+"
+28    -1    -2    -1    0     0     -                TS   "-"
+29    -1    30    -1    0     0     mulop            TS   "*"
+30    -1    -2    -1    0     0     -                TS   "/"
+31    32    -2    34    0     0     ident            NTS  identLetter
+32    32    33    34    0     0     -                NTS  identLetter
+33    32    -1    36    0     0     -                NTS  digit
+34    -1    35    -1    97    122   identLetter      RNG  "a"~"z"
+35    -1    -2    -1    65    90    -                RNG  "A"~"Z"
+36    -1    -2    -1    48    57    digit            RNG  "0"~"9"
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+[ENDE]
+
+[LEXER]
+WHITESPACE = " \t\r\n"
+TOKEN ident
+TOKEN number
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
+[ENDE]
+
+[NUTZER-CODE]
+# Erster Interpreter-Test in Richtung oberon0 (docs/ARCHITEKTUR.md §9.2/§9.5): Variablen
+# (Symboltabelle), Zuweisung, Ausdruecke MIT Variablenreferenzen. WICHTIGE Erkenntnis
+# aus diesem Versuch: "target"/"varRef" sind absichtlich ZWEI separate Regeln, obwohl
+# beide nur "ident" umschliessen -- ident selbst wird in oberon0-artigen Grammatiken in
+# vielen Rollen wiederverwendet (Deklaration, Zuweisungsziel, Ausdrucks-Referenz,
+# Modulname); eine Aktion auf "ident" direkt koennte diese Rollen nicht unterscheiden.
+# Rollenspezifische Huellregeln (hier: target = ident. / varRef = ident.) sind der
+# Weg, das mit dem bestehenden "eine Aktion pro Regelname"-Mechanismus zu loesen.
+ACTION AFTER declName CALL declare_var
+ACTION AFTER target CALL note_target
+ACTION AFTER varRef CALL push_var
+ACTION AFTER number CALL push_number
+ACTION AFTER addop CALL note_addop
+ACTION AFTER term CALL combine_term
+ACTION AFTER mulop CALL note_mulop
+ACTION AFTER factor CALL combine_factor
+ACTION AFTER stmt CALL do_assign
+ACTION AFTER module CALL show_all
+ROUTINE C declare_var
+#define MO_MAX_VARS 32
+static char varNames[MO_MAX_VARS][32];
+static long varValues[MO_MAX_VARS];
+static int varCount = 0;
+static long moStack[64];
+static int moSp = 0;
+static char pendingAddOp = 0;
+static char pendingMulOp = 0;
+static char pendingTarget[32];
+static void copyText(const char* start, const char* end, char* out, int outMax) {
+	int n = (int)(end - start);
+	if (n > outMax - 1) n = outMax - 1;
+	memcpy(out, start, n);
+	out[n] = '\0';
+}
+static int findVar(const char* name) {
+	int i;
+	for (i = 0; i < varCount; i++) if (strcmp(varNames[i], name) == 0) return i;
+	return -1;
+}
+static int findOrCreateVar(const char* name) {
+	int idx = findVar(name);
+	if (idx >= 0) return idx;
+	if (varCount < MO_MAX_VARS) {
+		strncpy(varNames[varCount], name, 31);
+		varNames[varCount][31] = '\0';
+		varValues[varCount] = 0;
+		return varCount++;
+	}
+	return 0;
+}
+void declare_var(const char* start, const char* end) {
+	char name[32];
+	copyText(start, end, name, sizeof(name));
+	findOrCreateVar(name);
+}
+END
+ROUTINE C note_target
+void note_target(const char* start, const char* end) {
+	copyText(start, end, pendingTarget, sizeof(pendingTarget));
+}
+END
+ROUTINE C push_var
+void push_var(const char* start, const char* end) {
+	char name[32];
+	int idx;
+	copyText(start, end, name, sizeof(name));
+	idx = findOrCreateVar(name);
+	moStack[moSp++] = varValues[idx];
+}
+END
+ROUTINE C push_number
+void push_number(const char* start, const char* end) {
+	long v = 0;
+	const char* q;
+	for (q = start; q < end; q++) v = v * 10 + (*q - '0');
+	moStack[moSp++] = v;
+}
+END
+ROUTINE C note_addop
+void note_addop(const char* start, const char* end) {
+	(void)end;
+	pendingAddOp = *start;
+}
+END
+ROUTINE C combine_term
+void combine_term(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (pendingAddOp) {
+		long b = moStack[--moSp];
+		long a = moStack[--moSp];
+		moStack[moSp++] = (pendingAddOp == '+') ? (a + b) : (a - b);
+		pendingAddOp = 0;
+	}
+}
+END
+ROUTINE C note_mulop
+void note_mulop(const char* start, const char* end) {
+	(void)end;
+	pendingMulOp = *start;
+}
+END
+ROUTINE C combine_factor
+void combine_factor(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (pendingMulOp) {
+		long b = moStack[--moSp];
+		long a = moStack[--moSp];
+		moStack[moSp++] = (pendingMulOp == '*') ? (a * b) : (a / b);
+		pendingMulOp = 0;
+	}
+}
+END
+ROUTINE C do_assign
+void do_assign(const char* start, const char* end) {
+	long v;
+	int idx;
+	(void)start; (void)end;
+	v = moStack[--moSp];
+	idx = findOrCreateVar(pendingTarget);
+	varValues[idx] = v;
+	printf("%s = %ld\n", pendingTarget, v);
+}
+END
+ROUTINE C show_all
+void show_all(const char* start, const char* end) {
+	int i;
+	(void)start; (void)end;
+	printf("--- final state ---\n");
+	for (i = 0; i < varCount; i++) printf("%s = %ld\n", varNames[i], varValues[i]);
+}
+END
+[ENDE]

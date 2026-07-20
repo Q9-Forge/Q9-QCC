@@ -1,0 +1,2 @@
+stmt = tag "1" | tag "2".
+tag = "T".
