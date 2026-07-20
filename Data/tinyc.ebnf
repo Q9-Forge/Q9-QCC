@@ -1,9 +1,9 @@
 program   = { funcdef } .
 
 funcdef   = funcHead block .
-funcHead  = "int" declName "(" paramList ")" .
+funcHead  = "int" defName "(" paramList ")" .
 paramList = [ param { "," param } ] .
-param     = "int" declName .
+param     = "int" paramName .
 
 block     = "{" { statement } "}" .
 
@@ -15,7 +15,7 @@ statement = varDecl
           | callStmt
           | assignStmt .
 
-varDecl   = "int" declName [ "=" varInit ] ";" .
+varDecl   = "int" localName [ "=" varInit ] ";" .
 varInit   = expr .
 assignStmt = target "=" expr ";" .
 callStmt  = call ";" .
@@ -52,7 +52,9 @@ arg       = expr .
 
 target    = ident .
 varRef    = ident .
-declName  = ident .
+defName   = ident .
+paramName = ident .
+localName = ident .
 funcName  = ident .
 
 ident     = letter { letter | digit } .

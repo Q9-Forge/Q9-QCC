@@ -334,5 +334,39 @@ else
 	echo "warn  r68: Wine/MWOS nicht verfuegbar -- OS-9-Assembler-Check uebersprungen"
 fi
 
+# 12) Tiny-C: eigenstaendige Sprache -> Stack-IR -> tinyvm (docs/ARCHITEKTUR.md Kap.10).
+#     Grammatik Data/tinyc.ebnf + [NUTZER-CODE] emittieren Stack-IR; tools/tinyvm
+#     fuehrt die IR aus (Interpreter + Referenz-Orakel). Meilenstein 1: Ausdruecke,
+#     lokale Variablen, putint. (Kein 68k-Backend hier -- kommt in M4.)
+if command -v python3 >/dev/null 2>&1; then
+	build/ebnf Data/tinyc >/dev/null 2>&1
+	if cc -w -o build/tinyc_p Data/tinyc_p.c 2>/dev/null; then
+		tcfail=0
+		tc_check() {
+			got=$(build/tinyc_p "$1" 2>/dev/null | python3 tools/tinyvm.py 2>/dev/null)
+			exp=$(printf "$2")
+			if [ "$got" != "$exp" ]; then
+				echo "FAIL  tinyc: [$1]"
+				echo "        erhalten: [$got]  erwartet: [$exp]"
+				tcfail=1; fail=1
+			fi
+		}
+		tc_check 'int main(){ putint(2 + 3 * 4); }'                        '14'
+		tc_check 'int main(){ putint(10 - 2 - 3); }'                       '5'
+		tc_check 'int main(){ putint((2 + 3) * 4); }'                      '20'
+		tc_check 'int main(){ putint(-5 + 8); }'                           '3'
+		tc_check 'int main(){ putint(20 / 3); }'                           '6'
+		tc_check 'int main(){ int x; x = 2 + 3 * 4; putint(x); int y = x - 1; putint(y); }' '14\n13'
+		tc_check 'int main(){ int a; int b; a = 7; b = a * a; putint(b); }' '49'
+		tc_check 'int main(){ int x = 40; /* Kommentar */ putint(x + 2); }' '42'
+		tc_check 'int main(){ putint(2 <= 3); putint(3 <= 3); putint(4 <= 3); }' '1\n1\n0'
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 9 Programme -> Stack-IR -> tinyvm korrekt (M1)"
+	else
+		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
+	fi
+else
+	echo "warn  tinyc: python3 fehlt -- Tiny-C/tinyvm-Check uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail
