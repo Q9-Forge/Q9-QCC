@@ -1,0 +1,61 @@
+program   = { funcdef } .
+
+funcdef   = funcHead block .
+funcHead  = "int" declName "(" paramList ")" .
+paramList = [ param { "," param } ] .
+param     = "int" declName .
+
+block     = "{" { statement } "}" .
+
+statement = varDecl
+          | ifStmt
+          | whileStmt
+          | returnStmt
+          | block
+          | callStmt
+          | assignStmt .
+
+varDecl   = "int" declName [ "=" varInit ] ";" .
+varInit   = expr .
+assignStmt = target "=" expr ";" .
+callStmt  = call ";" .
+returnStmt = "return" [ retVal ] ";" .
+retVal    = expr .
+
+ifStmt    = ifKw "(" ifCond ")" thenPart [ elseKw elsePart ] .
+ifKw      = "if" .
+elseKw    = "else" .
+ifCond    = expr .
+thenPart  = statement .
+elsePart  = statement .
+
+whileStmt = whileKw "(" whileCond ")" whileBody .
+whileKw   = "while" .
+whileCond = expr .
+whileBody = statement .
+
+expr      = addExpr [ relop addExpr ] .
+relop     = "<=" | ">=" | "==" | "!=" | "<" | ">" .
+addExpr   = term { addop term } .
+addop     = "+" | "-" .
+term      = factor { mulop factor } .
+mulop     = "*" | "/" .
+factor    = "(" expr ")"
+          | call
+          | varRef
+          | number
+          | negFactor .
+negFactor = "-" factor .
+call      = funcName "(" argList ")" .
+argList   = [ arg { "," arg } ] .
+arg       = expr .
+
+target    = ident .
+varRef    = ident .
+declName  = ident .
+funcName  = ident .
+
+ident     = letter { letter | digit } .
+number    = digit { digit } .
+letter    = "a"~"z" | "A"~"Z" | "_" .
+digit     = "0"~"9" .
