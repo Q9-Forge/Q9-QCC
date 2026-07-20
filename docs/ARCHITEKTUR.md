@@ -478,3 +478,223 @@ Schreiben als `WAISE` markiert werden und erhalten bleiben, bis der Nutzer sie
 bewusst umbenennt oder entfernt -- aktuell werden ACTION-Zeilen mit unbekannter
 Regel beim Parsen der Konfiguration schlicht mit Warnung ignoriert (codegen.cpp,
 `actionsParseConfig()`).
+
+## 10. Tiny-C: der erste komplette Sprach-zu-IR-zu-68k-Weg (geplant 2026-07-20)
+
+Neuer Projektfokus statt des oberon0-Handdurchlaufs (Abschnitt 7): eine kleine,
+grammatisch EINDEUTIGE C-Teilsprache komplett bis zum lauffaehigen OS-9/68k-Code
+durchziehen. Motivierender als oberon0, gleiche Komplexitaetsklasse, und sie
+zwingt uns zum eigentlichen Projektziel -- der in 9.5 vertagten IR-Schicht.
+
+### 10.1 Warum Tiny-C (Subset) und nicht "echtes C"
+
+Echtes C ist genau dort eklig, wo es mit dem Retro-Codegen-Ziel nichts zu tun hat:
+Praeprozessor (eigene Sprache), typedef-vs-identifier ("lexer hack", echt
+kontextsensitiv, braucht Parser-zu-Symboltabelle-Rueckkopplung), Deklaration-vs-
+Ausdruck (a * b;), Declarator-Syntax (Pointer/Arrays/Funktionszeiger). Ein
+Subset OHNE diese Konstrukte ist eindeutig und mit dem vorhandenen Backtracking-
+Parser sauber parsebar.
+
+### 10.2 Sprachumfang (Meilenstein-Zielsprache)
+
+- Einziger Typ int (spaeter char, dann Pointer/Arrays -- 10.11).
+- Programm = Folge von Funktionsdefinitionen; Ausfuehrung startet bei main().
+- Funktionen mit int-Parametern und int-Rueckgabe (bewusst eingeschraenkt).
+- Anweisungen: lokale Deklaration (int x; / int x = e;), Zuweisung, if/else,
+  while, return, Block, Ausdrucks-/Aufruf-Anweisung.
+- Ausdruecke: + - * /, unaeres Minus, Klammern, Relationen (< > <= >= == !=),
+  Funktionsaufrufe, Variablenreferenzen, Integer-Literale.
+- Builtin putint(e) (frueh: IR-Opcode PRINT; spaeter echtes OS-9 I$Write).
+- KEINE globalen Variablen in M1-M4 (bewusst, 10.11).
+
+### 10.3 Grammatik: Data/tinyc.ebnf (mit Rollen- und Keyword-Huellregeln)
+
+Vollstaendig in Data/tinyc.ebnf. Zwei Sorten trivialer Huellregeln (rein
+syntaktische No-Ops, erkennen dieselbe Sprache) geben jeder SEMANTISCHEN Rolle
+bzw. Position einen eigenen, actionable Regelnamen -- die verallgemeinerte
+Erkenntnis aus 9.4d:
+
+- ROLLEN-Huellen (wegen "ident ist polymorph", 9.4d):
+  target = ident. (Zuweisungsziel), varRef = ident. (Werte-Referenz),
+  declName = ident. (Deklaration), funcName = ident. (Aufrufziel).
+- KEYWORD-Huellen als "davor"-Hook: whileKw = "while". ifKw = "if".
+  elseKw = "else". -- deren AFTER-Aktion feuert direkt nach dem Schluesselwort,
+  also VOR der Bedingung/dem Rumpf. Damit braucht der Kontrollfluss KEIN neues
+  ACTION-BEFORE (siehe 10.6/10.9).
+- weitere Positions-Huellen: funcHead (Funktionskopf vor dem Rumpf),
+  varInit, retVal, arg, thenPart, elsePart, whileBody, ifCond, whileCond.
+
+Ordered choice + Backtracking loesen die Mehrdeutigkeiten (call vs varRef,
+assignStmt vs callStmt: beide starten mit ident -> laengere Alternative zuerst,
+sonst Ruecksetzung). Keyword-vs-ident loest der [LEXER]-Wortgrenzen-Check (Abschnitt 8),
+eine KEYWORDS-Liste ist unnoetig.
+
+Zugehoeriger [LEXER]-Block (kommt in Data/tinyc.lextab, M1):
+WHITESPACE = " \t\r\n" / TOKEN ident / TOKEN number / COMMENT LINE = "//" /
+COMMENT BLOCK = "/*" "*/".
+
+### 10.4 Warum eine IR-Schicht (nicht Live-Interpretation)
+
+9.4d hat gezeigt: geradliniger Code (Ausdruecke/Zuweisung) laesst sich per
+Post-Order-Aktion live auswerten (calcexpr/miniOberon), Kontrollfluss NICHT --
+eine Regel wird beim Parsen nur EINMAL besucht, muesste zur Laufzeit aber 0/1/n-mal
+ausgefuehrt werden. Konsequenz (= das eigentliche Projektziel): Aktionen EMITTIEREN
+Code/IR (Spruenge + Label), statt Werte live zu berechnen. Wir realisieren damit
+endlich die in 9.5 skizzierte Architektur:
+
+```
+  tinyc.ebnf + [LEXER] + [NUTZER-CODE]
+        |  (ebnf-Tool erzeugt Frontend-Parser tinyc_p.c)
+        v
+  generierter Parser -- Aktionen emittieren --> Stack-IR (Textform)
+        |                                          |
+        +--> tools/tinyvm (Interpreter, Orakel)    +--> tools/ir2m68k --> .s68 / OS-9
+```
+
+Entscheidung zur in 9.2/9.4 offen gelassenen IR-Frage: Stack-Maschine (nicht
+AST-Register-Code). Begruendung: passt nahtlos zum vorhandenen calcexpr-Werte-Stack,
+trivial auf 68k abzubilden (a7 + d0..d2), und die Host-VM ist zugleich Test-Orakel
+(differenziell gegen 68k, wie heute C-Zwilling vs s68sim). AST-Register-Code bleibt
+Option fuer spaetere Optimierung (10.11).
+
+### 10.5 Die Stack-IR (Opcode-Satz)
+
+Textform, ein Opcode pro Zeile (wie ein Mini-Assembler). Operanden-Stack-Maschine.
+
+```
+; Konstanten / lokale Variablen
+PUSH  <n>        ; Integer-Konstante -> Stack
+LOADL <i>        ; lokalen Slot i laden -> Stack
+STOREL <i>       ; Stack -> lokalen Slot i (pop)
+; Arithmetik: pop2 -> push1  (NEG: pop1 -> push1)
+ADD  SUB  MUL  DIV
+NEG
+; Vergleich: pop2 -> push 0/1
+CMPLT  CMPGT  CMPLE  CMPGE  CMPEQ  CMPNE
+; Kontrollfluss
+LABEL <L>        ; definiert Sprungziel L
+JMP   <L>
+JZ    <L>        ; pop; springe wenn == 0
+JNZ   <L>        ; pop; springe wenn != 0
+; Funktionen
+FUNC  <name> <nargs>   ; Funktionsbeginn; Slots 0..nargs-1 = Parameter
+ENDFUNC                ; Funktionsende (Rahmengroesse = hoechster Slot+1, vom Backend ermittelt)
+CALL  <name> <nargs>   ; nargs Werte vom Stack (links->rechts gepusht); Ergebnis auf Stack
+RET                    ; pop = Rueckgabewert; Rahmen abbauen; zum Aufrufer
+; Sonstiges
+DROP             ; oberen Stackwert verwerfen (unbenutztes Ausdrucksergebnis)
+PRINT            ; pop; als Zahl ausgeben (Builtin putint; spaeter OS-9 I$Write)
+```
+
+### 10.6 Emissions-Muster: wie Aktionen die IR erzeugen
+
+Kernprinzip: Der ACTION-Mechanismus protokolliert Aktionen beim Parsen und spielt
+sie NUR bei Gesamterfolg, EINMAL, in Parse-Reihenfolge ab (9.4b). Ein durch
+Backtracking verworfener Pfad rollt seine geloggten Aktionen automatisch zurueck
+(svLog). Deshalb genuegen AFTER-Aktionen + Huellregeln; Emission laeuft in einem
+einzigen linearen Replay ohne Backtracking. Ein globaler IR-Puffer, ein globaler
+Label-Zaehler, ein Kontroll-Frame-Stack und ein Call-Frame-Stack leben (wie
+calcexprs Werte-Stack) in den ROUTINE-C-Koerpern.
+
+Geradliniger Code (AFTER, Post-Order -- exakt calcexpr-Muster, nur EMIT statt rechnen):
+- number  AFTER -> emit PUSH <wert>
+- varRef  AFTER -> Slot nachschlagen -> emit LOADL <i>
+- negFactor AFTER -> emit NEG
+- addop/mulop AFTER -> "pending operator" merken; term/addExpr AFTER -> falls
+  pending: emit ADD/SUB bzw. MUL/DIV (No-Op bei erster Iteration, wie calcexpr)
+- relop AFTER -> pending merken; expr AFTER -> falls pending: emit CMPxx
+- target AFTER -> Ziel-Slot merken; assignStmt AFTER -> emit STOREL <slot>
+  (Reihenfolge stimmt: target VOR expr geparst, expr-Code VOR dem STOREL emittiert)
+- varDecl: declName AFTER allokiert Slot; varInit AFTER -> (Code steht) emit
+  STOREL <slot>
+- callStmt AFTER -> emit DROP (unbenutztes Ergebnis; bei putint/PRINT entfaellt es)
+- returnStmt AFTER -> falls kein retVal: emit PUSH 0; dann emit RET
+
+Funktionsdefinition (Keyword-/Kopf-Huelle liefert den "vor dem Rumpf"-Hook):
+- funcHead AFTER -> neue Symboltabelle/Slot-Zaehler; emit FUNC <name> <nargs>
+- funcdef  AFTER -> emit RET (Fallthrough-Sicherung) + ENDFUNC; Scope schliessen
+
+Aufruf (Call-Frame-Stack traegt Name + Argumentzahl, auch geschachtelt):
+- funcName AFTER -> Call-Frame pushen (Name, count=0)
+- arg      AFTER -> count des obersten Call-Frames erhoehen
+- call     AFTER -> emit CALL <name> <count>; Call-Frame poppen
+
+Kontrollfluss (Keyword-Huelle = "davor"-Hook, Kontroll-Frame-Stack fuer Labels):
+- whileKw   AFTER -> Ltop,Lend allokieren; Frame pushen; emit LABEL Ltop
+- whileCond AFTER -> emit JZ Lend   (Lend vom obersten Frame)
+- whileStmt AFTER -> emit JMP Ltop; emit LABEL Lend; Frame poppen
+  => Ltop: [cond] JZ Lend [body] JMP Ltop Lend:            (korrekt)
+- ifKw      AFTER -> Lelse,Lend allokieren; Frame pushen
+- ifCond    AFTER -> emit JZ Lelse
+- thenPart  AFTER -> emit JMP Lend; emit LABEL Lelse
+- ifStmt    AFTER -> emit LABEL Lend; Frame poppen
+  => [cond] JZ Lelse [then] JMP Lend Lelse: [else] Lend:   (ohne else: Lelse == Fall-through)
+
+Backtracking-Sicherheit: Beim Parsen von factor wird call VOR varRef versucht;
+scheitert call (kein "("), rollt svLog die dabei geloggte funcName-Aktion
+(Call-Frame-Push) automatisch zurueck -- kein Phantom-Frame. Genau dafuer existiert
+der Log+Replay-Mechanismus (9.4b).
+
+### 10.7 Funktionen: Slots und Call/Return-ABI
+
+- Slot-Vergabe (Codegen-Zeit): declName in param/varDecl allokiert den naechsten
+  freien Slot der AKTUELLEN Funktion; varRef/target schlagen nach. Parameter
+  belegen Slots 0..nargs-1 (von CALL vorbelegt), lokale Variablen die folgenden.
+- IR-Semantik: CALL name n nimmt n Werte vom Operanden-Stack (links->rechts
+  gepusht), legt eine Aktivierung an (locals[0..n-1] = Argumente), fuehrt bis
+  RET aus; RET nimmt den obersten Stackwert als Rueckgabe und legt ihn im
+  Aufrufer-Stack ab. Host-VM: locals als Dict/Array -> Rahmengroesse muss nicht
+  vorab bekannt sein.
+- 68k/OS-9-Skizze (M4, nicht final): Argumente auf a7; jsr p_<name>; Callee
+  link a6,#-frame (frame = hoechster Slot+1, per Vorab-Scan der Funktions-IR),
+  Parameter/Locals ueber a6-relative Offsets, Rueckgabe in d0, unlk a6, rts;
+  Aufrufer legt d0 als Ergebnis ab. putint -> OS-9 I$Write-Trap (M4/M5).
+
+### 10.8 Host-VM tools/tinyvm = Interpreter UND Test-Orakel
+
+Kleiner Interpreter (Python, Stil wie tools/s68sim.py): liest IR-Text, fuehrt ihn
+auf einer Operanden-Stack-Maschine mit Aufruf-Stack (Frames) aus, LABEL vorab in
+Index-Map gescannt, startet bei main. Liefert sofort Ergebnisse ohne 68k-Toolchain
+UND dient als Referenz-Orakel: fuer jedes Testprogramm muss tinyvm dieselbe Ausgabe
+liefern wie der aus derselben IR erzeugte 68k-Code unter s68sim/r68 -- dasselbe
+differenzielle Muster, das die Suite heute fuer den Parser faehrt (C-Zwilling vs s68sim).
+
+### 10.9 Mechanik-Erweiterung? -- vorerst KEINE noetig
+
+Wichtiges Ergebnis dieses Entwurfs: Mit den Keyword-/Positions-Huellregeln (10.3/10.6)
+liefert der VORHANDENE "eine ACTION AFTER pro Regel"-Mechanismus Hooks an jeder
+noetigen Stelle, auch "vor" einem Teil. Ein ACTION-BEFORE ist damit fuer M1-M4 NICHT
+erforderlich; das ebnf-Tool (ebnf.cpp/codegen.cpp) bleibt fuer die Tiny-C-Arbeit
+unveraendert. (Ein echtes ACTION-BEFORE bliebe eine spaetere Bequemlichkeit, kein
+Blocker.) Ebenfalls unveraendert: die 68k-Aktions-Rollback-Luecke (9.4c) ist irrelevant,
+weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog calcexpr.
+
+### 10.10 Meilensteine + Teststrategie
+
+- M1  Ausdruecke + lokale Variablen + eine Funktion main: tinyc.lextab mit
+      IR-emittierenden ROUTINE-C-Koerpern; tools/tinyvm. Ziel: putint(2+3*4);
+      und Variablen rechnen ueber die IR korrekt. (Kein Tool-Change.)
+- M2  Kontrollfluss if/else + while ueber Label/Sprung-IR (10.6). Ziel: Schleifen/
+      Bedingungen laufen in tinyvm. (= 9.4d in echt.)
+- M3  Funktionen mit int-Parametern + Rueckgabe + Rekursion. Ziel: fib/fakultaet
+      laufen rekursiv in tinyvm.
+- M4  Backend tools/ir2m68k: dieselbe IR -> .s68/OS-9, differenziell gegen tinyvm
+      geprueft (s68sim + vasm + r68/Wine). Ziel: fib.c als echter OS-9/68k-Code.
+- M5+ Typen wachsen lassen: char -> Pointer -> Arrays -> Structs; globale Variablen.
+
+Integration in runtests.sh (M1): eigener Abschnitt, der tinyc_p auf eine Reihe
+Testprogramme laufen laesst und die tinyvm-Ausgabe gegen erwartete Werte prueft
+(ab M4 zusaetzlich gegen den 68k-Pfad). Neue Grammatik in die expliziten g-Listen
+(Abschnitte "codegen"/"s68sim") NUR aufnehmen, soweit sinnvoll -- der Parser selbst
+wird ohnehin ueber die Programm-Tests validiert.
+
+### 10.11 Offene Punkte / bewusste Vertagungen
+
+- Globale Variablen: erst nach M4 (LOADG/STOREG + Daten-psect).
+- AST-Register-IR statt Stack-IR: Option fuer Codequalitaet, erst wenn 68k-Ausgabe
+  zu schlecht ist (10.4).
+- Dangling-else, return mitten im Block, Kurzschluss-&&/||: als M2/M3-Details
+  benannt, Grammatik deckt if/else bereits ab; &&/|| spaeter (brauchen eigene
+  Sprung-Emission).
+- putint als echter OS-9-Trap (I$Write) statt PRINT: M4/M5.
+- typedef/Praeprozessor/Declarator-Syntax: bewusst ausserhalb Tiny-C (10.1).
