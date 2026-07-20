@@ -1,55 +1,21 @@
-# Prerequisites
-*.d
-
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
+# --- Build-Binaries & Objektdateien ---
+/build/
 *.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+*.o
+*.obj
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# --- Generierte Parser/Assembler ---
+# Regenerierbar aus <base>.ebnf / <base>.lextab via ./runtests.sh
+# WICHTIG: *.lextab ist QUELLE (haelt TESTS/[LEXER]/[NUTZER-CODE]/[CODEGEN]) -> wird eingecheckt!
+*_p.c
+*.s68
+*_os9.a
+*.lexlst
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
-*.dwo
+# --- macOS / IDE-Artefakte ---
+.DS_Store
+.vs/
+x64/
+Debug/
+Release/
+*.user

@@ -1,0 +1,3 @@
+# Escape-Test: Literal mit Anfuehrungszeichen (\042) und Oktal-Escapes
+qstr = "\042" digit { digit } "\042" .
+digit = "0"~"9" .

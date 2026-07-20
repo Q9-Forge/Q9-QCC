@@ -1,0 +1,157 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
+# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
+# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
+# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <expr>                           = <term> { <addop> <term> } .
+
+ <term>                           = <factor> { <mulop> <factor> } .
+
+ <factor>                         = <number> .
+
+ <addop>                          = "+" 
+                                  | "-" .
+
+ <mulop>                          = "*" 
+                                  | "/" .
+
+ <number>                         = <digit> { <digit> } .
+
+ <digit>                          = "0"~"9" .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "+"
+1    TS   "-"
+2    TS   "*"
+3    TS   "/"
+4    RNG  "0"~"9"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           expr
+1    3           term
+2    6           factor
+3    7           addop
+4    9           mulop
+5    11          number
+6    13          digit
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
+0     1     -2    3     0     0     expr             NTS  term
+1     2     -1    7     0     0     -                NTS  addop
+2     1     -3    3     0     0     -                NTS  term
+3     4     -2    6     0     0     term             NTS  factor
+4     5     -1    9     0     0     -                NTS  mulop
+5     4     -3    6     0     0     -                NTS  factor
+6     -1    -2    11    0     0     factor           NTS  number
+7     -1    8     -1    0     0     addop            TS   "+"
+8     -1    -2    -1    0     0     -                TS   "-"
+9     -1    10    -1    0     0     mulop            TS   "*"
+10    -1    -2    -1    0     0     -                TS   "/"
+11    12    -2    13    0     0     number           NTS  digit
+12    12    -1    13    0     0     -                NTS  digit
+13    -1    -2    -1    48    57    digit            RNG  "0"~"9"
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+TEST "2+3*4" OK
+TEST "10-2-3" OK
+TEST "6/3+1" OK
+TEST "2" OK
+TEST "2+" FAIL
+TEST "+2" FAIL
+TEST "" FAIL
+[ENDE]
+
+[LEXER]
+# Optional: aktiviert Whitespace-/Kommentar-Behandlung im ERZEUGTEN Parser.
+# WHITESPACE = " \t\r\n"
+# TOKEN ident            (Regel wird lexikalisch: Zeichen muessen adjazent sein)
+# COMMENT LINE = "//"
+# COMMENT BLOCK = "(*" "*)"          (NESTED vor '=' erlaubt Schachtelung)
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
+[ENDE]
+
+[NUTZER-CODE]
+# Testfall fuer echte WERTBERECHNUNG ueber Aktionen (docs/ARCHITEKTUR.md §9.2:
+# "linksassoziative Operator-Schleife" als Template-Kandidat -- hier zum ersten Mal
+# an einer echten Grammatik durchgespielt, siehe ARCHITEKTUR.md §9.5 fuer die Analyse).
+# Nur C-Backend (kein Wertrueckgabekanal im aktuellen ACTION-Mechanismus -- ein
+# globaler Werte-Stack in den ROUTINE-Koerpern selbst ist der Behelf dafuer).
+ACTION AFTER number CALL push_number
+ACTION AFTER addop CALL note_addop
+ACTION AFTER term CALL combine_term
+ACTION AFTER mulop CALL note_mulop
+ACTION AFTER factor CALL combine_factor
+ACTION AFTER expr CALL show_result
+ROUTINE C push_number
+static long calcStack[64];
+static int calcSp = 0;
+static char pendingAddOp = 0;
+static char pendingMulOp = 0;
+void push_number(const char* start, const char* end) {
+	long v = 0;
+	const char* q;
+	for (q = start; q < end; q++) v = v * 10 + (*q - '0');
+	calcStack[calcSp++] = v;
+}
+END
+ROUTINE C note_addop
+void note_addop(const char* start, const char* end) {
+	(void)end;
+	pendingAddOp = *start;
+}
+END
+ROUTINE C combine_term
+void combine_term(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (pendingAddOp) {
+		long b = calcStack[--calcSp];
+		long a = calcStack[--calcSp];
+		calcStack[calcSp++] = (pendingAddOp == '+') ? (a + b) : (a - b);
+		pendingAddOp = 0;
+	}
+}
+END
+ROUTINE C note_mulop
+void note_mulop(const char* start, const char* end) {
+	(void)end;
+	pendingMulOp = *start;
+}
+END
+ROUTINE C combine_factor
+void combine_factor(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (pendingMulOp) {
+		long b = calcStack[--calcSp];
+		long a = calcStack[--calcSp];
+		calcStack[calcSp++] = (pendingMulOp == '*') ? (a * b) : (a / b);
+		pendingMulOp = 0;
+	}
+}
+END
+ROUTINE C show_result
+void show_result(const char* start, const char* end) {
+	(void)start; (void)end;
+	printf("RESULT: %ld\n", calcStack[--calcSp]);
+}
+END
+[ENDE]

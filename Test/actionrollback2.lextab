@@ -1,0 +1,82 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
+# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
+# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
+# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <expr2>                          = "(" <expr2> ")" "A" 
+                                  | "(" <expr2> ")" "B" 
+                                  | <leaf> .
+
+ <leaf>                           = "x" .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "("
+1    TS   ")"
+2    TS   "A"
+3    TS   "B"
+4    TS   "x"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           expr2
+1    9           leaf
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
+0     1     4     -1    0     0     expr2            TS   "("
+1     2     -3    0     0     0     -                NTS  expr2
+2     3     -3    -1    0     0     -                TS   ")"
+3     -1    -3    -1    0     0     -                TS   "A"
+4     5     8     -1    0     0     -                TS   "("
+5     6     -3    0     0     0     -                NTS  expr2
+6     7     -3    -1    0     0     -                TS   ")"
+7     -1    -3    -1    0     0     -                TS   "B"
+8     -1    -2    9     0     0     -                NTS  leaf
+9     -1    -2    -1    0     0     leaf             TS   "x"
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+[ENDE]
+
+[LEXER]
+# Optional: aktiviert Whitespace-/Kommentar-Behandlung im ERZEUGTEN Parser.
+# WHITESPACE = " \t\r\n"
+# TOKEN ident            (Regel wird lexikalisch: Zeichen muessen adjazent sein)
+# COMMENT LINE = "//"
+# COMMENT BLOCK = "(*" "*)"          (NESTED vor '=' erlaubt Schachtelung)
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
+[ENDE]
+
+[NUTZER-CODE]
+# Wie actionrollback, aber mit REKURSION (expr2 ruft sich selbst ueber "(" expr2 ")"
+# auf) -- prueft, ob der Aktions-Log-Rollback auch durch VERSCHACHTELTE Regelaufrufe
+# hindurch korrekt funktioniert. Bei "(x)B" feuert "leaf" zuerst innerhalb der
+# verworfenen ersten Alternative ("(" expr2 ")" "A", scheitert an "A" vs "B"), dann
+# nochmal in der gewinnenden zweiten -- muss trotz der Verschachtelung nur 1x zaehlen.
+ACTION AFTER leaf CALL note_leaf
+ROUTINE C note_leaf
+static int leafCount = 0;
+void note_leaf(const char* start, const char* end) {
+	(void)start; (void)end;
+	leafCount++;
+	printf("LEAF#%d\n", leafCount);
+}
+END
+[ENDE]

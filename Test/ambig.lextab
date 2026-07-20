@@ -1,0 +1,35 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# Nur der [TESTS]-Block ist zum Editieren gedacht, er bleibt beim Neu-Erzeugen
+# erhalten. Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <s>                              = [ "-" ] "a" 
+                                  | "b" .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "-"
+1    TS   "a"
+2    TS   "b"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           s
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+0     1     1     -1    0     0     s                TS   "-"
+1     -1    2     -1    0     0     -                TS   "a"
+2     -1    -2    -1    0     0     -                TS   "b"
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+[ENDE]
