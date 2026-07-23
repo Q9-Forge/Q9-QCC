@@ -58,6 +58,8 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - Prä-/Postinkrement `++`/`--` (einfache int/unsigned/char-Skalare)
 - `switch`/`case`/`default` (gestapelte Case-Label, kein Fallthrough mit Code zwischen Bodies)
 - Casts `(int)`/`(unsigned int)`/`(char)`/`(bool)` (kein Pointer-/typedef-Ziel)
+- `sizeof(variable)` zusaetzlich zu `sizeof(Typ)` (Skalare und Arrays, lokal+global)
+- `enum Name` als Typ (Deklaration, Parameter, Rueckgabetyp), bleibt intern `int`
 - Pointer: Deklaration, `&`, `*`, `p[i]`, Pointerparameter/-rückgabe,
   Pointervergleich, skalierte Arithmetik und Pointerdifferenz
 - TinyVM als ausführbares Testorakel
@@ -69,7 +71,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-72 Tiny-C-Programme korrekt
+77 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff 68000 + ARM64 korrekt
