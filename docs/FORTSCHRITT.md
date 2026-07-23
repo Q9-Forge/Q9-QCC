@@ -15,6 +15,8 @@
 | Tiny-C Prä-/Postinkrement (`++`/`--`) | erledigt | nur einfache int/unsigned/char-Skalare (lokal/global), kein Backend-Change (LOAD/DUP/PUSH/ADD-oder-SUB/STORE) |
 | Tiny-C `switch`/`case`/`default` | teilweise | gestapelte Case-Label (case A: case B: body) unterstuetzt, KEIN Fallthrough mit Code zwischen verschiedenen Bodies (deckt das reale Nutzungsmuster in ebnf.cpp/codegen.cpp ab); kein Backend-Change |
 | Tiny-C Casts | teilweise | nur `(int)`/`(unsigned int)`/`(char)`/`(bool)`, kein Pointer-/typedef-Cast-Ziel (Mehrdeutigkeits-Falle mit Klammerausdruecken bewusst vermieden); kein Backend-Change |
+| Tiny-C `sizeof(variable)` | erledigt | ergaenzt `sizeof(Typ)`: jetzt auch `sizeof(x)` auf Skalare/Arrays (lokal+global) -- deckt die reale Nutzung im Generator ab |
+| Tiny-C `enum` als Typ | erledigt | `enum Name var;` als Deklaration/Parameter/Rueckgabetyp moeglich, bleibt intern `int` |
 | Arrays | erledigt | bytegenaue `char[]`/`int[]`, lokal und global |
 | Datentypen | erledigt | `int`, `unsigned int`, `char`, `bool`, Nullwert |
 | Operatoren | erledigt | Rechen-, Vergleichs-, Bit-, Shift-, Logik- und ternäre Operatoren |

@@ -410,6 +410,21 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Cast-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
+		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
+		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
+		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
+		if build/tinyc_p 'int main(){ int x; int *p=&x; putint(sizeof(p)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
+			echo "ok    tinyc: sizeof auf Pointer wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: sizeof-Pointer-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ enum Nope x; }' 2>&1 | grep -q 'unknown enum'; then
+			echo "ok    tinyc: unbekannter enum-Typ wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: enum-Typ-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field' && \
 		   build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; }' 2>&1 | grep -q 'struct fields must share one type'; then
 			echo "ok    tinyc: unbekanntes Feld und gemischte Feldtypen werden diagnostiziert"
@@ -456,7 +471,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 72 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 77 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
