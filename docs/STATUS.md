@@ -1,6 +1,27 @@
 # Projektstatus
 
-Stand: **2026-07-22**
+Stand: **2026-07-23**
+
+## Wichtig für eine neue Sitzung (auch mit anderer KI)
+
+An diesem Projekt arbeiten nicht immer dieselbe KI/Session. Deshalb **vor** dieser
+Datei zusätzlich prüfen:
+
+- `git status` und `git branch -a` im Repo-Wurzelverzeichnis -- Arbeit kann auf
+  einem noch nicht gemergten Branch liegen, unabhängig davon was hier steht.
+- `gh pr list` -- offene Pull Requests, die noch Review/Merge brauchen.
+
+Aktuell (2026-07-23):
+- PR #1 (https://github.com/foellmy51/ebnf/pull/1) ist OFFEN, noch nicht gemergt.
+  Enthält: Pointer, ARM64/Darwin-Backend, Doku-Umstellung auf docs/.
+- Branch `selfhost/plain-c-backends` (ausgecheckt, lokal) enthält einen FERTIGEN,
+  aber NOCH NICHT COMMITTETEN Rückbau der zwei C++-Backends
+  (`Source/tinyc_backend.cpp`, `Source/tinyc_arm64_backend.cpp`) auf reines C
+  (neue Dateien `*_c.cpp`, Originale bleiben unverändert daneben liegen).
+  `./runtests.sh` läuft dort grün. Siehe `docs/SELFHOSTING_LUECKENLISTE.md`
+  Abschnitt 5 für den Hintergrund.
+- Nächster geplanter Schritt: Sprachmittel aus `docs/SELFHOSTING_LUECKENLISTE.md`
+  Abschnitt 1 in Tiny-C nachziehen, beginnend mit `struct`/`typedef`.
 
 ## Kurzfassung
 
