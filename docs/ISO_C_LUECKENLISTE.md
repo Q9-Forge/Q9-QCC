@@ -49,7 +49,7 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Arrays und Array-Decay | teilweise | sehr hoch |
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
-| `struct`, `union`, `enum` | teilweise (struct mit einheitlichem Feldtyp) | sehr hoch |
+| `struct`, `union`, `enum` | teilweise (struct mit einheitlichem Feldtyp, `enum` erledigt) | sehr hoch |
 | `typedef` | erledigt (Skalar-/Pointer-Aliase) | — |
 | Bitfelder und `_Alignas`/`_Alignof` | offen | mittel |
 | variable length arrays | offen | mittel |

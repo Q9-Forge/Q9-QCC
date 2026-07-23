@@ -374,6 +374,13 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
 		tc_check 'typedef int MyInt; int main(){ MyInt a = 5; MyInt b = 7; putint(a + b); }' '12'
 		tc_check 'typedef int* IntPtr; int main(){ int x = 42; IntPtr p = &x; putint(*p); }' '42'
+		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ putint(RED); putint(GREEN); putint(BLUE); }' '0\n1\n2'
+		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ int c = GREEN; if (c == GREEN) putint(1); else putint(0); putint(BLUE - RED); }' '1\n2'
+		if build/tinyc_p 'enum A { X, Y }; enum B { X, Z }; int main(){ putint(X); }' 2>&1 | grep -q 'duplicate enum constant'; then
+			echo "ok    tinyc: doppelte enum-Konstante wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: enum-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field' && \
 		   build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; }' 2>&1 | grep -q 'struct fields must share one type'; then
 			echo "ok    tinyc: unbekanntes Feld und gemischte Feldtypen werden diagnostiziert"
@@ -420,7 +427,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 45 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 47 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
