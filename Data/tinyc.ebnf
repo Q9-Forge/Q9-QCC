@@ -1,4 +1,6 @@
-program   = { globalDecl | structDecl | typedefDecl } { funcdef } .
+program   = { globalDecl | structDecl | typedefDecl | enumDecl } { funcdef } .
+
+enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
 
 structDecl  = "struct" structName "{" structField { structField } "}" ";" .
 structName  = ident .
