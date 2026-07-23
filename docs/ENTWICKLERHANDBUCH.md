@@ -55,6 +55,18 @@ nativen mit festem Schluesselwort. Bei jeder kuenftigen Erweiterung, die
 `ident` als neue `type`- oder statement-einleitende Alternative zulaesst,
 diese Reihenfolge erneut pruefen.
 
+**Falle: eine bestehende Regel wiederverwenden reisst deren ACTION mit.** Jede
+Regel hat GENAU EINE Aktion, global, unabhaengig davon, aus welchem Kontext sie
+erreicht wird. Bei `switch`/`case` wurde `caseValue` zunaechst als
+`ident | caseNeg | number` definiert -- `number` wird aber schon fuer normale
+Zahlenliterale in Ausdruecken verwendet und hat dort `ACTION AFTER number CALL
+tc_number` (druckt einen eigenen `PUSH`). Jede Zahl in einem `case`-Label loeste
+dadurch zusaetzlich diese fremde Aktion aus (ueberzaehliger `PUSH` im IR).
+Fix: eigene Regel `caseNumber = digit { digit }` ohne Aktion angelegt statt
+`number` wiederzuverwenden. Vor jeder Wiederverwendung einer bestehenden Regel
+in einem NEUEN Kontext pruefen, ob diese Regel (oder eine ihrer Kind-Regeln)
+bereits eine ACTION traegt.
+
 ## Diagnose und Wiederaufnahme
 
 Für eine kurze neue Sitzung zuerst `docs/STATUS.md`, danach nur die thematisch
