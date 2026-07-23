@@ -54,6 +54,8 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - `typedef` (Skalar-/Pointer-Aliase)
 - `struct` mit einheitlichem Feldtyp (Feldzugriff lesend/schreibend, lokale Variablen)
 - `enum` (benannte int-Konstanten)
+- `sizeof` (int/char/bool/unsigned/struct, keine Pointer)
+- Prä-/Postinkrement `++`/`--` (einfache int/unsigned/char-Skalare)
 - Pointer: Deklaration, `&`, `*`, `p[i]`, Pointerparameter/-rückgabe,
   Pointervergleich, skalierte Arithmetik und Pointerdifferenz
 - TinyVM als ausführbares Testorakel
@@ -65,7 +67,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-47 Tiny-C-Programme korrekt
+58 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff 68000 + ARM64 korrekt

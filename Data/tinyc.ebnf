@@ -36,6 +36,7 @@ statement = ifStmt
           | returnStmt
           | block
           | callStmt
+          | incDecStmt
           | assignStmt
           | varDecl .
 
@@ -73,7 +74,7 @@ forSep2   = ";" .
 forClose  = ")" .
 forInit   = target assignop expr .
 forCond   = expr .
-forStep   = target assignop expr .
+forStep   = target assignop expr | postIncDec | preIncDec .
 forBody   = statement .
 
 doStmt    = doKw doBody doWhileTok "(" doCond ")" doClose .
@@ -111,7 +112,10 @@ addExpr   = term { addop term } .
 addop     = "+" | "-" .
 term      = factor { mulop factor } .
 mulop     = "*" | "/" | "%" .
-factor    = "(" expr ")"
+factor    = sizeofExpr
+          | preIncDec
+          | postIncDec
+          | "(" expr ")"
           | call
           | boolLit
           | addressRef
@@ -121,6 +125,13 @@ factor    = "(" expr ")"
           | negFactor .
 negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
+
+sizeofExpr = "sizeof" "(" type ")" .
+
+preIncDec  = incdecOp ident .
+postIncDec = ident incdecOp .
+incdecOp   = "++" | "--" .
+incDecStmt = preIncDec ";" | postIncDec ";" .
 derefRef  = "*" factor .
 call      = funcName "(" argList ")" .
 argList   = [ arg { "," arg } ] .
