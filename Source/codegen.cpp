@@ -102,7 +102,7 @@ static void pushNode(int id) {
 
 void astPushTS(const char* text) {
 	int id = newNode(AST_TS);
-	strncpy_s(nodes[id].text, text, AST_TEXT_LEN);
+	strncpy_s(nodes[id].text, sizeof(nodes[id].text), text, AST_TEXT_LEN);
 	pushNode(id);
 }
 
@@ -115,7 +115,7 @@ void astPushRNG(char lo, char hi) {
 
 void astPushNTS(const char* name) {
 	int id = newNode(AST_NTS);
-	strncpy_s(nodes[id].text, name, AST_TEXT_LEN);
+	strncpy_s(nodes[id].text, sizeof(nodes[id].text), name, AST_TEXT_LEN);
 	pushNode(id);
 }
 
@@ -172,7 +172,7 @@ void astFinishRule(const char* name) {
 		astOverflow = 1;
 		return;
 	}
-	strncpy_s(rules[ruleCnt].name, name, AST_TEXT_LEN);
+	strncpy_s(rules[ruleCnt].name, sizeof(rules[ruleCnt].name), name, AST_TEXT_LEN);
 	if (astDepth >= 1) {
 		rules[ruleCnt].root = astStack[--astDepth];
 	}
@@ -415,7 +415,7 @@ int lexParseConfig(const char* buf) {
 
 	// Standard-Whitespace, falls TOKEN/COMMENT konfiguriert wurden, aber WHITESPACE fehlt
 	if (lexActive && lexWsLen == 0) {
-		strcpy_s(lexWs, " \t\r\n");
+		strcpy_s(lexWs, sizeof(lexWs), " \t\r\n");
 		lexWsLen = 4;
 	}
 	return ok;
@@ -627,13 +627,13 @@ int actionsParseConfig(const char* buf) {
 			if (strcmp(line, "END") == 0) {
 				collectText[collectLen] = '\0';
 				if (collecting == 1 && routinesCCnt < ACTION_ROUTINE_MAX) {
-					strcpy_s(routinesC[routinesCCnt].name, collectName);
-					strcpy_s(routinesC[routinesCCnt].text, collectText);
+					strcpy_s(routinesC[routinesCCnt].name, sizeof(routinesC[routinesCCnt].name), collectName);
+					strcpy_s(routinesC[routinesCCnt].text, sizeof(routinesC[routinesCCnt].text), collectText);
 					routinesCCnt++;
 				}
 				else if (collecting == 2 && routines68kCnt < ACTION_ROUTINE_MAX) {
-					strcpy_s(routines68k[routines68kCnt].name, collectName);
-					strcpy_s(routines68k[routines68kCnt].text, collectText);
+					strcpy_s(routines68k[routines68kCnt].name, sizeof(routines68k[routines68kCnt].name), collectName);
+					strcpy_s(routines68k[routines68kCnt].text, sizeof(routines68k[routines68kCnt].text), collectText);
 					routines68kCnt++;
 				}
 				collecting = 0;
@@ -674,7 +674,7 @@ int actionsParseConfig(const char* buf) {
 				printf("ACTIONS: unbekannte Regel '%s' -- ACTION ignoriert.\n", ruleName);
 				continue;
 			}
-			strcpy_s(ruleActionCall[idx], callName);
+			strcpy_s(ruleActionCall[idx], sizeof(ruleActionCall[idx]), callName);
 		}
 		else if (strncmp(line, "ROUTINE C", 9) == 0) {
 			lastWord(line, collectName, GEN_NAME_LEN);
@@ -1441,11 +1441,11 @@ static int genParser68kTo(const char* path, int os9, const char* baseName) {
 
 	if (os9) {
 		if (cgenPsect[0] != '\0') {
-			strcpy_s(psectName, cgenPsect);
+			strcpy_s(psectName, sizeof(psectName), cgenPsect);
 		}
 		else {
 			sanitizeName((baseName != NULL) ? baseName : "parser", psectName);
-			strcat_s(psectName, "_p");
+			strcat_s(psectName, sizeof(psectName), "_p");
 		}
 	}
 
