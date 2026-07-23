@@ -62,7 +62,8 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - ternärer Operator `?:`
 - Zuweisungen und zusammengesetzte Zuweisungen
 - Kontrollfluss: `if/else`, `while`, `for`, `do/while`, `break`, `continue`
-- `typedef` (Skalar-/Pointer-Aliase)
+- `typedef` (Skalar-/Pointer-Aliase, `typedef struct Name Alias;`, sowie
+  `typedef struct { ... } Name;` mit anonymem struct inline)
 - `struct` mit gemischten skalaren Feldtypen (echtes Byte-Layout mit natürlichem
   Alignment, Feldzugriff lesend/schreibend, lokale Variablen; Array-/Pointer-Felder
   und verschachtelte structs noch offen, siehe SELFHOSTING_LUECKENLISTE.md)
@@ -84,10 +85,10 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-79 Tiny-C-Programme korrekt
+81 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
-struct-Feldzugriff (einheitlich + gemischt) 68000 + ARM64 korrekt
+struct-Feldzugriff (einheitlich + gemischt + anonym im typedef) 68000 + ARM64 korrekt
 switch/case 68000 + ARM64 korrekt
 === ALLE TESTS OK ===
 ```
@@ -100,10 +101,9 @@ Zwei unabhängige Stränge stehen zur Wahl:
    Naheliegende Kandidaten: `static`/`const` (101+99 echte Fundstellen im
    Generator selbst, siehe `docs/SELFHOSTING_LUECKENLISTE.md`, vermutlich
    reine Grammatik-Arbeit ohne Backend-Änderung wie die meisten heutigen
-   Features), `typedef struct { ... } Name;` (anonymes struct inline im
-   typedef, direkter Aufsatz auf die jetzt gemischten Feldtypen), Array-Felder
-   in `struct` (z. B. `char name[32]`, eigener Folgeschritt zu den seit
-   2026-07-24 gemischten skalaren Feldtypen), `void *`, weitere Arrayformen.
+   Features), Array-Felder in `struct` (z. B. `char name[32]`, eigener
+   Folgeschritt zu den seit 2026-07-24 gemischten skalaren Feldtypen),
+   `void *`, weitere Arrayformen.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators für ein 16-MB-
    Zielsystem verkleinern (siehe Abschnitt oben) -- danach echte Ausführung
    auf Q9 testen, und danach das Tiny-C-68k-Backend um echte

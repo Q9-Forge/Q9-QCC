@@ -28,6 +28,7 @@
 | Generator: C++-Templates entfernt | erledigt | `Source/msvc_compat.h`, 75 Aufrufstellen umgestellt -- Voraussetzung dafür, dass der Generator mit der echten Microware-`xcc`-Toolchain kompiliert |
 | Generator kompiliert+linkt mit echter Q9-Toolchain (`xcc`) | erledigt | siehe `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 6; Ausführung auf Q9 scheitert noch am Speicherbedarf (~34,6 MB Datensegment vs. 16 MB RAM) |
 | Tiny-C `struct` mit gemischten skalaren Feldtypen | erledigt (2026-07-24) | echtes Byte-Layout mit natürlichem Alignment; Feldzugriff nutzt PUSHADDR/IPADD/LOADIND/STOREIND (bereits vorhandene, architekturneutrale Opcodes) statt LOADIDX/STOREIDX -- kein neuer Opcode, kein Backend-Change. Bewusst noch offen: Array-Felder, Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte), verschachtelte structs (siehe SELFHOSTING_LUECKENLISTE.md) |
+| Tiny-C `typedef struct { ... } Name;` (anonymes struct inline) | erledigt (2026-07-24) | Zielname kommt in der Grammatik erst nach dem Feld-Body -- verzögerte Registrierung in `tc_typedefend`, typedef-Name dient als interner struct-Tag (harmlose Vereinfachung, `struct Name x;` funktioniert dadurch als Nebeneffekt mit). Kein IR-/Backend-Change, exakt derselbe Feldzugriffs-Code wie bei benannten structs. Scope: nur reine anonyme Form, kein optionaler Tag, keine Pointer-Kombination |
 
 ## Selfhosting (neue Zielrichtung ab 2026-07-23)
 
