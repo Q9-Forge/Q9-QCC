@@ -7,6 +7,7 @@
 | EBNF-Parser/Scanner-Generator | erledigt | Tabellen, Lexerblöcke und Nutzer-Code |
 | Tiny-C M1 | erledigt | Ausdrücke, Variablen, Stack-IR, TinyVM |
 | Tiny-C M2/M3 | erledigt | `if/else`, `while`, Calls, Parameter, Rekursion |
+| Tiny-C Kontrollfluss (Stufe A, Teil 1) | erledigt | `for`, `do/while`, `break`, `continue` -- kein neuer IR-Opcode, kein Backend-Change noetig |
 | Arrays | erledigt | bytegenaue `char[]`/`int[]`, lokal und global |
 | Datentypen | erledigt | `int`, `unsigned int`, `char`, `bool`, Nullwert |
 | Operatoren | erledigt | Rechen-, Vergleichs-, Bit-, Shift-, Logik- und ternäre Operatoren |
