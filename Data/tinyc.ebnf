@@ -142,7 +142,10 @@ factor    = sizeofExpr
 negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
 
-sizeofExpr = "sizeof" "(" type ")" .
+sizeofExpr = "sizeof" "(" sizeofArg ")" .
+sizeofArg  = sizeofType | sizeofVarName .
+sizeofType = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef .
+sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
 castType   = "unsigned" unsignedInt | "int" | "char" | "bool" .
@@ -169,8 +172,9 @@ paramName = ident .
 localName = ident .
 globalName = ident .
 funcName  = ident .
-type      = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef | typedefRef .
+type      = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | typedefRef .
 structTypeRef = ident .
+enumTypeRef = ident .
 typedefRef = ident .
 pointerDecl = { pointerStar } .
 pointerStar = "*" .

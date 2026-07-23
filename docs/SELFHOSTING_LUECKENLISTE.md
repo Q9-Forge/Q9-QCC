@@ -1,6 +1,6 @@
 # Selfhosting-Lückenliste
 
-Stand: **2026-07-23**
+Stand: **2026-07-23 (Nachtrag: nach der Sprachfeature-Session vom selben Tag)**
 
 ## Zieldefinition
 
@@ -48,17 +48,19 @@ erzeugen.
 
 | Sprachmittel | Belegstellen (Beispiele) | Tiny-C-Status | Priorität |
 |---|---|---|---|
-| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | fehlt | sehr hoch |
-| `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | fehlt | hoch |
+| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-23: nur EINHEITLICHER Feldtyp pro struct; der Generator braucht aber durchgehend GEMISCHTE Feldtypen, z. B. `{ char name[32]; TCType type; }` -- das ist der bewusst vertagte, teurere Teil) | sehr hoch |
+| `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | **erledigt** (2026-07-23, Nachtrag: `enum Name var;` als Deklaration moeglich, `enum Name` auch als Parameter-/Rueckgabetyp; im Speicher/Typsystem bleibt es schlicht `int`, keine eigene Typidentitaet -- entspricht C) | hoch |
 | `union` | `tiny-regex.cpp:45` (anonyme Union in `regex_t`) | fehlt | mittel |
-| `typedef` (auch für Structs) | durchgehend in allen drei Dateien | fehlt | sehr hoch |
+| `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **teilweise** (2026-07-23: Skalar-/Pointer-Aliase und `typedef struct Name Alias;` funktionieren; die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef fehlt noch) | sehr hoch |
 | mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | fehlt (Tiny-C hat nur 1D) | sehr hoch |
-| `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | fehlt | hoch |
-| `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | fehlt | hoch |
-| `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | fehlt | hoch |
+| `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | **erledigt** (2026-07-23) | hoch |
+| `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
+| `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt Tiny-C jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
 | `static` (Funktionen/lokale Variablen als Speicherklasse, nicht nur globale Objekte) | 101 echte Vorkommen, u. a. alle großen Tabellenpuffer | fehlt (nur globale Objekte) | hoch |
 | `const`-Qualifizierer | 99 echte Vorkommen (meist `const char*`-Parameter) | fehlt | hoch |
-| `sizeof` | `codegen.cpp:333,1151,...`; `ebnf.cpp:1043,1062` (Puffergrößen an Hilfsfunktionen reichen) | fehlt | hoch |
+| `sizeof` | `codegen.cpp:333,1151,...`; `ebnf.cpp:1043,1062` (Puffergrößen an Hilfsfunktionen reichen) | **erledigt** (2026-07-23, Nachtrag: `sizeof(variable)` auf lokale/globale Skalare und Arrays ergänzt -- genau die Form, die alle echten Fundstellen hier nutzen, z. B. `sizeof(line)`) | hoch |
+| Prä-/Postinkrement (`++`/`--`) | nicht im Original-Scope dieser Liste, aber jetzt erledigt (2026-07-23) fuer einfache int/char/unsigned-Skalare | — |
+| Casts | nicht im Original-Scope dieser Liste, aber jetzt teilweise erledigt (2026-07-23) fuer int/unsigned/char/bool | — |
 | einfache `#define`-Konstanten (objektartig, ohne Parameter) | keine parametrisierten Makros im Generator-Source gefunden -- nur einfache Namenskonstanten nötig | fehlt (Präprozessor komplett offen) | hoch (aber kleiner Umfang als volles CPP) |
 | Mehrdatei-Übersetzung (`ebnf.cpp`/`codegen.cpp`/`tiny-regex.cpp` + zugehörige `.h`) | Generator ist auf 3 `.cpp` + 3 `.h` verteilt | fehlt (Linkage über mehrere Dateien) | sehr hoch |
 
