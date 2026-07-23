@@ -364,6 +364,17 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x = 1; if(x > 2) putint(11); else putint(22); }' '22'
 		tc_check 'int main(){ int n = 5; int sum = 0; while(n > 0) { sum = sum + n; n = n - 1; } putint(sum); }' '15'
 		tc_check 'int main(){ int n = 4; int sum = 0; while(n > 0) { if(n > 2) sum = sum + n; else sum = sum + 1; n = n - 1; } putint(sum); }' '9'
+		tc_check 'int main(){ int sum=0; int i; for(i=0; i<5; i+=1) { sum += i; } putint(sum); }' '10'
+		tc_check 'int main(){ int i=0; for(;;) { if(i>=3) break; putint(i); i+=1; } }' '0\n1\n2'
+		tc_check 'int main(){ int i; int sum=0; for(i=0; i<10; i+=1) { if(i==5) break; if(i==2) continue; sum += i; } putint(sum); }' '8'
+		tc_check 'int main(){ int n=0; int sum=0; do { sum += n; n += 1; } while(n<5); putint(sum); }' '10'
+		tc_check 'int main(){ int i; int j; int count=0; for(i=0;i<3;i+=1){ j=0; while(j<10){ if(j==2) break; count += 1; j+=1; } } putint(count); }' '6'
+		if build/tinyc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
+		   build/tinyc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
+			echo "ok    tinyc: break/continue ausserhalb Schleife werden diagnostiziert"
+		else
+			echo "FAIL  tinyc: break/continue-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		tc_check 'int add(int a, int b){ return a + b; } int twice(int x){ return add(x, x); } int main(){ putint(twice(21)); }' '42'
 		tc_check 'int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); }' '120'
 		tc_check 'int counter; int bump(){ counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); }' '1\n2'
@@ -398,7 +409,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 34 Programme inkl. Pointer und zusammengesetzter Zuweisungen -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 40 Programme inkl. Pointer, for/do-while/break/continue -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
