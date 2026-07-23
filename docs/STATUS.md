@@ -11,26 +11,37 @@ Datei zusätzlich prüfen:
   einem noch nicht gemergten Branch liegen, unabhängig davon was hier steht.
 - `gh pr list` -- offene Pull Requests, die noch Review/Merge brauchen.
 
-Aktuell (2026-07-23):
-- PR #1 (https://github.com/foellmy51/ebnf/pull/1) ist OFFEN, noch nicht gemergt.
-  Enthält: Pointer, ARM64/Darwin-Backend, Doku-Umstellung auf docs/.
-- PR #2 (https://github.com/foellmy51/ebnf/pull/2) ist OFFEN, noch nicht gemergt.
-  Branch `selfhost/plain-c-backends`. Enthält: Rückbau der zwei C++-Backends
-  (`Source/tinyc_backend.cpp`, `Source/tinyc_arm64_backend.cpp`) auf reines C
-  (neue Dateien `*_c.cpp`, Originale bleiben unverändert daneben liegen).
-- Auf demselben lokalen Branch (`selfhost/plain-c-backends`) liegt zusätzlich,
-  NOCH NICHT COMMITTET: `for`/`do-while`/`break`/`continue` in Tiny-C (siehe
-  `docs/ISO_C_LUECKENLISTE.md` Abschnitt 4, Stufe A). Grammatik in
-  `Data/tinyc.ebnf`, Aktionen in `Data/tinyc.lextab`; dabei ein echtes,
-  eigenständiges Limit in `Source/codegen.cpp` gefunden und behoben:
-  `ACTION_ROUTINE_MAX` war auf 64 `ROUTINE C`-Blöcke fest verdrahtet (jetzt 256).
-  `./runtests.sh` läuft grün (40 Tiny-C-Programme, alle drei Backends
-  gegengeprüft). Diese Arbeit ist inhaltlich unabhängig vom C-Rückbau -- vor
-  dem Committen ggf. auf einen eigenen Branch verschieben, damit PR #2 nicht
-  zwei unabhängige Themen mischt.
-- Nächster geplanter Schritt: weitere Sprachmittel aus
-  `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 1 nachziehen, beginnend mit
-  `struct`/`typedef`.
+**Stand 2026-07-23, Sitzungsende:** `main` ist sauber, alle 11 PRs dieser
+Sitzung gemergt (#1--#11), kein offener PR, `./runtests.sh` komplett grün.
+Kein Zwischenstand liegt irgendwo uncommittet -- eine neue Sitzung kann direkt
+mit einer neuen Aufgabe starten.
+
+### Q9/OS-9-Ausführbarkeit (neues Untersuchungsfeld, 2026-07-23)
+
+Parallel zur Sprachfeature-Arbeit wurde geprüft, ob der Weg zur echten
+Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
+
+- Ein triviales, mit der echten Microware-`xcc`-Toolchain kompiliertes
+  C-Programm läuft nachweislich auf Q9 (ToolShed-Transfer, Modul-Format,
+  Ausführung -- alles bestätigt funktionsfähig).
+- Der **komplette EBNF-Generator** (`ebnf.cpp`+`codegen.cpp`) kompiliert und
+  linkt inzwischen ebenfalls erfolgreich mit `xcc` zu einem validen OS-9-
+  Modul. Voraussetzung dafür (dauerhaft im Repo, PR #11): alle C++-Templates
+  aus `Source/msvc_compat.h` entfernt (waren der einzige Ort im ganzen
+  Projekt mit Templates; `xcc`s Template-Engine stürzte dabei ab).
+- Der Programmstart auf dem echten Q9-System scheitert aber aktuell:
+  Datensegment ~34,6 MB, das System hat nur 16 MB RAM (14 MB frei). Ursache:
+  bewusst nur feste globale Puffer (keine dynamische Speicherverwaltung),
+  aber großzügig für einen modernen Mac dimensioniert.
+- **Nächster Schritt hierzu:** Größe der großen statischen Puffer in
+  `ebnf.cpp`/`codegen.cpp` analysieren und für ein 16-MB-Zielsystem
+  verkleinern, ohne echte Grammatiken (Referenz: `oberon0`) zu brechen. Der
+  vollständige, sofort reproduzierbare Ablauf (Env-Setup, Kommentarform-
+  Konvertierung, `xcc`-Aufruf, ToolShed-Transfer) steht in der Memory-Datei
+  `q9-xcc-toolchain-milestone.md`.
+
+Diese Untersuchung ist inhaltlich unabhängig von der Tiny-C-Sprachfeature-
+Arbeit unten und betrifft ausschließlich den Generator selbst, nicht Tiny-C.
 
 ## Kurzfassung
 
@@ -81,9 +92,19 @@ switch/case 68000 + ARM64 korrekt
 
 ## Nächster sinnvoller Schritt
 
-Als nächstes sollte jeweils nur ein klar abgegrenztes Sprachfeature bearbeitet
-werden. Naheliegende Kandidaten sind `const`, `void *`, weitere Arrayformen und
-anschließend eine echte Target-Runtime (zuerst Q9). Vor jeder Erweiterung sind
-Frontend, IR, TinyVM, 68000- und ARM64-Backend sowie ein Regressionstest zu
-prüfen.
+Zwei unabhängige Stränge stehen zur Wahl:
+
+1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
+   Naheliegende Kandidaten: `static`/`const` (101+99 echte Fundstellen im
+   Generator selbst, siehe `docs/SELFHOSTING_LUECKENLISTE.md`, vermutlich
+   reine Grammatik-Arbeit ohne Backend-Änderung wie die meisten heutigen
+   Features), gemischte Feldtypen in `struct` (größerer Brocken, braucht
+   echte Backend-Arbeit, siehe unten), `void *`, weitere Arrayformen.
+2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators für ein 16-MB-
+   Zielsystem verkleinern (siehe Abschnitt oben) -- danach echte Ausführung
+   auf Q9 testen, und danach das Tiny-C-68k-Backend um echte
+   Laufzeit-Anbindung (`putint`/`putchar`/`exit` gegen `clib.l`) erweitern.
+
+Vor jeder Sprach-Erweiterung sind Frontend, IR, TinyVM, 68000- und
+ARM64-Backend sowie ein Regressionstest zu prüfen.
 

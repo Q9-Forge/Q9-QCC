@@ -24,19 +24,25 @@
 | Pointer | erledigt | Typmodell, Adressen, Dereferenzierung, Skalierung, `T**` |
 | 68000-Ausgabe | funktionsfähig | vasm und `tiny68sim.py` |
 | ARM64/Darwin-Ausgabe | funktionsfähig | natives Programm mit eigener Runtime |
-| L3-Backends auf reines C zurückgebaut | fertig, noch nicht committet | `tinyc_backend_c.cpp`/`tinyc_arm64_backend_c.cpp`, Branch `selfhost/plain-c-backends`, siehe `docs/SELFHOSTING_LUECKENLISTE.md` |
+| L3-Backends auf reines C zurückgebaut | erledigt | `tinyc_backend_c.cpp`/`tinyc_arm64_backend_c.cpp`, siehe `docs/SELFHOSTING_LUECKENLISTE.md` |
+| Generator: C++-Templates entfernt | erledigt | `Source/msvc_compat.h`, 75 Aufrufstellen umgestellt -- Voraussetzung dafür, dass der Generator mit der echten Microware-`xcc`-Toolchain kompiliert |
+| Generator kompiliert+linkt mit echter Q9-Toolchain (`xcc`) | erledigt | siehe `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 6; Ausführung auf Q9 scheitert noch am Speicherbedarf (~34,6 MB Datensegment vs. 16 MB RAM) |
 
 ## Selfhosting (neue Zielrichtung ab 2026-07-23)
 
 Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
 übersetzbar machen. Vollständige Analyse und Reihenfolge in
-`docs/SELFHOSTING_LUECKENLISTE.md`. Kurzfassung der nächsten Schritte:
+`docs/SELFHOSTING_LUECKENLISTE.md`. Kurzfassung des Stands:
 
-1. `struct`/`typedef` in Tiny-C (Voraussetzung für fast alles Weitere)
-2. `enum`, `for`, `switch`, mehrdimensionale Arrays, `static`/`const`, `sizeof`
-3. Mini-Runtime (String-Vergleich, formatierte Ausgabe, Datei-I/O)
-4. Mehrdatei-Übersetzung
-5. `goto`/Funktionszeiger (erst wenn der generierte Parser-Zwilling selbst gehostet werden soll)
+1. `struct`/`typedef`/`enum`/`for`/`switch` in Tiny-C: erledigt (siehe Tabelle oben)
+2. Mehrdimensionale Arrays, `static`/`const`: noch offen
+3. Mini-Runtime (String-Vergleich, formatierte Ausgabe, Datei-I/O): noch offen
+4. Mehrdatei-Übersetzung: noch offen
+5. `goto`/Funktionszeiger (erst wenn der generierte Parser-Zwilling selbst gehostet werden soll): noch offen
+6. **Neu erkannt:** Speicherbedarf der statischen Puffer in `ebnf.cpp`/
+   `codegen.cpp` für ein reales 16-MB-Zielsystem (Q9) verkleinern -- einziger
+   bekannter Blocker zwischen "kompiliert mit echter Toolchain" und "läuft
+   wirklich auf Q9" (siehe `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 6).
 
 ## Bewusst offen
 
