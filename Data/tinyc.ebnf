@@ -1,9 +1,19 @@
-program   = { funcdef } .
+program   = { globalDecl } { funcdef } .
+
+globalDecl = type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
+globalInit = globalValue | initList .
+arraySize  = "[" globalNumber "]" .
+globalValue = globalNumber | globalNeg | globalBool .
+globalBool  = "true" | "false" .
+globalNeg   = "-" globalNumber .
+globalNumber = digit { digit } .
 
 funcdef   = funcHead block .
-funcHead  = "int" defName "(" paramList ")" .
+funcHead  = type pointerDecl defName "(" paramList ")" .
 paramList = [ param { "," param } ] .
-param     = "int" paramName .
+param     = type pointerDecl paramDecl .
+paramDecl = paramName [ paramArray ] .
+paramArray = "[" "]" .
 
 block     = "{" { statement } "}" .
 
@@ -15,9 +25,17 @@ statement = varDecl
           | callStmt
           | assignStmt .
 
-varDecl   = "int" localName [ "=" varInit ] ";" .
-varInit   = expr .
-assignStmt = target "=" expr ";" .
+varDecl   = type pointerDecl localDecl [ "=" varInit ] ";" .
+localDecl = localName [ arraySize ] .
+varInit   = expr | initList .
+initList  = "{" [ initValue { "," initValue } ] "}" .
+initValue = initNumber | initNeg | initBool .
+initBool  = "true" | "false" .
+initNeg   = "-" initNumber .
+initNumber = digit { digit } .
+assignStmt = target assignop expr ";" .
+assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+           | "<<=" | ">>=" | "&=" | "^=" | "|=" .
 callStmt  = call ";" .
 returnStmt = "return" [ retVal ] ";" .
 retVal    = expr .
@@ -34,28 +52,62 @@ whileKw   = "while" .
 whileCond = expr .
 whileBody = statement .
 
-expr      = addExpr [ relop addExpr ] .
+expr       = conditionalExpr .
+conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
+qmark      = "?" .
+conditionalTrue = expr .
+colon      = ":" .
+conditionalFalse = conditionalExpr .
+orExpr     = andExpr [ orop orExpr ] .
+orop       = "||" .
+andExpr    = bitOrExpr [ andop andExpr ] .
+andop      = "&&" .
+bitOrExpr  = bitXorExpr [ bitorop bitOrExpr ] .
+bitorop    = "|" .
+bitXorExpr = bitAndExpr [ bitxorop bitXorExpr ] .
+bitxorop   = "^" .
+bitAndExpr = comparison [ bitandop bitAndExpr ] .
+bitandop   = "&" .
+comparison = shiftExpr [ relop shiftExpr ] .
+shiftExpr  = addExpr { shiftop shiftRhs } .
+shiftRhs   = addExpr .
+shiftop    = "<<" | ">>" .
 relop     = "<=" | ">=" | "==" | "!=" | "<" | ">" .
 addExpr   = term { addop term } .
 addop     = "+" | "-" .
 term      = factor { mulop factor } .
-mulop     = "*" | "/" .
+mulop     = "*" | "/" | "%" .
 factor    = "(" expr ")"
           | call
+          | boolLit
+          | addressRef
+          | derefRef
           | varRef
           | number
           | negFactor .
-negFactor = "-" factor .
+negFactor = ( "-" | "!" | "~" ) factor .
+addressRef = "&" ident [ index ] .
+derefRef  = "*" factor .
 call      = funcName "(" argList ")" .
 argList   = [ arg { "," arg } ] .
 arg       = expr .
 
-target    = ident .
-varRef    = ident .
+target    = directTarget | indirectTarget .
+directTarget = ident [ index ] .
+indirectTarget = "*" factor .
+varRef    = ident [ index ] .
+index     = indexOpen expr "]" .
+indexOpen = "[" .
 defName   = ident .
 paramName = ident .
 localName = ident .
+globalName = ident .
 funcName  = ident .
+type      = "unsigned" unsignedInt | "int" | "char" | "bool" .
+pointerDecl = { pointerStar } .
+pointerStar = "*" .
+unsignedInt = "int" .
+boolLit   = "true" | "false" .
 
 ident     = letter { letter | digit } .
 number    = digit { digit } .

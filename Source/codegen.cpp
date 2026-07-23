@@ -555,8 +555,8 @@ int cgenParseConfig(const char* buf) {
 // Aktionen sind eine Grenzflaeche zu Nutzer-Code, keine Grammatik -- Fehler hier (unbekannte
 // Regel, fehlende ROUTINE) brechen die Codegenerierung nicht ab, sie werden nur gewarnt und
 // die betroffene Aktion faellt weg.
-#define ACTION_ROUTINE_MAX   32
-#define ACTION_ROUTINE_LEN 8192
+#define ACTION_ROUTINE_MAX   64
+#define ACTION_ROUTINE_LEN 16384
 
 static char ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN];
 
@@ -848,6 +848,24 @@ static void emitCString(FILE* fp, const char* s) {
 	fputc('"', fp);
 }
 
+// Syntaktische Operator-Literale folgen bei aktivem Lexer der ueblichen
+// Longest-Match-Regel. Ohne diese Regel waere z.B. "a && &b" scannerlos auch
+// als "a & &b" lesbar, sobald die Sprache den Adressoperator unterstuetzt.
+static void emitLongerLiteralRejectC(FILE* fp, const char* text, int failLabel) {
+	int i, j; size_t len = strlen(text);
+	if (!lexActive || isWordLiteral(text)) return;
+	for (i = 0; i < nodeCnt; i++) {
+		const char* longer;
+		if (nodes[i].kind != AST_TS) continue;
+		longer = nodes[i].text;
+		if (strlen(longer) <= len || strncmp(longer, text, len) != 0) continue;
+		for (j = 0; j < i; j++) if (nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0) break;
+		if (j < i) continue;
+		fprintf(fp, "\tif (strncmp(p, "); emitCString(fp, longer);
+		fprintf(fp, ", %d) == 0) goto L%d;\t/* Longest-Match */\n", (int)strlen(longer), failLabel);
+	}
+}
+
 static void genNodeC(FILE* fp, int id, int failLabel, int lexical) {
 	AstNode* n = &nodes[id];
 	int child, l1, l2, lok;
@@ -861,6 +879,7 @@ static void genNodeC(FILE* fp, int id, int failLabel, int lexical) {
 		fprintf(fp, "\tif (strncmp(p, ");
 		emitCString(fp, n->text);
 		fprintf(fp, ", %d) != 0) goto L%d;\n", (int)len, failLabel);
+		if (lexActive && !lexical) emitLongerLiteralRejectC(fp, n->text, failLabel);
 		if (lexActive && !lexical && isWordLiteral(n->text)) {
 			// Wortgrenze: "MODULEX" darf nicht als "MODULE" + Rest gelten
 			fprintf(fp, "\tif (idch((unsigned char)p[%d])) goto L%d;\n", (int)len, failLabel);
@@ -1116,6 +1135,27 @@ static void emitConsume68k(FILE* fp, int len) {
 	}
 }
 
+static void emitLongerLiteralReject68k(FILE* fp, const char* text, int failLabel) {
+	int i, j, k, skip; size_t len = strlen(text);
+	char cc[16];
+	if (!lexActive || isWordLiteral(text)) return;
+	for (i = 0; i < nodeCnt; i++) {
+		const char* longer;
+		if (nodes[i].kind != AST_TS) continue;
+		longer = nodes[i].text;
+		if (strlen(longer) <= len || strncmp(longer, text, len) != 0) continue;
+		for (j = 0; j < i; j++) if (nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0) break;
+		if (j < i) continue;
+		skip = newLabel();
+		for (k = (int)len; longer[k]; k++) {
+			charComment(longer[k], cc, sizeof(cc));
+			fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; Longest-Match %s\n", (unsigned char)longer[k], k, cc);
+			fprintf(fp, "\tbne\tL%d\n", skip);
+		}
+		fprintf(fp, "\tbra\tL%d\t; kuerzeres Operator-Token ablehnen\nL%d:\n", failLabel, skip);
+	}
+}
+
 static void genNode68k(FILE* fp, int id, int failLabel, int lexical) {
 	AstNode* n = &nodes[id];
 	int child, l1, l2, lok, i;
@@ -1137,6 +1177,7 @@ static void genNode68k(FILE* fp, int id, int failLabel, int lexical) {
 			}
 			fprintf(fp, "\tbne\tL%d\n", failLabel);
 		}
+		if (lexActive && !lexical) emitLongerLiteralReject68k(fp, n->text, failLabel);
 		if (lexActive && !lexical && isWordLiteral(n->text)) {
 			// Wortgrenze: Folgezeichen darf kein Identifikator-Zeichen sein
 			fprintf(fp, "\tmove.b\t%d(a0),d1\n", len);
