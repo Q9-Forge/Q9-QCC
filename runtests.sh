@@ -399,6 +399,17 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x=-1; switch(x){ case -1: putint(99); break; case 0: putint(0); } }' '99'
 		tc_check 'int main(){ int i=0; int n=0; while(i<3){ switch(i){ case 1: break; default: n+=1; } i+=1; } putint(n); }' '2'
 		tc_check 'int main(){ int i=0; int sum=0; while(i<5){ i+=1; switch(i){ case 3: continue; } sum+=i; } putint(sum); }' '12'
+		tc_check 'int main(){ int x=321; putint((char)x); }' '65'
+		tc_check 'int main(){ char c=65; putint((int)c); }' '65'
+		tc_check 'int main(){ int x=5; int y=0; putint((bool)x); putint((bool)y); }' '1\n0'
+		tc_check 'int main(){ int x=5; putint((x)); putint((x)+1); }' '5\n6'
+		tc_check 'int main(){ int a=2; int b=3; putint((a+b)*2); }' '10'
+		tc_check 'int main(){ putint((int)sizeof(char)); }' '1'
+		if build/tinyc_p 'int main(){ int x=5; int *p=&x; putint((int)p); }' 2>&1 | grep -q 'cast expects int'; then
+			echo "ok    tinyc: Cast auf Pointer wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Cast-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field' && \
 		   build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; }' 2>&1 | grep -q 'struct fields must share one type'; then
 			echo "ok    tinyc: unbekanntes Feld und gemischte Feldtypen werden diagnostiziert"
@@ -445,7 +456,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 66 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/--/switch -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 72 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
