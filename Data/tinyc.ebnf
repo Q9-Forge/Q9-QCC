@@ -31,6 +31,7 @@ statement = ifStmt
           | whileStmt
           | forStmt
           | doStmt
+          | switchStmt
           | breakStmt
           | continueStmt
           | returnStmt
@@ -39,6 +40,20 @@ statement = ifStmt
           | incDecStmt
           | assignStmt
           | varDecl .
+
+switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
+switchKw     = "switch" .
+switchCond   = expr .
+switchClose  = "}" .
+caseGroup    = caseLabelRun caseBody .
+caseLabelRun = caseLabel { caseLabel } .
+caseLabel    = "case" caseValue ":" .
+caseValue    = ident | caseNeg | caseNumber .
+caseNeg      = "-" caseNumber .
+caseNumber   = digit { digit } .
+caseBody     = { statement } .
+defaultGroup = defaultLabel caseBody .
+defaultLabel = "default" ":" .
 
 varDecl   = type pointerDecl localDecl [ "=" varInit ] ";" .
 localDecl = localName [ arraySize ] .
