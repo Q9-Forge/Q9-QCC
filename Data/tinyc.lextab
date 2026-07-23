@@ -1110,21 +1110,29 @@ typedef struct TCType {
 	unsigned char structId;       /* 1-basiert, gueltig nur wenn base=='s'; 0=keiner */
 } TCType;
 #define TC_SCALAR(ch) tcMakeType((ch), 0)
-/* Structs mit EINHEITLICHEM Feldtyp (bewusste MVP-Grenze, siehe ISO_C_LUECKENLISTE.md):
-   ein struct-Wert wird intern wie ein Array aus tcStructFieldCount[id] Elementen des
-   gemeinsamen Feldtyps behandelt -- STOREIDX/LOADIDX bleiben unveraendert wiederverwendet,
-   nur der Index kommt bei .feld-Zugriffen als Konstante statt aus einem Ausdruck. */
+/* Structs mit GEMISCHTEN skalaren Feldtypen (2026-07-24, siehe SELFHOSTING_LUECKENLISTE.md):
+   ein struct-Wert ist ein Byte-Blob fester Groesse (tcStructByteSize[id]), jedes Feld hat
+   einen eigenen Typ (tcStructFieldTypes) und einen eigenen Byte-Offset (tcStructFieldOffset)
+   nach natuerlichem Alignment (4-Byte-Typen auf 4er-Grenze, char/bool ohne Padding).
+   .feld-Zugriffe emittieren PUSHADDR/PUSH <offset>/IPADD c/LOADIND|STOREIND <feldTag> --
+   bereits vorhandene, architekturneutrale Pointer-Arithmetik-Opcodes (siehe tc_varref/
+   tc_target), kein neuer Opcode und keine Backend-Aenderung noetig. Bewusst NICHT
+   abgedeckt (siehe SELFHOSTING_LUECKENLISTE.md, je eigener Folgeschritt): Array-Felder,
+   Pointer-Felder (unterschiedliche Groesse 68k/ARM64 wuerde das frontend-berechnete Layout
+   architekturabhaengig machen) und verschachtelte structs. */
 #define MAX_STRUCTS 16
 #define MAX_STRUCT_FIELDS 16
 static char tcStructNames[MAX_STRUCTS][32];
 static int  tcStructFieldCount[MAX_STRUCTS];
 static char tcStructFieldNames[MAX_STRUCTS][MAX_STRUCT_FIELDS][32];
-static TCType tcStructFieldType[MAX_STRUCTS];
+static TCType tcStructFieldTypes[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+static int  tcStructFieldOffset[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+static int  tcStructByteSize[MAX_STRUCTS];
 static int  tcStructCount = 0;
 static char tcStructBuildName[32];
 static int  tcStructBuildFieldCount = 0;
 static char tcStructBuildFieldNames[MAX_STRUCT_FIELDS][32];
-static TCType tcStructBuildFieldType;
+static TCType tcStructBuildFieldTypes[MAX_STRUCT_FIELDS];
 #define MAX_TYPEDEFS 32
 static char tcTypedefNames[MAX_TYPEDEFS][32];
 static TCType tcTypedefTypes[MAX_TYPEDEFS];
@@ -1592,7 +1600,7 @@ ROUTINE C tc_localdecl
 void tc_localdecl(const char* start, const char* end) {
 	const char* p = start; int slot = tcLocalCount - 1, len = 0;
 	if (tcLocalTypes[slot].base == 's') {
-		printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcStructFieldType[tcLocalTypes[slot].structId - 1]), tcLocalArrayLen[slot]);
+		printf("LARRAY %d c %d\n", slot, tcStructByteSize[tcLocalTypes[slot].structId - 1]);
 		return;
 	}
 	while (p < end && *p != '[') p++;
@@ -1701,8 +1709,9 @@ void tc_varref(const char* start, const char* end) {
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
-		printf("PUSH %d\nLOADIDX L %d %c\n", fi, slot, tcTypeTag(tcStructFieldType[sid]));
-		tcTypePush(tcStructFieldType[sid]); return;
+		/* IPADD poppt Pointer ZUERST (muss oben liegen), dann Count -- daher PUSH vor PUSHADDR. */
+		printf("PUSH %d\nPUSHADDR L %d\nIPADD c\nLOADIND %c\n", tcStructFieldOffset[sid][fi], slot, tcTypeTag(tcStructFieldTypes[sid][fi]));
+		tcTypePush(tcStructFieldTypes[sid][fi]); return;
 	}
 	if (slot >= 0) {
 		if (tcLocalArrayLen[slot]) {
@@ -1860,8 +1869,12 @@ void tc_target(const char* start, const char* end) {
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
-		printf("PUSH %d\n", fi);
-		tcTargetType = tcStructFieldType[sid];
+		/* Wie tc_varref: IPADD poppt Pointer ZUERST, daher PUSH vor PUSHADDR. tcTargetIndirect=1
+		   laesst tc_assign/tcLoadTarget denselben STOREIND/DUPP+LOADIND-Pfad wie bei einer
+		   echten Pointer-Dereferenz nehmen -- die Feldadresse liegt bereits auf dem Stack. */
+		printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+		tcTargetType = tcStructFieldTypes[sid][fi];
+		tcTargetIndirect = 1;
 		return;
 	}
 	if (tcTargetSlot < 0 && tcLookupGlobal(start, nameEnd) >= 0) {
@@ -2169,11 +2182,8 @@ void tc_structfield(const char* start, const char* end) {
 	fieldEnd = p + 1;
 	while (p > start && *(p - 1) != ' ' && *(p - 1) != '\t') p--;
 	fieldStart = p;
-	if (tcStructBuildFieldCount == 0) tcStructBuildFieldType = tcCurrentType;
-	else if (!tcSameType(tcCurrentType, tcStructBuildFieldType)) {
-		fprintf(stderr, "tinyc: struct fields must share one type in this version\n"); tcSemanticErrors++;
-	}
 	if (tcStructBuildFieldCount < MAX_STRUCT_FIELDS) {
+		tcStructBuildFieldTypes[tcStructBuildFieldCount] = tcCurrentType;
 		tcCopy(tcStructBuildFieldNames[tcStructBuildFieldCount], fieldStart, fieldEnd);
 		tcStructBuildFieldCount++;
 	} else { fprintf(stderr, "tinyc: too many struct fields\n"); tcSemanticErrors++; }
@@ -2181,15 +2191,32 @@ void tc_structfield(const char* start, const char* end) {
 END
 ROUTINE C tc_structend
 void tc_structend(const char* start, const char* end) {
-	int i; (void)start; (void)end;
+	int i; int offset = 0; int sid = tcStructCount; (void)start; (void)end;
 	if (tcStructCount >= MAX_STRUCTS) { fprintf(stderr, "tinyc: too many structs\n"); tcSemanticErrors++; return; }
 	for (i = 0; i < tcStructCount; i++) if (tcEq(tcStructNames[i], tcStructBuildName)) { fprintf(stderr, "tinyc: duplicate struct\n"); tcSemanticErrors++; return; }
 	if (tcStructBuildFieldCount == 0) { fprintf(stderr, "tinyc: struct needs at least one field\n"); tcSemanticErrors++; return; }
+	/* Layout: natuerliches Alignment, nur skalare Nicht-Pointer-Feldtypen (2026-07-24,
+	   siehe Kommentar bei MAX_STRUCTS). Pointer-/struct-Feldtypen werden bewusst
+	   abgelehnt statt still falsch zu layouten (Pointer sind 68k 4 Byte, ARM64 8 Byte --
+	   das frontend-berechnete Layout darf nicht architekturabhaengig werden). */
+	for (i = 0; i < tcStructBuildFieldCount; i++) {
+		TCType ft = tcStructBuildFieldTypes[i]; int size, align;
+		if (tcIsPointer(ft) || ft.base == 's') {
+			fprintf(stderr, "tinyc: struct field type not supported in this version\n"); tcSemanticErrors++; return;
+		}
+		size = (ft.base == 'c' || ft.base == 'b') ? 1 : 4;
+		align = size;
+		offset = (offset + align - 1) & ~(align - 1);
+		tcStructFieldOffset[sid][i] = offset;
+		offset += size;
+	}
+	tcStructByteSize[sid] = (offset + 3) & ~3;
 	tcCopy(tcStructNames[tcStructCount], tcStructBuildName, tcStructBuildName + strlen(tcStructBuildName));
 	tcStructFieldCount[tcStructCount] = tcStructBuildFieldCount;
-	tcStructFieldType[tcStructCount] = tcStructBuildFieldType;
-	for (i = 0; i < tcStructBuildFieldCount; i++)
+	for (i = 0; i < tcStructBuildFieldCount; i++) {
+		tcStructFieldTypes[tcStructCount][i] = tcStructBuildFieldTypes[i];
 		tcCopy(tcStructFieldNames[tcStructCount][i], tcStructBuildFieldNames[i], tcStructBuildFieldNames[i] + strlen(tcStructBuildFieldNames[i]));
+	}
 	tcStructCount++;
 }
 END
@@ -2251,9 +2278,7 @@ void tc_sizeof(const char* start, const char* end) {
 		fprintf(stderr, "tinyc: sizeof of pointer types not supported in this version\n");
 		tcSemanticErrors++; size = 4;
 	} else if (tcCurrentType.base == 's') {
-		int sid = tcCurrentType.structId - 1;
-		int fieldSize = tcTypeTag(tcStructFieldType[sid]) == 'i' ? 4 : 1;
-		size = tcStructFieldCount[sid] * fieldSize;
+		size = tcStructByteSize[tcCurrentType.structId - 1];
 	} else if (tcCurrentType.base == 'c' || tcCurrentType.base == 'b') size = 1;
 	else size = 4;
 	printf("PUSH %d\n", size);
@@ -2271,9 +2296,7 @@ void tc_sizeofvar(const char* start, const char* end) {
 		fprintf(stderr, "tinyc: sizeof of pointer types not supported in this version\n");
 		tcSemanticErrors++; size = 4;
 	} else if (t.base == 's') {
-		int sid = t.structId - 1;
-		int fieldSize = tcTypeTag(tcStructFieldType[sid]) == 'i' ? 4 : 1;
-		size = tcStructFieldCount[sid] * fieldSize;
+		size = tcStructByteSize[t.structId - 1];
 	} else {
 		int elemSize = (t.base == 'c' || t.base == 'b') ? 1 : 4;
 		size = count > 0 ? count * elemSize : elemSize;

@@ -372,6 +372,8 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 3; p.y = 4; putint(p.x + p.y); }' '7'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 10; p.y = p.x * 2; putint(p.y); }' '20'
 		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
+		tc_check 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a = 1; m.b = 1000; m.c = 2; putint(m.b); putchar(m.a + 64); putchar(m.c + 64); }' '1000\nAB'
+		tc_check 'struct Mixed { char a; int b; }; int main(){ struct Mixed m; m.a = 1; m.b = 100; m.b += 5; m.a += 1; putint(m.b); putchar(m.a + 64); }' '105\nB'
 		tc_check 'typedef int MyInt; int main(){ MyInt a = 5; MyInt b = 7; putint(a + b); }' '12'
 		tc_check 'typedef int* IntPtr; int main(){ int x = 42; IntPtr p = &x; putint(*p); }' '42'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ putint(RED); putint(GREEN); putint(BLUE); }' '0\n1\n2'
@@ -425,11 +427,23 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: enum-Typ-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field' && \
-		   build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; }' 2>&1 | grep -q 'struct fields must share one type'; then
-			echo "ok    tinyc: unbekanntes Feld und gemischte Feldtypen werden diagnostiziert"
+		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field'; then
+			echo "ok    tinyc: unbekanntes struct-Feld wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: struct-Diagnosen fehlen"; tcfail=1; fail=1
+			echo "FAIL  tinyc: struct-Feld-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; putint(m.a); }' 2>&1 | grep -q 'FEHLER\|tinyc: unknown\|tinyc: struct'; then
+			echo "FAIL  tinyc: gemischte Feldtypen (int+char) werden faelschlich abgelehnt"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: gemischte Feldtypen (int+char) werden akzeptiert"
+		fi
+		# Pointer-Felder sind in structField (Grammatik ohne pointerDecl) schon strukturell
+		# unmoeglich; verschachtelte structs als Feld sind es aber und werden bewusst
+		# abgelehnt (siehe SELFHOSTING_LUECKENLISTE.md: eigener Folgeschritt).
+		if build/tinyc_p 'struct Inner { int x; }; struct Outer { struct Inner i; }; int main(){ struct Outer o; }' 2>&1 | grep -q 'struct field type not supported'; then
+			echo "ok    tinyc: verschachteltes struct als Feld wird bewusst abgelehnt (eigener Folgeschritt)"
+		else
+			echo "FAIL  tinyc: Diagnose fuer verschachtelte struct-Felder fehlt"; tcfail=1; fail=1
 		fi
 		if build/tinyc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
 		   build/tinyc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
@@ -471,7 +485,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 77 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 79 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen)/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -499,9 +513,11 @@ else
 	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
 fi
 
-# 13b) struct-Felder (einheitlicher Feldtyp, siehe SELFHOSTING_LUECKENLISTE.md):
-#      Feldzugriff nutzt LOADIDX/STOREIDX unveraendert -> kein neuer Opcode noetig,
-#      trotzdem hier explizit durch 68000 und ARM64 gegengeprueft.
+# 13b) struct-Felder (2026-07-24: gemischte skalare Feldtypen, echtes Byte-Layout,
+#      siehe SELFHOSTING_LUECKENLISTE.md): Feldzugriff nutzt PUSHADDR/IPADD/LOADIND/
+#      STOREIND -- bereits vorhandene, architekturneutrale Opcodes, kein neuer Opcode
+#      und keine Backend-Aenderung noetig, trotzdem hier explizit durch 68000 und ARM64
+#      gegengeprueft (einheitlicher Feldtyp als Regressionsschutz plus gemischter Fall).
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/tinyc_struct.ir && \
 		build/tinyc_backend build/tinyc_struct.ir build/tinyc_struct.s68 && \
@@ -513,6 +529,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc struct 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a=1; m.b=1000; m.c=2; putint(m.b+m.a+m.c); }' > build/tinyc_struct_mixed.ir && \
+		build/tinyc_backend build/tinyc_struct_mixed.ir build/tinyc_struct_mixed.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct_mixed.bin build/tinyc_struct_mixed.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_struct_mixed.s68 2>/dev/null)" = "1003" ]; then
+		echo "ok    tinyc struct 68000: gemischte Feldtypen (char/int/char, Byte-Offset+Padding) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: gemischte Feldtypen fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (gemischt): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
@@ -615,6 +643,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a=1; m.b=1000; m.c=2; putint(m.b+m.a+m.c); }' > build/tinyc_struct_mixed_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_struct_mixed_arm64.ir build/tinyc_struct_mixed_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_mixed_arm64 build/tinyc_struct_mixed_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_struct_mixed_arm64)" = "1003" ]; then
+		echo "ok    tinyc struct ARM64: gemischte Feldtypen (char/int/char, Byte-Offset+Padding) korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: gemischte Feldtypen fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (gemischt): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then

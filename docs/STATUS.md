@@ -1,6 +1,6 @@
 # Projektstatus
 
-Stand: **2026-07-23**
+Stand: **2026-07-24**
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
 
@@ -63,7 +63,9 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - Zuweisungen und zusammengesetzte Zuweisungen
 - Kontrollfluss: `if/else`, `while`, `for`, `do/while`, `break`, `continue`
 - `typedef` (Skalar-/Pointer-Aliase)
-- `struct` mit einheitlichem Feldtyp (Feldzugriff lesend/schreibend, lokale Variablen)
+- `struct` mit gemischten skalaren Feldtypen (echtes Byte-Layout mit natürlichem
+  Alignment, Feldzugriff lesend/schreibend, lokale Variablen; Array-/Pointer-Felder
+  und verschachtelte structs noch offen, siehe SELFHOSTING_LUECKENLISTE.md)
 - `enum` (benannte int-Konstanten)
 - `sizeof` (int/char/bool/unsigned/struct, keine Pointer)
 - Prä-/Postinkrement `++`/`--` (einfache int/unsigned/char-Skalare)
@@ -82,10 +84,10 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-77 Tiny-C-Programme korrekt
+79 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
-struct-Feldzugriff 68000 + ARM64 korrekt
+struct-Feldzugriff (einheitlich + gemischt) 68000 + ARM64 korrekt
 switch/case 68000 + ARM64 korrekt
 === ALLE TESTS OK ===
 ```
@@ -98,8 +100,10 @@ Zwei unabhängige Stränge stehen zur Wahl:
    Naheliegende Kandidaten: `static`/`const` (101+99 echte Fundstellen im
    Generator selbst, siehe `docs/SELFHOSTING_LUECKENLISTE.md`, vermutlich
    reine Grammatik-Arbeit ohne Backend-Änderung wie die meisten heutigen
-   Features), gemischte Feldtypen in `struct` (größerer Brocken, braucht
-   echte Backend-Arbeit, siehe unten), `void *`, weitere Arrayformen.
+   Features), `typedef struct { ... } Name;` (anonymes struct inline im
+   typedef, direkter Aufsatz auf die jetzt gemischten Feldtypen), Array-Felder
+   in `struct` (z. B. `char name[32]`, eigener Folgeschritt zu den seit
+   2026-07-24 gemischten skalaren Feldtypen), `void *`, weitere Arrayformen.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators für ein 16-MB-
    Zielsystem verkleinern (siehe Abschnitt oben) -- danach echte Ausführung
    auf Q9 testen, und danach das Tiny-C-68k-Backend um echte
