@@ -64,7 +64,7 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | bitweise Operatoren und Shifts | erledigt | — |
 | Zuweisungen und kombinierte Zuweisungen | erledigt | — |
 | Prä-/Postinkrement und -dekrement | erledigt (nur einfache int/unsigned/char-Skalare) | — |
-| Casts und implizite Konversionen | teilweise | sehr hoch |
+| Casts und implizite Konversionen | teilweise (nur int/unsigned/char/bool, kein Pointer/typedef als Cast-Ziel) | sehr hoch |
 | `sizeof` und `_Alignof` | teilweise (`sizeof` auf int/char/bool/unsigned/struct, keine Pointer, kein `_Alignof`) | hoch |
 | Kommaoperator | offen | mittel |
 | vollständige Constant Expressions | offen | hoch |

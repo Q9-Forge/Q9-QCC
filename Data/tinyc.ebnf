@@ -128,6 +128,7 @@ addop     = "+" | "-" .
 term      = factor { mulop factor } .
 mulop     = "*" | "/" | "%" .
 factor    = sizeofExpr
+          | castExpr
           | preIncDec
           | postIncDec
           | "(" expr ")"
@@ -142,6 +143,10 @@ negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
 
 sizeofExpr = "sizeof" "(" type ")" .
+
+castExpr   = "(" castType ")" castOperand .
+castType   = "unsigned" unsignedInt | "int" | "char" | "bool" .
+castOperand = factor .
 
 preIncDec  = incdecOp ident .
 postIncDec = ident incdecOp .
