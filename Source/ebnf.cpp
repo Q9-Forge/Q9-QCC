@@ -187,16 +187,16 @@ int main(int argc, char* argv[]) {
 
 	size_t len = strlen(argv[1]);
 	if (len > FILENAME_LEN) len = FILENAME_LEN;
-	strncpy_s(inputFileName, argv[1], len);
-	strcat_s(inputFileName, ".ebnf");
-	strncpy_s(outputFileName, argv[1], len);
-	strcat_s(outputFileName, ".lextab");
-	strncpy_s(listFileName, argv[1], len);
-	strcat_s(listFileName, ".lexlst");
-	strncpy_s(cgenCName, argv[1], len);
-	strcat_s(cgenCName, "_p.c");
-	strncpy_s(cgen68kName, argv[1], len);
-	strcat_s(cgen68kName, ".s68");
+	strncpy_s(inputFileName, sizeof(inputFileName), argv[1], len);
+	strcat_s(inputFileName, sizeof(inputFileName), ".ebnf");
+	strncpy_s(outputFileName, sizeof(outputFileName), argv[1], len);
+	strcat_s(outputFileName, sizeof(outputFileName), ".lextab");
+	strncpy_s(listFileName, sizeof(listFileName), argv[1], len);
+	strcat_s(listFileName, sizeof(listFileName), ".lexlst");
+	strncpy_s(cgenCName, sizeof(cgenCName), argv[1], len);
+	strcat_s(cgenCName, sizeof(cgenCName), "_p.c");
+	strncpy_s(cgen68kName, sizeof(cgen68kName), argv[1], len);
+	strcat_s(cgen68kName, sizeof(cgen68kName), ".s68");
 
 	printf("EBNF Translator on %s\n", OS);
 	astReset();
@@ -274,8 +274,8 @@ int main(int argc, char* argv[]) {
 				const char* slash = strrchr(base, '/');
 				if (slash == NULL) slash = strrchr(base, '\\');
 				if (slash != NULL) base = slash + 1;
-				strncpy_s(cgenOS9Name, argv[1], len);
-				strcat_s(cgenOS9Name, "_os9.a");
+				strncpy_s(cgenOS9Name, sizeof(cgenOS9Name), argv[1], len);
+				strcat_s(cgenOS9Name, sizeof(cgenOS9Name), "_os9.a");
 				if (genParser68kOS9(cgenOS9Name, base)) {
 					printf("CODEGEN: '%s' (OS-9/r68-Format) erzeugt.\n", cgenOS9Name);
 				}
@@ -367,12 +367,12 @@ void clearLst() {
 void addLst(const char* str, int num) {
 	int i;
 
-	strcat_s(lst, " ");
-	strcat_s(lst, str);
+	strcat_s(lst, sizeof(lst), " ");
+	strcat_s(lst, sizeof(lst), str);
 	if (num > 0) {
 		num = num - (int)strlen(str);
 		for(i=0; i<num; i++){
-			strcat_s(lst, " ");
+			strcat_s(lst, sizeof(lst), " ");
 		}
 	}
 	//printf("#%s# ",str);
@@ -432,7 +432,7 @@ void printLexTab() {
 			trueStr[1] = EOS;
 		}
 		else {
-			_itoa_s(stat, trueStr, 10);
+			_itoa_s(stat, trueStr, sizeof(trueStr), 10);
 		}
 		stat = lexTab[i].falseAction;
 		if (stat < 0) {
@@ -440,32 +440,32 @@ void printLexTab() {
 			falseStr[1] = EOS;
 		}
 		else {
-			_itoa_s(stat, falseStr, 10);
+			_itoa_s(stat, falseStr, sizeof(falseStr), 10);
 		}
 		if (strcmp(lexTab[i].mode, "NTS") == 0) {
 			if (lexTab[i].callAddr >= 0) {
-				_itoa_s(lexTab[i].callAddr, addrStr, 10);
+				_itoa_s(lexTab[i].callAddr, addrStr, sizeof(addrStr), 10);
 			}
 			else {
-				strcpy_s(addrStr, "???");
+				strcpy_s(addrStr, sizeof(addrStr), "???");
 			}
 		}
 		else {
-			strcpy_s(addrStr, "-");
+			strcpy_s(addrStr, sizeof(addrStr), "-");
 		}
 		// Anzeige-Varianten mit <NTS>-Klammerung nur fuer Bildschirm/Listing (.lexlst);
 		// .lextab (fpOut) bleibt roh, da es fuer eine spaetere maschinelle Weiterverarbeitung gedacht ist.
 		if (strlen(lexTab[i].ident)) {
-			sprintf_s(identDisp, "<%s>", lexTab[i].ident);
+			sprintf_s(identDisp, sizeof(identDisp), "<%s>", lexTab[i].ident);
 		}
 		else {
 			identDisp[0] = EOS;
 		}
 		if (strcmp(lexTab[i].mode, "NTS") == 0) {
-			sprintf_s(tsDisp, "<%s>", lexTab[i].TS);
+			sprintf_s(tsDisp, sizeof(tsDisp), "<%s>", lexTab[i].TS);
 		}
 		else {
-			strncpy_s(tsDisp, lexTab[i].TS, IDENT_LEN);
+			strncpy_s(tsDisp, sizeof(tsDisp), lexTab[i].TS, IDENT_LEN);
 		}
 		printf(value0, i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
 		fprintf(fpLst, value0, i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
@@ -494,7 +494,7 @@ void resolveCallAddresses() {
 	ruleSymbolCnt = 0;
 	for (i = 0; i < aktTabIndex; i++) {
 		if (strlen(lexTab[i].ident) && ruleSymbolCnt < MAX_RULES) {
-			strncpy_s(ruleSymbols[ruleSymbolCnt].name, lexTab[i].ident, IDENT_LEN);
+			strncpy_s(ruleSymbols[ruleSymbolCnt].name, sizeof(ruleSymbols[ruleSymbolCnt].name), lexTab[i].ident, IDENT_LEN);
 			ruleSymbols[ruleSymbolCnt].addr = i;
 			ruleSymbolCnt++;
 		}
@@ -562,7 +562,7 @@ void addRuleNameIfNew(const char* name) {
 		if (strcmp(ruleNameList[i], name) == 0) return;
 	}
 	if (ruleNameListCnt < MAX_RULE_NAMES) {
-		strncpy_s(ruleNameList[ruleNameListCnt], name, IDENT_LEN);
+		strncpy_s(ruleNameList[ruleNameListCnt], sizeof(ruleNameList[ruleNameListCnt]), name, IDENT_LEN);
 		ruleNameListCnt++;
 	}
 }
@@ -578,8 +578,8 @@ int firstEdgeCnt = 0;
 
 void addFirstEdge(const char* from, const char* to) {
 	if (firstEdgeCnt < MAX_EDGES) {
-		strncpy_s(firstEdges[firstEdgeCnt].from, from, IDENT_LEN);
-		strncpy_s(firstEdges[firstEdgeCnt].to, to, IDENT_LEN);
+		strncpy_s(firstEdges[firstEdgeCnt].from, sizeof(firstEdges[firstEdgeCnt].from), from, IDENT_LEN);
+		strncpy_s(firstEdges[firstEdgeCnt].to, sizeof(firstEdges[firstEdgeCnt].to), to, IDENT_LEN);
 		firstEdgeCnt++;
 	}
 }
@@ -618,7 +618,7 @@ void dfsVisit(int idx) {
 	int i, targetIdx;
 
 	dfsColor[idx] = 1;
-	strncpy_s(dfsPath[dfsPathLen], ruleNameList[idx], IDENT_LEN);
+	strncpy_s(dfsPath[dfsPathLen], sizeof(dfsPath[dfsPathLen]), ruleNameList[idx], IDENT_LEN);
 	dfsPathLen++;
 
 	for (i = 0; i < firstEdgeCnt; i++) {
@@ -1031,8 +1031,8 @@ void writeWorkfile(FILE* fp) {
 	for (i = 0; i < aktTabIndex; i++) {
 		if ((strcmp(lexTab[i].mode, "TS") == 0 || strcmp(lexTab[i].mode, "RNG") == 0)
 			&& tsSymbolIndexOf(tsList, tsCnt, lexTab[i].TS) < 0 && tsCnt < LEXTAB_LEN) {
-			strncpy_s(tsList[tsCnt], lexTab[i].TS, IDENT_LEN);
-			strcpy_s(tsMode[tsCnt], lexTab[i].mode);
+			strncpy_s(tsList[tsCnt], sizeof(tsList[tsCnt]), lexTab[i].TS, IDENT_LEN);
+			strcpy_s(tsMode[tsCnt], sizeof(tsMode[tsCnt]), lexTab[i].mode);
 			tsCnt++;
 		}
 	}
@@ -1197,7 +1197,7 @@ int loadWorkfileAsGrammar(const char* path) {
 					e->ident[0] = EOS;
 				}
 				else {
-					strncpy_s(e->ident, identBuf, IDENT_LEN);
+					strncpy_s(e->ident, sizeof(e->ident), identBuf, IDENT_LEN);
 				}
 				// mode als persistente statische Strings (KEINE Pointer auf Puffer!)
 				if (strcmp(modeBuf, "TS") == 0)       e->mode = (char*)"TS";
@@ -1214,7 +1214,7 @@ int loadWorkfileAsGrammar(const char* path) {
 				e->rangeLo = (char)lo;
 				e->rangeHi = (char)hi;
 				e->ambigF = 0;		// reines Parse-Zeit-Flag, wird nicht serialisiert
-				strncpy_s(e->TS, line + consumed, IDENT_LEN);
+				strncpy_s(e->TS, sizeof(e->TS), line + consumed, IDENT_LEN);
 				decodeEscapes(e->TS);	// Gegenstueck zu encodeTSField() beim Schreiben
 				aktTabIndex++;
 				rowsLoaded++;
@@ -1279,7 +1279,7 @@ int identListCnt = 0;
 void addIdentList() {
 	// printf("IDENT_LIST ADD %s \n", aktName);
 	if (identListCnt < IDENTLIST_MAX) {
-	//	strncpy_s(identList[identListCnt++], aktName, IDENT_LEN);
+	//	strncpy_s(identList[identListCnt++], sizeof(identList[identListCnt++]), aktName, IDENT_LEN);
 	}
 }
 
@@ -1375,10 +1375,10 @@ void rule() {
 	clearLst();
 	test(TOKEN_IDENT, (char *)"IDENT ident ");
 	addIdentList();
-	sprintf_s(bracketedName, "<%s>", aktName);		// Listing zeigt NTS immer als <name>
+	sprintf_s(bracketedName, sizeof(bracketedName), "<%s>", aktName);		// Listing zeigt NTS immer als <name>
 	addLst(bracketedName, 32);
-	strncpy_s(aktRule, aktName, IDENT_LEN);
-	strncpy_s(currentDefRule, aktName, IDENT_LEN);
+	strncpy_s(aktRule, sizeof(aktRule), aktName, IDENT_LEN);
+	strncpy_s(currentDefRule, sizeof(currentDefRule), aktName, IDENT_LEN);
 	addRuleNameIfNew(currentDefRule);
 	firstPos = 1;
 	ambigFalseWarned = 0;
@@ -1408,7 +1408,7 @@ void rule() {
 			}
 		}
 		
-		// strncpy_s(lexTab[aktTabIndex].TS, ".", IDENT_LEN);
+		// strncpy_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), ".", IDENT_LEN);
 		// aktTabIndex++;
 
 		addLst((const char*)".", 0);
@@ -1691,7 +1691,7 @@ void ident() {
 	lastFactorWasComplex = 0;
 	lastFactorSkippable = 0;
 	astPushNTS(aktName);
-	sprintf_s(bracketedName, "<%s>", aktName);		// Listing zeigt NTS immer als <name>
+	sprintf_s(bracketedName, sizeof(bracketedName), "<%s>", aktName);		// Listing zeigt NTS immer als <name>
 	addLst(bracketedName, 0);
 	put();
 	lexikalischeAnalyse();
@@ -1704,8 +1704,8 @@ void literal() {
 	firstPos = 0;
 	lastFactorWasComplex = 0;
 	lastFactorSkippable = 0;
-	strncpy_s(loRaw, aktString, IDENT_LEN);		// Original-Schreibweise fuers Listing
-	strncpy_s(loChar, aktString, IDENT_LEN);
+	strncpy_s(loRaw, sizeof(loRaw), aktString, IDENT_LEN);		// Original-Schreibweise fuers Listing
+	strncpy_s(loChar, sizeof(loChar), aktString, IDENT_LEN);
 	decodeEscapes(loChar);						// dekodiert fuer Tabelle + AST
 	lexikalischeAnalyse();		// ein Token vorausschauen: folgt ein '~' Bereichs-Operator?
 
@@ -1718,20 +1718,20 @@ void literal() {
 		else {
 			char hiChar[IDENT_LEN + 1];
 			char hiRaw[IDENT_LEN + 1];
-			strncpy_s(hiRaw, aktString, IDENT_LEN);
-			strncpy_s(hiChar, aktString, IDENT_LEN);
+			strncpy_s(hiRaw, sizeof(hiRaw), aktString, IDENT_LEN);
+			strncpy_s(hiChar, sizeof(hiChar), aktString, IDENT_LEN);
 			decodeEscapes(hiChar);
 
 			astPushRNG(loChar[0], hiChar[0]);
-			strcat_s(lst, " \"");
-			strcat_s(lst, loRaw);
-			strcat_s(lst, "\"~\"");
-			strcat_s(lst, hiRaw);
-			strcat_s(lst, "\"");
+			strcat_s(lst, sizeof(lst), " \"");
+			strcat_s(lst, sizeof(lst), loRaw);
+			strcat_s(lst, sizeof(lst), "\"~\"");
+			strcat_s(lst, sizeof(lst), hiRaw);
+			strcat_s(lst, sizeof(lst), "\"");
 
 			if (errorCnt == 0) {
 				if (strlen(aktRule)) {
-					strncpy_s(lexTab[aktTabIndex].ident, aktRule, IDENT_LEN);
+					strncpy_s(lexTab[aktTabIndex].ident, sizeof(lexTab[aktTabIndex].ident), aktRule, IDENT_LEN);
 					aktRule[0] = EOS;
 				}
 				else {
@@ -1740,33 +1740,33 @@ void literal() {
 				lexTab[aktTabIndex].mode = (char *)"RNG";
 				lexTab[aktTabIndex].rangeLo = loChar[0];
 				lexTab[aktTabIndex].rangeHi = hiChar[0];
-				strcpy_s(lexTab[aktTabIndex].TS, "\"");
-				strncat_s(lexTab[aktTabIndex].TS, loChar, IDENT_LEN);
-				strcat_s(lexTab[aktTabIndex].TS, "\"~\"");
-				strncat_s(lexTab[aktTabIndex].TS, hiChar, IDENT_LEN);
-				strcat_s(lexTab[aktTabIndex].TS, "\"");
+				strcpy_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
+				strncat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), loChar, IDENT_LEN);
+				strcat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"~\"");
+				strncat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), hiChar, IDENT_LEN);
+				strcat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
 			}
 			lexikalischeAnalyse();	// weiter zum Token nach dem zweiten Literal
 		}
 	}
 	else {
 		astPushTS(loChar);
-		strcat_s(lst, " \"");
-		strcat_s(lst, loRaw);
-		strcat_s(lst, "\"");
+		strcat_s(lst, sizeof(lst), " \"");
+		strcat_s(lst, sizeof(lst), loRaw);
+		strcat_s(lst, sizeof(lst), "\"");
 
 		if (errorCnt == 0) {
 			if (strlen(aktRule)) {
-				strncpy_s(lexTab[aktTabIndex].ident, aktRule, IDENT_LEN);
+				strncpy_s(lexTab[aktTabIndex].ident, sizeof(lexTab[aktTabIndex].ident), aktRule, IDENT_LEN);
 				aktRule[0] = EOS;
 			}
 			else {
 				lexTab[aktTabIndex].ident[0] = EOS;
 			}
 			lexTab[aktTabIndex].mode = (char *)"TS";
-			strcpy_s(lexTab[aktTabIndex].TS, "\"");
-			strncat_s(lexTab[aktTabIndex].TS, loChar, IDENT_LEN);
-			strcat_s(lexTab[aktTabIndex].TS, "\"");
+			strcpy_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
+			strncat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), loChar, IDENT_LEN);
+			strcat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
 		}
 		// aktToken zeigt bereits auf das naechste Token (s.o. vorausgeschaut) --
 		// hier KEIN weiteres lexikalischeAnalyse() mehr aufrufen!
@@ -1823,7 +1823,7 @@ void lexikalischeAnalyse() {
 	if (isFirstIdentChar(aktChar)) {
 		aktName[index++] = aktChar;
 		getAktChar();
-		strcpy_s(lastName, aktName);
+		strcpy_s(lastName, sizeof(lastName), aktName);
 		while (isIdentChar(aktChar)) {
 			if (index < IDENT_LEN) {
 				aktName[index++] = aktChar;
@@ -1855,7 +1855,7 @@ void lexikalischeAnalyse() {
 	} else if (isLiteralDelimiter(aktChar)) {
 		// Literal
 		getAktChar();
-		strcpy_s(lastString, aktString);
+		strcpy_s(lastString, sizeof(lastString), aktString);
 		while (!(aktChar == '"' && lastChar != '\\')) {
 			if (index < IDENT_LEN) {
 				aktString[index++] = aktChar;
@@ -1917,29 +1917,29 @@ void semantischeAnylyse() {
 	switch (aktToken) {
 	case TOKEN_IDENT:
 		if (strlen(aktRule)) {
-			strncpy_s(lexTab[aktTabIndex].ident, aktRule, IDENT_LEN);
+			strncpy_s(lexTab[aktTabIndex].ident, sizeof(lexTab[aktTabIndex].ident), aktRule, IDENT_LEN);
 			aktRule[0] = '\0';
 		}
 		else {
 			lexTab[aktTabIndex].ident[0] = '\0';
 		}
 		lexTab[aktTabIndex].mode = (char *)"NTS";
-		strncpy_s(lexTab[aktTabIndex].TS, aktName, IDENT_LEN);
+		strncpy_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), aktName, IDENT_LEN);
 		//aktTabIndex++;
 		break;
 
 	case TOKEN_LITERAL:
 		if (strlen(aktRule)) {
-			strncpy_s(lexTab[aktTabIndex].ident, aktRule, IDENT_LEN);
+			strncpy_s(lexTab[aktTabIndex].ident, sizeof(lexTab[aktTabIndex].ident), aktRule, IDENT_LEN);
 			aktRule[0] = EOS;
 		}
 		else {
 			lexTab[aktTabIndex].ident[0] = EOS;
 		}
 		lexTab[aktTabIndex].mode = (char *)"TS";
-		strcpy_s(lexTab[aktTabIndex].TS, "\"");
-		strncat_s(lexTab[aktTabIndex].TS, aktString, IDENT_LEN);
-		strcat_s(lexTab[aktTabIndex].TS, "\"");
+		strcpy_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
+		strncat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), aktString, IDENT_LEN);
+		strcat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
 		//aktTabIndex++;
 		break;
 
@@ -2048,7 +2048,7 @@ char * comment() {
 			index = strstr(sourceBuffer, endBlockCommandString);
 			if (index != NULL) {
 				// end Block found, delete chars before end command string
-				strcpy_s(sourceBuffer, index + strlen(endBlockCommandString));
+				strcpy_s(sourceBuffer, sizeof(sourceBuffer), index + strlen(endBlockCommandString));
 				charLen = (int)strlen(sourceBuffer);
 				flagBlockCommentActive = 0;
 			} else {
