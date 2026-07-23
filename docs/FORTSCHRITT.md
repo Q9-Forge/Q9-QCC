@@ -8,6 +8,8 @@
 | Tiny-C M1 | erledigt | Ausdrücke, Variablen, Stack-IR, TinyVM |
 | Tiny-C M2/M3 | erledigt | `if/else`, `while`, Calls, Parameter, Rekursion |
 | Tiny-C Kontrollfluss (Stufe A, Teil 1) | erledigt | `for`, `do/while`, `break`, `continue` -- kein neuer IR-Opcode, kein Backend-Change noetig |
+| Tiny-C `typedef` | erledigt | Skalar-/Pointer-Aliase, reine Grammatik-Erweiterung |
+| Tiny-C `struct` (einheitlicher Feldtyp) | erledigt | Feldzugriff nutzt LOADIDX/STOREIDX wieder -- kein Backend-Change; gemischte Feldtypen bewusst vertagt (siehe SELFHOSTING_LUECKENLISTE.md) |
 | Arrays | erledigt | bytegenaue `char[]`/`int[]`, lokal und global |
 | Datentypen | erledigt | `int`, `unsigned int`, `char`, `bool`, Nullwert |
 | Operatoren | erledigt | Rechen-, Vergleichs-, Bit-, Shift-, Logik- und ternäre Operatoren |

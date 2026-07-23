@@ -49,8 +49,8 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Arrays und Array-Decay | teilweise | sehr hoch |
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
-| `struct`, `union`, `enum` | offen | sehr hoch |
-| `typedef` | offen | sehr hoch |
+| `struct`, `union`, `enum` | teilweise (struct mit einheitlichem Feldtyp) | sehr hoch |
+| `typedef` | erledigt (Skalar-/Pointer-Aliase) | — |
 | Bitfelder und `_Alignas`/`_Alignof` | offen | mittel |
 | variable length arrays | offen | mittel |
 
@@ -134,9 +134,10 @@ zielsystemspezifische Runtime sinnvoll, nicht sofort die komplette Bibliothek.
 
 ### Stufe A: brauchbares C-Subset
 
-`for`, `do/while`, `break`, `continue` (erledigt, 2026-07-23), noch offen:
-Prä-/Postinkrement, Casts, `sizeof`, Funktionsprototypen, `typedef`,
-`struct`/`enum` und ein robuster Präprozessor.
+`for`, `do/while`, `break`, `continue`, `typedef` (erledigt, 2026-07-23),
+`struct` mit einheitlichem Feldtyp (erledigt, 2026-07-23; gemischte Feldtypen
+noch offen, siehe SELFHOSTING_LUECKENLISTE.md), noch offen: Prä-/Postinkrement,
+Casts, `sizeof`, Funktionsprototypen, `enum` und ein robuster Präprozessor.
 
 ### Stufe B: C17-Sprachkern
 
