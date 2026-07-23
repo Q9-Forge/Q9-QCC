@@ -376,6 +376,8 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct Mixed { char a; int b; }; int main(){ struct Mixed m; m.a = 1; m.b = 100; m.b += 5; m.a += 1; putint(m.b); putchar(m.a + 64); }' '105\nB'
 		tc_check 'typedef int MyInt; int main(){ MyInt a = 5; MyInt b = 7; putint(a + b); }' '12'
 		tc_check 'typedef int* IntPtr; int main(){ int x = 42; IntPtr p = &x; putint(*p); }' '42'
+		tc_check 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a = 1; m.b = 1000; putint(m.b + m.a); }' '1001'
+		tc_check 'typedef struct { char a; int b; } Mixed; int main(){ putint(sizeof(struct Mixed)); }' '8'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ putint(RED); putint(GREEN); putint(BLUE); }' '0\n1\n2'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ int c = GREEN; if (c == GREEN) putint(1); else putint(0); putint(BLUE - RED); }' '1\n2'
 		if build/tinyc_p 'enum A { X, Y }; enum B { X, Z }; int main(){ putint(X); }' 2>&1 | grep -q 'duplicate enum constant'; then
@@ -445,6 +447,15 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Diagnose fuer verschachtelte struct-Felder fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-07-24: typedef struct { ... } Name; -- anonymes struct inline im typedef.
+		# Der typedef-Zielname wird bewusst als interner struct-Tag wiederverwendet (harmlose
+		# Vereinfachung); Namenskollision mit einem bereits existierenden struct wird wie eine
+		# normale doppelte struct-Deklaration abgelehnt.
+		if build/tinyc_p 'struct Dup { int x; }; typedef struct { int y; } Dup; int main(){ putint(1); }' 2>&1 | grep -q 'duplicate struct'; then
+			echo "ok    tinyc: Namenskollision bei anonymem struct-typedef wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer anonymes-struct-typedef-Namenskollision fehlt"; tcfail=1; fail=1
+		fi
 		if build/tinyc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
 		   build/tinyc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
 			echo "ok    tinyc: break/continue ausserhalb Schleife werden diagnostiziert"
@@ -485,7 +496,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 79 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen)/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 81 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -541,6 +552,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc struct 68000 (gemischt): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a=1; m.b=1000; putint(m.b+m.a); }' > build/tinyc_struct_anon.ir && \
+		build/tinyc_backend build/tinyc_struct_anon.ir build/tinyc_struct_anon.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct_anon.bin build/tinyc_struct_anon.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_struct_anon.s68 2>/dev/null)" = "1001" ]; then
+		echo "ok    tinyc struct 68000: anonymes struct inline im typedef korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: anonymes struct inline im typedef fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (anonym im typedef): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
@@ -656,6 +679,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (gemischt): Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a=1; m.b=1000; putint(m.b+m.a); }' > build/tinyc_struct_anon_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_struct_anon_arm64.ir build/tinyc_struct_anon_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_anon_arm64 build/tinyc_struct_anon_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_struct_anon_arm64)" = "1001" ]; then
+		echo "ok    tinyc struct ARM64: anonymes struct inline im typedef korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: anonymes struct inline im typedef fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (anonym im typedef): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then

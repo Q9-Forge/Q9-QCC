@@ -7,7 +7,10 @@ structName  = ident .
 structField = type fieldName ";" .
 fieldName   = ident .
 
-typedefDecl = "typedef" type pointerDecl typedefTargetName ";" .
+typedefDecl = "typedef" typedefType typedefTargetName ";" .
+typedefType = anonStructType | type pointerDecl .
+anonStructType = "struct" anonStructOpen structField { structField } "}" .
+anonStructOpen = "{" .
 typedefTargetName = ident .
 
 globalDecl = type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
