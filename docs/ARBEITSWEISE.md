@@ -2,10 +2,15 @@
 
 ## Einstieg
 
-1. `docs/STATUS.md` lesen.
-2. In `docs/FORTSCHRITT.md` den aktuellen Meilenstein und die offenen Punkte prüfen.
-3. Nur die für die konkrete Aufgabe relevanten Quell- und Doku-Dateien öffnen.
-4. Bei Architekturfragen zusätzlich den passenden Abschnitt aus
+1. `git status` und `git branch -a` im Repo prüfen, dazu `gh pr list` -- Arbeit
+   kann auf einem noch nicht committeten oder noch nicht gemergten Branch
+   liegen, unabhängig davon, was in den Doku-Dateien steht. An diesem Projekt
+   arbeiten nicht immer dieselbe KI/Session, der Stand kann zwischen
+   Sitzungen auseinanderlaufen.
+2. `docs/STATUS.md` lesen.
+3. In `docs/FORTSCHRITT.md` den aktuellen Meilenstein und die offenen Punkte prüfen.
+4. Nur die für die konkrete Aufgabe relevanten Quell- und Doku-Dateien öffnen.
+5. Bei Architekturfragen zusätzlich den passenden Abschnitt aus
    `docs/ARCHITEKTUR.md` lesen.
 
 `context.txt` dient nur als Verlaufshilfe. Es ersetzt keinen gepflegten Status.
