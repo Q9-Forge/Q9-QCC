@@ -126,15 +126,51 @@ selbst hostet und die finale Maschinencode-Erzeugung weiter über einen
 host-seitigen C++-Compiler laufen lässt, ist ein legitimer Zwischenschritt
 (viele reale Selfhosting-Compiler haben das genauso gemacht).
 
+## 6. Echter Kompilier-/Ausführungstest mit der Ziel-Toolchain (2026-07-23)
+
+Statt nur zu analysieren, wurde ausprobiert: der komplette Generator
+(`ebnf.cpp`+`codegen.cpp`) wurde tatsächlich mit der echten Microware-`xcc`-
+Toolchain (die Q9 selbst nutzt) kompiliert und gelinkt. Ergebnis: **funktioniert**,
+mit drei konkreten Erkenntnissen für den Selfhosting-Weg:
+
+- **C++-Templates waren der einzige echte Blocker im Sprachumfang.**
+  `Source/msvc_compat.h` hatte Template-Überladungen (Array-Größen-Deduktion
+  für `strcpy_s`/`strncpy_s`/etc.), an denen `xcc`s Compiler (Ultra C/C++ 2.5,
+  Baujahr 2001) mit einem internen Fehler abstürzte. Da Templates sonst
+  nirgends im Projekt vorkamen, wurden alle 75 betroffenen Aufrufstellen auf
+  explizite `sizeof()`-Form umgestellt und die Templates entfernt (PR #11,
+  dauerhaft im Repo) -- funktioniert identisch auf allen Plattformen.
+- **Kommentarform ist ein reines Cross-Compiler-Problem, kein Sprachfeature.**
+  `xcc` akzeptiert kein C99-`//`, nur `/* */`. Für den xcc-Testlauf wurde ein
+  string-literal-bewusster Konverter gebraucht (naive Zeilen-Regex zerstört
+  `"//"`-Stringwerte, die als Grammatik-Konfigurationsdaten im Projekt
+  vorkommen!). Diese Konvertierung ist NICHT im Repo, nur für den xcc-Testlauf
+  einmalig angewendet -- eine dauerhafte Lösung (z.B. eigener Build-Schritt
+  oder Umstellung der Kommentarkonvention) ist noch offen.
+- **Datensegment-Größe ist der eigentliche Blocker für die Ausführung.**
+  Das gelinkte Modul braucht ~34,6 MB Datensegment (feste globale Puffer,
+  großzügig für einen modernen Mac dimensioniert), das Q9-Zielsystem hat aber
+  nur 16 MB RAM. Kompilieren+Linken funktioniert trotzdem (32-Bit- statt
+  16-Bit-Datenreferenzen via `xcc -tp=68030,ld` nötig, da schon die reine
+  Adressierung sonst an der 64-KB-Grenze scheitert), aber der Programmstart
+  auf dem echten System schlägt fehl. Volle Details und der exakt
+  reproduzierbare Ablauf stehen in der Claude-Memory-Datei
+  `q9-xcc-toolchain-milestone.md`.
+
+Das bedeutet: Der Sprachmittel-Fahrplan aus Abschnitt 1 (struct/typedef/enum/
+for/switch/...) ist zwar weitgehend abgearbeitet, aber für ein WIRKLICH
+lauffähiges Selfhosting-Ergebnis kommt noch ein bisher nicht erfasster Punkt
+dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
+
 ## Empfohlene Reihenfolge
 
 1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct`/`typedef`
-   zuerst (Voraussetzung für fast alles andere hier), dann `enum`, `for`,
-   `switch`, mehrdimensionale Arrays, `static`/`const`, `sizeof`, `union`
-   zuletzt (nur 1 Fundstelle).
+   (erledigt, nur einheitlicher Feldtyp), `enum` (erledigt), `for`/`switch`
+   (erledigt), noch offen: mehrdimensionale Arrays, `static`/`const`, `union`
+   (nur 1 Fundstelle), gemischte Feldtypen in `struct`.
 2. **Mini-Runtime aus Abschnitt 3** bauen: String-Vergleichsfunktionen,
    formatierte Ausgabe, minimale Datei-I/O -- ohne die ist der Generator
-   funktional nicht nachbaubar, unabhängig von der Sprachsyntax.
+   funktional nicht nachbaubar, unabhängig von der Sprachsyntax. NOCH OFFEN.
 3. Erst danach **Mehrdatei-Übersetzung** (Abschnitt 1, letzter Punkt) angehen,
    damit der nachgebaute Generator wie das Original auf mehrere Dateien
    verteilt werden kann.
@@ -144,6 +180,10 @@ host-seitigen C++-Compiler laufen lässt, ist ein legitimer Zwischenschritt
    nötig sind.
 5. **L3 (STL-Backends)** bewusst zurückstellen oder dauerhaft host-seitig
    lassen (siehe Empfehlung in Abschnitt 5).
+6. **Unabhängig vom Sprachmittel-Fahrplan (Abschnitt 6):** Speicherbedarf der
+   statischen Puffer in `ebnf.cpp`/`codegen.cpp` für ein reales 16-MB-
+   Zielsystem verkleinern -- das ist jetzt der einzige bekannte Blocker
+   zwischen "kompiliert mit der echten Toolchain" und "läuft wirklich auf Q9".
 
 Diese Reihenfolge überschneidet sich stark mit Stufe A/B der
 `ISO_C_LUECKENLISTE.md` (`struct`/`enum`/`typedef`/`for`/`switch` stehen dort
