@@ -13,6 +13,7 @@
 | Tiny-C `enum` | erledigt | reine benannte int-Konstanten, kein eigener Typ, kein Backend-Change (nur PUSH) |
 | Tiny-C `sizeof` | erledigt | nur int/char/bool/unsigned/struct als Argument, keine Pointer, kein Backend-Change (Konstante zur Kompilierzeit) |
 | Tiny-C Prä-/Postinkrement (`++`/`--`) | erledigt | nur einfache int/unsigned/char-Skalare (lokal/global), kein Backend-Change (LOAD/DUP/PUSH/ADD-oder-SUB/STORE) |
+| Tiny-C `switch`/`case`/`default` | teilweise | gestapelte Case-Label (case A: case B: body) unterstuetzt, KEIN Fallthrough mit Code zwischen verschiedenen Bodies (deckt das reale Nutzungsmuster in ebnf.cpp/codegen.cpp ab); kein Backend-Change |
 | Arrays | erledigt | bytegenaue `char[]`/`int[]`, lokal und global |
 | Datentypen | erledigt | `int`, `unsigned int`, `char`, `bool`, Nullwert |
 | Operatoren | erledigt | Rechen-, Vergleichs-, Bit-, Shift-, Logik- und ternäre Operatoren |
