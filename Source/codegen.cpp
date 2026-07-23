@@ -555,7 +555,7 @@ int cgenParseConfig(const char* buf) {
 // Aktionen sind eine Grenzflaeche zu Nutzer-Code, keine Grammatik -- Fehler hier (unbekannte
 // Regel, fehlende ROUTINE) brechen die Codegenerierung nicht ab, sie werden nur gewarnt und
 // die betroffene Aktion faellt weg.
-#define ACTION_ROUTINE_MAX   64
+#define ACTION_ROUTINE_MAX  256
 #define ACTION_ROUTINE_LEN 16384
 
 static char ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN];
