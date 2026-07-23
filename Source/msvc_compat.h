@@ -4,9 +4,16 @@
 // Der Quelltext ist urspruenglich ein Visual-Studio-Projekt und verwendet durchgehend die
 // MSVC-eigenen *_s-Funktionen (strcpy_s, strncpy_s, strcat_s, sprintf_s, fopen_s, _itoa_s).
 // Diese existieren auf macOS/Linux nicht (Annex K wird von glibc/BSD-libc nicht angeboten).
-// Dieser Header bildet sie fuer Nicht-Windows-Plattformen nach -- inklusive der MSVC-
-// C++-Template-Varianten, die die Puffergroesse aus dem Array-Typ ableiten, damit die
-// bestehenden Aufrufstellen UNVERAENDERT bleiben koennen.
+// Dieser Header bildet sie fuer Nicht-Windows-Plattformen nach.
+//
+// Bewusst OHNE C++-Templates (Stand 2026-07-23): die urspruengliche Fassung hatte pro
+// Funktion zusaetzlich eine Template-Ueberladung, die die Zielgroesse aus dem Array-Typ
+// ableitet (kein "sizeof(dst)" an der Aufrufstelle noetig). Microwares "xcc"-Compiler
+// (Ultra C/C++ 2.5, Baujahr 2001) stuerzt bei dieser Deduktion mit einem internen Fehler
+// ab ("get_integer_size_and_alignment: bad integer kind"). Da Templates im ganzen Projekt
+// sonst nirgends vorkommen, wurden alle rund 75 Aufrufstellen auf die explizite Form
+// (Zielgroesse per sizeof() als eigenes Argument) umgestellt -- funktioniert unveraendert
+// auf allen Plattformen, keine Bedingungs-Kompilierung noetig.
 //
 // Unter Windows (_WIN32) ist der Header ein No-Op, dort liefert die MSVC-CRT alles selbst.
 //------------------------------------------------------------------------------------------------
@@ -20,6 +27,12 @@
 #include <stdarg.h>
 #include <stddef.h>
 
+inline size_t strnlen(const char* s, size_t maxlen) {
+	size_t n = 0;
+	while (n < maxlen && s[n] != '\0') n++;
+	return n;
+}
+
 // memmove statt memcpy/strcpy: einzelne Aufrufstellen kopieren innerhalb desselben
 // Puffers (Kommentar-Filter in comment()), das muss ueberlappungssicher sein.
 inline int strcpy_s(char* dst, size_t dstSize, const char* src) {
@@ -31,11 +44,6 @@ inline int strcpy_s(char* dst, size_t dstSize, const char* src) {
 	return 0;
 }
 
-template <size_t N>
-inline int strcpy_s(char (&dst)[N], const char* src) {
-	return strcpy_s(dst, N, src);
-}
-
 inline int strncpy_s(char* dst, size_t dstSize, const char* src, size_t count) {
 	size_t len = strnlen(src, count);
 	if (dstSize == 0) return 1;
@@ -45,20 +53,10 @@ inline int strncpy_s(char* dst, size_t dstSize, const char* src, size_t count) {
 	return 0;
 }
 
-template <size_t N>
-inline int strncpy_s(char (&dst)[N], const char* src, size_t count) {
-	return strncpy_s(dst, N, src, count);
-}
-
 inline int strcat_s(char* dst, size_t dstSize, const char* src) {
 	size_t used = strnlen(dst, dstSize);
 	if (used >= dstSize) return 1;
 	return strcpy_s(dst + used, dstSize - used, src);
-}
-
-template <size_t N>
-inline int strcat_s(char (&dst)[N], const char* src) {
-	return strcat_s(dst, N, src);
 }
 
 inline int strncat_s(char* dst, size_t dstSize, const char* src, size_t count) {
@@ -67,16 +65,11 @@ inline int strncat_s(char* dst, size_t dstSize, const char* src, size_t count) {
 	return strncpy_s(dst + used, dstSize - used, src, count);
 }
 
-template <size_t N>
-inline int strncat_s(char (&dst)[N], const char* src, size_t count) {
-	return strncat_s(dst, N, src, count);
-}
-
-template <size_t N>
-inline int sprintf_s(char (&dst)[N], const char* fmt, ...) {
+inline int sprintf_s(char* dst, size_t dstSize, const char* fmt, ...) {
 	va_list args;
+	int ret;
 	va_start(args, fmt);
-	int ret = vsnprintf(dst, N, fmt, args);
+	ret = vsnprintf(dst, dstSize, fmt, args);
 	va_end(args);
 	return ret;
 }
@@ -89,23 +82,18 @@ inline int fopen_s(FILE** fp, const char* name, const char* mode) {
 // nur Basis 10 wird im Projekt verwendet; andere Basen der Vollstaendigkeit halber
 inline int _itoa_s(int value, char* dst, size_t dstSize, int radix) {
 	if (radix == 10) {
-		snprintf(dst, dstSize, "%d", value);
+		sprintf(dst, "%d", value);
 	}
 	else if (radix == 16) {
-		snprintf(dst, dstSize, "%x", value);
+		sprintf(dst, "%x", value);
 	}
 	else if (radix == 8) {
-		snprintf(dst, dstSize, "%o", value);
+		sprintf(dst, "%o", value);
 	}
 	else {
 		return 1;
 	}
 	return 0;
-}
-
-template <size_t N>
-inline int _itoa_s(int value, char (&dst)[N], int radix) {
-	return _itoa_s(value, dst, N, radix);
 }
 
 #endif // !_WIN32
