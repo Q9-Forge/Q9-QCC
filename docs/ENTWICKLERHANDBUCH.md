@@ -40,6 +40,21 @@ werden. Zuerst wird die Semantik in der VM abgesichert, danach werden die
 Maschinen-Backends angepasst. Überlappende Operatoren benötigen
 Longest-Match-Behandlung im Generator.
 
+**Falle: `type` darf auf keinen Fall auf einen BLOSSEN Bezeichner matchen,
+ohne `statement`s Reihenfolge zu pruefen.** Seit `typedef` gibt es in `type`
+eine Alternative `typedefRef = ident` (jeder Bezeichner ist strukturell ein
+moeglicher Typname). Das Werkzeug hat KEINE semantischen Praedikate -- eine
+Regel matcht rein strukturell, ohne zu wissen, ob der Bezeichner wirklich ein
+registriertes Typedef ist. Solange `varDecl` in `statement`s Alternativenliste
+VOR `returnStmt`/`breakStmt`/`continueStmt` steht, wird z. B. `return p;`
+faelschlich als Vardeklaration `<Bezeichner-als-Typ> p;` geparst (beide haben
+die Form "Bezeichner Bezeichner ;", ein Backtracking-Fehlschlag tritt NICHT
+ein, weil die Deklaration strukturell tatsaechlich passt). Fix (2026-07-23):
+`varDecl` steht in `statement` bewusst AN LETZTER STELLE, nach allen Alter-
+nativen mit festem Schluesselwort. Bei jeder kuenftigen Erweiterung, die
+`ident` als neue `type`- oder statement-einleitende Alternative zulaesst,
+diese Reihenfolge erneut pruefen.
+
 ## Diagnose und Wiederaufnahme
 
 Für eine kurze neue Sitzung zuerst `docs/STATUS.md`, danach nur die thematisch
