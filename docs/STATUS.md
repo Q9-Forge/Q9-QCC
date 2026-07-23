@@ -14,14 +14,23 @@ Datei zusätzlich prüfen:
 Aktuell (2026-07-23):
 - PR #1 (https://github.com/foellmy51/ebnf/pull/1) ist OFFEN, noch nicht gemergt.
   Enthält: Pointer, ARM64/Darwin-Backend, Doku-Umstellung auf docs/.
-- Branch `selfhost/plain-c-backends` (ausgecheckt, lokal) enthält einen FERTIGEN,
-  aber NOCH NICHT COMMITTETEN Rückbau der zwei C++-Backends
+- PR #2 (https://github.com/foellmy51/ebnf/pull/2) ist OFFEN, noch nicht gemergt.
+  Branch `selfhost/plain-c-backends`. Enthält: Rückbau der zwei C++-Backends
   (`Source/tinyc_backend.cpp`, `Source/tinyc_arm64_backend.cpp`) auf reines C
   (neue Dateien `*_c.cpp`, Originale bleiben unverändert daneben liegen).
-  `./runtests.sh` läuft dort grün. Siehe `docs/SELFHOSTING_LUECKENLISTE.md`
-  Abschnitt 5 für den Hintergrund.
-- Nächster geplanter Schritt: Sprachmittel aus `docs/SELFHOSTING_LUECKENLISTE.md`
-  Abschnitt 1 in Tiny-C nachziehen, beginnend mit `struct`/`typedef`.
+- Auf demselben lokalen Branch (`selfhost/plain-c-backends`) liegt zusätzlich,
+  NOCH NICHT COMMITTET: `for`/`do-while`/`break`/`continue` in Tiny-C (siehe
+  `docs/ISO_C_LUECKENLISTE.md` Abschnitt 4, Stufe A). Grammatik in
+  `Data/tinyc.ebnf`, Aktionen in `Data/tinyc.lextab`; dabei ein echtes,
+  eigenständiges Limit in `Source/codegen.cpp` gefunden und behoben:
+  `ACTION_ROUTINE_MAX` war auf 64 `ROUTINE C`-Blöcke fest verdrahtet (jetzt 256).
+  `./runtests.sh` läuft grün (40 Tiny-C-Programme, alle drei Backends
+  gegengeprüft). Diese Arbeit ist inhaltlich unabhängig vom C-Rückbau -- vor
+  dem Committen ggf. auf einen eigenen Branch verschieben, damit PR #2 nicht
+  zwei unabhängige Themen mischt.
+- Nächster geplanter Schritt: weitere Sprachmittel aus
+  `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 1 nachziehen, beginnend mit
+  `struct`/`typedef`.
 
 ## Kurzfassung
 
@@ -41,6 +50,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - Kurzschlussauswertung von `&&` und `||`
 - ternärer Operator `?:`
 - Zuweisungen und zusammengesetzte Zuweisungen
+- Kontrollfluss: `if/else`, `while`, `for`, `do/while`, `break`, `continue`
 - Pointer: Deklaration, `&`, `*`, `p[i]`, Pointerparameter/-rückgabe,
   Pointervergleich, skalierte Arithmetik und Pointerdifferenz
 - TinyVM als ausführbares Testorakel
@@ -52,7 +62,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-34 Tiny-C-Programme korrekt
+40 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 === ALLE TESTS OK ===
