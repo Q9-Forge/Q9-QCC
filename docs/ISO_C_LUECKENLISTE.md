@@ -76,7 +76,7 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 |---|---|---|
 | Ausdrucksanweisungen, Block, `if/else`, `while` | erledigt | — |
 | `for` und `do/while` | erledigt | — |
-| `switch`, `case`, `default` | offen | hoch |
+| `switch`, `case`, `default` | teilweise (gestapelte Case-Label, aber KEIN Fallthrough mit Code zwischen Bodies) | hoch |
 | `break` und `continue` | erledigt | — |
 | `goto` und Labels | offen | mittel |
 | `return` | teilweise | hoch |

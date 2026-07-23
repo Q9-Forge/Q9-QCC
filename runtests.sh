@@ -391,6 +391,14 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int counter=0; int main(){ counter++; counter++; putint(counter); }' '2'
 		tc_check 'int main(){ char c=65; c++; putchar(c); }' 'B'
 		tc_check 'int main(){ int i=0; i++; i++; i++; putint(i); }' '3'
+		tc_check 'int main(){ int x=2; switch(x){ case 1: putint(11); break; case 2: putint(22); break; default: putint(99); } }' '22'
+		tc_check 'int main(){ int x=5; switch(x){ case 1: putint(11); break; case 2: putint(22); break; default: putint(99); } }' '99'
+		tc_check 'int main(){ int x=5; switch(x){ case 1: putint(11); break; case 2: putint(22); } putint(1); }' '1'
+		tc_check 'int main(){ int x=2; switch(x){ case 1: case 2: putint(12); break; case 3: putint(3); } }' '12'
+		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ int c=GREEN; switch(c){ case RED: putint(0); break; case GREEN: putint(1); break; case BLUE: putint(2); } }' '1'
+		tc_check 'int main(){ int x=-1; switch(x){ case -1: putint(99); break; case 0: putint(0); } }' '99'
+		tc_check 'int main(){ int i=0; int n=0; while(i<3){ switch(i){ case 1: break; default: n+=1; } i+=1; } putint(n); }' '2'
+		tc_check 'int main(){ int i=0; int sum=0; while(i<5){ i+=1; switch(i){ case 3: continue; } sum+=i; } putint(sum); }' '12'
 		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field' && \
 		   build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; }' 2>&1 | grep -q 'struct fields must share one type'; then
 			echo "ok    tinyc: unbekanntes Feld und gemischte Feldtypen werden diagnostiziert"
@@ -437,7 +445,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 58 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/-- -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 66 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef/enum, sizeof/++/--/switch -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -479,6 +487,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc struct 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
+		build/tinyc_backend build/tinyc_switch.ir build/tinyc_switch.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_switch.bin build/tinyc_switch.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_switch.s68 2>/dev/null)" = "23" ]; then
+		echo "ok    tinyc switch 68000: gestapelte case-Label + default korrekt"
+	else
+		echo "FAIL  tinyc switch 68000: switch/case fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc switch 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 # 14) Tiny-C M4b/M4c-1: Der Python-Simulator ist ausschliesslich ein Test-Orakel,
 #     nicht Teil der auszuliefernden Toolchain. Er fuehrt die von M4a erzeugte 68k-
@@ -569,6 +589,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_switch_arm64.ir build/tinyc_switch_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_switch_arm64 build/tinyc_switch_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_switch_arm64)" = "23" ]; then
+		echo "ok    tinyc switch ARM64: gestapelte case-Label + default korrekt"
+	else
+		echo "FAIL  tinyc switch ARM64: switch/case fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc switch ARM64: Backend fehlt -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
