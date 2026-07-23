@@ -11,6 +11,8 @@
 | Tiny-C `typedef` | erledigt | Skalar-/Pointer-Aliase, reine Grammatik-Erweiterung |
 | Tiny-C `struct` (einheitlicher Feldtyp) | erledigt | Feldzugriff nutzt LOADIDX/STOREIDX wieder -- kein Backend-Change; gemischte Feldtypen bewusst vertagt (siehe SELFHOSTING_LUECKENLISTE.md) |
 | Tiny-C `enum` | erledigt | reine benannte int-Konstanten, kein eigener Typ, kein Backend-Change (nur PUSH) |
+| Tiny-C `sizeof` | erledigt | nur int/char/bool/unsigned/struct als Argument, keine Pointer, kein Backend-Change (Konstante zur Kompilierzeit) |
+| Tiny-C Prä-/Postinkrement (`++`/`--`) | erledigt | nur einfache int/unsigned/char-Skalare (lokal/global), kein Backend-Change (LOAD/DUP/PUSH/ADD-oder-SUB/STORE) |
 | Arrays | erledigt | bytegenaue `char[]`/`int[]`, lokal und global |
 | Datentypen | erledigt | `int`, `unsigned int`, `char`, `bool`, Nullwert |
 | Operatoren | erledigt | Rechen-, Vergleichs-, Bit-, Shift-, Logik- und ternäre Operatoren |

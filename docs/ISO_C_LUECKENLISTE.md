@@ -63,9 +63,9 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | `&&`, `||` mit Kurzschluss | erledigt | — |
 | bitweise Operatoren und Shifts | erledigt | — |
 | Zuweisungen und kombinierte Zuweisungen | erledigt | — |
-| Prä-/Postinkrement und -dekrement | offen | hoch |
+| Prä-/Postinkrement und -dekrement | erledigt (nur einfache int/unsigned/char-Skalare) | — |
 | Casts und implizite Konversionen | teilweise | sehr hoch |
-| `sizeof` und `_Alignof` | offen | hoch |
+| `sizeof` und `_Alignof` | teilweise (`sizeof` auf int/char/bool/unsigned/struct, keine Pointer, kein `_Alignof`) | hoch |
 | Kommaoperator | offen | mittel |
 | vollständige Constant Expressions | offen | hoch |
 | Sequenzierungs- und Undefined-Behavior-Regeln | offen | sehr hoch |
@@ -136,8 +136,10 @@ zielsystemspezifische Runtime sinnvoll, nicht sofort die komplette Bibliothek.
 
 `for`, `do/while`, `break`, `continue`, `typedef` (erledigt, 2026-07-23),
 `struct` mit einheitlichem Feldtyp (erledigt, 2026-07-23; gemischte Feldtypen
-noch offen, siehe SELFHOSTING_LUECKENLISTE.md), noch offen: Prä-/Postinkrement,
-Casts, `sizeof`, Funktionsprototypen, `enum` und ein robuster Präprozessor.
+noch offen, siehe SELFHOSTING_LUECKENLISTE.md), Prä-/Postinkrement (erledigt,
+2026-07-23), `sizeof` auf Basistypen/struct (erledigt, 2026-07-23; auf Pointer
+weiterhin offen), noch offen: Casts, Funktionsprototypen, `enum`-Typsicherheit
+(Konstanten sind erledigt, aber ohne eigenen Typ) und ein robuster Präprozessor.
 
 ### Stufe B: C17-Sprachkern
 
