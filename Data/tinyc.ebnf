@@ -20,6 +20,10 @@ block     = "{" { statement } "}" .
 statement = varDecl
           | ifStmt
           | whileStmt
+          | forStmt
+          | doStmt
+          | breakStmt
+          | continueStmt
           | returnStmt
           | block
           | callStmt
@@ -51,6 +55,26 @@ whileStmt = whileKw "(" whileCond ")" whileBody .
 whileKw   = "while" .
 whileCond = expr .
 whileBody = statement .
+
+forStmt   = forKw "(" [ forInit ] forSep1 [ forCond ] forSep2 [ forStep ] forClose forBody .
+forKw     = "for" .
+forSep1   = ";" .
+forSep2   = ";" .
+forClose  = ")" .
+forInit   = target assignop expr .
+forCond   = expr .
+forStep   = target assignop expr .
+forBody   = statement .
+
+doStmt    = doKw doBody doWhileTok "(" doCond ")" doClose .
+doKw      = "do" .
+doWhileTok = "while" .
+doCond    = expr .
+doClose   = ";" .
+doBody    = statement .
+
+breakStmt    = "break" ";" .
+continueStmt = "continue" ";" .
 
 expr       = conditionalExpr .
 conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
