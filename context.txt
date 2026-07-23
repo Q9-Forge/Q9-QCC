@@ -1,3 +1,92 @@
+# RESUME (Stand: 2026-07-20, Tiny-C M4b fertig)
+M4a ist fertig: Source/tinyc_backend.cpp ist ein EIGENSTAENDIGES C++-Tool
+(nicht Teil des allgemeinen ebnf-Generators), das Stack-IR nach PIC-faehigem
+68000-Motorola-Assembler uebersetzt. Es behandelt Frames/Parameter/Slots,
+ADD/SUB/NEG, Vergleiche, Labels/Spruenge, CALL/RET und PRINT. Interne Aufrufe
+und Spruenge sind PC-relativ, Datenzugriffe frame-relativ. MUL/DIV/putint/exit
+sind bewusst noch Target-Runtime-Stubs. runtests.sh baut das Tool und assembliert
+einen Mehrparameter-/CALL-Fall mit dem freien vasm.
+M4b ist nun ebenfalls fertig: tools/tiny68sim.py ist ein reines Python-
+TEST-ORAKEL (nicht Teil der auszuliefernden Toolchain), das die vom C++-Backend
+erzeugten 68k-Schablonen inklusive Frames/Call/RET ausfuehrt und die temporaeren
+Runtime-Hooks fuer PRINT/MUL/DIV bereitstellt. Die rekursive Fakultaet assembliert
+mit vasm und liefert im 68k-Testlauf wie tinyvm korrekt 120. Naechster Schritt M4c:
+die echte austauschbare Target Runtime fuer mindestens einen Zielweg definieren.
+Q9 ist als erster echter 68k-Zielweg festgelegt. Die Q9-Unterlagen zeigen aber,
+dass TRAP-Dispatcher, Modul-Lader und endgueltige Syscall-ABI noch nicht
+implementiert sind. Daher ist M4c zunaechst sauber zweigeteilt: Das EBNF-Backend
+verwendet nur den festen Plattform-Vertrag `tc_putint`, `tc_exit`; ein spaeteres
+separates `runtime/q9_68k` implementiert ihn anhand der dann festgelegten Q9-ABI.
+`tc_mul_i32` und `tc_div_i32` sind dagegen seit M4c-1 echte PIC-faehige 68000-
+Core-Schablonen (signed int32), keine Plattform-Hooks mehr. Keine geratenen
+TRAP-Nummern und keine Microware-/ROF-Abhaengigkeit. Details: docs/ARCHITEKTUR.md
+10.13.
+M4c-2 ist ebenfalls fertig: Tiny-C kann nun `int counter;` vor den Funktionen
+deklarieren. Das Frontend hat neben `tcNames` (Name -> lokaler Slot der aktuellen
+Funktion) eine dauerhafte Globaltabelle `tcGlobalNames`. Es emittiert
+`GLOBAL`/`LOADG`/`STOREG`; tinyvm und das C++-68k-Backend pruefen diese. Der
+68000-Code liest Globals PC-relativ und schreibt ueber `lea tc_g_name(pc),a0` +
+`move.l d0,(a0)`, weil PC-relative Adressierung beim 68000 kein Zieloperand sein
+darf. Der globale `counter`-Test liefert in TinyVM und 68k-Simulator `1`, `2`.
+Erster echter Lauf (2026-07-21): Source/tinyc_arm64_backend.cpp + die kleine,
+eigene Darwin-Runtime runtime/arm64_darwin/start.s erzeugen ein natives ARM64-
+Mach-O. start.s definiert _start, tc_putint und tc_exit per direkten Darwin-
+Systemcalls; clang linkt mit -nostartfiles (keine C-Startdatei). Das Programm
+mit Global counter, rekursiver Fakultaet und -20/3 ist real gelaufen und hat
+120, -6 ausgegeben. runtests.sh Abschnitt 16 sichert genau diesen Pfad.
+M4c-3 (2026-07-21): Globale konstante int32-Initialisierer funktionieren:
+`int limit = 10;` liefert IR `GLOBAL limit 10`, ein Nullwert bleibt BSS.
+68k trennt dies derzeit als logische DATA-/BSS-Bloecke im flachen Einzelmodul;
+ARM64/Darwin emittiert echte Mach-O-Abschnitte __DATA,__data und __DATA,__bss.
+Wichtig: globalDecl wird erst nach ihrem Semikolon als Text ausgewertet. So kann
+der bei `{ globalDecl }` erwartete Backtracking-Versuch auf ein `int func(...)`
+keine Variable oder Zahl mehr versehentlich im Frontend-Zustand hinterlassen.
+M4c-4 (2026-07-21): Neuer Plattform-Hook tc_putchar. Das Frontend erkennt
+putchar(int) als Builtin und emittiert PRINTC; 68k ruft tc_putchar, ARM64/Darwin
+implementiert ihn in runtime/arm64_darwin/start.s mittels eines 1-Byte-write-
+Systemcalls. TinyVM und tiny68sim haben dieselbe Zeichen-Semantik. Der native
+ARM64-Regressionstest schreibt sichtbar OK, danach 120 und -6.
+T1 char (2026-07-21) fertig: `int` ist signed 32 Bit, `char` unsigned 8 Bit.
+Typkennungen stehen in lokalen/globalen Frontend-Tabellen; die IR benutzt
+LOADC/STOREC/LOADGC/STOREGC. 68k emittiert move.b, ARM64 ldrb/strb und globale
+char-Felder sind ein Byte gross. `char mark = 335;` ergibt durch Trunkierung
+das Zeichen O; der Test laeuft mit 68k-Simulator und nativem ARM64.
+T2 unsigned int (2026-07-21) fertig: Der ISO-C-Typ `unsigned int` ist ein
+32-Bit-Worttyp (IR-Code `u`) und nutzt das gleiche Layout wie `int`. Division
+und Ordnungsvergleiche sind unsigned: `UDIV`, `CMPULT`, `CMPUGT`, `CMPULE`,
+`CMPUGE`. TinyVM, ARM64 (`udiv` + unsigned Condition Codes) sowie das 68000-
+Backend (feste 32-Runden-`tc_udiv_u32`-Schablone und Carry-Vergleiche) laufen
+bei `0xffffffff > 1` und `0xffffffff / 2` mit 1 bzw. 2147483647. `putint`
+bleibt signed; `putuint` ist ein spaeterer Plattform-Hook. Kurzformen wie
+`uint32_t` bleiben einer spaeteren Bibliotheks-`typedef.h` vorbehalten.
+T3 putuint (2026-07-22) fertig: `putuint(e)` emittiert `PRINTU` und zeigt die
+unsigned 32-Bit-Darstellung. TinyVM/tiny68sim und die native ARM64-Darwin-
+Runtime stimmen bei `-1` als `4294967295` ueberein; der 68000-Vertrag lautet
+`tc_putuint` und wird spaeter durch die Q9-Runtime erfuellt.
+Festgehaltene Backend-Regel: wiederkehrende Sprachkonstrukte bekommen pro CPU
+FESTE Assembler-Schablonen; nur Labels, Offsets, Konstanten und Symbole werden
+eingesetzt. `if`/`while`/Call/Frame sind also keine Heuristik. Die Schablonen
+werden als benannte Emissionsfunktionen gekapselt, nicht verstreut ausgegeben.
+
+# RESUME (Stand: 2026-07-20, Tiny-C Meilenstein 3 fertig)
+M2 Kontrollfluss und M3 Funktionen sind fertig. `if/else`/`while` emittieren
+LABEL/JZ/JMP ueber einen verschachtelbaren Kontroll-Frame-Stack. Funktionsaufrufe
+haben jetzt eigene verschachtelbare Call-Frames (Name + Argumentzahl + gesicherte
+ausstehende Add-/Mul-Operatoren): Dadurch bleibt z.B. `n * fact(n - 1)` beim Parsen
+des Arguments korrekt. Mehrfachparameter, verschachtelte Aufrufe und rekursive
+Fakultaet sind Ende-zu-Ende gegen tinyvm getestet. runtests.sh prueft jetzt 15
+Tiny-C-Programme; komplette Suite: ALLE TESTS OK. Naechster Schritt M4: eigener
+`ir2m68k`-Backend-Prototyp (Stack-IR nach 68k), differenziell gegen tinyvm testen.
+
+# RESUME (Stand: 2026-07-20, Architekturidee Target-Modularitaet erfasst)
+Wichtige, bewusst vertagte Entscheidung: Stack-IR bleibt CPU-/OS-neutral.
+Kuenftige Ausgaben werden getrennt als **Architecture Backend** (68k/i386/x86-64)
+und **Target Runtime** (Q9/OS-9/POSIX/DOS/Bare Metal) organisiert. Die Runtime
+kapselt die Sprach-Aussenwelt (`tc_putint`, spaeter I/O/Dateien/Speicher),
+Systemcalls, Startcode und Ziel-ABI. `int` = signiertes 32 Bit auf jedem Ziel.
+Dokumentiert in docs/ARCHITEKTUR.md Abschnitt 10.12; Umsetzung erst nach M1--M3
+und vor bzw. zusammen mit M4 konkretisieren.
+
 # RESUME (Stand: 2026-07-20, autonome Loop-Session)
 Direkter Einstieg: docs/ARCHITEKTUR.md Abschnitt 7 (OFFEN) und Abschnitt 9 (Nutzer-Code)
 lesen -- beide heute grundlegend erweitert/umgesetzt. ./runtests.sh: ALLE TESTS OK.

@@ -675,12 +675,84 @@ weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog c
       IR-emittierenden ROUTINE-C-Koerpern; tools/tinyvm. Ziel: putint(2+3*4);
       und Variablen rechnen ueber die IR korrekt. (Kein Tool-Change.)
 - M2  Kontrollfluss if/else + while ueber Label/Sprung-IR (10.6). Ziel: Schleifen/
-      Bedingungen laufen in tinyvm. (= 9.4d in echt.)
+      Bedingungen laufen in tinyvm. (= 9.4d in echt.) **FERTIG, 2026-07-20:**
+      `ifKw`/`whileKw`-Aktionen legen Kontroll-Frames mit eindeutigen Labels an;
+      `ifCond`/`whileCond` emittieren `JZ`, die Abschlussaktionen `JMP`/`LABEL`.
+      4 zusaetzliche End-to-End-Programme testen true/false-if, while und ein
+      verschachteltes if im while gegen tinyvm.
 - M3  Funktionen mit int-Parametern + Rueckgabe + Rekursion. Ziel: fib/fakultaet
-      laufen rekursiv in tinyvm.
-- M4  Backend tools/ir2m68k: dieselbe IR -> .s68/OS-9, differenziell gegen tinyvm
-      geprueft (s68sim + vasm + r68/Wine). Ziel: fib.c als echter OS-9/68k-Code.
-- M5+ Typen wachsen lassen: char -> Pointer -> Arrays -> Structs; globale Variablen.
+      laufen rekursiv in tinyvm. **FERTIG, 2026-07-20:** Der Frontend-Emitter
+      verwaltet verschachtelbare Call-Frames (Name + Argumentzahl), damit ein
+      Aufruf als Argument eines anderen Aufrufs korrekt bleibt. Die Frames sichern
+      zudem ausstehende Add-/Mul-Operatoren, damit etwa `n * fact(n - 1)` nicht
+      beim Parsen des Arguments voreilig multipliziert. Zwei neue Tests pruefen
+      Mehrfachparameter/verschachtelten Aufruf und rekursive Fakultaet.
+- M4  Backend (eigenstaendiges C++, nicht Teil von `ebnf`): dieselbe IR -> .s68/OS-9,
+      differenziell gegen tinyvm geprueft. **BEGONNEN, M4a 2026-07-20:**
+      `Source/tinyc_backend.cpp` liest die Text-IR und erzeugt PIC-faehigen
+      68000-Motorola-Assembler fuer Funktionsframes, Parameter, lokale Slots,
+      ADD/SUB/NEG, Vergleiche, Spruenge, CALL/RET und PRINT. `runtests.sh`
+      assembliert einen Mehrparameter-/CALL-Fall mit freiem vasm. MUL/DIV und I/O
+      sind noch Runtime-Stubs. **M4b 2026-07-20:** `tools/tiny68sim.py` (nur
+      Test-Orakel, nicht Teil der Toolchain) fuehrt die M4a-Ausgabe aus und bildet
+      die minimale Runtime nach; die rekursive 68k-Fakultaet liefert nach vasm-
+      Assemblercheck ebenso `120` wie tinyvm. **M4c-1 2026-07-20:** Die festen,
+      PIC-faehigen 68000-Schablonen `tc_mul_i32` und `tc_div_i32` sind nun echter
+      68k-Core (signed int32, nicht Runtime); der Simulator durchlaeuft sie mit
+      Fakultaet, negativer Multiplikation und Division. **M4c-2 2026-07-20:**
+      Globale, nullinitialisierte `int32`-Variablen sind implementiert. Der
+      Frontend-Namensraum trennt lokale Slots und globale Namen; die IR verwendet
+      `GLOBAL`/`LOADG`/`STOREG`. Das 68000-Backend emittiert PC-relative Loads
+      sowie Stores ueber einen kurzlebigen `a0`-Adress-Temporaer in sein
+      nullinitialisiertes Daten-/BSS-Aequivalent. **M4c-3 2026-07-21:**
+      Globale Literale (`int limit = 10;`, auch negativ) emittieren
+      `GLOBAL name wert`. Nichtnullwerte stehen im DATA-Aequivalent, Nullwerte
+      im BSS-Aequivalent; ARM64/Darwin verwendet dafuer echte Mach-O-
+      `__DATA,__data`- bzw. `__DATA,__bss`-Bereiche. Die Auswertung erfolgt
+      erst nach der vollstaendigen globalDecl-Regel, damit Backtracking eines
+      Funktionspraefixes keinen Frontend-Zustand veraendert. Echte Ziel-Runtime
+      folgt. **M4c-4 2026-07-21:** Der zweite Plattform-Hook `tc_putchar`
+      ist implementiert. Tiny-C erkennt `putchar(int)`, emittiert `PRINTC` und
+      das ARM64-Darwin-start.s schreibt das niederwertige Byte direkt nach
+      stdout. Der 68k-Backend-Vertrag ist derselbe (`bsr tc_putchar`); bis zur
+      Q9-Runtime prueft tiny68sim ihn. Der native Test gibt `OK`, `120`, `-6`
+      aus.
+      **T1 2026-07-21:** `int` (signed 32 Bit) und `char` (unsigned 8 Bit)
+      sind nun echte Eintraege der lokalen und globalen Namensraeume. Die IR
+      unterscheidet `LOADC`/`STOREC` und `LOADGC`/`STOREGC`; Zuweisungen nach
+      char kuerzen auf das niederwertige Byte. 68000 emittiert `move.b`, ARM64
+      `ldrb`/`strb`; globale char-Daten sind ein Byte gross. Der End-to-End-Test
+      kuerzt `char mark = 335` zu `O` und prueft beide Backends.
+      **Typnamen-Entscheidung 2026-07-21:** Der geplante 32-Bit-Unsigned-Typ
+      heisst nach ISO C `unsigned int` (nicht `uint`). Komfortnamen wie
+      `uint32_t` gehoeren spaeter in eine Bibliotheks-`typedef.h`, nicht in den
+      Sprachkern.
+      **T2 unsigned int 2026-07-21:** `unsigned int` ist jetzt ein 32-Bit-
+      Worttyp mit demselben Speicherlayout wie `int`. Der Frontend-Typcode ist
+      `u`; Addition/Subtraktion bleiben Wortoperationen, Division und die vier
+      Ordnungsvergleiche werden jedoch unsigned (`UDIV`, `CMPU...`). TinyVM,
+      die ARM64-Emission (`udiv`, `lo`/`hi`/`ls`/`hs`) und der 68000-Pfad
+      (feste 32-Runden-`tc_udiv_u32`-Schablone, Carry-basierte Vergleiche)
+      sind gegen `0xffffffff > 1` und `0xffffffff / 2` getestet. `putint`
+      bleibt bewusst eine signed-Ausgabe; ein `putuint` ist ein spaeterer
+      Plattform-Hook.
+      **T3 putuint 2026-07-22:** Dieser Hook ist nun vorhanden: `putuint(e)`
+      emittiert `PRINTU` und schreibt den Wert als unsigned 32-Bit-Dezimalzahl.
+      TinyVM und tiny68sim verwenden dieselbe Darstellung; die ARM64-Darwin-
+      Runtime besitzt `_tc_putuint` ohne Vorzeichenbehandlung. Der 68000-
+      Backend-Vertrag ist `tc_putuint` und wartet wie `tc_putint` nur noch auf
+      die spaetere Q9-Runtime.
+      **Gestaltungsregel fuer den weiteren Ausbau:** Wiederkehrende Sprachkonstrukte
+      bekommen je Backend eine FESTE Assembler-Schablone; eingesetzt werden nur
+      Parameter wie Labels, Stack-/Frame-Offsets, Konstanten und Symbolnamen. Ein
+      `if`, `while`, Call/Return oder Frame-Prolog wird also nicht jedes Mal neu
+      entworfen. Diese festen Muster (Frame-Prolog/-Epilog, Push/Pop,
+      Binaeroperation, Vergleich zu Bool, bedingter Sprung, Datenzugriff,
+      Runtime-Aufruf) werden als benannte Emissionsfunktionen gekapselt statt als
+      verstreute Textausgaben pro Opcode.
+- M5+ Typen wachsen lassen: char und Arrays sind vorhanden; Pointer sind seit
+      2026-07-22 implementiert. Naechster grosser Typschritt sind Structs sowie
+      nichtkonstante globale Initialisierer und echte linkerfaehige Abschnitte.
 
 Integration in runtests.sh (M1): eigener Abschnitt, der tinyc_p auf eine Reihe
 Testprogramme laufen laesst und die tinyvm-Ausgabe gegen erwartete Werte prueft
@@ -690,7 +762,48 @@ wird ohnehin ueber die Programm-Tests validiert.
 
 ### 10.11 Offene Punkte / bewusste Vertagungen
 
-- Globale Variablen: erst nach M4 (LOADG/STOREG + Daten-psect).
+- Nichtkonstante globale Initialisierer und linkerfaehige 68k-/Q9-Abschnitte im
+  Modulformat: nach M4 (konstante int32-DATA/BSS-Globals sind seit M4c-3 da).
+
+### 10.11a Array-Frame-Modell (Entwurf, 2026-07-21)
+
+Feste, eindimensionale `int`-/`char`-Arrays werden nicht als Folge normaler
+4-Byte-Lokalslots modelliert: Das waere fuer `char[]` falsch, weil dessen
+Elemente byteweise zusammenhaengen muessen. Die Frontend-Symboltabelle erhaelt
+deshalb pro Objekt Basistyp, Elementzahl, bytegenaue Groesse und einen logischen
+Frame-/Datenoffset. Die IR wird dazu eine explizite lokale bzw. globale
+Arraydeklaration sowie `LOADIDX`/`STOREIDX` erhalten; der Index liegt bereits
+als int32 auf dem Operanden-Stack.
+
+Die Backend-Schablonen sind dann fest: `char` adressiert `basis + index`, `int`
+adressiert `basis + index * 4`. Lokale Arrays reservieren exakt ihre Bytegroesse
+im Frame (mit mindestens 4-Byte-Ausrichtung der nachfolgenden int-Objekte);
+globale Arrays liegen als zusammenhaengende DATA-/BSS-Bloecke. Parameter-Arrays
+und Pointer sind inzwischen im nachfolgenden Modell vereinheitlicht;
+vollstaendige dynamische Bounds-Checks bleiben ein Folgeschritt.
+
+### 10.11b Pointer- und erweiterbares Typmodell (implementiert 2026-07-22)
+
+Ein Typ ist im Frontend nicht mehr nur ein einzelner Buchstabe, sondern ein
+Paar aus Basistyp (`int`, `unsigned int`, `char`, `bool`) und Pointertiefe.
+Dadurch werden `T*`, `T**` und spaetere Erweiterungen am selben Modell
+abgebildet. Arrays behalten ihre feste Objektgroesse, zerfallen in Ausdruecken
+aber zu einem Pointer auf ihr erstes Element; Arrayparameter werden intern
+ebenfalls als Pointer gefuehrt.
+
+Die Stack-IR trennt Adresse und Wert explizit: `ADDRL`/`ADDRG` und `PUSHADDR`
+bilden Adressen, `LOADIND`/`STOREIND` greifen indirekt zu, `PTRINDEX` adressiert
+ein Element. `PADD`, `PSUB`, `IPADD` und `PDIFF` transportieren statt einer
+festen Bytezahl den Elementtyp `c`, `i` oder `p`. Daher skaliert jedes Backend
+selbst korrekt: `char*` mit 1, `int*` mit 4 und Pointer-auf-Pointer mit der
+Pointergroesse des Ziels (68000: 4, ARM64: 8 Byte).
+
+TinyVM verwendet dafuer abstrakte Byteadressen in Speicherbloecke. Das
+68000-Backend nutzt 32-Bit-Adressen, ARM64 durchgehend 64-Bit-Adressen fuer
+Pointer-Slots, Argumente und Rueckgaben. Unterstuetzt sind Adressbildung und
+Dereferenzierung, indirekte Zuweisung, `p[i]`, Pointerparameter/-rueckgaben,
+Pointerarrays, Pointervergleiche, Nullkonstante `0`, skalierte Addition und
+Subtraktion sowie die Differenz kompatibler Pointer.
 - AST-Register-IR statt Stack-IR: Option fuer Codequalitaet, erst wenn 68k-Ausgabe
   zu schlecht ist (10.4).
 - Dangling-else, return mitten im Block, Kurzschluss-&&/||: als M2/M3-Details
@@ -699,7 +812,73 @@ wird ohnehin ueber die Programm-Tests validiert.
 - putint als echter OS-9-Trap (I$Write) statt PRINT: M4/M5.
 - typedef/Praeprozessor/Declarator-Syntax: bewusst ausserhalb Tiny-C (10.1).
 
-### 10.12 Umsetzungsstand Meilenstein 1 (2026-07-20, FERTIG)
+### 10.12 Zielmodularitaet: Architecture Backend + Target Runtime (Idee, vertagt 2026-07-20)
+
+Die Stack-IR bleibt bewusst unabhaengig von CPU, Betriebssystem und konkreter
+Aufrufkonvention. Kuenftige Ausgaben werden in zwei austauschbare Teile getrennt:
+
+```
+Stack-IR -> Architecture Backend -> Target Runtime -> Betriebssystem/Hardware
+             (68k/i386/x86-64)    (Q9/OS-9/POSIX/DOS/Bare Metal)
+```
+
+- Das **Architecture Backend** setzt Rechenoperationen, lokale Slots,
+  Kontrollfluss, Frames und den internen Funktionsaufruf in CPU-Code um.
+- Die **Target Runtime** implementiert die sprachliche Aussenwelt, zuerst
+  `tc_putint`, spaeter Ein-/Ausgabe, Dateien, Speicher und Programmende. Sie
+  kapselt dabei Systemcalls, Startcode und das jeweilige Ziel-ABI.
+- `int` der Tiny-C-Sprache ist von Anfang an als signiertes 32-Bit-Wort zu
+  definieren, unabhaengig von der Host-CPU. Der IR-Opcode-Satz bleibt ABI-neutral.
+
+Erwuenschte Kombinationen: `68k backend + Q9 runtime`, `i386 backend +
+OS-9/386 runtime` sowie `x86-64 backend + POSIX runtime` als schneller
+Entwicklungs- und Testpfad. BIOS-/UEFI-Zugriff ist bei Bedarf ein weiteres
+Bare-Metal-Runtime-Ziel; er gehoert nicht in die IR und nicht in den Hosted-
+x86-64-Testpfad. Diese Aufteilung wird erst nach M1--M3 und vor bzw. zusammen
+mit dem ersten 68k-Backend (M4) konkretisiert.
+
+**Erster echter Hosted-Zielweg, 2026-07-21:** Auf dem ARM64-Mac existiert nun
+ARM64 backend + Darwin runtime. `Source/tinyc_arm64_backend.cpp` emittiert
+PIC-faehigen ARM64-Programmassembler (Frames, Calls, signed int32-Arithmetik,
+Kontrollfluss und Globals); `runtime/arm64_darwin/start.s` besitzt den eigenen
+`_start`, `tc_putint` und `tc_exit` ueber direkte Darwin-Systemcalls. Es wird
+mit `clang -nostartfiles` als Mach-O gelinkt: libSystem ist nur zum Laden des
+Programms noetig, keine C-Startdatei und keine C-Runtime-Semantik. Der
+Regressionstest fuehrt rekursive Fakultaet, Globals und signed Division als
+natives Programm aus (120, -6). Das ist ein Testtraeger; die saubere
+Architekturgrenze gilt unveraendert auch fuer x86-64/POSIX und 68k/Q9.
+
+### 10.13 M4c: erste Runtime = Q9-ABI-Entwurf (2026-07-20)
+
+Q9 ist der vorgesehene erste echte 68k-Zielweg. Die Q9-Dokumentation legt
+bereits die Richtung fest (PIC-68k-Code, ein spaeterer TRAP-zu-`q9_syscall`-
+Uebergang und ein eigenes Modulformat), aber der konkrete 68k-TRAP-Dispatcher,
+der Modul-Lader und damit die endgueltigen Eintritts- und Systemcall-Details
+sind im Q9-Projekt noch nicht implementiert. Das Backend darf diese Details
+nicht raten und insbesondere keine Microware-ABI oder OS-9-ROF-Abhaengigkeit
+einschmuggeln.
+
+M4c teilt sich deshalb bewusst in zwei Schritte:
+
+1. **Jetzt im EBNF-Projekt:** Die Runtime-Grenze wird als kleine,
+   assembler- und linkerunabhaengige Schnittstelle festgelegt. Das 68k-Backend
+   ruft nur diese Plattform-Symbole auf: zuerst `tc_putint(d0: int32)` und
+   `tc_exit(d0: int32)`. Interne Funktionen bleiben PC-relativ. Die fehlenden
+   68000-Operationen `tc_mul_i32(d0,d1) -> d0` und `tc_div_i32(d0,d1) -> d0`
+   sind dagegen Teil des Architecture Backends: feste, PIC-faehige 68k-Core-
+   Schablonen und keine Q9-Abhaengigkeit.
+2. **Sobald Q9 bereit ist:** Ein separates `runtime/q9_68k` implementiert
+   genau diese Symbole mit dem dann definierten Q9-Start-, Modul- und
+   Syscall-ABI. Es darf den Aufruf der Anwendung, Ausgabe und Programmende
+   kapseln, nicht jedoch Semantik in die Stack-IR zuruecktragen.
+
+Der erste Schritt ist kein Platzhalter-Trick: Er ist die feste Vertragsschicht
+zwischen Machine Backend und Plattform. Bis Q9 sie ausfuehren kann, bleibt
+`tiny68sim.py` ausschliesslich das differenzielle Test-Orakel. Ein spaeteres
+POSIX-, OS-9/386- oder Bare-Metal-Runtime-Paket liefert dieselben Symbole mit
+eigener Start-/Systemschicht.
+
+### 10.14 Umsetzungsstand Meilenstein 1 (2026-07-20, FERTIG)
 
 M1 laeuft end-to-end: Data/tinyc.ebnf -> generierter Parser (Data/tinyc_p.c,
 ROUTINE-C-Aktionen im [NUTZER-CODE] von Data/tinyc.lextab) -> Stack-IR nach stdout
@@ -724,7 +903,9 @@ funcdef->PUSH 0/RET/ENDFUNC (Fallthrough-Rueckgabe). putint(x) wird als PRINT
 emittiert (Builtin), sonstige Aufrufe als CALL name nargs (fuer M3 vorbereitet;
 Call-Frame-Stack fuer Schachtelung folgt dort).
 
-NOCH NICHT in M1 (wie geplant): Kontrollfluss if/while (M2), echte Funktionsaufrufe
-mit Rekursion (M3), 68k/OS-9-Backend ir2m68k (M4). Die Grammatik deckt if/while/
-return/Funktionen bereits strukturell ab; nur die zugehoerigen Emissions-Aktionen
-(Label/Sprung, Call-Frame-Stack) fehlen noch.
+M2 und M3 sind inzwischen ebenfalls fertig: `if/else` und `while` emittieren
+ueber einen kleinen, verschachtelbaren Kontroll-Frame-Stack eindeutige
+`LABEL`-/`JZ`-/`JMP`-Folgen. Ein verschachtelbarer Call-Frame-Stack ermoeglicht
+Mehrfachparameter, Aufrufe als Argument und rekursive Fakultaet. Der aktuelle
+M4-Backend-Prototyp uebersetzt diese IR bereits in PIC-faehigen 68000-Assembler;
+offen bleibt die echte, nun als Q9-Runtime geplante Plattformanbindung (10.13).
