@@ -369,6 +369,17 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int i; int sum=0; for(i=0; i<10; i+=1) { if(i==5) break; if(i==2) continue; sum += i; } putint(sum); }' '8'
 		tc_check 'int main(){ int n=0; int sum=0; do { sum += n; n += 1; } while(n<5); putint(sum); }' '10'
 		tc_check 'int main(){ int i; int j; int count=0; for(i=0;i<3;i+=1){ j=0; while(j<10){ if(j==2) break; count += 1; j+=1; } } putint(count); }' '6'
+		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 3; p.y = 4; putint(p.x + p.y); }' '7'
+		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 10; p.y = p.x * 2; putint(p.y); }' '20'
+		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
+		tc_check 'typedef int MyInt; int main(){ MyInt a = 5; MyInt b = 7; putint(a + b); }' '12'
+		tc_check 'typedef int* IntPtr; int main(){ int x = 42; IntPtr p = &x; putint(*p); }' '42'
+		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field' && \
+		   build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; }' 2>&1 | grep -q 'struct fields must share one type'; then
+			echo "ok    tinyc: unbekanntes Feld und gemischte Feldtypen werden diagnostiziert"
+		else
+			echo "FAIL  tinyc: struct-Diagnosen fehlen"; tcfail=1; fail=1
+		fi
 		if build/tinyc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
 		   build/tinyc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
 			echo "ok    tinyc: break/continue ausserhalb Schleife werden diagnostiziert"
@@ -409,7 +420,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 40 Programme inkl. Pointer, for/do-while/break/continue -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 45 Programme inkl. Pointer, for/do-while/break/continue, struct/typedef -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -437,6 +448,21 @@ else
 	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
 fi
 
+# 13b) struct-Felder (einheitlicher Feldtyp, siehe SELFHOSTING_LUECKENLISTE.md):
+#      Feldzugriff nutzt LOADIDX/STOREIDX unveraendert -> kein neuer Opcode noetig,
+#      trotzdem hier explizit durch 68000 und ARM64 gegengeprueft.
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/tinyc_struct.ir && \
+		build/tinyc_backend build/tinyc_struct.ir build/tinyc_struct.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct.bin build/tinyc_struct.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_struct.s68 2>/dev/null)" = "7" ]; then
+		echo "ok    tinyc struct 68000: Feldzugriff (LOADIDX/STOREIDX) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: Feldzugriff fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
 # 14) Tiny-C M4b/M4c-1: Der Python-Simulator ist ausschliesslich ein Test-Orakel,
 #     nicht Teil der auszuliefernden Toolchain. Er fuehrt die von M4a erzeugte 68k-
 #     Schablonen-Ausgabe inklusive Frame/Call/RET und der ECHTEN 68k-Core-
@@ -513,6 +539,19 @@ if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1; then
 	fi
 else
 	echo "warn  tinyc ARM64/Darwin: nur auf arm64-macOS getestet -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/tinyc_struct_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_struct_arm64.ir build/tinyc_struct_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_arm64 build/tinyc_struct_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_struct_arm64)" = "7" ]; then
+		echo "ok    tinyc struct ARM64: Feldzugriff korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: Feldzugriff fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64: Backend fehlt -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

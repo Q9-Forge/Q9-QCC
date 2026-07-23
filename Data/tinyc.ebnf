@@ -1,4 +1,12 @@
-program   = { globalDecl } { funcdef } .
+program   = { globalDecl | structDecl | typedefDecl } { funcdef } .
+
+structDecl  = "struct" structName "{" structField { structField } "}" ";" .
+structName  = ident .
+structField = type fieldName ";" .
+fieldName   = ident .
+
+typedefDecl = "typedef" type pointerDecl typedefTargetName ";" .
+typedefTargetName = ident .
 
 globalDecl = type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
 globalInit = globalValue | initList .
@@ -17,8 +25,7 @@ paramArray = "[" "]" .
 
 block     = "{" { statement } "}" .
 
-statement = varDecl
-          | ifStmt
+statement = ifStmt
           | whileStmt
           | forStmt
           | doStmt
@@ -27,7 +34,8 @@ statement = varDecl
           | returnStmt
           | block
           | callStmt
-          | assignStmt .
+          | assignStmt
+          | varDecl .
 
 varDecl   = type pointerDecl localDecl [ "=" varInit ] ";" .
 localDecl = localName [ arraySize ] .
@@ -117,17 +125,20 @@ argList   = [ arg { "," arg } ] .
 arg       = expr .
 
 target    = directTarget | indirectTarget .
-directTarget = ident [ index ] .
+directTarget = ident [ index | member ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index ] .
+varRef    = ident [ index | member ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
+member    = "." fieldName .
 defName   = ident .
 paramName = ident .
 localName = ident .
 globalName = ident .
 funcName  = ident .
-type      = "unsigned" unsignedInt | "int" | "char" | "bool" .
+type      = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef | typedefRef .
+structTypeRef = ident .
+typedefRef = ident .
 pointerDecl = { pointerStar } .
 pointerStar = "*" .
 unsignedInt = "int" .

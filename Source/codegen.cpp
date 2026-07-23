@@ -556,7 +556,7 @@ int cgenParseConfig(const char* buf) {
 // Regel, fehlende ROUTINE) brechen die Codegenerierung nicht ab, sie werden nur gewarnt und
 // die betroffene Aktion faellt weg.
 #define ACTION_ROUTINE_MAX  256
-#define ACTION_ROUTINE_LEN 16384
+#define ACTION_ROUTINE_LEN 65536
 
 static char ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN];
 
