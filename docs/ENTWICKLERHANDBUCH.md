@@ -67,6 +67,29 @@ Fix: eigene Regel `caseNumber = digit { digit }` ohne Aktion angelegt statt
 in einem NEUEN Kontext pruefen, ob diese Regel (oder eine ihrer Kind-Regeln)
 bereits eine ACTION traegt.
 
+**Falle: dieselbe `type darf nicht auf blossen Bezeichner matchen`-Gefahr
+auch INNERHALB einer neuen Alternative neben `type`.** Bei `typedef struct
+{ ... } Name;` (anonymes struct inline, 2026-07-24) wurde zunaechst
+`typedefType = type pointerDecl | anonStructType` versucht. Bei Eingabe
+`struct {` scheitert `type`s eigene `"struct" structTypeRef`-Alternative
+zwar sauber (kein `ident` nach `struct`) -- ABER `type`s LETZTE Alternative
+`typedefRef = ident` matcht dann das Wort `struct` SELBST als vermeintlichen
+Bezeichner (es besteht ja rein strukturell nur aus Buchstaben)! `type` kehrt
+dadurch faelschlich als ERFOLGREICH zurueck, der Fehlschlag verlagert sich
+auf `typedefTargetName` (dort scheitert es dann an `{` statt am erwarteten
+Namen) -- zu spaet fuer ein Backtracking zurueck zu `anonStructType`, weil
+die Sequenz `type pointerDecl` schon als ganzes "erfolgreich" durchlaufen
+wurde. Fix: Alternativenreihenfolge getauscht --
+`typedefType = anonStructType | type pointerDecl` (`Data/tinyc.ebnf:11`).
+`anonStructType` scheitert bei einem echten `struct Tag`-Aufruf sauber und
+lokal an `anonStructOpen = "{"` (kein `ident`-Fallback in dieser Alternative
+moeglich), das Backtracking zu `type pointerDecl` funktioniert dann
+zuverlaessig. Regel: Wird eine NEUE Alternative NEBEN `type` eingefuehrt, die
+mit demselben Terminal wie eine von `type`s eigenen Alternativen beginnt
+(hier: `"struct"`), diese neue Alternative bevorzugt ZUERST versuchen, wenn
+sie selbst frei von einem `ident`-Fallback ist -- sonst kann `type`s
+`typedefRef`-Fallback den eigentlich noetigen Fehlschlag verschlucken.
+
 ## Diagnose und Wiederaufnahme
 
 Für eine kurze neue Sitzung zuerst `docs/STATUS.md`, danach nur die thematisch
