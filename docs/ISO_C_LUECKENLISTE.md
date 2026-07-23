@@ -50,7 +50,7 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
 | `struct`, `union`, `enum` | teilweise (struct mit gemischten skalaren Feldtypen erledigt 2026-07-24, `enum` erledigt; `union`, Array-/Pointer-Felder und verschachtelte structs offen) | sehr hoch |
-| `typedef` | erledigt (Skalar-/Pointer-Aliase) | — |
+| `typedef` | erledigt (Skalar-/Pointer-Aliase, `typedef struct Name Alias;`, `typedef struct { ... } Name;` anonym inline seit 2026-07-24) | — |
 | Bitfelder und `_Alignas`/`_Alignof` | offen | mittel |
 | variable length arrays | offen | mittel |
 
@@ -134,7 +134,8 @@ zielsystemspezifische Runtime sinnvoll, nicht sofort die komplette Bibliothek.
 
 ### Stufe A: brauchbares C-Subset
 
-`for`, `do/while`, `break`, `continue`, `typedef` (erledigt, 2026-07-23),
+`for`, `do/while`, `break`, `continue`, `typedef` inkl. `typedef struct { ... }
+Name;` anonym inline (erledigt, 2026-07-24),
 `struct` mit gemischten skalaren Feldtypen (erledigt, 2026-07-24; Array-Felder,
 Pointer-Felder und verschachtelte structs noch offen, siehe
 SELFHOSTING_LUECKENLISTE.md), Prä-/Postinkrement (erledigt,

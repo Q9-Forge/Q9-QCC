@@ -1,6 +1,6 @@
 # Selfhosting-Lückenliste
 
-Stand: **2026-07-24 (Nachtrag: struct mit gemischten skalaren Feldtypen)**
+Stand: **2026-07-24 (Nachtrag: anonymes struct inline im typedef)**
 
 ## Zieldefinition
 
@@ -48,10 +48,10 @@ erzeugen.
 
 | Sprachmittel | Belegstellen (Beispiele) | Tiny-C-Status | Priorität |
 |---|---|---|---|
-| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-24: GEMISCHTE skalare Feldtypen jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment -- deckt Beispiele wie `{ char name[32]; TCType type; }` fuer die Skalarfelder ab (`TCType` selbst besteht nur aus `char`/`unsigned char`-Feldern). Bewusst noch offen, je eigener Folgeschritt: Array-Felder wie `char name[32]`, Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte wuerde das frontend-berechnete Layout architekturabhaengig machen) und verschachtelte structs. `typedef struct { ... } Name;` mit anonymem struct inline im typedef ist ein separater, direkt anschliessender Schritt.) | sehr hoch |
+| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-24: GEMISCHTE skalare Feldtypen UND `typedef struct { ... } Name;` mit anonymem struct inline im typedef jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment -- deckt Beispiele wie `{ char name[32]; TCType type; }` fuer die Skalarfelder ab (`TCType` selbst besteht nur aus `char`/`unsigned char`-Feldern). Bewusst noch offen, je eigener Folgeschritt: Array-Felder wie `char name[32]`, Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte wuerde das frontend-berechnete Layout architekturabhaengig machen) und verschachtelte structs.) | sehr hoch |
 | `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | **erledigt** (2026-07-23, Nachtrag: `enum Name var;` als Deklaration moeglich, `enum Name` auch als Parameter-/Rueckgabetyp; im Speicher/Typsystem bleibt es schlicht `int`, keine eigene Typidentitaet -- entspricht C) | hoch |
 | `union` | `tiny-regex.cpp:45` (anonyme Union in `regex_t`) | fehlt | mittel |
-| `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **teilweise** (2026-07-23: Skalar-/Pointer-Aliase und `typedef struct Name Alias;` funktionieren; die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef fehlt noch) | sehr hoch |
+| `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **erledigt** (2026-07-24: Skalar-/Pointer-Aliase, `typedef struct Name Alias;` und die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef funktionieren jetzt alle. Der typedef-Zielname dient dabei intern als struct-Tag -- bewusste, harmlose Vereinfachung gegenüber striktem C, das dort keinen Tag kennt) | sehr hoch |
 | mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | fehlt (Tiny-C hat nur 1D) | sehr hoch |
 | `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | **erledigt** (2026-07-23) | hoch |
 | `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
@@ -165,10 +165,11 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
 ## Empfohlene Reihenfolge
 
 1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct` mit
-   gemischten skalaren Feldtypen (erledigt, 2026-07-24), `typedef` (erledigt,
-   noch offen: `typedef struct { ... } Name;` inline), `enum` (erledigt),
-   `for`/`switch` (erledigt), noch offen: mehrdimensionale Arrays,
-   `static`/`const`, `union` (nur 1 Fundstelle), Array-Felder in `struct`.
+   gemischten skalaren Feldtypen (erledigt, 2026-07-24), `typedef` inkl.
+   `typedef struct { ... } Name;` inline (erledigt, 2026-07-24), `enum`
+   (erledigt), `for`/`switch` (erledigt), noch offen: mehrdimensionale
+   Arrays, `static`/`const`, `union` (nur 1 Fundstelle), Array-Felder in
+   `struct`.
 2. **Mini-Runtime aus Abschnitt 3** bauen: String-Vergleichsfunktionen,
    formatierte Ausgabe, minimale Datei-I/O -- ohne die ist der Generator
    funktional nicht nachbaubar, unabhängig von der Sprachsyntax. NOCH OFFEN.
