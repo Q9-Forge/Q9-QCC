@@ -1,6 +1,6 @@
 # Selfhosting-Lückenliste
 
-Stand: **2026-07-23 (Nachtrag: nach der Sprachfeature-Session vom selben Tag)**
+Stand: **2026-07-24 (Nachtrag: struct mit gemischten skalaren Feldtypen)**
 
 ## Zieldefinition
 
@@ -48,7 +48,7 @@ erzeugen.
 
 | Sprachmittel | Belegstellen (Beispiele) | Tiny-C-Status | Priorität |
 |---|---|---|---|
-| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-23: nur EINHEITLICHER Feldtyp pro struct; der Generator braucht aber durchgehend GEMISCHTE Feldtypen, z. B. `{ char name[32]; TCType type; }` -- das ist der bewusst vertagte, teurere Teil) | sehr hoch |
+| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-24: GEMISCHTE skalare Feldtypen jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment -- deckt Beispiele wie `{ char name[32]; TCType type; }` fuer die Skalarfelder ab (`TCType` selbst besteht nur aus `char`/`unsigned char`-Feldern). Bewusst noch offen, je eigener Folgeschritt: Array-Felder wie `char name[32]`, Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte wuerde das frontend-berechnete Layout architekturabhaengig machen) und verschachtelte structs. `typedef struct { ... } Name;` mit anonymem struct inline im typedef ist ein separater, direkt anschliessender Schritt.) | sehr hoch |
 | `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | **erledigt** (2026-07-23, Nachtrag: `enum Name var;` als Deklaration moeglich, `enum Name` auch als Parameter-/Rueckgabetyp; im Speicher/Typsystem bleibt es schlicht `int`, keine eigene Typidentitaet -- entspricht C) | hoch |
 | `union` | `tiny-regex.cpp:45` (anonyme Union in `regex_t`) | fehlt | mittel |
 | `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **teilweise** (2026-07-23: Skalar-/Pointer-Aliase und `typedef struct Name Alias;` funktionieren; die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef fehlt noch) | sehr hoch |
@@ -164,10 +164,11 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
 
 ## Empfohlene Reihenfolge
 
-1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct`/`typedef`
-   (erledigt, nur einheitlicher Feldtyp), `enum` (erledigt), `for`/`switch`
-   (erledigt), noch offen: mehrdimensionale Arrays, `static`/`const`, `union`
-   (nur 1 Fundstelle), gemischte Feldtypen in `struct`.
+1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct` mit
+   gemischten skalaren Feldtypen (erledigt, 2026-07-24), `typedef` (erledigt,
+   noch offen: `typedef struct { ... } Name;` inline), `enum` (erledigt),
+   `for`/`switch` (erledigt), noch offen: mehrdimensionale Arrays,
+   `static`/`const`, `union` (nur 1 Fundstelle), Array-Felder in `struct`.
 2. **Mini-Runtime aus Abschnitt 3** bauen: String-Vergleichsfunktionen,
    formatierte Ausgabe, minimale Datei-I/O -- ohne die ist der Generator
    funktional nicht nachbaubar, unabhängig von der Sprachsyntax. NOCH OFFEN.
