@@ -49,7 +49,7 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Arrays und Array-Decay | teilweise | sehr hoch |
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
-| `struct`, `union`, `enum` | teilweise (struct mit einheitlichem Feldtyp, `enum` erledigt) | sehr hoch |
+| `struct`, `union`, `enum` | teilweise (struct mit gemischten skalaren Feldtypen erledigt 2026-07-24, `enum` erledigt; `union`, Array-/Pointer-Felder und verschachtelte structs offen) | sehr hoch |
 | `typedef` | erledigt (Skalar-/Pointer-Aliase) | — |
 | Bitfelder und `_Alignas`/`_Alignof` | offen | mittel |
 | variable length arrays | offen | mittel |
@@ -135,8 +135,9 @@ zielsystemspezifische Runtime sinnvoll, nicht sofort die komplette Bibliothek.
 ### Stufe A: brauchbares C-Subset
 
 `for`, `do/while`, `break`, `continue`, `typedef` (erledigt, 2026-07-23),
-`struct` mit einheitlichem Feldtyp (erledigt, 2026-07-23; gemischte Feldtypen
-noch offen, siehe SELFHOSTING_LUECKENLISTE.md), Prä-/Postinkrement (erledigt,
+`struct` mit gemischten skalaren Feldtypen (erledigt, 2026-07-24; Array-Felder,
+Pointer-Felder und verschachtelte structs noch offen, siehe
+SELFHOSTING_LUECKENLISTE.md), Prä-/Postinkrement (erledigt,
 2026-07-23), `sizeof` auf Basistypen/struct (erledigt, 2026-07-23; auf Pointer
 weiterhin offen), noch offen: Casts, Funktionsprototypen, `enum`-Typsicherheit
 (Konstanten sind erledigt, aber ohne eigenen Typ) und ein robuster Präprozessor.
