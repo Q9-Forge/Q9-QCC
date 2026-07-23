@@ -75,9 +75,9 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Thema | Status | Priorität |
 |---|---|---|
 | Ausdrucksanweisungen, Block, `if/else`, `while` | erledigt | — |
-| `for` und `do/while` | offen | hoch |
+| `for` und `do/while` | erledigt | — |
 | `switch`, `case`, `default` | offen | hoch |
-| `break` und `continue` | offen | hoch |
+| `break` und `continue` | erledigt | — |
 | `goto` und Labels | offen | mittel |
 | `return` | teilweise | hoch |
 | Funktionsdefinitionen und Parameter | erledigt | — |
@@ -134,8 +134,9 @@ zielsystemspezifische Runtime sinnvoll, nicht sofort die komplette Bibliothek.
 
 ### Stufe A: brauchbares C-Subset
 
-`for`, `do/while`, `break`, `continue`, Prä-/Postinkrement, Casts, `sizeof`,
-Funktionsprototypen, `typedef`, `struct`/`enum` und ein robuster Präprozessor.
+`for`, `do/while`, `break`, `continue` (erledigt, 2026-07-23), noch offen:
+Prä-/Postinkrement, Casts, `sizeof`, Funktionsprototypen, `typedef`,
+`struct`/`enum` und ein robuster Präprozessor.
 
 ### Stufe B: C17-Sprachkern
 
