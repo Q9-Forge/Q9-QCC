@@ -406,16 +406,19 @@ else
 	echo "warn  tinyc: python3 fehlt -- Tiny-C/tinyvm-Check uebersprungen"
 fi
 
-# 13) Tiny-C M4a: eigenstaendiges C++-Backend liest Stack-IR und erzeugt
+# 13) Tiny-C M4a: eigenstaendiges Backend liest Stack-IR und erzeugt
 #     PIC-faehigen 68000-Assembler. Noch keine Ziel-Runtime/Ausfuehrung; vasm
 #     prueft aber Funktionsframes, Parameter, CALL/RET und alle Syntaxdetails.
+#     Gebaut wird die reine-C-Fassung (tinyc_backend_c.cpp, siehe
+#     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (tinyc_backend.cpp)
+#     bleibt als Referenz liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ -x tools/vasmm68k_mot ]; then
-	if clang++ -std=c++17 -Wall -Wextra -o build/tinyc_backend Source/tinyc_backend.cpp 2>/dev/null && \
+	if cc -std=c11 -Wall -Wextra -x c -o build/tinyc_backend Source/tinyc_backend_c.cpp 2>/dev/null && \
 		build/tinyc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/tinyc_m4.ir && \
 		build/tinyc_backend build/tinyc_m4.ir build/tinyc_m4.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_m4.bin build/tinyc_m4.s68 2>/dev/null && \
 		grep -q '^tc_add:' build/tinyc_m4.s68 && grep -q $'bsr\ttc_add' build/tinyc_m4.s68; then
-		echo "ok    tinyc M4a: C++ IR->PIC-68000-Assembler assembliert mit vasm"
+		echo "ok    tinyc M4a: reines C, IR->PIC-68000-Assembler assembliert mit vasm"
 	else
 		echo "FAIL  tinyc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
 	fi
@@ -438,7 +441,7 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
 		echo "FAIL  tinyc M4c-1: 68k-Core-Lauf stimmt nicht mit tinyvm ueberein"; fail=1
 	fi
 else
-	echo "warn  tinyc M4c-1: python3 oder C++-Backend fehlt -- Ausfuehrungstest uebersprungen"
+	echo "warn  tinyc M4c-1: python3 oder Backend fehlt -- Ausfuehrungstest uebersprungen"
 fi
 
 # 15) Tiny-C M4c-2: Globale int32-Variablen besitzen eine eigene, dauerhafte
@@ -455,7 +458,7 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
 		echo "FAIL  tinyc M4c-4: globale Variablen/putchar im 68k-Pfad fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc M4c-4: python3 oder C++-Backend fehlt -- Globals-Test uebersprungen"
+	echo "warn  tinyc M4c-4: python3 oder Backend fehlt -- Globals-Test uebersprungen"
 fi
 
 # 15b) Pointer-End-to-End auf dem 68000-Pfad: echte Adressen, char/int-Skalierung,
@@ -475,12 +478,15 @@ else
 	echo "warn  tinyc 68000 Pointer: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 
-# 16) ARM64/Darwin: erster echter Hosted-Zielweg. Der C++-Backend erzeugt
+# 16) ARM64/Darwin: erster echter Hosted-Zielweg. Der Backend-Treiber erzeugt
 #     Programmassembler; runtime/arm64_darwin/start.s liefert eigenen Einstieg,
 #     putint und exit. Der Linker bindet nur libSystem zum Laden des Mach-O ein,
 #     keine C-Startdateien (-nostartfiles).
-if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
-	if clang++ -std=c++17 -Wall -Wextra -o build/tinyc_arm64_backend Source/tinyc_arm64_backend.cpp 2>/dev/null && \
+#     Gebaut wird die reine-C-Fassung (tinyc_arm64_backend_c.cpp, siehe
+#     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original bleibt als Referenz
+#     liegen -- Ruecksetzen = hier wieder die .cpp bauen.
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1; then
+	if cc -std=c11 -Wall -Wextra -x c -o build/tinyc_arm64_backend Source/tinyc_arm64_backend_c.cpp 2>/dev/null && \
 		build/tinyc_p 'int limit = 5; int debt = -20; unsigned int high = -1; char mark = 335; int counter; char next(char c){ return c + 1; } int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); counter = fact(limit); putint(counter); putint(debt / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/tinyc_arm64.ir && \
 		build/tinyc_arm64_backend build/tinyc_arm64.ir build/tinyc_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_arm64 build/tinyc_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
