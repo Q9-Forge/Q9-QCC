@@ -344,7 +344,7 @@ if command -v python3 >/dev/null 2>&1; then
 		tcfail=0
 		tc_check() {
 			got=$(build/tinyc_p "$1" 2>/dev/null | python3 tools/tinyvm.py 2>/dev/null)
-			exp=$(printf "$2")
+			exp=$(printf '%b' "$2")
 			if [ "$got" != "$exp" ]; then
 				echo "FAIL  tinyc: [$1]"
 				echo "        erhalten: [$got]  erwartet: [$exp]"
@@ -360,12 +360,142 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int a; int b; a = 7; b = a * a; putint(b); }' '49'
 		tc_check 'int main(){ int x = 40; /* Kommentar */ putint(x + 2); }' '42'
 		tc_check 'int main(){ putint(2 <= 3); putint(3 <= 3); putint(4 <= 3); }' '1\n1\n0'
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 9 Programme -> Stack-IR -> tinyvm korrekt (M1)"
+		tc_check 'int main(){ int x = 3; if(x > 2) putint(11); else putint(22); }' '11'
+		tc_check 'int main(){ int x = 1; if(x > 2) putint(11); else putint(22); }' '22'
+		tc_check 'int main(){ int n = 5; int sum = 0; while(n > 0) { sum = sum + n; n = n - 1; } putint(sum); }' '15'
+		tc_check 'int main(){ int n = 4; int sum = 0; while(n > 0) { if(n > 2) sum = sum + n; else sum = sum + 1; n = n - 1; } putint(sum); }' '9'
+		tc_check 'int add(int a, int b){ return a + b; } int twice(int x){ return add(x, x); } int main(){ putint(twice(21)); }' '42'
+		tc_check 'int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); }' '120'
+		tc_check 'int counter; int bump(){ counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); }' '1\n2'
+		tc_check 'int limit = 10; int debt = -7; int counter; int main(){ counter = limit + debt; putint(counter); }' '3'
+		tc_check 'int main(){ putchar(72); putchar(105); putchar(10); putint(7); }' 'Hi\n7'
+		tc_check 'char mark = 346; int main(){ char copy; copy = mark; putchar(copy); putchar(10); }' 'Z'
+		tc_check 'char next(char c){ return c + 1; } int main(){ putchar(next(345)); putchar(10); }' 'Z'
+		tc_check 'int g[3]; char bytes[4]; int main(){ int a[3]; char c[2]; a[1] = 40; a[2] = 2; c[0] = 300; g[0] = a[1] + a[2]; bytes[3] = c[0] + 1; putint(g[0]); putint(bytes[3]); }' '42\n45'
+		tc_check 'int g[4] = {7, -2, 9}; char h[3] = {65, 322}; int main(){ int a[3] = {10, 20, 30}; char b[2] = {90, 256}; putint(g[1]); putint(a[2]); putchar(h[1]); putchar(b[0]); }' '-2\n30\nBZ'
+		tc_check 'int sum(int a[], int n){ int s=0; while(n>0){ n=n-1; s=s+a[n]; } return s; } int main(){ int v[3]={10,20,30}; putint(sum(v,3)); }' '60'
+		tc_check 'bool less(int a, int b){ return a < b; } int main(){ bool ok = less(2,3); if(ok) putint(1); else putint(0); }' '1'
+		tc_check 'unsigned int x=-1; int main(){ putint(x > 1); putint(x / 2); }' '1\n2147483647'
+		tc_check 'unsigned int x=-1; int main(){ putint(x); putuint(x); }' '-1\n4294967295'
+		tc_check 'int main(){ bool a=true; bool b=false; putint(!a); putint(!b); putuint(~0); }' '0\n1\n4294967295'
+		tc_check 'int counter; bool bump(){ counter = counter + 1; return true; } int main(){ putint(false && bump()); putint(counter); putint(true || bump()); putint(counter); putint(true && bump()); putint(counter); putint(false || bump()); putint(counter); }' '0\n0\n1\n0\n1\n1\n1\n2'
+		tc_check 'int main(){ putint(true || false && false); putint((true || false) && false); }' '1\n0'
+		tc_check 'unsigned int high = -1; int main(){ putuint(high & 255); putint(6 ^ 3); putint(6 | 3); putint(8 | 3 ^ 1 & 6); }' '255\n5\n7\n11'
+		tc_check 'unsigned int high = -1; int main(){ putint(1 << 3); putint(16 >> 2); putint(32 >> 1 >> 2); putuint(high >> 30); putint(1 + 2 << 2); putint(1 << 2 + 1); }' '8\n4\n4\n3\n12\n8'
+		tc_check 'unsigned int high = -1; int main(){ putint(20 % 6); putint(-20 % 6); putuint(high % 10); putint(20 / 6 % 4); }' '2\n-2\n5\n3'
+		tc_check 'int counter; int bump(){ counter = counter + 1; return 77; } int main(){ bool yes=true; bool no=false; putint(yes ? 11 : bump()); putint(counter); putint(no ? bump() : 22); putint(counter); putint(false ? 1 : true ? 2 : 3); }' '11\n0\n22\n0\n2'
+		tc_check 'int g[2]={7,0}; int main(){ int x=20; unsigned int high=-1; int a[2]={10,20}; x += 3; x -= 3; x *= 2; x /= 6; x %= 4; x <<= 3; x >>= 2; x |= 8; x &= 10; x ^= 3; high >>= 30; a[1] += 2; a[0] |= 4; g[0] ^= 3; putint(x); putuint(high); putint(a[0]); putint(a[1]); putint(g[0]); }' '11\n3\n14\n22\n4'
+		tc_check 'int *identity(int *p){ return p; } int main(){ int x=40; int *p=&x; *p += 2; putint(*identity(p)); }' '42'
+		tc_check 'int values[4]={10,20,30,40}; char bytes[4]={5,6,7,8}; int main(){ int *p=values; char *c=bytes; int **pp=&p; int *pa[2]; int **r=pa; pa[0]=&values[0]; pa[1]=&values[3]; putint(p[2]); *(p+1)=25; putint(*(1+p)); p+=3; putint(*p); putint(p-values); c+=2; putint(*c); putint(c-bytes); putint(p!=0); putint(p>values); putint(**pp); putint(*r[1]); }' '30\n25\n40\n3\n7\n2\n1\n1\n40\n40'
+		if build/tinyc_p 'bool id(bool b){ return b; } int main(){ int n=1; id(n); }' 2>&1 | grep -q 'argument expects bool, got int' && \
+		   build/tinyc_p 'bool bad(){ return 1; } int main(){ return 0; }' 2>&1 | grep -q 'return expects bool, got int'; then
+			echo "ok    tinyc: bool-Argumente und -Rueckgaben werden typgeprueft"
+		else
+			echo "FAIL  tinyc: bool-Typpruefung fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ char a[2]; a[2] = 9; }' 2>&1 | grep -q 'constant array index 2 out of range (length 2)'; then
+			echo "ok    tinyc: konstante Arraygrenze wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
+		fi
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 34 Programme inkl. Pointer und zusammengesetzter Zuweisungen -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
 else
 	echo "warn  tinyc: python3 fehlt -- Tiny-C/tinyvm-Check uebersprungen"
+fi
+
+# 13) Tiny-C M4a: eigenstaendiges C++-Backend liest Stack-IR und erzeugt
+#     PIC-faehigen 68000-Assembler. Noch keine Ziel-Runtime/Ausfuehrung; vasm
+#     prueft aber Funktionsframes, Parameter, CALL/RET und alle Syntaxdetails.
+if [ -x tools/vasmm68k_mot ]; then
+	if clang++ -std=c++17 -Wall -Wextra -o build/tinyc_backend Source/tinyc_backend.cpp 2>/dev/null && \
+		build/tinyc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/tinyc_m4.ir && \
+		build/tinyc_backend build/tinyc_m4.ir build/tinyc_m4.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_m4.bin build/tinyc_m4.s68 2>/dev/null && \
+		grep -q '^tc_add:' build/tinyc_m4.s68 && grep -q $'bsr\ttc_add' build/tinyc_m4.s68; then
+		echo "ok    tinyc M4a: C++ IR->PIC-68000-Assembler assembliert mit vasm"
+	else
+		echo "FAIL  tinyc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
+	fi
+else
+	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
+fi
+
+# 14) Tiny-C M4b/M4c-1: Der Python-Simulator ist ausschliesslich ein Test-Orakel,
+#     nicht Teil der auszuliefernden Toolchain. Er fuehrt die von M4a erzeugte 68k-
+#     Schablonen-Ausgabe inklusive Frame/Call/RET und der ECHTEN 68k-Core-
+#     Schablonen fuer signed int32 MUL/DIV aus. Nur PRINT bleibt ein Plattform-Hook.
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
+	if build/tinyc_p 'unsigned int high=-1; int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); putint(-7 * 6); putint(20 / 3); putint(-20 / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/tinyc_m4b.ir && \
+		build/tinyc_backend build/tinyc_m4b.ir build/tinyc_m4b.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_m4b.bin build/tinyc_m4b.s68 2>/dev/null && \
+		grep -q '^tc_mul_loop:' build/tinyc_m4b.s68 && grep -q '^tc_div_loop:' build/tinyc_m4b.s68 && grep -q '^tc_udiv_loop:' build/tinyc_m4b.s68 && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_m4b.s68 2>/dev/null)" = "$(printf '120\n-42\n6\n-6\n1\n2147483647\n4294967295')" ]; then
+		echo "ok    tinyc M4c-1: echte 68k int32 signed/unsigned MUL/DIV + Fakultaet = tinyvm"
+	else
+		echo "FAIL  tinyc M4c-1: 68k-Core-Lauf stimmt nicht mit tinyvm ueberein"; fail=1
+	fi
+else
+	echo "warn  tinyc M4c-1: python3 oder C++-Backend fehlt -- Ausfuehrungstest uebersprungen"
+fi
+
+# 15) Tiny-C M4c-2: Globale int32-Variablen besitzen eine eigene, dauerhafte
+#     Namens-Tabelle im Frontend und werden im 68k-Code PC-relativ als LOADG/
+#     STOREG auf das nullinitialisierte Daten-/BSS-Aequivalent angesprochen.
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
+	if build/tinyc_p 'int limit = 10; char mark = 346; int counter; char next(char c){ return c + 1; } int bump(){ counter = counter + limit; return counter; } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); putint(bump()); putint(bump()); }' > build/tinyc_globals.ir && \
+		build/tinyc_backend build/tinyc_globals.ir build/tinyc_globals.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_globals.bin build/tinyc_globals.s68 2>/dev/null && \
+		grep -q $'tc_g_limit:\tdc.l\t10' build/tinyc_globals.s68 && grep -q $'tc_g_mark:\tdc.b\t90' build/tinyc_globals.s68 && grep -q 'andi.l' build/tinyc_globals.s68 && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_globals.s68 2>/dev/null)" = "$(printf 'ZO\n10\n20')" ]; then
+		echo "ok    tinyc M4c-4: DATA/BSS + putchar im 68k-Runtime-Vertrag = tinyvm"
+	else
+		echo "FAIL  tinyc M4c-4: globale Variablen/putchar im 68k-Pfad fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc M4c-4: python3 oder C++-Backend fehlt -- Globals-Test uebersprungen"
+fi
+
+# 15b) Pointer-End-to-End auf dem 68000-Pfad: echte Adressen, char/int-Skalierung,
+#      Pointerdifferenz, Pointer auf Pointer und Pointerarrays.
+pointer_program='int values[4]={10,20,30,40}; char bytes[4]={5,6,7,8}; int main(){ int *p=values; char *c=bytes; int **pp=&p; int *pa[2]; int **r=pa; pa[0]=&values[0]; pa[1]=&values[3]; putint(p[2]); *(p+1)=25; putint(*(1+p)); p+=3; putint(*p); putint(p-values); c+=2; putint(*c); putint(c-bytes); putint(p!=0); putint(p>values); putint(**pp); putint(*r[1]); }'
+pointer_expected=$(printf '30\n25\n40\n3\n7\n2\n1\n1\n40\n40')
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p "$pointer_program" > build/tinyc_pointer_reg.ir && \
+		build/tinyc_backend build/tinyc_pointer_reg.ir build/tinyc_pointer_reg.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_pointer_reg.bin build/tinyc_pointer_reg.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_pointer_reg.s68 2>/dev/null)" = "$pointer_expected" ]; then
+		echo "ok    tinyc 68000 Pointer: Adressen, Skalierung, Differenz und T** korrekt"
+	else
+		echo "FAIL  tinyc 68000 Pointer: Backend- oder Ausfuehrungsfehler"; fail=1
+	fi
+else
+	echo "warn  tinyc 68000 Pointer: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+
+# 16) ARM64/Darwin: erster echter Hosted-Zielweg. Der C++-Backend erzeugt
+#     Programmassembler; runtime/arm64_darwin/start.s liefert eigenen Einstieg,
+#     putint und exit. Der Linker bindet nur libSystem zum Laden des Mach-O ein,
+#     keine C-Startdateien (-nostartfiles).
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
+	if clang++ -std=c++17 -Wall -Wextra -o build/tinyc_arm64_backend Source/tinyc_arm64_backend.cpp 2>/dev/null && \
+		build/tinyc_p 'int limit = 5; int debt = -20; unsigned int high = -1; char mark = 335; int counter; char next(char c){ return c + 1; } int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); counter = fact(limit); putint(counter); putint(debt / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/tinyc_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_arm64.ir build/tinyc_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_arm64 build/tinyc_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		grep -q 'ldrb' build/tinyc_arm64.s && grep -q 'strb' build/tinyc_arm64.s && grep -q 'and.*#255' build/tinyc_arm64.s && grep -q 'udiv' build/tinyc_arm64.s && \
+		[ "$(build/tinyc_arm64)" = "$(printf 'OO\n120\n-6\n1\n2147483647\n4294967295')" ] && \
+		build/tinyc_p "$pointer_program" > build/tinyc_pointer_arm64_reg.ir && \
+		build/tinyc_arm64_backend build/tinyc_pointer_arm64_reg.ir build/tinyc_pointer_arm64_reg.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_pointer_arm64_reg build/tinyc_pointer_arm64_reg.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_pointer_arm64_reg)" = "$pointer_expected" ]; then
+		echo "ok    tinyc ARM64/Darwin: native char/unsigned und 64-Bit-Pointer korrekt"
+	else
+		echo "FAIL  tinyc ARM64/Darwin: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc ARM64/Darwin: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
