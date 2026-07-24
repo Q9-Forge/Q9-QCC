@@ -45,7 +45,7 @@
 
  <typedefTargetName>              = <ident> .
 
- <globalDecl>                     = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalName> [ <arraySize> [ <arraySize2> ] ] [ "=" <globalInit> ] ";" .
+ <globalDecl>                     = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] ";" .
 
  <constKw>                        = "const" .
 
@@ -59,7 +59,7 @@
 
  <arraySize>                      = "[" <globalNumber> "]" .
 
- <arraySize2>                     = "[" <globalNumber> "]" .
+ <arraySizeN>                     = "[" <globalNumber> "]" .
 
  <globalValue>                    = <globalNumber> 
                                   | <globalNeg> 
@@ -140,7 +140,7 @@
 
  <varDecl>                        = [ <constKw> ] <type> <pointerDecl> <localDecl> [ "=" <varInit> ] ";" .
 
- <localDecl>                      = <localName> [ <arraySize> [ <arraySize2> ] ] .
+ <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
  <varInit>                        = <arrayStringInit> 
                                   | <expr> 
@@ -366,12 +366,12 @@
  <target>                         = <directTarget> 
                                   | <indirectTarget> .
 
- <directTarget>                   = <ident> [ <index> [ <index> ] 
+ <directTarget>                   = <ident> [ <index> { <index> } 
                                   | <member> [ <index> ] ] .
 
  <indirectTarget>                 = "*" <factor> .
 
- <varRef>                         = <ident> [ <index> [ <index> ] 
+ <varRef>                         = <ident> [ <index> { <index> } 
                                   | <member> [ <index> ] ] .
 
  <index>                          = <indexOpen> <expr> "]" .
@@ -532,7 +532,7 @@
 19   72          globalInit
 20   75          globalStringInit
 21   78          arraySize
-22   81          arraySize2
+22   81          arraySizeN
 23   84          globalValue
 24   87          globalBool
 25   89          globalNeg
@@ -744,7 +744,7 @@
 63    64    -3    449   0     0     -                NTS  pointerDecl
 64    65    -3    433   0     0     -                NTS  globalName
 65    66    67    78    0     0     -                NTS  arraySize
-66    67    67    81    0     0     -                NTS  arraySize2
+66    66    67    81    0     0     -                NTS  arraySizeN
 67    68    69    -1    0     0     -                TS   "="
 68    69    -3    72    0     0     -                NTS  globalInit
 69    -1    -3    -1    0     0     -                TS   ";"
@@ -759,7 +759,7 @@
 78    79    -2    -1    0     0     arraySize        TS   "["
 79    80    -3    91    0     0     -                NTS  globalNumber
 80    -1    -3    -1    0     0     -                TS   "]"
-81    82    -2    -1    0     0     arraySize2       TS   "["
+81    82    -2    -1    0     0     arraySizeN       TS   "["
 82    83    -3    91    0     0     -                NTS  globalNumber
 83    -1    -3    -1    0     0     -                TS   "]"
 84    -1    85    91    0     0     globalValue      NTS  globalNumber
@@ -859,7 +859,7 @@
 178   -1    -3    -1    0     0     -                TS   ";"
 179   180   -2    432   0     0     localDecl        NTS  localName
 180   181   -1    78    0     0     -                NTS  arraySize
-181   -1    -1    81    0     0     -                NTS  arraySize2
+181   181   -1    81    0     0     -                NTS  arraySizeN
 182   -1    183   185   0     0     varInit          NTS  arrayStringInit
 183   -1    184   280   0     0     -                NTS  expr
 184   -1    -2    186   0     0     -                NTS  initList
@@ -1092,14 +1092,14 @@
 411   -1    -2    417   0     0     -                NTS  indirectTarget
 412   413   -2    454   0     0     directTarget     NTS  ident
 413   414   415   424   0     0     -                NTS  index
-414   -1    415   424   0     0     -                NTS  index
+414   414   415   424   0     0     -                NTS  index
 415   416   -1    428   0     0     -                NTS  member
 416   -1    -1    424   0     0     -                NTS  index
 417   418   -2    -1    0     0     indirectTarget   TS   "*"
 418   -1    -3    336   0     0     -                NTS  factor
 419   420   -2    454   0     0     varRef           NTS  ident
 420   421   422   424   0     0     -                NTS  index
-421   -1    422   424   0     0     -                NTS  index
+421   421   422   424   0     0     -                NTS  index
 422   423   -1    428   0     0     -                NTS  member
 423   -1    -1    424   0     0     -                NTS  index
 424   425   -2    427   0     0     index            NTS  indexOpen
@@ -1331,15 +1331,18 @@ static char tcNames[64][32];        /* lokale Variablen der aktuellen Funktion *
 static int  tcLocalCount = 0;
 static TCType tcLocalTypes[64];
 static int  tcLocalArrayLen[64];     /* 0 = Skalar, sonst GESAMTE (flache) Elementzahl */
-static int  tcLocalArrayDim2[64];    /* 0 = 1D-Array; sonst innere Dimension (dim1 = tcLocalArrayLen/dim2) */
+#define TC_MAXDIMS 6                 /* grosszuegige Obergrenze fuer Array-Dimensionen, siehe tcEmitNDCombine */
+static int  tcLocalArrayNDims[64];   /* 1 = kein Mehrdim-Array (Skalar/1D zaehlt auch als 1) */
+static int  tcLocalArrayDims[64][TC_MAXDIMS - 1]; /* [0]=dim2, [1]=dim3, ... -- nur die ersten NDims-1 Eintraege gueltig */
 static int  tcLocalConst[64];        /* 1 = mit "const" deklariert (auch Parameter) */
 static char tcGlobalNames[64][32];   /* globale Variablen des Programms */
 static int  tcGlobalCount = 0;
 static TCType tcGlobalTypes[64];
 static int  tcGlobalArrayLen[64];
-static int  tcGlobalArrayDim2[64];   /* siehe tcLocalArrayDim2 */
+static int  tcGlobalArrayNDims[64];  /* siehe tcLocalArrayNDims */
+static int  tcGlobalArrayDims[64][TC_MAXDIMS - 1]; /* siehe tcLocalArrayDims */
 static int  tcGlobalConst[64];       /* 1 = mit "const" deklariert */
-static int  tcIdx2DScratchDeclared = 0; /* GLOBAL __idx2d_j einmalig deklariert bei erster Nutzung */
+static int  tcIdxNDScratchDeclared[TC_MAXDIMS + 1]; /* Index 2..TC_MAXDIMS: GLOBAL __idxNd_<lvl> einmalig deklariert */
 static int  tcStringCounter = 0;    /* naechster freier __strN-Name fuer String-Literale */
 static int  tcPendingConst = 0;      /* gesetzt durch constKw, konsumiert von tc_local/tc_param/tc_globalend */
 static int  tcPendingStatic = 0;     /* gesetzt durch staticKw; bei funcHead/globalDecl nur konsumiert (No-op) */
@@ -1718,30 +1721,49 @@ static int tcCountTopIndexes(const char* p, const char* end) {
 	}
 	return count;
 }
-/* arr[i][j] -- der Laufzeit-Operandenstack traegt an dieser Stelle bereits [i, j]
-   (i unten, j oben, durch die beiden bereits geparsten Index-Ausdruecke). Direktes
-   MUL/ADD wuerde faelschlich j*dim2 statt i*dim2 berechnen (j liegt oben, nicht i) --
-   deshalb wird j kurz in ein verstecktes globales Scratch-Feld ausgelagert, i mit
-   dim2 skaliert, j wieder geladen und addiert. Kein neuer IR-Opcode, kein Backend-
-   Change: nur vorhandene STOREG/PUSH/MUL/LOADG/ADD-Opcodes. */
-static void tcEmit2DCombine(int dim2) {
-	if (!tcIdx2DScratchDeclared) { printf("GLOBAL __idx2d_j 0 i\n"); tcIdx2DScratchDeclared = 1; }
-	printf("STOREG __idx2d_j\nPUSH %d\nMUL\nLOADG __idx2d_j\nADD\n", dim2);
+/* arr[i1][i2]...[iN] -- der Laufzeit-Operandenstack traegt an dieser Stelle
+   bereits [i1, i2, ..., iN] (i1 unten, iN oben, durch die N bereits geparsten
+   Index-Ausdruecke). Direktes MUL/ADD wuerde die FALSCHEN Operanden erwischen
+   (immer der oberste Wert, nicht i1) -- deshalb werden i2..iN der Reihe nach
+   (von oben, also erst iN, dann i(N-1), ..., zuletzt i2) in je ein eigenes
+   verstecktes globales Scratch-Feld ausgelagert, bis nur noch i1 auf dem
+   Stack uebrig ist. Danach liefert das Horner-Schema result = (((i1*dim2+i2)
+   *dim3+i3)*dim4+i4)...*dimN+iN den flachen row-major-Index -- fuer N=2
+   identisch zur urspruenglichen Zweidimensional-Loesung (nur EIN Scratch-Feld
+   noetig). Kein neuer IR-Opcode, kein Backend-Change: nur vorhandene
+   STOREG/PUSH/MUL/LOADG/ADD-Opcodes, jetzt in einer Schleife statt fest
+   ausgeschrieben fuer genau zwei Ebenen. */
+static void tcEmitNDCombine(int ndims, const int* trailingDims) {
+	char name[24]; int lvl;
+	for (lvl = ndims; lvl >= 2; lvl--) {
+		sprintf(name, "__idxNd_%d", lvl);
+		if (!tcIdxNDScratchDeclared[lvl]) { printf("GLOBAL %s 0 i\n", name); tcIdxNDScratchDeclared[lvl] = 1; }
+		printf("STOREG %s\n", name);
+	}
+	for (lvl = 2; lvl <= ndims; lvl++) {
+		sprintf(name, "__idxNd_%d", lvl);
+		printf("PUSH %d\nMUL\nLOADG %s\nADD\n", trailingDims[lvl - 2], name);
+	}
 }
-/* dim2>0 heisst "diese Variable ist ein 2D-Array" (siehe tcLocalArrayDim2/
-   tcGlobalArrayDim2), idxCount = tcCountTopIndexes(nameEnd, end) am Aufrufort.
-   Nur der Fall idxCount==2 && dim2>0 emittiert die Kombinationslogik; alle
-   anderen Nicht-Uebereinstimmungen werden nur diagnostiziert (kein Absturz,
-   der nachfolgende Code laeuft mit dem unveraendert vorhandenen Operanden-
-   stack weiter -- ein Kompilierfehler ist ohnehin schon gemeldet). */
-static void tcCheck2DIndex(int dim2, int idxCount) {
-	if (idxCount == 2 && dim2 > 0) { tcEmit2DCombine(dim2); return; }
-	if (idxCount == 2) { fprintf(stderr, "tinyc: array is not two-dimensional\n"); tcSemanticErrors++; return; }
-	if (idxCount == 1 && dim2 > 0) {
-		fprintf(stderr, "tinyc: partial indexing of a 2D array is not supported (use arr[i][j])\n");
+/* ndims>1 heisst "diese Variable ist ein Mehrdim-Array" (siehe tcLocalArrayNDims/
+   tcGlobalArrayNDims), trailingDims = tcLocalArrayDims[slot]/tcGlobalArrayDims[global]
+   (dim2..dimN), idxCount = tcCountTopIndexes(nameEnd, end) am Aufrufort. Nur der
+   Fall idxCount==ndims emittiert die Kombinationslogik (ab ndims>1); alle anderen
+   Nicht-Uebereinstimmungen werden nur diagnostiziert (kein Absturz, der
+   nachfolgende Code laeuft mit dem unveraendert vorhandenen Operandenstack weiter
+   -- ein Kompilierfehler ist ohnehin schon gemeldet). Die beiden urspruenglichen
+   2D-spezifischen Meldungen ("array is not two-dimensional", "partial indexing of
+   a 2D array is not supported") bleiben fuer ndims==1/2 wortgleich bestehen (siehe
+   runtests.sh), fuer ndims>2 gibt es generalisierte Entsprechungen. */
+static void tcCheckNDIndex(int ndims, const int* trailingDims, int idxCount) {
+	if (idxCount == ndims) { if (ndims > 1) tcEmitNDCombine(ndims, trailingDims); return; }
+	if (ndims == 1 && idxCount == 2) { fprintf(stderr, "tinyc: array is not two-dimensional\n"); tcSemanticErrors++; return; }
+	if (ndims > 1 && idxCount == ndims - 1) {
+		fprintf(stderr, "tinyc: partial indexing of a %dD array is not supported (use arr[i1]...[i%d])\n", ndims, ndims);
 		tcSemanticErrors++; return;
 	}
-	if (idxCount > 2) { fprintf(stderr, "tinyc: too many array dimensions (only 1D/2D supported)\n"); tcSemanticErrors++; }
+	fprintf(stderr, "tinyc: array has %d dimension(s), but %d index(es) were given\n", ndims, idxCount);
+	tcSemanticErrors++;
 }
 static int tcInitList(const char* start, const char* end, long* values, int cap) {
 	const char* p = start; int count = 0;
@@ -1874,7 +1896,7 @@ void tc_param(const char* start, const char* end) {
 		tcLocalTypes[tcLocalCount] = tcMakeType('i', 0);
 	}
 	tcLocalArrayLen[tcLocalCount] = 0;
-	tcLocalArrayDim2[tcLocalCount] = 0;
+	tcLocalArrayNDims[tcLocalCount] = 1;
 	/* "const" vor einem Pointertyp ist Pointee-Constness (const char* p laesst p selbst
 	   frei zuweisbar, aber *p/p[i] = .. wird verboten -- tcTargetType.pointeeConst greift
 	   in tc_target/tc_indirecttarget), keine Bindungs-Immutabilitaet (das uebliche
@@ -1915,7 +1937,7 @@ void tc_local(const char* start, const char* end) {
 		tcLocalTypes[tcLocalCount] = tcCurrentType = tcMakeType('i', 0);
 	}
 	tcLocalArrayLen[tcLocalCount] = tcCurrentType.base == 's' ? tcStructFieldCount[tcCurrentType.structId - 1] : 0;
-	tcLocalArrayDim2[tcLocalCount] = 0;
+	tcLocalArrayNDims[tcLocalCount] = 1;
 	/* siehe tc_param: "const" auf einem Pointertyp ist Pointee-Constness (pointeeConst-Bit),
 	   nicht Bindungs-Immutabilitaet. */
 	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]);
@@ -1926,28 +1948,29 @@ void tc_local(const char* start, const char* end) {
 END
 ROUTINE C tc_localdecl
 void tc_localdecl(const char* start, const char* end) {
-	const char* p = start; int slot = tcLocalCount - 1, len1 = 0, len2 = 0;
+	const char* p = start; int slot = tcLocalCount - 1;
+	int dims[TC_MAXDIMS]; int ndims = 0; int total; int k;
 	if (tcLocalTypes[slot].base == 's') {
 		printf("LARRAY %d c %d\n", slot, tcStructByteSize[tcLocalTypes[slot].structId - 1]);
 		return;
 	}
 	while (p < end && *p != '[') p++;
 	if (p == end) return;
-	p++; while (p < end && *p >= '0' && *p <= '9') len1 = len1 * 10 + (*p++ - '0');
-	if (len1 <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
-	if (p < end && *p == ']') p++;
-	if (p < end && *p == '[') {
-		p++; while (p < end && *p >= '0' && *p <= '9') len2 = len2 * 10 + (*p++ - '0');
-		if (len2 <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
+	while (p < end && *p == '[') {
+		int len = 0;
+		p++;
+		while (p < end && *p >= '0' && *p <= '9') len = len * 10 + (*p++ - '0');
+		if (len <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
+		if (p >= end || *p != ']') { fprintf(stderr, "tinyc: bad array declaration\n"); return; }
+		p++;
+		if (ndims >= TC_MAXDIMS) { fprintf(stderr, "tinyc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
+		dims[ndims++] = len;
 	}
-	if (len2 > 0) {
-		tcLocalArrayLen[slot] = len1 * len2;
-		tcLocalArrayDim2[slot] = len2;
-		printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcLocalTypes[slot]), len1 * len2);
-	} else {
-		tcLocalArrayLen[slot] = len1;
-		printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcLocalTypes[slot]), len1);
-	}
+	total = dims[0];
+	for (k = 1; k < ndims; k++) { total *= dims[k]; tcLocalArrayDims[slot][k - 1] = dims[k]; }
+	tcLocalArrayNDims[slot] = ndims;
+	tcLocalArrayLen[slot] = total;
+	printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcLocalTypes[slot]), total);
 }
 END
 ROUTINE C tc_staticlocalname
@@ -2054,7 +2077,7 @@ void tc_staticlocal(const char* start, const char* end) {
 END
 ROUTINE C tc_globalend
 void tc_globalend(const char* start, const char* end) {
-const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 0, neg = 0, arrayLen = 0, arrayDim2 = 0, initCount = -1; long value = 0, initValues[256]; int i;
+const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 0, neg = 0, arrayLen = 0, arrayNDims = 1, initCount = -1; long value = 0, initValues[256]; int i; int arrayDims[TC_MAXDIMS - 1];
 	int isConst = tcPendingConst; tcPendingConst = 0;
 	/* "static" vor einer globalen Variable waere in echtem C interne Verlinkung --
 	   bei einer einzigen Uebersetzungseinheit ohne Mehrdatei-Linkage ein reines No-op,
@@ -2084,19 +2107,20 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	name[n] = 0;
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	if (p < end && *p == '[') {
-		p++;
-		while (p < end && *p >= '0' && *p <= '9') arrayLen = arrayLen * 10 + (*p++ - '0');
-		if (p >= end || *p != ']') { fprintf(stderr, "tinyc: bad array declaration\n"); return; }
-		p++;
-		if (arrayLen <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
-		if (p < end && *p == '[') {
+		int dims[TC_MAXDIMS]; int ndims = 0; int k;
+		while (p < end && *p == '[') {
+			int len = 0;
 			p++;
-			while (p < end && *p >= '0' && *p <= '9') arrayDim2 = arrayDim2 * 10 + (*p++ - '0');
+			while (p < end && *p >= '0' && *p <= '9') len = len * 10 + (*p++ - '0');
 			if (p >= end || *p != ']') { fprintf(stderr, "tinyc: bad array declaration\n"); return; }
 			p++;
-			if (arrayDim2 <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
-			arrayLen *= arrayDim2;
+			if (len <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
+			if (ndims >= TC_MAXDIMS) { fprintf(stderr, "tinyc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
+			dims[ndims++] = len;
 		}
+		arrayLen = dims[0];
+		for (k = 1; k < ndims; k++) { arrayLen *= dims[k]; arrayDims[k - 1] = dims[k]; }
+		arrayNDims = ndims;
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
 	if (p < end && *p == '=') {
@@ -2146,7 +2170,8 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	if (isConst && type.pointers) type.pointeeConst = 1;
 	tcGlobalTypes[tcGlobalCount] = type;
 	tcGlobalConst[tcGlobalCount] = isConst && !type.pointers;
-	tcGlobalArrayDim2[tcGlobalCount] = arrayDim2;
+	tcGlobalArrayNDims[tcGlobalCount] = arrayNDims;
+	for (i = 0; i < arrayNDims - 1; i++) tcGlobalArrayDims[tcGlobalCount][i] = arrayDims[i];
 	tcGlobalArrayLen[tcGlobalCount++] = arrayLen;
 	if (arrayLen) {
 		printf("GARRAY %s %c %d\n", name, tcTypeTag(type), arrayLen);
@@ -2302,7 +2327,7 @@ void tc_varref(const char* start, const char* end) {
 			if (!indexed) {
 				printf("PUSHADDR L %d\n", slot); tcTypePush(tcPointerTo(tcLocalType(slot))); return;
 			}
-			tcCheck2DIndex(tcLocalArrayDim2[slot], tcCountTopIndexes(nameEnd, end));
+			tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, end));
 			tcCheckConstIndex(start, end, tcLocalArrayLen[slot]);
 			printf("LOADIDX L %d %c\n", slot, tcTypeTag(tcLocalType(slot))); tcTypePush(tcLocalType(slot));
 		} else if (indexed && tcIsPointer(tcLocalType(slot))) {
@@ -2319,7 +2344,7 @@ void tc_varref(const char* start, const char* end) {
 			if (!indexed) {
 				printf("PUSHADDR G %s\n", name); tcTypePush(tcPointerTo(tcGlobalType(global))); return;
 			}
-			tcCheck2DIndex(tcGlobalArrayDim2[global], tcCountTopIndexes(nameEnd, end));
+			tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end));
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 			printf("LOADIDX G %s %c\n", name, tcTypeTag(tcGlobalType(global))); tcTypePush(tcGlobalType(global));
 		} else if (indexed && tcIsPointer(tcGlobalType(global))) {
@@ -2527,7 +2552,7 @@ void tc_target(const char* start, const char* end) {
 		tcTargetType = tcGlobalType(global);
 		if (tcGlobalConst[global]) { fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++; }
 		if (tcTargetIsArray && tcGlobalArrayLen[global]) {
-			tcCheck2DIndex(tcGlobalArrayDim2[global], tcCountTopIndexes(nameEnd, end));
+			tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end));
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 		}
 		else if (tcTargetIsArray && tcIsPointer(tcTargetType)) {
@@ -2539,7 +2564,7 @@ void tc_target(const char* start, const char* end) {
 			tcTargetIndirect = 1; printf("LOADGP %s\nPTRINDEX %c\n", tcTargetGlobal, tcTypeTag(tcTargetType));
 		} else if (!!tcGlobalArrayLen[global] != tcTargetIsArray) { fprintf(stderr, "tinyc: array index mismatch\n"); tcSemanticErrors++; }
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcLocalArrayLen[tcTargetSlot]) {
-		tcCheck2DIndex(tcLocalArrayDim2[tcTargetSlot], tcCountTopIndexes(nameEnd, end));
+		tcCheckNDIndex(tcLocalArrayNDims[tcTargetSlot], tcLocalArrayDims[tcTargetSlot], tcCountTopIndexes(nameEnd, end));
 		tcCheckConstIndex(start, end, tcLocalArrayLen[tcTargetSlot]);
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcIsPointer(tcTargetType)) {
 		if (tcTargetType.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
