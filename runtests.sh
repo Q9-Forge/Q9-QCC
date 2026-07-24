@@ -447,6 +447,19 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Diagnose fuer verschachtelte struct-Felder fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-07-24: Array-Felder in struct (z.B. char name[8]) -- Byte-Layout inkl.
+		# Array-Feld-Groesse (Elementgroesse * Elementzahl), Zugriff nur ueber eine
+		# Pointer-Zwischenvariable (direkte "p.field[i]"-Syntax noch nicht moeglich,
+		# eigener Folgeschritt, siehe docs/FORTSCHRITT.md). Zuweisung an das GANZE
+		# Array-Feld wird diagnostiziert (wie in echtem C nicht erlaubt).
+		tc_check 'struct Rec { char name[8]; int id; }; int main(){ putint(sizeof(struct Rec)); }' '12'
+		tc_check 'struct Rec { char name[8]; int id; }; int main(){ struct Rec r; r.id = 42; char *p = r.name; p[0] = 65; p[1] = 66; putint(r.id); putchar(p[0]); putchar(p[1]); }' '42\nAB'
+		tc_check 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' '1\n1000\n9\n12'
+		if build/tinyc_p 'struct Rec { char name[8]; }; int main(){ struct Rec r; struct Rec r2; r.name = r2.name; }' 2>&1 | grep -q 'cannot assign to array field'; then
+			echo "ok    tinyc: Zuweisung an ganzes Array-Feld wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Array-Feld-Zuweisungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: typedef struct { ... } Name; -- anonymes struct inline im typedef.
 		# Der typedef-Zielname wird bewusst als interner struct-Tag wiederverwendet (harmlose
 		# Vereinfachung); Namenskollision mit einem bereits existierenden struct wird wie eine
@@ -590,7 +603,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 96 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 99 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -676,6 +689,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc struct 68000 (anonym im typedef): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/tinyc_struct_arrfield.ir && \
+		build/tinyc_backend build/tinyc_struct_arrfield.ir build/tinyc_struct_arrfield.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct_arrfield.bin build/tinyc_struct_arrfield.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_struct_arrfield.s68 2>/dev/null)" = "$(printf '1\n1000\n9\n12')" ]; then
+		echo "ok    tinyc struct 68000: Array-Feld (char buf[4]) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: Array-Feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (Array-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
@@ -804,6 +829,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (anonym im typedef): Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/tinyc_struct_arrfield_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_struct_arrfield_arm64.ir build/tinyc_struct_arrfield_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_arrfield_arm64 build/tinyc_struct_arrfield_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_struct_arrfield_arm64)" = "$(printf '1\n1000\n9\n12')" ]; then
+		echo "ok    tinyc struct ARM64: Array-Feld (char buf[4]) korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: Array-Feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (Array-Feld): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
