@@ -503,6 +503,39 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: void-Return-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-07-24: zweidimensionale Arrays -- NUR bei lokalen/globalen Variablen (nicht
+		# bei struct-Feldern/Parametern). Byte-Layout = dim1*dim2 (row-major, flach im
+		# Speicher wie in echtem C); arr[i][j] wird im Frontend zu einem flachen Index
+		# i*dim2+j zusammengefuehrt (tcEmit2DCombine: STOREG/PUSH/MUL/LOADG/ADD, bereits
+		# vorhandene Opcodes -- kein neuer Opcode, kein Backend-Change). Flacher
+		# Initialisierer {1,2,3,4,5,6} funktioniert automatisch mit (row-major).
+		tc_check 'int main(){ int m[2][3]; m[0][0]=1; m[0][1]=2; m[0][2]=3; m[1][0]=4; m[1][1]=5; m[1][2]=6; putint(m[0][0]); putint(m[0][1]); putint(m[0][2]); putint(m[1][0]); putint(m[1][1]); putint(m[1][2]); }' '1\n2\n3\n4\n5\n6'
+		tc_check 'int g[2][3]; int main(){ g[0][0]=10; g[1][2]=99; putint(g[0][0]); putint(g[1][2]); putint(g[0][1]); }' '10\n99\n0'
+		tc_check 'char names[3][4]; int main(){ names[0][0]=65; names[1][2]=66; putchar(names[0][0]); putchar(names[1][2]); putint(names[2][0]); }' 'AB0'
+		tc_check 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' '21\n2'
+		tc_check 'int main(){ int m[2][3]; putint(sizeof(m)); }' '24'
+		tc_check 'int m[2][3] = {1,2,3,4,5,6}; int main(){ putint(m[0][0]); putint(m[1][2]); }' '1\n6'
+		tc_check 'int main(){ int b[2]; b[0]=1; int a[3]; a[0]=10; a[1]=20; putint(a[b[0]]); }' '20'
+		if build/tinyc_p 'int main(){ int m[2][3]; putint(m[0]); }' 2>&1 | grep -q 'partial indexing of a 2D array is not supported'; then
+			echo "ok    tinyc: partielle Indizierung eines 2D-Arrays wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: 2D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int a[5]; putint(a[0][1]); }' 2>&1 | grep -q 'array is not two-dimensional'; then
+			echo "ok    tinyc: 2 Indizes auf ein 1D-Array werden diagnostiziert"
+		else
+			echo "FAIL  tinyc: 1D-Array-Doppelindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'struct R{ int m[2][3]; }; int main(){ putint(1); }' >/dev/null 2>&1; then
+			echo "FAIL  tinyc: 2D-Array-struct-Feld wird faelschlich akzeptiert"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: 2D-Array als struct-Feld bleibt Parse-Fehler (eigener Folgeschritt)"
+		fi
+		if build/tinyc_p 'int f(int m[][3]){ return 0; } int main(){ putint(1); }' >/dev/null 2>&1; then
+			echo "FAIL  tinyc: 2D-Array-Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
+		fi
 		# 2026-07-24: typedef struct { ... } Name; -- anonymes struct inline im typedef.
 		# Der typedef-Zielname wird bewusst als interner struct-Tag wiederverwendet (harmlose
 		# Vereinfachung); Namenskollision mit einem bereits existierenden struct wird wie eine
@@ -646,7 +679,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 102 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void* -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 109 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -756,6 +789,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc void 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' > build/tinyc_2d.ir && \
+		build/tinyc_backend build/tinyc_2d.ir build/tinyc_2d.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_2d.bin build/tinyc_2d.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_2d.s68 2>/dev/null)" = "$(printf '21\n2')" ]; then
+		echo "ok    tinyc 2D-Array 68000: Zeilen/Spalten-Indizierung korrekt"
+	else
+		echo "FAIL  tinyc 2D-Array 68000: Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc 2D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
@@ -910,6 +955,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc void ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' > build/tinyc_2d_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_2d_arm64.ir build/tinyc_2d_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_2d_arm64 build/tinyc_2d_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_2d_arm64)" = "$(printf '21\n2')" ]; then
+		echo "ok    tinyc 2D-Array ARM64: Zeilen/Spalten-Indizierung korrekt"
+	else
+		echo "FAIL  tinyc 2D-Array ARM64: Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc 2D-Array ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then

@@ -13,11 +13,14 @@ anonStructType = "struct" anonStructOpen structField { structField } "}" .
 anonStructOpen = "{" .
 typedefTargetName = ident .
 
-globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
+/* zweite Dimension NUR bei globalDecl/localDecl (nicht bei structField/paramArray --
+   siehe Kommentar bei localDecl weiter unten fuer den Umfang dieser Version). */
+globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize [ arraySize2 ] ] [ "=" globalInit ] ";" .
 constKw   = "const" .
 staticKw  = "static" .
 globalInit = globalValue | initList .
 arraySize  = "[" globalNumber "]" .
+arraySize2 = "[" globalNumber "]" .
 globalValue = globalNumber | globalNeg | globalBool .
 globalBool  = "true" | "false" .
 globalNeg   = "-" globalNumber .
@@ -72,7 +75,15 @@ defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
 
 varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
-localDecl = localName [ arraySize ] .
+/* zweidimensionale Arrays (2026-07-24): NUR bei lokalen/globalen Variablen, bewusst
+   NICHT bei struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
+   zweidimensionales struct-Feld ist damit ein sauberer Parse-Fehler statt eines
+   still falsch geschnittenen Feldes, siehe tc_structfield) und NICHT bei Parametern
+   (paramArray bleibt "[" "]"). Layout: Groesse = dim1*dim2 (zeilenweise/"row-major"
+   wie in echtem C), dim2 wird fuers Indizieren gebraucht (siehe tc_localdecl/
+   tc_globalend/tc_varref/tc_target) -- KEIN Initialisierer in dieser Version
+   (waere ein eigener Aufwand analog zu initList, siehe docs/FORTSCHRITT.md). */
+localDecl = localName [ arraySize [ arraySize2 ] ] .
 varInit   = expr | initList .
 initList  = "{" [ initValue { "," initValue } ] "}" .
 initValue = initNumber | initNeg | initBool .
@@ -177,9 +188,15 @@ argList   = [ arg { "," arg } ] .
 arg       = expr .
 
 target    = directTarget | indirectTarget .
-directTarget = ident [ index | member ] .
+/* zweiter index-Verweis auf dieselbe Regel deckt genau "arr[i][j]" ab (zwei
+   AUFEINANDERFOLGENDE, nicht verschachtelte Klammerpaare) -- kein Grammatik-/
+   Aktions-Zusatz noetig, ACTION AFTER index feuert einfach zweimal in Folge
+   (die tcIndexDepth-Buchfuehrung ist bereits stapelbasiert, siehe tc_callname/
+   tc_arg). Die eigentliche Zusammenfuehrung zu einem flachen Index passiert in
+   tc_target/tc_varref (per Rohtext-Zaehlung der Top-Level-"["-Vorkommen). */
+directTarget = ident [ index [ index ] | member ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index | member ] .
+varRef    = ident [ index [ index ] | member ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
 member    = "." fieldName .
