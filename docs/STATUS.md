@@ -90,9 +90,9 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - Pointer: Deklaration, `&`, `*`, `p[i]`, Pointerparameter/-rückgabe,
   Pointervergleich, skalierte Arithmetik und Pointerdifferenz
 - `const` bei globalen/lokalen Variablen, Arrays und Parametern (Skalar-/Array-
-  Bindung wird gegen Zuweisung/++/-- geschützt; bei Pointertypen nur geparst,
-  Pointee-Constness noch nicht durchgesetzt -- eigener Folgeschritt, siehe
-  docs/FORTSCHRITT.md)
+  Bindung wird gegen Zuweisung/++/-- geschützt) inkl. Pointee-Constness
+  (`const T*`: Schreiben durch den Pointer verboten, Pointer selbst bleibt
+  frei zuweisbar -- `p++`-Idiom funktioniert weiterhin), siehe docs/FORTSCHRITT.md
 - `static`: bei globalen Variablen/Funktionen ein reines No-op (interne
   Verlinkung ist bei einer einzigen Übersetzungseinheit bedeutungslos); bei
   lokalen Variablen echte Aufruf-übergreifende Persistenz (als GLOBAL
@@ -108,7 +108,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-88 Tiny-C-Programme korrekt
+91 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef) 68000 + ARM64 korrekt
@@ -122,13 +122,12 @@ static-Lokale-Persistenz 68000 + ARM64 korrekt
 Zwei unabhängige Stränge stehen zur Wahl:
 
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
-   `const` fuer Skalare/Arrays und `static` sind seit 2026-07-24 erledigt
-   (siehe oben). Naheliegende Kandidaten: Pointee-Constness (`const char*`
-   schreibgeschuetzt, braucht ein Const-Bit im Typmodell selbst), `static`-
-   Initialisierer (braucht entweder Konstantenfaltung oder einen Runs-once-
-   Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md), Array-Felder in
-   `struct` (z. B. `char name[32]`, eigener Folgeschritt zu den seit
-   2026-07-24 gemischten skalaren Feldtypen), `void *`, weitere Arrayformen.
+   `const` (inkl. Pointee-Constness) und `static` sind seit 2026-07-24 erledigt
+   (siehe oben). Naheliegende Kandidaten: `static`-Initialisierer (braucht
+   entweder Konstantenfaltung oder einen Runs-once-Guard mit hidden
+   Flag-Global, siehe docs/FORTSCHRITT.md), Array-Felder in `struct` (z. B.
+   `char name[32]`, eigener Folgeschritt zu den seit 2026-07-24 gemischten
+   skalaren Feldtypen), `void *`, weitere Arrayformen.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
    (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
    auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen, danach
