@@ -184,7 +184,22 @@ factor    = sizeofExpr
           | derefRef
           | varRef
           | number
+          | stringLit
           | negFactor .
+
+/* String-Literal (2026-07-24): erzeugt zur Uebersetzungszeit einen anonymen globalen
+   char-Array-Konstant (GARRAY/GINIT, siehe tc_string) und liefert dessen Adresse als
+   Wert vom Typ char* -- exakt dieselben IR-Opcodes wie ein initialisiertes globales
+   char-Array, kein neuer Opcode und keine Backend-Aenderung noetig (analog 2D-Arrays).
+   Vorbild fuer die Grammatik: Data/oberon07.ebnf ("\042" ist der Oktal-Escape des
+   EBNF-Tools fuer ein woertliches Anfuehrungszeichen, siehe Source/ebnf.cpp). character
+   deckt den druckbaren ASCII-Bereich OHNE das Anfuehrungszeichen selbst ab (0x20-0x21,
+   0x23-0x7E) -- Escapesequenzen wie \n werden ueber das ebenfalls im Bereich enthaltene
+   "\" erkannt und in tc_string dekodiert, nicht in der Grammatik. Bewusst NICHT
+   Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
+   und String-Verkettung/-Vergleich als eigene Operatoren. */
+stringLit = "\042" { character } "\042" .
+character = " "~"!" | "#"~"~" .
 negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
 
