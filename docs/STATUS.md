@@ -78,8 +78,10 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - `typedef` (Skalar-/Pointer-Aliase, `typedef struct Name Alias;`, sowie
   `typedef struct { ... } Name;` mit anonymem struct inline)
 - `struct` mit gemischten skalaren Feldtypen (echtes Byte-Layout mit natürlichem
-  Alignment, Feldzugriff lesend/schreibend, lokale Variablen; Array-/Pointer-Felder
-  und verschachtelte structs noch offen, siehe SELFHOSTING_LUECKENLISTE.md)
+  Alignment, Feldzugriff lesend/schreibend, lokale Variablen) inkl. Array-Feldern
+  (z. B. `char name[8]`, Zugriff nur über eine Pointer-Zwischenvariable, direkte
+  `p.field[i]`-Syntax noch offen); Pointer-Felder und verschachtelte structs noch
+  offen, siehe SELFHOSTING_LUECKENLISTE.md
 - `enum` (benannte int-Konstanten)
 - `sizeof` (int/char/bool/unsigned/struct, keine Pointer)
 - Prä-/Postinkrement `++`/`--` (einfache int/unsigned/char-Skalare)
@@ -109,10 +111,10 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-96 Tiny-C-Programme korrekt
+99 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
-struct-Feldzugriff (einheitlich + gemischt + anonym im typedef) 68000 + ARM64 korrekt
+struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
 switch/case 68000 + ARM64 korrekt
 static-Lokale-Persistenz 68000 + ARM64 korrekt
 === ALLE TESTS OK ===
@@ -123,13 +125,13 @@ static-Lokale-Persistenz 68000 + ARM64 korrekt
 Zwei unabhängige Stränge stehen zur Wahl:
 
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
-   `const` (inkl. Pointee-Constness) und `static` (inkl. konstantem
-   Initialisierer) sind seit 2026-07-24 erledigt (siehe oben). Naheliegende
-   Kandidaten: nicht-konstanter `static`-Initialisierer (braucht einen
-   Runs-once-Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md),
-   Array-Felder in `struct` (z. B. `char name[32]`, eigener Folgeschritt zu
-   den seit 2026-07-24 gemischten skalaren Feldtypen), `void *`, weitere
-   Arrayformen.
+   `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
+   Initialisierer) und Array-Felder in `struct` sind seit 2026-07-24 erledigt
+   (siehe oben). Naheliegende Kandidaten: `void *`, weitere Arrayformen,
+   direkte `p.field[i]`-Indizierung von struct-Array-Feldern (braucht
+   kombinierte member+index-Kette in der Grammatik), nicht-konstanter
+   `static`-Initialisierer (braucht einen Runs-once-Guard mit hidden
+   Flag-Global, siehe docs/FORTSCHRITT.md).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
    (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
    auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen, danach
