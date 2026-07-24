@@ -273,9 +273,22 @@ target    = directTarget | indirectTarget .
    (die tcIndexDepth-Buchfuehrung ist bereits stapelbasiert, siehe tc_callname/
    tc_arg). Die eigentliche Zusammenfuehrung zu einem flachen Index passiert in
    tc_target/tc_varref (per Rohtext-Zaehlung der Top-Level-"["-Vorkommen). */
-directTarget = ident [ index [ index ] | member ] .
+/* direkte p.field[i]-Indizierung von Array-Feldern (2026-07-24): member
+   bekommt einen eigenen optionalen index-Anschluss (KEIN zweiter, ineinander
+   verschachtelter -- Array-Felder in struct sind wie arraySize bewusst
+   einstufig, siehe structField). Die ACTION AFTER index CALL tc_arg feuert
+   fuer diesen Index GENAUSO wie bei "arr[i]" (rettet/restauriert
+   tcPendingAdd/tcPendingMul, prueft den Indextyp) -- tc_varref/tc_target
+   erkennen per Rohtext-Scan (erstes Zeichen nach dem Feldnamen == '[') ob
+   ein Index folgt und haengen dann ein zweites IPADD+LOADIND (lesend) bzw.
+   IPADD (schreibend) an das bereits vorhandene Feldadress-IPADD an -- der
+   Stack traegt an dieser Stelle bereits [Indexwert, Feldadresse] (Feldadresse
+   zuletzt gepusht, da tc_varref/tc_target erst am ENDE der ganzen Regel
+   feuern), exakt dieselbe Reihenfolge wie beim bestehenden IPADD-Aufruf fuer
+   die Feldadresse selbst -- kein neuer Opcode, kein Backend-Change. */
+directTarget = ident [ index [ index ] | member [ index ] ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index [ index ] | member ] .
+varRef    = ident [ index [ index ] | member [ index ] ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
 member    = "." fieldName .
