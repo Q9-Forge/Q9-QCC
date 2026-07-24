@@ -496,7 +496,32 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 81 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts -> tinyvm korrekt"
+		# 2026-07-24: const-Qualifizierer fuer globale/lokale Variablen und Parameter --
+		# rein frontend-seitig (kein Backend-/IR-Unterschied), verbietet Zuweisung/++/--
+		# auf die qualifizierte Variable selbst (kein Pointee-const wie in echtem C).
+		tc_check 'const int g = 7; int main(){ putint(g); }'                  '7'
+		tc_check 'int main(){ const int x = 5; putint(x + 1); }'             '6'
+		if build/tinyc_p 'const int g = 7; int main(){ g = 8; putint(g); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    tinyc: Zuweisung an const-Globale wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Globale-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ const int x = 5; x = 6; putint(x); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    tinyc: Zuweisung an const-Lokale wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Lokale-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int bump(const int x){ x = x + 1; return x; } int main(){ putint(bump(1)); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    tinyc: Zuweisung an const-Parameter wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Parameter-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ const int x = 5; x++; putint(x); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    tinyc: ++/-- auf const-Variable wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-++/---Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 83 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi

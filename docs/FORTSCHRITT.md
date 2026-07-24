@@ -29,6 +29,7 @@
 | Generator kompiliert+linkt mit echter Q9-Toolchain (`xcc`) | erledigt | siehe `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 6; Ausführung auf Q9 scheitert noch am Speicherbedarf (~34,6 MB Datensegment vs. 16 MB RAM) |
 | Tiny-C `struct` mit gemischten skalaren Feldtypen | erledigt (2026-07-24) | echtes Byte-Layout mit natürlichem Alignment; Feldzugriff nutzt PUSHADDR/IPADD/LOADIND/STOREIND (bereits vorhandene, architekturneutrale Opcodes) statt LOADIDX/STOREIDX -- kein neuer Opcode, kein Backend-Change. Bewusst noch offen: Array-Felder, Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte), verschachtelte structs (siehe SELFHOSTING_LUECKENLISTE.md) |
 | Tiny-C `typedef struct { ... } Name;` (anonymes struct inline) | erledigt (2026-07-24) | Zielname kommt in der Grammatik erst nach dem Feld-Body -- verzögerte Registrierung in `tc_typedefend`, typedef-Name dient als interner struct-Tag (harmlose Vereinfachung, `struct Name x;` funktioniert dadurch als Nebeneffekt mit). Kein IR-/Backend-Change, exakt derselbe Feldzugriffs-Code wie bei benannten structs. Scope: nur reine anonyme Form, kein optionaler Tag, keine Pointer-Kombination |
+| Tiny-C `const`-Qualifizierer (Skalare/Arrays) | erledigt (2026-07-24) | `const` vor Typ bei globalen/lokalen Variablen und Parametern (`constKw`-Huellregel); verbietet Zuweisung/++/-- auf die qualifizierte Variable selbst ueber die bestehenden Ziel-Aufloesungspfade (`tc_target`, `tc_preincdec`/`tc_postincdec`). Reine Frontend-Pruefung, kein neuer Opcode, kein Backend-Change. Bewusst NUR fuer Skalare/Arrays durchgesetzt: bei Pointertypen waere `const` in echtem C Pointee-Constness (`const char* p` laesst `p` selbst frei zuweisbar, z.B. `p++`) und keine Bindungs-Immutabilitaet -- ohne Const-Bit im Typmodell selbst nicht durchsetzbar, wird daher bei Pointertypen nur geparst, nicht geprueft (kein falsches Verbot des uebrlichen `p++`-Idioms, aber auch KEIN Schreibschutz auf die Pointee -- deckt `const char* name` im Generator-Vorbild also NUR syntaktisch, nicht semantisch ab). Pointee-Constness ist ein eigener Folgeschritt (braucht ein Const-Bit an `TCType`, das durch Zeigerarithmetik/Funktionsgrenzen propagiert). |
 
 ## Selfhosting (neue Zielrichtung ab 2026-07-23)
 
@@ -37,21 +38,23 @@ Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
 `docs/SELFHOSTING_LUECKENLISTE.md`. Kurzfassung des Stands:
 
 1. `struct`/`typedef`/`enum`/`for`/`switch` in Tiny-C: erledigt (siehe Tabelle oben)
-2. Mehrdimensionale Arrays, `static`/`const`: noch offen
+2. `const` fuer Skalare/Arrays: erledigt (2026-07-24, siehe Tabelle oben). Noch offen:
+   Pointee-Constness (`const char*`), `static`, mehrdimensionale Arrays
 3. Mini-Runtime (String-Vergleich, formatierte Ausgabe, Datei-I/O): noch offen
 4. Mehrdatei-Übersetzung: noch offen
 5. `goto`/Funktionszeiger (erst wenn der generierte Parser-Zwilling selbst gehostet werden soll): noch offen
-6. **Neu erkannt:** Speicherbedarf der statischen Puffer in `ebnf.cpp`/
-   `codegen.cpp` für ein reales 16-MB-Zielsystem (Q9) verkleinern -- einziger
-   bekannter Blocker zwischen "kompiliert mit echter Toolchain" und "läuft
-   wirklich auf Q9" (siehe `docs/SELFHOSTING_LUECKENLISTE.md` Abschnitt 6).
+6. Speicherbedarf der statischen Puffer in `ebnf.cpp`/`codegen.cpp` fuer ein reales
+   16-MB-/8-MB-Zielsystem (Q9): **erledigt (2026-07-24)**, siehe `docs/STATUS.md` --
+   Host-Datensegment ~34,6 MB -> ~1 MB (ACTION/ROUTINE-Tabellen jetzt malloc/realloc-
+   basiert statt fester Arrays). xcc-Build+Ausfuehrungstest auf dem echten Q9 mit
+   dieser Aenderung noch nicht wiederholt (naechster Schritt laut STATUS.md).
 
 ## Bewusst offen
 
-- `const` und Qualifizierer
+- Pointee-Constness (`const char*` schreibgeschuetzt, im Unterschied zu `char* const`) und `static`
 - `void`/`void *`
 - mehrdimensionale und flexiblere Arrays
-- dynamische Speicherverwaltung
+- dynamische Speicherverwaltung (als Tiny-C-Sprachmittel, d.h. `malloc`/`free` als aufrufbare Tiny-C-Funktion)
 - nichtkonstante globale Initialisierer
 - endgültige Q9-Start-, Modul- und Systemcall-Runtime
 - zusätzliche Architekturen und Optimierungen

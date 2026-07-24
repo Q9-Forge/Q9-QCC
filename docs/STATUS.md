@@ -89,6 +89,10 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - `enum Name` als Typ (Deklaration, Parameter, Rueckgabetyp), bleibt intern `int`
 - Pointer: Deklaration, `&`, `*`, `p[i]`, Pointerparameter/-rückgabe,
   Pointervergleich, skalierte Arithmetik und Pointerdifferenz
+- `const` bei globalen/lokalen Variablen, Arrays und Parametern (Skalar-/Array-
+  Bindung wird gegen Zuweisung/++/-- geschützt; bei Pointertypen nur geparst,
+  Pointee-Constness noch nicht durchgesetzt -- eigener Folgeschritt, siehe
+  docs/FORTSCHRITT.md)
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
@@ -98,7 +102,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-81 Tiny-C-Programme korrekt
+83 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef) 68000 + ARM64 korrekt
@@ -111,12 +115,13 @@ switch/case 68000 + ARM64 korrekt
 Zwei unabhängige Stränge stehen zur Wahl:
 
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
-   Naheliegende Kandidaten: `static`/`const` (101+99 echte Fundstellen im
-   Generator selbst, siehe `docs/SELFHOSTING_LUECKENLISTE.md`, vermutlich
-   reine Grammatik-Arbeit ohne Backend-Änderung wie die meisten heutigen
-   Features), Array-Felder in `struct` (z. B. `char name[32]`, eigener
-   Folgeschritt zu den seit 2026-07-24 gemischten skalaren Feldtypen),
-   `void *`, weitere Arrayformen.
+   `const` fuer Skalare/Arrays ist seit 2026-07-24 erledigt (siehe oben).
+   Naheliegende Kandidaten: `static` (lokale Variablen mit Aufruf-
+   uebergreifender Lebensdauer -- braucht echte Frontend-/IR-Verdrahtung,
+   kein reiner Grammatik-Task), Pointee-Constness (`const char*` schreib-
+   geschuetzt, braucht ein Const-Bit im Typmodell selbst), Array-Felder in
+   `struct` (z. B. `char name[32]`, eigener Folgeschritt zu den seit
+   2026-07-24 gemischten skalaren Feldtypen), `void *`, weitere Arrayformen.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
    (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
    auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen, danach
