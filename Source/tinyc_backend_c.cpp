@@ -56,12 +56,27 @@ static int globalCount = 0;
    Parser-Codegen -- dort empirisch verifiziert: r68 akzeptiert Label-Doppel-
    punkte und ";"-Endkommentare unveraendert, es braucht nur "*" statt ";" fuer
    VOLLE Kommentarzeilen sowie einen nam/psect/ends-Rahmen). Der eigentliche
-   Instruktions-Codegen (emitIR-Dispatch weiter unten) ist DAHER fuer beide
-   Formate identisch -- os9Mode wirkt nur auf die paar Kommentarzeilen und den
-   Rahmen. */
+   Instruktions-Codegen (emitIR-Dispatch weiter unten) ist DAHER GROESSTENTEILS
+   fuer beide Formate identisch -- MIT EINER wichtigen Ausnahme: dem Frame-
+   Pointer-Register (siehe framePtr() direkt unten). */
 static int os9Mode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
+/* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
+   "68K" -> "Register Usage"): a5 = Frame/local pointer, a6 = STATIC STORAGE
+   POINTER (nicht Frame-Pointer!). Das echte cstart.r/clib.l nutzt a6 als
+   Zeiger auf den eigenen statischen Datenbereich UEBER DIE GESAMTE LAUFZEIT
+   des (mit unserem Code zu EINEM Modul zusammengelinkten) Programms -- wird
+   dieser Wert von unserem eigenen Code ueberschrieben (was das Default-/vasm-
+   Format mit "link a6,#N" tut), stuerzt jeder nachfolgende echte clib-Aufruf
+   mit einem PMMU-Fehler ab (live am echten Q9 verifiziert, 2026-07-24: ein
+   Testmodul, das a6 als eigenen Frame-Pointer benutzte UND anschliessend
+   _os_write aufrief, brachte den Emulator zum Absturz -- a6 zeigte auf den
+   eigenen Frame statt auf den echten statischen Datenbereich). Deshalb NUR im
+   -os9-Modus a5 statt a6 als Frame-Pointer verwenden (a6 bleibt dann komplett
+   unangetastet); das Default-/vasm-Format bleibt bei a6 (keine Notwendigkeit,
+   keine Regression an den TinyVM-/Simulator-Tests). */
+static const char* framePtr(void) { return os9Mode ? "a5" : "a6"; }
 /* vasm kennt "even" (Ausrichtung auf gerade Adresse); der echte Microware-r68-
    Assembler kennt "even" NICHT (empirisch verifiziert: "bad mnemonic"), wohl
    aber "align 4" (Longword-Ausrichtung -- strenger als "even", aber fuer
@@ -303,14 +318,14 @@ static int arrayOffset(const Function* fn, int wanted, int* isChar, int line) {
 static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 	char msg[200];
 	if (slotN < fn->nargs) {
-		sprintf(out, "%d(a6)", 8 + 4 * (fn->nargs - 1 - slotN));
+		sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN), framePtr());
 		return;
 	}
 	if (slotN >= fn->nargs + fn->locals) {
 		sprintf(msg, "IR Zeile %d: Slot ausserhalb des Frames", line);
 		fatal(msg);
 	}
-	sprintf(out, "%d(a6)", -4 * (slotN - fn->nargs + 1));
+	sprintf(out, "%d(%s)", -4 * (slotN - fn->nargs + 1), framePtr());
 }
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
@@ -357,10 +372,17 @@ static void emitM68kCore(FILE* out) {
 	fputs("tc_udiv_skip:\tdbra\td4,tc_udiv_loop\n\tmove.l\td2,d0\n", out);
 	fputs("tc_udiv_done:\tmove.l\t(a7)+,d4\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 
+	/* Rest = Dividend - Quotient*Divisor. WICHTIG (2026-07-24, gefunden ueber
+	   tools/tiny68sim.py beim Debuggen der neuen -os9-putint-Ziffernzerlegung):
+	   vor "bsr tc_mul_i32" muss d0 den DIVISOR (d3) tragen, NICHT nochmal den
+	   Dividenden (d2) -- sonst wird Quotient*Dividend statt Quotient*Divisor
+	   gerechnet. Dieser Bug war seit Einfuehrung von tc_mod_i32/tc_umod_u32
+	   unentdeckt, weil kein einziger 68k-Backend-Test (nur die TinyVM-Tests)
+	   den "%"-Operator ueber den echten 68k-Pfad ausgefuehrt hat. */
 	fputs("tc_mod_i32:\n", out);
-	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td2,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
+	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 	fputs("tc_umod_u32:\n", out);
-	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d1\n\tmove.l\td2,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
+	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 }
 
 static void emitIR(FILE* out) {
@@ -372,16 +394,22 @@ static void emitIR(FILE* out) {
 	if (findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
 	fprintf(out, "%s Tiny-C 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
-	fprintf(out, "%s a7: Operand-Stack, a6: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix());
+	fprintf(out, "%s a7: Operand-Stack, %s: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix(), framePtr());
 	if (os9Mode) {
 		fprintf(out, "\tnam\t%s\n", psectName);
 		fprintf(out, "\tpsect\t%s,0,0,1,0,0\n\n", psectName);
+		fprintf(out, "%s Kein eigener tc_start-Boot-Code hier: cstart.r (echte Microware-\n", fullCommentPrefix());
+		fprintf(out, "%s C-Laufzeit) ruft \"main\" direkt auf und kuemmert sich selbst ums\n", fullCommentPrefix());
+		fprintf(out, "%s Beenden -- a6 bleibt dadurch als dessen statischer Datenzeiger\n", fullCommentPrefix());
+		fprintf(out, "%s unangetastet (siehe framePtr()-Kommentar oben im Quelltext).\n\n", fullCommentPrefix());
+	} else {
+		fputs("tc_start:\tbsr\ttc_main\n\tbra\ttc_exit\n\n", out);
 	}
-	fputs("tc_start:\tbsr\ttc_main\n\tbra\ttc_exit\n\n", out);
 
 	for (fi = 0; fi < funcCount; fi++) {
 		Function* fn = &funcs[fi];
-		fprintf(out, "tc_%s:\tlink\ta6,#%d\n", fn->name, -fn->frameBytes);
+		if (os9Mode && strcmp(fn->name, "main") == 0) fputs("main:\n", out);
+		fprintf(out, "tc_%s:\tlink\t%s,#%d\n", fn->name, framePtr(), -fn->frameBytes);
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
@@ -418,7 +446,7 @@ static void emitIR(FILE* out) {
 				int ignored;
 				if (strcmp(insP->args[0], "L") == 0) {
 					int off = arrayOffset(fn, number(insP->args[1], insP->line), &ignored, insP->line);
-					fprintf(out, "\tlea\t-%d(a6),a0\n", off);
+					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
 				} else if (strcmp(insP->args[0], "P") == 0) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
@@ -436,7 +464,7 @@ static void emitIR(FILE* out) {
 				if (!isChar) fputs("\tlsl.l\t#2,d1\n", out);
 				if (strcmp(insP->args[0], "L") == 0) {
 					int off = arrayOffset(fn, number(insP->args[1], insP->line), &isChar, insP->line);
-					fprintf(out, "\tlea\t-%d(a6),a0\n", off);
+					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
 				} else if (strcmp(insP->args[0], "P") == 0) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
@@ -590,11 +618,26 @@ static void emitIR(FILE* out) {
 				if (hasD1) fputs("\tmove.l\t(a7)+,d1\n", out);
 				if (hasD0) fputs("\tmove.l\t(a7)+,d0\n", out);
 				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t%d(a0),-(a7)\n", ai * 4);
-				fprintf(out, "\tjsr\t%s\n", insP->args[0]);
+				/* WICHTIG (2026-07-24, live am echten Q9 gefunden): "jsr <name>" auf
+				   ein externes Symbol wird von r68/l68 NUR dann PIC-sicher (PC-
+				   relativ) aufgeloest, wenn es als "bsr" geschrieben wird -- ein
+				   rohes "jsr" assembliert stattdessen zu einer ABSOLUTEN Adresse
+				   (r68 kennt bei "jsr" keine automatische PC-relative Kodierung fuer
+				   externe/undefinierte Symbole), was bei einem NICHT bei Adresse 0
+				   geladenen OS-9-Modul sofort einen PMMU-Fehler ausloest (reproduziert:
+				   ein Testaufruf gegen die echte clib.l stuerzte den Q9-Emulator ab,
+				   Disassemblierung zeigte "JSR $xxxx.L" statt einer PC-relativen
+				   Kodierung). "bsr" ist dagegen inhaerent PC-relativ; bei zu grosser
+				   Distanz haengt der Microware-Linker automatisch eine PIC-taugliche
+				   Jumptable-Indirektion ein (l68 -a). NUR im -os9-Modus relevant --
+				   im Default-/vasm-/Simulator-Modus bleibt "jsr" (von
+				   tools/tiny68sim.py als Mock-Aufruf-Marker erkannt, keine echte
+				   Positionsunabhaengigkeit noetig, keine Regression riskieren). */
+				fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", insP->args[0]);
 				if (stackArgs) fprintf(out, "\tlea\t%d(a7),a7\n", stackArgs * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
-				fputs("\tmove.l\t(a7)+,d0\n\tunlk\ta6\n\trts\n", out);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
 			} else if (strcmp(op, "DROP") == 0) {
 				fputs("\taddq.l\t#4,a7\n", out);
 			} else if (strcmp(op, "PRINT") == 0) {
@@ -615,11 +658,55 @@ static void emitIR(FILE* out) {
 		fputs("\n", out);
 	}
 	emitM68kCore(out);
-	// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
-	fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
-	fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
-	fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
-	fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
+	if (os9Mode) {
+		/* Echte Ausgabe ueber die reale Microware-clib.l-Funktion _os_write
+		   (Signatur laut OS9/SRC/DEFS/modes.h: error_code _os_write(path_id,
+		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
+		   = stdout, analog zu Unix-Filedeskriptoren). BEWUSST nicht ueber
+		   printf/clib-Formatierung: Tiny-C hat noch keine String-Literale, und
+		   die direkte Ganzzahl->ASCII-Umwandlung hier (analog zu
+		   runtime/arm64_darwin/start.s) haelt das gelinkte Programm klein --
+		   kein printf-Formatstring-Parser wird ueberhaupt erst hereingezogen.
+		   Ziffernzerlegung nutzt die BEREITS VORHANDENEN tc_udiv_u32/
+		   tc_umod_u32-Routinen aus emitM68kCore (kein neuer Opcode). d2/d3/d4
+		   ueberleben den bsr in diese Routinen unveraendert, da beide selbst
+		   d2-d4 sichern/wiederherstellen (siehe deren Definition oben) --
+		   deshalb hier KEIN eigenes Push/Pop noetig. */
+		fprintf(out, "tc_putint:\n\tlink\t%s,#0\n", framePtr());
+		fputs("\tmove.l\td0,d2\n\tmoveq\t#0,d3\n\ttst.l\td2\n\tbge\ttc_pi_nonneg\n", out);
+		fputs("\tneg.l\td2\n\tmoveq\t#1,d3\n", out);
+		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
+		fputs("tc_pi_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
+		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
+		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
+		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pi_loop\n", out);
+		fputs("\ttst.l\td3\n\tbeq\ttc_pi_go\n\tsubq.l\t#1,a1\n\tmove.b\t#45,(a1)\n", out);
+		fputs("tc_pi_go:\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
+
+		fprintf(out, "tc_putuint:\n\tlink\t%s,#0\n", framePtr());
+		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
+		fputs("tc_pu_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
+		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
+		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
+		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pu_loop\n", out);
+		fputs("\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
+
+		fprintf(out, "tc_putchar:\n\tlink\t%s,#0\n", framePtr());
+		fputs("\tlea\ttc_io_buf(pc),a1\n\tmove.b\td0,(a1)\n\tmoveq\t#1,d1\n\tbsr\ttc_io_write\n", out);
+		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
+
+		/* a1=Puffer, d1=Laenge -- ruft _os_write(1,a1,&tc_io_cnt) auf. */
+		fputs("tc_io_write:\n\tlea\ttc_io_cnt(pc),a2\n\tmove.l\td1,(a2)\n\tmove.l\ta1,d1\n", out);
+		fputs("\tmove.l\ta2,-(a7)\n\tmoveq\t#1,d0\n\tbsr\t_os_write\n\tlea\t4(a7),a7\n\trts\n\n", out);
+	} else {
+		// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
+		fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
+		fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
+		fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
+		fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
+	}
 	/* Scratch-Feld fuer CALLEXT/CALLEXTP (siehe dort) -- max. 8 auf den Stack
 	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
 	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. vasm kennt
@@ -629,6 +716,14 @@ static void emitIR(FILE* out) {
 	   Backend-Opcodes lesen den Wert erst NACH einem STORE hierher). */
 	emitAlign(out);
 	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
+	if (os9Mode) {
+		/* tc_io_buf: Ziffernpuffer fuer tc_putint/tc_putuint (max. "-2147483648\r"
+		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
+		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
+		   echten _os_write-Aufruf (siehe tc_io_write oben). */
+		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
+		fputs("tc_io_cnt:\tdc.l\t0\n", out);
+	}
 
 	{
 		int hasData = 0, hasBss = 0, gi;
