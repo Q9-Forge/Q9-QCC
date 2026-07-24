@@ -117,17 +117,25 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   OS-9/Microware-`clib`-Funktionen wie `strcmp`/`printf`/`malloc`) -- Aufruf
   über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`: 1./2.
   Argument in `d0`/`d1`, Rest auf dem Stack, bei variadischen Funktionen wie
-  `printf` alles auf dem Stack), NUR im 68000-Backend, end-to-end gegen
-  handgeschriebene Mock-Stubs verifiziert (echtes Linken gegen `clib.l` via
-  `l68` noch offen), siehe docs/FORTSCHRITT.md
+  `printf` alles auf dem Stack), NUR im 68000-Backend, siehe docs/FORTSCHRITT.md
 - 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
   Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
   `align 4`/`dc.l` statt `even`/`ds.l` -- Microwares r68 kennt letztere nicht,
   empirisch via Wine/MWOS ermittelt); Default-Modus (vasm) bleibt
-  unverändert/byte-identisch. Ein Testfall mit globalen Variablen (DATA/BSS)
-  UND einem `extern`-Aufruf (CALLEXT) wurde erfolgreich durch den echten
-  `r68.exe` zu einer `.r`-Objektdatei assembliert -- der noetige erste Schritt
-  Richtung echtem `l68`-Linken gegen `clib.l`, siehe docs/FORTSCHRITT.md
+  unverändert/byte-identisch, siehe docs/FORTSCHRITT.md
+- **Echtes Linken gegen `clib.l` (Microware-Linker `l68`) UND echte Ausführung
+  auf dem echten Q9-Emulator: erledigt (2026-07-24).** `putint`/`putuint`/
+  `putchar` rufen im `-os9`-Modus jetzt den echten, ungepufferten
+  `_os_write`-Syscall aus `clib.l` auf (Ganzzahl->ASCII-Wandlung komplett in
+  eigenem 68k-Code, kein `printf`/keine String-Literale nötig). Ein Testprogramm
+  wurde mit `r68`+`l68` zu einem echten OS-9-Modul gelinkt, per ToolShed auf
+  das Q9-Image kopiert und auf dem LAUFENDEN Emulator per Telnet ausgeführt --
+  korrekte Ausgabe (`42`, `-7`, `X`), kein Absturz. Dabei drei eigenständige
+  Linker-/ABI-Bugs gefunden und behoben (falsches Frame-Register `a6` statt
+  `a5`, `jsr` statt `bsr` für externe Aufrufe, falsche `l68`-Dateireihenfolge)
+  plus einen unabhängigen, vorher nie entdeckten Bug im `%`-Operator des
+  68000-Backends (`tc_mod_i32`/`tc_umod_u32` multiplizierten Quotient*Dividend
+  statt Quotient*Divisor). Details siehe docs/FORTSCHRITT.md.
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
@@ -147,7 +155,14 @@ void/void* 68000 + ARM64 korrekt
 2D-Array-Indizierung 68000 + ARM64 korrekt
 extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch) 68000 korrekt, ARM64 lehnt sauber ab
 -os9-Ausgabemodus: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei mit dem echten r68 (via Wine)
+68k signed/unsigned MUL/DIV/MOD + Fakultaet korrekt (inkl. der 2026-07-24 gefundenen %-Regression)
 === ALLE TESTS OK ===
+```
+
+Zusätzlich (nicht Teil von `./runtests.sh`, da echter Q9-Zugriff nötig): ein `-os9`-Modul mit
+`putint`/`putchar` wurde mit `r68`+`l68 -a` (Reihenfolge: `cstart.r` zuerst!) gegen
+`clib.l`/`os_lib.l`/`sys.l` gelinkt, per ToolShed auf `local_images/OS9SYS.hda` kopiert und
+auf dem laufenden Q9-Emulator per Telnet ausgeführt -- Ausgabe `42\r-7\rX` bytegenau bestätigt.
 ```
 
 ## Nächster sinnvoller Schritt
@@ -158,19 +173,20 @@ Zwei unabhängige Stränge stehen zur Wahl:
    `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
    Initialisierer), Array-Felder in `struct`, `void`/`void *`,
    zweidimensionale Arrays, `extern`-Deklarationen (inkl. Microware-ABI-
-   Aufrufcodegen) und der `-os9`-r68-Ausgabemodus sind seit 2026-07-24 erledigt
-   (siehe oben). Naheliegende Kandidaten: echtes Linken gegen `clib.l`
-   (Microware-Linker `l68`, die Assembler-Stufe dafuer steht jetzt),
-   String-Literale (Voraussetzung fuer `printf`-Formatstrings), mehr als
-   2 Array-Dimensionen, direkte `p.field[i]`-Indizierung von struct-Array-
-   Feldern (braucht kombinierte member+index-Kette in der Grammatik),
-   nicht-konstanter `static`-Initialisierer (braucht einen Runs-once-Guard mit
-   hidden Flag-Global, siehe docs/FORTSCHRITT.md).
+   Aufrufcodegen), der `-os9`-r68-Ausgabemodus UND echtes `l68`-Linken gegen
+   `clib.l` (inkl. echter Ausführung auf dem Q9) sind seit 2026-07-24 erledigt
+   (siehe oben). Naheliegende Kandidaten: String-Literale (Voraussetzung für
+   `printf`-Formatstrings -- `_os_write` selbst ist bereits echt nutzbar),
+   mehr als 2 Array-Dimensionen, direkte `p.field[i]`-Indizierung von
+   struct-Array-Feldern (braucht kombinierte member+index-Kette in der
+   Grammatik), nicht-konstanter `static`-Initialisierer (braucht einen
+   Runs-once-Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
    (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
-   auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen, danach
-   das Tiny-C-68k-Backend um echte Laufzeit-Anbindung (`putint`/`putchar`/
-   `exit` gegen `clib.l`) erweitern.
+   auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen. Die
+   Tiny-C-68k-Backend-Laufzeit-Anbindung (`putint`/`putchar` gegen `clib.l`)
+   ist bereits erledigt (siehe oben); `exit`/Rückgabewert-Weitergabe an
+   `F$Exit` noch nicht gesondert geprüft.
 
 Vor jeder Sprach-Erweiterung sind Frontend, IR, TinyVM, 68000- und
 ARM64-Backend sowie ein Regressionstest zu prüfen.
