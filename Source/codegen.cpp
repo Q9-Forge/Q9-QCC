@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include "msvc_compat.h"
 #include "codegen.h"
 
@@ -555,20 +556,47 @@ int cgenParseConfig(const char* buf) {
 // Aktionen sind eine Grenzflaeche zu Nutzer-Code, keine Grammatik -- Fehler hier (unbekannte
 // Regel, fehlende ROUTINE) brechen die Codegenerierung nicht ab, sie werden nur gewarnt und
 // die betroffene Aktion faellt weg.
-#define ACTION_ROUTINE_MAX  256
-#define ACTION_ROUTINE_LEN 65536
+//
+// Weder die Anzahl der ROUTINE-Bloecke noch die Laenge eines einzelnen Routine-Textes ist
+// im Voraus bekannt (haengt von der jeweiligen Grammatik ab) -- deshalb beides ueber
+// realloc-Verdopplung wachsend statt fester Arrays: bequem klein fuer ein 8/16-MB-
+// Zielsystem (Q9), ohne Obergrenze fuer grosse Projekte auf dem Host.
+#define ACTION_ROUTINE_INITIAL_CAP  8
 
 static char ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN];
 
 typedef struct {
 	char name[GEN_NAME_LEN];
-	char text[ACTION_ROUTINE_LEN];
+	char* text;		// malloc'd, exakt strlen(text)+1 gross
 } ActionRoutine;
 
-static ActionRoutine routinesC[ACTION_ROUTINE_MAX];
+static ActionRoutine* routinesC = NULL;
 static int routinesCCnt = 0;
-static ActionRoutine routines68k[ACTION_ROUTINE_MAX];
+static int routinesCCap = 0;
+static ActionRoutine* routines68k = NULL;
 static int routines68kCnt = 0;
+static int routines68kCap = 0;
+
+static void freeRoutines(ActionRoutine* arr, int cnt) {
+	int i;
+	for (i = 0; i < cnt; i++) free(arr[i].text);
+}
+
+// haengt (name, text[0..textLen)) als neue Routine an *arr an, verdoppelt *arr bei Bedarf
+static void pushRoutine(ActionRoutine** arr, int* cnt, int* cap, const char* name, const char* text, int textLen) {
+	ActionRoutine* slot;
+	if (*cnt >= *cap) {
+		int newCap = *cap > 0 ? *cap * 2 : ACTION_ROUTINE_INITIAL_CAP;
+		*arr = (ActionRoutine*)realloc(*arr, newCap * sizeof(ActionRoutine));
+		*cap = newCap;
+	}
+	slot = &(*arr)[*cnt];
+	strcpy_s(slot->name, sizeof(slot->name), name);
+	slot->text = (char*)malloc(textLen + 1);
+	memcpy(slot->text, text, textLen);
+	slot->text[textLen] = '\0';
+	(*cnt)++;
+}
 
 static const char* routineTextC(const char* name) {
 	int i;
@@ -600,52 +628,65 @@ static void lastWord(const char* line, char* out, int outMax) {
 	out[n] = '\0';
 }
 
+// wachsende Puffer sind ueber den Funktionsaufruf hinaus statisch (Kapazitaet bleibt
+// erhalten, wird beim naechsten Aufruf wiederverwendet statt neu allokiert)
+static char* lineBuf = NULL;
+static int lineBufCap = 0;
+static char* collectBuf = NULL;
+static int collectBufCap = 0;
+
+static void growBuf(char** buf, int* cap, int needed) {
+	int newCap;
+	if (needed <= *cap) return;
+	newCap = *cap > 0 ? *cap : 256;
+	while (newCap < needed) newCap *= 2;
+	*buf = (char*)realloc(*buf, newCap);
+	*cap = newCap;
+}
+
 int actionsParseConfig(const char* buf) {
-	char line[ACTION_ROUTINE_LEN];
-	int li, r;
+	int r;
 	int collecting = 0;			// 0=nichts, 1=ROUTINE C, 2=ROUTINE M68K
 	char collectName[GEN_NAME_LEN];
-	char collectText[ACTION_ROUTINE_LEN];
 	int collectLen;
 
 	for (r = 0; r < AST_MAX_RULES; r++) ruleActionCall[r][0] = '\0';
+	freeRoutines(routinesC, routinesCCnt);
 	routinesCCnt = 0;
+	freeRoutines(routines68k, routines68kCnt);
 	routines68kCnt = 0;
 
 	if (buf == NULL || buf[0] == '\0') {
 		return 1;
 	}
 	while (*buf) {
-		li = 0;
-		while (*buf && *buf != '\n' && li < (int)sizeof(line) - 1) {
-			line[li++] = *buf++;
-		}
-		line[li] = '\0';
+		const char* nl = strchr(buf, '\n');
+		int lineLen = nl ? (int)(nl - buf) : (int)strlen(buf);
+		growBuf(&lineBuf, &lineBufCap, lineLen + 1);
+		memcpy(lineBuf, buf, lineLen);
+		lineBuf[lineLen] = '\0';
+		buf += lineLen;
 		if (*buf == '\n') buf++;
+		{
+		const char* line = lineBuf;
 
 		if (collecting) {
 			if (strcmp(line, "END") == 0) {
-				collectText[collectLen] = '\0';
-				if (collecting == 1 && routinesCCnt < ACTION_ROUTINE_MAX) {
-					strcpy_s(routinesC[routinesCCnt].name, sizeof(routinesC[routinesCCnt].name), collectName);
-					strcpy_s(routinesC[routinesCCnt].text, sizeof(routinesC[routinesCCnt].text), collectText);
-					routinesCCnt++;
+				if (collecting == 1) {
+					pushRoutine(&routinesC, &routinesCCnt, &routinesCCap, collectName, collectBuf, collectLen);
 				}
-				else if (collecting == 2 && routines68kCnt < ACTION_ROUTINE_MAX) {
-					strcpy_s(routines68k[routines68kCnt].name, sizeof(routines68k[routines68kCnt].name), collectName);
-					strcpy_s(routines68k[routines68kCnt].text, sizeof(routines68k[routines68kCnt].text), collectText);
-					routines68kCnt++;
+				else if (collecting == 2) {
+					pushRoutine(&routines68k, &routines68kCnt, &routines68kCap, collectName, collectBuf, collectLen);
 				}
 				collecting = 0;
 				continue;
 			}
 			{
-				int n = (int)strlen(line);
-				if (collectLen + n + 2 < ACTION_ROUTINE_LEN) {
-					memcpy(collectText + collectLen, line, n);
-					collectLen += n;
-					collectText[collectLen++] = '\n';
-				}
+				int ln = (int)strlen(line);
+				growBuf(&collectBuf, &collectBufCap, collectLen + ln + 2);
+				memcpy(collectBuf + collectLen, line, ln);
+				collectLen += ln;
+				collectBuf[collectLen++] = '\n';
 			}
 			continue;
 		}
@@ -688,6 +729,7 @@ int actionsParseConfig(const char* buf) {
 		}
 		else {
 			printf("ACTIONS: unbekannte Konfigurationszeile ignoriert: %s\n", line);
+		}
 		}
 	}
 	// jede ACTION braucht mindestens EINE der beiden ROUTINEn, sonst verpufft sie
