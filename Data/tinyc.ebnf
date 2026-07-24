@@ -1,4 +1,23 @@
-program   = { globalDecl | structDecl | typedefDecl | enumDecl } { funcdef } .
+program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl } { funcdef } .
+
+/* Deklaration einer NICHT in Tiny-C definierten Funktion (z.B. einer echten
+   OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
+   Signatur. Parameter brauchen keinen Namen (nur Typen fuer die Aufrufpruefung).
+   "..." markiert eine variadische Funktion (wie printf) -- siehe tc_call/
+   CALLEXT in docs/FORTSCHRITT.md fuer die Aufrufkonvention (Microware-ABI:
+   1./2. Argument in d0/d1, Rest auf dem Stack; bei variadisch ALLES auf dem
+   Stack). Erfordert mindestens einen benannten Parameter vor "...", wie in
+   echtem ISO C. */
+externDecl      = "extern" type pointerDecl externName "(" externParamList ")" ";" .
+externName      = ident .
+externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
+/* optionaler Parametername wird NUR geparst und verworfen (rein dokumentarisch,
+   wie in echten C-Prototypen "int strcmp(const char *a, const char *b);") --
+   fuer die Aufrufpruefung zaehlen nur die Typen. "const" ebenso rein
+   dokumentarisch: eine extern-Deklaration hat keinen Tiny-C-Rumpf, in dem eine
+   Schreibpruefung greifen koennte. */
+externParam     = [ constKw ] type pointerDecl [ ident ] .
+ellipsisTok     = "..." .
 
 enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
 
