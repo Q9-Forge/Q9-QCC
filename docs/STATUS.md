@@ -113,6 +113,13 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Initialisierer funktionieren mit; bewusst NICHT bei struct-Feldern/
   Parametern, mehr als 2 Dimensionen oder verschachtelten Brace-
   Initialisierern, siehe docs/FORTSCHRITT.md
+- `extern`-Deklarationen für nicht in Tiny-C definierte Funktionen (z. B. echte
+  OS-9/Microware-`clib`-Funktionen wie `strcmp`/`printf`/`malloc`) -- Aufruf
+  über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`: 1./2.
+  Argument in `d0`/`d1`, Rest auf dem Stack, bei variadischen Funktionen wie
+  `printf` alles auf dem Stack), NUR im 68000-Backend, end-to-end gegen
+  handgeschriebene Mock-Stubs verifiziert (echtes Linken gegen `clib.l` via
+  `l68` noch offen), siehe docs/FORTSCHRITT.md
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
@@ -122,7 +129,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-109 Tiny-C-Programme korrekt
+111 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -130,6 +137,7 @@ switch/case 68000 + ARM64 korrekt
 static-Lokale-Persistenz 68000 + ARM64 korrekt
 void/void* 68000 + ARM64 korrekt
 2D-Array-Indizierung 68000 + ARM64 korrekt
+extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch) 68000 korrekt, ARM64 lehnt sauber ab
 === ALLE TESTS OK ===
 ```
 
@@ -139,12 +147,14 @@ Zwei unabhängige Stränge stehen zur Wahl:
 
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
    `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
-   Initialisierer), Array-Felder in `struct`, `void`/`void *` und
-   zweidimensionale Arrays sind seit 2026-07-24 erledigt (siehe oben).
-   Naheliegende Kandidaten: mehr als 2 Array-Dimensionen, direkte
-   `p.field[i]`-Indizierung von struct-Array-Feldern (braucht kombinierte
-   member+index-Kette in der Grammatik), nicht-konstanter `static`-
-   Initialisierer (braucht einen Runs-once-Guard mit
+   Initialisierer), Array-Felder in `struct`, `void`/`void *`,
+   zweidimensionale Arrays und `extern`-Deklarationen (inkl. Microware-ABI-
+   Aufrufcodegen) sind seit 2026-07-24 erledigt (siehe oben). Naheliegende
+   Kandidaten: echtes Linken gegen `clib.l` (Microware-Linker `l68`),
+   String-Literale (Voraussetzung fuer `printf`-Formatstrings), mehr als
+   2 Array-Dimensionen, direkte `p.field[i]`-Indizierung von struct-Array-
+   Feldern (braucht kombinierte member+index-Kette in der Grammatik),
+   nicht-konstanter `static`-Initialisierer (braucht einen Runs-once-Guard mit
    hidden Flag-Global, siehe docs/FORTSCHRITT.md).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
    (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
