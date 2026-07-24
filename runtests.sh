@@ -1114,6 +1114,73 @@ else
 	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
 fi
 
+# 13a-link) Tiny-C Mehrdatei-Uebersetzung, M2 (2026-07-25): ZWEI SEPARAT mit
+#     -part kompilierte Dateien (eine zusaetzlich mit -runtime fuer den
+#     gemeinsamen 68k-Core/I/O-Anker, siehe tinyc_backend_c.cpp) werden mit dem
+#     ECHTEN r68 assembliert und mit dem ECHTEN l68 (Microware-Linker) zu EINEM
+#     Modul gelinkt -- erstmals in diesem Projekt automatisiert (bisher rief
+#     runtests.sh nur r68 auf, nie l68). Deckt Funktionsaufruf UND geteilte
+#     globale Variable ueber die Dateigrenze hinweg ab, PLUS dass eine
+#     static-Funktion in Datei A per Namensverfremdung (tc_<name>__<psect>)
+#     nicht mit einem gleichnamigen Symbol kollidiert. r68/l68 kennen KEIN
+#     Sichtbarkeitskonzept (kein xdef/xref, jedes Label automatisch sichtbar
+#     beim Linken -- empirisch verifiziert, siehe docs/STATUS.md); der zweite
+#     Testfall unten bestaetigt dafuer, dass l68 eine ECHTE Namenskollision
+#     (zwei nicht-static Definitionen desselben Symbols) zuverlaessig als
+#     "duplicate symbol" ablehnt.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	build/tinyc_p 'int shared; int helper(int x); static int localHelper(int x){ return x-1; } int main(){ shared = 10; putint(helper(shared)); putint(localHelper(shared)); }' > build/tinyc_mf_link_a.ir
+	build/tinyc_p 'extern int shared; int helper(int x){ return shared + x; }' > build/tinyc_mf_link_b.ir
+	if build/tinyc_backend build/tinyc_mf_link_a.ir build/tinyc_mf_link_a.s68 -os9 -part -runtime && \
+		build/tinyc_backend build/tinyc_mf_link_b.ir build/tinyc_mf_link_b.s68 -os9 -part; then
+		cp build/tinyc_mf_link_a.s68 "$MWOS_TMP/mflinka.a"
+		cp build/tinyc_mf_link_b.s68 "$MWOS_TMP/mflinkb.a"
+		rm -f "$MWOS_TMP/mflinka.r" "$MWOS_TMP/mflinkb.r" "$MWOS_TMP/mflink.out" "$MWOS_TMP/mflink.sym"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mflinka.a -o=M:\\TMP\\mflinka.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mflinkb.a -o=M:\\TMP\\mflinkb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/mflinka.r" ] && [ -s "$MWOS_TMP/mflinkb.r" ]; then
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\mflinka.r M:\\TMP\\mflinkb.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\mflink.out -s=M:\\TMP\\mflink.sym" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/mflink.out" ] && grep -q "tc_localHelper__tinyc_mf_link_a_p" "$MWOS_TMP/mflink.sym" && \
+				grep -q "tc_helper " "$MWOS_TMP/mflink.sym" && grep -q "tc_g_shared" "$MWOS_TMP/mflink.sym"; then
+				echo "ok    tinyc Mehrdatei M2: echter r68+l68-Link zweier getrennt kompilierter Dateien (Funktionsaufruf+Global ueber Dateigrenze, static-Mangling) korrekt"
+			else
+				echo "FAIL  tinyc Mehrdatei M2: echter l68-Link fehlerhaft oder Symbole fehlen"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc Mehrdatei M2: r68-Assemblierung einer der beiden Dateien fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/mflink*.a "$MWOS_TMP"/mflink*.r "$MWOS_TMP/mflink.out" "$MWOS_TMP/mflink.sym"
+	else
+		echo "FAIL  tinyc Mehrdatei M2: -part/-runtime-Backend-Aufruf fehlgeschlagen"; fail=1
+	fi
+	# Duplicate-Symbol-Testfall: ZWEI Dateien definieren dieselbe nicht-static
+	# Funktion -- l68 muss das als "duplicate symbol" ablehnen (simuliert, was
+	# jeder echte Linker tut, siehe M0-Spike-Ergebnis in docs/STATUS.md).
+	build/tinyc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/tinyc_mf_dup_a.ir
+	build/tinyc_p 'int f(){ return 2; }' > build/tinyc_mf_dup_b.ir
+	if build/tinyc_backend build/tinyc_mf_dup_a.ir build/tinyc_mf_dup_a.s68 -os9 -part -runtime && \
+		build/tinyc_backend build/tinyc_mf_dup_b.ir build/tinyc_mf_dup_b.s68 -os9 -part; then
+		cp build/tinyc_mf_dup_a.s68 "$MWOS_TMP/mfdupa.a"
+		cp build/tinyc_mf_dup_b.s68 "$MWOS_TMP/mfdupb.a"
+		rm -f "$MWOS_TMP/mfdupa.r" "$MWOS_TMP/mfdupb.r" "$MWOS_TMP/mfdup.out"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mfdupa.a -o=M:\\TMP\\mfdupa.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mfdupb.a -o=M:\\TMP\\mfdupb.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\mfdupa.r M:\\TMP\\mfdupb.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\mfdup.out" >build/tinyc_mf_dup.err 2>&1
+		if [ ! -s "$MWOS_TMP/mfdup.out" ] && grep -qi "duplicate symbol" build/tinyc_mf_dup.err; then
+			echo "ok    tinyc Mehrdatei M2: echter l68 lehnt doppelte nicht-static Definition als 'duplicate symbol' ab"
+		else
+			echo "FAIL  tinyc Mehrdatei M2: l68 haette 'duplicate symbol' melden muessen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/mfdup*.a "$MWOS_TMP"/mfdup*.r "$MWOS_TMP/mfdup.out" build/tinyc_mf_dup.err
+	else
+		echo "FAIL  tinyc Mehrdatei M2: Backend-Aufruf fuer Duplicate-Test fehlgeschlagen"; fail=1
+	fi
+else
+	echo "warn  tinyc Mehrdatei M2: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Mehrdatei-Link uebersprungen"
+fi
+
 # 13a) "static" lokale Variablen (2026-07-24): GLOBAL/GARRAY/GINIT duerfen jetzt auch
 #      INNERHALB einer Funktion im IR-Strom stehen (frueher nur davor erlaubt) -- eine
 #      static-Lokale wird an genau der Textstelle ihrer Deklaration als GLOBAL emittiert,

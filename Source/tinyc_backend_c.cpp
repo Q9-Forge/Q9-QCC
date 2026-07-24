@@ -31,6 +31,14 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
+	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
+	   OHNE Rumpf in dieser Datei (definiert in einer anderen Tiny-C-Datei) --
+	   first/last/locals/frameBytes bleiben dann unbenutzt (0/-1). isStatic
+	   steuert die Namensverfremdung (siehe mangledName()) -- r68/l68 kennen
+	   KEIN Sichtbarkeitskonzept (siehe docs/STATUS.md), Mangling ist die einzige
+	   Moeglichkeit, dass zwei Dateien denselben privaten Helfernamen frei
+	   verwenden koennen, ohne dass l68 "duplicate symbol" meldet. */
+	int declOnly, isStatic;
 } Function;
 
 typedef struct {
@@ -40,6 +48,7 @@ typedef struct {
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
+	int declOnly, isStatic; /* siehe Function */
 } Global;
 
 static Instr ir[MAX_IR_LINES];
@@ -60,6 +69,22 @@ static int globalCount = 0;
    fuer beide Formate identisch -- MIT EINER wichtigen Ausnahme: dem Frame-
    Pointer-Register (siehe framePtr() direkt unten). */
 static int os9Mode = 0;
+/* -part (2026-07-25, Mehrdatei-Uebersetzung): diese Datei ist EIN TEIL eines
+   Mehrdatei-Programms, kein vollstaendiges Programm fuer sich -- die main/
+   funcCount-Pflicht wird gelockert, siehe collectFunctions()/emitIR(). */
+static int partMode = 0;
+/* -runtime (2026-07-25, Mehrdatei-Uebersetzung): der 68k-Core (mul/div,
+   emitM68kCore) sowie putint/putuint/putchar/tc_io_write + deren Scratch-
+   Speicher (tc_extcall_tmp/tc_io_buf/tc_io_cnt) werden OHNE -part IMMER
+   emittiert (Vollprogramm-Annahme, unveraendert). Unter -part wuerde JEDE
+   Datei ihre EIGENE Kopie dieser Symbole mitbringen -- l68 lehnt das beim
+   Linken zuverlaessig als "duplicate symbol" ab (siehe docs/STATUS.md,
+   empirisch verifiziert). Deshalb: unter -part NUR emittieren, wenn
+   zusaetzlich -runtime gesetzt ist -- GENAU EINE Datei im Mehrdatei-Programm
+   traegt so den gemeinsamen Anker, alle anderen referenzieren ihn per
+   undefiniertem Symbolverweis (vom Linker aufgeloest, wie jeder andere
+   Cross-Datei-Aufruf auch). */
+static int runtimeMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
 /* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
@@ -77,6 +102,21 @@ static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
    unangetastet); das Default-/vasm-Format bleibt bei a6 (keine Notwendigkeit,
    keine Regression an den TinyVM-/Simulator-Tests). */
 static const char* framePtr(void) { return os9Mode ? "a5" : "a6"; }
+/* Namensverfremdung fuer static-Symbole (Mehrdatei-Uebersetzung, 2026-07-25):
+   r68/l68 kennen KEIN Sichtbarkeitskonzept (kein xdef/xref, jedes Label ist
+   beim Linken automatisch fuer JEDE andere gelinkte Datei sichtbar -- empirisch
+   verifiziert, siehe docs/STATUS.md). Ohne Verfremdung wuerde "static" seinen
+   Hauptzweck verfehlen: zwei unabhaengig kompilierte Dateien koennen jeweils
+   einen privaten Helfer GLEICHEN Namens haben wollen (z.B. beide ein eigenes
+   "static int init()"), was l68 sonst als "duplicate symbol" ablehnt (ebenso
+   empirisch bestaetigt). Nur eine KONVENTION, KEINE echte Durchsetzung -- der
+   psect-Name (aus dem Ausgabedateinamen abgeleitet, siehe main()) ist bereits
+   der natuerliche Ort fuer Eindeutigkeit pro Datei. */
+static char* mangledName(char* buf, const char* prefix, const char* name, int isStatic) {
+	if (os9Mode && isStatic) sprintf(buf, "%s%s__%s", prefix, name, psectName);
+	else sprintf(buf, "%s%s", prefix, name);
+	return buf;
+}
 /* vasm kennt "even" (Ausrichtung auf gerade Adresse); der echte Microware-r68-
    Assembler kennt "even" NICHT (empirisch verifiziert: "bad mnemonic"), wohl
    aber "align 4" (Longword-Ausrichtung -- strenger als "even", aber fuer
@@ -196,6 +236,7 @@ static void collectGlobals(void) {
 			globals[gi].isChar = isByteWord(insP->args[1]);
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
+			globals[gi].isStatic = insP->argc >= 4 && number(insP->args[3], insP->line) != 0;
 			continue;
 		}
 		if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4) {
@@ -220,6 +261,22 @@ static void collectGlobals(void) {
 		globals[gi].isChar = insP->argc >= 3 && isByteWord(insP->args[2]);
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
+		globals[gi].isStatic = insP->argc >= 4 && number(insP->args[3], insP->line) != 0;
+	}
+	for (i = 0; i < irCount; i++) {
+		Instr* insP = &ir[i];
+		if (strcmp(insP->op, "GLOBALDECL") != 0) continue;
+		if (insP->argc != 2) fatal("ungueltiges GLOBALDECL");
+		if (findGlobal(insP->args[0]) >= 0) {
+			sprintf(msg, "IR Zeile %d: doppelte globale Variable %s", insP->line, insP->args[0]);
+			fatal(msg);
+		}
+		if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
+		gi = globalCount++;
+		memset(&globals[gi], 0, sizeof(Global));
+		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
+		globals[gi].isChar = isByteWord(insP->args[1]);
+		globals[gi].declOnly = 1;
 	}
 }
 
@@ -241,16 +298,21 @@ static void collectFunctions(void) {
 			}
 		} else if (strcmp(insP->op, "FUNCDECL") == 0 || strcmp(insP->op, "GLOBALDECL") == 0) {
 			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
-			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY),
-			   hier noch OHNE Wirkung (kein declOnly-Backend-Handling vor M2/M3). */
+			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY);
+			   FUNCDECL wird unten in einem separaten Durchlauf registriert (analog
+			   zu GLOBALDECL in collectGlobals), da es KEINE FUNC/ENDFUNC-Spanne
+			   oeffnet/schliesst. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
-			/* 3. Argument (2026-07-25): optionales isstatic-Flag, hier noch nicht ausgewertet. */
+			/* 3. Argument (2026-07-25): optionales isstatic-Flag (Namensverfremdung
+			   in emitIR, siehe mangledName() -- r68/l68 kennen kein Sichtbarkeits-
+			   konzept, siehe docs/STATUS.md). */
 			if (open || (insP->argc != 2 && insP->argc != 3)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
 			current.nargs = number(insP->args[1], insP->line);
 			current.first = i + 1;
 			current.last = -1;
+			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
 			open = 1;
 			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {
@@ -265,7 +327,25 @@ static void collectFunctions(void) {
 		}
 	}
 	if (open) fatal("IR: fehlendes ENDFUNC");
-	if (funcCount == 0) fatal("IR: keine Funktion");
+	/* -part (2026-07-25, Mehrdatei-Uebersetzung): eine Datei OHNE main/Funktionen
+	   ist zulaessig, solange sie wenigstens globale Deklarationen enthaelt --
+	   eine komplett leere Datei bleibt weiterhin ein Fehler. Ohne -part
+	   unveraendert immer ein Fehler (Vollprogramm-Annahme). */
+	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("IR: keine Funktion");
+	for (i = 0; i < irCount; i++) {
+		Instr* insP = &ir[i];
+		if (strcmp(insP->op, "FUNCDECL") != 0) continue;
+		if (insP->argc != 2) fatal("ungueltiges FUNCDECL");
+		if (findFunction(insP->args[0]) >= 0) { fprintf(stderr, "tinyc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion"); }
+		if (funcCount >= MAX_FUNCS) fatal("zu viele Funktionen");
+		memset(&current, 0, sizeof(current));
+		strncpy(current.name, insP->args[0], NAME_LEN - 1);
+		current.nargs = number(insP->args[1], insP->line);
+		current.first = -1;
+		current.last = -1;
+		current.declOnly = 1;
+		funcs[funcCount++] = current;
+	}
 
 	for (i = 0; i < funcCount; i++) {
 		Function* fn = &funcs[i];
@@ -400,7 +480,10 @@ static void emitIR(FILE* out) {
 	char msg[300];
 	char addrBuf[64];
 
-	if (findFunction("main") < 0) fatal("IR: Funktion main fehlt");
+	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
+	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
+	   keine der gelinkten Dateien es liefert. */
+	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
 	fprintf(out, "%s Tiny-C 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
 	fprintf(out, "%s a7: Operand-Stack, %s: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix(), framePtr());
@@ -417,8 +500,11 @@ static void emitIR(FILE* out) {
 
 	for (fi = 0; fi < funcCount; fi++) {
 		Function* fn = &funcs[fi];
+		char asmName[NAME_LEN + 40];
+		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) fputs("main:\n", out);
-		fprintf(out, "tc_%s:\tlink\t%s,#%d\n", fn->name, framePtr(), -fn->frameBytes);
+		mangledName(asmName, "tc_", fn->name, fn->isStatic);
+		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
@@ -447,8 +533,11 @@ static void emitIR(FILE* out) {
 				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tlea\t%s,a0\n\tmove.l\ta0,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "ADDRG") == 0 && insP->argc == 1) {
-				if (findGlobal(insP->args[0]) < 0) fatal("unbekannte globale Variable");
-				fprintf(out, "\tlea\ttc_g_%s(pc),a0\n\tmove.l\ta0,-(a7)\n", insP->args[0]);
+				int gidx = findGlobal(insP->args[0]);
+				char gAsmName[NAME_LEN + 40];
+				if (gidx < 0) fatal("unbekannte globale Variable");
+				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+				fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", gAsmName);
 			} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
 				/* nur Frame-Layout, kein Code */
 			} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
@@ -460,7 +549,9 @@ static void emitIR(FILE* out) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
 				} else if (strcmp(insP->args[0], "G") == 0 && findGlobal(insP->args[1]) >= 0) {
-					fprintf(out, "\tlea\ttc_g_%s(pc),a0\n", insP->args[1]);
+					char gAsmName[NAME_LEN + 40];
+					mangledName(gAsmName, "tc_g_", insP->args[1], globals[findGlobal(insP->args[1])].isStatic);
+					fprintf(out, "\tlea\t%s(pc),a0\n", gAsmName);
 				} else {
 					fatal("unbekanntes Array");
 				}
@@ -478,7 +569,9 @@ static void emitIR(FILE* out) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
 				} else if (strcmp(insP->args[0], "G") == 0 && findGlobal(insP->args[1]) >= 0) {
-					fprintf(out, "\tlea\ttc_g_%s(pc),a0\n", insP->args[1]);
+					char gAsmName[NAME_LEN + 40];
+					mangledName(gAsmName, "tc_g_", insP->args[1], globals[findGlobal(insP->args[1])].isStatic);
+					fprintf(out, "\tlea\t%s(pc),a0\n", gAsmName);
 				} else {
 					fatal("unbekanntes Array");
 				}
@@ -491,21 +584,31 @@ static void emitIR(FILE* out) {
 					fprintf(out, "\tmove.%s\td0,(a0)\n", isChar ? "b" : "l");
 				}
 			} else if (strcmp(op, "LOADG") == 0 && insP->argc == 1) {
-				if (findGlobal(insP->args[0]) < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				fprintf(out, "\tmove.l\ttc_g_%s(pc),-(a7)\n", insP->args[0]);
+				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+				fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
-				if (findGlobal(insP->args[0]) < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\ttc_g_%s(pc),a0\n\tmove.l\td0,(a0)\n", insP->args[0]);
+				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\t%s(pc),a0\n\tmove.l\td0,(a0)\n", gAsmName);
 			} else if (strcmp(op, "LOADGC") == 0 && insP->argc == 1) {
-				if (findGlobal(insP->args[0]) < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\ttc_g_%s(pc),d0\n\tmove.l\td0,-(a7)\n", insP->args[0]);
+				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+				fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
-				if (findGlobal(insP->args[0]) < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\ttc_g_%s(pc),a0\n\tmove.b\td0,(a0)\n", insP->args[0]);
+				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\t%s(pc),a0\n\tmove.b\td0,(a0)\n", gAsmName);
 			} else if ((strcmp(op, "LOADGP") == 0 || strcmp(op, "STOREGP") == 0) && insP->argc == 1) {
-				if (findGlobal(insP->args[0]) < 0) fatal("unbekannte globale Variable");
-				if (strcmp(op, "LOADGP") == 0) fprintf(out, "\tmove.l\ttc_g_%s(pc),-(a7)\n", insP->args[0]);
-				else fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\ttc_g_%s(pc),a0\n\tmove.l\td0,(a0)\n", insP->args[0]);
+				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+				if (gidx < 0) fatal("unbekannte globale Variable");
+				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+				if (strcmp(op, "LOADGP") == 0) fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
+				else fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\t%s(pc),a0\n\tmove.l\td0,(a0)\n", gAsmName);
 			} else if (strcmp(op, "PTRINDEX") == 0 && insP->argc == 1) {
 				fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
 				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
@@ -584,8 +687,11 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s\n", insP->args[0]);
 			} else if ((strcmp(op, "CALL") == 0 || strcmp(op, "CALLP") == 0) && insP->argc == 2) {
 				int nargsC = number(insP->args[1], insP->line);
-				if (findFunction(insP->args[0]) < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
-				fprintf(out, "\tbsr\ttc_%s\n", insP->args[0]);
+				int callee = findFunction(insP->args[0]);
+				char asmName[NAME_LEN + 40];
+				if (callee < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
+				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
+				fprintf(out, "\tbsr\t%s\n", asmName);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
@@ -679,6 +785,12 @@ static void emitIR(FILE* out) {
 		}
 		fputs("\n", out);
 	}
+	/* Mehrdatei-Uebersetzung (2026-07-25): der gemeinsame 68k-Core/I/O-Anker
+	   (siehe partMode/runtimeMode-Kommentar oben) wird unter -part NUR in
+	   GENAU EINER Datei emittiert (-runtime) -- sonst meldet l68 fuer JEDES
+	   dieser Symbole "duplicate symbol", da jede Datei sonst ihre eigene Kopie
+	   mitbraechte. Ohne -part unveraendert immer emittiert (Vollprogramm). */
+	if (!partMode || runtimeMode) {
 	emitM68kCore(out);
 	if (os9Mode) {
 		/* Echte Ausgabe ueber die reale Microware-clib.l-Funktion _os_write
@@ -746,6 +858,7 @@ static void emitIR(FILE* out) {
 		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
 		fputs("tc_io_cnt:\tdc.l\t0\n", out);
 	}
+	} /* !partMode || runtimeMode */
 
 	{
 		int hasData = 0, hasBss = 0, gi;
@@ -753,6 +866,7 @@ static void emitIR(FILE* out) {
 		// deshalb immer im DATA-Zweig, nie im BSS-Zweig. Das wird hier bewusst
 		// direkt als Regel (isArray || initialValue!=0) nachgebildet.
 		for (gi = 0; gi < globalCount; gi++) {
+			if (globals[gi].declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
 			hasData |= globals[gi].isArray || globals[gi].initialValue != 0;
 			hasBss |= !globals[gi].isArray && globals[gi].initialValue == 0;
 		}
@@ -761,13 +875,15 @@ static void emitIR(FILE* out) {
 			emitAlign(out);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
+				if (g->declOnly) continue;
 				if (g->isArray || g->initialValue != 0) {
-					int e;
+					int e; char gAsmName[NAME_LEN + 40];
+					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
 					if (!g->isChar) emitAlign(out);
 					if (!g->isArray) {
-						fprintf(out, "tc_g_%s:\tdc.%s\t%d\n", g->name, g->isChar ? "b" : "l", g->initialValue);
+						fprintf(out, "%s:\tdc.%s\t%d\n", gAsmName, g->isChar ? "b" : "l", g->initialValue);
 					} else {
-						fprintf(out, "tc_g_%s:\n", g->name);
+						fprintf(out, "%s:\n", gAsmName);
 						for (e = 0; e < g->length; e++) fprintf(out, "\tdc.%s\t%d\n", g->isChar ? "b" : "l", g->init[e]);
 					}
 				}
@@ -778,9 +894,12 @@ static void emitIR(FILE* out) {
 			emitAlign(out);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
+				if (g->declOnly) continue;
 				if (!g->isArray && g->initialValue == 0) {
+					char gAsmName[NAME_LEN + 40];
+					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
 					if (!g->isChar) emitAlign(out);
-					fprintf(out, "tc_g_%s:\tdc.%s\t0\n", g->name, g->isChar ? "b" : "l");
+					fprintf(out, "%s:\tdc.%s\t0\n", gAsmName, g->isChar ? "b" : "l");
 				}
 			}
 		}
@@ -791,13 +910,25 @@ static void emitIR(FILE* out) {
 int main(int argc, char* argv[]) {
 	FILE* out;
 	char msg[300];
-	if (argc != 3 && !(argc == 4 && strcmp(argv[3], "-os9") == 0)) {
-		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9]\n", argv[0]);
-		fprintf(stderr, "  -os9: Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
-		fprintf(stderr, "        fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
+	int i;
+	if (argc < 3) {
+		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime]\n", argv[0]);
+		fprintf(stderr, "  -os9:     Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
+		fprintf(stderr, "            fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
+		fprintf(stderr, "  -part:    diese Datei ist EIN TEIL eines Mehrdatei-Programms (kein\n");
+		fprintf(stderr, "            eigenstaendiges main noetig) -- fuer echten Mehrdatei-Link\n");
+		fprintf(stderr, "            mit l68 gegen andere -os9/-part-Module.\n");
+		fprintf(stderr, "  -runtime: nur mit -part: diese Datei traegt zusaetzlich den gemeinsamen\n");
+		fprintf(stderr, "            68k-Core/I/O-Anker (tc_mul_i32 etc.) -- GENAU EINE Datei im\n");
+		fprintf(stderr, "            Mehrdatei-Programm muss dies setzen, sonst 'duplicate symbol'.\n");
 		return 2;
 	}
-	if (argc == 4) os9Mode = 1;
+	for (i = 3; i < argc; i++) {
+		if (strcmp(argv[i], "-os9") == 0) os9Mode = 1;
+		else if (strcmp(argv[i], "-part") == 0) partMode = 1;
+		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
+		else { fprintf(stderr, "unbekannte Option: %s\n", argv[i]); return 2; }
+	}
 	readIR(argv[1]);
 	collectGlobals();
 	collectFunctions();
