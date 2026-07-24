@@ -528,6 +528,48 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tbsr\ttc_%s\n", insP->args[0]);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
+			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
+				/* Aufruf einer NICHT in dieser IR definierten (externen) Funktion, z.B.
+				   einer echten OS-9/Microware-clib-Funktion (strcmp, printf, malloc, ...).
+				   Nutzt die dokumentierte Microware-68K-C/C++-ABI (Ultra C/C++ Processor
+				   Guide, Kapitel "Passing Arguments to Functions") statt der sonst hier
+				   verwendeten reinen Stack-ABI fuer TINY-C-EIGENE Funktionen:
+				     - nicht-variadisch: 1. Argument -> d0, 2. Argument -> d1, ALLE
+				       weiteren Argumente auf den Stack, in UMGEKEHRTER Erscheinungs-
+				       reihenfolge gepusht (3. Argument landet dadurch am NAECHSTEN zur
+				       Ruecksprungadresse, exakt wie es die ABI vorschreibt).
+				     - variadisch (z.B. printf): ALLE Argumente auf den Stack, ebenfalls
+				       in umgekehrter Reihenfolge, KEINE Register.
+				   Unser eigener Stack-IR liefert alle Argumente bereits in
+				   Erscheinungsreihenfolge auf a7 (1. Argument am weitesten unten, da
+				   zuerst gepusht) -- die obersten "stackArgs" Werte werden daher zuerst
+				   in ein festes Scratch-Feld ausgelagert (tc_extcall_tmp), damit sie
+				   NICHT verloren gehen, wenn darunter noch d0/d1 herausgeholt werden
+				   muessen; anschliessend werden sie in DERSELBEN (bereits umgekehrten)
+				   Reihenfolge zurueckgepusht. Der Aufruf selbst geht per "jsr" auf den
+				   ROHEN Funktionsnamen (kein "tc_"-Praefix wie bei internen Aufrufen) --
+				   das eigentliche Linken gegen die reale clib.l (externe Symbolaufloesung
+				   via l68 statt der aktuellen "vasm -Fbin"-Direktassemblierung) ist noch
+				   NICHT Teil dieses Schritts, siehe docs/FORTSCHRITT.md. */
+				int nargsC = number(insP->args[1], insP->line);
+				int variadic = number(insP->args[2], insP->line);
+				int hasD0 = !variadic && nargsC >= 1;
+				int hasD1 = !variadic && nargsC >= 2;
+				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
+				int ai;
+				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
+				/* PC-relative Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein
+				   freies Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen
+				   eigene Emission hinaus als gueltig vorausgesetzt) -- passend zum PIC-Stil
+				   des restlichen Backends (vgl. tc_g_<name>(pc)-Zugriffe). */
+				if (stackArgs > 0) fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
+				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n", ai * 4);
+				if (hasD1) fputs("\tmove.l\t(a7)+,d1\n", out);
+				if (hasD0) fputs("\tmove.l\t(a7)+,d0\n", out);
+				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t%d(a0),-(a7)\n", ai * 4);
+				fprintf(out, "\tjsr\t%s\n", insP->args[0]);
+				if (stackArgs) fprintf(out, "\tlea\t%d(a7),a7\n", stackArgs * 4);
+				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n\tunlk\ta6\n\trts\n", out);
 			} else if (strcmp(op, "DROP") == 0) {
@@ -555,6 +597,10 @@ static void emitIR(FILE* out) {
 	fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 	fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 	fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
+	/* Scratch-Feld fuer CALLEXT/CALLEXTP (siehe dort) -- max. 8 auf den Stack
+	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
+	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. */
+	fputs("\teven\ntc_extcall_tmp:\tds.l\t8\n", out);
 
 	{
 		int hasData = 0, hasBss = 0, gi;
