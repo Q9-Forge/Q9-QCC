@@ -37,7 +37,16 @@ typedefTargetName = ident .
 globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize [ arraySize2 ] ] [ "=" globalInit ] ";" .
 constKw   = "const" .
 staticKw  = "static" .
-globalInit = globalValue | initList .
+/* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
+   (char msg[6] = "hallo";). Duplizierte, AKTIONSLOSE Kopie von stringLit
+   OHNE eigene ACTION -- ein direkter Verweis auf stringLit wuerde dessen
+   ACTION (tc_string: anonyme GARRAY-Konstante + Typ-Stack-Push) unwiderruflich
+   mitausloesen, was fuer den globalen Kontext (tc_globalend liest die GANZE
+   Deklaration ohnehin als Rohtext, wie bei Zahlen/Bools) nur unbenutzten Muell
+   erzeugen wuerde. tc_globalend erkennt/dekodiert das Literal selbst per
+   Rohtext-Scan (siehe dort), genau wie bei globalNumber/globalBool. */
+globalInit = globalValue | initList | globalStringInit .
+globalStringInit = "\042" { character } "\042" .
 arraySize  = "[" globalNumber "]" .
 arraySize2 = "[" globalNumber "]" .
 globalValue = globalNumber | globalNeg | globalBool .
@@ -103,7 +112,15 @@ varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
    tc_globalend/tc_varref/tc_target) -- KEIN Initialisierer in dieser Version
    (waere ein eigener Aufwand analog zu initList, siehe docs/FORTSCHRITT.md). */
 localDecl = localName [ arraySize [ arraySize2 ] ] .
-varInit   = expr | initList .
+/* arrayStringInit (2026-07-24, String-Literale als Array-Initialisierer,
+   char msg[6] = "hallo";): MUSS vor expr probiert werden, sonst wuerde expr
+   (via factor/stringLit) das Literal zuerst konsumieren. Referenziert
+   stringLit bewusst DIREKT (anders als globalStringInit) -- dessen ACTION
+   tc_string (anonyme GARRAY-Konstante + char*-Adresse auf den Stack) wird
+   fuer den SKALAREN Fall (char* p = "..";) ohnehin gebraucht; tc_arrayinitstring
+   verwirft die Adresse per DROP nur, wenn das Ziel tatsaechlich ein Array ist. */
+varInit   = arrayStringInit | expr | initList .
+arrayStringInit = stringLit .
 initList  = "{" [ initValue { "," initValue } ] "}" .
 initValue = initNumber | initNeg | initBool .
 initBool  = "true" | "false" .

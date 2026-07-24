@@ -131,9 +131,12 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Konstanten (`GARRAY`/`GINIT` + Nullterminator) und liefern dessen Adresse
   (`ADDRG`), dieselben IR-Opcodes wie ein initialisiertes globales char-Array,
   kein neuer Opcode/Backend-Change; als `const char*` an `extern`-Aufrufe
-  (z. B. ein `printf`-Formatstring) übergebbar. Bewusst NICHT Teil dieser
-  Version: String-Literale als Array-Initialisierer, String-Vergleich/
-  -Verkettung, direkte Indizierung/`sizeof` ohne Zwischenvariable, siehe
+  (z. B. ein `printf`-Formatstring) übergebbar. Auch als Array-Initialisierer
+  nutzbar (`char msg[6] = "hallo";`, lokal UND global) -- kopiert die Bytes
+  direkt in die Array-Slots (nicht nur eine Adresse), ein exakt passendes
+  Array ohne Platz für den Nullterminator ist wie in echtem C erlaubt.
+  Bewusst NICHT Teil dieser Version: String-Vergleich/-Verkettung, direkte
+  Indizierung/`sizeof` auf einem Literal ohne Zwischenvariable, siehe
   docs/FORTSCHRITT.md
 - 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
   Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
@@ -162,7 +165,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-113 Tiny-C-Programme korrekt
+117 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -198,10 +201,12 @@ Zwei unabhängige Stränge stehen zur Wahl:
    extern-ABI-Bug (variadische Aufrufe legten faelschlich ALLE Argumente auf
    den Stack statt nur den `"..."`-Ueberschuss) wurde am echten Q9 gefunden
    und behoben -- `printf("value: %d\n", x)` gegen die reale `clib.l` liefert
-   jetzt korrekt `value: 42`, siehe docs/FORTSCHRITT.md. Naheliegende
-   Kandidaten: String-Literale als Array-Initialisierer
-   (`char msg[6] = "hallo";`) oder direkte Indizierung ohne Zwischenvariable,
-   mehr als 2 Array-Dimensionen, direkte `p.field[i]`-Indizierung von
+   jetzt korrekt `value: 42`, siehe docs/FORTSCHRITT.md. Ebenfalls seit
+   2026-07-24 erledigt: String-Literale als Array-Initialisierer
+   (`char msg[6] = "hallo";`, lokal und global, mit Laengen- und
+   Typpruefung). Naheliegende Kandidaten: direkte Indizierung ohne
+   Zwischenvariable, mehr als 2 Array-Dimensionen, direkte
+   `p.field[i]`-Indizierung von
    struct-Array-Feldern (braucht kombinierte member+index-Kette in der
    Grammatik), nicht-konstanter `static`-Initialisierer (braucht einen
    Runs-once-Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md).
