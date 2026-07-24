@@ -45,13 +45,18 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
   betrifft also nur Tiny-C als Sprache fürs spätere Selfhosting, nicht die
   OS-9-Zielplattform (siehe `docs/SELFHOSTING_LUECKENLISTE.md`, neue Zeile
   "malloc/realloc/free"). `./runtests.sh` komplett grün nach der Umstellung.
-- **Noch offen / nächster Schritt hierzu:** Der xcc-Build+Ausführungstest auf
-  dem echten Q9-Emulator wurde mit dieser Änderung noch NICHT wiederholt
-  (letzter xcc-Test war vor der Umstellung) -- das ist der nächste konkrete
-  Schritt, um den 8/16-MB-Erfolg auch auf der Zielplattform zu bestätigen.
-  Der vollständige, reproduzierbare xcc-Ablauf (Env-Setup, Kommentarform-
-  Konvertierung, `xcc`-Aufruf, ToolShed-Transfer) steht in der Memory-Datei
-  `q9-xcc-toolchain-milestone.md`.
+- **Bestätigt auf dem echten Q9-Emulator (2026-07-24, Nachtrag):** kompletter
+  EBNF-Generator (Source-Stand nach PR #26, inkl. aller Tiny-C-Sprachfeatures
+  bis String-Literale) mit `xcc -tp=68030,ld` neu gebaut, per ToolShed als
+  `PROJECTS/ebnf_gen/ebnf_gen` eingespielt und live ausgeführt. `ident` zeigt
+  **Data size $FE7D0 = 1.042.384 Byte (~1 MB)** statt der vorherigen ~34,6 MB
+  -- passt jetzt klar in die 16-MB-RAM-Konfiguration. `./ebnf_gen seqtest`
+  lief fehlerfrei durch (Parsertabelle korrekt ausgegeben, `seqtest_p.c` +
+  `seqtest.s68` + `seqtest.lextab`/`.lexlst` erzeugt), kein Absturz, keine
+  PMMU-Fehler. Der vollständige, reproduzierbare xcc-Ablauf (Env-Setup,
+  Kommentarform-Konvertierung, `xcc`-Aufruf, ToolShed-Transfer) steht in der
+  Memory-Datei `q9-xcc-toolchain-milestone.md`. Damit ist dieser Strang
+  vollständig abgeschlossen.
 
 Diese Untersuchung ist inhaltlich unabhängig von der Tiny-C-Sprachfeature-
 Arbeit unten und betrifft ausschließlich den Generator selbst, nicht Tiny-C.
@@ -181,11 +186,11 @@ Zwei unabhängige Stränge stehen zur Wahl:
    struct-Array-Feldern (braucht kombinierte member+index-Kette in der
    Grammatik), nicht-konstanter `static`-Initialisierer (braucht einen
    Runs-once-Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md).
-2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
-   (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
-   auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen. Die
-   Tiny-C-68k-Backend-Laufzeit-Anbindung (`putint`/`putchar` gegen `clib.l`)
-   ist bereits erledigt (siehe oben); `exit`/Rückgabewert-Weitergabe an
+2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
+   seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
+   oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-
+   Laufzeit-Anbindung (`putint`/`putchar` gegen `clib.l`) ist bereits erledigt
+   (siehe oben); `exit`/Rückgabewert-Weitergabe an
    `F$Exit` noch nicht gesondert geprüft.
 
 Vor jeder Sprach-Erweiterung sind Frontend, IR, TinyVM, 68000- und
