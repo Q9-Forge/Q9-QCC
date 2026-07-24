@@ -119,16 +119,20 @@ static void readIR(const char* path) {
 }
 
 static void collectGlobals(void) {
+	/* GLOBAL/GARRAY/GINIT duerfen auch INNERHALB einer Funktion stehen -- eine "static"
+	   lokale Variable (siehe Data/tinyc.lextab, tc_staticlocal) wird als ganz normaler
+	   GLOBAL registriert, an der Textstelle ihrer Deklaration, also moeglicherweise
+	   mitten in einer FUNC...ENDFUNC-Spanne. collectFunctions() prueft weiterhin, dass
+	   so eine Zeile innerhalb einer offenen Funktion oder vor der ersten Funktion liegt,
+	   nicht "zwischen" zwei Funktionen. */
 	int i, gi, idx, len;
-	int seenFunction = 0;
 	char msg[300];
 	globalCount = 0;
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
-		if (strcmp(x->op, "FUNC") == 0) seenFunction = 1;
 		if (strcmp(x->op, "GINIT") == 0) {
 			int found = 0;
-			if (seenFunction || x->argc != 3) fatal("ungueltiges GINIT");
+			if (x->argc != 3) fatal("ungueltiges GINIT");
 			for (gi = 0; gi < globalCount; gi++) {
 				if (strcmp(globals[gi].name, x->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(x->args[1], x->line);
@@ -143,10 +147,10 @@ static void collectGlobals(void) {
 			continue;
 		}
 		if (strcmp(x->op, "GLOBAL") != 0 && strcmp(x->op, "GARRAY") != 0) continue;
-		// Original prueft seenFunction/Duplikat VOR der GARRAY/GLOBAL-Unterscheidung
-		// und meldet beides einheitlich als "ungueltiges GLOBAL" -- bewusst NICHT
-		// dieselbe Meldung wie im 68k-Backend (dort getrennt je Zweig formuliert).
-		if (seenFunction || findGlobal(x->args[0]) >= 0) {
+		// Original prueft Duplikat VOR der GARRAY/GLOBAL-Unterscheidung und meldet das
+		// einheitlich als "ungueltiges GLOBAL" -- bewusst NICHT dieselbe Meldung wie im
+		// 68k-Backend (dort getrennt je Zweig formuliert).
+		if (findGlobal(x->args[0]) >= 0) {
 			sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", x->line);
 			fatal(msg);
 		}
@@ -187,7 +191,9 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
 		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0) {
-			if (open || seen) fatal("ungueltiges GLOBAL");
+			/* vor der ersten Funktion ODER innerhalb einer offenen Funktion (static
+			   lokale Variable) erlaubt -- NICHT zwischen zwei Funktionen. */
+			if (!open && seen) fatal("ungueltiges GLOBAL");
 		} else if (strcmp(x->op, "FUNC") == 0) {
 			if (open || x->argc != 2) fatal("ungueltiges FUNC");
 			memset(&current, 0, sizeof(current));
@@ -478,6 +484,9 @@ static void emit(FILE* o) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putuint\n", o);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
+				/* static lokale Variable: bereits von collectGlobals() ausgewertet, hier
+				   an dieser Stelle im Funktionskoerper ein reines No-op. */
 			} else {
 				sprintf(msg, "IR Zeile %d: unbekannter Opcode %s", x->line, op);
 				fatal(msg);

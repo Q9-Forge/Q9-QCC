@@ -118,16 +118,21 @@ static void readIR(const char* path) {
 }
 
 static void collectGlobals(void) {
+	/* GLOBAL/GARRAY/GINIT duerfen -- anders als frueher -- auch INNERHALB einer Funktion
+	   stehen: eine "static" lokale Variable (Data/tinyc.lextab, tc_staticlocal) wird als
+	   ganz normaler GLOBAL registriert, an genau der Textstelle, an der ihre Deklaration
+	   im Quelltext steht, also moeglicherweise mitten in einer FUNC...ENDFUNC-Spanne.
+	   collectFunctions() prueft weiterhin, dass jede Zeile entweder zu GLOBAL/GARRAY/GINIT
+	   gehoert oder innerhalb einer offenen Funktion liegt -- eine Zeile "zwischen" zwei
+	   Funktionen ausserhalb jeder FUNC-Spanne bleibt also weiterhin ein Fehler. */
 	int i, gi, idx, len;
-	int seenFunction = 0;
 	char msg[300];
 	globalCount = 0;
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if (strcmp(insP->op, "FUNC") == 0) seenFunction = 1;
 		if (strcmp(insP->op, "GINIT") == 0) {
 			int found = 0;
-			if (seenFunction || insP->argc != 3) fatal("ungueltiges GINIT");
+			if (insP->argc != 3) fatal("ungueltiges GINIT");
 			for (gi = 0; gi < globalCount; gi++) {
 				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(insP->args[1], insP->line);
@@ -143,7 +148,7 @@ static void collectGlobals(void) {
 		}
 		if (strcmp(insP->op, "GLOBAL") != 0 && strcmp(insP->op, "GARRAY") != 0) continue;
 		if (strcmp(insP->op, "GARRAY") == 0) {
-			if (seenFunction || insP->argc != 3 || !isNumWord(insP->args[1])) fatal("ungueltiges GARRAY");
+			if (insP->argc != 3 || !isNumWord(insP->args[1])) fatal("ungueltiges GARRAY");
 			if (findGlobal(insP->args[0]) >= 0) fatal("doppelte globale Variable");
 			len = number(insP->args[2], insP->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
@@ -157,8 +162,8 @@ static void collectGlobals(void) {
 			globals[gi].length = len;
 			continue;
 		}
-		if (seenFunction || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3)) {
-			sprintf(msg, "IR Zeile %d: GLOBAL muss genau einmal vor Funktionen stehen", insP->line);
+		if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3) {
+			sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 			fatal(msg);
 		}
 		if (findGlobal(insP->args[0]) >= 0) {
@@ -189,7 +194,10 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
 		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0) {
-			if (open || seenFunction || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3)) {
+			/* vor der ersten Funktion (echte globale Variablen) ODER innerhalb einer
+			   offenen Funktion (static lokale Variable, siehe collectGlobals) erlaubt --
+			   NICHT zwischen zwei Funktionen (ausserhalb jeder FUNC-Spanne). */
+			if ((!open && seenFunction) || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3)) {
 				sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 				fatal(msg);
 			}
@@ -530,6 +538,10 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7)+,d0\n\tbsr\ttc_putuint\n", out);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n\tbsr\ttc_putchar\n", out);
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
+				/* static lokale Variable: bereits von collectGlobals() ausgewertet (Adresse/
+				   Initialwert stehen im DATA/BSS-Abschnitt) -- an dieser Stelle im Funktions-
+				   koerper ein reines No-op, keine Laufzeit-Aktion. */
 			} else {
 				sprintf(msg, "IR Zeile %d: unbekannter oder unvollstaendiger Opcode %s", insP->line, op);
 				fatal(msg);

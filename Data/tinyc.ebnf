@@ -13,8 +13,9 @@ anonStructType = "struct" anonStructOpen structField { structField } "}" .
 anonStructOpen = "{" .
 typedefTargetName = ident .
 
-globalDecl = [ constKw ] type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
+globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
 constKw   = "const" .
+staticKw  = "static" .
 globalInit = globalValue | initList .
 arraySize  = "[" globalNumber "]" .
 globalValue = globalNumber | globalNeg | globalBool .
@@ -23,7 +24,7 @@ globalNeg   = "-" globalNumber .
 globalNumber = digit { digit } .
 
 funcdef   = funcHead block .
-funcHead  = type pointerDecl defName "(" paramList ")" .
+funcHead  = [ staticKw ] type pointerDecl defName "(" paramList ")" .
 paramList = [ param { "," param } ] .
 param     = [ constKw ] type pointerDecl paramDecl .
 paramDecl = paramName [ paramArray ] .
@@ -43,7 +44,16 @@ statement = ifStmt
           | callStmt
           | incDecStmt
           | assignStmt
+          | staticVarDecl
           | varDecl .
+
+/* "static" lokale Variablen haben bewusst KEINEN Initialisierer in dieser Version:
+   der Wert einer nicht-konstanten Initialisierung wuerde ueber die normale
+   expr-Auswertung bei JEDEM Funktionsaufruf neu berechnet und gespeichert -- das
+   wuerde die static-Variable bei jedem Aufruf faelschlich zuruecksetzen, statt sie
+   nur einmalig zu initialisieren. Siehe docs/FORTSCHRITT.md fuer den Folgeschritt. */
+staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName ";" .
+staticLocalName = ident .
 
 switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
 switchKw     = "switch" .
