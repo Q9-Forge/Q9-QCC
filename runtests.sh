@@ -547,7 +547,35 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "ok    tinyc: static-Lokale MIT Initialisierer bewusst als Parse-Fehler abgelehnt (eigener Folgeschritt)"
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 88 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const/static -> tinyvm korrekt"
+		# 2026-07-24: Pointee-Constness fuer "const T*" -- TCType.pointeeConst (ein Bit,
+		# reist durch Zeigerarithmetik/Parameteruebergabe mit). Schreiben DURCH den Pointer
+		# (*p = .., p[i] = ..) wird verboten, der Pointer selbst bleibt frei zuweisbar
+		# (deckt das uebliche "p++"-Idiom UND den Hauptnutzungsfall im Generator-Vorbild,
+		# const char* line-Parameter, jetzt auch semantisch ab -- nicht nur syntaktisch).
+		tc_check 'int values[3] = {1,2,3}; int main(){ const int *p = values; p += 1; putint(*p); }' '2'
+		tc_check 'int main(){ int x=42; const int *p = &x; putint(*p); putint(p[0]); }' '42\n42'
+		tc_check 'int f(const int *p){ return *p; } int main(){ int x=42; putint(f(&x)); }' '42'
+		if build/tinyc_p 'int main(){ int x=1; const int *p = &x; *p = 5; putint(x); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    tinyc: Schreiben durch const-Pointer (*p = ..) wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Pointer-Schreibschutz (*p) fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int a[3]; const int *p = a; p[0] = 5; putint(a[0]); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    tinyc: Schreiben durch const-Pointer (p[i] = ..) wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Pointer-Schreibschutz (p[i]) fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int g[3]; const int *p; int main(){ p = g; p[0] = 5; putint(g[0]); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    tinyc: Schreiben durch globalen const-Pointer wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Pointer-Schreibschutz (global) fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int f(const int *p){ *p = 5; return *p; } int main(){ int x=1; putint(f(&x)); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    tinyc: Schreiben durch const-Pointer-Parameter wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
+		fi
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 91 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
