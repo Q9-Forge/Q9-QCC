@@ -694,11 +694,9 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: static-struct-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		# 2026-07-24: static-Initialisierer -- NUR globalValue (Zahl/Negativ/bool-Literal,
-		# dieselbe seiteneffektfreie Regel wie bei globalen Variablen) erlaubt, damit KEIN
-		# Laufzeit-Code fuer den Initialiserer emittiert wird (tc_staticlocal extrahiert den
-		# Wert per Rohtext-Scan, kein Durchlauf durch die normale expr-Grammatik). Ein NICHT-
-		# konstanter Ausdruck bleibt ein sauberer Parse-Fehler (kein Absturz).
+		# 2026-07-24: static-Initialisierer -- globalValue (Zahl/Negativ/bool-Literal,
+		# dieselbe seiteneffektfreie Regel wie bei globalen Variablen) bleibt der
+		# Fastpath OHNE Laufzeit-Code (tc_staticlocal extrahiert den Wert per Rohtext-Scan).
 		tc_check 'int bump(){ static int counter = 10; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); }' '11\n12'
 		tc_check 'int f(){ static int x = -5; return x; } int main(){ putint(f()); }' '-5'
 		tc_check 'int f(){ static bool b = true; return b; } int main(){ putint(f()); }' '1'
@@ -709,10 +707,27 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: static-Pointer-Initialisierer-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int y=1; int bump(){ static int counter = y; counter = counter + 1; return counter; } int main(){ putint(bump()); }' >/dev/null 2>&1; then
-			echo "FAIL  tinyc: nicht-konstanter static-Initialisierer wird faelschlich akzeptiert"; tcfail=1; fail=1
+		# 2026-07-24: nicht-konstanter static-Initialisierer (staticRuntimeInit = expr) --
+		# staticInit ist eine geordnete Alternation (globalValue zuerst versucht, faellt bei
+		# Nichtuebereinstimmung auf staticRuntimeInit zurueck, gleiches Backtracking-Prinzip
+		# wie "call vor varRef"). Runs-once-Guard mit verstecktem bool-Flag-Global
+		# (__static_init_<name>, LOADGC/JZ/STOREG.../STOREGC -- dieselben Opcodes wie
+		# if/while) sichert zu, dass NUR der erste Aufruf den Wert tatsaechlich speichert.
+		# Bewusste Vereinfachung: der Ausdruck wird bei JEDEM Aufruf neu ausgewertet (nicht
+		# wie in echtem ISO C nur einmal) -- bei seiteneffektfreien Ausdruecken (Regelfall)
+		# identisches beobachtbares Verhalten.
+		tc_check 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' '16\n17\n18'
+		tc_check 'int y=1; int bump(){ static int counter = y; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); }' '2\n3'
+		tc_check 'int f(int n){ static int x = n * 2; return x; } int main(){ putint(f(5)); putint(f(100)); }' '10\n10'
+		if build/tinyc_p 'int base(){ return 3; } int f(){ static const int x = base()+1; x = 5; return x; } int main(){ putint(f()); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    tinyc: Zuweisung an static-const-Lokale mit Laufzeit-Initialisierer wird diagnostiziert"
 		else
-			echo "ok    tinyc: nicht-konstanter static-Initialisierer bleibt Parse-Fehler (eigener Folgeschritt)"
+			echo "FAIL  tinyc: static-const-Diagnose mit Laufzeit-Initialisierer fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'char* mk(){ return "hi"; } int f(){ static int x = mk(); return x; } int main(){ putint(f()); }' 2>&1 | grep -q 'static initializer expects int, got char\*'; then
+			echo "ok    tinyc: Typinkompatibilitaet bei Laufzeit-static-Initialisierer wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Typpruefung fuer Laufzeit-static-Initialisierer fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: Pointee-Constness fuer "const T*" -- TCType.pointeeConst (ein Bit,
 		# reist durch Zeigerarithmetik/Parameteruebergabe mit). Schreiben DURCH den Pointer
@@ -742,7 +757,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 117 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer) -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 120 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -951,6 +966,22 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc static 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+
+# 13a-2) nicht-konstanter static-Initialisierer (2026-07-24): Runs-once-Guard mit
+#        verstecktem bool-Flag-Global (LOADGC/JZ/STOREG.../STOREGC, dieselben Opcodes
+#        wie if/while) im ECHTEN 68000-Code.
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' > build/tinyc_staticrt.ir && \
+		build/tinyc_backend build/tinyc_staticrt.ir build/tinyc_staticrt.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_staticrt.bin build/tinyc_staticrt.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_staticrt.s68 2>/dev/null)" = "$(printf '16\n17\n18')" ]; then
+		echo "ok    tinyc static-Laufzeit-Initialisierer 68000: Runs-once-Guard korrekt"
+	else
+		echo "FAIL  tinyc static-Laufzeit-Initialisierer 68000: Runs-once-Guard fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc static-Laufzeit-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 
 # 13b) struct-Felder (2026-07-24: gemischte skalare Feldtypen, echtes Byte-Layout,
@@ -1272,6 +1303,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc static ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' > build/tinyc_staticrt_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_staticrt_arm64.ir build/tinyc_staticrt_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_staticrt_arm64 build/tinyc_staticrt_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_staticrt_arm64)" = "$(printf '16\n17\n18')" ]; then
+		echo "ok    tinyc static-Laufzeit-Initialisierer ARM64: Runs-once-Guard korrekt"
+	else
+		echo "FAIL  tinyc static-Laufzeit-Initialisierer ARM64: Runs-once-Guard fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc static-Laufzeit-Initialisierer ARM64: Backend fehlt -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

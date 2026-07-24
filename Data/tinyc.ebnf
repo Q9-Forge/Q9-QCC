@@ -78,15 +78,29 @@ statement = ifStmt
           | staticVarDecl
           | varDecl .
 
-/* "static" lokale Variablen erlauben NUR einen konstanten Initialisierer (globalValue,
-   dieselbe seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch
-   die normale expr-Grammatik, also auch keine Laufzeit-Emission dafuer). Ein NICHT-
-   konstanter Ausdruck wuerde bei JEDEM Funktionsaufruf neu berechnet und gespeichert
-   und die static-Variable faelschlich zuruecksetzen, statt sie nur einmalig zu
-   initialisieren -- entspricht damit genau der Einschraenkung, die echtes C fuer
-   static-Lokale ohnehin vorschreibt. */
-staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName [ "=" globalValue ] ";" .
+/* "static" lokale Variablen: konstanter Initialisierer (globalValue, dieselbe
+   seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch die
+   normale expr-Grammatik, also auch keine Laufzeit-Emission dafuer, siehe
+   tc_staticlocal) ODER seit 2026-07-24 ein beliebiger Laufzeitausdruck
+   (staticRuntimeInit = expr). staticInit ist eine GEORDNETE Alternation: "static
+   int x = 5;" matched globalValue vollstaendig (Fastpath, unveraendert seit
+   jeher) UND wird von der Grammatik direkt als Ganzes akzeptiert (danach folgt
+   ";"); erst wenn dieser Versuch scheitert (z.B. "static int x = 5+3;" -- 5
+   allein passt, aber danach kommt "+" statt ";"), backtracked der Generator auf
+   staticRuntimeInit (dasselbe Backtracking-Prinzip wie "call vor varRef" in
+   factor). Der Laufzeitausdruck wird bei JEDEM Funktionsaufruf neu ausgewertet
+   (bewusste Vereinfachung -- bei einem Initialisierer mit Seiteneffekten, z.B.
+   einem Funktionsaufruf, weicht das von echtem ISO C ab, das den Ausdruck nur
+   EINMAL auswertet), aber nur beim ERSTEN Aufruf tatsaechlich in die
+   static-Variable geschrieben (Runs-once-Guard mit einem versteckten
+   bool-Flag-Global, siehe tc_staticruntimeinit/tc_staticlocal) -- dadurch bleibt
+   der einmal gesetzte Wert ueber alle nachfolgenden Aufrufe hinweg erhalten,
+   entspricht also dem BEOBACHTBAREN Verhalten (Persistenz), solange der
+   Ausdruck selbst keine Seiteneffekte hat. */
+staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName [ "=" staticInit ] ";" .
 staticLocalName = ident .
+staticInit      = globalValue | staticRuntimeInit .
+staticRuntimeInit = expr .
 
 switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
 switchKw     = "switch" .
