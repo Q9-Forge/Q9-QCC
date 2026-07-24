@@ -31,6 +31,17 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
+	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
+	   OHNE Rumpf in dieser Datei (definiert in einer anderen Tiny-C-Datei).
+	   isStatic steuert die .globl-Emission (siehe emit()) -- anders als beim
+	   68k/l68-Ziel (kein Sichtbarkeitskonzept, siehe tinyc_backend_c.cpp)
+	   unterstuetzt Mach-O/ld ECHTE lokale Symbole: ein Label OHNE .globl ist
+	   fuer andere Objektdateien schlicht unsichtbar (empirisch verifiziert --
+	   zwei separat kompilierte .o mit je einem lokalen "_tc_priv" linken ohne
+	   Konflikt, "duplicate symbol" tritt NICHT auf). Deshalb reicht hier reines
+	   Weglassen von .globl, KEINE Namensverfremdung noetig (Unterschied zu
+	   tinyc_backend_c.cpp!). */
+	int declOnly, isStatic;
 } Function;
 
 typedef struct {
@@ -41,6 +52,7 @@ typedef struct {
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
+	int declOnly, isStatic; /* siehe Function */
 } Global;
 
 static Instr ir[MAX_IR_LINES];
@@ -51,6 +63,14 @@ static int funcCount = 0;
 
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
+
+/* -part (2026-07-25, Mehrdatei-Uebersetzung): diese Datei ist EIN TEIL eines
+   Mehrdatei-Programms -- die main/funcCount-Pflicht wird gelockert, siehe
+   collectFunctions()/emit(). Anders als beim 68k-Backend gibt es hier KEIN
+   "-runtime"-Aequivalent: putint/putchar/exit werden extern in
+   runtime/arm64_darwin/start.s bereitgestellt (nie pro Datei emittiert), es
+   gibt also keinen gemeinsamen Anker, den nur EINE Datei tragen duerfte. */
+static int partMode = 0;
 
 static void fatal(const char* msg) {
 	fprintf(stderr, "tinyc_arm64_backend: %s\n", msg);
@@ -169,6 +189,7 @@ static void collectGlobals(void) {
 			globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
+			globals[gi].isStatic = x->argc >= 4 && number(x->args[3], x->line) != 0;
 			continue;
 		}
 		if (x->argc != 1 && x->argc != 2 && x->argc != 3 && x->argc != 4) fatal("ungueltiges GLOBAL");
@@ -184,6 +205,24 @@ static void collectGlobals(void) {
 		globals[gi].isPointer = x->argc >= 3 && strcmp(x->args[2], "p") == 0;
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
+		globals[gi].isStatic = x->argc >= 4 && number(x->args[3], x->line) != 0;
+	}
+	for (i = 0; i < irCount; i++) {
+		Instr* x = &ir[i];
+		char msg[300];
+		if (strcmp(x->op, "GLOBALDECL") != 0) continue;
+		if (x->argc != 2) fatal("ungueltiges GLOBALDECL");
+		if (findGlobal(x->args[0]) >= 0) {
+			sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", x->line);
+			fatal(msg);
+		}
+		if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
+		gi = globalCount++;
+		memset(&globals[gi], 0, sizeof(Global));
+		strncpy(globals[gi].name, x->args[0], NAME_LEN - 1);
+		globals[gi].isChar = isByteWord(x->args[1]);
+		globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
+		globals[gi].declOnly = 1;
 	}
 }
 
@@ -200,16 +239,20 @@ static void collectFunctions(void) {
 			if (!open && seen) fatal("ungueltiges GLOBAL");
 		} else if (strcmp(x->op, "FUNCDECL") == 0 || strcmp(x->op, "GLOBALDECL") == 0) {
 			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
-			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt, hier noch OHNE
-			   Wirkung (kein declOnly-Backend-Handling vor M2/M3). */
+			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY);
+			   FUNCDECL wird unten in einem separaten Durchlauf registriert (analog
+			   zu GLOBALDECL in collectGlobals), da es KEINE FUNC/ENDFUNC-Spanne
+			   oeffnet/schliesst. */
 		} else if (strcmp(x->op, "FUNC") == 0) {
-			/* 3. Argument (2026-07-25): optionales isstatic-Flag, hier noch nicht ausgewertet. */
+			/* 3. Argument (2026-07-25): optionales isstatic-Flag (steuert .globl in
+			   emit()). */
 			if (open || (x->argc != 2 && x->argc != 3)) fatal("ungueltiges FUNC");
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, x->args[0], NAME_LEN - 1);
 			current.nargs = number(x->args[1], x->line);
 			current.first = i + 1;
 			current.last = -1;
+			current.isStatic = x->argc >= 3 && number(x->args[2], x->line) != 0;
 			open = 1; seen = 1;
 		} else if (strcmp(x->op, "ENDFUNC") == 0) {
 			if (!open) fatal("ENDFUNC ohne FUNC");
@@ -221,7 +264,25 @@ static void collectFunctions(void) {
 			fatal("Opcode ausserhalb einer Funktion");
 		}
 	}
-	if (open || funcCount == 0) fatal("unvollstaendige IR");
+	if (open) fatal("unvollstaendige IR");
+	/* -part (2026-07-25): eine Datei OHNE main/Funktionen ist zulaessig, solange
+	   sie wenigstens globale Deklarationen enthaelt -- komplett leere Datei
+	   bleibt ein Fehler. Ohne -part unveraendert immer ein Fehler. */
+	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("unvollstaendige IR");
+	for (i = 0; i < irCount; i++) {
+		Instr* x = &ir[i];
+		if (strcmp(x->op, "FUNCDECL") != 0) continue;
+		if (x->argc != 2) fatal("ungueltiges FUNCDECL");
+		if (findFunction(x->args[0]) >= 0) fatal("doppelte Funktion");
+		if (funcCount >= MAX_FUNCS) fatal("zu viele Funktionen");
+		memset(&current, 0, sizeof(current));
+		strncpy(current.name, x->args[0], NAME_LEN - 1);
+		current.nargs = number(x->args[1], x->line);
+		current.first = -1;
+		current.last = -1;
+		current.declOnly = 1;
+		funcs[funcCount++] = current;
+	}
 
 	for (i = 0; i < funcCount; i++) {
 		Function* f = &funcs[i];
@@ -302,12 +363,17 @@ static void emit(FILE* o) {
 	char msg[300];
 	char slotBuf[32];
 
-	if (findFunction("main") < 0) fatal("IR: Funktion main fehlt");
+	/* -part (2026-07-25): main darf in einer ANDEREN Datei stehen -- das meldet
+	   der echte Linker (ld) von selbst, falls keine der gelinkten Dateien es
+	   liefert. */
+	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 	fputs("; Tiny-C ARM64/Darwin -- PIC Programmmodul\n\t.text\n\t.p2align\t2\n", o);
 
 	for (fi = 0; fi < funcCount; fi++) {
 		Function* f = &funcs[fi];
-		fprintf(o, "\t.globl\t_tc_%s\n_tc_%s:\n\tstp\tx29,x30,[sp,#-16]!\n\tmov\tx29,sp\n", f->name, f->name);
+		if (f->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
+		if (!f->isStatic) fprintf(o, "\t.globl\t_tc_%s\n", f->name);
+		fprintf(o, "_tc_%s:\n\tstp\tx29,x30,[sp,#-16]!\n\tmov\tx29,sp\n", f->name);
 		if (f->frameBytes) fprintf(o, "\tsub\tsp,sp,#%d\n", f->frameBytes);
 		for (k = f->first; k < f->last; k++) {
 			Instr* x = &ir[k];
@@ -508,10 +574,12 @@ static void emit(FILE* o) {
 		int gi, hasData = 0;
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
+			if (g->declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
 			// Nur Skalare erreichen zerofill: Arrays landen (wie im Original, siehe
 			// unten) immer im DATA-Zweig, weil ihr init[] beim Anlegen schon mit
 			// `length` Nullen belegt wird.
 			if (!g->isArray && g->initialValue == 0) {
+				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
 					(g->isChar ? 1 : g->isPointer ? 8 : 4) * g->length,
 					g->isChar ? 0 : g->isPointer ? 3 : 2);
@@ -522,10 +590,12 @@ static void emit(FILE* o) {
 			fputs("\t.section\t__DATA,__data\n\t.p2align\t2\n", o);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
+				if (g->declOnly) continue;
 				if (g->isArray || g->initialValue != 0) {
 					int e;
 					if (!g->isChar) fputs("\t.p2align\t2\n", o);
 					if (g->isPointer) fputs("\t.p2align\t3\n", o);
+					if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 					fprintf(o, "_tc_g_%s:\n", g->name);
 					if (!g->isArray) {
 						fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isPointer ? "quad" : "long", g->initialValue);
@@ -541,7 +611,18 @@ static void emit(FILE* o) {
 
 int main(int argc, char* argv[]) {
 	FILE* out;
-	if (argc != 3) { fprintf(stderr, "usage: %s <input.ir> <output.s>\n", argv[0]); return 2; }
+	int i;
+	if (argc < 3) {
+		fprintf(stderr, "usage: %s <input.ir> <output.s> [-part]\n", argv[0]);
+		fprintf(stderr, "  -part: diese Datei ist EIN TEIL eines Mehrdatei-Programms (kein\n");
+		fprintf(stderr, "         eigenstaendiges main noetig) -- fuer echten Mehrdatei-Link\n");
+		fprintf(stderr, "         mit clang/ld gegen andere -part-Module.\n");
+		return 2;
+	}
+	for (i = 3; i < argc; i++) {
+		if (strcmp(argv[i], "-part") == 0) partMode = 1;
+		else { fprintf(stderr, "unbekannte Option: %s\n", argv[i]); return 2; }
+	}
 	readIR(argv[1]);
 	collectGlobals();
 	collectFunctions();
