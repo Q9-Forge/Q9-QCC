@@ -460,6 +460,29 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Array-Feld-Zuweisungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-07-24: direkte p.field[i]-Indizierung von Array-Feldern -- member
+		# bekommt einen eigenen optionalen index-Anschluss (kein zweiter, ineinander
+		# verschachtelter). Stack traegt an der Stelle bereits [Indexwert, Feldadresse]
+		# (Feldadresse zuletzt gepusht) -- exakt die Reihenfolge, die ein zweites IPADD
+		# braucht, daher IPADD+LOADIND (lesend) bzw. IPADD (schreibend) statt eines
+		# neuen Opcodes. Nur lokale struct-Variablen (globale structs sind generell noch
+		# nicht unterstuetzt, siehe docs/SELFHOSTING_LUECKENLISTE.md).
+		tc_check 'struct P{int x; char buf[4];}; int main(){ struct P p; p.buf[0]=65; p.buf[1]=66; putchar(p.buf[0]); putchar(p.buf[1]); }' 'AB'
+		tc_check 'struct P{int a[3];}; int main(){ struct P p; int i; i = 1; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.a[i]); }' '20'
+		tc_check 'struct P{int x; char buf[4];}; int main(){ struct P p; p.x=7; p.buf[0]=1; putint(p.x); putint(p.buf[0]); }' '7\n1'
+		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=5; p.a[0] += 3; putint(p.a[0]); }' '8'
+		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=10; p.a[1]=20; putint(1 + p.a[0] + p.a[1]); }' '31'
+		tc_check 'struct P{char buf[4];}; int main(){ struct P p; char* q; q = p.buf; q[0]=9; putchar(p.buf[0]); }' '\t'
+		if build/tinyc_p 'struct P{int x;}; int main(){ struct P p; putint(p.x[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
+			echo "ok    tinyc: Indizierung eines skalaren struct-Felds wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer Indizierung eines skalaren struct-Felds fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'struct P{char buf[4];}; int main(){ struct P p; p.buf[9]=1; }' 2>&1 | grep -q 'constant array index 9 out of range'; then
+			echo "ok    tinyc: konstanter Index-Bereichsverstoss bei p.field[i] wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: void als Rueckgabetyp (echte Semantik, return; war bereits vorher
 		# moeglich) und void* als generischer Pointer (bidirektional kompatibel zu jedem
 		# ANDEREN Pointer derselben Tiefe, siehe tcCompatible). void* selbst darf nicht
@@ -784,7 +807,30 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 125 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		# 2026-07-24: direkte p.field[i]-Indizierung von Array-Feldern -- member
+		# bekommt einen eigenen optionalen index-Anschluss (kein zweiter, ineinander
+		# verschachtelter). Stack traegt an der Stelle bereits [Indexwert, Feldadresse]
+		# (Feldadresse zuletzt gepusht) -- exakt die Reihenfolge, die ein zweites IPADD
+		# braucht, daher IPADD+LOADIND (lesend) bzw. IPADD (schreibend) statt eines
+		# neuen Opcodes. Nur lokale struct-Variablen (globale structs sind generell noch
+		# nicht unterstuetzt, siehe docs/SELFHOSTING_LUECKENLISTE.md).
+		tc_check 'struct P{int x; char buf[4];}; int main(){ struct P p; p.buf[0]=65; p.buf[1]=66; putchar(p.buf[0]); putchar(p.buf[1]); }' 'AB'
+		tc_check 'struct P{int a[3];}; int main(){ struct P p; int i; i = 1; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.a[i]); }' '20'
+		tc_check 'struct P{int x; char buf[4];}; int main(){ struct P p; p.x=7; p.buf[0]=1; putint(p.x); putint(p.buf[0]); }' '7\n1'
+		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=5; p.a[0] += 3; putint(p.a[0]); }' '8'
+		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=10; p.a[1]=20; putint(1 + p.a[0] + p.a[1]); }' '31'
+		tc_check 'struct P{char buf[4];}; int main(){ struct P p; char* q; q = p.buf; q[0]=9; putchar(p.buf[0]); }' '\t'
+		if build/tinyc_p 'struct P{int x;}; int main(){ struct P p; putint(p.x[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
+			echo "ok    tinyc: Indizierung eines skalaren struct-Felds wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer Indizierung eines skalaren struct-Felds fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'struct P{char buf[4];}; int main(){ struct P p; p.buf[9]=1; }' 2>&1 | grep -q 'constant array index 9 out of range'; then
+			echo "ok    tinyc: konstanter Index-Bereichsverstoss bei p.field[i] wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
+		fi
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 131 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1065,6 +1111,18 @@ else
 	echo "warn  tinyc struct 68000 (Array-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct P{int x; char buf[4]; int a[3];}; int main(){ struct P p; int i; i = 1; p.x = 7; p.buf[0]=65; p.buf[1]=66; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.x); putchar(p.buf[0]); putchar(p.buf[1]); putint(p.a[i]); }' > build/tinyc_structidx.ir && \
+		build/tinyc_backend build/tinyc_structidx.ir build/tinyc_structidx.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structidx.bin build/tinyc_structidx.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_structidx.s68 2>/dev/null)" = "$(printf '7\nAB20')" ]; then
+		echo "ok    tinyc struct 68000: direkte p.field[i]-Indizierung (int- und char-Array-Feld) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: direkte p.field[i]-Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (p.field[i]): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void.ir && \
 		build/tinyc_backend build/tinyc_void.ir build/tinyc_void.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_void.bin build/tinyc_void.s68 2>/dev/null && \
@@ -1264,6 +1322,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (Array-Feld): Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct P{int x; char buf[4]; int a[3];}; int main(){ struct P p; int i; i = 1; p.x = 7; p.buf[0]=65; p.buf[1]=66; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.x); putchar(p.buf[0]); putchar(p.buf[1]); putint(p.a[i]); }' > build/tinyc_structidx_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_structidx_arm64.ir build/tinyc_structidx_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structidx_arm64 build/tinyc_structidx_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_structidx_arm64)" = "$(printf '7\nAB20')" ]; then
+		echo "ok    tinyc struct ARM64: direkte p.field[i]-Indizierung (int- und char-Array-Feld) korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: direkte p.field[i]-Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (p.field[i]): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
