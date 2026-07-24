@@ -47,12 +47,14 @@ statement = ifStmt
           | staticVarDecl
           | varDecl .
 
-/* "static" lokale Variablen haben bewusst KEINEN Initialisierer in dieser Version:
-   der Wert einer nicht-konstanten Initialisierung wuerde ueber die normale
-   expr-Auswertung bei JEDEM Funktionsaufruf neu berechnet und gespeichert -- das
-   wuerde die static-Variable bei jedem Aufruf faelschlich zuruecksetzen, statt sie
-   nur einmalig zu initialisieren. Siehe docs/FORTSCHRITT.md fuer den Folgeschritt. */
-staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName ";" .
+/* "static" lokale Variablen erlauben NUR einen konstanten Initialisierer (globalValue,
+   dieselbe seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch
+   die normale expr-Grammatik, also auch keine Laufzeit-Emission dafuer). Ein NICHT-
+   konstanter Ausdruck wuerde bei JEDEM Funktionsaufruf neu berechnet und gespeichert
+   und die static-Variable faelschlich zuruecksetzen, statt sie nur einmalig zu
+   initialisieren -- entspricht damit genau der Einschraenkung, die echtes C fuer
+   static-Lokale ohnehin vorschreibt. */
+staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName [ "=" globalValue ] ";" .
 staticLocalName = ident .
 
 switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
