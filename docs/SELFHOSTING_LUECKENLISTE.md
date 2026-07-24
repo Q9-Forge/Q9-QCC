@@ -88,16 +88,37 @@ erzeugen.
 
 ## 3. Bibliotheks-/Laufzeitbedarf des Generators (kein Sprachmerkmal, sondern Runtime)
 
+**Strategiewechsel 2026-07-24:** Statt diese drei Punkte als eigene Tiny-C-
+Runtime NACHZUBAUEN, ruft man die ECHTEN OS-9/Microware-`clib.l`-Funktionen
+direkt auf -- vorausgesetzt man trifft deren Aufrufkonvention. Diese ist im
+Ultra-C/C++-Prozessorhandbuch dokumentiert (`DOC/PDF/ultrac_pg.pdf`, "Passing
+Arguments to Functions": 1./2. Argument in `d0`/`d1`, Rest auf dem Stack in
+umgekehrter Reihenfolge; bei variadischen Funktionen wie `printf` alles auf
+dem Stack) und weicht von Tiny-Cs eigener (rein stapelbasierter) interner
+Aufrufkonvention ab. `clib.l` exportiert die Symbole klarnamig ohne
+Underscore-Praefix (`strcmp`, `printf`, `malloc`, `strlen`, `fopen` u.a.,
+per `strings` bestaetigt). Tiny-C hat dafuer jetzt `extern`-Deklarationen
+(kein Rumpf, nur Signatur) + einen eigenen Aufrufpfad im 68k-Backend
+(`CALLEXT`/`CALLEXTP`), der genau dieser ABI folgt -- siehe docs/FORTSCHRITT.md
+fuer die Details. Die Platzierung wurde end-to-end gegen handgeschriebene
+Mock-Stubs verifiziert (kein echter Q9-/`clib.l`-Zugriff in dieser Umgebung
+moeglich). NOCH OFFEN: das eigentliche Linken gegen die reale `clib.l`
+(Microware-Linker `l68`, relokierbares Objektformat statt der aktuellen
+`vasm -Fbin`-Direktassemblierung) sowie String-Literale in Tiny-C (ohne die
+ist ein echter `printf("format", ...)`-Aufruf mit Formatstring nicht
+schreibbar, nur mit rein numerischen/Pointer-Argumenten).
+
 | Funktion(en) | Belegstellen (Anzahl) | Bemerkung |
 |---|---|---|
-| `strcmp`, `strncmp`, `strlen`, `strstr`, `strchr` | ca. 120 Aufrufe insgesamt in `ebnf.cpp`+`codegen.cpp` | Kernwerkzeug für Tabellen-/Namensvergleich; müsste als kleine Tiny-C-Runtime nachgebaut werden |
-| `printf`/`fprintf` (Textausgabe des generierten Codes) | `ebnf.cpp`: 73, `codegen.cpp`: 236 | Der Generator IST im Kern ein Textgenerator -- ohne formatierte Ausgabe kein Codegen |
-| Datei-I/O (`fopen`/`fread`/`fwrite`/`fclose`) | durchgehend zum Einlesen der `.ebnf`/`.lextab` und Schreiben der `_p.c`/`.s68`-Ausgabe | aktuell in Tiny-C komplett offen (nur `putchar` im 68k-Runtime-Vertrag laut `STATUS.md`) |
+| `strcmp`, `strncmp`, `strlen`, `strstr`, `strchr` | ca. 120 Aufrufe insgesamt in `ebnf.cpp`+`codegen.cpp` | Kernwerkzeug für Tabellen-/Namensvergleich; jetzt per `extern`-Deklaration gegen die echte `clib.l` aufrufbar (Codegen erledigt, Linken noch offen) statt als Tiny-C-Runtime nachgebaut |
+| `printf`/`fprintf` (Textausgabe des generierten Codes) | `ebnf.cpp`: 73, `codegen.cpp`: 236 | Der Generator IST im Kern ein Textgenerator -- ohne formatierte Ausgabe kein Codegen. `extern`-Deklaration + variadischer CALLEXT-Codegen erledigt; braucht zusaetzlich String-Literale (noch offen) fuer den Formatstring |
+| Datei-I/O (`fopen`/`fread`/`fwrite`/`fclose`) | durchgehend zum Einlesen der `.ebnf`/`.lextab` und Schreiben der `_p.c`/`.s68`-Ausgabe | Aufrufkonvention (bis zu 4 Argumente, `fread`/`fwrite`) durch den 4-Argumente-Testfall (2 Register + 2 Stack) bereits verifiziert; wie oben nur das Linken gegen die reale `clib.l` noch offen |
 
 Diese drei Punkte sind der eigentliche Hebel: Selbst wenn Tiny-C morgen
 `struct`/`for`/`switch` könnte, bräuchte es zusätzlich eine kleine
 Standardbibliothek (String-Vergleich, formatierte Ausgabe, Datei-I/O), bevor
-der Generator überhaupt lauffähig wäre.
+der Generator überhaupt lauffähig wäre -- der Weg dahin ist jetzt aber
+"echte `clib.l` anbinden" statt "in Tiny-C nachbauen".
 
 ## 4. Zusatzbedarf für L1 (generierter Parser-Zwilling selbst hosten)
 
@@ -183,9 +204,14 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    ALLE 26 realen Fundstellen ab -- keine 3D+ im Generator selbst), noch
    offen: `union` (nur 1 Fundstelle), Pointer-Felder/verschachtelte structs
    in `struct`.
-2. **Mini-Runtime aus Abschnitt 3** bauen: String-Vergleichsfunktionen,
-   formatierte Ausgabe, minimale Datei-I/O -- ohne die ist der Generator
-   funktional nicht nachbaubar, unabhängig von der Sprachsyntax. NOCH OFFEN.
+2. **Mini-Runtime aus Abschnitt 3** anbinden: statt String-Vergleichsfunktionen,
+   formatierte Ausgabe und Datei-I/O in Tiny-C nachzubauen, die echten
+   `clib.l`-Funktionen direkt aufrufen (Strategiewechsel 2026-07-24). `extern`-
+   Deklarationen + Microware-ABI-Aufrufcodegen (CALLEXT/CALLEXTP) sind erledigt
+   und end-to-end gegen Mock-Stubs verifiziert. NOCH OFFEN: echtes Linken gegen
+   `clib.l` (Microware-Linker `l68`) und String-Literale (fuer `printf`-
+   Formatstrings) -- ohne die ist der Generator weiterhin funktional nicht
+   nachbaubar.
 3. Erst danach **Mehrdatei-Übersetzung** (Abschnitt 1, letzter Punkt) angehen,
    damit der nachgebaute Generator wie das Original auf mehrere Dateien
    verteilt werden kann.
