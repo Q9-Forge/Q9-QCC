@@ -104,9 +104,9 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Verlinkung ist bei einer einzigen Übersetzungseinheit bedeutungslos); bei
   lokalen Variablen echte Aufruf-übergreifende Persistenz (als GLOBAL
   registriert, funktioniert in TinyVM, 68000 und ARM64), inkl. konstantem
-  Initialisierer (Zahl/Negativ/bool-Literal). Bewusst OHNE nicht-konstanten
-  Initialisierer und OHNE struct/Array in dieser Version, siehe
-  docs/FORTSCHRITT.md
+  UND nicht-konstantem Laufzeit-Initialisierer (Runs-once-Guard mit
+  verstecktem bool-Flag-Global, siehe docs/FORTSCHRITT.md). Bewusst OHNE
+  struct/Array in dieser Version, siehe docs/FORTSCHRITT.md
 - `void` als Funktions-Rückgabetyp und `void *` als generischer, bidirektional
   zu jedem anderen Pointer gleicher Tiefe kompatibler Pointer (Zuweisung/
   Parameter/Rückgabe ohne Cast); `void *` selbst nicht dereferenzierbar/
@@ -165,7 +165,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-117 Tiny-C-Programme korrekt
+120 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -204,12 +204,11 @@ Zwei unabhängige Stränge stehen zur Wahl:
    jetzt korrekt `value: 42`, siehe docs/FORTSCHRITT.md. Ebenfalls seit
    2026-07-24 erledigt: String-Literale als Array-Initialisierer
    (`char msg[6] = "hallo";`, lokal und global, mit Laengen- und
-   Typpruefung). Naheliegende Kandidaten: direkte Indizierung ohne
-   Zwischenvariable, mehr als 2 Array-Dimensionen, direkte
-   `p.field[i]`-Indizierung von
-   struct-Array-Feldern (braucht kombinierte member+index-Kette in der
-   Grammatik), nicht-konstanter `static`-Initialisierer (braucht einen
-   Runs-once-Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md).
+   Typpruefung) UND nicht-konstanter `static`-Initialisierer (Runs-once-
+   Guard mit hidden Flag-Global). Naheliegende Kandidaten: direkte
+   Indizierung ohne Zwischenvariable, mehr als 2 Array-Dimensionen, direkte
+   `p.field[i]`-Indizierung von struct-Array-Feldern (braucht kombinierte
+   member+index-Kette in der Grammatik).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
    oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-
