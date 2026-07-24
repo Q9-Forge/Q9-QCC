@@ -536,6 +536,13 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "ok    tinyc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
+		# 2026-07-24: String-Literale -- erzeugen zur Uebersetzungszeit einen anonymen
+		# globalen char-Array-Konstant (GARRAY/GINIT + Nullterminator) und liefern dessen
+		# Adresse als char* (ADDRG) -- dieselben IR-Opcodes wie ein initialisiertes
+		# globales char-Array, kein neuer Opcode. Bewusst NICHT Teil dieser Version:
+		# String-Literale als Array-Initialisierer (char msg[6] = "hallo";).
+		tc_check 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' 'AB0'
+		tc_check 'int first(char* s){ return s[0]; } int main(){ putint(first("Hi")); }' '72'
 		# 2026-07-24: extern-Deklarationen fuer NICHT in Tiny-C definierte Funktionen
 		# (z.B. echte OS-9/Microware-clib-Funktionen wie strcmp/printf/malloc). Nur
 		# Aufrufpruefung (Argumentanzahl/-typen) hier per TinyVM-Frontend testbar --
@@ -708,7 +715,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 111 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays/extern -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 113 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -792,18 +799,27 @@ if [ -x tools/vasmm68k_mot ]; then
 		else
 			echo "FAIL  tinyc extern 68000: IR/Backend fuer 4-Argumente-Fall fehlgeschlagen"; fail=1
 		fi
-		# Fall 3: variadisch (wie printf) -- ALLE Argumente auf dem Stack, KEINE Register.
+		# Fall 3 (2026-07-24, KORRIGIERT nach echtem Q9-Befund): variadisch (wie printf) --
+		# NUR der variadische UEBERSCHUSS (ueber die fest deklarierten Parameter hinaus)
+		# geht auf den Stack; die fest deklarierten Parameter (hier: "fmt", 1 Stueck)
+		# gehen GENAUSO nach d0/d1 wie bei einem nicht-variadischen Aufruf. Die fruehere
+		# Annahme "variadisch = ausnahmslos alles auf dem Stack" war NIE gegen echten
+		# Compiler-generierten Code verifiziert und stellte sich beim ersten echten
+		# printf-Test auf dem echten Q9 als falsch heraus (PMMU-Absturz: Formatstring-
+		# Adresse landete auf dem Stack statt in d0, printf laas stattdessen die Zahl 1
+		# als Adresse). Siehe docs/FORTSCHRITT.md.
 		if build/tinyc_p 'extern int myprintf(int fmt, ...); int main(){ int x = 42; putint(myprintf(1, x, 7)); }' > build/tinyc_extv.ir && \
 			build/tinyc_backend build/tinyc_extv.ir build/tinyc_extv.s68; then
 			cp build/tinyc_extv.s68 build/tinyc_extv_test.s68
 			{
 				echo ""
-				echo "; Mock: variadisch -- ALLE Argumente auf dem Stack, umgekehrte Reihenfolge."
-				echo "; erwartet 4(a7)=a=1, 8(a7)=b=42, 12(a7)=c=7 -- Ergebnis = a+b*16+c*256 = 2465"
-				echo "myprintf:	move.l	4(a7),d0"
-				echo "	move.l	8(a7),d1"
-				echo "	move.l	12(a7),d2"
-				echo "	lsl.l	#4,d1"
+				echo "; Mock: NUR der deklarierte Parameter (fmt) geht nach d0, der variadische"
+				echo "; Rest (x, 7) auf den Stack. Erwartet d0=fmt=1, 4(a7)=x=42, 8(a7)=7 --"
+				echo "; Ergebnis = fmt+x*16+7en*256 = 1 + 42*16 + 7*256 = 2465"
+				echo "myprintf:	move.l	d0,d1"
+				echo "	move.l	4(a7),d0"
+				echo "	move.l	8(a7),d2"
+				echo "	lsl.l	#4,d0"
 				echo "	lsl.l	#8,d2"
 				echo "	add.l	d1,d0"
 				echo "	add.l	d2,d0"
@@ -811,12 +827,35 @@ if [ -x tools/vasmm68k_mot ]; then
 			} >> build/tinyc_extv_test.s68
 			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extv_test.bin build/tinyc_extv_test.s68 2>/dev/null && \
 				[ "$(python3 tools/tiny68sim.py build/tinyc_extv_test.s68 2>/dev/null)" = "2465" ]; then
-				echo "ok    tinyc extern 68000: variadischer Aufruf (alles auf dem Stack) korrekt platziert"
+				echo "ok    tinyc extern 68000: variadischer Aufruf (fester Parameter in d0, Rest auf dem Stack) korrekt platziert"
 			else
 				echo "FAIL  tinyc extern 68000: variadische ABI fehlerhaft"; fail=1
 			fi
 		else
 			echo "FAIL  tinyc extern 68000: IR/Backend fuer variadischen Fall fehlgeschlagen"; fail=1
+		fi
+		# Fall 4 (2026-07-24): ein char*-Argument (String-Literal) -- die Adresse des
+		# per GARRAY/GINIT angelegten String-Konstanten muss unveraendert bis d0 durch-
+		# gereicht werden; der Mock liest das erste Byte an dieser Adresse zurueck.
+		if build/tinyc_p 'extern int mockchr(const char* s); int main(){ putint(mockchr("Hi")); }' > build/tinyc_extstr.ir && \
+			build/tinyc_backend build/tinyc_extstr.ir build/tinyc_extstr.s68; then
+			cp build/tinyc_extstr.s68 build/tinyc_extstr_test.s68
+			{
+				echo ""
+				echo "; Mock: erwartet d0=Adresse des Strings -- liest erstes Byte zurueck ('H'=72)"
+				echo "mockchr:	move.l	d0,a0"
+				echo "	moveq	#0,d0"
+				echo "	move.b	(a0),d0"
+				echo "	rts"
+			} >> build/tinyc_extstr_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extstr_test.bin build/tinyc_extstr_test.s68 2>/dev/null && \
+				[ "$(python3 tools/tiny68sim.py build/tinyc_extstr_test.s68 2>/dev/null)" = "72" ]; then
+				echo "ok    tinyc extern 68000: String-Literal-Adresse korrekt an char*-Parameter uebergeben"
+			else
+				echo "FAIL  tinyc extern 68000: String-Literal-ABI fehlerhaft"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc extern 68000: IR/Backend fuer String-Literal-Fall fehlgeschlagen"; fail=1
 		fi
 	else
 		echo "warn  tinyc extern 68000: Backend fehlt -- uebersprungen"
@@ -963,6 +1002,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc 2D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/tinyc_string.ir && \
+		build/tinyc_backend build/tinyc_string.ir build/tinyc_string.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_string.bin build/tinyc_string.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_string.s68 2>/dev/null)" = "AB0" ]; then
+		echo "ok    tinyc String-Literal 68000: GARRAY/GINIT/ADDRG-Adressierung korrekt"
+	else
+		echo "FAIL  tinyc String-Literal 68000: Adressierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc String-Literal 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
@@ -1130,6 +1181,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc 2D-Array ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/tinyc_string_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_string_arm64.ir build/tinyc_string_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_string_arm64 build/tinyc_string_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_string_arm64)" = "AB0" ]; then
+		echo "ok    tinyc String-Literal ARM64: GARRAY/GINIT/ADDRG-Adressierung korrekt"
+	else
+		echo "FAIL  tinyc String-Literal ARM64: Adressierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc String-Literal ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then

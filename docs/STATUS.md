@@ -120,9 +120,21 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Initialisierern, siehe docs/FORTSCHRITT.md
 - `extern`-Deklarationen für nicht in Tiny-C definierte Funktionen (z. B. echte
   OS-9/Microware-`clib`-Funktionen wie `strcmp`/`printf`/`malloc`) -- Aufruf
-  über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`: 1./2.
-  Argument in `d0`/`d1`, Rest auf dem Stack, bei variadischen Funktionen wie
-  `printf` alles auf dem Stack), NUR im 68000-Backend, siehe docs/FORTSCHRITT.md
+  über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`): die FEST
+  deklarierten Parameter gehen nach `d0`/`d1` (genau wie bei einem
+  nicht-variadischen Aufruf), NUR der variadische `"..."`-Überschuss geht auf
+  den Stack -- korrigiert 2026-07-24 nach einem am echten Q9 gefundenen
+  PMMU-Absturz beim ersten echten `printf(fmt, ...)`-Aufruf (frühere Annahme
+  "variadisch = alles auf dem Stack" war nie gegen echten Compiler-Code
+  verifiziert), NUR im 68000-Backend, siehe docs/FORTSCHRITT.md
+- String-Literale (`char*`) -- erzeugen einen anonymen globalen char-Array-
+  Konstanten (`GARRAY`/`GINIT` + Nullterminator) und liefern dessen Adresse
+  (`ADDRG`), dieselben IR-Opcodes wie ein initialisiertes globales char-Array,
+  kein neuer Opcode/Backend-Change; als `const char*` an `extern`-Aufrufe
+  (z. B. ein `printf`-Formatstring) übergebbar. Bewusst NICHT Teil dieser
+  Version: String-Literale als Array-Initialisierer, String-Vergleich/
+  -Verkettung, direkte Indizierung/`sizeof` ohne Zwischenvariable, siehe
+  docs/FORTSCHRITT.md
 - 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
   Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
   `align 4`/`dc.l` statt `even`/`ds.l` -- Microwares r68 kennt letztere nicht,
@@ -150,7 +162,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-111 Tiny-C-Programme korrekt
+113 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -158,7 +170,8 @@ switch/case 68000 + ARM64 korrekt
 static-Lokale-Persistenz 68000 + ARM64 korrekt
 void/void* 68000 + ARM64 korrekt
 2D-Array-Indizierung 68000 + ARM64 korrekt
-extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch) 68000 korrekt, ARM64 lehnt sauber ab
+extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch / char*-String-Literal) 68000 korrekt, ARM64 lehnt sauber ab
+String-Literal-Adressierung (GARRAY/GINIT/ADDRG) 68000 + ARM64 korrekt
 -os9-Ausgabemodus: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei mit dem echten r68 (via Wine)
 68k signed/unsigned MUL/DIV/MOD + Fakultaet korrekt (inkl. der 2026-07-24 gefundenen %-Regression)
 === ALLE TESTS OK ===
@@ -178,10 +191,16 @@ Zwei unabhängige Stränge stehen zur Wahl:
    `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
    Initialisierer), Array-Felder in `struct`, `void`/`void *`,
    zweidimensionale Arrays, `extern`-Deklarationen (inkl. Microware-ABI-
-   Aufrufcodegen), der `-os9`-r68-Ausgabemodus UND echtes `l68`-Linken gegen
-   `clib.l` (inkl. echter Ausführung auf dem Q9) sind seit 2026-07-24 erledigt
-   (siehe oben). Naheliegende Kandidaten: String-Literale (Voraussetzung für
-   `printf`-Formatstrings -- `_os_write` selbst ist bereits echt nutzbar),
+   Aufrufcodegen), der `-os9`-r68-Ausgabemodus, echtes `l68`-Linken gegen
+   `clib.l` (inkl. echter Ausführung auf dem Q9) UND String-Literale (inkl.
+   Übergabe als `const char*` an einen `extern`-Aufruf) sind seit 2026-07-24
+   erledigt (siehe oben). Ebenfalls seit 2026-07-24 erledigt: ein echter
+   extern-ABI-Bug (variadische Aufrufe legten faelschlich ALLE Argumente auf
+   den Stack statt nur den `"..."`-Ueberschuss) wurde am echten Q9 gefunden
+   und behoben -- `printf("value: %d\n", x)` gegen die reale `clib.l` liefert
+   jetzt korrekt `value: 42`, siehe docs/FORTSCHRITT.md. Naheliegende
+   Kandidaten: String-Literale als Array-Initialisierer
+   (`char msg[6] = "hallo";`) oder direkte Indizierung ohne Zwischenvariable,
    mehr als 2 Array-Dimensionen, direkte `p.field[i]`-Indizierung von
    struct-Array-Feldern (braucht kombinierte member+index-Kette in der
    Grammatik), nicht-konstanter `static`-Initialisierer (braucht einen

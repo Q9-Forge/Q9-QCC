@@ -584,13 +584,26 @@ static void emitIR(FILE* out) {
 				   einer echten OS-9/Microware-clib-Funktion (strcmp, printf, malloc, ...).
 				   Nutzt die dokumentierte Microware-68K-C/C++-ABI (Ultra C/C++ Processor
 				   Guide, Kapitel "Passing Arguments to Functions") statt der sonst hier
-				   verwendeten reinen Stack-ABI fuer TINY-C-EIGENE Funktionen:
-				     - nicht-variadisch: 1. Argument -> d0, 2. Argument -> d1, ALLE
-				       weiteren Argumente auf den Stack, in UMGEKEHRTER Erscheinungs-
-				       reihenfolge gepusht (3. Argument landet dadurch am NAECHSTEN zur
-				       Ruecksprungadresse, exakt wie es die ABI vorschreibt).
-				     - variadisch (z.B. printf): ALLE Argumente auf den Stack, ebenfalls
-				       in umgekehrter Reihenfolge, KEINE Register.
+				   verwendeten reinen Stack-ABI fuer TINY-C-EIGENE Funktionen: die ERSTEN
+				   BEIDEN FEST DEKLARIERTEN Parameter -> d0/d1 (GENAU wie bei einem
+				   nicht-variadischen Aufruf), ALLE weiteren Argumente (der variadische
+				   "..."-Teil, z.B. printfs Werte nach dem Formatstring) auf den Stack, in
+				   UMGEKEHRTER Erscheinungsreihenfolge gepusht (das erste ueberzaehlige
+				   Argument landet dadurch am NAECHSTEN zur Ruecksprungadresse).
+				   WICHTIG (2026-07-24, live gegen die echte Microware-clib.l auf Q9
+				   gefunden UND korrigiert): das dritte IR-Feld ist NICHT die Gesamtzahl
+				   der Argumente oder ein reines variadic-Bool, sondern tcFunctionNargs[f]
+				   -- die Anzahl der FEST DEKLARIERTEN Parameter laut extern-Deklaration
+				   ("..." selbst zaehlt nicht mit). Der fruehere Stand nahm faelschlich an,
+				   ein variadischer Aufruf lege AUSNAHMSLOS alles auf den Stack (0 Register)
+				   -- das entsprach nur unserem eigenen, nie gegen echten Compiler-Code
+				   verifizierten Mock-Test. Der ECHTE, von xcc erzeugte Aufrufcode zu
+				   printf(fmt, x) zeigt: der Formatstring selbst (1 fest deklarierter
+				   Parameter) landet ganz normal in d0, NUR x (der variadische Teil) auf
+				   dem Stack -- das PMMU-Absturzbild auf Q9 (Adresse 1 statt eines echten
+				   Pointers) entstand exakt daraus, dass unser altes "0 Register bei
+				   variadisch"-Schema den Formatstring faelschlich auf den Stack statt nach
+				   d0 legte.
 				   Unser eigener Stack-IR liefert alle Argumente bereits in
 				   Erscheinungsreihenfolge auf a7 (1. Argument am weitesten unten, da
 				   zuerst gepusht) -- die obersten "stackArgs" Werte werden daher zuerst
@@ -603,9 +616,9 @@ static void emitIR(FILE* out) {
 				   via l68 statt der aktuellen "vasm -Fbin"-Direktassemblierung) ist noch
 				   NICHT Teil dieses Schritts, siehe docs/FORTSCHRITT.md. */
 				int nargsC = number(insP->args[1], insP->line);
-				int variadic = number(insP->args[2], insP->line);
-				int hasD0 = !variadic && nargsC >= 1;
-				int hasD1 = !variadic && nargsC >= 2;
+				int fixedCount = number(insP->args[2], insP->line);
+				int hasD0 = fixedCount >= 1 && nargsC >= 1;
+				int hasD1 = fixedCount >= 2 && nargsC >= 2;
 				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
 				int ai;
 				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
