@@ -13,7 +13,8 @@ anonStructType = "struct" anonStructOpen structField { structField } "}" .
 anonStructOpen = "{" .
 typedefTargetName = ident .
 
-globalDecl = type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
+globalDecl = [ constKw ] type pointerDecl globalName [ arraySize ] [ "=" globalInit ] ";" .
+constKw   = "const" .
 globalInit = globalValue | initList .
 arraySize  = "[" globalNumber "]" .
 globalValue = globalNumber | globalNeg | globalBool .
@@ -24,7 +25,7 @@ globalNumber = digit { digit } .
 funcdef   = funcHead block .
 funcHead  = type pointerDecl defName "(" paramList ")" .
 paramList = [ param { "," param } ] .
-param     = type pointerDecl paramDecl .
+param     = [ constKw ] type pointerDecl paramDecl .
 paramDecl = paramName [ paramArray ] .
 paramArray = "[" "]" .
 
@@ -58,7 +59,7 @@ caseBody     = { statement } .
 defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
 
-varDecl   = type pointerDecl localDecl [ "=" varInit ] ";" .
+varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
 localDecl = localName [ arraySize ] .
 varInit   = expr | initList .
 initList  = "{" [ initValue { "," initValue } ] "}" .
