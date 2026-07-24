@@ -539,10 +539,37 @@ if command -v python3 >/dev/null 2>&1; then
 		# 2026-07-24: String-Literale -- erzeugen zur Uebersetzungszeit einen anonymen
 		# globalen char-Array-Konstant (GARRAY/GINIT + Nullterminator) und liefern dessen
 		# Adresse als char* (ADDRG) -- dieselben IR-Opcodes wie ein initialisiertes
-		# globales char-Array, kein neuer Opcode. Bewusst NICHT Teil dieser Version:
-		# String-Literale als Array-Initialisierer (char msg[6] = "hallo";).
+		# globales char-Array, kein neuer Opcode.
 		tc_check 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' 'AB0'
 		tc_check 'int first(char* s){ return s[0]; } int main(){ putint(first("Hi")); }' '72'
+		# 2026-07-24: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
+		# -- kopiert die Bytes DIREKT in die Array-Slots (PUSH/PUSH/STOREIDX, lokal)
+		# bzw. per GINIT (global), NICHT nur eine char*-Adresse. Grammatik-Trick:
+		# arrayStringInit/globalStringInit sind eigene Huellregeln, damit tc_string
+		# (anonyme GARRAY-Konstante) beim lokalen Skalarfall weiterhin normal feuert,
+		# aber bei einem Array-Ziel die Adresse per DROP verworfen wird -- global
+		# feuert gar keine Nested-ACTION (tc_globalend erkennt/dekodiert per Rohtext-
+		# Scan selbst, exakt wie bei Zahlen/Bools). Wie in echtem C ist ein EXAKT
+		# passendes Array (ohne Platz fuer den Nullterminator) erlaubt.
+		tc_check 'int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putint(sizeof(m)); }' 'ho5'
+		tc_check 'int main(){ char m[6] = "hallo"; putchar(m[0]); putint(m[5]); }' 'h0'
+		tc_check 'char msg[6] = "hallo"; int main(){ putchar(msg[0]); putint(msg[5]); }' 'h0'
+		tc_check 'char msg[5] = "hallo"; int main(){ putint(sizeof(msg)); putchar(msg[4]); }' '5\no'
+		if build/tinyc_p 'int main(){ char m[4] = "hallo"; }' 2>&1 | grep -q 'string literal too long for array'; then
+			echo "ok    tinyc: zu langes String-Literal als lokaler Array-Initialisierer wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer zu langes lokales String-Array-Literal fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'char msg[4] = "hallo"; int main(){ putint(1); }' 2>&1 | grep -q 'string literal too long for array'; then
+			echo "ok    tinyc: zu langes String-Literal als globaler Array-Initialisierer wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer zu langes globales String-Array-Literal fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int arr[4] = "hi"; int main(){ putint(1); }' 2>&1 | grep -q 'string literal initializer requires a char array'; then
+			echo "ok    tinyc: String-Literal-Initialisierer fuer Nicht-char-Array wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer String-Literal auf int-Array fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: extern-Deklarationen fuer NICHT in Tiny-C definierte Funktionen
 		# (z.B. echte OS-9/Microware-clib-Funktionen wie strcmp/printf/malloc). Nur
 		# Aufrufpruefung (Argumentanzahl/-typen) hier per TinyVM-Frontend testbar --
@@ -715,7 +742,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 113 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 117 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1016,6 +1043,18 @@ else
 	echo "warn  tinyc String-Literal 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'char gmsg[6] = "hallo"; int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putchar(gmsg[0]); putint(gmsg[5]); }' > build/tinyc_stringinit.ir && \
+		build/tinyc_backend build/tinyc_stringinit.ir build/tinyc_stringinit.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_stringinit.bin build/tinyc_stringinit.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_stringinit.s68 2>/dev/null)" = "hoh0" ]; then
+		echo "ok    tinyc String-Array-Initialisierer 68000: lokal (exakt) + global (mit Nullterminator) korrekt"
+	else
+		echo "FAIL  tinyc String-Array-Initialisierer 68000: fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc String-Array-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
 		build/tinyc_backend build/tinyc_switch.ir build/tinyc_switch.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_switch.bin build/tinyc_switch.s68 2>/dev/null && \
@@ -1194,6 +1233,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc String-Literal ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'char gmsg[6] = "hallo"; int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putchar(gmsg[0]); putint(gmsg[5]); }' > build/tinyc_stringinit_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_stringinit_arm64.ir build/tinyc_stringinit_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_stringinit_arm64 build/tinyc_stringinit_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_stringinit_arm64)" = "hoh0" ]; then
+		echo "ok    tinyc String-Array-Initialisierer ARM64: lokal (exakt) + global (mit Nullterminator) korrekt"
+	else
+		echo "FAIL  tinyc String-Array-Initialisierer ARM64: fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc String-Array-Initialisierer ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
