@@ -112,12 +112,13 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Parameter/Rückgabe ohne Cast); `void *` selbst nicht dereferenzierbar/
   indizierbar/arithmetikfähig (sauber diagnostiziert), bare `void` bleibt
   außerhalb des Rückgabetyps verboten, siehe docs/FORTSCHRITT.md
-- Zweidimensionale Arrays (`int m[2][3]`, `char names[3][4]`) bei lokalen/
-  globalen Variablen -- `arr[i][j]` wird im Frontend zu einem flachen Index
+- Mehrdimensionale Arrays (`int m[2][3]`, `int m[2][3][4]`, `char names[3][4]`,
+  bis `TC_MAXDIMS`=6 Dimensionen) bei lokalen/globalen Variablen --
+  `arr[i1]..[iN]` wird im Frontend per Horner-Schema zu einem flachen Index
   zusammengeführt (kein neuer Opcode, kein Backend-Change), flache
   Initialisierer funktionieren mit; bewusst NICHT bei struct-Feldern/
-  Parametern, mehr als 2 Dimensionen oder verschachtelten Brace-
-  Initialisierern, siehe docs/FORTSCHRITT.md
+  Parametern oder verschachtelten Brace-Initialisierern, siehe
+  docs/FORTSCHRITT.md
 - `extern`-Deklarationen für nicht in Tiny-C definierte Funktionen (z. B. echte
   OS-9/Microware-`clib`-Funktionen wie `strcmp`/`printf`/`malloc`) -- Aufruf
   über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`): die FEST
@@ -171,7 +172,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-131 Tiny-C-Programme korrekt
+135 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -212,9 +213,12 @@ Zwei unabhängige Stränge stehen zur Wahl:
    (`char msg[6] = "hallo";`, lokal und global, mit Laengen- und
    Typpruefung), nicht-konstanter `static`-Initialisierer (Runs-once-Guard
    mit hidden Flag-Global), direkte Indizierung ohne Zwischenvariable
-   (`func()[i]`, `"text"[i]`) UND direkte `p.field[i]`-Indizierung von
-   struct-Array-Feldern. Naheliegender Kandidat: mehr als 2 Array-
-   Dimensionen (PR #32, noch offen).
+   (`func()[i]`, `"text"[i]`), direkte `p.field[i]`-Indizierung von
+   struct-Array-Feldern UND mehr als 2 Array-Dimensionen (bis
+   `TC_MAXDIMS`=6). Damit ist der urspruengliche Sprachfeature-Fahrplan aus
+   der Selfhosting-Lueckenliste (Abschnitt 1) vollstaendig abgearbeitet --
+   naechster sinnvoller Schritt ist die Mehrdatei-Uebersetzung (siehe
+   docs/SELFHOSTING_LUECKENLISTE.md).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
    oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-

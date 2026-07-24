@@ -32,9 +32,12 @@ anonStructType = "struct" anonStructOpen structField { structField } "}" .
 anonStructOpen = "{" .
 typedefTargetName = ident .
 
-/* zweite Dimension NUR bei globalDecl/localDecl (nicht bei structField/paramArray --
-   siehe Kommentar bei localDecl weiter unten fuer den Umfang dieser Version). */
-globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize [ arraySize2 ] ] [ "=" globalInit ] ";" .
+/* beliebig viele weitere Dimensionen (2026-07-24) NUR bei globalDecl/localDecl
+   (nicht bei structField/paramArray -- siehe Kommentar bei localDecl weiter
+   unten fuer den Umfang dieser Version). arraySizeN wiederholt sich beliebig
+   oft (TC_MAXDIMS in tinyc.lextab begrenzt die tatsaechlich unterstuetzte
+   Anzahl zur Uebersetzungszeit, kein Grammatik-Limit). */
+globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] ";" .
 constKw   = "const" .
 staticKw  = "static" .
 /* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
@@ -48,7 +51,7 @@ staticKw  = "static" .
 globalInit = globalValue | initList | globalStringInit .
 globalStringInit = "\042" { character } "\042" .
 arraySize  = "[" globalNumber "]" .
-arraySize2 = "[" globalNumber "]" .
+arraySizeN = "[" globalNumber "]" .
 globalValue = globalNumber | globalNeg | globalBool .
 globalBool  = "true" | "false" .
 globalNeg   = "-" globalNumber .
@@ -117,15 +120,18 @@ defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
 
 varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
-/* zweidimensionale Arrays (2026-07-24): NUR bei lokalen/globalen Variablen, bewusst
-   NICHT bei struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
-   zweidimensionales struct-Feld ist damit ein sauberer Parse-Fehler statt eines
+/* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
+   2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
+   struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
+   mehrdimensionales struct-Feld ist damit ein sauberer Parse-Fehler statt eines
    still falsch geschnittenen Feldes, siehe tc_structfield) und NICHT bei Parametern
-   (paramArray bleibt "[" "]"). Layout: Groesse = dim1*dim2 (zeilenweise/"row-major"
-   wie in echtem C), dim2 wird fuers Indizieren gebraucht (siehe tc_localdecl/
-   tc_globalend/tc_varref/tc_target) -- KEIN Initialisierer in dieser Version
-   (waere ein eigener Aufwand analog zu initList, siehe docs/FORTSCHRITT.md). */
-localDecl = localName [ arraySize [ arraySize2 ] ] .
+   (paramArray bleibt "[" "]"). Layout: Groesse = dim1*dim2*...*dimN (zeilenweise/
+   "row-major" wie in echtem C), dim2..dimN werden fuers Indizieren gebraucht
+   (siehe tc_localdecl/tc_globalend/tc_varref/tc_target, TC_MAXDIMS begrenzt N
+   zur Uebersetzungszeit) -- KEIN Initialisierer mit verschachtelten Klammern in
+   dieser Version (flache Initialisierer `{1,2,3,4,5,6}` funktionieren weiterhin
+   mit, siehe docs/FORTSCHRITT.md). */
+localDecl = localName [ arraySize { arraySizeN } ] .
 /* arrayStringInit (2026-07-24, String-Literale als Array-Initialisierer,
    char msg[6] = "hallo";): MUSS vor expr probiert werden, sonst wuerde expr
    (via factor/stringLit) das Literal zuerst konsumieren. Referenziert
@@ -267,13 +273,14 @@ argList   = [ arg { "," arg } ] .
 arg       = expr .
 
 target    = directTarget | indirectTarget .
-/* zweiter index-Verweis auf dieselbe Regel deckt genau "arr[i][j]" ab (zwei
-   AUFEINANDERFOLGENDE, nicht verschachtelte Klammerpaare) -- kein Grammatik-/
-   Aktions-Zusatz noetig, ACTION AFTER index feuert einfach zweimal in Folge
-   (die tcIndexDepth-Buchfuehrung ist bereits stapelbasiert, siehe tc_callname/
-   tc_arg). Die eigentliche Zusammenfuehrung zu einem flachen Index passiert in
-   tc_target/tc_varref (per Rohtext-Zaehlung der Top-Level-"["-Vorkommen). */
-/* direkte p.field[i]-Indizierung von Array-Feldern (2026-07-24): member
+/* wiederholter index-Verweis auf dieselbe Regel deckt "arr[i][j][k]..." ab
+   (beliebig viele AUFEINANDERFOLGENDE, nicht verschachtelte Klammerpaare) --
+   kein Grammatik-/Aktions-Zusatz noetig, ACTION AFTER index feuert einfach
+   einmal pro Klammerpaar (die tcIndexDepth-Buchfuehrung ist bereits
+   stapelbasiert, siehe tc_callname/tc_arg). Die eigentliche Zusammenfuehrung
+   zu einem flachen Index passiert in tc_target/tc_varref (per Rohtext-
+   Zaehlung der Top-Level-"["-Vorkommen, TC_MAXDIMS begrenzt N).
+   direkte p.field[i]-Indizierung von Array-Feldern (2026-07-24): member
    bekommt einen eigenen optionalen index-Anschluss (KEIN zweiter, ineinander
    verschachtelter -- Array-Felder in struct sind wie arraySize bewusst
    einstufig, siehe structField). Die ACTION AFTER index CALL tc_arg feuert
@@ -286,9 +293,9 @@ target    = directTarget | indirectTarget .
    zuletzt gepusht, da tc_varref/tc_target erst am ENDE der ganzen Regel
    feuern), exakt dieselbe Reihenfolge wie beim bestehenden IPADD-Aufruf fuer
    die Feldadresse selbst -- kein neuer Opcode, kein Backend-Change. */
-directTarget = ident [ index [ index ] | member [ index ] ] .
+directTarget = ident [ index { index } | member [ index ] ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index [ index ] | member [ index ] ] .
+varRef    = ident [ index { index } | member [ index ] ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
 member    = "." fieldName .

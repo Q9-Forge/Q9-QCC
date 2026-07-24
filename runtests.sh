@@ -559,6 +559,27 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "ok    tinyc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
+		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
+		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
+		# Obergrenze). arr[i1]..[iN] wird per Horner-Schema ueber N-1 Scratch-Globals
+		# (__idxNd_2..__idxNd_N) zu einem flachen row-major-Index kombiniert -- fuer N=2
+		# identisch zur bisherigen Loesung (nur EIN Scratch-Feld), kein neuer Opcode,
+		# kein Backend-Change. Die beiden 2D-spezifischen Fehlermeldungen oben bleiben
+		# wortgleich (siehe tcCheckNDIndex-Kommentar in tinyc.lextab).
+		tc_check 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' '123\n0\n102'
+		tc_check 'int g[2][2][2]; int main(){ g[0][0][0]=1; g[0][0][1]=2; g[0][1][0]=3; g[1][1][1]=8; putint(g[1][1][1]); putint(g[0][1][0]); putint(g[0][0][1]); }' '8\n3\n2'
+		tc_check 'int m[2][2][2] = {1,2,3,4,5,6,7,8}; int main(){ putint(m[1][1][1]); putint(m[0][1][0]); }' '8\n3'
+		tc_check 'int main(){ int m[2][2][2]; m[0][0][0]=5; m[1][1][1]=10; putint(1 + m[0][0][0] + m[1][1][1]); }' '16'
+		if build/tinyc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
+			echo "ok    tinyc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
+			echo "ok    tinyc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: String-Literale -- erzeugen zur Uebersetzungszeit einen anonymen
 		# globalen char-Array-Konstant (GARRAY/GINIT + Nullterminator) und liefern dessen
 		# Adresse als char* (ADDRG) -- dieselben IR-Opcodes wie ein initialisiertes
@@ -830,7 +851,28 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 131 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
+		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
+		# Obergrenze). arr[i1]..[iN] wird per Horner-Schema ueber N-1 Scratch-Globals
+		# (__idxNd_2..__idxNd_N) zu einem flachen row-major-Index kombiniert -- fuer N=2
+		# identisch zur bisherigen Loesung (nur EIN Scratch-Feld), kein neuer Opcode,
+		# kein Backend-Change. Die beiden 2D-spezifischen Fehlermeldungen oben bleiben
+		# wortgleich (siehe tcCheckNDIndex-Kommentar in tinyc.lextab).
+		tc_check 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' '123\n0\n102'
+		tc_check 'int g[2][2][2]; int main(){ g[0][0][0]=1; g[0][0][1]=2; g[0][1][0]=3; g[1][1][1]=8; putint(g[1][1][1]); putint(g[0][1][0]); putint(g[0][0][1]); }' '8\n3\n2'
+		tc_check 'int m[2][2][2] = {1,2,3,4,5,6,7,8}; int main(){ putint(m[1][1][1]); putint(m[0][1][0]); }' '8\n3'
+		tc_check 'int main(){ int m[2][2][2]; m[0][0][0]=5; m[1][1][1]=10; putint(1 + m[0][0][0] + m[1][1][1]); }' '16'
+		if build/tinyc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
+			echo "ok    tinyc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
+			echo "ok    tinyc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 135 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1147,6 +1189,18 @@ else
 	echo "warn  tinyc 2D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' > build/tinyc_3d.ir && \
+		build/tinyc_backend build/tinyc_3d.ir build/tinyc_3d.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_3d.bin build/tinyc_3d.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_3d.s68 2>/dev/null)" = "$(printf '123\n0\n102')" ]; then
+		echo "ok    tinyc 3D-Array 68000: Horner-Kombination ueber drei Dimensionen korrekt"
+	else
+		echo "FAIL  tinyc 3D-Array 68000: Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc 3D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/tinyc_string.ir && \
 		build/tinyc_backend build/tinyc_string.ir build/tinyc_string.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_string.bin build/tinyc_string.s68 2>/dev/null && \
@@ -1361,6 +1415,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc 2D-Array ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' > build/tinyc_3d_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_3d_arm64.ir build/tinyc_3d_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_3d_arm64 build/tinyc_3d_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_3d_arm64)" = "$(printf '123\n0\n102')" ]; then
+		echo "ok    tinyc 3D-Array ARM64: Horner-Kombination ueber drei Dimensionen korrekt"
+	else
+		echo "FAIL  tinyc 3D-Array ARM64: Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc 3D-Array ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
