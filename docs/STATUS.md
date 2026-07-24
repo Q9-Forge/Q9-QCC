@@ -102,6 +102,11 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Initialisierer (Zahl/Negativ/bool-Literal). Bewusst OHNE nicht-konstanten
   Initialisierer und OHNE struct/Array in dieser Version, siehe
   docs/FORTSCHRITT.md
+- `void` als Funktions-Rückgabetyp und `void *` als generischer, bidirektional
+  zu jedem anderen Pointer gleicher Tiefe kompatibler Pointer (Zuweisung/
+  Parameter/Rückgabe ohne Cast); `void *` selbst nicht dereferenzierbar/
+  indizierbar/arithmetikfähig (sauber diagnostiziert), bare `void` bleibt
+  außerhalb des Rückgabetyps verboten, siehe docs/FORTSCHRITT.md
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
@@ -111,12 +116,13 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-99 Tiny-C-Programme korrekt
+102 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
 switch/case 68000 + ARM64 korrekt
 static-Lokale-Persistenz 68000 + ARM64 korrekt
+void/void* 68000 + ARM64 korrekt
 === ALLE TESTS OK ===
 ```
 
@@ -126,12 +132,12 @@ Zwei unabhängige Stränge stehen zur Wahl:
 
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
    `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
-   Initialisierer) und Array-Felder in `struct` sind seit 2026-07-24 erledigt
-   (siehe oben). Naheliegende Kandidaten: `void *`, weitere Arrayformen,
-   direkte `p.field[i]`-Indizierung von struct-Array-Feldern (braucht
-   kombinierte member+index-Kette in der Grammatik), nicht-konstanter
-   `static`-Initialisierer (braucht einen Runs-once-Guard mit hidden
-   Flag-Global, siehe docs/FORTSCHRITT.md).
+   Initialisierer), Array-Felder in `struct` und `void`/`void *` sind seit
+   2026-07-24 erledigt (siehe oben). Naheliegende Kandidaten: weitere
+   Arrayformen, direkte `p.field[i]`-Indizierung von struct-Array-Feldern
+   (braucht kombinierte member+index-Kette in der Grammatik), nicht-
+   konstanter `static`-Initialisierer (braucht einen Runs-once-Guard mit
+   hidden Flag-Global, siehe docs/FORTSCHRITT.md).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
    (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
    auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen, danach
