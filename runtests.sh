@@ -460,6 +460,49 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Array-Feld-Zuweisungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-07-24: void als Rueckgabetyp (echte Semantik, return; war bereits vorher
+		# moeglich) und void* als generischer Pointer (bidirektional kompatibel zu jedem
+		# ANDEREN Pointer derselben Tiefe, siehe tcCompatible). void* selbst darf nicht
+		# dereferenziert/indiziert/arithmetisch veraendert werden (kein LOADIND mit
+		# geratener Groesse); bare "void" bleibt ausserhalb des Rueckgabetyps verboten.
+		tc_check 'void greet(){ putint(1); } int main(){ greet(); putint(2); }' '1\n2'
+		tc_check 'int main(){ int x = 42; void *p = &x; int *q = p; putint(*q); }' '42'
+		tc_check 'int deref(void *p){ int *q = p; return *q; } int main(){ int x=7; putint(deref(&x)); }' '7'
+		if build/tinyc_p 'int main(){ void x; putint(1); }' 2>&1 | grep -q 'void is not a valid variable type'; then
+			echo "ok    tinyc: bare void als lokale Variable wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: bare-void-Lokale-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int f(void x){ return 0; } int main(){ putint(f(1)); }' 2>&1 | grep -q 'void is not a valid parameter type'; then
+			echo "ok    tinyc: bare void als Parameter wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: bare-void-Parameter-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'void g; int main(){ putint(1); }' 2>&1 | grep -q 'void is not a valid variable type'; then
+			echo "ok    tinyc: bare void als globale Variable wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: bare-void-Globale-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int x=1; void *p=&x; putint(*p); }' 2>&1 | grep -q 'cannot dereference void\*'; then
+			echo "ok    tinyc: Dereferenzierung von void* wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: void-Dereferenzierungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int x=1; void *p=&x; putint(p[0]); }' 2>&1 | grep -q 'cannot dereference void\*'; then
+			echo "ok    tinyc: Indizierung von void* wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: void-Indizierungs-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int main(){ int x=1; void *p=&x; p = p + 1; putint(1); }' 2>&1 | grep -q 'arithmetic on void\* is not supported'; then
+			echo "ok    tinyc: Arithmetik auf void* wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: void-Arithmetik-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'void f(){ return 5; } int main(){ f(); putint(1); }' 2>&1 | grep -q 'return expects void, got int'; then
+			echo "ok    tinyc: return mit Wert aus void-Funktion wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: void-Return-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: typedef struct { ... } Name; -- anonymes struct inline im typedef.
 		# Der typedef-Zielname wird bewusst als interner struct-Tag wiederverwendet (harmlose
 		# Vereinfachung); Namenskollision mit einem bereits existierenden struct wird wie eine
@@ -603,7 +646,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 99 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 102 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void* -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -701,6 +744,18 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc struct 68000 (Array-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void.ir && \
+		build/tinyc_backend build/tinyc_void.ir build/tinyc_void.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_void.bin build/tinyc_void.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_void.s68 2>/dev/null)" = "$(printf '9\n7')" ]; then
+		echo "ok    tinyc void 68000: void-Rueckgabe + void*-Parameter korrekt"
+	else
+		echo "FAIL  tinyc void 68000: void/void* fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc void 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
@@ -842,6 +897,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (Array-Feld): Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_void_arm64.ir build/tinyc_void_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_void_arm64 build/tinyc_void_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_void_arm64)" = "$(printf '9\n7')" ]; then
+		echo "ok    tinyc void ARM64: void-Rueckgabe + void*-Parameter korrekt"
+	else
+		echo "FAIL  tinyc void ARM64: void/void* fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc void ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
