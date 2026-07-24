@@ -84,8 +84,8 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   `typedef struct { ... } Name;` mit anonymem struct inline)
 - `struct` mit gemischten skalaren Feldtypen (echtes Byte-Layout mit natürlichem
   Alignment, Feldzugriff lesend/schreibend, lokale Variablen) inkl. Array-Feldern
-  (z. B. `char name[8]`, Zugriff nur über eine Pointer-Zwischenvariable, direkte
-  `p.field[i]`-Syntax noch offen); Pointer-Felder und verschachtelte structs noch
+  (z. B. `char name[8]`, direkte `p.field[i]`-Indizierung ODER über eine
+  Pointer-Zwischenvariable); Pointer-Felder und verschachtelte structs noch
   offen, siehe SELFHOSTING_LUECKENLISTE.md
 - `enum` (benannte int-Konstanten)
 - `sizeof` (int/char/bool/unsigned/struct, keine Pointer)
@@ -171,7 +171,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-125 Tiny-C-Programme korrekt
+131 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -211,10 +211,10 @@ Zwei unabhängige Stränge stehen zur Wahl:
    2026-07-24 erledigt: String-Literale als Array-Initialisierer
    (`char msg[6] = "hallo";`, lokal und global, mit Laengen- und
    Typpruefung), nicht-konstanter `static`-Initialisierer (Runs-once-Guard
-   mit hidden Flag-Global) UND direkte Indizierung ohne Zwischenvariable
-   (`func()[i]`, `"text"[i]`). Naheliegende Kandidaten: mehr als 2 Array-
-   Dimensionen, direkte `p.field[i]`-Indizierung von struct-Array-Feldern
-   (braucht kombinierte member+index-Kette in der Grammatik).
+   mit hidden Flag-Global), direkte Indizierung ohne Zwischenvariable
+   (`func()[i]`, `"text"[i]`) UND direkte `p.field[i]`-Indizierung von
+   struct-Array-Feldern. Naheliegender Kandidat: mehr als 2 Array-
+   Dimensionen (PR #32, noch offen).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
    oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-
