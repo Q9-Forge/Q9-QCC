@@ -830,6 +830,41 @@ if [ -x tools/vasmm68k_mot ]; then
 			echo "FAIL  tinyc extern ARM64: CALLEXT wird nicht sauber abgelehnt"; fail=1
 		fi
 	fi
+
+	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): tinyc_backend akzeptiert
+	# ein optionales 4. Argument "-os9" und schaltet dann auf nam/psect/ends-
+	# Rahmung, "*" statt ";" fuer volle Kommentarzeilen und "align 4"/"dc.l 0,.."
+	# statt "even"/"ds.l" um (r68 kennt even/ds.l/rmb/cnop nicht -- empirisch
+	# gegen die echte Microware-Toolchain ermittelt). Deckt DATA/BSS/Scratch-
+	# Puffer UND einen CALLEXT-Aufruf gleichzeitig ab; wird -- wie schon bei
+	# oberon0_os9.a -- gegen den ECHTEN r68.exe (via Wine/MWOS) assembliert.
+	if [ -x build/tinyc_backend ]; then
+		build/tinyc_p 'int counter; int limit = 10; char buf[4]; extern int myadd(int a, int b); int helper(int x){ return x+1; } int main(){ counter = myadd(3,4); limit = helper(counter); putint(limit); }' > build/tinyc_os9combo.ir
+		if build/tinyc_backend build/tinyc_os9combo.ir build/tinyc_os9combo.s68 -os9 && \
+			grep -q '^	nam	tinyc_os9combo_p$' build/tinyc_os9combo.s68 && \
+			grep -q '^	psect	tinyc_os9combo_p,0,0,1,0,0$' build/tinyc_os9combo.s68 && \
+			grep -q '^	ends$' build/tinyc_os9combo.s68; then
+			echo "ok    tinyc -os9: nam/psect/ends-Rahmung wird erzeugt"
+		else
+			echo "FAIL  tinyc -os9: nam/psect/ends-Rahmung fehlt oder Backend-Aufruf fehlgeschlagen"; fail=1
+		fi
+		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && [ -f build/tinyc_os9combo.s68 ]; then
+			mkdir -p "$MWOS_TMP"
+			cp build/tinyc_os9combo.s68 "$MWOS_TMP/tccombo.a"
+			rm -f "$MWOS_TMP/tccombo.r"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\tccombo.a -o=M:\\TMP\\tccombo.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/tccombo.r" ]; then
+				echo "ok    tinyc -os9: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei (Microware r68 via Wine)"
+			else
+				echo "FAIL  tinyc -os9: assembliert NICHT (r68 via Wine)"; fail=1
+			fi
+			rm -f "$MWOS_TMP/tccombo.a" "$MWOS_TMP/tccombo.r"
+		else
+			echo "warn  tinyc -os9: Wine/MWOS nicht verfuegbar -- echter r68-Check uebersprungen"
+		fi
+	else
+		echo "warn  tinyc -os9: Backend fehlt -- uebersprungen"
+	fi
 else
 	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
 fi
