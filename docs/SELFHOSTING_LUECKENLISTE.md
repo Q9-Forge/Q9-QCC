@@ -25,14 +25,26 @@ unterschiedliche Bausteine, die getrennt zu betrachten sind:
 | Schicht | Datei(en) | Heutiger Stil | Aufwand |
 |---|---|---|---|
 | **L1: generierter Parser-Zwilling** | `Data/*_p.c` (z. B. `tinyc_p.c`, 2967 Zeilen) | bereits fast reines C, wird von `codegen.cpp` per `fprintf` erzeugt | am kleinsten -- natürlicher erster Bootstrap-Schritt |
-| **L2: EBNF-Generator selbst** | `Source/ebnf.cpp` (2149 Z.), `Source/codegen.cpp` (1527 Z.), `Source/tiny-regex.cpp` (494 Z.) | C-Stil-C++: keine STL, kein `malloc`/`new`, nur feste globale Puffer | größter Brocken, aber architektonisch am nächsten an Tiny-C |
+| **L2: EBNF-Generator selbst** | `Source/ebnf.cpp` (2149 Z.), `Source/codegen.cpp` (1527 Z.), `Source/tiny-regex.cpp` (494 Z.) | C-Stil-C++: keine STL, größtenteils feste globale Puffer, **seit 2026-07-24 mit gezieltem `malloc`/`realloc`/`free`** (siehe unten) | größter Brocken, aber architektonisch am nächsten an Tiny-C |
 | **L3: IR-Backends** | `Source/tinyc_backend.cpp`, `Source/tinyc_arm64_backend.cpp` | modernes C++: `std::vector`/`map`/`string`/`fstream`/Exceptions | eigener, andersartiger Umbau -- siehe unten |
 
-Wichtiger Befund vorweg: **L2 braucht keine dynamische Speicherverwaltung.**
-Weder `ebnf.cpp` noch `codegen.cpp` rufen `malloc`/`calloc`/`realloc` auf --
-alle Tabellen sind feste globale Arrays (`char lexTab[1024]`,
-`char ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, ...). Das senkt die Hürde für
-Selfhosting von L2 erheblich, sofern man diese Architektur beibehält.
+**Update 2026-07-24 (Q9-Speicherbedarf):** Der frühere Befund "L2 braucht keine
+dynamische Speicherverwaltung" gilt nicht mehr uneingeschränkt. Ursache des
+~34,6-MB-Datensegments (siehe unten) waren fast ausschließlich zwei feste
+Tabellen in `codegen.cpp` (`routinesC`/`routines68k`, je `ACTION_ROUTINE_MAX=256
+× ACTION_ROUTINE_LEN=65536` Byte Text ≈ 32 MB zusammen) für die ACTION/ROUTINE-
+Aktionsschnittstelle -- eine Größe, die weder für ein 8/16-MB-Zielsystem noch
+für sehr große Projekte auf dem Host jemals richtig dimensioniert werden kann,
+weil Anzahl und Länge der Routinen pro Grammatik unbekannt sind. Gelöst über
+`malloc`/`realloc`-Verdopplung (klein anfangen, bei Bedarf wachsen, siehe
+`pushRoutine`/`growBuf` in `codegen.cpp`) statt fester Arrays. Bestätigt: die
+Microware-`clib`/`stdlib.h` (`/Volumes/SSD1TB/projects/MWOS/SRC/DEFS/stdlib.h`)
+stellt `malloc`/`realloc`/`free` bereit, betrifft also nur Tiny-C selbst als
+Sprache (siehe neue Zeile in der Tabelle unten), nicht die OS-9-Zielplattform.
+Alle übrigen Tabellen in L2 bleiben feste globale Arrays -- die Hürde für
+Selfhosting von L2 ist dadurch etwas, aber nicht grundlegend gestiegen: Tiny-C
+braucht vor einem L2-Selfhosting-Versuch zusätzlich einen `malloc`/`free`-
+Laufzeit-Baustein (aktuell nicht vorhanden, siehe Tabelle).
 
 ## Legende
 
@@ -63,11 +75,9 @@ erzeugen.
 | Casts | nicht im Original-Scope dieser Liste, aber jetzt teilweise erledigt (2026-07-23) fuer int/unsigned/char/bool | — |
 | einfache `#define`-Konstanten (objektartig, ohne Parameter) | keine parametrisierten Makros im Generator-Source gefunden -- nur einfache Namenskonstanten nötig | fehlt (Präprozessor komplett offen) | hoch (aber kleiner Umfang als volles CPP) |
 | Mehrdatei-Übersetzung (`ebnf.cpp`/`codegen.cpp`/`tiny-regex.cpp` + zugehörige `.h`) | Generator ist auf 3 `.cpp` + 3 `.h` verteilt | fehlt (Linkage über mehrere Dateien) | sehr hoch |
+| `malloc`/`realloc`/`free` (dynamische Speicherverwaltung) | `codegen.cpp`: `pushRoutine`/`growBuf` für die ACTION/ROUTINE-Tabellen (seit 2026-07-24, ersetzt vormals feste 32-MB-Arrays) | fehlt (Tiny-C hat keinen Heap-Allokator) | hoch (neu seit 2026-07-24; vorher nicht gebraucht) |
 
 ## 2. Was NICHT extra gebraucht wird
-
-- **Keine dynamische Speicherverwaltung** -- der Generator kommt komplett ohne
-  `malloc`/`free` aus (siehe oben). Kein Blocker.
 - **Keine echten C++-Templates/Exceptions/STL im Generator selbst** -- die
   kommen erst in L3 vor (siehe unten), nicht in L2.
 - **Keine variadischen FunktionsDEFINITIONEN** im Generator -- `printf`/

@@ -1,6 +1,6 @@
 # Projektstatus
 
-Stand: **2026-07-24**
+Stand: **2026-07-24 (Nachtrag: Speicherbedarf verkleinert)**
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
 
@@ -29,14 +29,27 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
   Modul. Voraussetzung dafür (dauerhaft im Repo, PR #11): alle C++-Templates
   aus `Source/msvc_compat.h` entfernt (waren der einzige Ort im ganzen
   Projekt mit Templates; `xcc`s Template-Engine stürzte dabei ab).
-- Der Programmstart auf dem echten Q9-System scheitert aber aktuell:
-  Datensegment ~34,6 MB, das System hat nur 16 MB RAM (14 MB frei). Ursache:
-  bewusst nur feste globale Puffer (keine dynamische Speicherverwaltung),
-  aber großzügig für einen modernen Mac dimensioniert.
-- **Nächster Schritt hierzu:** Größe der großen statischen Puffer in
-  `ebnf.cpp`/`codegen.cpp` analysieren und für ein 16-MB-Zielsystem
-  verkleinern, ohne echte Grammatiken (Referenz: `oberon0`) zu brechen. Der
-  vollständige, sofort reproduzierbare Ablauf (Env-Setup, Kommentarform-
+- Der Programmstart auf dem echten Q9-System scheiterte zunächst: Datensegment
+  ~34,6 MB, das System hat nur 16 MB RAM (14 MB frei). Ursache: bewusst nur
+  feste globale Puffer (keine dynamische Speicherverwaltung), aber großzügig
+  für einen modernen Mac dimensioniert.
+- **Behoben (2026-07-24):** Der weit überwiegende Teil (~32 MB) waren zwei
+  feste Tabellen in `codegen.cpp` für die ACTION/ROUTINE-Aktionsschnittstelle
+  (`routinesC`/`routines68k`, je 256 Slots à 64 KB Text, unabhängig davon ob
+  überhaupt Aktionen benutzt werden). Weder Anzahl noch Länge der Routinen
+  lässt sich für eine beliebige Grammatik sinnvoll im Voraus festlegen --
+  gelöst über `malloc`/`realloc`-Verdopplung (klein anfangen, bei Bedarf
+  wachsen) statt fester Arrays. Host-Datensegment damit von ~34,6 MB auf
+  ~1 MB gesunken (`size build/ebnf`), passt jetzt auch für ein 8-MB-System.
+  Bestätigt: die Microware-`stdlib.h` stellt `malloc`/`realloc`/`free` bereit,
+  betrifft also nur Tiny-C als Sprache fürs spätere Selfhosting, nicht die
+  OS-9-Zielplattform (siehe `docs/SELFHOSTING_LUECKENLISTE.md`, neue Zeile
+  "malloc/realloc/free"). `./runtests.sh` komplett grün nach der Umstellung.
+- **Noch offen / nächster Schritt hierzu:** Der xcc-Build+Ausführungstest auf
+  dem echten Q9-Emulator wurde mit dieser Änderung noch NICHT wiederholt
+  (letzter xcc-Test war vor der Umstellung) -- das ist der nächste konkrete
+  Schritt, um den 8/16-MB-Erfolg auch auf der Zielplattform zu bestätigen.
+  Der vollständige, reproduzierbare xcc-Ablauf (Env-Setup, Kommentarform-
   Konvertierung, `xcc`-Aufruf, ToolShed-Transfer) steht in der Memory-Datei
   `q9-xcc-toolchain-milestone.md`.
 
@@ -104,10 +117,11 @@ Zwei unabhängige Stränge stehen zur Wahl:
    Features), Array-Felder in `struct` (z. B. `char name[32]`, eigener
    Folgeschritt zu den seit 2026-07-24 gemischten skalaren Feldtypen),
    `void *`, weitere Arrayformen.
-2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators für ein 16-MB-
-   Zielsystem verkleinern (siehe Abschnitt oben) -- danach echte Ausführung
-   auf Q9 testen, und danach das Tiny-C-68k-Backend um echte
-   Laufzeit-Anbindung (`putint`/`putchar`/`exit` gegen `clib.l`) erweitern.
+2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert
+   (siehe Abschnitt oben) -- nächster Schritt ist, den xcc-Build+Ausführungstest
+   auf dem echten Q9-Emulator zu wiederholen und damit zu bestätigen, danach
+   das Tiny-C-68k-Backend um echte Laufzeit-Anbindung (`putint`/`putchar`/
+   `exit` gegen `clib.l`) erweitern.
 
 Vor jeder Sprach-Erweiterung sind Frontend, IR, TinyVM, 68000- und
 ARM64-Backend sowie ein Regressionstest zu prüfen.
