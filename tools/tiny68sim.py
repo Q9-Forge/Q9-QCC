@@ -54,7 +54,11 @@ def run(instructions, labels, global_initials=None):
     if "tc_start" not in labels:
         raise SimError("Label tc_start fehlt")
     memory = {}
-    global_addresses = {name: 0x200000 + i * 0x10000 for i, name in enumerate(name for name in labels if name.startswith("tc_g_"))}
+    # tc_extcall_tmp: festes Scratch-Feld fuer CALLEXT/CALLEXTP (siehe tinyc_backend_c.cpp),
+    # bewusst OHNE "tc_g_"-Praefix (kollisionsfrei zu echten Tiny-C-Globalen), daher hier
+    # explizit mit aufgenommen statt ueber das generische "tc_g_"-Praefixmuster.
+    global_addresses = {name: 0x200000 + i * 0x10000 for i, name in enumerate(
+        name for name in labels if name.startswith("tc_g_") or name == "tc_extcall_tmp")}
     for key, value in (global_initials or {}).items():
         if isinstance(key, tuple):
             name, offset = key; memory[global_addresses[name] + offset] = u32(value)
@@ -92,16 +96,24 @@ def run(instructions, labels, global_initials=None):
         if text == "(a7)":
             if a7 not in memory: raise SimError("Stack-Unterlauf")
             return memory[a7]
+        match = re.match(r"(-?\d+)\(a7\)$", text)
+        if match:
+            return memory.get(a7 + int(match.group(1)), 0)
         match = re.match(r"(-?\d+)\(a6\)$", text)
         if match:
             return memory.get(a6 + int(match.group(1)), 0)
-        match = re.match(r"(tc_g_\w+)\(pc\)$", text)
+        match = re.match(r"(tc_g_\w+|tc_extcall_tmp)\(pc\)$", text)
         if match:
             return memory.get(global_addresses[match.group(1)], 0)
         if text == "(a0)":
             if a0_global is None:
                 raise SimError("a0 zeigt auf keine Adresse")
             return memory.get(a0_global, 0)
+        match = re.match(r"(-?\d+)\(a0\)$", text)
+        if match:
+            if a0_global is None:
+                raise SimError("a0 zeigt auf keine Adresse")
+            return memory.get(a0_global + int(match.group(1)), 0)
         raise SimError("unbekannter Operand: " + text)
 
     def write_operand(text, value):
@@ -119,11 +131,15 @@ def run(instructions, labels, global_initials=None):
             if a7 not in memory: raise SimError("Stack-Unterlauf")
             memory[a7] = value
             return
+        match = re.match(r"(-?\d+)\(a7\)$", text)
+        if match:
+            memory[a7 + int(match.group(1))] = value
+            return
         match = re.match(r"(-?\d+)\(a6\)$", text)
         if match:
             memory[a6 + int(match.group(1))] = value
             return
-        match = re.match(r"(tc_g_\w+)\(pc\)$", text)
+        match = re.match(r"(tc_g_\w+|tc_extcall_tmp)\(pc\)$", text)
         if match:
             memory[global_addresses[match.group(1)]] = value
             return
@@ -131,6 +147,12 @@ def run(instructions, labels, global_initials=None):
             if a0_global is None:
                 raise SimError("a0 zeigt auf keine Adresse")
             memory[a0_global] = value
+            return
+        match = re.match(r"(-?\d+)\(a0\)$", text)
+        if match:
+            if a0_global is None:
+                raise SimError("a0 zeigt auf keine Adresse")
+            memory[a0_global + int(match.group(1))] = value
             return
         raise SimError("unbekanntes Ziel: " + text)
 
@@ -163,6 +185,20 @@ def run(instructions, labels, global_initials=None):
                 continue
             if target not in labels:
                 raise SimError("unbekanntes Unterprogramm: " + target)
+            push(pc)
+            pc = labels[target]
+            continue
+        match = re.match(r"jsr (\w+)$", ins)
+        if match:
+            # CALLEXT/CALLEXTP (siehe tinyc_backend_c.cpp) ruft externe Funktionen per
+            # "jsr <name>" auf (kein "tc_"-Praefix wie bei internen Aufrufen). Fuer diesen
+            # Test-Simulator identisch zu "bsr" behandelt (push+jump) -- der Zieltext MUSS
+            # ein lokal im selben .s68 vorhandenes Label sein (z.B. ein Test-Mock, der eine
+            # echte clib-Funktion nachbildet); echte externe Symbolaufloesung passiert erst
+            # beim spaeteren Linken gegen die reale clib.l (l68), nicht hier.
+            target = match.group(1)
+            if target not in labels:
+                raise SimError("unbekanntes externes Unterprogramm (kein lokales Test-Mock vorhanden): " + target)
             push(pc)
             pc = labels[target]
             continue
@@ -347,7 +383,7 @@ def run(instructions, labels, global_initials=None):
         if match:
             a0_global = a6 + int(match.group(1))
             continue
-        match = re.match(r"lea (tc_g_\w+)\(pc\),a0$", ins)
+        match = re.match(r"lea (tc_g_\w+|tc_extcall_tmp)\(pc\),a0$", ins)
         if match:
             a0_global = global_addresses[match.group(1)]
             continue

@@ -536,6 +536,35 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "ok    tinyc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
+		# 2026-07-24: extern-Deklarationen fuer NICHT in Tiny-C definierte Funktionen
+		# (z.B. echte OS-9/Microware-clib-Funktionen wie strcmp/printf/malloc). Nur
+		# Aufrufpruefung (Argumentanzahl/-typen) hier per TinyVM-Frontend testbar --
+		# die eigentliche Microware-ABI-Codeerzeugung (CALLEXT/CALLEXTP) ist 68k-
+		# spezifisch und wird weiter unten per Hand-Mock-Stub end-to-end verifiziert
+		# (TinyVM/ARM64 kennen die Aufrufkonvention bewusst nicht und lehnen CALLEXT
+		# sauber ab statt es stillschweigend falsch zu behandeln).
+		tc_check 'extern int strcmp(const char *a, const char *b); int main(){ putint(1); }' '1'
+		tc_check 'extern int getval(); int main(){ putint(1); }' '1'
+		if build/tinyc_p 'extern int f(int a); extern int f(int a); int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
+			echo "ok    tinyc: doppelte extern-Deklaration wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: extern-Doppeldeklarations-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'extern int f(int a); int f(int a){ return a; } int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
+			echo "ok    tinyc: interne Funktion kollidiert mit extern-Deklaration wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: extern/intern-Kollisions-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'extern int f(int a, int b); int main(){ putint(f(1)); }' 2>&1 | grep -q 'wrong argument count'; then
+			echo "ok    tinyc: falsche Argumentanzahl bei extern-Aufruf wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: extern-Argumentanzahl-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'extern int f(...); int main(){ putint(1); }' >/dev/null 2>&1; then
+			echo "FAIL  tinyc: \"...\" ohne benannten Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: \"...\" ohne benannten Parameter davor bleibt Parse-Fehler (wie ISO C)"
+		fi
 		# 2026-07-24: typedef struct { ... } Name; -- anonymes struct inline im typedef.
 		# Der typedef-Zielname wird bewusst als interner struct-Tag wiederverwendet (harmlose
 		# Vereinfachung); Namenskollision mit einem bereits existierenden struct wird wie eine
@@ -679,7 +708,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 109 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 111 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness/void/void*/2D-Arrays/extern -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -702,6 +731,104 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "ok    tinyc M4a: reines C, IR->PIC-68000-Assembler assembliert mit vasm"
 	else
 		echo "FAIL  tinyc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
+	fi
+
+	# 13a-ext) extern-Aufrufe (CALLEXT/CALLEXTP, 2026-07-24): die Microware-68K-
+	# C/C++-ABI (Ultra C/C++ Processor Guide, "Passing Arguments to Functions")
+	# schreibt vor: 1./2. Argument -> d0/d1, weitere Argumente auf dem Stack in
+	# UMGEKEHRTER Erscheinungsreihenfolge; bei variadischen Funktionen (wie
+	# printf) ALLES auf dem Stack, keine Register. Da es keinen echten Q9-/
+	# clib.l-Zugriff in dieser Umgebung gibt, wird die Platzierung end-to-end
+	# gegen einen HANDGESCHRIEBENEN Mock-Stub verifiziert, der die Argumente an
+	# genau den ABI-Stellen erwartet und einen gewichteten Wert zurueckgibt --
+	# jede falsch platzierte Stelle wuerde das erwartete Ergebnis veraendern.
+	if [ -x build/tinyc_backend ]; then
+		# Fall 1: 2 Argumente, beide in Registern (a->d0, b->d1), kein Stack-Rest.
+		if build/tinyc_p 'extern int myadd(int a, int b); int main(){ putint(myadd(3,4)); }' > build/tinyc_ext2.ir && \
+			build/tinyc_backend build/tinyc_ext2.ir build/tinyc_ext2.s68; then
+			cp build/tinyc_ext2.s68 build/tinyc_ext2_test.s68
+			{
+				echo ""
+				echo "; Mock: erwartet d0=a=3, d1=b=4 -- Ergebnis = a*16+b = 52"
+				echo "myadd:	lsl.l	#4,d0"
+				echo "	add.l	d1,d0"
+				echo "	rts"
+			} >> build/tinyc_ext2_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_ext2_test.bin build/tinyc_ext2_test.s68 2>/dev/null && \
+				[ "$(python3 tools/tiny68sim.py build/tinyc_ext2_test.s68 2>/dev/null)" = "52" ]; then
+				echo "ok    tinyc extern 68000: 2 Argumente in d0/d1 korrekt platziert"
+			else
+				echo "FAIL  tinyc extern 68000: 2-Argumente-ABI fehlerhaft"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc extern 68000: IR/Backend fuer 2-Argumente-Fall fehlgeschlagen"; fail=1
+		fi
+		# Fall 2: 4 Argumente -- a->d0, b->d1, c/d auf dem Stack in umgekehrter
+		# Reihenfolge (c am naechsten zur Ruecksprungadresse, d weiter weg).
+		if build/tinyc_p 'extern int foo(int a, int b, int c, int d); int main(){ putint(foo(1,2,3,4)); }' > build/tinyc_ext4.ir && \
+			build/tinyc_backend build/tinyc_ext4.ir build/tinyc_ext4.s68; then
+			cp build/tinyc_ext4.s68 build/tinyc_ext4_test.s68
+			{
+				echo ""
+				echo "; Mock: erwartet d0=a=1, d1=b=2, 4(a7)=c=3, 8(a7)=d=4 (a7 zeigt nach jsr"
+				echo "; auf die Ruecksprungadresse) -- Ergebnis = a + b*16 + c*256 + d*4096 = 17185"
+				echo "foo:	move.l	4(a7),d2"
+				echo "	move.l	8(a7),d3"
+				echo "	lsl.l	#4,d1"
+				echo "	lsl.l	#8,d2"
+				echo "	lsl.l	#8,d3"
+				echo "	lsl.l	#4,d3"
+				echo "	add.l	d1,d0"
+				echo "	add.l	d2,d0"
+				echo "	add.l	d3,d0"
+				echo "	rts"
+			} >> build/tinyc_ext4_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_ext4_test.bin build/tinyc_ext4_test.s68 2>/dev/null && \
+				[ "$(python3 tools/tiny68sim.py build/tinyc_ext4_test.s68 2>/dev/null)" = "17185" ]; then
+				echo "ok    tinyc extern 68000: 4 Argumente (2 Register + 2 Stack, umgekehrte Reihenfolge) korrekt platziert"
+			else
+				echo "FAIL  tinyc extern 68000: 4-Argumente-ABI fehlerhaft"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc extern 68000: IR/Backend fuer 4-Argumente-Fall fehlgeschlagen"; fail=1
+		fi
+		# Fall 3: variadisch (wie printf) -- ALLE Argumente auf dem Stack, KEINE Register.
+		if build/tinyc_p 'extern int myprintf(int fmt, ...); int main(){ int x = 42; putint(myprintf(1, x, 7)); }' > build/tinyc_extv.ir && \
+			build/tinyc_backend build/tinyc_extv.ir build/tinyc_extv.s68; then
+			cp build/tinyc_extv.s68 build/tinyc_extv_test.s68
+			{
+				echo ""
+				echo "; Mock: variadisch -- ALLE Argumente auf dem Stack, umgekehrte Reihenfolge."
+				echo "; erwartet 4(a7)=a=1, 8(a7)=b=42, 12(a7)=c=7 -- Ergebnis = a+b*16+c*256 = 2465"
+				echo "myprintf:	move.l	4(a7),d0"
+				echo "	move.l	8(a7),d1"
+				echo "	move.l	12(a7),d2"
+				echo "	lsl.l	#4,d1"
+				echo "	lsl.l	#8,d2"
+				echo "	add.l	d1,d0"
+				echo "	add.l	d2,d0"
+				echo "	rts"
+			} >> build/tinyc_extv_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extv_test.bin build/tinyc_extv_test.s68 2>/dev/null && \
+				[ "$(python3 tools/tiny68sim.py build/tinyc_extv_test.s68 2>/dev/null)" = "2465" ]; then
+				echo "ok    tinyc extern 68000: variadischer Aufruf (alles auf dem Stack) korrekt platziert"
+			else
+				echo "FAIL  tinyc extern 68000: variadische ABI fehlerhaft"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc extern 68000: IR/Backend fuer variadischen Fall fehlgeschlagen"; fail=1
+		fi
+	else
+		echo "warn  tinyc extern 68000: Backend fehlt -- uebersprungen"
+	fi
+	# ARM64 kennt die Microware-ABI bewusst nicht -- CALLEXT muss dort sauber
+	# scheitern (kein "silent wrong"), nicht das Backend crashen lassen.
+	if [ -x build/tinyc_arm64_backend ] && [ -f build/tinyc_ext2.ir ]; then
+		if build/tinyc_arm64_backend build/tinyc_ext2.ir build/tinyc_ext2_arm64.s 2>&1 | grep -q 'unbekannter Opcode CALLEXT'; then
+			echo "ok    tinyc extern ARM64: CALLEXT wird sauber abgelehnt (Microware-ABI ist 68k-spezifisch)"
+		else
+			echo "FAIL  tinyc extern ARM64: CALLEXT wird nicht sauber abgelehnt"; fail=1
+		fi
 	fi
 else
 	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
