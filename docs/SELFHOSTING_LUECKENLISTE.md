@@ -64,7 +64,7 @@ erzeugen.
 | `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | **erledigt** (2026-07-23, Nachtrag: `enum Name var;` als Deklaration moeglich, `enum Name` auch als Parameter-/Rueckgabetyp; im Speicher/Typsystem bleibt es schlicht `int`, keine eigene Typidentitaet -- entspricht C) | hoch |
 | `union` | `tiny-regex.cpp:45` (anonyme Union in `regex_t`) | fehlt | mittel |
 | `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **erledigt** (2026-07-24: Skalar-/Pointer-Aliase, `typedef struct Name Alias;` und die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef funktionieren jetzt alle. Der typedef-Zielname dient dabei intern als struct-Tag -- bewusste, harmlose Vereinfachung gegenüber striktem C, das dort keinen Tag kennt) | sehr hoch |
-| mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | fehlt (Tiny-C hat nur 1D) | sehr hoch |
+| mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | **erledigt fuer 2D** (2026-07-24: alle 26 Fundstellen sind exakt 2D -- `arr[i][j]` wird im Frontend zu einem flachen row-major-Index zusammengefuehrt, kein neuer Opcode/Backend-Change; deckt damit ALLE realen Fundstellen hier ab. Mehr als 2 Dimensionen kommen im Generator selbst nicht vor, bleiben aber technisch unimplementiert) | sehr hoch |
 | `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | **erledigt** (2026-07-23) | hoch |
 | `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
 | `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt Tiny-C jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
@@ -179,8 +179,10 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    `typedef` inkl. `typedef struct { ... } Name;` inline (erledigt,
    2026-07-24), `enum` (erledigt), `for`/`switch` (erledigt), `static`/`const`
    (erledigt, 2026-07-24, siehe docs/FORTSCHRITT.md fuer die bewussten
-   Einschraenkungen), noch offen: mehrdimensionale Arrays, `union`
-   (nur 1 Fundstelle), Pointer-Felder/verschachtelte structs in `struct`.
+   Einschraenkungen), zweidimensionale Arrays (erledigt, 2026-07-24, deckt
+   ALLE 26 realen Fundstellen ab -- keine 3D+ im Generator selbst), noch
+   offen: `union` (nur 1 Fundstelle), Pointer-Felder/verschachtelte structs
+   in `struct`.
 2. **Mini-Runtime aus Abschnitt 3** bauen: String-Vergleichsfunktionen,
    formatierte Ausgabe, minimale Datei-I/O -- ohne die ist der Generator
    funktional nicht nachbaubar, unabhängig von der Sprachsyntax. NOCH OFFEN.
