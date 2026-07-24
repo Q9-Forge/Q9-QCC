@@ -542,10 +542,25 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: static-struct-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int bump(){ static int counter = 0; counter = counter + 1; return counter; } int main(){ putint(bump()); }' >/dev/null 2>&1; then
-			echo "FAIL  tinyc: static-Lokale MIT Initialisierer wird faelschlich akzeptiert"; tcfail=1; fail=1
+		# 2026-07-24: static-Initialisierer -- NUR globalValue (Zahl/Negativ/bool-Literal,
+		# dieselbe seiteneffektfreie Regel wie bei globalen Variablen) erlaubt, damit KEIN
+		# Laufzeit-Code fuer den Initialiserer emittiert wird (tc_staticlocal extrahiert den
+		# Wert per Rohtext-Scan, kein Durchlauf durch die normale expr-Grammatik). Ein NICHT-
+		# konstanter Ausdruck bleibt ein sauberer Parse-Fehler (kein Absturz).
+		tc_check 'int bump(){ static int counter = 10; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); }' '11\n12'
+		tc_check 'int f(){ static int x = -5; return x; } int main(){ putint(f()); }' '-5'
+		tc_check 'int f(){ static bool b = true; return b; } int main(){ putint(f()); }' '1'
+		tc_check 'int f(){ static char c = 65; return c; } int main(){ putint(f()); }' '65'
+		tc_check 'int f(){ static int *p = 0; return p == 0; } int main(){ putint(f()); }' '1'
+		if build/tinyc_p 'int f(){ static int *p = 5; return 0; } int main(){ putint(f()); }' 2>&1 | grep -q 'static local pointer initializer must be 0'; then
+			echo "ok    tinyc: static-Pointer-Initialisierer != 0 wird diagnostiziert"
 		else
-			echo "ok    tinyc: static-Lokale MIT Initialisierer bewusst als Parse-Fehler abgelehnt (eigener Folgeschritt)"
+			echo "FAIL  tinyc: static-Pointer-Initialisierer-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int y=1; int bump(){ static int counter = y; counter = counter + 1; return counter; } int main(){ putint(bump()); }' >/dev/null 2>&1; then
+			echo "FAIL  tinyc: nicht-konstanter static-Initialisierer wird faelschlich akzeptiert"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: nicht-konstanter static-Initialisierer bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
 		# 2026-07-24: Pointee-Constness fuer "const T*" -- TCType.pointeeConst (ein Bit,
 		# reist durch Zeigerarithmetik/Parameteruebergabe mit). Schreiben DURCH den Pointer
@@ -575,7 +590,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 91 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 96 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const/static/Pointee-Constness -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
