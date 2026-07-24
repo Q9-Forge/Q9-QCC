@@ -120,6 +120,14 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   `printf` alles auf dem Stack), NUR im 68000-Backend, end-to-end gegen
   handgeschriebene Mock-Stubs verifiziert (echtes Linken gegen `clib.l` via
   `l68` noch offen), siehe docs/FORTSCHRITT.md
+- 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
+  Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
+  `align 4`/`dc.l` statt `even`/`ds.l` -- Microwares r68 kennt letztere nicht,
+  empirisch via Wine/MWOS ermittelt); Default-Modus (vasm) bleibt
+  unverändert/byte-identisch. Ein Testfall mit globalen Variablen (DATA/BSS)
+  UND einem `extern`-Aufruf (CALLEXT) wurde erfolgreich durch den echten
+  `r68.exe` zu einer `.r`-Objektdatei assembliert -- der noetige erste Schritt
+  Richtung echtem `l68`-Linken gegen `clib.l`, siehe docs/FORTSCHRITT.md
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
@@ -138,6 +146,7 @@ static-Lokale-Persistenz 68000 + ARM64 korrekt
 void/void* 68000 + ARM64 korrekt
 2D-Array-Indizierung 68000 + ARM64 korrekt
 extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch) 68000 korrekt, ARM64 lehnt sauber ab
+-os9-Ausgabemodus: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei mit dem echten r68 (via Wine)
 === ALLE TESTS OK ===
 ```
 
@@ -148,9 +157,10 @@ Zwei unabhängige Stränge stehen zur Wahl:
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
    `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
    Initialisierer), Array-Felder in `struct`, `void`/`void *`,
-   zweidimensionale Arrays und `extern`-Deklarationen (inkl. Microware-ABI-
-   Aufrufcodegen) sind seit 2026-07-24 erledigt (siehe oben). Naheliegende
-   Kandidaten: echtes Linken gegen `clib.l` (Microware-Linker `l68`),
+   zweidimensionale Arrays, `extern`-Deklarationen (inkl. Microware-ABI-
+   Aufrufcodegen) und der `-os9`-r68-Ausgabemodus sind seit 2026-07-24 erledigt
+   (siehe oben). Naheliegende Kandidaten: echtes Linken gegen `clib.l`
+   (Microware-Linker `l68`, die Assembler-Stufe dafuer steht jetzt),
    String-Literale (Voraussetzung fuer `printf`-Formatstrings), mehr als
    2 Array-Dimensionen, direkte `p.field[i]`-Indizierung von struct-Array-
    Feldern (braucht kombinierte member+index-Kette in der Grammatik),
