@@ -569,6 +569,33 @@ if command -v python3 >/dev/null 2>&1; then
 			echo "ok    tinyc: String-Literal-Initialisierer fuer Nicht-char-Array wird diagnostiziert"
 		else
 			echo "FAIL  tinyc: Diagnose fuer String-Literal auf int-Array fehlt"; tcfail=1; fail=1
+			fi
+		# 2026-07-24: direkte Indizierung ohne Zwischenvariable -- "func()[i]" und
+		# "text"[i] duerfen jetzt direkt indiziert werden (postfixIndex-Huellregel um
+		# die bestehende index-Regel, siehe Data/tinyc.ebnf). Laufzeitreihenfolge auf
+		# dem Stack ist [Pointer, Indexwert] wie bei "p + n" -- daher PADD+LOADIND statt
+		# PTRINDEX/LOADIND (das den Pointer zuerst erwartet). Bewusst NICHT Teil dieser
+		# Version: Indizierung als Zuweisungsziel (foo()[0] = 5;), verkettete Postfix-
+		# Indizierung (f()[0][1]), Indizierung auf "(" expr ")".
+		tc_check 'int main(){ putchar("hallo"[0]); putchar("hallo"[4]); }' 'ho'
+		tc_check 'char* mkstr(){ return "world"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[2]); }' 'wr'
+		tc_check 'int arr[3]; int* getarr(){ return arr; } int main(){ arr[0]=10; arr[1]=20; arr[2]=30; putint(getarr()[1]); }' '20'
+		tc_check 'char* mkstr(){ return "hallo"; } int main(){ int i; i = 3; putchar(mkstr()[i]); }' 'l'
+		tc_check 'char* mkstr(){ return "AB"; } int main(){ putint(1 + mkstr()[0]); }' '66'
+		if build/tinyc_p 'int f(){ return 5; } int main(){ int x = f()[0]; }' 2>&1 | grep -q 'index expects'; then
+			echo "ok    tinyc: Indizierung eines nicht-Pointer-Rueckgabewerts wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer Indizierung eines Nicht-Pointers fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'void* mkvoid(){ return 0; } int main(){ int x = mkvoid()[0]; }' 2>&1 | grep -q 'cannot index void'; then
+			echo "ok    tinyc: Indizierung von void* wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer Indizierung von void* fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int* getarr(); int main(){ getarr()[0] = 5; }' >/dev/null 2>&1; then
+			echo "FAIL  tinyc: Zuweisung auf indizierten Funktionsaufruf wird faelschlich akzeptiert"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: Zuweisung auf foo()[0] bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
 		# 2026-07-24: extern-Deklarationen fuer NICHT in Tiny-C definierte Funktionen
 		# (z.B. echte OS-9/Microware-clib-Funktionen wie strcmp/printf/malloc). Nur
@@ -757,7 +784,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 120 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer) -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 125 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/2D-Arrays/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1086,6 +1113,18 @@ else
 	echo "warn  tinyc String-Array-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'char* mkstr(){ return "hallo"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[4]); putchar("world"[0]); putint("world"[4]); }' > build/tinyc_directidx.ir && \
+		build/tinyc_backend build/tinyc_directidx.ir build/tinyc_directidx.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_directidx.bin build/tinyc_directidx.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_directidx.s68 2>/dev/null)" = "how100" ]; then
+		echo "ok    tinyc direkte Indizierung 68000: Funktionsrueckgabewert + String-Literal ohne Zwischenvariable korrekt"
+	else
+		echo "FAIL  tinyc direkte Indizierung 68000: Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc direkte Indizierung 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
 		build/tinyc_backend build/tinyc_switch.ir build/tinyc_switch.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_switch.bin build/tinyc_switch.s68 2>/dev/null && \
@@ -1277,6 +1316,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc String-Array-Initialisierer ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'char* mkstr(){ return "hallo"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[4]); putchar("world"[0]); putint("world"[4]); }' > build/tinyc_directidx_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_directidx_arm64.ir build/tinyc_directidx_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_directidx_arm64 build/tinyc_directidx_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_directidx_arm64)" = "how100" ]; then
+		echo "ok    tinyc direkte Indizierung ARM64: Funktionsrueckgabewert + String-Literal ohne Zwischenvariable korrekt"
+	else
+		echo "FAIL  tinyc direkte Indizierung ARM64: Indizierung fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc direkte Indizierung ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
