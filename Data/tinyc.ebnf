@@ -4,7 +4,7 @@ enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
 
 structDecl  = "struct" structName "{" structField { structField } "}" ";" .
 structName  = ident .
-structField = type fieldName ";" .
+structField = type fieldName [ arraySize ] ";" .
 fieldName   = ident .
 
 typedefDecl = "typedef" typedefType typedefTargetName ";" .
