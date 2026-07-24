@@ -1442,6 +1442,54 @@ else
 	echo "warn  tinyc ARM64/Darwin: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
+# 16a) Tiny-C Mehrdatei-Uebersetzung, M3 (2026-07-25): ZWEI SEPARAT mit -part
+#     kompilierte Dateien werden mit clang zu getrennten .o-Objekten assembliert
+#     und mit demselben clang-Aufruf (der intern ld ruft) zu EINEM Programm
+#     gelinkt -- erstmals echte getrennte Objektdateien statt ein einzelner
+#     .s-Compile + Runtime-Datei in einem Rutsch. Anders als beim 68k/l68-Ziel
+#     (siehe tinyc_backend_c.cpp) braucht static HIER KEINE Namensverfremdung:
+#     Mach-O/ld unterstuetzen ECHTE lokale Symbole (kein .globl = fuer andere
+#     Objektdateien unsichtbar) -- empirisch verifiziert (zwei .o mit je einem
+#     lokalen gleichnamigen Symbol linken ohne Konflikt). Zweiter Testfall
+#     bestaetigt trotzdem, dass eine ECHTE Namenskollision (zwei nicht-static
+#     Definitionen) von ld zuverlaessig als "duplicate symbol" abgelehnt wird.
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/tinyc_arm64_backend ]; then
+	build/tinyc_p 'int shared; int helper(int x); static int localHelper(int x){ return x-1; } int main(){ shared = 10; putint(helper(shared)); putint(localHelper(shared)); }' > build/tinyc_mf_arm_a.ir
+	build/tinyc_p 'extern int shared; int helper(int x){ return shared + x; }' > build/tinyc_mf_arm_b.ir
+	if build/tinyc_arm64_backend build/tinyc_mf_arm_a.ir build/tinyc_mf_arm_a.s -part && \
+		build/tinyc_arm64_backend build/tinyc_mf_arm_b.ir build/tinyc_mf_arm_b.s -part && \
+		clang -arch arm64 -c build/tinyc_mf_arm_a.s -o build/tinyc_mf_arm_a.o && \
+		clang -arch arm64 -c build/tinyc_mf_arm_b.s -o build/tinyc_mf_arm_b.o && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_mf_arm build/tinyc_mf_arm_a.o build/tinyc_mf_arm_b.o runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_mf_arm)" = "$(printf '20\n9')" ] && \
+		[ "$(nm build/tinyc_mf_arm_a.o | grep -c ' t _tc_localHelper$')" = "1" ]; then
+		echo "ok    tinyc Mehrdatei M3: echte getrennte .o-Kompilate + clang/ld-Link (Funktionsaufruf+Global ueber Dateigrenze, static bleibt echt lokal) korrekt"
+	else
+		echo "FAIL  tinyc Mehrdatei M3: getrennte .o-Kompilate/Link fehlerhaft"; fail=1
+	fi
+	# Duplicate-Symbol-Testfall: ZWEI Dateien definieren dieselbe nicht-static
+	# Funktion -- ld muss das als "duplicate symbol" ablehnen.
+	build/tinyc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/tinyc_mf_arm_dup_a.ir
+	build/tinyc_p 'int f(){ return 2; }' > build/tinyc_mf_arm_dup_b.ir
+	if build/tinyc_arm64_backend build/tinyc_mf_arm_dup_a.ir build/tinyc_mf_arm_dup_a.s -part && \
+		build/tinyc_arm64_backend build/tinyc_mf_arm_dup_b.ir build/tinyc_mf_arm_dup_b.s -part && \
+		clang -arch arm64 -c build/tinyc_mf_arm_dup_a.s -o build/tinyc_mf_arm_dup_a.o && \
+		clang -arch arm64 -c build/tinyc_mf_arm_dup_b.s -o build/tinyc_mf_arm_dup_b.o; then
+		if clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_mf_arm_dup build/tinyc_mf_arm_dup_a.o build/tinyc_mf_arm_dup_b.o runtime/arm64_darwin/start.s >build/tinyc_mf_arm_dup.err 2>&1; then
+			echo "FAIL  tinyc Mehrdatei M3: ld haette 'duplicate symbol' melden muessen"; fail=1
+		elif grep -qi "duplicate symbol" build/tinyc_mf_arm_dup.err; then
+			echo "ok    tinyc Mehrdatei M3: echter ld lehnt doppelte nicht-static Definition als 'duplicate symbol' ab"
+		else
+			echo "FAIL  tinyc Mehrdatei M3: Link schlug NICHT wegen 'duplicate symbol' fehl"; fail=1
+		fi
+		rm -f build/tinyc_mf_arm_dup.err
+	else
+		echo "FAIL  tinyc Mehrdatei M3: Backend-/.o-Aufruf fuer Duplicate-Test fehlgeschlagen"; fail=1
+	fi
+else
+	echo "warn  tinyc Mehrdatei M3: nur auf arm64-macOS getestet -- uebersprungen"
+fi
+
 if [ -x build/tinyc_arm64_backend ]; then
 	if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/tinyc_struct_arm64.ir && \
 		build/tinyc_arm64_backend build/tinyc_struct_arm64.ir build/tinyc_struct_arm64.s && \
