@@ -69,7 +69,7 @@ erzeugen.
 | `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
 | `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt Tiny-C jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
 | `static` (Funktionen/lokale Variablen als Speicherklasse, nicht nur globale Objekte) | 101 echte Vorkommen, u. a. alle großen Tabellenpuffer | fehlt (nur globale Objekte) | hoch |
-| `const`-Qualifizierer | 99 echte Vorkommen (meist `const char*`-Parameter) | fehlt | hoch |
+| `const`-Qualifizierer | 99 echte Vorkommen (meist `const char*`-Parameter) | **teilweise** (2026-07-24: `const` bei Skalaren/Arrays erledigt und durchgesetzt, deckt aber NICHT den haeufigsten realen Fall hier ab -- `const char*` braucht Pointee-Constness, bei Pointertypen wird `const` bisher nur geparst, nicht geprueft; siehe docs/FORTSCHRITT.md) | hoch |
 | `sizeof` | `codegen.cpp:333,1151,...`; `ebnf.cpp:1043,1062` (Puffergrößen an Hilfsfunktionen reichen) | **erledigt** (2026-07-23, Nachtrag: `sizeof(variable)` auf lokale/globale Skalare und Arrays ergänzt -- genau die Form, die alle echten Fundstellen hier nutzen, z. B. `sizeof(line)`) | hoch |
 | Prä-/Postinkrement (`++`/`--`) | nicht im Original-Scope dieser Liste, aber jetzt erledigt (2026-07-23) fuer einfache int/char/unsigned-Skalare | — |
 | Casts | nicht im Original-Scope dieser Liste, aber jetzt teilweise erledigt (2026-07-23) fuer int/unsigned/char/bool | — |
