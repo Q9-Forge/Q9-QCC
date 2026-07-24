@@ -37,7 +37,15 @@ typedefTargetName = ident .
    unten fuer den Umfang dieser Version). arraySizeN wiederholt sich beliebig
    oft (TC_MAXDIMS in tinyc.lextab begrenzt die tatsaechlich unterstuetzte
    Anzahl zur Uebersetzungszeit, kein Grammatik-Limit). */
-globalDecl = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] ";" .
+/* Mehrdatei-Uebersetzung (2026-07-25): externGlobalDecl deklariert eine
+   globale Variable OHNE Speicherallokation ("definiert in einer anderen
+   Tiny-C-Datei") -- kein Konflikt mit dem bestehenden extern bei FUNKTIONEN
+   (das bleibt Microware-ABI/clib.l-spezifisch, siehe externDecl oben): bei
+   globalen Variablen gab es bisher UEBERHAUPT keine extern-Bedeutung. Kein
+   Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
+globalDecl       = externGlobalDecl | plainGlobalDecl .
+externGlobalDecl = "extern" type pointerDecl globalName ";" .
+plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] ";" .
 constKw   = "const" .
 staticKw  = "static" .
 /* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
@@ -57,7 +65,18 @@ globalBool  = "true" | "false" .
 globalNeg   = "-" globalNumber .
 globalNumber = digit { digit } .
 
-funcdef   = funcHead block .
+/* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
+   IMMER vorhandenen Rumpfs entweder einen echten Rumpf (funcBody) ODER eine
+   reine Prototyp-Deklaration ohne Rumpf (protoEnd) = "definiert in einer
+   anderen Tiny-C-Datei", normale interne bsr/bl-Aufrufkonvention. Bewusst
+   NICHT das bestehende extern-Schluesselwort dafuer verwendet -- das ist fest
+   mit der Microware-ABI/CALLEXT-Semantik verdrahtet (siehe externDecl oben).
+   Kein Backtracking noetig: nach funcHead folgt entweder disjunkt "{" oder
+   ";" -- klassische LL(1)-Alternation. */
+funcdef       = funcHead ( funcBody | protoEnd ) .
+funcBody      = funcBodyOpen { statement } "}" .
+funcBodyOpen  = "{" .
+protoEnd      = ";" .
 funcHead  = [ staticKw ] type pointerDecl defName "(" paramList ")" .
 paramList = [ param { "," param } ] .
 param     = [ constKw ] type pointerDecl paramDecl .

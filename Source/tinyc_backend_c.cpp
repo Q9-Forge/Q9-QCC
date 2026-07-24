@@ -182,7 +182,9 @@ static void collectGlobals(void) {
 		}
 		if (strcmp(insP->op, "GLOBAL") != 0 && strcmp(insP->op, "GARRAY") != 0) continue;
 		if (strcmp(insP->op, "GARRAY") == 0) {
-			if (insP->argc != 3 || !isNumWord(insP->args[1])) fatal("ungueltiges GARRAY");
+			/* 4. Argument (2026-07-25, Mehrdatei-Uebersetzung): optionales isstatic-Flag,
+			   hier noch nicht ausgewertet (siehe collectFunctions/GLOBALDECL/FUNCDECL). */
+			if ((insP->argc != 3 && insP->argc != 4) || !isNumWord(insP->args[1])) fatal("ungueltiges GARRAY");
 			if (findGlobal(insP->args[0]) >= 0) fatal("doppelte globale Variable");
 			len = number(insP->args[2], insP->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
@@ -196,7 +198,7 @@ static void collectGlobals(void) {
 			globals[gi].length = len;
 			continue;
 		}
-		if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3) {
+		if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4) {
 			sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 			fatal(msg);
 		}
@@ -204,7 +206,9 @@ static void collectGlobals(void) {
 			sprintf(msg, "IR Zeile %d: doppelte globale Variable %s", insP->line, insP->args[0]);
 			fatal(msg);
 		}
-		if (insP->argc == 3 && !isNumWord(insP->args[2])) {
+		/* argc>=3 statt ==3 (2026-07-25): 4. Argument ist das optionale isstatic-Flag
+		   (Mehrdatei-Uebersetzung), der Typtag bleibt immer an Position 2. */
+		if (insP->argc >= 3 && !isNumWord(insP->args[2])) {
 			sprintf(msg, "IR Zeile %d: unbekannter Globaltyp", insP->line);
 			fatal(msg);
 		}
@@ -213,7 +217,7 @@ static void collectGlobals(void) {
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
 		globals[gi].initialValue = insP->argc >= 2 ? number(insP->args[1], insP->line) : 0;
-		globals[gi].isChar = insP->argc == 3 && isByteWord(insP->args[2]);
+		globals[gi].isChar = insP->argc >= 3 && isByteWord(insP->args[2]);
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
 	}
@@ -231,12 +235,17 @@ static void collectFunctions(void) {
 			/* vor der ersten Funktion (echte globale Variablen) ODER innerhalb einer
 			   offenen Funktion (static lokale Variable, siehe collectGlobals) erlaubt --
 			   NICHT zwischen zwei Funktionen (ausserhalb jeder FUNC-Spanne). */
-			if ((!open && seenFunction) || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3)) {
+			if ((!open && seenFunction) || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4)) {
 				sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 				fatal(msg);
 			}
+		} else if (strcmp(insP->op, "FUNCDECL") == 0 || strcmp(insP->op, "GLOBALDECL") == 0) {
+			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
+			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY),
+			   hier noch OHNE Wirkung (kein declOnly-Backend-Handling vor M2/M3). */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
-			if (open || insP->argc != 2) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
+			/* 3. Argument (2026-07-25): optionales isstatic-Flag, hier noch nicht ausgewertet. */
+			if (open || (insP->argc != 2 && insP->argc != 3)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
 			current.nargs = number(insP->args[1], insP->line);

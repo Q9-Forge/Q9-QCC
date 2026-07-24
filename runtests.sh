@@ -880,6 +880,55 @@ else
 	echo "warn  tinyc: python3 fehlt -- Tiny-C/tinyvm-Check uebersprungen"
 fi
 
+# 12b) Tiny-C Mehrdatei-Uebersetzung, M1 (2026-07-25): bare Funktionsprototyp
+#     ohne Rumpf ("int f(int x);" statt extern -- normale interne bsr/bl-ABI,
+#     NICHT die Microware-ABI/CALLEXT des bestehenden extern-Features) und
+#     "extern <typ> <name>;" bei globalen Variablen erlauben getrennt
+#     kompilierte Tiny-C-Dateien. tools/tinyc_merge.py simuliert dafuer einen
+#     Mini-Linker vor TinyVM (echte Linker: l68 fuers 68k/OS-9-Ziel, ld/clang
+#     fuers ARM64-Ziel, siehe M2/M3) -- prueft Duplicate-Symbole, genau ein
+#     main, static-Sichtbarkeit UND (als Bonus, den ein echter Linker NICHT
+#     leisten koennte) Signatur-Konsistenz zwischen Deklaration und Definition.
+if command -v python3 >/dev/null 2>&1; then
+	build/tinyc_p 'int shared; int helper(int x); int main(){ shared = 10; putint(helper(shared)); }' > build/tinyc_mf_a.ir
+	build/tinyc_p 'extern int shared; int helper(int x){ return x + shared; }' > build/tinyc_mf_b.ir
+	if [ "$(python3 tools/tinyc_merge.py build/tinyc_mf_a.ir build/tinyc_mf_b.ir 2>/dev/null | python3 tools/tinyvm.py 2>/dev/null)" = "20" ]; then
+		echo "ok    tinyc Mehrdatei M1: Funktionsaufruf + globale Variable ueber Dateigrenze korrekt"
+	else
+		echo "FAIL  tinyc Mehrdatei M1: Funktionsaufruf/Global ueber Dateigrenze fehlerhaft"; fail=1
+	fi
+	build/tinyc_p 'int secret(int x); int main(){ putint(secret(1)); }' > build/tinyc_mf_c.ir
+	build/tinyc_p 'static int secret(int x){ return x*2; }' > build/tinyc_mf_d.ir
+	if python3 tools/tinyc_merge.py build/tinyc_mf_c.ir build/tinyc_mf_d.ir > /dev/null 2>build/tinyc_mf.err; then
+		echo "FAIL  tinyc Mehrdatei M1: static-Funktion faelschlich ueber Dateigrenze sichtbar"; fail=1
+	elif grep -q "als static definiert" build/tinyc_mf.err; then
+		echo "ok    tinyc Mehrdatei M1: static-Funktion bleibt fuer andere Datei unsichtbar"
+	else
+		echo "FAIL  tinyc Mehrdatei M1: static-Diagnose fehlt/falsch"; fail=1
+	fi
+	build/tinyc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/tinyc_mf_e.ir
+	build/tinyc_p 'int f(){ return 2; } int main2(){ return 0; }' > build/tinyc_mf_f.ir
+	if python3 tools/tinyc_merge.py build/tinyc_mf_e.ir build/tinyc_mf_f.ir > /dev/null 2>build/tinyc_mf.err; then
+		echo "FAIL  tinyc Mehrdatei M1: doppelte nicht-static Definition nicht erkannt"; fail=1
+	elif grep -q "doppelte Definition" build/tinyc_mf.err; then
+		echo "ok    tinyc Mehrdatei M1: doppelte nicht-static Definition wird wie 'duplicate symbol' erkannt"
+	else
+		echo "FAIL  tinyc Mehrdatei M1: Duplicate-Diagnose fehlt/falsch"; fail=1
+	fi
+	build/tinyc_p 'int g(int a, int b); int main(){ putint(g(1,2)); }' > build/tinyc_mf_g.ir
+	build/tinyc_p 'int g(int a){ return a; }' > build/tinyc_mf_h.ir
+	if python3 tools/tinyc_merge.py build/tinyc_mf_g.ir build/tinyc_mf_h.ir > /dev/null 2>build/tinyc_mf.err; then
+		echo "FAIL  tinyc Mehrdatei M1: Signatur-Inkonsistenz (Parameterzahl) nicht erkannt"; fail=1
+	elif grep -q "Parameter deklariert" build/tinyc_mf.err; then
+		echo "ok    tinyc Mehrdatei M1: Signatur-Inkonsistenz (Bonus-Check) wird erkannt"
+	else
+		echo "FAIL  tinyc Mehrdatei M1: Signatur-Konsistenz-Diagnose fehlt/falsch"; fail=1
+	fi
+	rm -f build/tinyc_mf.err
+else
+	echo "warn  tinyc Mehrdatei M1: python3 fehlt -- uebersprungen"
+fi
+
 # 13) Tiny-C M4a: eigenstaendiges Backend liest Stack-IR und erzeugt
 #     PIC-faehigen 68000-Assembler. Noch keine Ziel-Runtime/Ausfuehrung; vasm
 #     prueft aber Funktionsframes, Parameter, CALL/RET und alle Syntaxdetails.
