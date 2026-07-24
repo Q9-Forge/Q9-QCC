@@ -1,6 +1,6 @@
 # Selfhosting-Lückenliste
 
-Stand: **2026-07-24 (Nachtrag: direkte p.field[i]-Indizierung + mehrdimensionale Arrays bis TC_MAXDIMS=6 -- Sprachmittel-Fahrplan aus Abschnitt 1 damit vollstaendig abgearbeitet)**
+Stand: **2026-07-25 (Nachtrag: Mehrdatei-Übersetzung erledigt -- damit ist auch der letzte "sehr hoch"-Punkt aus Abschnitt 1 abgearbeitet)**
 
 ## Zieldefinition
 
@@ -74,7 +74,7 @@ erzeugen.
 | Prä-/Postinkrement (`++`/`--`) | nicht im Original-Scope dieser Liste, aber jetzt erledigt (2026-07-23) fuer einfache int/char/unsigned-Skalare | — |
 | Casts | nicht im Original-Scope dieser Liste, aber jetzt teilweise erledigt (2026-07-23) fuer int/unsigned/char/bool | — |
 | einfache `#define`-Konstanten (objektartig, ohne Parameter) | keine parametrisierten Makros im Generator-Source gefunden -- nur einfache Namenskonstanten nötig | fehlt (Präprozessor komplett offen) | hoch (aber kleiner Umfang als volles CPP) |
-| Mehrdatei-Übersetzung (`ebnf.cpp`/`codegen.cpp`/`tiny-regex.cpp` + zugehörige `.h`) | Generator ist auf 3 `.cpp` + 3 `.h` verteilt | fehlt (Linkage über mehrere Dateien) | sehr hoch |
+| Mehrdatei-Übersetzung (`ebnf.cpp`/`codegen.cpp`/`tiny-regex.cpp` + zugehörige `.h`) | Generator ist auf 3 `.cpp` + 3 `.h` verteilt | **erledigt** (2026-07-25: bare Funktionsprototyp ohne Rumpf für normale interne bsr/bl-Verlinkung -- bewusst getrennt vom bestehenden `extern`/Microware-ABI-Feature; `extern <typ> <name>;` für globale Variablen; `static` bekommt echte Bedeutung; neue IR-Pseudo-Opcodes `FUNCDECL`/`GLOBALDECL`. Live gegen echte Toolchains verifiziert: 68k/OS-9 über echten `l68`-Link, ARM64 über echte getrennte `.o`-Kompilate + `clang`/`ld`-Link. Bekannte Grenze: keine Header-Datei/`#include`-Mechanismus, Signaturkonsistenz zwischen Deklaration und Definition wird nur vom TinyVM-Merge-Werkzeug geprüft, nicht von den echten Linkern -- siehe docs/STATUS.md) | sehr hoch |
 | `malloc`/`realloc`/`free` (dynamische Speicherverwaltung) | `codegen.cpp`: `pushRoutine`/`growBuf` für die ACTION/ROUTINE-Tabellen (seit 2026-07-24, ersetzt vormals feste 32-MB-Arrays) | fehlt (Tiny-C hat keinen Heap-Allokator) | hoch (neu seit 2026-07-24; vorher nicht gebraucht) |
 
 ## 2. Was NICHT extra gebraucht wird
@@ -240,10 +240,12 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    16-MB-Zielsystem: **erledigt (2026-07-24)** und live auf dem echten
    Q9-Emulator bestaetigt (Datensegment ~34,6 MB -> ~1 MB, `ebnf_gen`
    laeuft fehlerfrei), siehe docs/STATUS.md.
-4. Naechster Schritt: **Mehrdatei-Übersetzung** (Abschnitt 1, letzter
-   Punkt) -- einziger verbliebene "sehr hoch"-Punkt, damit der
-   nachgebaute Generator wie das Original auf mehrere Dateien verteilt
-   werden kann. Noch nicht begonnen.
+4. **Mehrdatei-Übersetzung** (Abschnitt 1, letzter Punkt): **erledigt
+   (2026-07-25)** -- damit ist der komplette Sprachmittel-Fahrplan aus
+   Abschnitt 1 abgearbeitet. Der nachgebaute Generator könnte jetzt
+   grundsätzlich wie das Original auf mehrere Dateien verteilt werden
+   (bekannte Grenze: keine Header-Datei/Signaturkonsistenzprüfung durch
+   die echten Linker, siehe docs/STATUS.md).
 5. **L1-Zusatzbedarf** (`goto`, Funktionszeiger, Abschnitt 4) erst, wenn
    tatsächlich der generierte Parser-Zwilling selbst gehostet werden soll --
    nicht vorher, um keine Sprachmittel vorzuziehen, die für L2 gar nicht

@@ -75,7 +75,17 @@ Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
    2026-07-24 **erledigt** (siehe eigene Tabellenzeile "Tiny-C String-Literale"
    oben) -- `_os_write` selbst war bereits vorher echt nutzbar und unabhaengig
    davon
-4. Mehrdatei-Übersetzung: noch offen
+4. Mehrdatei-Übersetzung: **erledigt (2026-07-25)** -- bare Funktionsprototyp
+   ohne Rumpf (normale interne Verlinkung, getrennt vom Microware-ABI-`extern`)
+   + `extern <typ> <name>;` bei globalen Variablen, `static` bekommt echte
+   Bedeutung, neue IR-Pseudo-Opcodes `FUNCDECL`/`GLOBALDECL`. Live gegen echte
+   Toolchains verifiziert: 68k/OS-9 ueber echten `r68`+`l68`-Link (inkl. neuem
+   `-runtime`-Flag fuer den gemeinsamen 68k-Core-Anker UND Namensverfremdung
+   fuer `static`, da `r68`/`l68` KEIN Sichtbarkeitskonzept kennen -- kein
+   `xdef`/`xref`, empirisch widerlegt), ARM64 ueber echte getrennte
+   `.o`-Kompilate + `clang`/`ld`-Link (hier reicht Weglassen von `.globl`,
+   Mach-O unterstuetzt ECHTE lokale Symbole, keine Namensverfremdung noetig).
+   Details siehe `docs/STATUS.md` Abschnitt "Mehrdatei-Übersetzung".
 5. `goto`/Funktionszeiger (erst wenn der generierte Parser-Zwilling selbst gehostet werden soll): noch offen
 6. Speicherbedarf der statischen Puffer in `ebnf.cpp`/`codegen.cpp` fuer ein reales
    16-MB-/8-MB-Zielsystem (Q9): **erledigt (2026-07-24)**, siehe `docs/STATUS.md` --
@@ -97,6 +107,11 @@ Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
 - nichtkonstante globale Initialisierer (betrifft jetzt auch static-Lokale-Initialisierer, siehe oben)
 - endgültige Q9-Start-, Modul- und Systemcall-Runtime
 - zusätzliche Architekturen und Optimierungen
+- Mehrdatei-Übersetzung (seit 2026-07-25 erledigt, siehe oben) hat bewusste Grenzen:
+  kein `#include`-Mechanismus/keine gemeinsame Header-Datei -- Nutzer müssen
+  Funktionssignaturen/Global-Typen von Hand in beiden Dateien konsistent halten;
+  nur `tools/tinyc_merge.py` (TinyVM) prüft Signaturkonsistenz als Bonus, die
+  echten Linker (`l68`, `ld`) kennen nur Namen, keine Typen
 
 ## Arbeitsreihenfolge für neue Features
 
