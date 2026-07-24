@@ -108,17 +108,31 @@ erledigt (2026-07-24): ein `-os9`-Ausgabemodus im 68k-Backend erzeugt
 (statt `even`/`ds.l`, die der echte `r68` als "bad mnemonic" ablehnt)
 versehenen Code -- ein Testfall mit DATA/BSS-Globalen UND einem
 `extern`-Aufruf (CALLEXT) wurde erfolgreich durch den ECHTEN `r68.exe` (via
-Wine/MWOS) zu einer relokierbaren `.r`-Datei assembliert. NOCH OFFEN: das
-eigentliche Linken dieser `.r`-Datei gegen die reale `clib.l` (Microware-
-Linker `l68`) sowie String-Literale in Tiny-C (ohne die ist ein echter
+Wine/MWOS) zu einer relokierbaren `.r`-Datei assembliert.
+
+**Echtes Linken + echte Ausfuehrung: ebenfalls erledigt (2026-07-24).**
+`putint`/`putuint`/`putchar` rufen im `-os9`-Modus den echten, ungepufferten
+`_os_write`-Syscall aus `clib.l` auf; ein damit gelinktes Testprogramm lief
+ECHT auf dem Q9-Emulator und gab die korrekten Werte aus. Dabei drei
+eigenstaendige Bugs gefunden und behoben: (1) Backend nutzte `a6` als eigenen
+Frame-Pointer, obwohl Microwares ABI `a6` als statischen Datenzeiger fuer die
+GESAMTE Laufzeit reserviert (`a5` ist das echte Frame-Register) -- Fix nur im
+`-os9`-Modus. (2) `jsr <name>` fuer externe Aufrufe wird von `r68` absolut
+statt PC-relativ kodiert (bricht sobald das Modul nicht bei Adresse 0 laedt)
+-- Fix: `bsr` statt `jsr`. (3) Die Ausfuehrung beginnt immer am ersten Byte
+der ERSTEN Datei auf der `l68`-Kommandozeile -- `cstart.r` MUSS zuerst
+stehen, sonst laeuft das Programm ohne jede Laufzeit-Initialisierung los.
+Siehe docs/FORTSCHRITT.md fuer alle Details (inkl. eines vierten,
+unabhaengigen Bugs im `%`-Operator, der beim Debuggen nebenbei gefunden
+wurde). NOCH OFFEN: String-Literale in Tiny-C (ohne die ist ein echter
 `printf("format", ...)`-Aufruf mit Formatstring nicht schreibbar, nur mit
-rein numerischen/Pointer-Argumenten).
+rein numerischen/Pointer-Argumenten oder ueber den jetzt echten `_os_write`-Weg).
 
 | Funktion(en) | Belegstellen (Anzahl) | Bemerkung |
 |---|---|---|
-| `strcmp`, `strncmp`, `strlen`, `strstr`, `strchr` | ca. 120 Aufrufe insgesamt in `ebnf.cpp`+`codegen.cpp` | Kernwerkzeug für Tabellen-/Namensvergleich; jetzt per `extern`-Deklaration gegen die echte `clib.l` aufrufbar (Codegen erledigt, Linken noch offen) statt als Tiny-C-Runtime nachgebaut |
-| `printf`/`fprintf` (Textausgabe des generierten Codes) | `ebnf.cpp`: 73, `codegen.cpp`: 236 | Der Generator IST im Kern ein Textgenerator -- ohne formatierte Ausgabe kein Codegen. `extern`-Deklaration + variadischer CALLEXT-Codegen erledigt; braucht zusaetzlich String-Literale (noch offen) fuer den Formatstring |
-| Datei-I/O (`fopen`/`fread`/`fwrite`/`fclose`) | durchgehend zum Einlesen der `.ebnf`/`.lextab` und Schreiben der `_p.c`/`.s68`-Ausgabe | Aufrufkonvention (bis zu 4 Argumente, `fread`/`fwrite`) durch den 4-Argumente-Testfall (2 Register + 2 Stack) bereits verifiziert; wie oben nur das Linken gegen die reale `clib.l` noch offen |
+| `strcmp`, `strncmp`, `strlen`, `strstr`, `strchr` | ca. 120 Aufrufe insgesamt in `ebnf.cpp`+`codegen.cpp` | Kernwerkzeug für Tabellen-/Namensvergleich; jetzt per `extern`-Deklaration gegen die echte `clib.l` aufrufbar UND linkbar (Codegen UND Linken erledigt, siehe oben) statt als Tiny-C-Runtime nachgebaut |
+| `printf`/`fprintf` (Textausgabe des generierten Codes) | `ebnf.cpp`: 73, `codegen.cpp`: 236 | Der Generator IST im Kern ein Textgenerator -- ohne formatierte Ausgabe kein Codegen. `extern`-Deklaration + variadischer CALLEXT-Codegen + echtes Linken erledigt; braucht zusaetzlich String-Literale (noch offen) fuer den Formatstring |
+| Datei-I/O (`fopen`/`fread`/`fwrite`/`fclose`) | durchgehend zum Einlesen der `.ebnf`/`.lextab` und Schreiben der `_p.c`/`.s68`-Ausgabe | Aufrufkonvention (bis zu 4 Argumente, `fread`/`fwrite`) durch den 4-Argumente-Testfall (2 Register + 2 Stack) bereits verifiziert; echtes Linken jetzt ebenfalls erledigt (siehe oben) |
 
 Diese drei Punkte sind der eigentliche Hebel: Selbst wenn Tiny-C morgen
 `struct`/`for`/`switch` könnte, bräuchte es zusätzlich eine kleine
@@ -213,12 +227,12 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
 2. **Mini-Runtime aus Abschnitt 3** anbinden: statt String-Vergleichsfunktionen,
    formatierte Ausgabe und Datei-I/O in Tiny-C nachzubauen, die echten
    `clib.l`-Funktionen direkt aufrufen (Strategiewechsel 2026-07-24). `extern`-
-   Deklarationen + Microware-ABI-Aufrufcodegen (CALLEXT/CALLEXTP) sind erledigt
-   und end-to-end gegen Mock-Stubs verifiziert; ebenso der `-os9`-r68-
-   Ausgabemodus (erledigt, 2026-07-24, live gegen den echten `r68.exe`
-   verifiziert). NOCH OFFEN: echtes Linken gegen `clib.l` (Microware-Linker
-   `l68`) und String-Literale (fuer `printf`-Formatstrings) -- ohne die ist
-   der Generator weiterhin funktional nicht nachbaubar.
+   Deklarationen + Microware-ABI-Aufrufcodegen (CALLEXT/CALLEXTP), der
+   `-os9`-r68-Ausgabemodus UND echtes `l68`-Linken gegen `clib.l` (inkl.
+   echter Ausfuehrung auf dem Q9-Emulator) sind alle erledigt (2026-07-24).
+   NOCH OFFEN: String-Literale (fuer `printf`-Formatstrings) -- ohne die ist
+   der Generator weiterhin funktional nicht nachbaubar, auch wenn `_os_write`
+   selbst schon echt nutzbar ist.
 3. Erst danach **Mehrdatei-Übersetzung** (Abschnitt 1, letzter Punkt) angehen,
    damit der nachgebaute Generator wie das Original auf mehrere Dateien
    verteilt werden kann.

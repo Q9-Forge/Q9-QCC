@@ -981,12 +981,12 @@ fi
 #     Schablonen-Ausgabe inklusive Frame/Call/RET und der ECHTEN 68k-Core-
 #     Schablonen fuer signed int32 MUL/DIV aus. Nur PRINT bleibt ein Plattform-Hook.
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
-	if build/tinyc_p 'unsigned int high=-1; int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); putint(-7 * 6); putint(20 / 3); putint(-20 / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/tinyc_m4b.ir && \
+	if build/tinyc_p 'unsigned int high=-1; int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); putint(-7 * 6); putint(20 / 3); putint(-20 / 3); putint(high > 1); putint(high / 2); putuint(high); putint(20 % 6); putint(-20 % 6); putuint(high % 10); }' > build/tinyc_m4b.ir && \
 		build/tinyc_backend build/tinyc_m4b.ir build/tinyc_m4b.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_m4b.bin build/tinyc_m4b.s68 2>/dev/null && \
 		grep -q '^tc_mul_loop:' build/tinyc_m4b.s68 && grep -q '^tc_div_loop:' build/tinyc_m4b.s68 && grep -q '^tc_udiv_loop:' build/tinyc_m4b.s68 && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_m4b.s68 2>/dev/null)" = "$(printf '120\n-42\n6\n-6\n1\n2147483647\n4294967295')" ]; then
-		echo "ok    tinyc M4c-1: echte 68k int32 signed/unsigned MUL/DIV + Fakultaet = tinyvm"
+		[ "$(python3 tools/tiny68sim.py build/tinyc_m4b.s68 2>/dev/null)" = "$(printf '120\n-42\n6\n-6\n1\n2147483647\n4294967295\n2\n-2\n5')" ]; then
+		echo "ok    tinyc M4c-1: echte 68k int32 signed/unsigned MUL/DIV/MOD + Fakultaet = tinyvm"
 	else
 		echo "FAIL  tinyc M4c-1: 68k-Core-Lauf stimmt nicht mit tinyvm ueberein"; fail=1
 	fi
