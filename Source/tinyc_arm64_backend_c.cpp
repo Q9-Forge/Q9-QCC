@@ -155,7 +155,9 @@ static void collectGlobals(void) {
 			fatal(msg);
 		}
 		if (strcmp(x->op, "GARRAY") == 0) {
-			if (x->argc != 3 || !isNumWord(x->args[1])) fatal("ungueltiges GARRAY");
+			/* 4. Argument (2026-07-25, Mehrdatei-Uebersetzung): optionales isstatic-Flag,
+			   hier noch nicht ausgewertet. */
+			if ((x->argc != 3 && x->argc != 4) || !isNumWord(x->args[1])) fatal("ungueltiges GARRAY");
 			len = number(x->args[2], x->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
 			if (len > MAX_ARRAY_LEN) fatal("GARRAY-Laenge ueberschreitet MAX_ARRAY_LEN");
@@ -169,15 +171,17 @@ static void collectGlobals(void) {
 			globals[gi].length = len;
 			continue;
 		}
-		if (x->argc != 1 && x->argc != 2 && x->argc != 3) fatal("ungueltiges GLOBAL");
-		if (x->argc == 3 && !isNumWord(x->args[2])) fatal("unbekannter Globaltyp");
+		if (x->argc != 1 && x->argc != 2 && x->argc != 3 && x->argc != 4) fatal("ungueltiges GLOBAL");
+		/* argc>=3 statt ==3 (2026-07-25): 4. Argument ist das optionale isstatic-Flag
+		   (Mehrdatei-Uebersetzung), der Typtag bleibt immer an Position 2. */
+		if (x->argc >= 3 && !isNumWord(x->args[2])) fatal("unbekannter Globaltyp");
 		if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 		gi = globalCount++;
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, x->args[0], NAME_LEN - 1);
 		globals[gi].initialValue = x->argc >= 2 ? number(x->args[1], x->line) : 0;
-		globals[gi].isChar = x->argc == 3 && isByteWord(x->args[2]);
-		globals[gi].isPointer = x->argc == 3 && strcmp(x->args[2], "p") == 0;
+		globals[gi].isChar = x->argc >= 3 && isByteWord(x->args[2]);
+		globals[gi].isPointer = x->argc >= 3 && strcmp(x->args[2], "p") == 0;
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
 	}
@@ -194,8 +198,13 @@ static void collectFunctions(void) {
 			/* vor der ersten Funktion ODER innerhalb einer offenen Funktion (static
 			   lokale Variable) erlaubt -- NICHT zwischen zwei Funktionen. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
+		} else if (strcmp(x->op, "FUNCDECL") == 0 || strcmp(x->op, "GLOBALDECL") == 0) {
+			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
+			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt, hier noch OHNE
+			   Wirkung (kein declOnly-Backend-Handling vor M2/M3). */
 		} else if (strcmp(x->op, "FUNC") == 0) {
-			if (open || x->argc != 2) fatal("ungueltiges FUNC");
+			/* 3. Argument (2026-07-25): optionales isstatic-Flag, hier noch nicht ausgewertet. */
+			if (open || (x->argc != 2 && x->argc != 3)) fatal("ungueltiges FUNC");
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, x->args[0], NAME_LEN - 1);
 			current.nargs = number(x->args[1], x->line);

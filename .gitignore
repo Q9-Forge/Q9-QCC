@@ -12,6 +12,9 @@
 *_os9.a
 *.lexlst
 
+# --- Python-Artefakte ---
+__pycache__/
+
 # --- macOS / IDE-Artefakte ---
 .DS_Store
 .vs/
