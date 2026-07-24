@@ -209,14 +209,28 @@ factor    = sizeofExpr
           | preIncDec
           | postIncDec
           | "(" expr ")"
-          | call
+          | call [ postfixIndex ]
           | boolLit
           | addressRef
           | derefRef
           | varRef
           | number
-          | stringLit
+          | stringLit [ postfixIndex ]
           | negFactor .
+
+/* Direkte Indizierung ohne Zwischenvariable (2026-07-24): "func()[i]" und
+   "hallo"[i]" duerfen jetzt DIREKT indiziert werden, ohne den Rueckgabewert
+   erst in eine Pointer-Variable zu schreiben. postfixIndex ist bewusst
+   NUR eine Huellregel um die bereits bestehende index-Regel (KEINE eigene
+   Klammersyntax, KEIN neues Bracket-Handling) -- dadurch feuern indexOpen/
+   tc_callname (rettet/setzt tcPendingAdd/tcPendingMul zurueck) und die
+   bestehende ACTION AFTER index CALL tc_arg (prueft den Indextyp, stellt
+   tcPendingAdd/tcPendingMul wieder her) GENAUSO wie bei "arr[i]", nur die
+   neue ACTION AFTER postfixIndex CALL tc_postfixindex kommt hinzu. Bewusst
+   NICHT Teil dieser Version: verkettete Postfix-Indizierung (mehr als ein
+   Klammernpaar direkt hintereinander, z.B. "f()[0][1]"), Indizierung als
+   Zuweisungsziel (foo()[0] = 5;), Indizierung auf "(" expr ")". */
+postfixIndex = index .
 
 /* String-Literal (2026-07-24): erzeugt zur Uebersetzungszeit einen anonymen globalen
    char-Array-Konstant (GARRAY/GINIT, siehe tc_string) und liefert dessen Adresse als
