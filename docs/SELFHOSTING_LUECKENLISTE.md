@@ -1,6 +1,6 @@
 # Selfhosting-Lückenliste
 
-Stand: **2026-07-24 (Nachtrag: anonymes struct inline im typedef)**
+Stand: **2026-07-24 (Nachtrag: direkte p.field[i]-Indizierung + mehrdimensionale Arrays bis TC_MAXDIMS=6 -- Sprachmittel-Fahrplan aus Abschnitt 1 damit vollstaendig abgearbeitet)**
 
 ## Zieldefinition
 
@@ -60,11 +60,11 @@ erzeugen.
 
 | Sprachmittel | Belegstellen (Beispiele) | Tiny-C-Status | Priorität |
 |---|---|---|---|
-| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-24: GEMISCHTE skalare Feldtypen, `typedef struct { ... } Name;` mit anonymem struct inline UND Array-Felder wie `char name[32]` jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment -- deckt `{ char name[32]; TCType type; }` jetzt VOLLSTAENDIG ab (`TCType` selbst besteht nur aus `char`/`unsigned char`-Feldern). Array-Feld-Zugriff nur ueber eine Pointer-Zwischenvariable (`char* q = rec.name; q[i] = ..;`), direkte `rec.name[i]`-Syntax braucht eine kombinierte member+index-Kette in der Grammatik (eigener Folgeschritt) -- fuer die generatorseitige Nutzung (meist sequentielles Kopieren/Vergleichen über einen Pointer) reicht das bereits aus. Bewusst noch offen, je eigener Folgeschritt: Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte wuerde das frontend-berechnete Layout architekturabhaengig machen) und verschachtelte structs.) | sehr hoch |
+| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:44,52,563`; `ebnf.cpp:396,483,571,789` | **teilweise** (2026-07-24: GEMISCHTE skalare Feldtypen, `typedef struct { ... } Name;` mit anonymem struct inline UND Array-Felder wie `char name[32]` jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment -- deckt `{ char name[32]; TCType type; }` jetzt VOLLSTAENDIG ab (`TCType` selbst besteht nur aus `char`/`unsigned char`-Feldern). Direkte `rec.name[i]`-Syntax (kombinierte member+index-Kette in der Grammatik) ist seit 2026-07-24 ebenfalls erledigt, zusaetzlich zur bereits vorher moeglichen Pointer-Zwischenvariable. Bewusst noch offen, je eigener Folgeschritt: Pointer-Felder (68k 4 Byte vs. ARM64 8 Byte wuerde das frontend-berechnete Layout architekturabhaengig machen) und verschachtelte structs.) | sehr hoch |
 | `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | **erledigt** (2026-07-23, Nachtrag: `enum Name var;` als Deklaration moeglich, `enum Name` auch als Parameter-/Rueckgabetyp; im Speicher/Typsystem bleibt es schlicht `int`, keine eigene Typidentitaet -- entspricht C) | hoch |
 | `union` | `tiny-regex.cpp:45` (anonyme Union in `regex_t`) | fehlt | mittel |
 | `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **erledigt** (2026-07-24: Skalar-/Pointer-Aliase, `typedef struct Name Alias;` und die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef funktionieren jetzt alle. Der typedef-Zielname dient dabei intern als struct-Tag -- bewusste, harmlose Vereinfachung gegenüber striktem C, das dort keinen Tag kennt) | sehr hoch |
-| mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | **erledigt fuer 2D** (2026-07-24: alle 26 Fundstellen sind exakt 2D -- `arr[i][j]` wird im Frontend zu einem flachen row-major-Index zusammengefuehrt, kein neuer Opcode/Backend-Change; deckt damit ALLE realen Fundstellen hier ab. Mehr als 2 Dimensionen kommen im Generator selbst nicht vor, bleiben aber technisch unimplementiert) | sehr hoch |
+| mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | **erledigt** (2026-07-24: alle 26 Fundstellen sind exakt 2D, waren damit bereits mit der urspruenglichen 2D-Loesung abgedeckt -- `arr[i][j]` wird im Frontend zu einem flachen row-major-Index zusammengefuehrt, kein neuer Opcode/Backend-Change. Zusaetzlich seit 2026-07-24 (spaeter) generalisiert auf beliebig viele Dimensionen (`TC_MAXDIMS=6`, Horner-Schema ueber Scratch-Globals), obwohl der Generator selbst keine 3D+-Arrays braucht) | sehr hoch |
 | `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | **erledigt** (2026-07-23) | hoch |
 | `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
 | `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt Tiny-C jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
@@ -216,36 +216,40 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
 ## Empfohlene Reihenfolge
 
 1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct` mit
-   gemischten skalaren Feldtypen UND Array-Feldern (erledigt, 2026-07-24),
-   `typedef` inkl. `typedef struct { ... } Name;` inline (erledigt,
-   2026-07-24), `enum` (erledigt), `for`/`switch` (erledigt), `static`/`const`
-   (erledigt, 2026-07-24, siehe docs/FORTSCHRITT.md fuer die bewussten
-   Einschraenkungen), zweidimensionale Arrays (erledigt, 2026-07-24, deckt
-   ALLE 26 realen Fundstellen ab -- keine 3D+ im Generator selbst), noch
-   offen: `union` (nur 1 Fundstelle), Pointer-Felder/verschachtelte structs
-   in `struct`.
+   gemischten skalaren Feldtypen, Array-Feldern UND direkter `rec.name[i]`-
+   Indizierung (erledigt, 2026-07-24), `typedef` inkl.
+   `typedef struct { ... } Name;` inline (erledigt, 2026-07-24), `enum`
+   (erledigt), `for`/`switch` (erledigt), `static`/`const` (erledigt,
+   2026-07-24, siehe docs/FORTSCHRITT.md fuer die bewussten
+   Einschraenkungen), mehrdimensionale Arrays inkl. 3D+ (erledigt,
+   2026-07-24, `TC_MAXDIMS=6`) -- **damit ist dieser Punkt fuer ALLE real
+   im Generator vorkommenden Faelle sowie generalisiert dauber hinaus
+   abgeschlossen.** Noch offen (kleiner Umfang, kein Blocker fuer den
+   Generator selbst): `union` (nur 1 Fundstelle), Pointer-Felder/
+   verschachtelte structs.
 2. **Mini-Runtime aus Abschnitt 3** anbinden: statt String-Vergleichsfunktionen,
    formatierte Ausgabe und Datei-I/O in Tiny-C nachzubauen, die echten
    `clib.l`-Funktionen direkt aufrufen (Strategiewechsel 2026-07-24). `extern`-
    Deklarationen + Microware-ABI-Aufrufcodegen (CALLEXT/CALLEXTP), der
-   `-os9`-r68-Ausgabemodus UND echtes `l68`-Linken gegen `clib.l` (inkl.
-   echter Ausfuehrung auf dem Q9-Emulator) sind alle erledigt (2026-07-24).
-   NOCH OFFEN: String-Literale (fuer `printf`-Formatstrings) -- ohne die ist
-   der Generator weiterhin funktional nicht nachbaubar, auch wenn `_os_write`
-   selbst schon echt nutzbar ist.
-3. Erst danach **Mehrdatei-Übersetzung** (Abschnitt 1, letzter Punkt) angehen,
-   damit der nachgebaute Generator wie das Original auf mehrere Dateien
-   verteilt werden kann.
-4. **L1-Zusatzbedarf** (`goto`, Funktionszeiger, Abschnitt 4) erst, wenn
+   `-os9`-r68-Ausgabemodus, echtes `l68`-Linken gegen `clib.l` (inkl. echter
+   Ausfuehrung auf dem Q9-Emulator) UND String-Literale (inkl. als
+   `printf`-Formatstring, inkl. eines am echten Q9 gefundenen und behobenen
+   variadischen-Aufruf-ABI-Bugs) sind alle erledigt (2026-07-24) -- **dieser
+   Punkt ist damit abgeschlossen.**
+3. **Speicherbedarf der statischen Puffer** (Abschnitt 6) fuer ein reales
+   16-MB-Zielsystem: **erledigt (2026-07-24)** und live auf dem echten
+   Q9-Emulator bestaetigt (Datensegment ~34,6 MB -> ~1 MB, `ebnf_gen`
+   laeuft fehlerfrei), siehe docs/STATUS.md.
+4. Naechster Schritt: **Mehrdatei-Übersetzung** (Abschnitt 1, letzter
+   Punkt) -- einziger verbliebene "sehr hoch"-Punkt, damit der
+   nachgebaute Generator wie das Original auf mehrere Dateien verteilt
+   werden kann. Noch nicht begonnen.
+5. **L1-Zusatzbedarf** (`goto`, Funktionszeiger, Abschnitt 4) erst, wenn
    tatsächlich der generierte Parser-Zwilling selbst gehostet werden soll --
    nicht vorher, um keine Sprachmittel vorzuziehen, die für L2 gar nicht
    nötig sind.
-5. **L3 (STL-Backends)** bewusst zurückstellen oder dauerhaft host-seitig
+6. **L3 (STL-Backends)** bewusst zurückstellen oder dauerhaft host-seitig
    lassen (siehe Empfehlung in Abschnitt 5).
-6. **Unabhängig vom Sprachmittel-Fahrplan (Abschnitt 6):** Speicherbedarf der
-   statischen Puffer in `ebnf.cpp`/`codegen.cpp` für ein reales 16-MB-
-   Zielsystem verkleinern -- das ist jetzt der einzige bekannte Blocker
-   zwischen "kompiliert mit der echten Toolchain" und "läuft wirklich auf Q9".
 
 Diese Reihenfolge überschneidet sich stark mit Stufe A/B der
 `ISO_C_LUECKENLISTE.md` (`struct`/`enum`/`typedef`/`for`/`switch` stehen dort
