@@ -51,6 +51,25 @@ static int funcCount = 0;
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
 
+/* -os9: Microware-r68-Ausgabeformat statt vasm-kompatiblem "nacktem" Motorola-
+   Format (siehe genParser68kTo in Source/codegen.cpp fuer denselben Trick beim
+   Parser-Codegen -- dort empirisch verifiziert: r68 akzeptiert Label-Doppel-
+   punkte und ";"-Endkommentare unveraendert, es braucht nur "*" statt ";" fuer
+   VOLLE Kommentarzeilen sowie einen nam/psect/ends-Rahmen). Der eigentliche
+   Instruktions-Codegen (emitIR-Dispatch weiter unten) ist DAHER fuer beide
+   Formate identisch -- os9Mode wirkt nur auf die paar Kommentarzeilen und den
+   Rahmen. */
+static int os9Mode = 0;
+static char psectName[NAME_LEN] = "tc_prog";
+static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
+/* vasm kennt "even" (Ausrichtung auf gerade Adresse); der echte Microware-r68-
+   Assembler kennt "even" NICHT (empirisch verifiziert: "bad mnemonic"), wohl
+   aber "align 4" (Longword-Ausrichtung -- strenger als "even", aber fuer
+   dc.l-Daten das eigentlich Gemeinte und ebenfalls empirisch verifiziert). */
+static void emitAlign(FILE* out) {
+	fputs(os9Mode ? "\talign\t4\n" : "\teven\n", out);
+}
+
 static void fatal(const char* msg) {
 	fprintf(stderr, "tinyc_backend: %s\n", msg);
 	exit(1);
@@ -305,7 +324,7 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 // Schablonen bilden deshalb die definierte Tiny-C-int32-Arithmetik nach. Sie
 // erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
 static void emitM68kCore(FILE* out) {
-	fputs("; 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n", out);
+	fprintf(out, "%s 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n", fullCommentPrefix());
 	fputs("tc_mul_i32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td4,-(a7)\n", out);
 	fputs("\tmoveq\t#0,d2\n\tmoveq\t#0,d4\n\ttst.l\td0\n\tbpl\ttc_mul_a_pos\n", out);
@@ -352,8 +371,12 @@ static void emitIR(FILE* out) {
 
 	if (findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
-	fputs("; Tiny-C 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", out);
-	fputs("; a7: Operand-Stack, a6: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", out);
+	fprintf(out, "%s Tiny-C 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
+	fprintf(out, "%s a7: Operand-Stack, a6: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix());
+	if (os9Mode) {
+		fprintf(out, "\tnam\t%s\n", psectName);
+		fprintf(out, "\tpsect\t%s,0,0,1,0,0\n\n", psectName);
+	}
 	fputs("tc_start:\tbsr\ttc_main\n\tbra\ttc_exit\n\n", out);
 
 	for (fi = 0; fi < funcCount; fi++) {
@@ -599,8 +622,13 @@ static void emitIR(FILE* out) {
 	fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
 	/* Scratch-Feld fuer CALLEXT/CALLEXTP (siehe dort) -- max. 8 auf den Stack
 	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
-	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. */
-	fputs("\teven\ntc_extcall_tmp:\tds.l\t8\n", out);
+	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. vasm kennt
+	   "ds.l" (reservierter, uninitialisierter Speicher); der echte Microware-
+	   r68-Assembler kennt "ds.l" NICHT (empirisch verifiziert: "bad mnemonic"),
+	   daher im os9-Modus stattdessen 8x "dc.l 0" (funktional gleichwertig: alle
+	   Backend-Opcodes lesen den Wert erst NACH einem STORE hierher). */
+	emitAlign(out);
+	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
 
 	{
 		int hasData = 0, hasBss = 0, gi;
@@ -612,12 +640,13 @@ static void emitIR(FILE* out) {
 			hasBss |= !globals[gi].isArray && globals[gi].initialValue == 0;
 		}
 		if (hasData) {
-			fputs("\n\t; DATA-Aequivalent des flachen Einzelmoduls: statisch initialisierte int32-Globals\n\teven\n", out);
+			fprintf(out, "\n%s DATA-Aequivalent des flachen Einzelmoduls: statisch initialisierte int32-Globals\n", fullCommentPrefix());
+			emitAlign(out);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->isArray || g->initialValue != 0) {
 					int e;
-					if (!g->isChar) fputs("\teven\n", out);
+					if (!g->isChar) emitAlign(out);
 					if (!g->isArray) {
 						fprintf(out, "tc_g_%s:\tdc.%s\t%d\n", g->name, g->isChar ? "b" : "l", g->initialValue);
 					} else {
@@ -628,28 +657,47 @@ static void emitIR(FILE* out) {
 			}
 		}
 		if (hasBss) {
-			fputs("\n\t; BSS-Aequivalent des flachen Einzelmoduls: nullinitialisierte int32-Globals\n\teven\n", out);
+			fprintf(out, "\n%s BSS-Aequivalent des flachen Einzelmoduls: nullinitialisierte int32-Globals\n", fullCommentPrefix());
+			emitAlign(out);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (!g->isArray && g->initialValue == 0) {
-					if (!g->isChar) fputs("\teven\n", out);
+					if (!g->isChar) emitAlign(out);
 					fprintf(out, "tc_g_%s:\tdc.%s\t0\n", g->name, g->isChar ? "b" : "l");
 				}
 			}
 		}
 	}
+	if (os9Mode) fputs("\tends\n", out);
 }
 
 int main(int argc, char* argv[]) {
 	FILE* out;
 	char msg[300];
-	if (argc != 3) {
-		fprintf(stderr, "usage: %s <input.ir> <output.s68>\n", argv[0]);
+	if (argc != 3 && !(argc == 4 && strcmp(argv[3], "-os9") == 0)) {
+		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9]\n", argv[0]);
+		fprintf(stderr, "  -os9: Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
+		fprintf(stderr, "        fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
 		return 2;
 	}
+	if (argc == 4) os9Mode = 1;
 	readIR(argv[1]);
 	collectGlobals();
 	collectFunctions();
+	if (os9Mode) {
+		/* psect-Name aus dem Ausgabedateinamen ableiten (ohne Pfad/Endung), analog
+		   zum Default in codegen.cpp (genParser68kTo: <basisname>_p). */
+		const char* base = strrchr(argv[2], '/');
+		const char* dot;
+		int n, i;
+		base = base ? base + 1 : argv[2];
+		dot = strrchr(base, '.');
+		n = dot ? (int)(dot - base) : (int)strlen(base);
+		if (n > (int)sizeof(psectName) - 3) n = (int)sizeof(psectName) - 3;
+		for (i = 0; i < n; i++) psectName[i] = base[i];
+		psectName[n] = '\0';
+		strcat(psectName, "_p");
+	}
 	out = fopen(argv[2], "w");
 	if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
 	emitIR(out);
