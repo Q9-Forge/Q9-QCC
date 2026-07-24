@@ -102,11 +102,17 @@ per `strings` bestaetigt). Tiny-C hat dafuer jetzt `extern`-Deklarationen
 (`CALLEXT`/`CALLEXTP`), der genau dieser ABI folgt -- siehe docs/FORTSCHRITT.md
 fuer die Details. Die Platzierung wurde end-to-end gegen handgeschriebene
 Mock-Stubs verifiziert (kein echter Q9-/`clib.l`-Zugriff in dieser Umgebung
-moeglich). NOCH OFFEN: das eigentliche Linken gegen die reale `clib.l`
-(Microware-Linker `l68`, relokierbares Objektformat statt der aktuellen
-`vasm -Fbin`-Direktassemblierung) sowie String-Literale in Tiny-C (ohne die
-ist ein echter `printf("format", ...)`-Aufruf mit Formatstring nicht
-schreibbar, nur mit rein numerischen/Pointer-Argumenten).
+moeglich). Die dafuer noetige Assembler-Stufe ist inzwischen ebenfalls
+erledigt (2026-07-24): ein `-os9`-Ausgabemodus im 68k-Backend erzeugt
+`nam`/`psect`/`ends`-gerahmten, mit `*`-Vollkommentaren und `align 4`/`dc.l`
+(statt `even`/`ds.l`, die der echte `r68` als "bad mnemonic" ablehnt)
+versehenen Code -- ein Testfall mit DATA/BSS-Globalen UND einem
+`extern`-Aufruf (CALLEXT) wurde erfolgreich durch den ECHTEN `r68.exe` (via
+Wine/MWOS) zu einer relokierbaren `.r`-Datei assembliert. NOCH OFFEN: das
+eigentliche Linken dieser `.r`-Datei gegen die reale `clib.l` (Microware-
+Linker `l68`) sowie String-Literale in Tiny-C (ohne die ist ein echter
+`printf("format", ...)`-Aufruf mit Formatstring nicht schreibbar, nur mit
+rein numerischen/Pointer-Argumenten).
 
 | Funktion(en) | Belegstellen (Anzahl) | Bemerkung |
 |---|---|---|
@@ -208,10 +214,11 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    formatierte Ausgabe und Datei-I/O in Tiny-C nachzubauen, die echten
    `clib.l`-Funktionen direkt aufrufen (Strategiewechsel 2026-07-24). `extern`-
    Deklarationen + Microware-ABI-Aufrufcodegen (CALLEXT/CALLEXTP) sind erledigt
-   und end-to-end gegen Mock-Stubs verifiziert. NOCH OFFEN: echtes Linken gegen
-   `clib.l` (Microware-Linker `l68`) und String-Literale (fuer `printf`-
-   Formatstrings) -- ohne die ist der Generator weiterhin funktional nicht
-   nachbaubar.
+   und end-to-end gegen Mock-Stubs verifiziert; ebenso der `-os9`-r68-
+   Ausgabemodus (erledigt, 2026-07-24, live gegen den echten `r68.exe`
+   verifiziert). NOCH OFFEN: echtes Linken gegen `clib.l` (Microware-Linker
+   `l68`) und String-Literale (fuer `printf`-Formatstrings) -- ohne die ist
+   der Generator weiterhin funktional nicht nachbaubar.
 3. Erst danach **Mehrdatei-Übersetzung** (Abschnitt 1, letzter Punkt) angehen,
    damit der nachgebaute Generator wie das Original auf mehrere Dateien
    verteilt werden kann.
