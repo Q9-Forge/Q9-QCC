@@ -135,9 +135,15 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   nutzbar (`char msg[6] = "hallo";`, lokal UND global) -- kopiert die Bytes
   direkt in die Array-Slots (nicht nur eine Adresse), ein exakt passendes
   Array ohne Platz für den Nullterminator ist wie in echtem C erlaubt.
-  Bewusst NICHT Teil dieser Version: String-Vergleich/-Verkettung, direkte
-  Indizierung/`sizeof` auf einem Literal ohne Zwischenvariable, siehe
-  docs/FORTSCHRITT.md
+  Bewusst NICHT Teil dieser Version: String-Vergleich/-Verkettung, `sizeof`
+  auf einem Literal ohne Zwischenvariable, siehe docs/FORTSCHRITT.md
+- Direkte Indizierung ohne Zwischenvariable (`func()[i]`, `"text"[i]`) --
+  `postfixIndex`-Huellregel um die bestehende `index`-Regel, `PADD`+`LOADIND`
+  statt `PTRINDEX` (Laufzeitreihenfolge auf dem Stack ist hier `[Pointer,
+  Indexwert]` wie bei `p + n`, nicht wie bei einer benannten Pointer-Variable),
+  kein neuer Opcode/Backend-Change. Bewusst NICHT Teil dieser Version:
+  Indizierung als Zuweisungsziel, verkettete Postfix-Indizierung (`f()[0][1]`),
+  Indizierung auf `"(" expr ")"`, siehe docs/FORTSCHRITT.md
 - 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
   Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
   `align 4`/`dc.l` statt `even`/`ds.l` -- Microwares r68 kennt letztere nicht,
@@ -165,7 +171,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-120 Tiny-C-Programme korrekt
+125 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -204,11 +210,11 @@ Zwei unabhängige Stränge stehen zur Wahl:
    jetzt korrekt `value: 42`, siehe docs/FORTSCHRITT.md. Ebenfalls seit
    2026-07-24 erledigt: String-Literale als Array-Initialisierer
    (`char msg[6] = "hallo";`, lokal und global, mit Laengen- und
-   Typpruefung) UND nicht-konstanter `static`-Initialisierer (Runs-once-
-   Guard mit hidden Flag-Global). Naheliegende Kandidaten: direkte
-   Indizierung ohne Zwischenvariable, mehr als 2 Array-Dimensionen, direkte
-   `p.field[i]`-Indizierung von struct-Array-Feldern (braucht kombinierte
-   member+index-Kette in der Grammatik).
+   Typpruefung), nicht-konstanter `static`-Initialisierer (Runs-once-Guard
+   mit hidden Flag-Global) UND direkte Indizierung ohne Zwischenvariable
+   (`func()[i]`, `"text"[i]`). Naheliegende Kandidaten: mehr als 2 Array-
+   Dimensionen, direkte `p.field[i]`-Indizierung von struct-Array-Feldern
+   (braucht kombinierte member+index-Kette in der Grammatik).
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
    oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-
