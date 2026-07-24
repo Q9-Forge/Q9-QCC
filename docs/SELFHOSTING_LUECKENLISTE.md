@@ -68,7 +68,7 @@ erzeugen.
 | `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | **erledigt** (2026-07-23) | hoch |
 | `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
 | `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt Tiny-C jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
-| `static` (Funktionen/lokale Variablen als Speicherklasse, nicht nur globale Objekte) | 101 echte Vorkommen, u. a. alle großen Tabellenpuffer | fehlt (nur globale Objekte) | hoch |
+| `static` (Funktionen/lokale Variablen als Speicherklasse, nicht nur globale Objekte) | 101 echte Vorkommen, u. a. alle großen Tabellenpuffer | **erledigt** (2026-07-24: bei globalen Variablen/Funktionen ein reines No-op -- deckt damit die weit ueberwiegende Mehrheit der 101 Fundstellen ab, da fast alle file-scope `static` auf Tabellenpuffern sind, keine lokalen; bei lokalen Variablen echte Aufruf-uebergreifende Persistenz ohne Initialisierer, siehe docs/FORTSCHRITT.md) | hoch |
 | `const`-Qualifizierer | 99 echte Vorkommen (meist `const char*`-Parameter) | **teilweise** (2026-07-24: `const` bei Skalaren/Arrays erledigt und durchgesetzt, deckt aber NICHT den haeufigsten realen Fall hier ab -- `const char*` braucht Pointee-Constness, bei Pointertypen wird `const` bisher nur geparst, nicht geprueft; siehe docs/FORTSCHRITT.md) | hoch |
 | `sizeof` | `codegen.cpp:333,1151,...`; `ebnf.cpp:1043,1062` (Puffergrößen an Hilfsfunktionen reichen) | **erledigt** (2026-07-23, Nachtrag: `sizeof(variable)` auf lokale/globale Skalare und Arrays ergänzt -- genau die Form, die alle echten Fundstellen hier nutzen, z. B. `sizeof(line)`) | hoch |
 | Prä-/Postinkrement (`++`/`--`) | nicht im Original-Scope dieser Liste, aber jetzt erledigt (2026-07-23) fuer einfache int/char/unsigned-Skalare | — |
@@ -177,9 +177,10 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
 1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct` mit
    gemischten skalaren Feldtypen (erledigt, 2026-07-24), `typedef` inkl.
    `typedef struct { ... } Name;` inline (erledigt, 2026-07-24), `enum`
-   (erledigt), `for`/`switch` (erledigt), noch offen: mehrdimensionale
-   Arrays, `static`/`const`, `union` (nur 1 Fundstelle), Array-Felder in
-   `struct`.
+   (erledigt), `for`/`switch` (erledigt), `static`/`const` (erledigt,
+   2026-07-24, siehe docs/FORTSCHRITT.md fuer die bewussten Einschraenkungen),
+   noch offen: mehrdimensionale Arrays, `union` (nur 1 Fundstelle),
+   Array-Felder in `struct`.
 2. **Mini-Runtime aus Abschnitt 3** bauen: String-Vergleichsfunktionen,
    formatierte Ausgabe, minimale Datei-I/O -- ohne die ist der Generator
    funktional nicht nachbaubar, unabhängig von der Sprachsyntax. NOCH OFFEN.
