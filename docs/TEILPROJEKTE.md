@@ -31,8 +31,12 @@ in kleinen, aufeinander aufbauenden Einheiten.
 - weitere Integerbreiten und Konversionsregeln
 - `sizeof`, Casts und vollständige Lvalue-Regeln
 - `for`, `do/while`, `break`, `continue`, `switch`, `goto`
-- Funktionsprototypen und Funktionspointer
-- Scopes, `static`, `extern` und mehrere Übersetzungseinheiten
+- Funktionspointer
+- Funktionsprototypen (bare, ohne Rumpf), `static`-Sichtbarkeit, `extern` bei
+  globalen Variablen und mehrere Übersetzungseinheiten: **erledigt für
+  Tiny-C (2026-07-25)**, siehe `docs/STATUS.md`/`docs/FORTSCHRITT.md`
+  ("Mehrdatei-Übersetzung") -- live gegen echten `l68`- und `clang`/`ld`-Link
+  verifiziert, bewusste Grenze: kein `#include`-Mechanismus/Header-Datei
 
 ## Eigenes Teilprojekt: Präprozessor
 

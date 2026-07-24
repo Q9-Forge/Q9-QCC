@@ -1,6 +1,6 @@
 # Projektstatus
 
-Stand: **2026-07-24 (Nachtrag: Speicherbedarf verkleinert)**
+Stand: **2026-07-25 (Nachtrag: Mehrdatei-Uebersetzung M1-M3 erledigt)**
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
 
@@ -166,6 +166,10 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
+- **Mehrdatei-Übersetzung** (erledigt 2026-07-25, siehe eigener Abschnitt unten) --
+  bare Funktionsprototyp ohne Rumpf + `extern` bei globalen Variablen für echte
+  getrennte Kompilation, `static` bekommt echte Bedeutung, live gegen echten
+  `r68`+`l68`- UND `clang`/`ld`-Link verifiziert
 
 ## Verifikation
 
@@ -184,6 +188,9 @@ extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch / char*-String-L
 String-Literal-Adressierung (GARRAY/GINIT/ADDRG) 68000 + ARM64 korrekt
 -os9-Ausgabemodus: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei mit dem echten r68 (via Wine)
 68k signed/unsigned MUL/DIV/MOD + Fakultaet korrekt (inkl. der 2026-07-24 gefundenen %-Regression)
+Mehrdatei M1: Funktionsaufruf+Global ueber Dateigrenze, static-Isolation, Duplicate-/Signatur-Konsistenzpruefung (TinyVM-Merge-Tool)
+Mehrdatei M2: echter r68+l68-Link zweier getrennt kompilierter Dateien + Duplicate-Symbol-Erkennung durch l68
+Mehrdatei M3: echte getrennte .o-Kompilate + clang/ld-Link + Duplicate-Symbol-Erkennung durch ld
 === ALLE TESTS OK ===
 ```
 
@@ -217,8 +224,9 @@ Zwei unabhängige Stränge stehen zur Wahl:
    struct-Array-Feldern UND mehr als 2 Array-Dimensionen (bis
    `TC_MAXDIMS`=6). Damit ist der urspruengliche Sprachfeature-Fahrplan aus
    der Selfhosting-Lueckenliste (Abschnitt 1) vollstaendig abgearbeitet --
-   naechster sinnvoller Schritt ist die Mehrdatei-Uebersetzung (siehe
-   docs/SELFHOSTING_LUECKENLISTE.md).
+   Mehrdatei-Uebersetzung (siehe unten) ist seit 2026-07-25 ebenfalls
+   erledigt -- damit ist der Sprachmittel-Fahrplan aus
+   docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 1 vollstaendig abgearbeitet.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
    oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-
@@ -228,4 +236,68 @@ Zwei unabhängige Stränge stehen zur Wahl:
 
 Vor jeder Sprach-Erweiterung sind Frontend, IR, TinyVM, 68000- und
 ARM64-Backend sowie ein Regressionstest zu prüfen.
+
+## Mehrdatei-Übersetzung (2026-07-25, M1-M3 erledigt)
+
+Getrennt kompilierte Tiny-C-Dateien können jetzt echt separat übersetzt und
+gelinkt werden (Nutzerwunsch: bei größeren Projekten soll nicht mehr alles
+in einem Rutsch kompiliert werden müssen). Vier Meilensteine (M0-Spike +
+M1-M3), alle live gegen die echten Toolchains verifiziert:
+
+- **Neue Deklarationsformen:** ein bare Funktionsprototyp ohne Rumpf
+  (`int f(int x);`) für normale interne `bsr`/`bl`-Verlinkung -- bewusst
+  GETRENNT vom bestehenden `extern` (das bleibt fest an die Microware-ABI/
+  `CALLEXT` für echte `clib.l`-Aufrufe gebunden). `extern <typ> <name>;`
+  deklariert jetzt auch globale Variablen ohne Speicherallokation.
+- **`static` bekommt zum ersten Mal echte Bedeutung** bei globalen
+  Funktionen/Variablen (bisher reines No-op).
+- **Neue IR-Pseudo-Opcodes** `FUNCDECL`/`GLOBALDECL`: "existiert, ist aber
+  nicht hier definiert".
+- **`tools/tinyc_merge.py`** (neu): Mini-Linker-Simulation für TinyVM, da
+  TinyVM selbst kein Objektdatei-/Linker-Modell hat -- prüft doppelte
+  Definitionen, genau ein `main`, `static`-Sichtbarkeit und als Bonus
+  Signatur-Konsistenz (Parameterzahl) zwischen Deklaration und Definition.
+- **M0-Spike-Ergebnis (wichtiger, planändernder Fund):** `r68`/`l68` (68k/
+  OS-9-Ziel) kennen GAR KEINE Export/Import-Direktive -- `xdef` (die
+  ursprüngliche Annahme) und acht weitere Kandidaten (`global`/`public`/
+  `def`/`entry`/`export`/`section`/`external`/`symbol`) wurden allesamt als
+  "bad mnemonic" abgelehnt, empirisch mit zwei handgeschriebenen `.a`-Modulen
+  gegen den echten `r68`+`l68` getestet. Jedes Label ist beim Linken
+  automatisch für JEDE andere gelinkte Datei sichtbar. Für `static` bedeutet
+  das: KEINE echte Durchsetzung möglich, nur Namensverfremdung
+  (`tc_<name>__<psect>`) zur Kollisionsvermeidung -- ohne die würde `static`
+  seinen Hauptzweck verfehlen (zwei Dateien könnten keinen privaten Helfer
+  gleichen Namens mehr haben, `l68` lehnt das als "duplicate symbol" ab,
+  ebenfalls empirisch bestätigt).
+- **ARM64/Mach-O verhält sich GRUNDLEGEND ANDERS:** `ld` unterstützt ECHTE
+  lokale Symbole -- ein Label ohne `.globl` ist für andere Objektdateien
+  unsichtbar (empirisch verifiziert: zwei `.o` mit je einem lokalen,
+  gleichnamigen Symbol linken ohne Konflikt). Für `static` reicht hier
+  reines Weglassen von `.globl`, KEINE Namensverfremdung nötig.
+- **68k-Backend zusätzlich:** neues `-runtime`-Flag (nur mit `-part`).
+  Grund (live gefunden): der gemeinsame 68k-Core (`mul`/`div`) sowie
+  `putint`/`putchar`/`tc_io_write` + deren Scratch-Speicher wurden bisher
+  IMMER emittiert -- bei getrennter Kompilation hätte das garantiert zu
+  "duplicate symbol" geführt (jede Datei hätte ihre eigene Kopie
+  mitgebracht). Genau EINE Datei im Mehrdatei-Programm muss `-runtime`
+  zusätzlich zu `-part` setzen.
+- **Live verifiziert:** 68k/OS-9 über echten `r68`+`l68`-Link (zwei
+  getrennt kompilierte Dateien, Funktionsaufruf + geteilte globale
+  Variable über die Dateigrenze, `static`-Isolation, Symbolkarte bestätigt
+  korrekte Auflösung); ARM64 über echte getrennte `.o`-Kompilate (`clang -c`)
+  + `clang`/`ld`-Link (gleiches Testprogramm, `nm` bestätigt lokale vs.
+  globale Symbole). Beide Ziele: ein zweiter Testfall bestätigt, dass der
+  jeweilige echte Linker eine ECHTE Namenskollision (zwei nicht-static
+  Definitionen desselben Symbols) zuverlässig als "duplicate symbol"
+  ablehnt.
+- **Bekannte, bewusst akzeptierte Grenze:** kein `#include`-Mechanismus,
+  keine gemeinsame Header-Datei -- Nutzer müssen Funktionssignaturen/
+  Global-Typen von Hand in beiden Dateien konsistent halten (wie rohes C
+  ohne Header-Disziplin). Für die ECHTEN Backends (68k, ARM64) gibt es
+  dafür KEINE Prüfung (reale Linker kennen nur Namen, keine Typen) -- nur
+  der TinyVM-Merge-Check bietet das als Bonus.
+
+`./runtests.sh`: 8 neue Mehrdatei-Tests (4x TinyVM/M1, 2x echter 68k/`l68`-
+Link/M2, 2x echter ARM64/`clang`+`ld`-Link/M3), alle grün neben den 135
+bestehenden Tiny-C-Programmen.
 
