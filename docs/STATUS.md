@@ -93,6 +93,12 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Bindung wird gegen Zuweisung/++/-- geschützt; bei Pointertypen nur geparst,
   Pointee-Constness noch nicht durchgesetzt -- eigener Folgeschritt, siehe
   docs/FORTSCHRITT.md)
+- `static`: bei globalen Variablen/Funktionen ein reines No-op (interne
+  Verlinkung ist bei einer einzigen Übersetzungseinheit bedeutungslos); bei
+  lokalen Variablen echte Aufruf-übergreifende Persistenz (als GLOBAL
+  registriert, funktioniert in TinyVM, 68000 und ARM64). Bewusst OHNE
+  Initialisierer und OHNE struct/Array in dieser Version, siehe
+  docs/FORTSCHRITT.md
 - TinyVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
@@ -102,11 +108,12 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-83 Tiny-C-Programme korrekt
+88 Tiny-C-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef) 68000 + ARM64 korrekt
 switch/case 68000 + ARM64 korrekt
+static-Lokale-Persistenz 68000 + ARM64 korrekt
 === ALLE TESTS OK ===
 ```
 
@@ -115,11 +122,11 @@ switch/case 68000 + ARM64 korrekt
 Zwei unabhängige Stränge stehen zur Wahl:
 
 1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
-   `const` fuer Skalare/Arrays ist seit 2026-07-24 erledigt (siehe oben).
-   Naheliegende Kandidaten: `static` (lokale Variablen mit Aufruf-
-   uebergreifender Lebensdauer -- braucht echte Frontend-/IR-Verdrahtung,
-   kein reiner Grammatik-Task), Pointee-Constness (`const char*` schreib-
-   geschuetzt, braucht ein Const-Bit im Typmodell selbst), Array-Felder in
+   `const` fuer Skalare/Arrays und `static` sind seit 2026-07-24 erledigt
+   (siehe oben). Naheliegende Kandidaten: Pointee-Constness (`const char*`
+   schreibgeschuetzt, braucht ein Const-Bit im Typmodell selbst), `static`-
+   Initialisierer (braucht entweder Konstantenfaltung oder einen Runs-once-
+   Guard mit hidden Flag-Global, siehe docs/FORTSCHRITT.md), Array-Felder in
    `struct` (z. B. `char name[32]`, eigener Folgeschritt zu den seit
    2026-07-24 gemischten skalaren Feldtypen), `void *`, weitere Arrayformen.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist bereits verkleinert

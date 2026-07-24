@@ -521,7 +521,33 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: const-++/---Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 83 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const -> tinyvm korrekt"
+		# 2026-07-24: "static" lokale Variablen -- persistieren ueber Aufrufe hinweg (als
+		# ganz normaler GLOBAL registriert, siehe tc_staticlocal in Data/tinyc.lextab).
+		# "static" bei Funktionen/globalen Variablen ist ein reines No-op (interne
+		# Verlinkung ist bei einer einzigen Uebersetzungseinheit ohne Mehrdatei-Linkage
+		# bedeutungslos). Bewusst OHNE Initialisierer (siehe staticVarDecl-Kommentar in
+		# Data/tinyc.ebnf) und OHNE struct/Array in dieser Version.
+		tc_check 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' '1\n2\n3'
+		tc_check 'static int add(int a, int b){ return a + b; } int main(){ putint(add(2, 3)); }' '5'
+		tc_check 'static int g = 7; int main(){ putint(g); }' '7'
+		tc_check 'int f(){ static const int limit; return limit; } int main(){ putint(f()); }' '0'
+		tc_check 'int x = 42; int f(){ static int *p; p = &x; return *p; } int main(){ putint(f()); }' '42'
+		if build/tinyc_p 'int f(){ static const int limit; limit = 5; return limit; } int main(){ putint(f()); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    tinyc: Zuweisung an static-const-Lokale wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: static-const-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'struct P{ int x; }; int f(){ static struct P p; return p.x; } int main(){ putint(f()); }' 2>&1 | grep -q 'static struct locals not yet supported'; then
+			echo "ok    tinyc: static struct-Lokale wird bewusst abgelehnt (eigener Folgeschritt)"
+		else
+			echo "FAIL  tinyc: static-struct-Diagnose fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'int bump(){ static int counter = 0; counter = counter + 1; return counter; } int main(){ putint(bump()); }' >/dev/null 2>&1; then
+			echo "FAIL  tinyc: static-Lokale MIT Initialisierer wird faelschlich akzeptiert"; tcfail=1; fail=1
+		else
+			echo "ok    tinyc: static-Lokale MIT Initialisierer bewusst als Parse-Fehler abgelehnt (eigener Folgeschritt)"
+		fi
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 88 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef)/typedef/enum, sizeof/++/--/switch/Casts/const/static -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -547,6 +573,24 @@ if [ -x tools/vasmm68k_mot ]; then
 	fi
 else
 	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
+fi
+
+# 13a) "static" lokale Variablen (2026-07-24): GLOBAL/GARRAY/GINIT duerfen jetzt auch
+#      INNERHALB einer Funktion im IR-Strom stehen (frueher nur davor erlaubt) -- eine
+#      static-Lokale wird an genau der Textstelle ihrer Deklaration als GLOBAL emittiert,
+#      siehe collectGlobals()/collectFunctions() in tinyc_backend_c.cpp. Test prueft
+#      echte Persistenz ueber mehrere Aufrufe hinweg im ECHTEN 68000-Code (nicht nur TinyVM).
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' > build/tinyc_static.ir && \
+		build/tinyc_backend build/tinyc_static.ir build/tinyc_static.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_static.bin build/tinyc_static.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_static.s68 2>/dev/null)" = "$(printf '1\n2\n3')" ]; then
+		echo "ok    tinyc static 68000: lokale static-Variable persistiert ueber Aufrufe hinweg"
+	else
+		echo "FAIL  tinyc static 68000: static-Persistenz fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc static 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 
 # 13b) struct-Felder (2026-07-24: gemischte skalare Feldtypen, echtes Byte-Layout,
@@ -730,6 +774,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc switch ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' > build/tinyc_static_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_static_arm64.ir build/tinyc_static_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_static_arm64 build/tinyc_static_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_static_arm64)" = "$(printf '1\n2\n3')" ]; then
+		echo "ok    tinyc static ARM64: lokale static-Variable persistiert ueber Aufrufe hinweg"
+	else
+		echo "FAIL  tinyc static ARM64: static-Persistenz fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc static ARM64: Backend fehlt -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
