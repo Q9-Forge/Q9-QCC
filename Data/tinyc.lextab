@@ -1161,6 +1161,13 @@ typedef struct TCType {
 	char base;                    /* i=int32, u=uint32, c=char, b=bool, z=Nullkonstante, s=struct */
 	unsigned char pointers;       /* 0=Skalar, 1=T*, 2=T** usw. */
 	unsigned char structId;       /* 1-basiert, gueltig nur wenn base=='s'; 0=keiner */
+	unsigned char pointeeConst;   /* nur bei pointers>0 relevant: 1 = "const T*" -- Schreiben
+	                                  DURCH den Pointer (*p = .., p[i] = ..) verboten, der
+	                                  Pointer selbst bleibt frei zuweisbar (echtes C-Modell,
+	                                  im Unterschied zu Bindungs-Immutabilitaet bei Skalaren).
+	                                  Nur EIN Bit fuer die gesamte Kette -- bei T** wird nur
+	                                  die unmittelbare Dereferenzierung geschuetzt, kein
+	                                  vollstaendiges Mehrebenen-Constmodell. */
 } TCType;
 #define TC_SCALAR(ch) tcMakeType((ch), 0)
 /* Structs mit GEMISCHTEN skalaren Feldtypen (2026-07-24, siehe SELFHOSTING_LUECKENLISTE.md):
@@ -1359,7 +1366,7 @@ static int tcLookupEnumType(const char* s, const char* e) {
 	for (i = 0; i < tcEnumTypeCount; i++) if (tcEq(tcEnumTypeNames[i], name)) return i;
 	return -1;
 }
-static TCType tcMakeType(char base, int pointers) { TCType t; t.base = base; t.pointers = (unsigned char)pointers; t.structId = 0; return t; }
+static TCType tcMakeType(char base, int pointers) { TCType t; t.base = base; t.pointers = (unsigned char)pointers; t.structId = 0; t.pointeeConst = 0; return t; }
 static TCType tcBadType(void) { return tcMakeType('?', 0); }
 static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers && (a.base != 's' || a.structId == b.structId); }
 static int tcIsPointer(TCType t) { return t.pointers != 0; }
@@ -1644,11 +1651,13 @@ void tc_param(const char* start, const char* end) {
 	tcCopy(tcNames[tcLocalCount], start, nameEnd);
 	tcLocalTypes[tcLocalCount] = nameEnd < end ? tcPointerTo(tcCurrentType) : tcCurrentType;
 	tcLocalArrayLen[tcLocalCount] = 0;
-	/* "const" vor einem Pointertyp waere in echtem C Pointee-Constness (const char* p
-	   laesst p selbst frei zuweisbar) -- ohne Const-Bit im Typmodell selbst koennen wir
-	   das nicht durchsetzen. Bewusst NICHT als Bindungs-Immutabilitaet fehlinterpretieren
-	   (haette das uebliche "p++"-Idiom auf einem const char* p faelschlich verboten). */
-	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]); tcPendingConst = 0;
+	/* "const" vor einem Pointertyp ist Pointee-Constness (const char* p laesst p selbst
+	   frei zuweisbar, aber *p/p[i] = .. wird verboten -- tcTargetType.pointeeConst greift
+	   in tc_target/tc_indirecttarget), keine Bindungs-Immutabilitaet (das uebliche
+	   "p++"-Idiom bleibt erlaubt). */
+	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]);
+	if (tcPendingConst && tcIsPointer(tcLocalTypes[tcLocalCount])) tcLocalTypes[tcLocalCount].pointeeConst = 1;
+	tcPendingConst = 0;
 	tcLocalCount++;
 }
 END
@@ -1678,9 +1687,11 @@ void tc_local(const char* start, const char* end) {
 	tcCopy(tcNames[tcLocalCount], start, end);
 	tcLocalTypes[tcLocalCount] = tcCurrentType;
 	tcLocalArrayLen[tcLocalCount] = tcCurrentType.base == 's' ? tcStructFieldCount[tcCurrentType.structId - 1] : 0;
-	/* siehe tc_param: "const" auf einem Pointertyp ist in echtem C Pointee-Constness,
-	   nicht Bindungs-Immutabilitaet -- hier bewusst nicht durchgesetzt. */
-	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]); tcPendingConst = 0;
+	/* siehe tc_param: "const" auf einem Pointertyp ist Pointee-Constness (pointeeConst-Bit),
+	   nicht Bindungs-Immutabilitaet. */
+	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]);
+	if (tcPendingConst && tcIsPointer(tcLocalTypes[tcLocalCount])) tcLocalTypes[tcLocalCount].pointeeConst = 1;
+	tcPendingConst = 0;
 	tcLocalCount++;
 }
 END
@@ -1730,6 +1741,7 @@ void tc_staticlocal(const char* start, const char* end) {
 	tcCopy(tcGlobalNames[tcGlobalCount], tcStaticLocalName, tcStaticLocalName + strlen(tcStaticLocalName));
 	tcGlobalTypes[tcGlobalCount] = tcCurrentType;
 	tcGlobalConst[tcGlobalCount] = isConst && !tcIsPointer(tcCurrentType);
+	if (isConst && tcIsPointer(tcCurrentType)) tcGlobalTypes[tcGlobalCount].pointeeConst = 1;
 	tcGlobalArrayLen[tcGlobalCount++] = 0;
 	printf("GLOBAL %s 0 %c\n", tcStaticLocalName, tcTypeTag(tcCurrentType));
 }
@@ -1787,9 +1799,10 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	if (tcGlobalCount >= 64) { fprintf(stderr, "tinyc: too many globals\n"); return; }
 	for (i = 0; i < tcGlobalCount; i++) if (tcEq(tcGlobalNames[i], name)) { fprintf(stderr, "tinyc: duplicate global\n"); return; }
 	tcCopy(tcGlobalNames[tcGlobalCount], name, name + n);
+	/* siehe tc_param: "const" auf einem Pointertyp ist Pointee-Constness (pointeeConst-Bit),
+	   nicht Bindungs-Immutabilitaet. */
+	if (isConst && type.pointers) type.pointeeConst = 1;
 	tcGlobalTypes[tcGlobalCount] = type;
-	/* siehe tc_param: "const" auf einem Pointertyp ist in echtem C Pointee-Constness,
-	   nicht Bindungs-Immutabilitaet -- hier bewusst nicht durchgesetzt. */
 	tcGlobalConst[tcGlobalCount] = isConst && !type.pointers;
 	tcGlobalArrayLen[tcGlobalCount++] = arrayLen;
 	if (arrayLen) {
@@ -2027,11 +2040,13 @@ void tc_target(const char* start, const char* end) {
 		if (tcGlobalConst[global]) { fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++; }
 		if (tcTargetIsArray && tcGlobalArrayLen[global]) tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 		else if (tcTargetIsArray && tcIsPointer(tcTargetType)) {
+			if (tcTargetType.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
 			tcTargetType = tcPointee(tcTargetType); tcTargetIndirect = 1; printf("LOADGP %s\nPTRINDEX %c\n", tcTargetGlobal, tcTypeTag(tcTargetType));
 		} else if (!!tcGlobalArrayLen[global] != tcTargetIsArray) { fprintf(stderr, "tinyc: array index mismatch\n"); tcSemanticErrors++; }
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcLocalArrayLen[tcTargetSlot]) {
 		tcCheckConstIndex(start, end, tcLocalArrayLen[tcTargetSlot]);
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcIsPointer(tcTargetType)) {
+		if (tcTargetType.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
 		tcTargetType = tcPointee(tcTargetType); tcTargetIndirect = 1; printf("LOADP %d\nPTRINDEX %c\n", tcTargetSlot, tcTypeTag(tcTargetType));
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray) {
 		fprintf(stderr, "tinyc: array index mismatch\n"); tcSemanticErrors++;
@@ -2043,6 +2058,7 @@ void tc_indirecttarget(const char* start, const char* end) {
 	TCType pointer = tcTypePop(); (void)start; (void)end;
 	tcTargetSlot = -1; tcTargetIsGlobal = 0; tcTargetIsArray = 0; tcTargetIndirect = 1;
 	if (!tcIsPointer(pointer)) { tcTypeError("indirect assignment", tcPointerTo(tcMakeType('i', 0)), pointer); tcTargetType = tcMakeType('i', 0); return; }
+	if (pointer.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
 	tcTargetType = tcPointee(pointer);
 }
 END
