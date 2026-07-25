@@ -1370,6 +1370,55 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (LEXER-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- CODEGEN-Konfigurationsparser (cgenWantOS9/cgenStartRule/cgenParseConfig, das
+	# [CODEGEN]-Konfigurationsblock-Handling aus Source/codegen.cpp Zeilen 462-535).
+	# Strukturell fast identisch zu lexParseConfig (letztes Wort einer Zeile
+	# extrahieren) -- braucht KEINE Anfuehrungszeichen im Konfigurationsformat, daher
+	# hier ohne den Backtick-Workaround aus dem LEXER-Test moeglich. Gleiche
+	# dreifache Verifikationsmethode wie beim LEXER-Konfigurationsparser (TinyVM +
+	# ARM64 mit Tiny-C-eigenen String-Helfern lieferten identische Werte -- 1/
+	# "mySect"+Nullterminator/"myRule"+Nullterminator, siehe docs/FORTSCHRITT.md);
+	# hier nur die dauerhafte Regression (echter r68+l68 gegen echte clib.l).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		cgentest_main='
+int main() {
+	char* s;
+	cgenParseConfig("M68K OS9\nM68K PSECT = mySect\nSTART myRule\n");
+	putint(cgenWantOS9());
+	putchar(cgenPsect[0]); putchar(cgenPsect[1]); putchar(cgenPsect[2]);
+	putchar(cgenPsect[3]); putchar(cgenPsect[4]); putchar(cgenPsect[5]);
+	putint(cgenPsect[6]);
+	s = cgenStartRule();
+	putchar(s[0]); putchar(s[1]); putchar(s[2]); putchar(s[3]); putchar(s[4]); putchar(s[5]);
+	putint(s[6]);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$cgentest_main" > build/tinyc_cgentest.ir 2>build/tinyc_cgentest.err && \
+			build/tinyc_backend build/tinyc_cgentest.ir build/tinyc_cgentest_os9.a -os9 -largedata; then
+			cp build/tinyc_cgentest_os9.a "$MWOS_TMP/cgentest.a"
+			rm -f "$MWOS_TMP/cgentest.r" "$MWOS_TMP/cgentest.out" "$MWOS_TMP/cgentest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\cgentest.a -o=M:\\TMP\\cgentest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/cgentest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\cgentest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\cgentest.out -s=M:\\TMP\\cgentest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/cgentest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: CODEGEN-Konfigurationsparser (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/cgentest.a "$MWOS_TMP"/cgentest.r "$MWOS_TMP"/cgentest.out "$MWOS_TMP"/cgentest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (CODEGEN-Konfigurationsparser) kompiliert nicht sauber (siehe build/tinyc_cgentest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (CODEGEN-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
