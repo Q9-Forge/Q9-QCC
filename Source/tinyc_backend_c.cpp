@@ -48,6 +48,7 @@ typedef struct {
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
+	int hasGinit; /* 2026-07-25: mind. ein GINIT fuer dieses Array gesehen (siehe unten) */
 	int declOnly, isStatic; /* siehe Function */
 } Global;
 
@@ -211,8 +212,15 @@ static void collectGlobals(void) {
 				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
+					/* 2026-07-25: die MAX_ARRAY_LEN-Grenze gilt jetzt NUR fuer tatsaechlich per
+					   GINIT gesetzte Indizes (init[] ist ein fester Puffer), NICHT mehr fuer die
+					   deklarierte GARRAY-Laenge selbst -- ein grosses, aber unbenutztes/komplett
+					   nullinitialisiertes Array (z.B. ein 8192-Elemente-AST-Knotenpuffer) braucht
+					   dafuer keinen Speicher, siehe emitIR()-Nullfuellung weiter unten. */
+					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
 					globals[gi].init[idx] = number(insP->args[2], insP->line);
 					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
+					globals[gi].hasGinit = 1;
 					found = 1;
 					break;
 				}
@@ -228,7 +236,9 @@ static void collectGlobals(void) {
 			if (findGlobal(insP->args[0]) >= 0) fatal("doppelte globale Variable");
 			len = number(insP->args[2], insP->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
-			if (len > MAX_ARRAY_LEN) fatal("GARRAY-Laenge ueberschreitet MAX_ARRAY_LEN");
+			/* KEINE MAX_ARRAY_LEN-Grenze mehr hier -- siehe Kommentar bei GINIT weiter oben.
+			   Ein grosses, nie per GINIT gesetztes Array (komplett nullinitialisiert) braucht
+			   keinen init[]-Speicher und wird unten kompakt gefuellt. */
 			if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
@@ -888,6 +898,23 @@ static void emitIR(FILE* out) {
 					if (!g->isChar) emitAlign(out);
 					if (!g->isArray) {
 						fprintf(out, "%s:\tdc.%s\t%d\n", gAsmName, g->isChar ? "b" : "l", g->initialValue);
+					} else if (!g->hasGinit) {
+						/* 2026-07-25: komplett nullinitialisiertes Array (nie per GINIT gesetzt) --
+						   kompakt fuellen statt eine dc.b/dc.l-Zeile PRO ELEMENT zu schreiben (bei
+						   grossen Arrays, z.B. ein 8192-Elemente-AST-Knotenpuffer als Byte-Array,
+						   waeren das sonst hunderttausende Zeilen UND braeuchte ein entsprechend
+						   grosses init[]). r68 kennt kein ds.b/rmb (siehe tc_extcall_tmp-Kommentar
+						   weiter oben) -- wie dort mehrere wiederholte "0"-Werte kommagetrennt
+						   pro Zeile, analog zu "dc.l 0,0,0,0,0,0,0,0". */
+						int perLine = g->isChar ? 40 : 20;
+						fprintf(out, "%s:\n", gAsmName);
+						for (e = 0; e < g->length; ) {
+							int n = g->length - e < perLine ? g->length - e : perLine, k;
+							fprintf(out, "\tdc.%s\t0", g->isChar ? "b" : "l");
+							for (k = 1; k < n; k++) fprintf(out, ",0");
+							fprintf(out, "\n");
+							e += n;
+						}
 					} else {
 						fprintf(out, "%s:\n", gAsmName);
 						for (e = 0; e < g->length; e++) fprintf(out, "\tdc.%s\t%d\n", g->isChar ? "b" : "l", g->init[e]);

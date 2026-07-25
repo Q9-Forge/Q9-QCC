@@ -52,6 +52,7 @@ typedef struct {
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
+	int hasGinit; /* 2026-07-25: mind. ein GINIT fuer dieses Array gesehen (siehe emitIR) */
 	int declOnly, isStatic; /* siehe Function */
 } Global;
 
@@ -157,8 +158,12 @@ static void collectGlobals(void) {
 				if (strcmp(globals[gi].name, x->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(x->args[1], x->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
+					/* siehe 68k-Backend: die MAX_ARRAY_LEN-Grenze gilt nur fuer tatsaechlich per
+					   GINIT gesetzte Indizes, nicht mehr fuer die deklarierte GARRAY-Laenge. */
+					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
 					globals[gi].init[idx] = number(x->args[2], x->line);
 					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
+					globals[gi].hasGinit = 1;
 					found = 1;
 					break;
 				}
@@ -180,7 +185,7 @@ static void collectGlobals(void) {
 			if ((x->argc != 3 && x->argc != 4) || !isNumWord(x->args[1])) fatal("ungueltiges GARRAY");
 			len = number(x->args[2], x->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
-			if (len > MAX_ARRAY_LEN) fatal("GARRAY-Laenge ueberschreitet MAX_ARRAY_LEN");
+			/* KEINE MAX_ARRAY_LEN-Grenze mehr hier -- siehe Kommentar bei GINIT oben. */
 			if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
@@ -582,23 +587,29 @@ static void emit(FILE* o) {
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
-			// Nur Skalare erreichen zerofill: Arrays landen (wie im Original, siehe
-			// unten) immer im DATA-Zweig, weil ihr init[] beim Anlegen schon mit
-			// `length` Nullen belegt wird.
+			// Skalare UND (seit 2026-07-25) Arrays OHNE jedes GINIT erreichen zerofill --
+			// echtes BSS braucht keine Element-Daten, nur die Gesamtgroesse in Byte, und
+			// erlaubt dadurch beliebig grosse nullinitialisierte Arrays (z.B. ein
+			// 8192-Elemente-AST-Knotenpuffer) OHNE eine .byte/.long-Zeile pro Element.
 			if (!g->isArray && g->initialValue == 0) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
 					(g->isChar ? 1 : g->isPointer ? 8 : 4) * g->length,
 					g->isChar ? 0 : g->isPointer ? 3 : 2);
+			} else if (g->isArray && !g->hasGinit) {
+				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
+				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
+					(g->isChar ? 1 : g->isPointer ? 8 : 4) * g->length,
+					g->isChar ? 0 : g->isPointer ? 3 : 2);
 			}
-			hasData |= g->isArray || g->initialValue != 0;
+			hasData |= (g->isArray && g->hasGinit) || (!g->isArray && g->initialValue != 0);
 		}
 		if (hasData) {
 			fputs("\t.section\t__DATA,__data\n\t.p2align\t2\n", o);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->declOnly) continue;
-				if (g->isArray || g->initialValue != 0) {
+				if ((g->isArray && g->hasGinit) || (!g->isArray && g->initialValue != 0)) {
 					int e;
 					if (!g->isChar) fputs("\t.p2align\t2\n", o);
 					if (g->isPointer) fputs("\t.p2align\t3\n", o);
