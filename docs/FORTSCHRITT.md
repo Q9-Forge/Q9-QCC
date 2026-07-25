@@ -470,6 +470,42 @@ Algorithmus-Logik einmalig gegen eine native C-Uebersetzung derselben
 Funktion samt Testdaten gegengeprueft (4 `lexTab`-Zeilen mit einer
 Linksrekursions-Kette): beide liefern `firstEdgeCnt=2`/`ruleNameListCnt=2`.
 
+**2026-07-26 (direkt im Anschluss): `loadWorkfileAsGrammar` portiert**
+(`Source/ebnf.cpp:1162-1231`, Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus
+einer Arbeitsdatei laden, ohne `.ebnf`). War laut Plan ein Kandidat fuer
+vereinfachte Behandlung (Fall A -- Parsen aus einer frischen `.ebnf` -- ist der
+eigentlich noetige Pfad fuers Selfhosting-Ziel), auf Nutzerwunsch trotzdem
+regulaer portiert. Das Original nutzt EIN grosses `sscanf(...)` mit NEUN
+Ausgabeparametern (sechs `int*`, zwei `char*`, ein `int*` fuer die
+Consumed-Position via `%n`) -- geht hier aus zwei Gruenden nicht 1:1:
+- CALLEXT erlaubt max. 8 Stack-Argumente (siehe `writeWorkfile`), neun
+  ueberschreiten das.
+- `int*`-Ausgabeparameter mit `*p = wert`-Schreibzugriff sind in dieser
+  Tiny-C-Version generell unerprobt (siehe `execPosResult`/`execFrom`).
+
+Stattdessen ein Handparser (`wfParseInt`/`wfParseToken`, globale Parse-Position
+`wfParsePos` statt `int*`-Out-Parameter) passend zum `writeWorkfile`-
+Zeilenformat (`"%-5d ... %-16s %-4s %s\n"` -- sechs Ganzzahlen, zwei
+whitespace-getrennte Tokens, Rest der Zeile ist der Symbolwert).
+
+**ZWEI neue Grenzfaelle live gefunden:**
+- `lexTab[aktTabIndex].ident[0] = 0;` (`arr[i].field[j]` als Zuweisungsziel)
+  wird vom Frontend abgelehnt (`"arr[i].field[j] not supported in this
+  version"` + `"unknown assignment target"`) -- durch
+  `tcCopyBounded(lexTab[aktTabIndex].ident, "", 32)` ersetzt (identisch zum
+  bereits vorhandenen `"-"`-Fall daneben).
+- Ein `"?"` als reiner Text in einer Fehlermeldungs-Zeichenkette
+  (`"...CSV-Datei?)\n"`) loeste erneut den bekannten `"conditional-frame
+  mismatch"`-Bug aus (Quirk 15) -- ohne Fragezeichen umformuliert.
+
+Verifiziert wie bei den vorigen Chunks: kompiliert + assembliert sauber
+(echter `r68`, `ebnf.tc`+`codegen.tc` weiterhin getrennt) -- Regressionstest
+in `runtests.sh`. ZUSAETZLICH die komplette Rundreise (`writeWorkfile`
+schreibt eine Tabelle -> Tabelle "vergessen" -> `loadWorkfileAsGrammar` laedt
+sie zurueck) einmalig gegen eine native C-Uebersetzung BEIDER Funktionen
+gegengeprueft: alle Werte (Modi, Ident-/TS-Text, true/falseAction,
+rangeLo/rangeHi, Quelltextlaenge) kommen exakt wie geschrieben zurueck.
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |

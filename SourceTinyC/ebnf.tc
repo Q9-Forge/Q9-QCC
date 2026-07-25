@@ -167,6 +167,13 @@ int leftRecursionFound;
    dfsColor oben. */
 int rebuildVisited[1024];		/* LEXTAB_LEN */
 
+/* loadWorkfileAsGrammar()s Handparser (siehe dortiger Kommentar, TEIL 4):
+   aktuelle Position innerhalb der gerade geparsten Zeile. Bewusst GLOBAL statt
+   int*-Ausgabeparameter -- ein einzelner Skalar-Pointer mit "*p = wert"-
+   Schreibzugriff ist in dieser Tiny-C-Version bisher NICHT erprobt (siehe
+   execPosResult-Kommentar oben, execFrom), daher hier dasselbe Muster. */
+int wfParsePos;
+
 /* Stack-Maschine (execFrom) */
 char* inputBuf;
 int inputLen;
@@ -1005,4 +1012,146 @@ void rebuildFirstEdgesFromTable() {
 		}
 		r = r + 1;
 	}
+}
+
+/* Handparser-Helfer fuer loadWorkfileAsGrammar() (statt sscanf): das Original
+   liest die PARSER-TABELLE-Zeile mit EINEM grossen sscanf("%d %d %d %d %d %d
+   %32s %7s %n", ...) -- neun Ausgabeparameter (sechs int*, zwei char*, ein
+   int* fuer die Consumed-Position via %n) in EINEM Aufruf. Das geht hier aus
+   ZWEI Gruenden nicht 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (siehe
+   writeWorkfile-Kommentar), neun ueberschreiten das. (2) int*-Ausgabeparameter
+   mit "*p = wert"-Schreibzugriff sind in dieser Tiny-C-Version generell
+   unerprobt (siehe execPosResult-Kommentar, execFrom) -- sscanf wuerde genau
+   das brauchen. Stattdessen ein simpler Handparser mit der globalen
+   Parse-Position wfParsePos (TEIL 1), passend zum Zeilenformat aus
+   writeWorkfile ("%-5d ... %-16s %-4s %s\n" -- sechs space-gepolsterte
+   Ganzzahlen, ein "%-Ns"-Feld ist beim Zurueckparsen einfach "Text bis zum
+   naechsten Leerzeichen", der Rest der Zeile bleibt unangetastet). */
+void wfSkipSpaces(char* line) {
+	while (line[wfParsePos] == 32) { wfParsePos = wfParsePos + 1; }		/* ' ' */
+}
+
+int wfParseInt(char* line) {
+	int neg;
+	int v;
+	wfSkipSpaces(line);
+	neg = 0;
+	if (line[wfParsePos] == 45) { neg = 1; wfParsePos = wfParsePos + 1; }		/* '-' */
+	v = 0;
+	while (line[wfParsePos] >= 48 && line[wfParsePos] <= 57) {		/* '0'..'9' */
+		v = v * 10 + (line[wfParsePos] - 48);
+		wfParsePos = wfParsePos + 1;
+	}
+	if (neg != 0) { v = 0 - v; }
+	return v;
+}
+
+void wfParseToken(char* line, char* out, int outMax) {
+	int n;
+	wfSkipSpaces(line);
+	n = 0;
+	while (line[wfParsePos] != 0 && line[wfParsePos] != 32 && n < outMax - 1) {
+		out[n] = line[wfParsePos];
+		n = n + 1;
+		wfParsePos = wfParsePos + 1;
+	}
+	out[n] = 0;
+}
+
+/* Fall B: PARSER-TABELLE- und EBNF-QUELLTEXT-Block direkt aus der Arbeitsdatei
+   laden (keine .ebnf vorhanden), Source/ebnf.cpp:1162-1231. Liefert 1 bei
+   Erfolg, 0 wenn die Datei keine Arbeitsdatei im neuen Format ist (kein
+   [PARSER-TABELLE]-Block gefunden) oder nicht lesbar war. blk als einfacher
+   int statt des anonymen lokalen enums im Original (0=NONE 1=QUELLTEXT
+   2=PARSERTAB 3=SONST) -- anonyme lokale enums sind in dieser Tiny-C-Version
+   bisher nirgends erprobt, ein einfacher int mit Kommentar ist das etablierte
+   Muster (siehe STAT_TRUE/STAT_FALSE/... in printLexTab). */
+int loadWorkfileAsGrammar(char* path) {
+	void* fp;
+	char line[512];		/* WORKFILE_LINE */
+	int blk;
+	int rowsLoaded;
+	int nr;
+	int tA;
+	int fA;
+	int addr;
+	int lo;
+	int hi;
+	char identBuf[33];
+	char modeBuf[8];
+
+	blk = 0;
+	rowsLoaded = 0;
+
+	fp = fopen(path, "r");
+	if (fp == 0) { return 0; }
+
+	aktTabIndex = 0;
+	quelltextLen = 0;
+	quelltextBuf[0] = 0;
+
+	while (fgets(line, 512, fp) != 0) {
+		chompLine(line);
+		if (line[0] == 91) {		/* '[' */
+			if (strncmp(line, "[EBNF-QUELLTEXT]", 16) == 0) { blk = 1; }
+			else if (strncmp(line, "[PARSER-TABELLE]", 16) == 0) { blk = 2; }
+			else { blk = 3; }
+			continue;
+		}
+		if (blk == 1) {
+			appendQuelltext(line);
+			appendQuelltext("\n");
+		} else if (blk == 2) {
+			if (line[0] != 35 && line[0] != 0 && aktTabIndex < 1024) {		/* '#' / EOS / LEXTAB_LEN */
+				wfParsePos = 0;
+				nr = wfParseInt(line);
+				tA = wfParseInt(line);
+				fA = wfParseInt(line);
+				addr = wfParseInt(line);
+				lo = wfParseInt(line);
+				hi = wfParseInt(line);
+				wfParseToken(line, identBuf, 33);
+				wfParseToken(line, modeBuf, 8);
+				wfSkipSpaces(line);
+
+				if (strcmp(modeBuf, "TS") == 0 || strcmp(modeBuf, "NTS") == 0 || strcmp(modeBuf, "RNG") == 0) {
+					if (strcmp(identBuf, "-") == 0) {
+						/* "lexTab[aktTabIndex].ident[0] = 0;" (arr[i].field[j] als
+						   Zuweisungsziel) wird vom Frontend abgelehnt -- stattdessen
+						   ueber das bereits erprobte tcCopyBounded einen leeren
+						   Puffer schreiben (identisch zum "-"-Fall anderswo im Code). */
+						tcCopyBounded(lexTab[aktTabIndex].ident, "", 32);
+					} else {
+						tcCopyBounded(lexTab[aktTabIndex].ident, identBuf, 32);
+					}
+					if (strcmp(modeBuf, "TS") == 0) { lexTab[aktTabIndex].mode = "TS"; }
+					else if (strcmp(modeBuf, "NTS") == 0) { lexTab[aktTabIndex].mode = "NTS"; }
+					else { lexTab[aktTabIndex].mode = "RNG"; }
+					lexTab[aktTabIndex].trueAction = tA;
+					lexTab[aktTabIndex].falseAction = fA;
+					lexTab[aktTabIndex].callAddr = addr;
+					lexTab[aktTabIndex].rangeLo = (char) lo;
+					lexTab[aktTabIndex].rangeHi = (char) hi;
+					lexTab[aktTabIndex].ambigF = 0;
+					tcCopyBounded(lexTab[aktTabIndex].TS, &line[wfParsePos], 32);
+					decodeEscapes(lexTab[aktTabIndex].TS);
+					aktTabIndex = aktTabIndex + 1;
+					rowsLoaded = rowsLoaded + 1;
+				} else {
+					printf("FEHLER: Arbeitsdatei Zeile %d: unbekannter Modus '%s'\n", nr, modeBuf);
+					errorCnt = errorCnt + 1;
+				}
+			}
+		}
+	}
+	fclose(fp);
+
+	if (rowsLoaded == 0) {
+		/* "?" als reiner Text in einem String-Literal triggert den bekannten
+		   "conditional-frame mismatch"-Bug (Quirk 15) -- daher ohne Fragezeichen
+		   umformuliert. */
+		printf("FEHLER: '%s' enthaelt keinen [PARSER-TABELLE]-Block (vermutlich eine alte CSV-Datei)\n", path);
+		return 0;
+	}
+	return 1;
 }
