@@ -863,6 +863,50 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Diagnose fuer Indizierung eines Pointer-Felds fehlt"; tcfail=1; fail=1
 		fi
+		# arr[i].feld (2026-07-25): ein ARRAY von structs, per Laufzeit-Index adressiert,
+		# DANN Feldzugriff. Setzt den Allokations-Fix in tc_local/tc_localdecl voraus
+		# (frueher wurde fuer "struct Rec arr[N];" IMMER nur Platz fuer EIN Element
+		# reserviert, ein "[N]"-Suffix bei struct-Locals komplett ignoriert -- siehe
+		# FORTSCHRITT.md "Bewusst offen"). Neuer Opcode IPADDN skaliert einen Pointer
+		# um eine LAUFZEIT-Byte-Groesse (hier: sizeof(struct Rec)) statt einer festen
+		# Typtag-Groesse wie IPADD.
+		tc_check 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' '10\n11\n20\n21\n30\n31'
+		# Derselbe Fall, der den Allokations-Bug ueberhaupt aufgedeckt hat: struct mit
+		# Pointer-Feld (8-Byte-Layout) in einem Array -- ohne den Fix wuerde arr[1]/arr[2]
+		# ausserhalb des (zu klein alloziierten) Blocks liegen ("pointer outside object").
+		# Zugriff bewusst nur ueber Pointer-Zwischenvariable (wie bei p.field[i] oben,
+		# arr[i].feld[j] direkt bleibt diagnostiziert, siehe naechster Test).
+		tc_check 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' 'AXC'
+		if build/tinyc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[3]; putint(arr[0].name[0]); }' 2>&1 | grep -q 'arr\[i\].field\[j\] not supported in this version'; then
+			echo "ok    tinyc: arr[i].feld[j] (Index nach Feldzugriff) wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer arr[i].feld[j] fehlt"; tcfail=1; fail=1
+		fi
+		# ptr[i].feld (2026-07-25, Milestone B): eine LOKALE Pointer-auf-struct-Variable,
+		# indiziert, dann Feldzugriff -- braucht der Selfhosting-Pilot fuer routinesC[i].name/
+		# .text (ActionRoutine*, ein malloc/realloc-gewachsenes Array, kein festes lokales
+		# Array wie arr[i].feld oben). LOADP statt PUSHADDR, sonst dieselbe IPADDN-Idee.
+		tc_check 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' '10\n20\n30\n99'
+		if build/tinyc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[2]; struct Rec* p; p = arr; putint(p[0].name[0]); }' 2>&1 | grep -q 'ptr\[i\].field\[j\] not supported in this version'; then
+			echo "ok    tinyc: ptr[i].feld[j] (Index nach Feldzugriff durch Pointer) wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer ptr[i].feld[j] fehlt"; tcfail=1; fail=1
+		fi
+		# Die Grammatik-Erweiterung fuer arr[i].feld (Sequenz statt Alternation) macht generell
+		# jede "indiziert-dann-Member"-Kombination parsebar -- nur die ZWEI oben gebauten Faelle
+		# (festes lokales struct-Array, lokale Pointer-auf-struct-Variable) haben Codegen.
+		# Alles andere (hier: Pointer auf einen NICHT-struct-Typ) muss weiterhin sauber
+		# diagnostiziert werden statt die "."-Fortsetzung stillschweigend zu ignorieren.
+		if build/tinyc_p 'int main(){ int x=1; int* p=&x; putint(p[0].a); }' 2>&1 | grep -q 'indexed variable followed by a member access is only supported for a fixed local array of structs, or a local pointer to struct'; then
+			echo "ok    tinyc: indizierter Pointer auf Nicht-struct mit Feldanhang wird weiterhin diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer indizierten Nicht-struct-Pointer mit Feldanhang fehlt -- Risiko stiller Fehlcode!"; tcfail=1; fail=1
+		fi
+		# sizeof(structArray) muss die GESAMTE Array-Groesse liefern (count * structByteSize),
+		# nicht nur die Groesse eines einzelnen Elements (das war vor dem Allokations-Fix
+		# still falsch, da tcLocalArrayLen fuer struct-Locals bisher nie die echte
+		# Array-Laenge kannte).
+		tc_check 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; putint(sizeof(arr)); putint(sizeof(struct Rec)); }' '24\n8'
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
 		# Obergrenze). arr[i1]..[iN] wird per Horner-Schema ueber N-1 Scratch-Globals
@@ -884,7 +928,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 136 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 143 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1309,6 +1353,48 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 else
 	echo "warn  tinyc struct 68000 (Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
+# arr[i].feld (2026-07-25): siehe TinyVM-Tests oben fuer die vollstaendige Erklaerung
+# (Allokations-Fix + neuer IPADDN-Opcode). 68k-IPADDN nutzt tc_mul_i32 (bereits im
+# Runtime-Core), da lsl.l nur feste 1/4-Skalierung kann, structByteSize aber beliebig ist.
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' > build/tinyc_structarr.ir && \
+		build/tinyc_backend build/tinyc_structarr.ir build/tinyc_structarr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structarr.bin build/tinyc_structarr.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_structarr.s68 2>/dev/null)" = "$(printf '10\n11\n20\n21\n30\n31')" ]; then
+		echo "ok    tinyc struct 68000: Array von structs, arr[i].feld (int-Felder) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: arr[i].feld (int-Felder) fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (arr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' > build/tinyc_structarrptr.ir && \
+		build/tinyc_backend build/tinyc_structarrptr.ir build/tinyc_structarrptr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structarrptr.bin build/tinyc_structarrptr.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_structarrptr.s68 2>/dev/null)" = "AXC" ]; then
+		echo "ok    tinyc struct 68000: Array von structs mit Pointer-Feld, arr[i].feld ueber Zwischenvariable korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: Array von structs mit Pointer-Feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (arr[i].feld, Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+# ptr[i].feld (2026-07-25, Milestone B): lokale Pointer-auf-struct-Variable, indiziert,
+# dann Feldzugriff -- braucht routinesC[i].name/.text im Selfhosting-Piloten. LOADP statt
+# PUSHADDR, sonst dieselbe IPADDN-Idee wie arr[i].feld.
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' > build/tinyc_structptrarr.ir && \
+		build/tinyc_backend build/tinyc_structptrarr.ir build/tinyc_structptrarr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structptrarr.bin build/tinyc_structptrarr.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_structptrarr.s68 2>/dev/null)" = "$(printf '10\n20\n30\n99')" ]; then
+		echo "ok    tinyc struct 68000: ptr[i].feld (lokale Pointer-auf-struct-Variable) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: ptr[i].feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (ptr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void.ir && \
 		build/tinyc_backend build/tinyc_void.ir build/tinyc_void.s68 && \
@@ -1595,6 +1681,47 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (Pointer-Feld): Backend fehlt -- uebersprungen"
+fi
+
+# arr[i].feld (2026-07-25): siehe TinyVM/68000-Tests oben. ARM64-IPADDN nutzt eine
+# echte 32-Bit-Multiplikation (mul) statt scaleSuffix (nur feste 1/4/8-Shifts).
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' > build/tinyc_structarr_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_structarr_arm64.ir build/tinyc_structarr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structarr_arm64 build/tinyc_structarr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_structarr_arm64)" = "$(printf '10\n11\n20\n21\n30\n31')" ]; then
+		echo "ok    tinyc struct ARM64: Array von structs, arr[i].feld (int-Felder) korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: arr[i].feld (int-Felder) fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (arr[i].feld): Backend fehlt -- uebersprungen"
+fi
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' > build/tinyc_structarrptr_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_structarrptr_arm64.ir build/tinyc_structarrptr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structarrptr_arm64 build/tinyc_structarrptr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_structarrptr_arm64)" = "AXC" ]; then
+		echo "ok    tinyc struct ARM64: Array von structs mit Pointer-Feld, arr[i].feld ueber Zwischenvariable korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: Array von structs mit Pointer-Feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (arr[i].feld, Pointer-Feld): Backend fehlt -- uebersprungen"
+fi
+
+# ptr[i].feld (2026-07-25, Milestone B): siehe 68000-Test oben fuer die Erklaerung.
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' > build/tinyc_structptrarr_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_structptrarr_arm64.ir build/tinyc_structptrarr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structptrarr_arm64 build/tinyc_structptrarr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_structptrarr_arm64)" = "$(printf '10\n20\n30\n99')" ]; then
+		echo "ok    tinyc struct ARM64: ptr[i].feld (lokale Pointer-auf-struct-Variable) korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: ptr[i].feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (ptr[i].feld): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
