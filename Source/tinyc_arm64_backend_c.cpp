@@ -488,6 +488,13 @@ static void emit(FILE* o) {
 				pop(o, "x0"); pop(o, "w1");
 				fprintf(o, "\tadd\tx0,x0,w1,sxtw%s", scaleSuffix(x->args[0]));
 				push(o, "x0");
+			} else if (strcmp(op, "IPADDN") == 0 && x->argc == 1) {
+				/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
+				   statt einer festen Typtag-Groesse -- echte Multiplikation (w2 = Literal, mul,
+				   dann sign-extend + add), da scaleSuffix nur feste 1/4/8-Shifts kennt. */
+				pop(o, "x0"); pop(o, "w1");
+				fprintf(o, "\tmov\tw2,#%s\n\tmul\tw1,w1,w2\n\tadd\tx0,x0,w1,sxtw\n", x->args[0]);
+				push(o, "x0");
 			} else if (strcmp(op, "PDIFF") == 0 && x->argc == 1) {
 				pop(o, "x1"); pop(o, "x0");
 				fputs("\tsub\tx0,x0,x1\n", o);
