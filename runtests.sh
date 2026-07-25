@@ -1549,6 +1549,68 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (AST-Validierung): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- C-Backend-Codegenerator (emitCString/emitLongerLiteralRejectC/genNodeC,
+	# Source/codegen.cpp Zeilen 858-1000). Erste Beruehrung mit ECHTER Dateiausgabe
+	# (fopen/fprintf/fputc/fclose statt nur stdout-Diagnosen wie bisher) -- FILE*
+	# wird als "void*" gefuehrt (Tiny-C hat keinen FILE-Struct-Typ, der ABI-Aufruf
+	# braucht nur einen opaken Zeiger). clib.l hat KEIN snprintf (nur sprintf,
+	# per `strings` bestaetigt) -- deshalb sprintf ohne Laengenlimit verwendet.
+	# NEUE Tiny-C-Grenze gefunden: Tiny-C kann KEINE EIGENEN variadischen
+	# Funktionen definieren (nur variadische extern-Aufrufe) -- ein Tiny-C-
+	# Stand-in fuer fprintf (fuer TinyVM/ARM64-Tiefenverifikation wie bei den
+	# String-Funktionen zuvor) ist deshalb NICHT moeglich. Verifikation bleibt
+	# bei kompiliert sauber + echter r68/l68-Link (wie beim ActionRoutine-Chunk).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		gennodetest_main='
+int main() {
+	void* fp;
+	int m;
+	int m2;
+	astReset();
+	astPushTS("x"); astFinishRule("sub");
+	m = astMark();
+	astPushTS("a");
+	m2 = astMark();
+	astPushTS("b"); astPushTS("c"); astGroupAlt(m2);
+	astPushTS("d"); astWrapOpt();
+	astPushTS("e"); astWrapRep();
+	astPushNTS("sub");
+	astGroupSeq(m);
+	astFinishRule("test");
+	computeLexicalSet();
+	fp = fopen("/tmp/tinyc_gennodetest_output.c", "w");
+	if (fp == 0) { putint(-1); return 1; }
+	genNodeC(fp, rules[1].root, 999, 0);
+	fclose(fp);
+	putint(1);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$gennodetest_main" > build/tinyc_gennodetest.ir 2>build/tinyc_gennodetest.err && \
+			build/tinyc_backend build/tinyc_gennodetest.ir build/tinyc_gennodetest_os9.a -os9 -largedata; then
+			cp build/tinyc_gennodetest_os9.a "$MWOS_TMP/gennodetest.a"
+			rm -f "$MWOS_TMP/gennodetest.r" "$MWOS_TMP/gennodetest.out" "$MWOS_TMP/gennodetest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\gennodetest.a -o=M:\\TMP\\gennodetest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/gennodetest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\gennodetest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\gennodetest.out -s=M:\\TMP\\gennodetest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/gennodetest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: C-Backend-Codegenerator (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/gennodetest.a "$MWOS_TMP"/gennodetest.r "$MWOS_TMP"/gennodetest.out "$MWOS_TMP"/gennodetest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (C-Backend-Codegenerator) kompiliert nicht sauber (siehe build/tinyc_gennodetest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (C-Backend-Codegenerator): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
