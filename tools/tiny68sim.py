@@ -36,18 +36,13 @@ def load(path):
             if match:
                 labels[match.group(1)] = len(instructions)
                 line = match.group(2).strip()
-                if match.group(1).startswith("tc_g_") or match.group(1).startswith("tc_ga_"):
-                    # "tc_ga_X"-Eintraege (2026-07-25, -largedata-Indirektionstabelle,
-                    # siehe tinyc_backend_c.cpp) sind selbst EIGENSTAENDIGE "Globale" mit
-                    # genau einem dc.l-Wert (einer Symbolreferenz) -- brauchen dieselbe
-                    # current_global-Zuordnung wie ein echtes "tc_g_"-Global, sonst wird
-                    # ihr eigener Wert nie in global_initials erfasst.
-                    current_global, current_offset = match.group(1), 0
-                else:
-                    # JEDES andere Label beendet die Zuordnung nachfolgender dc.l/dc.b-
-                    # Zeilen zum vorherigen Globalen, sonst wuerden z.B. Funktionslabels
-                    # faelschlich als dessen Fortsetzung gelesen.
-                    current_global = None
+                # JEDES Label kann eine dc.l/dc.b-Datenserie einleiten (2026-07-25 auf ALLE
+                # Labels verallgemeinert, vorher nur "tc_g_"/"tc_ga_"-Praefixe -- noetig fuer
+                # "tc_functab:" in der -largedata-Funktionsaufruf-Indirektion, siehe
+                # tinyc_backend_c.cpp). Harmlos fuer echte Funktionslabels: die nachfolgende
+                # ECHTE Instruktion (z.B. "link a6,#0") matcht "dc.l"/"dc.b" ohnehin nicht,
+                # faellt also normal in den Instruktionspfad weiter unten.
+                current_global, current_offset = match.group(1), 0
             if current_global and (line.startswith("dc.l") or line.startswith("dc.b")):
                 # mehrere kommagetrennte Werte pro Zeile (2026-07-25, kompakte Nullfuellung
                 # grosser Arrays, z.B. "dc.l 0,0,0,0,0,0,0,0" -- schon vorher fuer
@@ -81,8 +76,13 @@ def run(instructions, labels, global_initials=None):
     # tc_extcall_tmp: festes Scratch-Feld fuer CALLEXT/CALLEXTP (siehe tinyc_backend_c.cpp),
     # bewusst OHNE "tc_g_"-Praefix (kollisionsfrei zu echten Tiny-C-Globalen), daher hier
     # explizit mit aufgenommen statt ueber das generische "tc_g_"-Praefixmuster.
-    global_addresses = {name: 0x200000 + i * 0x10000 for i, name in enumerate(
-        name for name in labels if name.startswith("tc_g_") or name.startswith("tc_ga_") or name == "tc_extcall_tmp")}
+    # 2026-07-25 (-largedata Funktionstabelle, "automatisch eine jmp table bauen"):
+    # ALLE Labels (auch Funktionsnamen wie tc_main, nicht nur tc_g_/tc_ga_-Globale)
+    # bekommen jetzt ebenfalls eine fiktive Adresse -- noetig, damit "dc.l tc_main"
+    # in der Funktionstabelle aufloesbar ist UND damit "jsr (aN)" (Sprung ueber eine
+    # zur Laufzeit geladene Adresse) per Ruecksuche wieder ein Label findet.
+    global_addresses = {name: 0x200000 + i * 0x10000 for i, name in enumerate(labels)}
+    address_to_label = {addr: name for name, addr in global_addresses.items()}
     def resolve(value):
         # Symbolreferenz aus der -largedata-Indirektionstabelle (siehe load()) --
         # erst hier aufloesbar, da global_addresses vorher noch nicht feststand.
@@ -97,7 +97,10 @@ def run(instructions, labels, global_initials=None):
     d = [0] * 8
     a6 = 0
     a7 = 0x100000
-    a0_global = None
+    # Adressregister a0/a2/a4 (2026-07-25 auf ein generisches Dict erweitert, vorher
+    # nur a0 als eigene Variable -- a2 fuer -largedata-Funktionsaufruf-Indirektion,
+    # a4 als Basis der Funktionstabelle, siehe emitCall() in tinyc_backend_c.cpp).
+    areg = {0: None, 2: None, 4: None}
     output = []
     flags = {"z": False, "n": False, "v": False, "c": False, "x": False}
 
@@ -122,9 +125,11 @@ def run(instructions, labels, global_initials=None):
         if match: return d[int(match.group(1))]
         if text == "a6": return a6
         if text == "a7": return a7
-        if text == "a0":
-            if a0_global is None: raise SimError("a0 zeigt auf keine Adresse")
-            return a0_global
+        match = re.match(r"a([0-9])$", text)
+        if match and int(match.group(1)) in areg:
+            reg = int(match.group(1))
+            if areg[reg] is None: raise SimError("a%d zeigt auf keine Adresse" % reg)
+            return areg[reg]
         if text == "(a7)":
             if a7 not in memory: raise SimError("Stack-Unterlauf")
             return memory[a7]
@@ -134,22 +139,23 @@ def run(instructions, labels, global_initials=None):
         match = re.match(r"(-?\d+)\(a6\)$", text)
         if match:
             return memory.get(a6 + int(match.group(1)), 0)
-        match = re.match(r"(tc_g_\w+|tc_ga_\w+|tc_extcall_tmp)\(pc\)$", text)
-        if match:
+        match = re.match(r"(\w+)\(pc\)$", text)
+        if match and match.group(1) in global_addresses:
             return memory.get(global_addresses[match.group(1)], 0)
-        if text == "(a0)":
-            if a0_global is None:
-                raise SimError("a0 zeigt auf keine Adresse")
-            return memory.get(a0_global, 0)
-        match = re.match(r"(-?\d+)\(a0\)$", text)
-        if match:
-            if a0_global is None:
-                raise SimError("a0 zeigt auf keine Adresse")
-            return memory.get(a0_global + int(match.group(1)), 0)
+        match = re.match(r"\(a([0-9])\)$", text)
+        if match and int(match.group(1)) in areg:
+            reg = int(match.group(1))
+            if areg[reg] is None: raise SimError("a%d zeigt auf keine Adresse" % reg)
+            return memory.get(areg[reg], 0)
+        match = re.match(r"(-?\d+)\(a([0-9])\)$", text)
+        if match and int(match.group(2)) in areg:
+            reg = int(match.group(2))
+            if areg[reg] is None: raise SimError("a%d zeigt auf keine Adresse" % reg)
+            return memory.get(areg[reg] + int(match.group(1)), 0)
         raise SimError("unbekannter Operand: " + text)
 
     def write_operand(text, value):
-        nonlocal a0_global, a6, a7
+        nonlocal a6, a7
         value = u32(value)
         text = text.strip()
         match = re.match(r"d([0-7])$", text)
@@ -158,7 +164,10 @@ def run(instructions, labels, global_initials=None):
             return
         if text == "a6": a6 = value; return
         if text == "a7": a7 = value; return
-        if text == "a0": a0_global = value; return
+        match = re.match(r"a([0-9])$", text)
+        if match and int(match.group(1)) in areg:
+            areg[int(match.group(1))] = value
+            return
         if text == "(a7)":
             if a7 not in memory: raise SimError("Stack-Unterlauf")
             memory[a7] = value
@@ -171,20 +180,21 @@ def run(instructions, labels, global_initials=None):
         if match:
             memory[a6 + int(match.group(1))] = value
             return
-        match = re.match(r"(tc_g_\w+|tc_ga_\w+|tc_extcall_tmp)\(pc\)$", text)
-        if match:
+        match = re.match(r"(\w+)\(pc\)$", text)
+        if match and match.group(1) in global_addresses:
             memory[global_addresses[match.group(1)]] = value
             return
-        if text == "(a0)":
-            if a0_global is None:
-                raise SimError("a0 zeigt auf keine Adresse")
-            memory[a0_global] = value
+        match = re.match(r"\(a([0-9])\)$", text)
+        if match and int(match.group(1)) in areg:
+            reg = int(match.group(1))
+            if areg[reg] is None: raise SimError("a%d zeigt auf keine Adresse" % reg)
+            memory[areg[reg]] = value
             return
-        match = re.match(r"(-?\d+)\(a0\)$", text)
-        if match:
-            if a0_global is None:
-                raise SimError("a0 zeigt auf keine Adresse")
-            memory[a0_global + int(match.group(1))] = value
+        match = re.match(r"(-?\d+)\(a([0-9])\)$", text)
+        if match and int(match.group(2)) in areg:
+            reg = int(match.group(2))
+            if areg[reg] is None: raise SimError("a%d zeigt auf keine Adresse" % reg)
+            memory[areg[reg] + int(match.group(1))] = value
             return
         raise SimError("unbekanntes Ziel: " + text)
 
@@ -231,6 +241,34 @@ def run(instructions, labels, global_initials=None):
             target = match.group(1)
             if target not in labels:
                 raise SimError("unbekanntes externes Unterprogramm (kein lokales Test-Mock vorhanden): " + target)
+            push(pc)
+            pc = labels[target]
+            continue
+        match = re.match(r"jsr \(a([0-9])\)$", ins)
+        if match:
+            # Register-indirekter Aufruf (2026-07-25, -largedata-Funktionsaufruf-
+            # Indirektion, siehe emitCall() in tinyc_backend_c.cpp): das Register haelt
+            # eine per "move.l N(a4),aN" aus der Funktionstabelle geladene fiktive
+            # Adresse -- per Ruecksuche (address_to_label) wieder auf ein Label
+            # zurueckgefuehrt, dann identisch zum normalen "bsr"-Pfad behandelt
+            # (inkl. desselben putint/putuint/putchar-Kurzschluss).
+            reg = int(match.group(1))
+            if areg.get(reg) is None:
+                raise SimError("a%d zeigt auf keine Adresse (jsr indirekt)" % reg)
+            target = address_to_label.get(areg[reg])
+            if target is None:
+                raise SimError("jsr (a%d): Adresse gehoert zu keinem bekannten Label" % reg)
+            if target == "tc_putint":
+                output.append(str(s32(d[0])) + "\n")
+                continue
+            if target == "tc_putuint":
+                output.append(str(u32(d[0])) + "\n")
+                continue
+            if target == "tc_putchar":
+                output.append(chr(d[0] & 0xff))
+                continue
+            if target not in labels:
+                raise SimError("unbekanntes Unterprogramm (jsr indirekt): " + target)
             push(pc)
             pc = labels[target]
             continue
@@ -291,9 +329,9 @@ def run(instructions, labels, global_initials=None):
         if match:
             write_operand(match.group(2), read_operand(match.group(1)))
             continue
-        match = re.match(r"movea?\.l (.+),a0$", ins)
-        if match:
-            a0_global = read_operand(match.group(1))
+        match = re.match(r"movea?\.l (.+),a([0-9])$", ins)
+        if match and int(match.group(2)) in areg:
+            areg[int(match.group(2))] = read_operand(match.group(1))
             continue
         match = re.match(r"move\.l (d[0-7]),\(a0\)$", ins)
         if match:
@@ -315,7 +353,7 @@ def run(instructions, labels, global_initials=None):
         match = re.match(r"adda?\.l (d[0-7]),a0$", ins)
         if match:
             delta = s32(read_operand(match.group(1)))
-            a0_global += delta
+            areg[0] += delta
             continue
         match = re.match(r"lsl\.l #(\d+),(d[0-7])$", ins)
         if match:
@@ -413,11 +451,11 @@ def run(instructions, labels, global_initials=None):
             continue
         match = re.match(r"lea (-?\d+)\(a6\),a0$", ins)
         if match:
-            a0_global = a6 + int(match.group(1))
+            areg[0] = a6 + int(match.group(1))
             continue
-        match = re.match(r"lea (tc_g_\w+|tc_ga_\w+|tc_extcall_tmp)\(pc\),a0$", ins)
-        if match:
-            a0_global = global_addresses[match.group(1)]
+        match = re.match(r"lea (\w+)\(pc\),a([0-9])$", ins)
+        if match and match.group(1) in global_addresses and int(match.group(2)) in areg:
+            areg[int(match.group(2))] = global_addresses[match.group(1)]
             continue
         match = re.match(r"addq\.l #4,a7$", ins)
         if match:
