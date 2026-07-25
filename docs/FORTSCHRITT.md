@@ -73,6 +73,35 @@ UND nativ per ARM64 identische Werte fuer eine Test-Konfiguration
 (`M68K OS9` + `M68K PSECT = mySect` + `START myRule`): `cgenWantOS9()`=1,
 `cgenPsect`="mySect"+Nullterminator, `cgenStartRule()`="myRule"+Nullterminator.
 
+**2026-07-25 (noch spaeter, direkt im Anschluss): ActionRoutine-Verwaltung UND
+ACTIONS-Konfigurationsparser portiert** (`freeRoutines`/`pushRoutineC`/
+`pushRoutine68k`/`routineTextC`/`routineText68k`/`lastWord`/`growLineBuf`/
+`growCollectBuf`/`actionsParseConfig`, das `[NUTZER-CODE]`-Block-Handling aus
+`Source/codegen.cpp` Zeilen 580-750). `pushRoutineC`/`pushRoutine68k` sind ZWEI
+fast identische Funktionen statt EINER generischen mit `ActionRoutine**`-
+Parameter wie im C++-Original (Tiny-C hat keine Generik/Funktionszeiger,
+`routinesC`/`routines68k` sind wie im Original file-scope-Globale -- direktes
+Mutieren ist einfacher und sicherer, gleiches Muster wie beim ActionRoutine-
+Piloten Milestone B). `sizeof(struct ActionRoutine)` (statt einer
+hartkodierten Bytezahl) sorgt dafuer, dass `realloc`-Aufrufe automatisch die
+richtige, architekturabhaengige Struktgroesse verwenden (68k: kleinere
+Pointer-Groesse, ARM64: 8-Byte-Pointer).
+
+**Verifikation NUR strukturell (wie beim Piloten selbst):** kompiliert sauber
+(keine Semantikfehler), assembliert (echter `r68`), linkt (echter `l68` gegen
+echte `clib.l`) -- Regressionstest in `runtests.sh` verankert. Eine versuchte
+TIEFERE Logikverifikation (TinyVM/ARM64 mit selbstgeschriebenen malloc/
+realloc-Ersatzfunktionen fuer eigenstaendige Ausfuehrbarkeit ausserhalb von
+clib.l) scheiterte an Grenzen der TESTUMGEBUNG, nicht des Ports: TinyVMs
+Zeigermodell ist nicht byte-adressierbar und vertraegt keine malloc-Heap-
+Umdeutung auf struct-Zeiger ("unaligned pointer"); eine ARM64-Reproduktion mit
+selbstgebautem Bump-Allocator stuerzte ab (vermutlich ein Bug im
+Test-Stub-Allocator selbst -- der geprueften Port-Code verwendet durchgaengig
+dieselben, bereits mehrfach bewiesenen Muster wie `arr[i].feld` ueber
+Zwischenvariable). Echte End-zu-End-Verhaltensverifikation bleibt der
+Live-Q9-Ausfuehrung vorbehalten (bereits als eigener offener Schritt vermerkt,
+siehe "Bewusst offen").
+
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
 
