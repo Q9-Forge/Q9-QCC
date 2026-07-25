@@ -161,6 +161,12 @@ char dfsPathFlat[8448];		/* MAX_RULE_NAMES * 33, flach */
 int dfsPathLen;
 int leftRecursionFound;
 
+/* rebuildFirstEdgesFromTable()s "visited": im Original ein lokales STATIC
+   int[LEXTAB_LEN] (reiner Scratch-Speicher, bei jedem Aufruf komplett neu
+   genullt -- keine echte Aufruf-Persistenz noetig). Hier global, analog
+   dfsColor oben. */
+int rebuildVisited[1024];		/* LEXTAB_LEN */
+
 /* Stack-Maschine (execFrom) */
 char* inputBuf;
 int inputLen;
@@ -960,4 +966,43 @@ void writeWorkfile(void* fp) {
 		}
 	}
 	fprintf(fp, "[ENDE]\n");
+}
+
+/* Fall B: Kanten fuer die Linksrekursions-Pruefung aus der GELADENEN Tabelle
+   rekonstruieren (Source/ebnf.cpp:1132-1156) -- Gegenstueck zur normalen
+   Ermittlung waehrend des Parsens (ueber das firstPos-Flag). Idee: ein
+   Fehlschlag konsumiert nie Eingabe -- alles, was vom Regelstart aus NUR ueber
+   falseAction-Kanten erreichbar ist, liegt an "erster Position" der Regel.
+   Jede NTS-Zeile auf diesem Weg ergibt eine Kante Regel->Zielregel. Original
+   nutzt C++s "for"/"continue" -- hier wie im Rest der Datei per while
+   umgesetzt (kein continue: der Trailing-Increment "r = r + 1" muesste sonst
+   VOR jedem continue wiederholt werden -- die if-umschlossene Form vermeidet
+   dieses Fussangel-Risiko vollstaendig). */
+void rebuildFirstEdgesFromTable() {
+	int r;
+	int row;
+	int i;
+
+	firstEdgeCnt = 0;
+	ruleNameListCnt = 0;
+	r = 0;
+	while (r < aktTabIndex) {
+		if (strlen(lexTab[r].ident) != 0) {
+			addRuleNameIfNew(lexTab[r].ident);
+			i = 0;
+			while (i < aktTabIndex) {
+				rebuildVisited[i] = 0;
+				i = i + 1;
+			}
+			row = r;
+			while (row >= 0 && row < aktTabIndex && rebuildVisited[row] == 0) {
+				rebuildVisited[row] = 1;
+				if (strcmp(lexTab[row].mode, "NTS") == 0) {
+					addFirstEdge(lexTab[r].ident, lexTab[row].TS);
+				}
+				row = lexTab[row].falseAction;
+			}
+		}
+		r = r + 1;
+	}
 }
