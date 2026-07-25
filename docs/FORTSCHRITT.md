@@ -70,9 +70,61 @@ Einschraenkungen gefunden und (bis auf die letzte) behoben:**
    Instruktion sowie `tc_ga_`-Label/Symbolreferenzen in `dc.l`-Werten lernen.
    **Betrifft NICHT NUR diesen Port** -- jedes Tiny-C-Programm mit viel
    globalem Zustand kann jetzt bei Bedarf `-largedata` verwenden.
-   **Bewusst NICHT geloest:** dasselbe Problem bei FUNKTIONSAUFRUFEN (`bsr`
-   ist ebenfalls PC-relativ-16-Bit) -- eigener, separater Sonderfall, falls
-   je Code-Groesse (statt Daten-Groesse) zum Problem wird.
+5. **`-largedata` auf FUNKTIONSAUFRUFE erweitert (2026-07-25, Nutzerwunsch
+   "koennen wir automatisch eine jmp table bauen, wenn die Spruenge zu gross
+   werden?"):** `bsr tc_target` ist GENAUSO PC-relativ-16-Bit begrenzt wie
+   die Global-Adressierung oben -- nur ueber Code- statt Datendistanz.
+   `-largedata` deckt das jetzt zusaetzlich ab: eine Funktions-
+   Indirektionstabelle `tc_functab` (ein `dc.l tc_<name>`-Eintrag pro
+   Tiny-C-Funktion, danach 8 feste Eintraege fuer die Laufzeit-Helfer
+   `tc_mul_i32`/`tc_div_i32`/`tc_udiv_u32`/`tc_mod_i32`/`tc_umod_u32`/
+   `tc_putint`/`tc_putuint`/`tc_putchar`) plus ein EINMALIG gesetztes
+   Adressregister `a4` (`lea tc_functab(pc),a4`, direkt nach dem
+   Tabellen-eigenen PC-relativen Ladebefehl selbst unbeschraenkt). Aufrufe
+   werden zu `move.l N(a4),a2` + `jsr (a2)` statt `bsr tc_target`; `a2`
+   wurde als Aufruf-Scratchregister gewaehlt, weil es an JEDER Aufrufstelle
+   nachweislich frei ist (anders als `a0`/`a1`, die an manchen Stellen ueber
+   den Aufruf hinweg einen Wert halten). **Dabei zwei weitere, beim
+   Skalierungstest (150 generierte Funktionen, >32 KB Code) gefundene und
+   behobene Fehler:**
+   - Im `-os9`-Modus ist `main` selbst der Einsprungpunkt (kein separates
+     `tc_start`) und fuehrt sein EIGENES `lea tc_functab(pc),a4` aus -- das
+     ist selbst PC-relativ und brach, sobald `main` NICHT die erste Funktion
+     im Quelltext ist (weit hinter der Tabelle liegend). **Fix:** `main`
+     wird bei `-os9 -largedata` jetzt immer als allererste Funktion
+     emittiert, unabhaengig von ihrer Position in der Funktionstabelle
+     (deren Eintraege ueber absolute, vom Linker aufgeloeste Adressen laufen
+     und daher unabhaengig von der Emissions-Reihenfolge sind).
+   - Beim Versuch, einen realistisch grossen Testfall zu bauen, zusaetzlich
+     DREI unabhaengige, bisher unbekannte Puffer-/Zaehl-Grenzen im Frontend
+     gefunden und behoben: `Source/codegen.cpp` `ACTION_LOG_MAX` (4096,
+     generierter `tinyc_p.c`-Parser) verwarf weitere Action-Log-Eintraege
+     STILLSCHWEIGEND (kein Fehler, IR wurde still abgeschnitten, exit 0) --
+     jetzt 1048576 und ein lauter `exit(1)` statt stillem Verwerfen;
+     `Data/tinyc.lextab` `tcFunctionCount`/`tcGlobalCount` (je 64) meldeten
+     zwar einen Fehler auf stderr, setzten aber NIE `tcSemanticErrors`
+     (Programm lief trotzdem mit `exit 0` und "OK" weiter, Funktionen/
+     Globale fehlten aber in der Tabelle) -- jetzt `MAX_FUNCTIONS`=512/
+     `MAX_GLOBALS`=512 und `tcSemanticErrors++`; `tcLocalCount` (Parameter+
+     Lokale EINER Funktion, ebenfalls 64) hatte ueberhaupt GAR KEINE
+     Grenzpruefung -- ein echter, bisher unbemerkter Pufferueberlauf bei
+     >64 Lokalen/Parametern in einer einzigen Funktion, jetzt mit
+     `MAX_LOCALS`=256 und explizitem Check behoben. Ausserdem
+     `tinyc_backend_c.cpp` `MAX_IR_LINES` von 8192 auf 65536 erhoeht (war
+     bereits sauber mit `fatal()` abgesichert, nur zu knapp bemessen).
+   **Empirisch verifiziert bei realer Groesse:** 150 generierte Funktionen
+   (>32 KB 68k-Code zwischen `tc_functab` und der letzten Funktion)
+   kompilieren, assemblieren (echter `r68`) UND linken (echter `l68` gegen
+   `clib.l`) korrekt mit `-largedata`; Ausfuehrung via `tools/tiny68sim.py`
+   stimmt exakt mit der architekturneutralen `tools/tinyvm.py`-Referenz
+   ueberein. **Gegenprobe:** dasselbe Programm OHNE `-largedata` wird vom
+   echten `r68` tatsaechlich mit `"branch out of range"` abgelehnt (eine
+   ANDERE Fehlermeldung als `"value out of range"` bei `lea`/`movea` fuer
+   Daten oben) -- belegt die Notwendigkeit auch fuer Funktionsaufrufe, nicht
+   nur fuer globale Daten. Test in `runtests.sh` verankert.
+   **Damit ist der zuvor bewusst offen gelassene Fall ("dasselbe Problem bei
+   FUNKTIONSAUFRUFEN") jetzt geloest** -- `-largedata` deckt Daten UND
+   Funktionsaufrufe vollstaendig ab.
 
 ## Erledigte Meilensteine
 
