@@ -2818,5 +2818,117 @@ else
 	echo "warn  tinyc Selfhosting L2 Vollport (rebuildFirstEdgesFromTable): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
+# nach SourceTinyC/ebnf.tc -- loadWorkfileAsGrammar (Source/ebnf.cpp:1162-1231,
+# Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus einer Arbeitsdatei laden, ohne
+# .ebnf). Das Original nutzt EIN grosses sscanf(...) mit NEUN Ausgabeparametern --
+# geht hier NICHT 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (neun
+# ueberschreiten das), (2) int*-Ausgabeparameter mit "*p = wert"-Schreibzugriff
+# sind in dieser Tiny-C-Version generell unerprobt (siehe execPosResult/execFrom).
+# Stattdessen ein Handparser (wfParseInt/wfParseToken, globale Parse-Position
+# wfParsePos statt int*-Out-Parameter) passend zum writeWorkfile-Zeilenformat.
+# ZWEI neue Grenzfaelle live gefunden: "lexTab[aktTabIndex].ident[0] = 0;"
+# (arr[i].field[j] als Zuweisungsziel) wird vom Frontend abgelehnt -- durch
+# tcCopyBounded(..., "", 32) ersetzt (identisch zum bereits vorhandenen
+# "-"-Fall). Und: "?" als reiner Text in einer Fehlermeldung loeste erneut den
+# bekannten "conditional-frame mismatch"-Bug aus (Quirk 15) -- ohne Fragezeichen
+# umformuliert. Verifiziert wie bei writeWorkfile: kompiliert+assembliert sauber
+# (echter r68, ebnf.tc+codegen.tc getrennt). ZUSAETZLICH die komplette
+# Rundreise (writeWorkfile schreibt eine Tabelle -> Tabelle "vergessen" ->
+# loadWorkfileAsGrammar laedt sie zurueck) einmalig gegen eine native
+# C-Uebersetzung BEIDER Funktionen gegengeprueft: alle Werte (Modi, Ident-/
+# TS-Text, true/falseAction, rangeLo/rangeHi, Quelltextlaenge) kommen exakt wie
+# geschrieben zurueck.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	lwtest_main='
+int main() {
+	void* fp;
+	int savedCnt;
+
+	aktTabIndex = 3;
+
+	lexTab[0].mode = "TS";
+	tcCopyBounded(lexTab[0].ident, "", 32);
+	tcCopyBounded(lexTab[0].TS, "ident", 32);
+	lexTab[0].trueAction = 1;
+	lexTab[0].falseAction = -2;
+	lexTab[0].callAddr = -1;
+	lexTab[0].rangeLo = 0;
+	lexTab[0].rangeHi = 0;
+
+	lexTab[1].mode = "RNG";
+	tcCopyBounded(lexTab[1].ident, "", 32);
+	tcCopyBounded(lexTab[1].TS, "digit", 32);
+	lexTab[1].rangeLo = 48;
+	lexTab[1].rangeHi = 57;
+	lexTab[1].trueAction = 2;
+	lexTab[1].falseAction = -2;
+	lexTab[1].callAddr = -1;
+
+	lexTab[2].mode = "NTS";
+	tcCopyBounded(lexTab[2].ident, "rule1", 32);
+	tcCopyBounded(lexTab[2].TS, "rule1", 32);
+	lexTab[2].trueAction = -1;
+	lexTab[2].falseAction = -2;
+	lexTab[2].callAddr = 0;
+	lexTab[2].rangeLo = 0;
+	lexTab[2].rangeHi = 0;
+
+	appendQuelltext("rule1 = ident | digit ;");
+
+	fp = fopen("/tmp/tinyc_roundtrip_test.txt", "w");
+	writeWorkfile(fp);
+	fclose(fp);
+
+	savedCnt = aktTabIndex;
+
+	aktTabIndex = 0;
+	quelltextLen = 0;
+
+	if (loadWorkfileAsGrammar("/tmp/tinyc_roundtrip_test.txt") == 0) {
+		putint(-1);
+		return;
+	}
+
+	putint(aktTabIndex);
+	putint(savedCnt);
+	putint(strcmp(lexTab[0].mode, "TS"));
+	putint(strcmp(lexTab[0].TS, "ident"));
+	putint(lexTab[0].trueAction);
+	putint(lexTab[0].falseAction);
+	putint(strcmp(lexTab[1].mode, "RNG"));
+	putint(strcmp(lexTab[1].TS, "digit"));
+	putint((int) lexTab[1].rangeLo);
+	putint((int) lexTab[1].rangeHi);
+	putint(strcmp(lexTab[2].mode, "NTS"));
+	putint(strcmp(lexTab[2].ident, "rule1"));
+	putint(strcmp(lexTab[2].TS, "rule1"));
+	putint(quelltextLen);
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lwtest_main" > build/tinyc_lwtest_a.ir 2>build/tinyc_lwtest_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_lwtest_b.ir 2>build/tinyc_lwtest_b.err && \
+		build/tinyc_backend build/tinyc_lwtest_a.ir build/tinyc_lwtest_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_lwtest_b.ir build/tinyc_lwtest_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_lwtest_a.s68 "$MWOS_TMP/lwtesta.a"
+		cp build/tinyc_lwtest_b.s68 "$MWOS_TMP/lwtestb.a"
+		rm -f "$MWOS_TMP/lwtesta.r" "$MWOS_TMP/lwtestb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtesta.a -o=M:\\TMP\\lwtesta.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtestb.a -o=M:\\TMP\\lwtestb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/lwtesta.r" ] && [ -s "$MWOS_TMP/lwtestb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: loadWorkfileAsGrammar (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (loadWorkfileAsGrammar) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/lwtesta.a "$MWOS_TMP"/lwtestb.a "$MWOS_TMP"/lwtesta.r "$MWOS_TMP"/lwtestb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (loadWorkfileAsGrammar) kompiliert nicht sauber (siehe build/tinyc_lwtest_a.err/build/tinyc_lwtest_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (loadWorkfileAsGrammar): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail
