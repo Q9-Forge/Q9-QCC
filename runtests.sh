@@ -339,7 +339,21 @@ fi
 #     fuehrt die IR aus (Interpreter + Referenz-Orakel). Meilenstein 1: Ausdruecke,
 #     lokale Variablen, putint. (Kein 68k-Backend hier -- kommt in M4.)
 if command -v python3 >/dev/null 2>&1; then
-	build/ebnf Data/tinyc >/dev/null 2>&1
+	# WICHTIGER FUND (2026-07-25): build/ebnf hat ein festes internes Puffer-Limit
+	# fuer den [NUTZER-CODE]-Block (USER_CODE_LEN in Source/ebnf.cpp) -- bei
+	# Ueberschreitung wird der Ueberschuss STILLSCHWEIGEND abgeschnitten (nur eine
+	# Warnzeile im stdout, die hier vorher mit ">/dev/null" verschluckt wurde).
+	# Das hat einmal drei ROUTINE-C-Bloecke (tc_ternarybegin/-middle/-end) aus
+	# Data/tinyc.lextab geloescht, ohne dass ein einziger Build-Schritt einen
+	# Fehler gemeldet hat -- nur ein spaeter fehlschlagender Ternary-Test hat es
+	# aufgedeckt. USER_CODE_LEN wurde deshalb grosszuegig erhoeht (128 KB -> 1 MB),
+	# UND hier wird die Ausgabe jetzt auf "WARNUNG" geprueft statt verschluckt.
+	ebnfout=$(build/ebnf Data/tinyc 2>&1)
+	if echo "$ebnfout" | grep -q 'WARNUNG'; then
+		echo "FAIL  tinyc: build/ebnf meldet eine Kuerzungswarnung (siehe oben) -- Data/tinyc.lextab wurde vermutlich abgeschnitten!"
+		echo "$ebnfout" | grep 'WARNUNG'
+		fail=1
+	fi
 	if cc -w -o build/tinyc_p Data/tinyc_p.c 2>/dev/null; then
 		tcfail=0
 		tc_check() {
@@ -897,7 +911,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# (festes lokales struct-Array, lokale Pointer-auf-struct-Variable) haben Codegen.
 		# Alles andere (hier: Pointer auf einen NICHT-struct-Typ) muss weiterhin sauber
 		# diagnostiziert werden statt die "."-Fortsetzung stillschweigend zu ignorieren.
-		if build/tinyc_p 'int main(){ int x=1; int* p=&x; putint(p[0].a); }' 2>&1 | grep -q 'indexed variable followed by a member access is only supported for a fixed local array of structs, or a local pointer to struct'; then
+		if build/tinyc_p 'int main(){ int x=1; int* p=&x; putint(p[0].a); }' 2>&1 | grep -q 'indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct'; then
 			echo "ok    tinyc: indizierter Pointer auf Nicht-struct mit Feldanhang wird weiterhin diagnostiziert"
 		else
 			echo "FAIL  tinyc: Diagnose fuer indizierten Nicht-struct-Pointer mit Feldanhang fehlt -- Risiko stiller Fehlcode!"; tcfail=1; fail=1
@@ -907,6 +921,28 @@ if command -v python3 >/dev/null 2>&1; then
 		# still falsch, da tcLocalArrayLen fuer struct-Locals bisher nie die echte
 		# Array-Laenge kannte).
 		tc_check 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; putint(sizeof(arr)); putint(sizeof(struct Rec)); }' '24\n8'
+		# Globale structs (2026-07-25): tc_globalend erkannte "struct" bisher ueberhaupt
+		# nicht als Basistyp ("bad global declaration"). Jetzt: skalare globale structs,
+		# globale Arrays von structs UND globale Pointer-auf-struct-Variablen -- Codegen
+		# in tc_varref/tc_target ist strukturell identisch zum lokalen Fall (ADDRG/PUSHADDR G
+		# statt PUSHADDR L, LOADGP statt LOADP), da globals_ in tinyvm.py bei GLOBAL wie bei
+		# GARRAY einheitlich eine Liste ist (ADDRG braucht keine lokale Scalar/Block-
+		# Unterscheidung wie bei Locals). Initialisierer + mehrdimensionale struct-Arrays
+		# bleiben bewusst ein sauberer Parse-Fehler (wie beim lokalen Fall).
+		tc_check 'struct Rec { int a; int b; }; struct Rec g; int main(){ g.a = 42; g.b = 99; putint(g.a); putint(g.b); }' '42\n99'
+		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; int main(){ garr[0].a=10; garr[1].a=20; garr[2].a=30; putint(garr[0].a); putint(garr[1].a); putint(garr[2].a); }' '10\n20\n30'
+		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' '100\n200\n200'
+		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec g; int main(){ putint(sizeof(garr)); putint(sizeof(g)); putint(sizeof(struct Rec)); }' '24\n8\n8'
+		if build/tinyc_p 'struct Rec { int a; }; struct Rec g = {1}; int main(){ putint(1); }' 2>&1 | grep -q 'struct global cannot have an initializer'; then
+			echo "ok    tinyc: Initialisierer bei globaler struct-Variable wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer struct-Global-Initialisierer fehlt"; tcfail=1; fail=1
+		fi
+		if build/tinyc_p 'struct Rec { int a; }; struct Rec g[2][2]; int main(){ putint(1); }' 2>&1 | grep -q 'multi-dimensional struct arrays not supported'; then
+			echo "ok    tinyc: mehrdimensionales globales struct-Array wird diagnostiziert"
+		else
+			echo "FAIL  tinyc: Diagnose fuer mehrdimensionales globales struct-Array fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
 		# Obergrenze). arr[i1]..[iN] wird per Horner-Schema ueber N-1 Scratch-Globals
@@ -938,7 +974,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# Session) nie aufgefallen, da kein Test eine Indizierung/einen Aufruf als
 		# rechten Vergleichsoperanden hatte (nur links, z.B. "arr[i] != 0").
 		tc_check 'int main(){ char a[2]; char b[2]; a[0]=65; b[0]=65; if (a[0] != b[0]) { putint(0); } else { putint(1); } b[0]=66; if (a[0] != b[0]) { putint(2); } else { putint(3); } }' '1\n2'
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 144 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 150 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1231,6 +1267,37 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "warn  tinyc Selfhosting L2 Milestone B: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Globale structs (2026-07-25) machen den ECHTEN routinesC-Vollport-Fall jetzt moeglich:
+	# routinesC/routinesCCnt/routinesCCap sind im echten codegen.cpp file-scope-Globale
+	# (nicht wie im Pilot oben lokale Variablen einer Testfunktion) -- derselbe Test wie
+	# oben, aber diesmal mit echten Globalen statt main()-lokalen Variablen.
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		pilotg_src='extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); struct ActionRoutine { char name[16]; char* text; }; struct ActionRoutine* routinesC; int routinesCCnt; int routinesCCap; void pushRoutine(char* name, char* text, int textLen) { struct ActionRoutine* newArr; int newCap; int i; char* dst; if (routinesCCnt >= routinesCCap) { newCap = routinesCCap > 0 ? routinesCCap * 2 : 2; newArr = realloc(routinesC, newCap * sizeof(struct ActionRoutine)); routinesC = newArr; routinesCCap = newCap; } dst = routinesC[routinesCCnt].name; i = 0; while (name[i] != 0) { dst[i] = name[i]; i = i + 1; } dst[i] = 0; routinesC[routinesCCnt].text = malloc(textLen + 1); dst = routinesC[routinesCCnt].text; i = 0; while (i < textLen) { dst[i] = text[i]; i = i + 1; } dst[i] = 0; routinesCCnt = routinesCCnt + 1; } int main() { int idx; char* t; routinesC = 0; routinesCCnt = 0; routinesCCap = 0; pushRoutine("one", "TEXT-ONE", 8); pushRoutine("two", "TEXT-TWO", 8); pushRoutine("three", "TEXT-THREE", 10); putint(routinesCCnt); putint(routinesCCap); t = routinesC[0].text; putchar(t[0]); t = routinesC[2].text; putchar(t[0]); putchar(t[9]); free(routinesC); return 0; }'
+		if build/tinyc_p "$pilotg_src" > build/tinyc_pilotg.ir 2>build/tinyc_pilotg.err && [ ! -s build/tinyc_pilotg.err ] && \
+			build/tinyc_backend build/tinyc_pilotg.ir build/tinyc_pilotg.s68 -os9; then
+			cp build/tinyc_pilotg.s68 "$MWOS_TMP/pilotg.a"
+			rm -f "$MWOS_TMP/pilotg.r" "$MWOS_TMP/pilotg.out" "$MWOS_TMP/pilotg.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\pilotg.a -o=M:\\TMP\\pilotg.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/pilotg.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\pilotg.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\pilotg.out -s=M:\\TMP\\pilotg.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/pilotg.out" ]; then
+					echo "ok    tinyc Selfhosting L2: ActionRoutine-Pilot MIT echten globalen routinesC/-Cnt/-Cap (wie im echten codegen.cpp) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2: echter l68-Link (globale Variante) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2: echte r68-Assemblierung (globale Variante) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/pilotg.a "$MWOS_TMP"/pilotg.r "$MWOS_TMP/pilotg.out" "$MWOS_TMP/pilotg.sym"
+		else
+			echo "FAIL  tinyc Selfhosting L2: ActionRoutine-Pilot (globale Variante) kompiliert nicht sauber (siehe build/tinyc_pilotg.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 (globale Variante): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): tinyc_backend akzeptiert
 	# ein optionales 4. Argument "-os9" und schaltet dann auf nam/psect/ends-
 	# Rahmung, "*" statt ";" fuer volle Kommentarzeilen und "align 4"/"dc.l 0,.."
@@ -1493,6 +1560,22 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 	fi
 else
 	echo "warn  tinyc struct 68000 (ptr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
+# Globale structs (2026-07-25): tc_globalend erkannte "struct" bisher gar nicht als
+# Basistyp. Skalare globale structs/Arrays von structs/Pointer-auf-struct-Globale --
+# Codegen strukturell identisch zum lokalen Fall (ADDRG/PUSHADDR G/LOADGP statt
+# PUSHADDR L/LOADP).
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' > build/tinyc_gstruct.ir && \
+		build/tinyc_backend build/tinyc_gstruct.ir build/tinyc_gstruct.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_gstruct.bin build/tinyc_gstruct.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_gstruct.s68 2>/dev/null)" = "$(printf '100\n200\n200')" ]; then
+		echo "ok    tinyc struct 68000: globale struct-Variablen/-Arrays/-Pointer korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: globale structs fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (globale structs): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void.ir && \
@@ -1821,6 +1904,20 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (ptr[i].feld): Backend fehlt -- uebersprungen"
+fi
+
+# Globale structs (2026-07-25): siehe 68000-Test oben fuer die Erklaerung.
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' > build/tinyc_gstruct_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_gstruct_arm64.ir build/tinyc_gstruct_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_gstruct_arm64 build/tinyc_gstruct_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_gstruct_arm64)" = "$(printf '100\n200\n200')" ]; then
+		echo "ok    tinyc struct ARM64: globale struct-Variablen/-Arrays/-Pointer korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: globale structs fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (globale structs): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then
