@@ -168,6 +168,11 @@ def run(prog):
         elif op == "IPADD":
             p = pointer(opstack.pop(), "addition"); count = opstack.pop()
             opstack.append(p.shifted(count, type_size(args[0]))); ip += 1
+        elif op == "IPADDN":
+            # wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
+            # statt einer festen Typtag-Groesse -- gebraucht fuer arr[i].feld (Array von structs).
+            p = pointer(opstack.pop(), "addition"); count = opstack.pop()
+            opstack.append(p.shifted(count, int(args[0]))); ip += 1
         elif op == "PSUB":
             count = opstack.pop(); p = pointer(opstack.pop(), "subtraction")
             opstack.append(p.shifted(-count, type_size(args[0]))); ip += 1
