@@ -39,11 +39,17 @@ def load(path):
                 if match.group(1).startswith("tc_g_"):
                     current_global, current_offset = match.group(1), 0
             if current_global and (line.startswith("dc.l") or line.startswith("dc.b")):
-                value = int(line.split()[1], 0)
-                global_initials[(current_global, current_offset)] = value
-                if current_offset == 0:
-                    global_initials[current_global] = value
-                current_offset += 1 if line.startswith("dc.b") else 4
+                # mehrere kommagetrennte Werte pro Zeile (2026-07-25, kompakte Nullfuellung
+                # grosser Arrays, z.B. "dc.l 0,0,0,0,0,0,0,0" -- schon vorher fuer
+                # tc_extcall_tmp verwendet, hier jetzt allgemein unterstuetzt statt nur
+                # EINEN Wert pro Zeile zu erwarten).
+                step = 1 if line.startswith("dc.b") else 4
+                for tok in line.split(None, 1)[1].split(","):
+                    value = int(tok.strip(), 0)
+                    global_initials[(current_global, current_offset)] = value
+                    if current_offset == 0:
+                        global_initials[current_global] = value
+                    current_offset += step
                 line = ""
             if line:
                 instructions.append(re.sub(r"\s+", " ", line))
