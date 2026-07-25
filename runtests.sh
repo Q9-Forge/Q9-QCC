@@ -1490,6 +1490,65 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (ActionRoutine/ACTIONS-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- AST-Validierung (isWordLiteral/nodeNullable/validateRepeatProgress/
+	# validateAstForCodegen, Zeilen 750-857 in Source/codegen.cpp). Prueft VOR der
+	# Ausgabe: (1) eine Wiederholung mit nullbarem Rumpf (z.B. "{ [x] }") waere eine
+	# Endlosschleife im erzeugten Parser -- wird erkannt und abgelehnt (Fixpunkt-
+	# analyse ueber gegenseitig rekursive Regeln); (2) zwei Regeln, die nach der
+	# "$"->"_"-Normalisierung denselben Namen ergeben, wuerden doppelte C-Funktionen/
+	# 68k-Labels erzeugen -- wird erkannt und abgelehnt. Einmalig per TinyVM
+	# tiefenverifiziert (mit Tiny-C-eigenen Stand-ins fuer strcmp/isalpha/isalnum
+	# statt extern): alle 10 erwarteten Werte trafen exakt zu, inklusive beider
+	# Diagnosepfade -- siehe docs/FORTSCHRITT.md. ARM64 hier NICHT moeglich (das
+	# kumulative Gesamtkompilat enthaelt bereits "free" aus dem ActionRoutine-Chunk,
+	# CALLEXT wird von ARM64 grundsaetzlich abgelehnt, unabhaengig von Erreichbarkeit
+	# -- TinyVM meldet den Fehler dagegen nur bei tatsaechlicher Ausfuehrung, hier
+	# also unproblematisch). Dauerhafte Regression wie ueblich: echter r68+l68.
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		astvaltest_main='
+int main() {
+	putint(isWordLiteral("hello"));
+	putint(isWordLiteral("_foo$bar"));
+	putint(isWordLiteral("foo-bar"));
+	putint(isWordLiteral("5abc"));
+	astReset();
+	astPushTS("x"); astWrapOpt(); astWrapRep(); astFinishRule("bad");
+	putint(validateAstForCodegen());
+	astReset();
+	astPushTS("y"); astWrapRep(); astFinishRule("good");
+	putint(validateAstForCodegen());
+	astReset();
+	astPushTS("a"); astFinishRule("foo$bar");
+	astPushTS("b"); astFinishRule("foo_bar");
+	putint(validateAstForCodegen());
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$astvaltest_main" > build/tinyc_astvaltest.ir 2>build/tinyc_astvaltest.err && \
+			build/tinyc_backend build/tinyc_astvaltest.ir build/tinyc_astvaltest_os9.a -os9 -largedata; then
+			cp build/tinyc_astvaltest_os9.a "$MWOS_TMP/astvaltest.a"
+			rm -f "$MWOS_TMP/astvaltest.r" "$MWOS_TMP/astvaltest.out" "$MWOS_TMP/astvaltest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\astvaltest.a -o=M:\\TMP\\astvaltest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/astvaltest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\astvaltest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\astvaltest.out -s=M:\\TMP\\astvaltest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/astvaltest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: AST-Validierung (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (AST-Validierung) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (AST-Validierung) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/astvaltest.a "$MWOS_TMP"/astvaltest.r "$MWOS_TMP"/astvaltest.out "$MWOS_TMP"/astvaltest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (AST-Validierung) kompiliert nicht sauber (siehe build/tinyc_astvaltest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (AST-Validierung): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
