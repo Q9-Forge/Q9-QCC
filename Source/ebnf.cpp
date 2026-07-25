@@ -784,7 +784,7 @@ int execFrom(int startRow, int* pos) {
 #define MAX_TESTS       256
 #define TEST_INPUT_LEN  256
 #define WORKFILE_LINE   512
-#define USER_CODE_LEN   131072
+#define USER_CODE_LEN   1048576
 
 typedef struct {
 	char input[TEST_INPUT_LEN];

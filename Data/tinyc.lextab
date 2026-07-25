@@ -2219,7 +2219,20 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		p += 5;
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
-	if (end - p >= 12 && p[0] == 'u') { p += 12; type.base = 'u'; }
+	/* struct-Basistyp (2026-07-25, globale struct-Unterstuetzung): mirrort die
+	   struct-Erkennung in tc_type. Muss VOR den skalaren Basistyp-Checks stehen,
+	   da "struct" selbst kein reservierter Modifikator wie "const"/"static" ist,
+	   sondern ein eigener Basistyp. */
+	if (end - p >= 6 && p[0] == 's' && p[1] == 't' && p[2] == 'r' && p[3] == 'u' && p[4] == 'c' && p[5] == 't') {
+		const char* ne; int sid; p += 6;
+		while (p < end && (*p == ' ' || *p == '\t')) p++;
+		ne = tcWordEnd(p, end);
+		sid = tcLookupStruct(p, ne);
+		if (sid < 0) { fprintf(stderr, "tinyc: unknown struct\n"); tcSemanticErrors++; return; }
+		type = tcMakeType('s', 0); type.structId = (unsigned char)(sid + 1);
+		p = ne;
+	}
+	else if (end - p >= 12 && p[0] == 'u') { p += 12; type.base = 'u'; }
 	else if (end - p >= 3 && p[0] == 'i' && p[1] == 'n' && p[2] == 't') p += 3;
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
@@ -2248,9 +2261,17 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		arrayLen = dims[0];
 		for (k = 1; k < ndims; k++) { arrayLen *= dims[k]; arrayDims[k - 1] = dims[k]; }
 		arrayNDims = ndims;
+		if (!type.pointers && type.base == 's' && ndims > 1) {
+			fprintf(stderr, "tinyc: multi-dimensional struct arrays not supported in this version\n");
+			tcSemanticErrors++; return;
+		}
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
 	if (p < end && *p == '=') {
+		if (!type.pointers && type.base == 's') {
+			fprintf(stderr, "tinyc: struct global cannot have an initializer in this version\n");
+			tcSemanticErrors++; return;
+		}
 		p++;
 		if (arrayLen) {
 			/* String-Literal als Array-Initialisierer (char msg[6] = "hallo";):
@@ -2302,6 +2323,19 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	tcGlobalArrayNDims[tcGlobalCount] = arrayNDims;
 	for (i = 0; i < arrayNDims - 1; i++) tcGlobalArrayDims[tcGlobalCount][i] = arrayDims[i];
 	tcGlobalArrayLen[tcGlobalCount++] = arrayLen;
+	/* globale structs (2026-07-25): wie bei lokalen struct-Variablen (tc_localdecl)
+	   braucht ein struct IMMER Block-Speicher (GARRAY, byte-genau ueber tcStructByteSize),
+	   NIE die einzellige GLOBAL-Form -- unabhaengig davon, ob ein "[N]"-Suffix dabeisteht
+	   (arrayLen==0 fuer eine skalare struct-Variable heisst hier "ein Element", NICHT
+	   "kein Block", anders als bei tcLocalArrayLen/tcGlobalArrayLen als Index-Laenge weiter
+	   unten -- ADDRG braucht ohnehin IMMER einen Block, siehe tinyvm.py: globals_ ist bei
+	   GLOBAL wie bei GARRAY einheitlich eine Liste, ADDRG unterscheidet nicht). */
+	if (!type.pointers && type.base == 's') {
+		int structSize = tcStructByteSize[type.structId - 1];
+		int total = (arrayLen > 0 ? arrayLen : 1) * structSize;
+		printf("GARRAY %s c %d %d\n", name, total, isStatic);
+		return;
+	}
 	if (arrayLen) {
 		printf("GARRAY %s %c %d %d\n", name, tcTypeTag(type), arrayLen, isStatic);
 		for (i = 0; i < initCount; i++) printf("GINIT %s %d %ld\n", name, i, !type.pointers && type.base == 'c' ? (initValues[i] & 255) : initValues[i]);
@@ -2477,12 +2511,15 @@ void tc_varref(const char* start, const char* end) {
 	   spezifischen Zweig ablehnen, ausser fuer die ZWEI Kombinationen, die tatsaechlich
 	   gebaut sind (lokales, als Array deklariertes struct; lokale Pointer-auf-struct-
 	   Variable, siehe naechster Block -- Letzteres seit 2026-07-25 fuer Milestone B). */
+	global = slot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
 	if (indexed && *nameEnd == '[' &&
 	    !(slot >= 0 && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's') &&
-	    !(slot >= 0 && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's')) {
+	    !(slot >= 0 && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's') &&
+	    !(global >= 0 && tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') &&
+	    !(global >= 0 && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's')) {
 		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs, or a local pointer to struct, in this version\n");
+			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
 			tcSemanticErrors++; tcTypePush(tcBadType()); return;
 		}
 	}
@@ -2553,6 +2590,72 @@ void tc_varref(const char* start, const char* end) {
 			   varRef) -- der Stack traegt hier [Indexwert, Feldadresse] (Feldadresse gerade
 			   eben on top gepusht durch das IPADD oben), exakt die Reihenfolge, die ein
 			   zweites IPADD braucht. */
+			if (!tcStructFieldArrayLen[sid][fi]) {
+				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
+				tcTypePush(tcBadType()); return;
+			}
+			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
+			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+		}
+		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
+		printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+		tcTypePush(tcStructFieldTypes[sid][fi]); return;
+	}
+	/* Globale structs (2026-07-25): dieselben drei Muster wie oben (Pointer-auf-struct
+	   indiziert, Array-von-structs indiziert, direkter Member-Zugriff), aber fuer GLOBALE
+	   Variablen -- ADDRG/LOADGP statt PUSHADDR L/LOADP. ADDRG und PUSHADDR L sind hier
+	   austauschbar (beide liefern denselben Blockzeiger, siehe tinyvm.py: globals_ ist bei
+	   GLOBAL wie bei GARRAY einheitlich eine Liste) -- PUSHADDR G verwendet, um optisch
+	   parallel zum lokalen Muster zu bleiben. */
+	if (global >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			char gname[32]; int sid = tcPointee(tcGlobalType(global)).structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			tcCopy(gname, start, nameEnd);
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
+			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+		}
+	}
+	if (global >= 0 && indexed && *nameEnd == '[' && tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			char gname[32]; int sid = tcGlobalType(global).structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			tcCopy(gname, start, nameEnd);
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
+			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
+			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+		}
+	}
+	if (global >= 0 && indexed && *nameEnd == '.' && tcGlobalType(global).base == 's') {
+		char gname[32]; int sid = tcGlobalType(global).structId - 1;
+		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+		int hasIndex = fieldEnd < end && *fieldEnd == '[';
+		tcCopy(gname, start, nameEnd);
+		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
 				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
 				tcTypePush(tcBadType()); return;
@@ -2752,6 +2855,7 @@ END
 ROUTINE C tc_target
 void tc_target(const char* start, const char* end) {
 	const char* nameEnd = tcNameEnd(start, end);
+	int global;
 	tcTargetIsArray = nameEnd < end;
 	tcTargetSlot = tcLookupLocal(start, nameEnd);
 	tcTargetIsGlobal = 0; tcTargetIndirect = 0;
@@ -2763,13 +2867,19 @@ void tc_target(const char* start, const char* end) {
 	   Kombinationen (z.B. "ptr[i].feld = ..") ohne Codegen-Unterstuetzung; ohne diesen
 	   Schutz wuerden die Index-Zweige weiter unten die "."-Fortsetzung stillschweigend
 	   ignorieren statt sauber zu diagnostizieren. */
-	if (tcTargetIsArray && *nameEnd == '[' &&
-	    !(tcTargetSlot >= 0 && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's') &&
-	    !(tcTargetSlot >= 0 && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's')) {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
-		if (afterIdx < end && *afterIdx == '.') {
-			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs, or a local pointer to struct, in this version\n");
-			tcSemanticErrors++; return;
+	{
+		int targetGlobal = tcTargetSlot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
+		TCType targetGlobalType = targetGlobal >= 0 ? tcGlobalType(targetGlobal) : tcMakeType('i', 0);
+		if (tcTargetIsArray && *nameEnd == '[' &&
+		    !(tcTargetSlot >= 0 && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's') &&
+		    !(tcTargetSlot >= 0 && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') &&
+		    !(targetGlobal >= 0 && tcGlobalArrayLen[targetGlobal] > 0 && targetGlobalType.base == 's') &&
+		    !(targetGlobal >= 0 && tcIsPointer(targetGlobalType) && tcPointee(targetGlobalType).base == 's')) {
+			const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+			if (afterIdx < end && *afterIdx == '.') {
+				fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
+				tcSemanticErrors++; return;
+			}
 		}
 	}
 	/* ptr[i].feld = .. (2026-07-25, Milestone B): siehe tc_varref fuer die Erklaerung.
@@ -2825,6 +2935,74 @@ void tc_target(const char* start, const char* end) {
 		if (hasIndex) {
 			/* p.field[i] = .. (2026-07-24): siehe tc_varref -- der Index-Ausdruck hat seinen
 			   Wert bereits VOR uns gepusht, ein zweites IPADD kombiniert Feldadresse+Index. */
+			if (!tcStructFieldArrayLen[sid][fi]) {
+				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
+			}
+			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
+			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTargetType = tcStructFieldTypes[sid][fi];
+			tcTargetIndirect = 1;
+			return;
+		}
+		if (tcStructFieldArrayLen[sid][fi] > 0) {
+			fprintf(stderr, "tinyc: cannot assign to array field\n"); tcSemanticErrors++;
+		}
+		tcTargetType = tcStructFieldTypes[sid][fi];
+		tcTargetIndirect = 1;
+		return;
+	}
+	/* Globale structs (2026-07-25): dieselben drei Muster wie in tc_varref, schreibend --
+	   siehe dort fuer die vollstaendige Erklaerung. tcTargetIndirect=1 laesst tc_assign
+	   denselben STOREIND-Pfad nehmen wie bei den bereits vorhandenen lokalen Faellen. */
+	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
+	    tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			char gname[32]; int sid = tcPointee(tcGlobalType(global)).structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			tcCopy(gname, start, nameEnd);
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+			}
+			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			tcTargetType = tcStructFieldTypes[sid][fi];
+			tcTargetIndirect = 1;
+			return;
+		}
+	}
+	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
+	    tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			char gname[32]; int sid = tcGlobalType(global).structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			tcCopy(gname, start, nameEnd);
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+			}
+			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
+			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			tcTargetType = tcStructFieldTypes[sid][fi];
+			tcTargetIndirect = 1;
+			return;
+		}
+	}
+	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '.' &&
+	    tcGlobalType(global).base == 's') {
+		char gname[32]; int sid = tcGlobalType(global).structId - 1;
+		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+		int hasIndex = fieldEnd < end && *fieldEnd == '[';
+		tcCopy(gname, start, nameEnd);
+		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
 				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
 			}
