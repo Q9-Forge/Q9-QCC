@@ -101,7 +101,6 @@ Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
 
 ## Bewusst offen
 
-- Echtes Linken gegen `clib.l` (Microware-Linker `l68`, relokierbares Objektformat statt `vasm -Fbin`) -- `extern`-Deklarationen + CALLEXT/CALLEXTP-Codegen sind da, das eigentliche Verbinden gegen die reale Bibliothek (statt handgeschriebener Test-Mocks) noch nicht
 - String-Vergleich/-Verkettung als eigene Operatoren, `sizeof` auf einem Literal ohne Zwischenvariable (String-Literale selbst, String-Literale als Array-Initialisierer UND direkte `[index]`-Indizierung ohne Zwischenvariable sind seit 2026-07-24 erledigt, siehe Tabelle oben)
 - Mehrebenen-Pointee-Constness bei `T**` (nur unmittelbare Dereferenzierung geschuetzt), `char* const` (Pointer selbst konstant, umgekehrter Fall zu Pointee-Constness)
 - static-`struct`-Lokale, static-Arrays, Funktions-Scoping fuer static-Lokale-Namen (nicht-konstante static-Initialisierer selbst sind seit 2026-07-24 erledigt, siehe Tabelle oben)
@@ -111,7 +110,6 @@ Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
 - Zeigerarithmetik auf `void*` (bewusst wie echtes ISO C behandelt: nicht erlaubt, im Unterschied zur GCC-Erweiterung mit Groesse 1)
 - verschachtelte Brace-Initialisierer fuer Mehrdim-Arrays (`{{1,2},{3,4}}`), Bounds-Checking der Einzeldimensionen bei Mehrdim-Literal-Indizes, Mehrdim-Arrays als struct-Feld/Parameter (mehr als 2 Array-Dimensionen selbst sind seit 2026-07-24 erledigt, siehe Tabelle oben)
 - flexiblere (nicht fest dimensionierte) Arrays allgemein
-- dynamische Speicherverwaltung (als Tiny-C-Sprachmittel, d.h. `malloc`/`free` als aufrufbare Tiny-C-Funktion)
 - nichtkonstante globale Initialisierer (betrifft jetzt auch static-Lokale-Initialisierer, siehe oben)
 - endgültige Q9-Start-, Modul- und Systemcall-Runtime
 - zusätzliche Architekturen und Optimierungen
