@@ -73,6 +73,50 @@ int astOverflow;
 
 int labelCnt;
 
+/* LEXER-Konfiguration (scannerless, siehe Source/codegen.cpp Vorbild) --
+   Original-Konstanten als Literale: LEX_MAX_ROOTS=32 LEX_WS_MAX=32
+   LEX_LC_MAX=8 LEX_MARKERS_MAX=4.
+
+   DREI Tiny-C-bedingte Abweichungen vom C++-Original (alle rein mechanisch,
+   keine Verhaltensaenderung):
+   1. Tiny-C hat KEINE Zeichenliterale ("'x'") -- ueberall numerische ASCII-
+      Codes: 34='"' 92='\' 116='t' 114='r' 110='n' 35='#' 32=' ' 9='\t' 61='='
+      10='\n' 13='\r'.
+   2. Tiny-C lehnt PARTIELLE Indizierung eines mehrdimensionalen Arrays ab
+      (nur EIN von zwei Indizes waere sonst noetig, um z.B. "lexRoots[i]" als
+      char* zu nutzen) -- deshalb hier FLACHE 1D-Arrays (lexRootsFlat[32*41]
+      statt lexRoots[32][41]) mit manueller Offset-Berechnung "&flat[i*41]"
+      ueber addressRef statt einer zweiten Dimension.
+   3. lexUnquoteAt hatte im Original einen "const char** nextOut"-
+      Ausgabeparameter -- vereinfacht zu einem globalen lexUnquoteNext
+      (gleiches Vereinfachungsmuster wie beim ActionRoutine-Piloten, siehe
+      SELFHOSTING_LUECKENLISTE.md: Mehrfach-Rueckgabe ueber Zeiger-auf-Zeiger
+      vermeiden).
+   4. NEU ENTDECKTER GRENZFALL (2026-07-25): Tiny-C-String-Literale
+      unterstuetzen KEIN escaptes Anfuehrungszeichen ("\"..." bricht das
+      Parsen -- die "character"-Regel in Data/tinyc.ebnf schliesst das
+      Anfuehrungszeichen selbst grundsaetzlich aus, auch direkt nach einem
+      Backslash; tcDecodeStringLit haette die Escape-DEKODIERUNG zwar schon
+      generisch, die GRAMMATIK kommt aber nie so weit). Diagnosetexte deshalb
+      bewusst OHNE Anfuehrungszeichen umformuliert, statt die Grammatik dafuer
+      zu erweitern (waere ein eigener, riskanterer Sprachfeature-Schritt). */
+char lexWs[33];                  /* LEX_WS_MAX + 1 */
+int lexWsLen;
+int lexActive;
+char lexLineCommentFlat[36];     /* LEX_MARKERS_MAX * (LEX_LC_MAX + 1) */
+int lexLineCommentLen[4];
+int lexLineCommentCnt;
+char lexBlockOnFlat[36];
+int lexBlockOnLen[4];
+char lexBlockOffFlat[36];
+int lexBlockOffLen[4];
+int lexBlockNested[4];
+int lexBlockCnt;
+char lexRootsFlat[1312];         /* LEX_MAX_ROOTS * (AST_TEXT_LEN + 1) */
+int lexRootCnt;
+int ruleIsLexical[256];          /* AST_MAX_RULES */
+char* lexUnquoteNext;
+
 /* ===========================================================================
    TEIL 2: Funktionen
 =========================================================================== */
@@ -247,4 +291,235 @@ int ruleIndexByName(char* name) {
 		if (strcmp(rules[r].name, name) == 0) { return r; }
 	}
 	return -1;
+}
+
+int lexAnyBlockNested() {
+	int j;
+	for (j = 0; j < lexBlockCnt; j += 1) {
+		if (lexBlockNested[j] != 0) { return 1; }
+	}
+	return 0;
+}
+
+/* Ein "..."-String ab der ersten '"' in start entnehmen (Escapes \t \r \n \\ \"
+   aufloesen). Liefert Laenge oder -1; die Position hinter der schliessenden
+   '"' steht danach in lexUnquoteNext (siehe Kommentar bei TEIL 1). */
+int lexUnquoteAt(char* start, char* out, int outMax) {
+	char* q1;
+	char* q2;
+	int n;
+	q1 = strchr(start, 34);
+	if (q1 == 0) { return -1; }
+	q2 = q1 + 1;
+	while (*q2 != 0 && !(*q2 == 34 && q2[-1] != 92)) { q2 = q2 + 1; }
+	if (*q2 != 34) { return -1; }
+	lexUnquoteNext = q2 + 1;
+	q1 = q1 + 1;
+	n = 0;
+	while (q1 < q2 && n < outMax - 1) {
+		if (*q1 == 92 && q1 + 1 < q2) {
+			q1 = q1 + 1;
+			if (*q1 == 116) { out[n] = 9; }
+			else if (*q1 == 114) { out[n] = 13; }
+			else if (*q1 == 110) { out[n] = 10; }
+			else { out[n] = *q1; }
+			n = n + 1;
+		} else {
+			out[n] = *q1;
+			n = n + 1;
+		}
+		q1 = q1 + 1;
+	}
+	out[n] = 0;
+	return n;
+}
+
+/* Inhalt zwischen erstem und letztem '"' einer Konfigurationszeile entnehmen
+   und dieselben Escapes aufloesen. */
+int lexUnquote(char* line, char* out, int outMax) {
+	char* q1;
+	char* q2;
+	int n;
+	q1 = strchr(line, 34);
+	q2 = strrchr(line, 34);
+	if (q1 == 0 || q2 == 0 || q2 <= q1) { return -1; }
+	q1 = q1 + 1;
+	n = 0;
+	while (q1 < q2 && n < outMax - 1) {
+		if (*q1 == 92 && q1 + 1 < q2) {
+			q1 = q1 + 1;
+			if (*q1 == 116) { out[n] = 9; }
+			else if (*q1 == 114) { out[n] = 13; }
+			else if (*q1 == 110) { out[n] = 10; }
+			else { out[n] = *q1; }
+			n = n + 1;
+		} else {
+			out[n] = *q1;
+			n = n + 1;
+		}
+		q1 = q1 + 1;
+	}
+	out[n] = 0;
+	return n;
+}
+
+int lexParseConfig(char* buf) {
+	char line[256];
+	int li;
+	int ok;
+	ok = 1;
+
+	lexActive = 0;
+	lexWsLen = 0;
+	lexWs[0] = 0;
+	lexLineCommentCnt = 0;
+	lexBlockCnt = 0;
+	lexRootCnt = 0;
+
+	if (buf == 0 || buf[0] == 0) {
+		return 1;			/* kein Lexer konfiguriert -- zeichenbasierter Codegen wie bisher */
+	}
+	while (*buf != 0) {
+		li = 0;
+		while (*buf != 0 && *buf != 10 && li < 255) {
+			line[li] = *buf;
+			li = li + 1;
+			buf = buf + 1;
+		}
+		line[li] = 0;
+		if (*buf == 10) { buf = buf + 1; }
+
+		if (line[0] == 35 || line[0] == 0) {
+			continue;
+		} else if (strncmp(line, "WHITESPACE", 10) == 0) {
+			lexWsLen = lexUnquote(line, lexWs, 33);
+			if (lexWsLen < 0) {
+				printf("LEXER: WHITESPACE-Zeile ohne Anfuehrungszeichen-String -- ignoriert.\n");
+				lexWsLen = 0;
+			}
+			lexActive = 1;
+		} else if (strncmp(line, "COMMENT LINE", 12) == 0) {
+			/* mehrere COMMENT LINE-Zeilen sind erlaubt (z.B. "#" UND "//" gleichzeitig) */
+			if (lexLineCommentCnt >= 4) {
+				printf("LEXER: zu viele COMMENT LINE-Marker (max 4) -- ignoriert: %s\n", line);
+			} else {
+				int n;
+				n = lexUnquote(line, &lexLineCommentFlat[lexLineCommentCnt * 9], 9);
+				if (n < 0) {
+					printf("LEXER: COMMENT LINE-Zeile ohne Anfuehrungszeichen-String -- ignoriert.\n");
+				} else {
+					lexLineCommentLen[lexLineCommentCnt] = n;
+					lexLineCommentCnt = lexLineCommentCnt + 1;
+					lexActive = 1;
+				}
+			}
+		} else if (strncmp(line, "COMMENT BLOCK", 13) == 0) {
+			/* zwei Strings: Anfang und Ende, z.B. COMMENT BLOCK = "(*" "*)"
+			   optional: COMMENT BLOCK NESTED = ... -> Kommentare schachteln
+			   mehrere COMMENT BLOCK-Zeilen sind erlaubt */
+			if (lexBlockCnt >= 4) {
+				printf("LEXER: zu viele COMMENT BLOCK-Marker (max 4) -- ignoriert: %s\n", line);
+			} else {
+				char* nst;
+				char* q0;
+				char* rest;
+				int onLen;
+				int offLen;
+				int nested;
+				nst = strstr(line, "NESTED");
+				q0 = strchr(line, 34);
+				onLen = lexUnquoteAt(line, &lexBlockOnFlat[lexBlockCnt * 9], 9);
+				rest = lexUnquoteNext;
+				offLen = -1;
+				if (onLen > 0) {
+					offLen = lexUnquoteAt(rest, &lexBlockOffFlat[lexBlockCnt * 9], 9);
+				}
+				if (onLen <= 0 || offLen <= 0) {
+					printf("LEXER: COMMENT BLOCK braucht ZWEI Anfuehrungszeichen-Strings (Anfang Ende) -- ignoriert.\n");
+				} else {
+					nested = 0;
+					if (nst != 0 && q0 != 0 && nst < q0) { nested = 1; }
+					lexBlockOnLen[lexBlockCnt] = onLen;
+					lexBlockOffLen[lexBlockCnt] = offLen;
+					lexBlockNested[lexBlockCnt] = nested;
+					lexBlockCnt = lexBlockCnt + 1;
+					lexActive = 1;
+				}
+			}
+		} else if (strncmp(line, "TOKEN", 5) == 0) {
+			/* akzeptiert "TOKEN <regel>" und "TOKEN <TYP> = <regel>" -- massgeblich
+			   ist das LETZTE Wort der Zeile (der Regelname) */
+			char* pWord;
+			char* endw;
+			int n;
+			pWord = line + strlen(line);
+			while (pWord > line && (pWord[-1] == 32 || pWord[-1] == 9)) { pWord = pWord - 1; }
+			endw = pWord;
+			while (pWord > line && pWord[-1] != 32 && pWord[-1] != 9 && pWord[-1] != 61) { pWord = pWord - 1; }
+			if (endw > pWord && lexRootCnt < 32) {
+				n = endw - pWord;
+				if (n > 40) { n = 40; }			/* AST_TEXT_LEN */
+				memcpy(&lexRootsFlat[lexRootCnt * 41], pWord, n);
+				lexRootsFlat[lexRootCnt * 41 + n] = 0;
+				lexRootCnt = lexRootCnt + 1;
+				lexActive = 1;
+			}
+		} else {
+			printf("LEXER: unbekannte Konfigurationszeile ignoriert: %s\n", line);
+		}
+	}
+
+	/* Standard-Whitespace, falls TOKEN/COMMENT konfiguriert wurden, aber WHITESPACE fehlt */
+	if (lexActive != 0 && lexWsLen == 0) {
+		lexWs[0] = 32; lexWs[1] = 9; lexWs[2] = 13; lexWs[3] = 10; lexWs[4] = 0;
+		lexWsLen = 4;
+	}
+	return ok;
+}
+
+/* Lexikalische Regeln = transitiver Abschluss der TOKEN-Wurzeln ueber
+   NTS-Referenzen im AST. Nimmt (anders als das C++-Original) eine Knoten-ID
+   statt eines "AstNode*"-Zeigers entgegen -- ein unindizierter Pointer auf
+   ein struct-Array-Element mit anschliessendem Feldzugriff (n->kind) ist in
+   dieser Tiny-C-Version nicht unterstuetzt, siehe FORTSCHRITT.md. */
+void markLexicalNode(int id) {
+	int idx;
+	int child;
+	char* txt;
+	if (nodes[id].kind == AST_NTS) {
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		if (idx >= 0 && ruleIsLexical[idx] == 0) {
+			ruleIsLexical[idx] = 1;
+			markLexicalNode(rules[idx].root);
+		}
+	}
+	child = nodes[id].firstChild;
+	while (child >= 0) {
+		markLexicalNode(child);
+		child = nodes[child].nextSib;
+	}
+}
+
+int computeLexicalSet() {
+	int r;
+	int idx;
+	int ok;
+	ok = 1;
+	r = 0;
+	while (r < ruleCnt) { ruleIsLexical[r] = 0; r = r + 1; }
+	if (lexActive == 0) { return 1; }
+	r = 0;
+	while (r < lexRootCnt) {
+		idx = ruleIndexByName(&lexRootsFlat[r * 41]);
+		if (idx < 0) {
+			printf("LEXER: TOKEN-Regel '%s' existiert nicht in der Grammatik.\n", &lexRootsFlat[r * 41]);
+			ok = 0;
+		} else if (ruleIsLexical[idx] == 0) {
+			ruleIsLexical[idx] = 1;
+			markLexicalNode(rules[idx].root);
+		}
+		r = r + 1;
+	}
+	return ok;
 }
