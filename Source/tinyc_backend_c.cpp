@@ -631,6 +631,12 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
 				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
 				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
+			} else if (strcmp(op, "IPADDN") == 0 && insP->argc == 1) {
+				/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
+				   statt einer festen Typtag-Groesse -- kein lsl.l (Groesse ist beliebig, nicht
+				   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
+				   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
+				fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n\tbsr\ttc_mul_i32\n\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", insP->args[0]);
 			} else if (strcmp(op, "PDIFF") == 0 && insP->argc == 1) {
 				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tsub.l\td1,d0\n", out);
 				if (!isByteWord(insP->args[0])) fputs("\tasr.l\t#2,d0\n", out);

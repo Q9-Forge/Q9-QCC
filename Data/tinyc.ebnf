@@ -322,9 +322,19 @@ target    = directTarget | indirectTarget .
    zuletzt gepusht, da tc_varref/tc_target erst am ENDE der ganzen Regel
    feuern), exakt dieselbe Reihenfolge wie beim bestehenden IPADD-Aufruf fuer
    die Feldadresse selbst -- kein neuer Opcode, kein Backend-Change. */
-directTarget = ident [ index { index } | member [ index ] ] .
+/* arr[i].feld (2026-07-25, Selfhosting L2): ein ARRAY von structs, per
+   Laufzeit-Index adressiert, DANN Feldzugriff -- braucht die Index-Kette
+   UND den Member-Anschluss NACHEINANDER (nicht nur alternativ wie bisher).
+   Verkettete Indizierung NACH dem Feld (arr[i].feld[j]) bleibt bewusst
+   ausgeschlossen (wie bei p.field[i], siehe member oben) -- tc_varref/
+   tc_target diagnostizieren das explizit. Neuer IR-Opcode IPADDN (siehe
+   Backends/tinyvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
+   (hier: tcStructByteSize des Element-Structs), waehrend das bestehende
+   IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
+   struct-Arrays ist aber beliebig. */
+directTarget = ident [ index { index } ] [ member [ index ] ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index { index } | member [ index ] ] .
+varRef    = ident [ index { index } ] [ member [ index ] ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
 member    = "." fieldName .
