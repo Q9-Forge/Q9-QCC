@@ -38,6 +38,17 @@ extern int isalpha(int c);
 extern int isalnum(int c);
 extern int isprint(int c);
 extern int printf(char* fmt, ...);
+/* C-Backend (genNodeC/genParserC) braucht echte Dateiausgabe. FILE* wird als
+   "void*" gefuehrt -- Tiny-C hat keinen FILE-Struct-Typ, aber der ABI-Aufruf
+   braucht nur einen opaken Zeiger, den clib.l selbst interpretiert. clib.l
+   hat KEIN snprintf (nur sprintf, aeltere Microware-Bibliothek, per `strings`
+   bestaetigt) -- deshalb sprintf ohne Laengenlimit (unschaedlich hier: alle
+   Aufrufe schreiben nur kurze, feste Formate in ausreichend grosse Puffer). */
+extern void* fopen(char* path, char* mode);
+extern int fclose(void* fp);
+extern int fprintf(void* fp, char* fmt, ...);
+extern int fputc(int c, void* fp);
+extern int sprintf(char* buf, char* fmt, ...);
 
 enum AstKind { AST_SEQ, AST_ALT, AST_OPT, AST_REP, AST_TS, AST_RNG, AST_NTS };
 
@@ -962,4 +973,153 @@ int validateAstForCodegen() {
 		r = r + 1;
 	}
 	return 1;
+}
+
+/* Erzeugte Struktur (C-Backend): "static const char* p;" pro Regel eine
+   Funktion p_<name>() -> 1/0, bei Misserfolg ist p unveraendert (Ruecksetzung
+   an Regel-/Auswahl-/Options-/Wiederholungs-Grenzen ueber lokalen save-Stack
+   sv[]). Quotet einen C-String-Literal-Text nach fp (Escapes \\ \" und nicht-
+   druckbare Bytes als \xHH). */
+void emitCString(void* fp, char* s) {
+	int i;
+	fputc(34, fp);				/* '"' */
+	i = 0;
+	while (s[i] != 0) {
+		if (s[i] == 92 || s[i] == 34) {		/* '\\' '"' */
+			fputc(92, fp);
+			fputc(s[i], fp);
+		} else if (isprint(s[i]) != 0) {
+			fputc(s[i], fp);
+		} else {
+			fprintf(fp, "\\x%02x", s[i]);
+		}
+		i = i + 1;
+	}
+	fputc(34, fp);
+}
+
+/* Syntaktische Operator-Literale folgen bei aktivem Lexer der ueblichen
+   Longest-Match-Regel. Ohne diese Regel waere z.B. "a && &b" scannerlos auch
+   als "a & &b" lesbar, sobald die Sprache den Adressoperator unterstuetzt. */
+void emitLongerLiteralRejectC(void* fp, char* text, int failLabel) {
+	int i;
+	int j;
+	int len;
+	char* longer;
+	len = strlen(text);
+	if (lexActive == 0 || isWordLiteral(text) != 0) { return; }
+	i = 0;
+	while (i < nodeCnt) {
+		if (nodes[i].kind == AST_TS) {
+			longer = nodes[i].text;
+			if (strlen(longer) > len && strncmp(longer, text, len) == 0) {
+				j = 0;
+				while (j < i && !(nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0)) {
+					j = j + 1;
+				}
+				if (j >= i) {
+					fprintf(fp, "\tif (strncmp(p, ");
+					emitCString(fp, longer);
+					fprintf(fp, ", %d) == 0) goto L%d;\t/* Longest-Match */\n", strlen(longer), failLabel);
+				}
+			}
+		}
+		i = i + 1;
+	}
+}
+
+void genNodeC(void* fp, int id, int failLabel, int lexical) {
+	int child;
+	int l1;
+	int l2;
+	int lok;
+	int len;
+	char* txt;
+	char cName[64];			/* GEN_NAME_LEN */
+	int idx;
+
+	switch (nodes[id].kind) {
+	case AST_TS:
+		txt = nodes[id].text;
+		len = strlen(txt);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif (strncmp(p, ");
+		emitCString(fp, txt);
+		fprintf(fp, ", %d) != 0) goto L%d;\n", len, failLabel);
+		if (lexActive != 0 && lexical == 0) { emitLongerLiteralRejectC(fp, txt, failLabel); }
+		if (lexActive != 0 && lexical == 0 && isWordLiteral(txt) != 0) {
+			/* Wortgrenze: "MODULEX" darf nicht als "MODULE" + Rest gelten */
+			fprintf(fp, "\tif (idch((unsigned char)p[%d])) goto L%d;\n", len, failLabel);
+		}
+		fprintf(fp, "\tp += %d;\n", len);
+		break;
+	case AST_RNG:
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif ((unsigned char)*p < 0x%02X || (unsigned char)*p > 0x%02X) goto L%d;\n",
+			nodes[id].lo, nodes[id].hi, failLabel);
+		fprintf(fp, "\tp++;\n");
+		break;
+	case AST_NTS:
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		sanitizeName(txt, cName);
+		/* vor dem Einstieg in ein TOKEN (lexikalische Regel) aus syntaktischem
+		   Kontext Whitespace ueberlesen; syntaktische Unterregeln erledigen
+		   das selbst. */
+		if (lexActive != 0 && lexical == 0 && idx >= 0 && ruleIsLexical[idx] != 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif (!p_%s()) goto L%d;\n", cName, failLabel);
+		break;
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			genNodeC(fp, child, failLabel, lexical);
+			child = nodes[child].nextSib;
+		}
+		break;
+	case AST_ALT:
+		lok = newLabel();
+		fprintf(fp, "\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n");
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			l1 = newLabel();
+			genNodeC(fp, child, l1, lexical);
+			fprintf(fp, "\tgoto L%d;\n", lok);
+			if (nodes[child].nextSib >= 0) {
+				/* naechste Alternative versuchen: Position UND Aktions-Log auf
+				   den Stand vor dieser (verworfenen) Alternative zuruecksetzen
+				   -- sonst bleiben Aktionen einer abgebrochenen Alternative im
+				   Log haengen (siehe ARCHITEKTUR.md Paragraph 9.4). */
+				fprintf(fp, "L%d:\tp = sv[sp-1]; actionLogLen = svLog[sp-1];\n", l1);
+			} else {
+				/* letzte Alternative gescheitert -> Auswahl gescheitert */
+				fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L%d;\n", l1, failLabel);
+			}
+			child = nodes[child].nextSib;
+		}
+		fprintf(fp, "L%d:\tsp--;\n", lok);
+		break;
+	case AST_OPT:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n");
+		genNodeC(fp, nodes[id].firstChild, l1, lexical);
+		fprintf(fp, "\tsp--; goto L%d;\n", l2);
+		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l1);
+		fprintf(fp, "L%d:\t;\n", l2);
+		break;
+	case AST_REP:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "L%d:\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n", l1);
+		genNodeC(fp, nodes[id].firstChild, l2, lexical);
+		fprintf(fp, "\tsp--; goto L%d;\n", l1);
+		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l2);
+		break;
+	}
 }
