@@ -13,6 +13,52 @@ Zeilen) -- der Rest (LEXER/CODEGEN/ACTIONS-Konfigurationsparser, AST-Validierung
 C- UND 68k-Text-Codegen) sowie ganz `ebnf.cpp` (2149 Zeilen) sind NOCH NICHT
 angefasst.
 
+**2026-07-25 (spaeter, direkt im Anschluss an den -largedata-Funktionsaufruf-
+Fix): naechster Ausschnitt portiert -- LEXER-Konfigurationsparser** (`lexAnyBlockNested`/
+`lexUnquoteAt`/`lexUnquote`/`lexParseConfig`/`markLexicalNode`/`computeLexicalSet`,
+das `[LEXER]`-Konfigurationsblock-Handling aus `Source/codegen.cpp` Zeilen 207-460).
+Dabei VIER weitere, rein mechanische Tiny-C-Abweichungen gefunden (keine davon
+brauchte einen Compiler-Fix, alles Workarounds im Port selbst):
+1. Tiny-C hat keine Zeichenliterale (`'x'`) -- ueberall numerische ASCII-Codes
+   verwendet (34='"', 92='\', 116='t' usw.).
+2. Tiny-C lehnt partielle Indizierung eines mehrdimensionalen Arrays ab (schon
+   bekannt aus den ND-Array-Tests) -- betroffene 2D-Arrays (`lexLineComment`,
+   `lexBlockOn`/`lexBlockOff`, `lexRoots`) als FLACHE 1D-Arrays mit manueller
+   Offset-Berechnung `&flat[i*breite]` umgesetzt.
+3. Der `const char** nextOut`-Ausgabeparameter von `lexUnquoteAt` wurde zu
+   einem globalen `lexUnquoteNext` vereinfacht (gleiches Muster wie beim
+   ActionRoutine-Piloten).
+4. **NEU ENTDECKTER GRENZFALL:** Tiny-C-String-Literale unterstuetzen KEIN
+   escaptes Anfuehrungszeichen (`\"` bricht das Parsen mit blossem "FAIL", kein
+   Diagnosetext) -- die `character`-Regel in `Data/tinyc.ebnf` schliesst das
+   Anfuehrungszeichen grundsaetzlich aus, auch direkt nach einem Backslash,
+   obwohl `tcDecodeStringLit` die Escape-DEKODIERUNG dafuer bereits generisch
+   haette (die Grammatik kommt aber nie so weit). Diagnosetexte im Port bewusst
+   ohne Anfuehrungszeichen umformuliert, statt die Grammatik zu erweitern (waere
+   ein eigener, riskanterer Sprachfeature-Schritt, siehe "Bewusst offen" weiter
+   unten). Ausserdem gefunden: Tiny-C unterscheidet STRENG zwischen `int` und
+   `bool` -- ein `int`-Array-Element oder eine `int`-Variable direkt in einer
+   `if`/`&&`/`!`-Bedingung zu verwenden (das uebliche C-Idiom "0/1 als Wahrheits-
+   wert") wird als Typfehler abgelehnt, muss explizit `!= 0`/`== 0` geschrieben
+   werden.
+
+**Verifikation (dreifach, da TinyVM kein `CALLEXT`/`extern` kennt):**
+(a) die ECHTE Version (mit `extern strncmp`/`strchr`/`strrchr`/`strstr`/
+`memcpy`) kompiliert sauber, assembliert (echter `r68`) und linkt (echter
+`l68` gegen echte `clib.l`) -- Regressionstest in `runtests.sh` verankert;
+(b) eine EINMALIGE Kopie mit selbstgeschriebenen Tiny-C-String-Helfern
+(`tcStrncmp`/`tcStrchr`/... statt `extern`) lieferte ueber TinyVM UND (c)
+nativ per ARM64-Backend-Kompilat exakt dieselben 19 erwarteten Werte --
+inklusive der TRANSITIVEN lexikalischen Markierung (`markLexicalNode` markiert
+eine per `NTS` referenzierte Regel korrekt mit) und der korrekten
+Nicht-Markierung einer unreferenzierten Regel. Getestet mit einer echten
+Konfiguration (WHITESPACE-Escape-Dekodierung, TOKEN-Registrierung, mehrere
+COMMENT LINE/BLOCK-Marker, COMMENT BLOCK NESTED-Erkennung) analog zum
+`[LEXER]`-Block in `Data/tinyc.lextab` selbst. Die (b)/(c)-Verifikation ist
+NICHT dauerhaft in `runtests.sh` verankert (Wartungsaufwand einer zweiten
+String-Bibliothek nur fuers Testen unverhaeltnismaessig) -- nur (a) ist die
+dauerhafte Regression.
+
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
 
