@@ -2650,5 +2650,104 @@ else
 	echo "warn  tinyc static-Laufzeit-Initialisierer ARM64: Backend fehlt -- uebersprungen"
 fi
 
+# Selfhosting L2 Vollport (2026-07-26): ebnf.cpp-Vollport, naechster Ausschnitt
+# nach SourceTinyC/ebnf.tc -- writeWorkfile (Source/ebnf.cpp:1007-1130, die
+# komplette Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/
+# NTS-SYMBOLTABELLE/PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke).
+# ZWEI neue, live gefundene und gefixte Backend-Bugs (Source/tinyc_backend_c.cpp)
+# waren Voraussetzung: (1) LABEL/JMP/JZ/JNZ ("tc_L<n>") und emitCompare()s interne
+# Sprungmarken ("tc_cmp_yes_<n>"/"tc_cmp_done_<n>") hingen nur von einem PRO-DATEI
+# neu bei 0 startenden Zaehler ab -- kollidierten beim Mehrdatei-Link, sobald
+# ZWEI separat kompilierte Dateien beide Kontrollfluss/Vergleiche enthalten
+# (praktisch immer). (2) Dieselbe Kollision fuer die "-largedata"-Tabellen
+# tc_functab/tc_gadata, sobald zwei Dateien beide -largedata brauchen. Beide
+# jetzt mit psectName-Suffix eindeutig gemacht (Muster wie die bestehende
+# static-Namensverfremdung). Grund fuer den Fund: dies ist der ERSTE Test, der
+# ebnf.tc UND codegen.tc als ZWEI GETRENNT kompilierte Dateien real linkt
+# (bisherige ebnf.tc-Chunks wurden nur ALLEIN kompiliert/assembliert, nie
+# gegen codegen.tc gelinkt -- Konkatenation beider Dateien in EINER
+# tinyc_p-Kompilation, wie im Kopfkommentar von ebnf.tc als "schneller Test"
+# beschrieben, verletzt Quirk 8 (Deklarationen-vor-Funktionen GESAMT), siehe
+# docs/FORTSCHRITT.md -- ebnf.tc muss daher ALLEIN kompiliert werden, seine
+# eigenen Bare-Prototypen fuer codegen.tc-Funktionen reichen dem Frontend).
+# Ein VOLLER l68-Link ist fuer diesen Test bewusst NICHT das Kriterium: die
+# rekursive-Abstiegs-Parsergruppe (rule/expression/term/factor/.../
+# ebnfSyntax/lexikalischeAnalyse/exitProgram) hat noch KEINEN echten Rumpf
+# (siehe [[tinyc-vollport-status]]) -- ein l68-Lauf schlaegt deshalb ERWARTET
+# mit "unresolved symbol" fuer genau diese (hier nicht aufgerufenen) Funktionen
+# fehl. Verifiziert wird daher wie bei den bisherigen ebnf.tc-Chunks: kompiliert
+# sauber (Frontend) + assembliert fehlerfrei (echter r68) fuer BEIDE Dateien.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	wwtest_main='
+int main() {
+	void* fp;
+
+	aktTabIndex = 3;
+
+	lexTab[0].mode = "TS";
+	tcCopyBounded(lexTab[0].ident, "", 32);
+	tcCopyBounded(lexTab[0].TS, "ident", 32);
+	lexTab[0].trueAction = 1;
+	lexTab[0].falseAction = -2;
+	lexTab[0].callAddr = -1;
+
+	lexTab[1].mode = "RNG";
+	tcCopyBounded(lexTab[1].ident, "", 32);
+	tcCopyBounded(lexTab[1].TS, "digit", 32);
+	lexTab[1].rangeLo = 48;
+	lexTab[1].rangeHi = 57;
+	lexTab[1].trueAction = 2;
+	lexTab[1].falseAction = -2;
+	lexTab[1].callAddr = -1;
+
+	lexTab[2].mode = "NTS";
+	tcCopyBounded(lexTab[2].ident, "rule1", 32);
+	tcCopyBounded(lexTab[2].TS, "rule1", 32);
+	lexTab[2].trueAction = -1;
+	lexTab[2].falseAction = -2;
+	lexTab[2].callAddr = 0;
+
+	tcCopyBounded(ruleSymbols[0].name, "rule1", 32);
+	ruleSymbols[0].addr = 2;
+	ruleSymbolCnt = 1;
+
+	tcCopyBounded(testCases[0].input, "abc123", 255);
+	testCases[0].expectOk = 1;
+	tcCopyBounded(testCases[1].input, "xyz", 255);
+	testCases[1].expectOk = 0;
+	testCaseCnt = 2;
+
+	appendQuelltext("rule1 = ident ;");
+
+	fp = fopen("/tmp/tinyc_workfile_test.txt", "w");
+	writeWorkfile(fp);
+	fclose(fp);
+
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$wwtest_main" > build/tinyc_wwtest_a.ir 2>build/tinyc_wwtest_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_wwtest_b.ir 2>build/tinyc_wwtest_b.err && \
+		build/tinyc_backend build/tinyc_wwtest_a.ir build/tinyc_wwtest_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_wwtest_b.ir build/tinyc_wwtest_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_wwtest_a.s68 "$MWOS_TMP/wwtesta.a"
+		cp build/tinyc_wwtest_b.s68 "$MWOS_TMP/wwtestb.a"
+		rm -f "$MWOS_TMP/wwtesta.r" "$MWOS_TMP/wwtestb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtesta.a -o=M:\\TMP\\wwtesta.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtestb.a -o=M:\\TMP\\wwtestb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/wwtesta.r" ] && [ -s "$MWOS_TMP/wwtestb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: writeWorkfile (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (writeWorkfile) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/wwtesta.a "$MWOS_TMP"/wwtestb.a "$MWOS_TMP"/wwtesta.r "$MWOS_TMP"/wwtestb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (writeWorkfile) kompiliert nicht sauber (siehe build/tinyc_wwtest_a.err/build/tinyc_wwtest_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (writeWorkfile): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail

@@ -184,6 +184,13 @@ int lexerCfgLen;
 char cgenCfgBuf[4096];			/* CGEN_CFG_LEN */
 int cgenCfgLen;
 
+/* writeWorkfile()s tsList/tsMode: im Original lokale STATIC 2D-Arrays
+   (char[LEXTAB_LEN][IDENT_LEN+1] bzw. char[LEXTAB_LEN][4]) -- hier als
+   globale FLACHE 1D-Arrays, analog ruleNameListFlat (Quirk 4). Noetig
+   sowieso, da tsSymbolIndexOf (TEIL 4) bereits ein flaches char* erwartet. */
+char tsListFlat[33792];		/* LEXTAB_LEN * (IDENT_LEN+1) = 1024*33 */
+char tsModeFlat[4096];		/* LEXTAB_LEN * 4 = 1024*4 */
+
 /* lineStack (fuer expression()/term(), siehe push/pop) */
 int lineStack[1024];			/* LINESTACK_MAX */
 int lineStackIndex;
@@ -751,4 +758,206 @@ int tsSymbolIndexOf(char* tsListFlat, int tsCnt, char* sym) {
 		i = i + 1;
 	}
 	return -1;
+}
+
+/* Schreibt die komplette Arbeitsdatei. fp muss bereits per "w" geoeffnet sein
+   (WICHTIG: erst NACH loadPreservedTests() oeffnen, sonst ist der alte
+   TESTS-Block schon weg -- siehe Source/ebnf.cpp:1007-1130).
+
+   Tiny-C-Anpassungen gegenueber dem Original:
+   (1) tsList/tsMode: siehe Kommentar bei tsListFlat/tsModeFlat in TEIL 1.
+   (2) Jede Stelle, an der das Original ein Anfuehrungszeichen oder eine
+       LITERALE Backslash-Buchstabenfolge (als TEXT, nicht als Escape --
+       z.B. "\ooo" oder "\t\r\n" in einer Beispielkonfiguration) ausgibt,
+       ist umgebaut: ein Anfuehrungszeichen kann nie Teil eines Tiny-C-
+       String-Literals sein (Quirk 2, siehe TEIL-1-Kommentar oben) --
+       Workaround fputc(34, fp). Eine literale Backslash-Buchstabenfolge ist
+       NOCH trickreicher: Tiny-C's eigener String-Literal-Dekoder
+       (tcDecodeStringLit, Data/tinyc.lextab) verschluckt JEDEN Backslash
+       zusammen mit dem Folgezeichen (wird zu einem Escape-Byte, oder --
+       falls das Folgezeichen kein t/n/r/0 ist -- einfach zum blossen
+       Folgezeichen OHNE den Backslash). Ein literaler Backslash entkommt
+       dem nur, wenn er das LETZTE Zeichen direkt vor dem schliessenden
+       Anfuehrungszeichen ist (dann greift die Sonderbehandlung nicht, da
+       kein Folgezeichen mehr im selben Literal existiert). Deshalb hier:
+       Backslash und Folgebuchstabe in ZWEI GETRENNTEN Aufrufen ausgeben
+       (fputc(92, fp), dann ein EIGENES fprintf/fputc fuer den Buchstaben),
+       damit beide nie im selben Literal aufeinandertreffen. Die ZWEI echten
+       Tab-Zeichen im NUTZER-CODE-Beispieltext unten (einfaches "\t", nicht
+       doppelt escaped wie im ebnf.cpp-Original) sind dagegen ECHTE Tabs
+       (Einrueckung eines Assembler-Beispiels) -- die brauchen genau die
+       normale Escape-Dekodierung, bleiben also direkte "\t"-Literale.
+   (3) Ternaere Ausdruecke als fprintf-Argument sind bewusst vermieden:
+       eine int-Bedingung braucht ohnehin "!= 0" (Quirk 3), und eine
+       char*-Variable, der wechselweise ein Feld ODER ein String-Literal
+       zugewiesen wird, ist laut TEIL-3-Kommentar oben unerprobt --
+       stattdessen komplette if/else-Zweige mit dupliziertem fprintf-Aufruf
+       (String-Literale bleiben so immer direkte Funktionsargumente, der
+       einzige bereits erprobte Fall). */
+void writeWorkfile(void* fp) {
+	int i;
+	int tsCnt;
+	char enc[72];		/* 2*IDENT_LEN+8 = 2*32+8 */
+	int rngLo;
+	int rngHi;
+
+	tsCnt = 0;
+
+	fprintf(fp, "#================================================================================\n");
+	fprintf(fp, "# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf\n");
+	fprintf(fp, "# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben\n");
+	fprintf(fp, "# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht\n");
+	fprintf(fp, "# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).\n");
+	fprintf(fp, "# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf\n");
+	fprintf(fp, "# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).\n");
+	fprintf(fp, "#================================================================================\n\n");
+
+	/* Block 1: EBNF-QUELLTEXT (waehrend des Parsens von rule() mitgeschrieben) */
+	fprintf(fp, "[EBNF-QUELLTEXT]\n");
+	fprintf(fp, "%s", quelltextBuf);
+	if (quelltextLen > 0 && quelltextBuf[quelltextLen - 1] != 10) {		/* EOL */
+		fprintf(fp, "\n");
+	}
+	fprintf(fp, "[ENDE]\n\n");
+
+	/* Block 2: TS-SYMBOLTABELLE (distinkte Terminale, Reihenfolge = erstes Vorkommen) */
+	i = 0;
+	while (i < aktTabIndex) {
+		if ((strcmp(lexTab[i].mode, "TS") == 0 || strcmp(lexTab[i].mode, "RNG") == 0)
+			&& tsSymbolIndexOf(tsListFlat, tsCnt, lexTab[i].TS) < 0 && tsCnt < 1024) {
+			tcCopyBounded(&tsListFlat[tsCnt * 33], lexTab[i].TS, 32);
+			tcCopyBounded(&tsModeFlat[tsCnt * 4], lexTab[i].mode, 3);
+			tsCnt = tsCnt + 1;
+		}
+		i = i + 1;
+	}
+	fprintf(fp, "[TS-SYMBOLTABELLE]\n");
+	fprintf(fp, "# nr  typ  symbol\n");
+	i = 0;
+	while (i < tsCnt) {
+		encodeTSField(&tsListFlat[i * 33], enc, 72);
+		fprintf(fp, "%-4d %-4s %s\n", i, &tsModeFlat[i * 4], enc);
+		i = i + 1;
+	}
+	fprintf(fp, "[ENDE]\n\n");
+
+	/* Block 3: NTS-SYMBOLTABELLE (= ruleSymbols: Regelname + Startzeile) */
+	fprintf(fp, "[NTS-SYMBOLTABELLE]\n");
+	fprintf(fp, "# nr  startzeile  name\n");
+	i = 0;
+	while (i < ruleSymbolCnt) {
+		fprintf(fp, "%-4d %-11d %s\n", i, ruleSymbols[i].addr, ruleSymbols[i].name);
+		i = i + 1;
+	}
+	fprintf(fp, "[ENDE]\n\n");
+
+	/* Block 4: PARSER-TABELLE (Integer-Werte 1:1 wie intern, symbol = Rest der Zeile) */
+	fprintf(fp, "[PARSER-TABELLE]\n");
+	fprintf(fp, "# zeile true false addr rngLo rngHi regel modus symbol\n");
+	fprintf(fp, "# (symbol: Steuerzeichen/Backslash als ");
+	fputc(92, fp);
+	fprintf(fp, "ooo enkodiert -- Zeilenformat!)\n");
+	i = 0;
+	while (i < aktTabIndex) {
+		encodeTSField(lexTab[i].TS, enc, 72);
+		if (strcmp(lexTab[i].mode, "RNG") == 0) {
+			rngLo = (int) lexTab[i].rangeLo;
+			rngHi = (int) lexTab[i].rangeHi;
+		} else {
+			rngLo = 0;
+			rngHi = 0;
+		}
+		/* Auf ZWEI fprintf-Aufrufe aufgeteilt: der CALLEXT-Mechanismus fuer
+		   variadische extern-Aufrufe erlaubt max. 8 Stack-Argumente (siehe
+		   Kommentar oben) -- neun Werte in einem Aufruf (i/true/false/addr/
+		   rngLo/rngHi/ident/mode/enc) ueberschreiten das. */
+		fprintf(fp, "%-5d %-5d %-5d %-5d %-5d %-5d ",
+			i, lexTab[i].trueAction, lexTab[i].falseAction, lexTab[i].callAddr, rngLo, rngHi);
+		if (strlen(lexTab[i].ident) != 0) {
+			fprintf(fp, "%-16s %-4s %s\n", lexTab[i].ident, lexTab[i].mode, enc);
+		} else {
+			fprintf(fp, "%-16s %-4s %s\n", "-", lexTab[i].mode, enc);
+		}
+		i = i + 1;
+	}
+	fprintf(fp, "[ENDE]\n\n");
+
+	/* Block 5: TESTS (aus der alten Arbeitsdatei gerettet, unveraendert zurueckschreiben) */
+	fprintf(fp, "[TESTS]\n");
+	fprintf(fp, "# TEST ");
+	fputc(34, fp);
+	fprintf(fp, "<eingabe>");
+	fputc(34, fp);
+	fprintf(fp, " OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt\n");
+	i = 0;
+	while (i < testCaseCnt) {
+		fprintf(fp, "TEST ");
+		fputc(34, fp);
+		fprintf(fp, "%s", testCases[i].input);
+		fputc(34, fp);
+		if (testCases[i].expectOk != 0) {
+			fprintf(fp, " OK\n");
+		} else {
+			fprintf(fp, " FAIL\n");
+		}
+		i = i + 1;
+	}
+	fprintf(fp, "[ENDE]\n");
+
+	/* Block 6: LEXER-Konfiguration (roh erhalten; siehe codegen.tc lexParseConfig) */
+	fprintf(fp, "\n[LEXER]\n");
+	if (lexerCfgLen == 0) {
+		fprintf(fp, "# Optional: aktiviert Whitespace-/Kommentar-Behandlung im ERZEUGTEN Parser.\n");
+		fprintf(fp, "# WHITESPACE = ");
+		fputc(34, fp);
+		fprintf(fp, " ");
+		fputc(92, fp); fprintf(fp, "t");
+		fputc(92, fp); fprintf(fp, "r");
+		fputc(92, fp); fprintf(fp, "n");
+		fputc(34, fp);
+		fprintf(fp, "\n");
+		fprintf(fp, "# TOKEN ident            (Regel wird lexikalisch: Zeichen muessen adjazent sein)\n");
+		fprintf(fp, "# COMMENT LINE = ");
+		fputc(34, fp); fprintf(fp, "//"); fputc(34, fp);
+		fprintf(fp, "\n");
+		fprintf(fp, "# COMMENT BLOCK = ");
+		fputc(34, fp); fprintf(fp, "(*"); fputc(34, fp);
+		fprintf(fp, " ");
+		fputc(34, fp); fprintf(fp, "*)"); fputc(34, fp);
+		fprintf(fp, "          (NESTED vor '=' erlaubt Schachtelung)\n");
+	} else {
+		fprintf(fp, "%s", lexerCfgBuf);
+	}
+	fprintf(fp, "[ENDE]\n");
+
+	/* Block 6b: CODEGEN-Optionen (roh erhalten, geparst von cgenParseConfig()) */
+	fprintf(fp, "\n[CODEGEN]\n");
+	if (cgenCfgLen == 0) {
+		fprintf(fp, "# Optional: Ausgabe-Optionen der Codegenerierung.\n");
+		fprintf(fp, "# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)\n");
+		fprintf(fp, "# M68K PSECT = name      (psect-Name, Default: <basisname>_p)\n");
+	} else {
+		fprintf(fp, "%s", cgenCfgBuf);
+	}
+	fprintf(fp, "[ENDE]\n");
+
+	/* Block 7: NUTZER-CODE. Bleibt absichtlich roh (siehe Original-Kommentar). */
+	fprintf(fp, "\n[NUTZER-CODE]\n");
+	if (userCodeLen == 0) {
+		fprintf(fp, "# Semantische Aktionen (siehe docs/ARCHITEKTUR.md, Abschnitt 9). Beispiel:\n");
+		fprintf(fp, "# ACTION AFTER <regel> CALL <name>\n");
+		fprintf(fp, "# ROUTINE C <name>\n");
+		fprintf(fp, "# void <name>(const char* start, const char* end) { /* ... */ }\n");
+		fprintf(fp, "# END\n");
+		fprintf(fp, "# ROUTINE M68K <name>\n");
+		fprintf(fp, "# <name>:\t; a0 = Ende des erkannten Textes, MUSS erhalten bleiben\n");
+		fprintf(fp, "#\trts\n");
+		fprintf(fp, "# END\n");
+	} else {
+		fprintf(fp, "%s", userCodeBuf);
+		if (userCodeTruncated != 0) {
+			fprintf(fp, "# WARNUNG: Eingabe war groesser als %d Bytes.\n", 1048575);		/* USER_CODE_LEN - 1 */
+		}
+	}
+	fprintf(fp, "[ENDE]\n");
 }
