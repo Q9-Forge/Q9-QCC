@@ -851,6 +851,18 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-07-25 (Selfhosting L2): Pointer-Felder in struct -- IMMER 8 Byte
+		# Groesse/Ausrichtung (siehe tcRegisterStruct-Kommentar), damit dasselbe
+		# frontend-berechnete Offset fuer 68k (4-Byte-Pointer) UND ARM64 (8-Byte-
+		# Pointer) gueltig bleibt. Direkte Indizierung DURCH ein Pointer-Feld
+		# (p.field[i]) ist bewusst NICHT Teil dieser Version (wie zuvor bei
+		# Array-Feldern) -- Zugriff nur ueber eine Pointer-Zwischenvariable.
+		tc_check 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' 'Hi2'
+		if build/tinyc_p 'struct P{char* text;}; int main(){ struct P p; putint(p.text[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
+			echo "ok    tinyc: direkte Indizierung durch ein Pointer-Feld wird diagnostiziert (wie bei Array-Feldern zuvor)"
+		else
+			echo "FAIL  tinyc: Diagnose fuer Indizierung eines Pointer-Felds fehlt"; tcfail=1; fail=1
+		fi
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
 		# Obergrenze). arr[i1]..[iN] wird per Horner-Schema ueber N-1 Scratch-Globals
@@ -872,7 +884,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 135 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 136 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1280,6 +1292,23 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tool
 else
 	echo "warn  tinyc struct 68000 (p.field[i]): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
+# 2026-07-25 (Selfhosting L2): Pointer-Feld in struct -- 8 Byte Groesse/Ausrichtung
+# UNABHAENGIG von der Ziel-Architektur (siehe tcRegisterStruct-Kommentar), der
+# 68k-Backend nutzt davon nur die ersten 4 Byte. Zugriff nur ueber eine Pointer-
+# Zwischenvariable (kein direktes p.field[i] durch ein Pointer-Feld, wie zuvor
+# bei Array-Feldern).
+if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/tinyc_p 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' > build/tinyc_structptr.ir && \
+		build/tinyc_backend build/tinyc_structptr.ir build/tinyc_structptr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structptr.bin build/tinyc_structptr.s68 2>/dev/null && \
+		[ "$(python3 tools/tiny68sim.py build/tinyc_structptr.s68 2>/dev/null)" = "$(printf 'Hi2')" ]; then
+		echo "ok    tinyc struct 68000: Pointer-Feld (8-Byte-Layout, ueber Pointer-Zwischenvariable) korrekt"
+	else
+		echo "FAIL  tinyc struct 68000: Pointer-Feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct 68000 (Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+fi
 if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void.ir && \
 		build/tinyc_backend build/tinyc_void.ir build/tinyc_void.s68 && \
@@ -1553,6 +1582,19 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc struct ARM64 (p.field[i]): Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/tinyc_arm64_backend ]; then
+	if build/tinyc_p 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' > build/tinyc_structptr_arm64.ir && \
+		build/tinyc_arm64_backend build/tinyc_structptr_arm64.ir build/tinyc_structptr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structptr_arm64 build/tinyc_structptr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/tinyc_structptr_arm64)" = "$(printf 'Hi2')" ]; then
+		echo "ok    tinyc struct ARM64: Pointer-Feld (8-Byte-Layout, ueber Pointer-Zwischenvariable) korrekt"
+	else
+		echo "FAIL  tinyc struct ARM64: Pointer-Feld fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  tinyc struct ARM64 (Pointer-Feld): Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/tinyc_arm64_backend ]; then

@@ -23,7 +23,17 @@ enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
 
 structDecl  = "struct" structName "{" structField { structField } "}" ";" .
 structName  = ident .
-structField = type fieldName [ arraySize ] ";" .
+/* Pointer-Felder in struct (2026-07-25, Selfhosting L2): reine Skalar-Pointer
+   (z.B. "char* text;"), noch NICHT Pointer-Arrays oder struct-Pointer-Felder
+   (letztere waeren ohnehin durch das generelle struct-in-struct-Verbot
+   ausgeschlossen). Layout siehe tcRegisterStruct: Pointer-Felder werden
+   IMMER mit 8 Byte Groesse/Ausrichtung reserviert (nicht 4 wie beim 68k-
+   Backend selbst), damit dasselbe frontend-berechnete Byte-Layout fuer
+   BEIDE Architekturen gueltig bleibt (68k-Pointer sind 4 Byte, ARM64-Pointer
+   8 Byte -- ein einzelnes IR-Offset muesste sonst je nach Ziel-Architektur
+   unterschiedlich sein). Der 68k-Backend nutzt von diesem 8-Byte-Slot nur
+   die ersten 4 Byte (identisch zum Layout einer lokalen Pointer-Variable). */
+structField = type pointerDecl fieldName [ arraySize ] ";" .
 fieldName   = ident .
 
 typedefDecl = "typedef" typedefType typedefTargetName ";" .
