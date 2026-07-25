@@ -23,7 +23,14 @@
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
 #define MAX_IR_LINES    65536
 #define MAX_FUNCS       256
-#define MAX_GLOBALS     256
+/* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceTinyC/
+   codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
+   Nachweis: JEDES String-Literal im Tiny-C-Quelltext wird zu einem
+   anonymen __strN-Global, und das kumulative Kompilat hat inzwischen weit
+   ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
+   Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
+   nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
+#define MAX_GLOBALS     1024
 #define MAX_ARRAY_LEN   4096
 
 typedef struct {
@@ -606,7 +613,7 @@ static void emitIR(FILE* out) {
 		int mainIdx = findFunction("main");
 		fputs("tc_start:\n", out);
 		if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
-			if (largeDataMode && globalCount > 0) fputs("\tlea\ttc_gadata(pc),a3\n", out);
+			if (largeDataMode) fputs("\tlea\ttc_gadata(pc),a3\n", out);
 		if (mainIdx >= 0) {
 			char mainAsmName[NAME_LEN + 40];
 			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
@@ -640,17 +647,23 @@ static void emitIR(FILE* out) {
 		   Rest des Programms wird. Reihenfolge MUSS exakt zu gidx*4 (siehe
 		   findGlobal()) passen -- AUCH declOnly-Externe bekommen einen
 		   Eintrag ("dc.l tc_g_X" ist fuer diese eine ganz normale externe
-		   Symbolreferenz, von l68 wie jede andere aufgeloest). */
-		if (globalCount > 0) {
-			fprintf(out, "%s Daten-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
-			emitAlign(out);
-			fputs("tc_gadata:\n", out);
-			for (gi = 0; gi < globalCount; gi++) {
-				char gAsmName[NAME_LEN + 40];
-				mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
-				fprintf(out, "\tdc.l\t%s\n", gAsmName);
-			}
+		   Symbolreferenz, von l68 wie jede andere aufgeloest). IMMER emittiert
+		   (nicht nur bei globalCount > 0): der ZUSAETZLICHE Eintrag am Ende
+		   (Offset globalCount*4, siehe extcallTmpTableOffset()) fuer
+		   tc_extcall_tmp wird UNABHAENGIG von echten Globalen gebraucht, sobald
+		   irgendein externer Aufruf mit Stack-Argumenten vorkommt -- dasselbe
+		   Skalierungsproblem wie bei echten Globalen (PC-relatives
+		   "lea tc_extcall_tmp(pc),a0" direkt an der Aufrufstelle wuerde brechen,
+		   sobald der Abstand zum spaet liegenden Scratch-Puffer >32 KB wird). */
+		fprintf(out, "%s Daten-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
+		emitAlign(out);
+		fputs("tc_gadata:\n", out);
+		for (gi = 0; gi < globalCount; gi++) {
+			char gAsmName[NAME_LEN + 40];
+			mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
+			fprintf(out, "\tdc.l\t%s\n", gAsmName);
 		}
+		fputs("\tdc.l\ttc_extcall_tmp\n", out);
 	}
 
 	/* os9Mode + largeDataMode: main ist der einzige Einsprungpunkt (kein
@@ -682,7 +695,7 @@ static void emitIR(FILE* out) {
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
 			if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
-			if (largeDataMode && globalCount > 0) fputs("\tlea\ttc_gadata(pc),a3\n", out);
+			if (largeDataMode) fputs("\tlea\ttc_gadata(pc),a3\n", out);
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
 		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
@@ -940,11 +953,18 @@ static void emitIR(FILE* out) {
 				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
 				int ai;
 				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
-				/* PC-relative Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein
-				   freies Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen
-				   eigene Emission hinaus als gueltig vorausgesetzt) -- passend zum PIC-Stil
-				   des restlichen Backends (vgl. tc_g_<name>(pc)-Zugriffe). */
-				if (stackArgs > 0) fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
+				/* Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein freies
+				   Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen eigene
+				   Emission hinaus als gueltig vorausgesetzt). small: PC-relative "lea"
+				   passend zum PIC-Stil des restlichen Backends (vgl. tc_g_<name>(pc)-
+				   Zugriffe); large: derselbe a3-Indirektionsmechanismus wie bei echten
+				   Globalen (siehe emitLeaGlobal()-Kommentar) -- tc_extcall_tmp bekommt
+				   dafuer einen zusaetzlichen Tabelleneintrag NACH allen echten Globalen
+				   (Offset globalCount*4). */
+				if (stackArgs > 0) {
+					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n", globalCount * 4);
+					else fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
+				}
 				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n", ai * 4);
 				if (hasD1) fputs("\tmove.l\t(a7)+,d1\n", out);
 				if (hasD0) fputs("\tmove.l\t(a7)+,d0\n", out);

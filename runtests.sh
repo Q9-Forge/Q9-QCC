@@ -1694,6 +1694,80 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (genParserC): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): letzter Ausschnitt
+	# von codegen.cpp -- 68k-Backend (charComment/emitConsume68k/
+	# emitLongerLiteralReject68k/genNode68k/emitLexHelpers68k/genParser68kTo/
+	# genParser68k/genParser68kOS9, Source/codegen.cpp Zeilen 858+1181-1580). Damit
+	# ist der GESAMTE Vollport von codegen.cpp abgeschlossen. Erzeugt reinen
+	# 68k-Assemblertext -- KEINE C-Operatoren (&&/||) und KEINE eingebetteten
+	# Anfuehrungszeichen im generierten Code, daher weder der emitAndAnd/emitOrOr-
+	# noch der fputc(34,fp)-Workaround aus genParserC hier gebraucht.
+	#
+	# DREI weitere Funde/Fixes waehrend dieses Chunks:
+	# 1. DIESELBE "?"-Variante des logical-frame-Bugs (siehe genParserC): ein
+	#    String-Literal mit "?" als Text ("Identifikator-Zeichen? d0.b...") loeste
+	#    "tinyc: conditional-frame mismatch" aus (tcTernaryDepth-Tracking).
+	#    Gefixt per neuem emitQMark(fp)-Helfer (ein fputc(63,fp)), analog zu
+	#    emitAndAnd/emitOrOr.
+	# 2. Backend-eigene MAX_GLOBALS-Grenze (256, GETRENNT von der Frontend-
+	#    Grenze in Data/tinyc.lextab) blockierte den Skalierungsnachweis: JEDES
+	#    String-Literal im Tiny-C-Quelltext wird zu einem anonymen __strN-Global,
+	#    das kumulative Kompilat hat inzwischen weit ueber 256 davon. Erhoeht auf
+	#    1024 (Source/tinyc_backend_c.cpp).
+	# 3. Ein WEITERER echter Skalierungsbug im 68k-Backend: tc_extcall_tmp (der
+	#    Scratch-Puffer fuer externe Aufrufe mit Stack-Argumenten) wurde bisher
+	#    IMMER per PC-relativem "lea tc_extcall_tmp(pc),a0" direkt an der
+	#    Aufrufstelle referenziert -- unabhaengig von -largedata. Brach aus
+	#    demselben Grund wie der tc_gadata-Fund zuvor. Gefixt nach demselben
+	#    a3-Muster: tc_extcall_tmp bekommt einen ZUSAETZLICHEN Eintrag in
+	#    tc_gadata (Offset globalCount*4, direkt nach allen echten Globalen);
+	#    tc_gadata wird jetzt IMMER emittiert (nicht nur bei globalCount > 0).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		genparser68ktest_main='
+int main() {
+	int m;
+	int m2;
+	int ok;
+	astReset();
+	astPushTS("x"); astFinishRule("sub");
+	m = astMark();
+	astPushTS("a");
+	m2 = astMark();
+	astPushTS("b"); astPushTS("c"); astGroupAlt(m2);
+	astPushTS("d"); astWrapOpt();
+	astPushTS("e"); astWrapRep();
+	astPushNTS("sub");
+	astGroupSeq(m);
+	astFinishRule("test");
+	ok = genParser68kOS9("/tmp/tinyc_genparser68k_output.a", "testbase");
+	putint(ok);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$genparser68ktest_main" > build/tinyc_genparser68ktest.ir 2>build/tinyc_genparser68ktest.err && \
+			build/tinyc_backend build/tinyc_genparser68ktest.ir build/tinyc_genparser68ktest_os9.a -os9 -largedata; then
+			cp build/tinyc_genparser68ktest_os9.a "$MWOS_TMP/genparser68ktest.a"
+			rm -f "$MWOS_TMP/genparser68ktest.r" "$MWOS_TMP/genparser68ktest.out" "$MWOS_TMP/genparser68ktest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\genparser68ktest.a -o=M:\\TMP\\genparser68ktest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/genparser68ktest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparser68ktest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparser68ktest.out -s=M:\\TMP\\genparser68ktest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/genparser68ktest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: 68k-Backend (SourceTinyC/codegen.tc, Vollport von codegen.cpp abgeschlossen) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (68k-Backend) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (68k-Backend) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/genparser68ktest.a "$MWOS_TMP"/genparser68ktest.r "$MWOS_TMP"/genparser68ktest.out "$MWOS_TMP"/genparser68ktest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (68k-Backend) kompiliert nicht sauber (siehe build/tinyc_genparser68ktest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (68k-Backend): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
