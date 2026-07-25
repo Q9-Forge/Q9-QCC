@@ -379,6 +379,80 @@ Einschraenkungen gefunden und (bis auf die letzte) behoben:**
    FUNKTIONSAUFRUFEN") jetzt geloest** -- `-largedata` deckt Daten UND
    Funktionsaufrufe vollstaendig ab.
 
+## Selfhosting L2 Vollport: `ebnf.cpp`, Schritt 2 -- LAEUFT (ab 2026-07-25 nachts)
+
+Nach dem kompletten `codegen.cpp`-Vollport (siehe oben) folgt jetzt `Source/ebnf.cpp`
+(2149 Zeilen) nach `SourceTinyC/ebnf.tc`, gleiche Architektur (eigene Datei, ruft
+`codegen.tc`s Funktionen ueber bare Prototypen/interne bsr-ABI, siehe Mehrdatei-
+Feature). Chronologischer Fortschritt und alle dabei gefundenen Tiny-C-Sprachquirks
+stehen in der Memory-Datei `[[tinyc-vollport-status]]` (dort laufend aktualisiert,
+nicht hier dupliziert). Bisher portiert: globale Structs/Zustandsvariablen (TEIL 1),
+Zeichen-/Puffer-Helfer, Tabellendruck (`printLexTab`), Adressaufloesung
+(`resolveCallAddresses`), Linksrekursions-Pruefung (komplett), Stack-Maschine
+(`execFrom`), Arbeitsdatei-Helfer (`appendUserCodeLine`/`appendLexerCfgLine`/
+`appendCgenCfgLine`/`tsSymbolIndexOf`).
+
+**2026-07-26: `writeWorkfile` portiert** (`Source/ebnf.cpp:1007-1130`, die komplette
+Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/NTS-SYMBOLTABELLE/
+PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke). Neue Tiny-C-Erkenntnisse:
+
+- **Literale Backslash-Buchstabenfolgen als TEXT** (z. B. das Original schreibt
+  `"\ooo"` oder `" \t\r\n"` als dokumentierende BEISPIEL-Konfigurationswerte in
+  die generierte Datei, nicht als Escape-Sequenz) lassen sich NICHT einfach als
+  Tiny-C-String-Literal schreiben: der echte Tiny-C-String-Literal-Dekoder
+  (`tcDecodeStringLit`, `Data/tinyc.lextab`) verschluckt JEDEN Backslash
+  zusammen mit dem Folgezeichen (wird zu einem Escape-Byte fuer `n`/`t`/`r`/`0`,
+  sonst zum blossen Folgezeichen OHNE den Backslash). Workaround: den Backslash
+  und den Folgebuchstaben in ZWEI GETRENNTEN `fputc`/`fprintf`-Aufrufen ausgeben,
+  damit sie nie im selben Literal aufeinandertreffen (ein einzelner, direkt vor
+  dem schliessenden Anfuehrungszeichen stehender Backslash entkommt der
+  Sonderbehandlung, da dann kein Folgezeichen mehr im selben Literal existiert).
+  ECHTE Tabs (Einrueckung in einem Assembler-Beispieltext, einfaches `\t` im
+  C++-Original) sind davon NICHT betroffen und bleiben normale `\t`-Literale --
+  die normale Escape-Dekodierung liefert dort genau das gewuenschte Tab-Byte.
+- **CALLEXT-Grenze "max. 8 Stack-Argumente" real getroffen:** eine `fprintf`-Zeile
+  mit neun Werten nach dem Formatstring (Zeile/true/false/addr/rngLo/rngHi/
+  ident/modus/symbol) musste auf zwei `fprintf`-Aufrufe aufgeteilt werden.
+- Ternaere Ausdruecke als `fprintf`-Argument weiterhin bewusst vermieden (siehe
+  bereits bekannte Gruende in `SourceTinyC/ebnf.tc`) -- komplette if/else-Zweige
+  mit dupliziertem Aufruf stattdessen.
+
+**ZWEI live gefundene und gefixte Backend-Bugs (`Source/tinyc_backend_c.cpp`),
+Voraussetzung fuer den ersten ECHTEN Zwei-Datei-Link von `ebnf.tc` gegen
+`codegen.tc`** (bisherige `ebnf.tc`-Chunks wurden nur ALLEIN kompiliert/
+assembliert, nie gegen `codegen.tc` gelinkt): beide Male dieselbe Bugklasse wie
+schon beim `-largedata`-a3-Fund (siehe oben) -- ein rein INTERNER, in JEDER
+Datei wieder bei 0 startender Zaehler erzeugt einen Symbolnamen, der r68/l68
+(kein Sichtbarkeitskonzept, jedes Label automatisch global sichtbar beim
+Linken) als ECHTEN globalen Namen sieht:
+1. `LABEL`/`JMP`/`JZ`/`JNZ` (`tc_L<n>`) UND `emitCompare()`s interne
+   Sprungmarken (`tc_cmp_yes_<n>`/`tc_cmp_done_<n>`) kollidierten, sobald zwei
+   getrennt kompilierte Dateien BEIDE Kontrollfluss bzw. einen Vergleichsoperator
+   enthalten (praktisch immer der Fall).
+2. Dieselbe Kollision fuer die `-largedata`-Indirektionstabellen `tc_functab`/
+   `tc_gadata` (inkl. aller `lea ...(pc),a3`/`a4`-Referenzen darauf), sobald
+   zwei Dateien beide mit `-largedata` kompiliert werden.
+
+Beide Faelle jetzt mit `psectName`-Suffix eindeutig gemacht (exakt dasselbe
+Namensverfremdungs-Muster wie bei `static`-Funktionen/-Globalen, nur OHNE die
+`isStatic`-Bedingung -- diese Namen sind NIE etwas, das eine andere Datei
+ansprechen koennen soll). Volle `runtests.sh`-Suite nach dem Fix weiterhin
+komplett gruen (inkl. der bestehenden Mehrdatei-M2-Tests, die pruefen, dass
+eine ECHTE Namenskollision -- zwei nicht-static Definitionen desselben
+Symbols -- weiterhin korrekt als `"duplicate symbol"` abgelehnt wird).
+
+**Wichtig fuer den Verifikationsmassstab:** ein VOLLER `l68`-Link von `ebnf.tc`
+gegen `codegen.tc` ist weiterhin NICHT das Kriterium fuer diesen Chunk -- die
+rekursive-Abstiegs-Parsergruppe (`rule`/`expression`/`term`/`factor`/.../
+`ebnfSyntax`/`lexikalischeAnalyse`/`exitProgram`) hat noch keinen echten Rumpf
+(siehe `[[tinyc-vollport-status]]`), ein Link schlaegt daher ERWARTET mit
+"unresolved symbol" fuer genau diese (hier nicht aufgerufenen) Funktionen fehl.
+Verifiziert wie bei den bisherigen `ebnf.tc`-Chunks: `ebnf.tc` kompiliert sauber
+(Frontend, ALLEIN -- Konkatenation mit `codegen.tc` in einer `tinyc_p`-
+Kompilation verletzt Quirk 8, Deklarationen-vor-Funktionen GESAMT ueber beide
+Dateien) UND assembliert fehlerfrei (echter `r68`) fuer BEIDE Dateien getrennt.
+Regressionstest in `runtests.sh` verankert.
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |

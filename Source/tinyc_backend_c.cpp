@@ -541,10 +541,18 @@ static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 }
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
+	/* tc_cmp_yes_<id>/tc_cmp_done_<id> sind reine interne Sprungmarken, KEINE
+	   Tiny-C-Symbole -- ohne psectName-Suffix kollidieren sie beim Mehrdatei-
+	   Link, sobald ZWEI separat kompilierte Dateien beide mindestens einen
+	   Vergleichsoperator benutzen (r68/l68 kennen kein Sichtbarkeitskonzept,
+	   siehe mangledName()-Kommentar -- id allein ist nur PRO DATEI eindeutig,
+	   der serial-Zaehler startet in jeder Datei wieder bei 0). Live gefunden
+	   beim ersten echten Zwei-Datei-Link von SourceTinyC/ebnf.tc gegen
+	   codegen.tc (2026-07-26, writeWorkfile-Chunk), siehe docs/FORTSCHRITT.md. */
 	int id = (*serial)++;
 	fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tcmp.l\td1,d0\n\tmoveq\t#0,d0\n");
-	fprintf(out, "\t%s\ttc_cmp_yes_%d\n\tbra\ttc_cmp_done_%d\n", branch, id, id);
-	fprintf(out, "tc_cmp_yes_%d:\tmoveq\t#1,d0\ntc_cmp_done_%d:\tmove.l\td0,-(a7)\n", id, id);
+	fprintf(out, "\t%s\ttc_cmp_yes_%d__%s\n\tbra\ttc_cmp_done_%d__%s\n", branch, id, psectName, id, psectName);
+	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
 // 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
@@ -623,8 +631,8 @@ static void emitIR(FILE* out) {
 	} else {
 		int mainIdx = findFunction("main");
 		fputs("tc_start:\n", out);
-		if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
-			if (largeDataMode) fputs("\tlea\ttc_gadata(pc),a3\n", out);
+		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n", psectName);
+			if (largeDataMode) fprintf(out, "\tlea\ttc_gadata__%s(pc),a3\n", psectName);
 		if (mainIdx >= 0) {
 			char mainAsmName[NAME_LEN + 40];
 			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
@@ -642,7 +650,7 @@ static void emitIR(FILE* out) {
 		   Tiny-C-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
 		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
 		emitAlign(out);
-		fputs("tc_functab:\n", out);
+		fprintf(out, "tc_functab__%s:\n", psectName);
 		for (fi = 0; fi < funcCount; fi++) {
 			char asmName[NAME_LEN + 40];
 			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
@@ -668,7 +676,7 @@ static void emitIR(FILE* out) {
 		   sobald der Abstand zum spaet liegenden Scratch-Puffer >32 KB wird). */
 		fprintf(out, "%s Daten-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
 		emitAlign(out);
-		fputs("tc_gadata:\n", out);
+		fprintf(out, "tc_gadata__%s:\n", psectName);
 		for (gi = 0; gi < globalCount; gi++) {
 			char gAsmName[NAME_LEN + 40];
 			mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
@@ -705,8 +713,8 @@ static void emitIR(FILE* out) {
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
-			if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
-			if (largeDataMode) fputs("\tlea\ttc_gadata(pc),a3\n", out);
+			if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n", psectName);
+			if (largeDataMode) fprintf(out, "\tlea\ttc_gadata__%s(pc),a3\n", psectName);
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
 		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
@@ -905,13 +913,19 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PCMPLE") == 0) { emitCompare(out, "bls", &serial);
 			} else if (strcmp(op, "PCMPGE") == 0) { emitCompare(out, "bcc", &serial);
 			} else if (strcmp(op, "LABEL") == 0 && insP->argc == 1) {
-				fprintf(out, "tc_%s:\n", insP->args[0]);
+				/* psectName-Suffix aus demselben Grund wie bei emitCompare oben:
+				   LABEL-Namen (tc_L0, tc_L1, ...) kommen aus der Tiny-C-Frontend-
+				   eigenen Label-Nummerierung, die in JEDER Datei wieder bei 0
+				   startet -- ohne Suffix kollidieren sie beim Mehrdatei-Link,
+				   sobald zwei Dateien beide Kontrollfluss (if/while/for/...)
+				   enthalten (praktisch immer der Fall). */
+				fprintf(out, "tc_%s__%s:\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JMP") == 0 && insP->argc == 1) {
-				fprintf(out, "\tbra\ttc_%s\n", insP->args[0]);
+				fprintf(out, "\tbra\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JZ") == 0 && insP->argc == 1) {
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbeq\ttc_%s\n", insP->args[0]);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbeq\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JNZ") == 0 && insP->argc == 1) {
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s\n", insP->args[0]);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if ((strcmp(op, "CALL") == 0 || strcmp(op, "CALLP") == 0) && insP->argc == 2) {
 				int nargsC = number(insP->args[1], insP->line);
 				int callee = findFunction(insP->args[0]);
