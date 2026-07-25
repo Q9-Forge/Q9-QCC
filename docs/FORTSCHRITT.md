@@ -453,6 +453,23 @@ Kompilation verletzt Quirk 8, Deklarationen-vor-Funktionen GESAMT ueber beide
 Dateien) UND assembliert fehlerfrei (echter `r68`) fuer BEIDE Dateien getrennt.
 Regressionstest in `runtests.sh` verankert.
 
+**2026-07-26 (direkt im Anschluss): `rebuildFirstEdgesFromTable` portiert**
+(`Source/ebnf.cpp:1132-1156`, Fall B: Linksrekursions-Kanten aus einer
+GELADENEN Arbeitsdatei rekonstruieren statt waehrend des normalen Parsens
+ueber das `firstPos`-Flag). Kleiner, unproblematischer Chunk -- keine neuen
+Tiny-C-Grenzfaelle. Original nutzt C++s `for`/`continue`; hier wie im Rest
+der Datei per `while` umgesetzt (bewusst OHNE `continue`: der Trailing-
+Increment `r = r + 1` muesste sonst vor jedem `continue` wiederholt werden --
+die if-umschlossene Form vermeidet dieses Fussangel-Risiko). Das lokale
+`static int visited[LEXTAB_LEN]` des Originals wurde zu einem globalen
+`rebuildVisited[1024]` (analog `dfsColor`, reiner Scratch-Speicher, keine
+echte Persistenz noetig). Verifizierung wie bei `writeWorkfile`: kompiliert
+sauber, assembliert fehlerfrei (echter `r68`, `ebnf.tc`+`codegen.tc`
+getrennt) -- Regressionstest in `runtests.sh`. ZUSAETZLICH die reine
+Algorithmus-Logik einmalig gegen eine native C-Uebersetzung derselben
+Funktion samt Testdaten gegengeprueft (4 `lexTab`-Zeilen mit einer
+Linksrekursions-Kette): beide liefern `firstEdgeCnt=2`/`ruleNameListCnt=2`.
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |

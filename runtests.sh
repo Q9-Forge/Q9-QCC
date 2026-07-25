@@ -2749,5 +2749,74 @@ else
 	echo "warn  tinyc Selfhosting L2 Vollport (writeWorkfile): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
+# nach SourceTinyC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/ebnf.cpp:1132-1156,
+# Fall B: Linksrekursions-Kanten aus einer GELADENEN Arbeitsdatei rekonstruieren,
+# statt sie waehrend des normalen Parsens ueber das firstPos-Flag zu sammeln).
+# Haengt wie fast alles in ebnf.tc an extern strcmp/strlen (CALLEXT) -- TinyVM
+# kennt CALLEXT nicht, daher wie bei den bisherigen ebnf.tc-Chunks NUR strukturell
+# verifiziert (kompiliert sauber, echter r68 assembliert, ebnf.tc+codegen.tc
+# getrennt). ZUSAETZLICH die reine ALGORITHMUS-Logik einmalig gegen eine
+# native C-Uebersetzung derselben Funktion samt Testdaten (4 lexTab-Zeilen mit
+# einer Linksrekursions-Kette, 2 falseAction-erreichbare NTS-Kanten erwartet)
+# gegengeprueft -- beide liefern firstEdgeCnt=2/ruleNameListCnt=2, exakt wie im
+# Original-Algorithmus erwartet. Nicht dauerhaft als Skript verankert (gleiche
+# Abwaegung wie beim LEXER-Konfigurationsparser-Chunk: Wartungsaufwand einer
+# zweiten Testumgebung nur fuers Testen steht in keinem Verhaeltnis zum Nutzen).
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	rebuildtest_main='
+int main() {
+	aktTabIndex = 4;
+
+	lexTab[0].mode = "NTS";
+	tcCopyBounded(lexTab[0].ident, "start", 32);
+	tcCopyBounded(lexTab[0].TS, "middle", 32);
+	lexTab[0].falseAction = 1;
+
+	lexTab[1].mode = "TS";
+	tcCopyBounded(lexTab[1].ident, "", 32);
+	tcCopyBounded(lexTab[1].TS, "ident", 32);
+	lexTab[1].falseAction = 2;
+
+	lexTab[2].mode = "NTS";
+	tcCopyBounded(lexTab[2].ident, "", 32);
+	tcCopyBounded(lexTab[2].TS, "other", 32);
+	lexTab[2].falseAction = -2;
+
+	lexTab[3].mode = "TS";
+	tcCopyBounded(lexTab[3].ident, "middle", 32);
+	tcCopyBounded(lexTab[3].TS, "digit", 32);
+	lexTab[3].falseAction = -2;
+
+	rebuildFirstEdgesFromTable();
+
+	putint(firstEdgeCnt);
+	putint(ruleNameListCnt);
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rebuildtest_main" > build/tinyc_rebuildtest_a.ir 2>build/tinyc_rebuildtest_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rebuildtest_b.ir 2>build/tinyc_rebuildtest_b.err && \
+		build/tinyc_backend build/tinyc_rebuildtest_a.ir build/tinyc_rebuildtest_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_rebuildtest_b.ir build/tinyc_rebuildtest_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_rebuildtest_a.s68 "$MWOS_TMP/rebuilda.a"
+		cp build/tinyc_rebuildtest_b.s68 "$MWOS_TMP/rebuildb.a"
+		rm -f "$MWOS_TMP/rebuilda.r" "$MWOS_TMP/rebuildb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuilda.a -o=M:\\TMP\\rebuilda.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuildb.a -o=M:\\TMP\\rebuildb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/rebuilda.r" ] && [ -s "$MWOS_TMP/rebuildb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: rebuildFirstEdgesFromTable (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (rebuildFirstEdgesFromTable) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/rebuilda.a "$MWOS_TMP"/rebuildb.a "$MWOS_TMP"/rebuilda.r "$MWOS_TMP"/rebuildb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (rebuildFirstEdgesFromTable) kompiliert nicht sauber (siehe build/tinyc_rebuildtest_a.err/build/tinyc_rebuildtest_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (rebuildFirstEdgesFromTable): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail
