@@ -1611,6 +1611,89 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (C-Backend-Codegenerator): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- genParserC (der Rest des C-Backends: Datei-Header, Lexer-Helfer ws()/idch(),
+	# Action-Log-Runtime-Geruest, eine p_<regel>()-Funktion pro Regel, main() --
+	# Source/codegen.cpp Zeilen 1002-1168). SECHS Stellen im C++-Original betten ein
+	# Anfuehrungszeichen DIREKT in einen fprintf-Formatstring ein -- geht in Tiny-C
+	# nicht (siehe Quirk in tinyc-vollport-status.md), per fputc(34,fp)-Aufteilung
+	# umgeschrieben. ZWEI dieser Stellen haben zusaetzlich ein "%%"-Selbstescape im
+	# Original (literales "%" ohne eigenes Substitutionsargument) -- als "%s"-Argument
+	# uebergeben statt direkt in den Formatstring geschrieben (sonst re-interpretiert
+	# Tiny-C/clib.l's fprintf das "%" als Formatzeichen).
+	#
+	# WICHTIGER, EIGENSTAENDIGER FUND waehrend dieses Chunks (nicht der Port selbst,
+	# sondern ZWEI echte Bugs in der Toolchain):
+	# 1. Ein bisher unbekannter Tiny-C-PARSER-Bug: ein Tiny-C-String-Literal, das die
+	#    Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (hier: generierter C-Code
+	#    braucht selbst && / || in ws()/idch()), loeste eine falsche "tinyc: logical-
+	#    frame mismatch"-Diagnose aus. NICHT die Grammatik gefixt (Risiko/Aufwand vs.
+	#    Nutzen) -- stattdessen jede betroffene Stelle per fputc(38,fp)/fputc(124,fp)
+	#    umgeschrieben (emitAndAnd/emitOrOr-Helfer), sodass "&&"/"||" nie als
+	#    zusammenhaengende Zeichenfolge in einem Tiny-C-String-Literal auftaucht.
+	# 2. Ein ECHTER SKALIERUNGSBUG im 68k-Backend selbst (Source/tinyc_backend_c.cpp):
+	#    das -largedata-Datenmodell lud JEDEN Tabelleneintrag bisher per EIGENEM
+	#    PC-relativem Label ("movea.l tc_ga_X(pc),reg") -- das brach, sobald der
+	#    GESAMTE Funktionscode zwischen einer fruehen Funktion (z.B. "main", die per
+	#    -largedata-Funktionsaufruf-Fix immer zuerst emittiert wird) und der Tabelle
+	#    selbst (die NACH allen Funktionsrumpf-Texten lag) mehr als 32 KB umfasste --
+	#    genau das trat beim ersten echten Skalierungstest fuer SourceTinyC/codegen.tc
+	#    auf (kumulatives Kompilat inzwischen weit ueber 32 KB Code) und liess
+	#    RUECKWIRKEND ALLE bisherigen Vollport-Regressionstests fehlschlagen (der
+	#    naechste Funktionsaufruf/Global-Zugriff konnte die Tabelle nicht mehr
+	#    erreichen). GEFIXT nach EXAKT demselben Muster wie tc_functab/a4: ein Register
+	#    (a3) wird EINMAL beim Programmstart auf die absolute Adresse EINER
+	#    kombinierten Tabelle (tc_gadata, direkt nach tc_functab, vor allen
+	#    Funktionsrumpf-Texten) gesetzt; jeder Globalzugriff wird zu "move.l
+	#    <gidx*4>(a3),reg" statt einem PC-relativen Tabellen-Label-Load. tools/
+	#    tiny68sim.py (Test-Simulator) musste dafuer a3 in sein generisches
+	#    Adressregister-Dict aufnehmen (war zuvor auf a0/a2/a4 beschraenkt).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		genparsertest_main='
+int main() {
+	int m;
+	int m2;
+	int ok;
+	astReset();
+	astPushTS("x"); astFinishRule("sub");
+	m = astMark();
+	astPushTS("a");
+	m2 = astMark();
+	astPushTS("b"); astPushTS("c"); astGroupAlt(m2);
+	astPushTS("d"); astWrapOpt();
+	astPushTS("e"); astWrapRep();
+	astPushNTS("sub");
+	astGroupSeq(m);
+	astFinishRule("test");
+	ok = genParserC("/tmp/tinyc_genparserc_output.c");
+	putint(ok);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$genparsertest_main" > build/tinyc_genparsertest.ir 2>build/tinyc_genparsertest.err && \
+			build/tinyc_backend build/tinyc_genparsertest.ir build/tinyc_genparsertest_os9.a -os9 -largedata; then
+			cp build/tinyc_genparsertest_os9.a "$MWOS_TMP/genparsertest.a"
+			rm -f "$MWOS_TMP/genparsertest.r" "$MWOS_TMP/genparsertest.out" "$MWOS_TMP/genparsertest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\genparsertest.a -o=M:\\TMP\\genparsertest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/genparsertest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparsertest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparsertest.out -s=M:\\TMP\\genparsertest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/genparsertest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: genParserC (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (genParserC) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (genParserC) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/genparsertest.a "$MWOS_TMP"/genparsertest.r "$MWOS_TMP"/genparsertest.out "$MWOS_TMP"/genparsertest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (genParserC) kompiliert nicht sauber (siehe build/tinyc_genparsertest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (genParserC): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend

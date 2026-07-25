@@ -97,10 +97,14 @@ def run(instructions, labels, global_initials=None):
     d = [0] * 8
     a6 = 0
     a7 = 0x100000
-    # Adressregister a0/a2/a4 (2026-07-25 auf ein generisches Dict erweitert, vorher
-    # nur a0 als eigene Variable -- a2 fuer -largedata-Funktionsaufruf-Indirektion,
-    # a4 als Basis der Funktionstabelle, siehe emitCall() in tinyc_backend_c.cpp).
-    areg = {0: None, 2: None, 4: None}
+    # Adressregister a0/a2/a3/a4 (2026-07-25 auf ein generisches Dict erweitert,
+    # vorher nur a0 als eigene Variable -- a2 fuer -largedata-Funktionsaufruf-
+    # Indirektion, a4 als Basis der Funktionstabelle (siehe emitCall() in
+    # tinyc_backend_c.cpp), a3 als Basis der -largedata-DATEN-Indirektions-
+    # tabelle tc_gadata (siehe emitLeaGlobal()-Kommentar dort -- abgeloest das
+    # fruehere Design mit einem PC-relativen Label PRO Globaler, das bei
+    # grossem kumulativem Code selbst unerreichbar wurde).
+    areg = {0: None, 2: None, 3: None, 4: None}
     output = []
     flags = {"z": False, "n": False, "v": False, "c": False, "x": False}
 
