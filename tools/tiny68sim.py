@@ -86,6 +86,8 @@ def run(instructions, labels, global_initials=None):
 
     def read_operand(text):
         text = text.strip()
+        match = re.match(r"#(-?\d+)$", text)
+        if match: return int(match.group(1))
         match = re.match(r"d([0-7])$", text)
         if match: return d[int(match.group(1))]
         if text == "a6": return a6

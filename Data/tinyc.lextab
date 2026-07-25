@@ -378,13 +378,11 @@
  <target>                         = <directTarget> 
                                   | <indirectTarget> .
 
- <directTarget>                   = <ident> [ <index> { <index> } 
-                                  | <member> [ <index> ] ] .
+ <directTarget>                   = <ident> [ <index> { <index> } ] [ <member> [ <index> ] ] .
 
  <indirectTarget>                 = "*" <factor> .
 
- <varRef>                         = <ident> [ <index> { <index> } 
-                                  | <member> [ <index> ] ] .
+ <varRef>                         = <ident> [ <index> { <index> } ] [ <member> [ <index> ] ] .
 
  <index>                          = <indexOpen> <expr> "]" .
 
@@ -1773,6 +1771,20 @@ static int tcCountTopIndexes(const char* p, const char* end) {
 	}
 	return count;
 }
+/* p zeigt auf "[" -- liefert einen Zeiger genau HINTER die zugehoerige,
+   klammertiefen-bewusste schliessende "]" (verschachtelte Klammern wie
+   "arr[b[k]]" werden korrekt uebersprungen, nicht bei der ERSTEN "]" abgebrochen).
+   Wird von arr[i].feld (2026-07-25) gebraucht, um nach dem Index-Ausdruck zu
+   pruefen, ob direkt danach ein "." (Feldzugriff) folgt. */
+static const char* tcSkipOneIndex(const char* p, const char* end) {
+	int depth = 0;
+	while (p < end) {
+		if (*p == '[') depth++;
+		else if (*p == ']') { depth--; p++; if (depth == 0) return p; continue; }
+		p++;
+	}
+	return p;
+}
 /* arr[i1][i2]...[iN] -- der Laufzeit-Operandenstack traegt an dieser Stelle
    bereits [i1, i2, ..., iN] (i1 unten, iN oben, durch die N bereits geparsten
    Index-Ausdruecke). Direktes MUL/ADD wuerde die FALSCHEN Operanden erwischen
@@ -2024,7 +2036,12 @@ void tc_local(const char* start, const char* end) {
 		fprintf(stderr, "tinyc: void is not a valid variable type\n"); tcSemanticErrors++;
 		tcLocalTypes[tcLocalCount] = tcCurrentType = tcMakeType('i', 0);
 	}
-	tcLocalArrayLen[tcLocalCount] = tcCurrentType.base == 's' ? tcStructFieldCount[tcCurrentType.structId - 1] : 0;
+	/* NUR 0 hier -- die tatsaechliche Array-Laenge (falls "[N]" folgt) wird erst
+	   in tc_localdecl bekannt (siehe dort). Frueher wurde hier faelschlich die
+	   FELDANZAHL des structs als Array-Laenge zweckentfremdet (bedeutungslos
+	   fuer "ist das ein Array" -- siehe FORTSCHRITT.md "Bewusst offen" fuer den
+	   2026-07-25 gefundenen Bug, den das hier behebt). */
+	tcLocalArrayLen[tcLocalCount] = 0;
 	tcLocalArrayNDims[tcLocalCount] = 1;
 	/* siehe tc_param: "const" auf einem Pointertyp ist Pointee-Constness (pointeeConst-Bit),
 	   nicht Bindungs-Immutabilitaet. */
@@ -2035,15 +2052,23 @@ void tc_local(const char* start, const char* end) {
 }
 END
 ROUTINE C tc_localdecl
+/* Struct-Locals (2026-07-25 repariert): frueher wurde hier IMMER genau EIN
+   Struct alloziert, ein evtl. vorhandenes "[N]"-Suffix komplett ignoriert --
+   "struct Rec arr[3];" reservierte nur Platz fuer 1 statt 3 Elemente (stiller
+   Speicherfehler). Jetzt wird wie bei jedem anderen Typ nach "[" gescannt;
+   Array von structs bleibt bewusst EINDIMENSIONAL (wie structField/paramArray
+   -- ein 2D-Array von structs ist ein sauberer Parse-/Semantikfehler statt
+   still falsch geschnitten). */
 void tc_localdecl(const char* start, const char* end) {
 	const char* p = start; int slot = tcLocalCount - 1;
 	int dims[TC_MAXDIMS]; int ndims = 0; int total; int k;
-	if (tcLocalTypes[slot].base == 's') {
-		printf("LARRAY %d c %d\n", slot, tcStructByteSize[tcLocalTypes[slot].structId - 1]);
+	int isStruct = tcLocalTypes[slot].base == 's';
+	int structSize = isStruct ? tcStructByteSize[tcLocalTypes[slot].structId - 1] : 0;
+	while (p < end && *p != '[') p++;
+	if (p == end) {
+		if (isStruct) printf("LARRAY %d c %d\n", slot, structSize);
 		return;
 	}
-	while (p < end && *p != '[') p++;
-	if (p == end) return;
 	while (p < end && *p == '[') {
 		int len = 0;
 		p++;
@@ -2054,11 +2079,16 @@ void tc_localdecl(const char* start, const char* end) {
 		if (ndims >= TC_MAXDIMS) { fprintf(stderr, "tinyc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
 		dims[ndims++] = len;
 	}
+	if (isStruct && ndims > 1) {
+		fprintf(stderr, "tinyc: multi-dimensional struct arrays not supported in this version\n");
+		tcSemanticErrors++; return;
+	}
 	total = dims[0];
 	for (k = 1; k < ndims; k++) { total *= dims[k]; tcLocalArrayDims[slot][k - 1] = dims[k]; }
 	tcLocalArrayNDims[slot] = ndims;
 	tcLocalArrayLen[slot] = total;
-	printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcLocalTypes[slot]), total);
+	if (isStruct) printf("LARRAY %d c %d\n", slot, total * structSize);
+	else printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcLocalTypes[slot]), total);
 }
 END
 ROUTINE C tc_staticlocalname
@@ -2433,6 +2463,53 @@ ROUTINE C tc_varref
 void tc_varref(const char* start, const char* end) {
 	const char* nameEnd = tcNameEnd(start, end); int indexed = nameEnd < end;
 	int slot = tcLookupLocal(start, nameEnd), global;
+	/* Die Grammatik erlaubt seit 2026-07-25 "ident [index...] [.member...]" als SEQUENZ
+	   (vorher eine Alternation -- "arr[i].feld" haette gar nicht geparst). Das oeffnet
+	   grammatisch auch Kombinationen, die (noch) KEINE Codegen-Unterstuetzung haben --
+	   z.B. eine Pointer-auf-struct-Variable indiziert und dann ein Feld ("ptr[i].feld",
+	   noetig fuer den Selfhosting-Piloten -- routinesC ist ActionRoutine*, kein festes
+	   Array -- aber noch NICHT gebaut, siehe SELFHOSTING_LUECKENLISTE.md) oder ein
+	   indiziertes Nicht-struct mit einem sinnlosen Feldanhang. OHNE diesen Schutz wuerden
+	   die bestehenden Index-Zweige weiter unten die "."-Fortsetzung STILLSCHWEIGEND
+	   ignorieren (stiller Fehlcode statt Diagnose) -- deshalb hier VOR jedem
+	   spezifischen Zweig ablehnen, ausser fuer die EINE Kombination, die tatsaechlich
+	   gebaut ist (lokales, als Array deklariertes struct). */
+	if (indexed && *nameEnd == '[' && !(slot >= 0 && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's')) {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs in this version\n");
+			tcSemanticErrors++; tcTypePush(tcBadType()); return;
+		}
+	}
+	/* arr[i].feld (2026-07-25): ein ARRAY von structs, indiziert, dann Feldzugriff --
+	   siehe tcSkipOneIndex/IPADDN-Kommentar in tinyc.ebnf. tcLocalArrayLen[slot] > 0
+	   bedeutet seit der Allokations-Reparatur (siehe tc_local/tc_localdecl) jetzt
+	   WIRKLICH "als Array deklariert", nicht mehr die Feldanzahl-Verwechslung von
+	   frueher -- die Bedingung ist damit endlich korrekt auswertbar. */
+	if (slot >= 0 && indexed && *nameEnd == '[' && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			int sid = tcLocalTypes[slot].structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
+			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[slot]);
+			/* Index bereits gepusht (vor uns, durch die index-ACTION). PUSHADDR liefert die
+			   Blockadresse des GESAMTEN Arrays; IPADDN skaliert den Index um die LAUFZEIT-
+			   Byte-Groesse eines Elements (structSize, beliebig -- anders als IPADD, das nur
+			   feste Typtag-Groessen kennt); danach PUSH+PADD c addiert den (konstanten,
+			   byte-genauen) Feldoffset, exakt wie beim bestehenden Skalar-Feldzugriff oben. */
+			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
+			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+		}
+	}
 	if (slot >= 0 && indexed && *nameEnd == '.' && tcLocalTypes[slot].base == 's') {
 		int sid = tcLocalTypes[slot].structId - 1;
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -2652,6 +2729,38 @@ void tc_target(const char* start, const char* end) {
 	tcTargetType = tcLocalType(tcTargetSlot);
 	if (tcTargetSlot >= 0 && tcLocalConst[tcTargetSlot]) {
 		fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++;
+	}
+	/* siehe tc_varref fuer die vollstaendige Erklaerung -- die Grammatik erlaubt jetzt
+	   Kombinationen (z.B. "ptr[i].feld = ..") ohne Codegen-Unterstuetzung; ohne diesen
+	   Schutz wuerden die Index-Zweige weiter unten die "."-Fortsetzung stillschweigend
+	   ignorieren statt sauber zu diagnostizieren. */
+	if (tcTargetIsArray && *nameEnd == '[' && !(tcTargetSlot >= 0 && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's')) {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs in this version\n");
+			tcSemanticErrors++; return;
+		}
+	}
+	/* arr[i].feld = .. (2026-07-25): siehe tc_varref fuer die vollstaendige Erklaerung
+	   (Allokations-Fix, IPADDN, tcSkipOneIndex). Schreibend identisch bis auf
+	   tcTargetIndirect=1 statt LOADIND (wie beim bestehenden p.field = ..-Pfad). */
+	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			int sid = tcTargetType.structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+			}
+			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[tcTargetSlot]);
+			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
+			tcTargetType = tcStructFieldTypes[sid][fi];
+			tcTargetIndirect = 1;
+			return;
+		}
 	}
 	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '.' && tcTargetType.base == 's') {
 		int sid = tcTargetType.structId - 1;
@@ -3196,7 +3305,7 @@ void tc_sizeofvar(const char* start, const char* end) {
 		fprintf(stderr, "tinyc: sizeof of pointer types not supported in this version\n");
 		tcSemanticErrors++; size = 4;
 	} else if (t.base == 's') {
-		size = tcStructByteSize[t.structId - 1];
+		size = (count > 0 ? count : 1) * tcStructByteSize[t.structId - 1];
 	} else {
 		int elemSize = (t.base == 'c' || t.base == 'b') ? 1 : 4;
 		size = count > 0 ? count * elemSize : elemSize;
