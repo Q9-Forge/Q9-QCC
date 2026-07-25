@@ -165,6 +165,62 @@ Chunk) -- erfolgreich mit einem Testfall, der alle sieben `AstKind`-Faelle
 (SEQ/ALT/OPT/REP/TS/RNG/NTS) durchlaeuft und in eine echte Datei schreibt.
 Echte Textinhalts-Verifikation bleibt der Live-Q9-Ausfuehrung vorbehalten.
 
+**2026-07-25 (noch spaeter, direkt im Anschluss): genParserC portiert** (der
+Rest des C-Backends: Datei-Header, Lexer-Helfer `ws()`/`idch()`, Action-Log-
+Runtime-Geruest, eine `p_<regel>()`-Funktion pro Regel, `main()` --
+`Source/codegen.cpp` Zeilen 1002-1168). SECHS Stellen im C++-Original betten
+ein Anfuehrungszeichen DIREKT in einen `fprintf`-Formatstring ein -- geht in
+Tiny-C nicht, per `fputc(34,fp)`-Aufteilung umgeschrieben (Text-vor-dem-Quote
+/ `fputc(34,fp)` / Text-in-den-Quotes / `fputc(34,fp)` / Text-danach). ZWEI
+dieser Stellen haben zusaetzlich ein `"%%"`-Selbstescape im Original
+(literales `%` ohne eigenes Substitutionsargument) -- als `"%s"`-Argument
+uebergeben statt direkt in den Formatstring geschrieben, da Tiny-C/`clib.l`s
+`fprintf` ein `%` sonst als Formatzeichen re-interpretiert haette.
+
+**Dabei ZWEI eigenstaendige, echte Bugs gefunden und behoben (nicht im Port
+selbst, sondern in der Toolchain):**
+
+1. **Neuer Tiny-C-PARSER-Bug:** ein Tiny-C-String-Literal, das die
+   Zeichenfolge `"&&"` oder `"||"` als reinen TEXT enthaelt (hier: generierter
+   C-Code braucht selbst `&&`/`||` in `ws()`/`idch()`), loeste eine falsche
+   `"tinyc: logical-frame mismatch"`-Diagnose aus (das interne
+   `tcLogicDepth`-Tracking fuer Kurzschluss-Operatoren wird offenbar auch
+   INNERHALB von String-Literalen faelschlich angestossen). NICHT die
+   Grammatik gefixt (Risiko/Aufwand vs. Nutzen zu hoch fuer diesen Zweck) --
+   stattdessen jede betroffene Stelle per `fputc(38,fp)`/`fputc(124,fp)`
+   umgeschrieben (`emitAndAnd`/`emitOrOr`-Helfer in `SourceTinyC/codegen.tc`),
+   sodass `"&&"`/`"||"` nie als zusammenhaengende Zeichenfolge in EINEM
+   Tiny-C-String-Literal auftaucht -- identischer Ausgabeninhalt, nur anders
+   emittiert.
+2. **Echter SKALIERUNGSBUG im 68k-Backend selbst** (`Source/tinyc_backend_c.cpp`):
+   das `-largedata`-Datenmodell lud JEDEN Tabelleneintrag bisher per EIGENEM
+   PC-relativem Label (`"movea.l tc_ga_X(pc),reg"`) -- das brach, sobald der
+   GESAMTE Funktionscode zwischen einer frueh emittierten Funktion (z.B.
+   `main`, die per `-largedata`-Funktionsaufruf-Fix aus PR #43 immer zuerst
+   emittiert wird) und der Tabelle selbst (die NACH ALLEN Funktionsrumpf-
+   Texten lag) mehr als 32 KB umfasste -- derselbe 16-Bit-PC-relative-
+   Displacement-Grenzwert wie ueberall, nur diesmal fuer den TABELLENZUGRIFF
+   SELBST statt fuer die Daten dahinter. Trat zum ersten Mal beim
+   Skalierungstest fuer `SourceTinyC/codegen.tc` selbst auf (kumulatives
+   Kompilat inzwischen weit ueber 32 KB Code) und liess dabei RUECKWIRKEND
+   **ALLE fuenf bisherigen Vollport-Regressionstests** fehlschlagen (nicht nur
+   den neuen) -- ein ernstes, dringendes Infrastrukturproblem, sofort behoben.
+   GEFIXT nach EXAKT demselben Muster wie `tc_functab`/`a4` (siehe
+   `emitCall()`-Kommentar): ein bisher freies Register (`a3`) wird EINMAL beim
+   Programmstart auf die absolute Adresse EINER kombinierten Tabelle
+   (`tc_gadata`, direkt nach `tc_functab`, VOR allen Funktionsrumpf-Texten)
+   gesetzt (`"lea tc_gadata(pc),a3"`, NUR falls `globalCount > 0` -- sonst
+   Referenz auf ein nie definiertes Label); jeder Globalzugriff wird zu
+   `"move.l <gidx*4>(a3),reg"` statt einem PC-relativen Tabellen-Label-Load.
+   `tools/tiny68sim.py` (Test-Simulator) musste dafuer `a3` in sein
+   generisches Adressregister-Dict aufnehmen (war zuvor auf a0/a2/a4
+   beschraenkt). **Verifiziert:** volle `runtests.sh` wieder komplett gruen
+   (alle sechs Vollport-Tests inkl. des NEUEN, reichhaltigen genParserC-Tests
+   mit SEQ/ALT/OPT/REP/NTS-Kombination -- genau der Testfall, der den Bug
+   urspruenglich aufdeckte, kompiliert/assembliert/linkt jetzt fehlerfrei),
+   sowie die bereits bestehenden `-largedata`-Tests (grosses struct-Array,
+   150-Funktionen-Skalierungstest) weiterhin gruen.
+
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
 
