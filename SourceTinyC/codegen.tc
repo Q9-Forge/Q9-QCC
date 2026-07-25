@@ -55,22 +55,15 @@ struct AstRule {
 	int root;
 };
 
-/* AST_MAX_NODES bewusst von 8192 auf 64 verkleinert (2026-07-25, WICHTIGER FUND):
-   der 68k-Backend adressiert JEDES Globale AUSSCHLIESSLICH PC-relativ
-   ("lea tc_g_X(pc),a0"/"move.l tc_g_X(pc),..") -- das ist eine ECHTE 68000-
-   Hardware-Grenze (16-Bit-Displacement, +-32 KB) und keine Backend-Buffergrenze
-   wie die anderen Funde heute. Schon bei nodes[1024] (57 KB allein fuer dieses
-   Array) lehnt der ECHTE r68-Assembler mit "value out of range" ab (empirisch
-   bestaetigt, nicht nur eine Vermutung). nodes[64] (3,5 KB) wurde empirisch als
-   funktionierend verifiziert (echter r68-Lauf). Das ist eine ECHTE, GROESSERE
-   Einschraenkung als nur diese eine Konstante: JEDES Tiny-C-Programm mit viel
-   globalem State + mehreren Funktionen kann denselben "value out of range"-
-   Fehler treffen, sobald Code+Daten zusammen die 32-KB-PC-relative-Reichweite
-   überschreiten -- ein wirklicher Fix braucht eine 68k-Backend-Aenderung
-   (z.B. absolute Adressierung oder ein Basisregister-Schema fuer weit entfernte
-   Globale statt ausschliesslich PC-relativ). Bis dahin: Kapazitaeten bewusst
-   klein halten. Siehe docs/FORTSCHRITT.md fuer die volle Einordnung. */
-struct AstNode nodes[64];		/* AST_MAX_NODES (Original: 8192) */
+/* AST_MAX_NODES auf die ORIGINALE Kapazitaet 8192 zurueckgesetzt (2026-07-25):
+   war zwischenzeitlich wegen einer echten 68000-PC-relative-Adressierungsgrenze
+   (siehe emitLeaGlobal()-Kommentar in Source/tinyc_backend_c.cpp) auf 64
+   verkleinert -- jetzt durch den neuen "-largedata"-Compiler-Schalter geloest
+   (Indirektionstabelle mit absoluten, vom Linker aufgeloesten Adressen statt
+   direkter PC-relativer Adressierung). Diese Datei MUSS deshalb mit
+   "tinyc_backend -os9 -largedata" (statt ohne -largedata) uebersetzt werden,
+   sobald sie 68k-Code erzeugen soll -- siehe docs/FORTSCHRITT.md. */
+struct AstNode nodes[8192];		/* AST_MAX_NODES */
 int nodeCnt;
 struct AstRule rules[256];		/* AST_MAX_RULES */
 int ruleCnt;
@@ -109,9 +102,9 @@ void tcCopyBounded(char* dst, char* src, int maxlen) {
 int newNode(int kind) {
 	int id;
 	char* txt;
-	if (nodeCnt >= 64) {			/* AST_MAX_NODES (Original: 8192) */
+	if (nodeCnt >= 8192) {			/* AST_MAX_NODES (Original: 8192) */
 		astOverflow = 1;
-		return 63;				/* letzter Knoten wird Muellhalde; Codegen bricht ab */
+		return 8191;				/* letzter Knoten wird Muellhalde; Codegen bricht ab */
 	}
 	id = nodeCnt;
 	nodes[id].kind = kind;

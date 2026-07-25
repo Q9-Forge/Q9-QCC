@@ -39,29 +39,40 @@ Einschraenkungen gefunden und (bis auf die letzte) behoben:**
    Element noetig). `tools/tiny68sim.py` (Test-Simulator) musste dafuer
    kommagetrennte Mehrfachwerte pro `dc.l`/`dc.b`-Zeile lesen lernen (kannte
    bisher nur GENAU einen Wert pro Zeile).
-4. **ECHTE 68000-Hardware-Grenze, NICHT behoben (eigener, groesserer
-   Folgeschritt):** der 68k-Backend adressiert JEDES Globale AUSSCHLIESSLICH
-   PC-relativ (`lea tc_g_X(pc),a0`) -- eine 16-Bit-Displacement-Grenze
-   (±32 KB), die ECHTE 68000-Hardware-Eigenschaft ist, keine Software-Grenze.
-   Empirisch am echten `r68`-Assembler bestaetigt: schon ein 57-KB-Array
-   (`nodes[1024]`) wird mit "value out of range" abgelehnt; `nodes[64]`
-   (3,5 KB) funktioniert. **Das ist eine GROESSERE Einschraenkung als nur
-   dieses eine Array** -- JEDES Tiny-C-Programm mit viel globalem State UND
-   mehreren Funktionen kann denselben Fehler treffen, sobald Code+Daten
-   zusammen die 32-KB-Reichweite ueberschreiten. Ein echter Fix braucht eine
-   68k-Backend-Aenderung (absolute Adressierung oder ein Basisregister-Schema
-   fuer weit entfernte Globale statt ausschliesslich PC-relativ) -- bewusst
-   NICHT Teil dieses Schritts. Bis dahin: `AST_MAX_NODES` im Tiny-C-Port
-   bewusst auf 64 (statt 8192) verkleinert, mit klarer Dokumentation im
-   Quelltext.
-
-**Empfehlung fuer den naechsten Schritt:** bevor der Vollport sinnvoll
-weitergehen kann (die restlichen ~1400 Zeilen `codegen.cpp` + 2149 Zeilen
-`ebnf.cpp` brauchen zwangslaeufig mehr globalen State und mehr Funktionen,
-was die PC-relative-Grenze IMMER WIEDER treffen wird), sollte die 68k-
-Backend-Adressierung fuer grosse/entfernte Globale ueberarbeitet werden --
-sonst produziert der weitere Port Code, der zwar bei uns kompiliert, aber
-nicht durch den echten `r68`-Assembler passt.
+4. **ECHTE 68000-Hardware-Grenze -- inzwischen behoben (2026-07-25, noch
+   selber Tag, Nutzerwunsch "Compiler-Schalter fuer ein grosses
+   Speichermodell"):** der 68k-Backend adressiert JEDES Globale
+   AUSSCHLIESSLICH PC-relativ (`lea tc_g_X(pc),a0`) -- eine 16-Bit-
+   Displacement-Grenze (±32 KB), die ECHTE 68000-Hardware-Eigenschaft ist,
+   keine Software-Grenze. Empirisch am echten `r68`-Assembler bestaetigt:
+   schon ein 57-KB-Array (`nodes[1024]`) wurde mit "value out of range"
+   abgelehnt. **Fix: neuer Compiler-Schalter `-largedata`** fuer
+   `tinyc_backend_c.cpp` (kleines/grosses "Speichermodell", klassisches
+   Far-Pointer-Prinzip alter segmentierter Architekturen auf 68k-PC-relative-
+   Adressierung uebertragen) -- Standard ("small") bleibt unveraendert
+   PC-relativ (schnell/kompakt, aber ±32 KB Reichweite); `-largedata`
+   ("large") fuegt pro Globaler einen 4-Byte-Indirektionstabelleneintrag
+   (`tc_ga_X: dc.l tc_g_X`) hinzu -- `dc.l tc_g_X` ist eine ganz normale,
+   vom Linker aufgeloeste ABSOLUTE Adresse OHNE Distanzbeschraenkung; nur das
+   *Laden* dieses kleinen Tabelleneintrags selbst bleibt PC-relativ (die
+   Tabelle liegt bewusst DIREKT NACH dem Code, VOR den potenziell riesigen
+   Daten, damit sie selbst immer erreichbar bleibt). Kostet einen
+   zusaetzlichen Speicherzugriff pro Globalzugriff (`movea.l` statt `lea`/
+   direktem `move.l`), deshalb bewusst nicht der Standard. Zusaetzlich:
+   Groessen-Heuristik in `main()` warnt bereits im STANDARD-Modus, wenn die
+   globalen Daten (>16000 Byte) wahrscheinlich zu gross werden -- BEVOR der
+   echte `r68` mit dem kryptischen "value out of range" scheitert.
+   **Empirisch verifiziert mit der ORIGINALEN Kapazitaet:** `nodes[8192]`
+   (458 KB, `SourceTinyC/codegen.tc` ist wieder auf die volle Original-
+   Kapazitaet zurueckgesetzt) kompiliert, assembliert (echter `r68`) UND
+   linkt (echter `l68` gegen `clib.l`) jetzt vollstaendig mit `-largedata`.
+   `tools/tiny68sim.py` (Test-Simulator) musste dafuer `movea.l` als
+   Instruktion sowie `tc_ga_`-Label/Symbolreferenzen in `dc.l`-Werten lernen.
+   **Betrifft NICHT NUR diesen Port** -- jedes Tiny-C-Programm mit viel
+   globalem Zustand kann jetzt bei Bedarf `-largedata` verwenden.
+   **Bewusst NICHT geloest:** dasselbe Problem bei FUNKTIONSAUFRUFEN (`bsr`
+   ist ebenfalls PC-relativ-16-Bit) -- eigener, separater Sonderfall, falls
+   je Code-Groesse (statt Daten-Groesse) zum Problem wird.
 
 ## Erledigte Meilensteine
 

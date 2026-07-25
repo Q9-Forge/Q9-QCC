@@ -86,6 +86,14 @@ static int partMode = 0;
    undefiniertem Symbolverweis (vom Linker aufgeloest, wie jeder andere
    Cross-Datei-Aufruf auch). */
 static int runtimeMode = 0;
+/* -largedata (2026-07-25, "Speichermodell"-Schalter): siehe grosser Kommentar bei
+   emitLeaGlobal() weiter unten -- Standardmodell adressiert jedes Globale
+   AUSSCHLIESSLICH PC-relativ (echte 68000-Grenze: 16-Bit-Displacement, +-32 KB),
+   dieser Schalter wechselt auf eine zusaetzliche Indirektionstabelle mit
+   absoluten Adressen (vom Linker aufgeloest), die beliebig weit entfernte
+   Globale erreichbar macht -- auf Kosten eines zusaetzlichen Speicherzugriffs
+   pro Zugriff. */
+static int largeDataMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
 /* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
@@ -124,6 +132,34 @@ static char* mangledName(char* buf, const char* prefix, const char* name, int is
    dc.l-Daten das eigentlich Gemeinte und ebenfalls empirisch verifiziert). */
 static void emitAlign(FILE* out) {
 	fputs(os9Mode ? "\talign\t4\n" : "\teven\n", out);
+}
+
+/* "Speichermodell"-Schalter (2026-07-25, siehe -largedata in main()/usage()):
+   Standardmodell ("small") adressiert JEDES Globale ausschliesslich PC-relativ
+   ("lea tc_g_X(pc),a0") -- das ist eine ECHTE 68000-Hardware-Grenze (16-Bit-
+   Displacement, +-32 KB Reichweite von der jeweiligen Instruktion aus), keine
+   willkuerliche Software-Grenze. Empirisch am echten r68-Assembler bestaetigt
+   (siehe docs/FORTSCHRITT.md): ein 8192-Elemente-Array (458 KB) wird mit
+   "value out of range" abgelehnt.
+   "-largedata" wechselt auf eine zusaetzliche, PC-relativ ERREICHBARE
+   Indirektionstabelle (ein 4-Byte-Eintrag "tc_ga_X: dc.l tc_g_X" pro Globaler,
+   siehe emitGlobalAddressTable() weiter unten) -- l68 loest "dc.l tc_g_X" als
+   ABSOLUTE Adresse auf (normale Relokation, keine Distanzbeschraenkung), das
+   Laden DIESES Tabelleneintrags selbst bleibt PC-relativ (die Tabelle ist nur
+   4 Byte pro Eintrag gross und liegt nahe am Code). Genau das klassische
+   "Far-Pointer"/"Large-Model"-Prinzip alter segmentierter Architekturen,
+   hier auf 68k-PC-relative-Adressierung uebertragen. Kostet einen
+   zusaetzlichen Speicherzugriff pro Globalzugriff (movea.l statt lea/direktem
+   move.l) -- deshalb bewusst NICHT der Standard, nur bei Bedarf.
+   WICHTIG: loest NICHT das analoge Problem bei FUNKTIONSAUFRUFEN (bsr ist
+   ebenfalls PC-relativ-16-Bit) -- das ist ein eigener, separater Sonderfall,
+   falls er je auftritt (Code-Groesse statt Daten-Groesse als Ursache). */
+static void emitLeaGlobal(FILE* out, const char* gAsmName, const char* reg) {
+	if (largeDataMode) {
+		fprintf(out, "\tmovea.l\ttc_ga_%s(pc),%s\n", gAsmName + 5, reg);	/* "tc_g_" ist 5 Zeichen */
+	} else {
+		fprintf(out, "\tlea\t%s(pc),%s\n", gAsmName, reg);
+	}
 }
 
 static void fatal(const char* msg) {
@@ -547,7 +583,8 @@ static void emitIR(FILE* out) {
 				char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) fatal("unbekannte globale Variable");
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", gAsmName);
+				emitLeaGlobal(out, gAsmName, "a0");
+				fputs("\tmove.l\ta0,-(a7)\n", out);
 			} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
 				/* nur Frame-Layout, kein Code */
 			} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
@@ -561,7 +598,7 @@ static void emitIR(FILE* out) {
 				} else if (strcmp(insP->args[0], "G") == 0 && findGlobal(insP->args[1]) >= 0) {
 					char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", insP->args[1], globals[findGlobal(insP->args[1])].isStatic);
-					fprintf(out, "\tlea\t%s(pc),a0\n", gAsmName);
+					emitLeaGlobal(out, gAsmName, "a0");
 				} else {
 					fatal("unbekanntes Array");
 				}
@@ -581,7 +618,7 @@ static void emitIR(FILE* out) {
 				} else if (strcmp(insP->args[0], "G") == 0 && findGlobal(insP->args[1]) >= 0) {
 					char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", insP->args[1], globals[findGlobal(insP->args[1])].isStatic);
-					fprintf(out, "\tlea\t%s(pc),a0\n", gAsmName);
+					emitLeaGlobal(out, gAsmName, "a0");
 				} else {
 					fatal("unbekanntes Array");
 				}
@@ -597,28 +634,43 @@ static void emitIR(FILE* out) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
+				/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
+				   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
+				   siehe emitLeaGlobal()-Kommentar. */
+				if (largeDataMode) { emitLeaGlobal(out, gAsmName, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+				else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\t%s(pc),a0\n\tmove.l\td0,(a0)\n", gAsmName);
+				fputs("\tmove.l\t(a7)+,d0\n", out);
+				emitLeaGlobal(out, gAsmName, "a0");
+				fputs("\tmove.l\td0,(a0)\n", out);
 			} else if (strcmp(op, "LOADGC") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
+				if (largeDataMode) { emitLeaGlobal(out, gAsmName, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\t%s(pc),a0\n\tmove.b\td0,(a0)\n", gAsmName);
+				fputs("\tmove.l\t(a7)+,d0\n", out);
+				emitLeaGlobal(out, gAsmName, "a0");
+				fputs("\tmove.b\td0,(a0)\n", out);
 			} else if ((strcmp(op, "LOADGP") == 0 || strcmp(op, "STOREGP") == 0) && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) fatal("unbekannte globale Variable");
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				if (strcmp(op, "LOADGP") == 0) fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
-				else fprintf(out, "\tmove.l\t(a7)+,d0\n\tlea\t%s(pc),a0\n\tmove.l\td0,(a0)\n", gAsmName);
+				if (strcmp(op, "LOADGP") == 0) {
+					if (largeDataMode) { emitLeaGlobal(out, gAsmName, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+					else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
+				} else {
+					fputs("\tmove.l\t(a7)+,d0\n", out);
+					emitLeaGlobal(out, gAsmName, "a0");
+					fputs("\tmove.l\td0,(a0)\n", out);
+				}
 			} else if (strcmp(op, "PTRINDEX") == 0 && insP->argc == 1) {
 				fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
 				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
@@ -886,6 +938,28 @@ static void emitIR(FILE* out) {
 			hasData |= globals[gi].isArray || globals[gi].initialValue != 0;
 			hasBss |= !globals[gi].isArray && globals[gi].initialValue == 0;
 		}
+		if (largeDataMode && globalCount > 0) {
+			/* WICHTIG: MUSS vor dem DATA/BSS-Block stehen (2026-07-25 empirisch am echten
+			   r68 gefunden) -- die eigentlichen globalen Daten koennen SEHR gross sein
+			   (genau der Fall, den -largedata loesen soll), die Tabelle selbst aber MUSS
+			   klein UND PC-relativ nah am referenzierenden Code bleiben. Nach dem grossen
+			   DATA-Block waere die Tabelle selbst schon zu weit vom Code entfernt --
+			   "value out of range" fuer die movea.l-Zugriffe auf die Tabelle selbst! Siehe
+			   emitLeaGlobal()-Kommentar fuer das Gesamtprinzip: ein 4-Byte-Eintrag
+			   "tc_ga_X: dc.l tc_g_X" pro Globaler (AUCH fuer declOnly-Externe, in einer
+			   ANDEREN Datei definiert -- "dc.l tc_g_X" ist eine ganz normale externe
+			   Symbolreferenz). l68 loest "dc.l tc_g_X" als ABSOLUTE Adresse auf (Standard-
+			   Relokation, keine Distanzbeschraenkung) -- nur das LADEN dieses Tabellen-
+			   eintrags selbst ist PC-relativ und muss deshalb nah am Code bleiben. */
+			fprintf(out, "\n%s Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
+			emitAlign(out);
+			for (gi = 0; gi < globalCount; gi++) {
+				Global* g = &globals[gi];
+				char gAsmName[NAME_LEN + 40];
+				mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
+				fprintf(out, "tc_ga_%s:\tdc.l\t%s\n", gAsmName + 5, gAsmName);
+			}
+		}
 		if (hasData) {
 			fprintf(out, "\n%s DATA-Aequivalent des flachen Einzelmoduls: statisch initialisierte int32-Globals\n", fullCommentPrefix());
 			emitAlign(out);
@@ -945,26 +1019,54 @@ int main(int argc, char* argv[]) {
 	char msg[300];
 	int i;
 	if (argc < 3) {
-		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime]\n", argv[0]);
-		fprintf(stderr, "  -os9:     Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
-		fprintf(stderr, "            fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
-		fprintf(stderr, "  -part:    diese Datei ist EIN TEIL eines Mehrdatei-Programms (kein\n");
-		fprintf(stderr, "            eigenstaendiges main noetig) -- fuer echten Mehrdatei-Link\n");
-		fprintf(stderr, "            mit l68 gegen andere -os9/-part-Module.\n");
-		fprintf(stderr, "  -runtime: nur mit -part: diese Datei traegt zusaetzlich den gemeinsamen\n");
-		fprintf(stderr, "            68k-Core/I/O-Anker (tc_mul_i32 etc.) -- GENAU EINE Datei im\n");
-		fprintf(stderr, "            Mehrdatei-Programm muss dies setzen, sonst 'duplicate symbol'.\n");
+		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata]\n", argv[0]);
+		fprintf(stderr, "  -os9:       Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
+		fprintf(stderr, "              fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
+		fprintf(stderr, "  -part:      diese Datei ist EIN TEIL eines Mehrdatei-Programms (kein\n");
+		fprintf(stderr, "              eigenstaendiges main noetig) -- fuer echten Mehrdatei-Link\n");
+		fprintf(stderr, "              mit l68 gegen andere -os9/-part-Module.\n");
+		fprintf(stderr, "  -runtime:   nur mit -part: diese Datei traegt zusaetzlich den gemeinsamen\n");
+		fprintf(stderr, "              68k-Core/I/O-Anker (tc_mul_i32 etc.) -- GENAU EINE Datei im\n");
+		fprintf(stderr, "              Mehrdatei-Programm muss dies setzen, sonst 'duplicate symbol'.\n");
+		fprintf(stderr, "  -largedata: \"grosses Speichermodell\" -- adressiert globale Variablen ueber\n");
+		fprintf(stderr, "              eine Indirektionstabelle statt direkt PC-relativ. Noetig, sobald\n");
+		fprintf(stderr, "              r68 bei -os9 \"value out of range\" meldet (echte 68000-Grenze:\n");
+		fprintf(stderr, "              PC-relative Adressierung reicht nur +-32 KB) -- Standard (ohne\n");
+		fprintf(stderr, "              diese Option) ist schneller/kompakter, reicht aber nur fuer\n");
+		fprintf(stderr, "              kleinere Programme mit wenig globalem Zustand.\n");
 		return 2;
 	}
 	for (i = 3; i < argc; i++) {
 		if (strcmp(argv[i], "-os9") == 0) os9Mode = 1;
 		else if (strcmp(argv[i], "-part") == 0) partMode = 1;
 		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
+		else if (strcmp(argv[i], "-largedata") == 0) largeDataMode = 1;
 		else { fprintf(stderr, "unbekannte Option: %s\n", argv[i]); return 2; }
 	}
 	readIR(argv[1]);
 	collectGlobals();
 	collectFunctions();
+	if (!largeDataMode) {
+		/* Heuristik-Warnung (2026-07-25, siehe -largedata/emitLeaGlobal()): wir koennen
+		   NICHT wissen, ob r68 die PC-relative Reichweite tatsaechlich ueberschreiten
+		   wird (haengt von der GESAMTEN Code+Daten-Distanz ab, die erst der Assembler
+		   kennt) -- aber ein grober Schwellenwert ueber die reine globale Datenmenge
+		   gibt fruehzeitig einen Hinweis, BEVOR ein kryptisches "value out of range"
+		   vom echten r68 kommt. 16000 Byte ist bewusst konservativ (deutlich unter den
+		   theoretischen 32 KB), da Code UND andere Symbole denselben Adressraum teilen. */
+		long totalGlobalBytes = 0; int gi;
+		for (gi = 0; gi < globalCount; gi++) {
+			Global* g = &globals[gi];
+			if (g->declOnly) continue;
+			totalGlobalBytes += (long)(g->isChar ? 1 : 4) * (g->isArray ? g->length : 1);
+		}
+		if (totalGlobalBytes > 16000) {
+			fprintf(stderr, "tinyc_backend: Warnung: globale Daten sind mit %ld Byte recht gross fuer das\n", totalGlobalBytes);
+			fprintf(stderr, "  Standard-Speichermodell (PC-relative Adressierung, echte 68000-Grenze ist\n");
+			fprintf(stderr, "  +-32 KB von JEDER referenzierenden Instruktion aus). Falls r68 spaeter mit\n");
+			fprintf(stderr, "  \"value out of range\" fehlschlaegt: mit -largedata neu uebersetzen.\n");
+		}
+	}
 	if (os9Mode) {
 		/* psect-Name aus dem Ausgabedateinamen ableiten (ohne Pfad/Endung), analog
 		   zum Default in codegen.cpp (genParser68kTo: <basisname>_p). */
