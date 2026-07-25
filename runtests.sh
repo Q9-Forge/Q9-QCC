@@ -1298,6 +1298,64 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "warn  tinyc Selfhosting L2 (globale Variante): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
+	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
+	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
+	# KB "value out of range" von r68 ausloest (empirisch bestaetigt, siehe
+	# docs/FORTSCHRITT.md). -largedata schaltet auf eine Indirektionstabelle mit
+	# absoluten (vom Linker aufgeloesten) Adressen um -- getestet mit einem
+	# struct-Array, das OHNE -largedata garantiert zu gross waere (analog zum
+	# urspruenglichen AST_MAX_NODES=8192-Fund in SourceTinyC/codegen.tc).
+	largedata_src='struct Big { int a; char pad[52]; }; struct Big arr[2048]; int cnt; int main(){ arr[0].a=42; arr[2047].a=99; cnt=7; putint(arr[0].a); putint(arr[2047].a); putint(cnt); }'
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		if build/tinyc_p "$largedata_src" > build/tinyc_largedata.ir && \
+			build/tinyc_backend build/tinyc_largedata.ir build/tinyc_largedata.s68 -largedata && \
+			build/tinyc_backend build/tinyc_largedata.ir build/tinyc_largedata_os9.a -os9 -largedata; then
+			cp build/tinyc_largedata_os9.a "$MWOS_TMP/largedata.a"
+			rm -f "$MWOS_TMP/largedata.r"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largedata.a -o=M:\\TMP\\largedata.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/largedata.r" ] && [ "$(python3 tools/tiny68sim.py build/tinyc_largedata.s68 2>/dev/null)" = "$(printf '42\n99\n7')" ]; then
+				echo "ok    tinyc -largedata: grosses struct-Array (112 KB, weit ueber der PC-relativen Grenze) kompiliert, assembliert (echter r68) und simuliert korrekt"
+			else
+				echo "FAIL  tinyc -largedata: grosses struct-Array fehlerhaft"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/largedata.a "$MWOS_TMP"/largedata.r
+		else
+			echo "FAIL  tinyc -largedata: IR/Backend fehlgeschlagen"; fail=1
+		fi
+	else
+		echo "warn  tinyc -largedata: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter r68-Test uebersprungen"
+	fi
+	# Gegenprobe: OHNE -largedata muss (a) unser Backend selbst schon eine Warnung
+	# ausgeben (Groessen-Heuristik, siehe main() in tinyc_backend_c.cpp) UND (b)
+	# der ECHTE r68 dasselbe Programm mit "value out of range" ablehnen -- damit
+	# ist die Notwendigkeit von -largedata fuer diesen Fall doppelt belegt.
+	if build/tinyc_p "$largedata_src" > build/tinyc_largedata2.ir && \
+		build/tinyc_backend build/tinyc_largedata2.ir build/tinyc_largedata2.s68 -os9 2>build/tinyc_largedata2.warn; then
+		if grep -q 'globale Daten sind mit .* Byte recht gross' build/tinyc_largedata2.warn; then
+			echo "ok    tinyc: Groessen-Heuristik warnt VOR -largedata, wenn globale Daten gross werden"
+		else
+			echo "FAIL  tinyc: Groessen-Heuristik-Warnung fehlt"; fail=1
+		fi
+		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ]; then
+			cp build/tinyc_largedata2.s68 "$MWOS_TMP/largedata2.a"
+			rm -f "$MWOS_TMP/largedata2.r"
+			out=$(WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largedata2.a -o=M:\\TMP\\largedata2.r -q" 2>&1)
+			if echo "$out" | grep -q 'value out of range'; then
+				echo "ok    tinyc: echter r68 lehnt dasselbe Array OHNE -largedata tatsaechlich mit 'value out of range' ab"
+			else
+				echo "FAIL  tinyc: r68 haette OHNE -largedata ablehnen muessen -- Gegenprobe ungueltig"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/largedata2.a "$MWOS_TMP"/largedata2.r
+		else
+			echo "warn  tinyc -largedata-Gegenprobe (echter r68): Wine/MWOS nicht verfuegbar -- uebersprungen"
+		fi
+	else
+		echo "FAIL  tinyc: IR/Backend fuer -largedata-Gegenprobe fehlgeschlagen"; fail=1
+	fi
+
 	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): tinyc_backend akzeptiert
 	# ein optionales 4. Argument "-os9" und schaltet dann auf nam/psect/ends-
 	# Rahmung, "*" statt ";" fuer volle Kommentarzeilen und "align 4"/"dc.l 0,.."
