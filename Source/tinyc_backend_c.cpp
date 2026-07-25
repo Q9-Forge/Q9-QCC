@@ -446,9 +446,20 @@ static void collectFunctions(void) {
 	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("IR: keine Funktion");
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
+		int existing;
 		if (strcmp(insP->op, "FUNCDECL") != 0) continue;
 		if (insP->argc != 2) fatal("ungueltiges FUNCDECL");
-		if (findFunction(insP->args[0]) >= 0) { fprintf(stderr, "tinyc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion"); }
+		existing = findFunction(insP->args[0]);
+		if (existing >= 0) {
+			/* Vorwaertsdeklaration innerhalb DERSELBEN Datei, deren echter Rumpf
+			   bereits (an anderer Stelle im selben IR) gefunden wurde -- das ist
+			   der normale Fall bei gegenseitig rekursiven Funktionen (A ruft B vor
+			   dessen Definition auf), KEIN Duplikat. Nur wenn die vorhandene
+			   Registrierung selbst noch declOnly ist (zwei FUNCDECL fuer denselben
+			   Namen ohne jemals einen echten Rumpf), bleibt es ein echter Fehler. */
+			if (!funcs[existing].declOnly) continue;
+			fprintf(stderr, "tinyc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion");
+		}
 		if (funcCount >= MAX_FUNCS) fatal("zu viele Funktionen");
 		memset(&current, 0, sizeof(current));
 		strncpy(current.name, insP->args[0], NAME_LEN - 1);
