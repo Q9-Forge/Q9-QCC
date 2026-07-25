@@ -1,5 +1,68 @@
 # Fortschritt und Roadmap
 
+## Selfhosting L2 Vollport: begonnen (2026-07-25), WICHTIGER Architektur-Fund
+
+Nutzerwunsch: `codegen.cpp` (kleinere der beiden Kerndateien) nach Tiny-C
+portieren -- `SourceTinyC/codegen.tc` (neues Verzeichnis) enthaelt bisher die
+AST-Aufbau-Schicht (`astReset`/`astMark`/`newNode`/`pushNode`/`astPushTS`/
+`astPushRNG`/`astPushNTS`/`groupAs`/`astGroupSeq`/`astGroupAlt`/`wrapAs`/
+`astWrapOpt`/`astWrapRep`/`astFinishRule`) + gemeinsame Helfer
+(`sanitizeName`/`newLabel`/`ruleIndexByName`), verifiziert in TinyVM UND per
+echtem `r68`-Assembler. Das ist ein kleiner Teil von `codegen.cpp` (1569
+Zeilen) -- der Rest (LEXER/CODEGEN/ACTIONS-Konfigurationsparser, AST-Validierung,
+C- UND 68k-Text-Codegen) sowie ganz `ebnf.cpp` (2149 Zeilen) sind NOCH NICHT
+angefasst.
+
+**Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
+Einschraenkungen gefunden und (bis auf die letzte) behoben:**
+
+1. **Deklarationen-vor-Funktionen-Zwang:** die Tiny-C-Grammatik
+   (`program = {globalDecl|structDecl|typedefDecl|enumDecl|externDecl} {funcdef}`)
+   erlaubt KEINE Verschachtelung -- ALLE globalen Deklarationen muessen VOR
+   ALLEN Funktionsdefinitionen stehen, sonst "FAIL" beim Parsen ohne
+   hilfreiche Fehlermeldung. War nie aufgefallen, da jeder bisherige Test
+   diese Reihenfolge zufaellig schon einhielt. **Kein Compiler-Fix noetig**
+   (bewusst als Struktur-Konvention fuer alle kuenftigen `.tc`-Dateien
+   uebernommen: erst ALLE Deklarationen, dann ALLE Funktionen).
+2. **`arr[i].feld[j]`-Erinnerung:** `nodes[id].text[0] = 0;` (Array-Feld
+   direkt indiziert) traf die seit Milestone A bekannte, bewusste
+   Einschraenkung -- behoben mit der etablierten Zwischenvariable.
+3. **`tinyc_backend_c.cpp`/`tinyc_arm64_backend_c.cpp`: `MAX_ARRAY_LEN`-Grenze
+   (4096) fuer GARRAY-Laenge war zu eng fuer ein grosses, aber komplett
+   nullinitialisiertes Array (der urspruengliche `nodes[8192]`-AST-Puffer,
+   458 KB).** Behoben: die Grenze gilt jetzt NUR fuer tatsaechlich per GINIT
+   gesetzte Indizes (neues `hasGinit`-Flag pro Global), nicht mehr fuer die
+   deklarierte Array-Laenge selbst. Ein nie initialisiertes Array wird jetzt
+   KOMPAKT gefuellt -- 68k: mehrere kommagetrennte Nullen pro `dc.l`/`dc.b`-
+   Zeile (analog zum bestehenden `tc_extcall_tmp`-Muster, r68 kennt kein
+   `ds.b`/`rmb`); ARM64: echtes `.zerofill`-BSS (kein `.byte`/`.long` pro
+   Element noetig). `tools/tiny68sim.py` (Test-Simulator) musste dafuer
+   kommagetrennte Mehrfachwerte pro `dc.l`/`dc.b`-Zeile lesen lernen (kannte
+   bisher nur GENAU einen Wert pro Zeile).
+4. **ECHTE 68000-Hardware-Grenze, NICHT behoben (eigener, groesserer
+   Folgeschritt):** der 68k-Backend adressiert JEDES Globale AUSSCHLIESSLICH
+   PC-relativ (`lea tc_g_X(pc),a0`) -- eine 16-Bit-Displacement-Grenze
+   (±32 KB), die ECHTE 68000-Hardware-Eigenschaft ist, keine Software-Grenze.
+   Empirisch am echten `r68`-Assembler bestaetigt: schon ein 57-KB-Array
+   (`nodes[1024]`) wird mit "value out of range" abgelehnt; `nodes[64]`
+   (3,5 KB) funktioniert. **Das ist eine GROESSERE Einschraenkung als nur
+   dieses eine Array** -- JEDES Tiny-C-Programm mit viel globalem State UND
+   mehreren Funktionen kann denselben Fehler treffen, sobald Code+Daten
+   zusammen die 32-KB-Reichweite ueberschreiten. Ein echter Fix braucht eine
+   68k-Backend-Aenderung (absolute Adressierung oder ein Basisregister-Schema
+   fuer weit entfernte Globale statt ausschliesslich PC-relativ) -- bewusst
+   NICHT Teil dieses Schritts. Bis dahin: `AST_MAX_NODES` im Tiny-C-Port
+   bewusst auf 64 (statt 8192) verkleinert, mit klarer Dokumentation im
+   Quelltext.
+
+**Empfehlung fuer den naechsten Schritt:** bevor der Vollport sinnvoll
+weitergehen kann (die restlichen ~1400 Zeilen `codegen.cpp` + 2149 Zeilen
+`ebnf.cpp` brauchen zwangslaeufig mehr globalen State und mehr Funktionen,
+was die PC-relative-Grenze IMMER WIEDER treffen wird), sollte die 68k-
+Backend-Adressierung fuer grosse/entfernte Globale ueberarbeitet werden --
+sonst produziert der weitere Port Code, der zwar bei uns kompiliert, aber
+nicht durch den echten `r68`-Assembler passt.
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |

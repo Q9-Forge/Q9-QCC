@@ -1,0 +1,257 @@
+/* codegen.tc -- Tiny-C-Port von Source/codegen.cpp (AST-Aufbau + Codegenerierung).
+   Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md fuer den Kontext.
+
+   WICHTIGE GRAMMATIK-EINSCHRAENKUNG (2026-07-25 entdeckt): Tiny-C erlaubt laut
+   Grammatik ("program = { globalDecl|structDecl|typedefDecl|enumDecl|externDecl }
+   { funcdef } .") KEINE Verschachtelung von Deklarationen und Funktionen -- ALLE
+   globalen Deklarationen (structs/globals/enums/externs) muessen VOR ALLEN
+   Funktionsdefinitionen stehen, in genau dieser Reihenfolge, sonst FAIL beim
+   Parsen (kein hilfreicher Fehlertext, nur "FAIL" -- war bisher nie aufgefallen,
+   da jeder bestehende Test dieser Reihenfolge zufaellig schon folgte). Diese Datei
+   haelt sich deshalb STRIKT an "erst alle Deklarationen, dann alle Funktionen",
+   anders als das C++-Original (das Globals/Helfer thematisch gruppiert).
+
+   Original-Konstanten (siehe Source/codegen.cpp) -- Tiny-C hat keinen Praeprozessor,
+   deshalb ueberall als LITERALE Zahl eingesetzt (Array-Groessen brauchen ein
+   Zahlenliteral, sizeof() nur auf einer nackten Variable, keine allgemeinen
+   Ausdruecke wie "sizeof(nodes[id].text)"):
+     AST_MAX_NODES  = 8192   AST_MAX_RULES = 256   AST_TEXT_LEN = 40 (Puffer 41)
+     AST_STACK_MAX  = 256    GEN_NAME_LEN  = 64
+*/
+
+/* ===========================================================================
+   TEIL 1: Deklarationen (extern/enum/struct/global) -- MUSS komplett vor
+   TEIL 2 (Funktionen) stehen, siehe Kommentar oben.
+=========================================================================== */
+
+extern void* malloc(int size);
+extern void* realloc(void* p, int size);
+extern void free(void* p);
+extern int strcmp(char* a, char* b);
+extern int strncmp(char* a, char* b, int n);
+extern int strlen(char* s);
+extern char* strchr(char* s, int c);
+extern char* strrchr(char* s, int c);
+extern char* strstr(char* hay, char* needle);
+extern void* memcpy(void* dst, void* src, int n);
+extern int isalpha(int c);
+extern int isalnum(int c);
+extern int isprint(int c);
+extern int printf(char* fmt, ...);
+
+enum AstKind { AST_SEQ, AST_ALT, AST_OPT, AST_REP, AST_TS, AST_RNG, AST_NTS };
+
+struct AstNode {
+	int kind;
+	char text[41];		/* AST_TEXT_LEN + 1 */
+	char lo;
+	char hi;
+	int firstChild;
+	int nextSib;
+};
+
+struct AstRule {
+	char name[41];		/* AST_TEXT_LEN + 1 */
+	int root;
+};
+
+/* AST_MAX_NODES bewusst von 8192 auf 64 verkleinert (2026-07-25, WICHTIGER FUND):
+   der 68k-Backend adressiert JEDES Globale AUSSCHLIESSLICH PC-relativ
+   ("lea tc_g_X(pc),a0"/"move.l tc_g_X(pc),..") -- das ist eine ECHTE 68000-
+   Hardware-Grenze (16-Bit-Displacement, +-32 KB) und keine Backend-Buffergrenze
+   wie die anderen Funde heute. Schon bei nodes[1024] (57 KB allein fuer dieses
+   Array) lehnt der ECHTE r68-Assembler mit "value out of range" ab (empirisch
+   bestaetigt, nicht nur eine Vermutung). nodes[64] (3,5 KB) wurde empirisch als
+   funktionierend verifiziert (echter r68-Lauf). Das ist eine ECHTE, GROESSERE
+   Einschraenkung als nur diese eine Konstante: JEDES Tiny-C-Programm mit viel
+   globalem State + mehreren Funktionen kann denselben "value out of range"-
+   Fehler treffen, sobald Code+Daten zusammen die 32-KB-PC-relative-Reichweite
+   überschreiten -- ein wirklicher Fix braucht eine 68k-Backend-Aenderung
+   (z.B. absolute Adressierung oder ein Basisregister-Schema fuer weit entfernte
+   Globale statt ausschliesslich PC-relativ). Bis dahin: Kapazitaeten bewusst
+   klein halten. Siehe docs/FORTSCHRITT.md fuer die volle Einordnung. */
+struct AstNode nodes[64];		/* AST_MAX_NODES (Original: 8192) */
+int nodeCnt;
+struct AstRule rules[256];		/* AST_MAX_RULES */
+int ruleCnt;
+int astStack[256];			/* AST_STACK_MAX */
+int astDepth;
+int astOverflow;
+
+int labelCnt;
+
+/* ===========================================================================
+   TEIL 2: Funktionen
+=========================================================================== */
+
+void astReset() {
+	nodeCnt = 0;
+	ruleCnt = 0;
+	astDepth = 0;
+	astOverflow = 0;
+}
+
+int astMark() {
+	return astDepth;
+}
+
+/* strncpy_s(dst, dstSize, src, maxlen) im Original: kopiert bis zu maxlen Zeichen
+   aus src, NULL-terminiert IMMER (anders als rohes strncpy). Nachgebaut als
+   Bytekopierschleife -- Tiny-C hat kein strncpy_s und sizeof() geht nur auf
+   nackten Variablen, nicht auf einem Strukturfeld wie "nodes[id].text". */
+void tcCopyBounded(char* dst, char* src, int maxlen) {
+	int i;
+	i = 0;
+	while (i < maxlen && src[i] != 0) { dst[i] = src[i]; i = i + 1; }
+	dst[i] = 0;
+}
+
+int newNode(int kind) {
+	int id;
+	char* txt;
+	if (nodeCnt >= 64) {			/* AST_MAX_NODES (Original: 8192) */
+		astOverflow = 1;
+		return 63;				/* letzter Knoten wird Muellhalde; Codegen bricht ab */
+	}
+	id = nodeCnt;
+	nodes[id].kind = kind;
+	txt = nodes[id].text;		/* arr[i].feld[j] direkt ist nicht unterstuetzt, siehe FORTSCHRITT.md */
+	txt[0] = 0;
+	nodes[id].lo = 0;
+	nodes[id].hi = 0;
+	nodes[id].firstChild = -1;
+	nodes[id].nextSib = -1;
+	nodeCnt = nodeCnt + 1;
+	return id;
+}
+
+void pushNode(int id) {
+	if (astDepth < 256) {			/* AST_STACK_MAX */
+		astStack[astDepth] = id;
+		astDepth = astDepth + 1;
+	} else {
+		astOverflow = 1;
+	}
+}
+
+void astPushTS(char* text) {
+	int id;
+	char* dst;
+	id = newNode(AST_TS);
+	dst = nodes[id].text;
+	tcCopyBounded(dst, text, 40);	/* AST_TEXT_LEN */
+	pushNode(id);
+}
+
+void astPushRNG(char lo, char hi) {
+	int id;
+	id = newNode(AST_RNG);
+	nodes[id].lo = lo;
+	nodes[id].hi = hi;
+	pushNode(id);
+}
+
+void astPushNTS(char* name) {
+	int id;
+	char* dst;
+	id = newNode(AST_NTS);
+	dst = nodes[id].text;
+	tcCopyBounded(dst, name, 40);	/* AST_TEXT_LEN */
+	pushNode(id);
+}
+
+/* Stack[mark..] zu einem Knoten der Art 'kind' zusammenfassen. */
+void groupAs(int kind, int mark) {
+	int id;
+	int i;
+	int prev;
+
+	if (mark < 0) { return; }
+	if (mark > astDepth) { return; }
+	if (astDepth - mark == 1) { return; }
+	if (astDepth - mark == 0) { kind = AST_SEQ; }
+	id = newNode(kind);
+	prev = -1;
+	i = mark;
+	while (i < astDepth) {
+		if (prev < 0) {
+			nodes[id].firstChild = astStack[i];
+		} else {
+			nodes[prev].nextSib = astStack[i];
+		}
+		prev = astStack[i];
+		i = i + 1;
+	}
+	astDepth = mark;
+	pushNode(id);
+}
+
+void astGroupSeq(int mark) {
+	groupAs(AST_SEQ, mark);
+}
+
+void astGroupAlt(int mark) {
+	groupAs(AST_ALT, mark);
+}
+
+void wrapAs(int kind) {
+	int id;
+	if (astDepth < 1) { return; }
+	id = newNode(kind);
+	nodes[id].firstChild = astStack[astDepth - 1];
+	astStack[astDepth - 1] = id;
+}
+
+void astWrapOpt() {
+	wrapAs(AST_OPT);
+}
+
+void astWrapRep() {
+	wrapAs(AST_REP);
+}
+
+void astFinishRule(char* name) {
+	char* dst;
+	if (ruleCnt >= 256) {			/* AST_MAX_RULES */
+		astOverflow = 1;
+		return;
+	}
+	dst = rules[ruleCnt].name;
+	tcCopyBounded(dst, name, 40);	/* AST_TEXT_LEN */
+	if (astDepth >= 1) {
+		astDepth = astDepth - 1;
+		rules[ruleCnt].root = astStack[astDepth];
+	} else {
+		rules[ruleCnt].root = newNode(AST_SEQ);	/* leere Regel (Epsilon) */
+	}
+	ruleCnt = ruleCnt + 1;
+	astDepth = 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Gemeinsame Helfer beider Backends
+--------------------------------------------------------------------------- */
+void sanitizeName(char* in, char* out) {
+	int i;
+	i = 0;
+	while (in[i] != 0 && i < 63) {			/* GEN_NAME_LEN - 1 */
+		if (in[i] == 36) { out[i] = 95; } else { out[i] = in[i]; }	/* '$' -> '_' */
+		i = i + 1;
+	}
+	out[i] = 0;
+}
+
+int newLabel() {
+	int l;
+	l = labelCnt;
+	labelCnt = labelCnt + 1;
+	return l;
+}
+
+int ruleIndexByName(char* name) {
+	int r;
+	for (r = 0; r < ruleCnt; r += 1) {
+		if (strcmp(rules[r].name, name) == 0) { return r; }
+	}
+	return -1;
+}
