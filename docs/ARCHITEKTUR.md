@@ -560,30 +560,78 @@ Option fuer spaetere Optimierung (10.11).
 ### 10.5 Die Stack-IR (Opcode-Satz)
 
 Textform, ein Opcode pro Zeile (wie ein Mini-Assembler). Operanden-Stack-Maschine.
+Werte und Pointer sind getrennte Konzepte (ein Pointer ist intern `(Block, Offset)`,
+kein simpler Integer). Der Satz unten ist der VOLLSTAENDIGE, aktuelle Stand
+(2026-07-25) -- gewachsen aus dem urspruenglichen M1-Startsatz von 2026-07-20
+ueber Zeiger/Array-/Char-/struct-Unterstuetzung bis zur Mehrdatei-Uebersetzung.
+Kanonische Quelle fuer die Semantik ist `tools/tinyvm.py` (Interpreter/Test-Orakel);
+ausfuehrliche Beschreibung inkl. Stack-Effekt pro Opcode: `docs/IR_OPCODES.md`.
 
 ```
-; Konstanten / lokale Variablen
-PUSH  <n>        ; Integer-Konstante -> Stack
-LOADL <i>        ; lokalen Slot i laden -> Stack
-STOREL <i>       ; Stack -> lokalen Slot i (pop)
-; Arithmetik: pop2 -> push1  (NEG: pop1 -> push1)
-ADD  SUB  MUL  DIV
-NEG
-; Vergleich: pop2 -> push 0/1
-CMPLT  CMPGT  CMPLE  CMPGE  CMPEQ  CMPNE
-; Kontrollfluss
-LABEL <L>        ; definiert Sprungziel L
-JMP   <L>
-JZ    <L>        ; pop; springe wenn == 0
-JNZ   <L>        ; pop; springe wenn != 0
-; Funktionen
-FUNC  <name> <nargs>   ; Funktionsbeginn; Slots 0..nargs-1 = Parameter
-ENDFUNC                ; Funktionsende (Rahmengroesse = hoechster Slot+1, vom Backend ermittelt)
-CALL  <name> <nargs>   ; nargs Werte vom Stack (links->rechts gepusht); Ergebnis auf Stack
-RET                    ; pop = Rueckgabewert; Rahmen abbauen; zum Aufrufer
-; Sonstiges
+; --- Programmstruktur / Deklarationen ---
+GLOBAL <name> [init]          ; globale skalare Variable
+GARRAY <name> <typtag> <len>  ; globales Array
+GINIT  <name> <idx> <wert>    ; Initialwert fuer ein Array-Element
+FUNC   <name> <nargs>         ; Funktionsbeginn; Slots 0..nargs-1 = Parameter
+ENDFUNC                       ; Funktionsende (Rahmengroesse vom Backend ermittelt)
+LABEL  <L>                    ; definiert Sprungziel L
+FUNCDECL   <name> <argc>      ; Vorwaertsdeklaration ohne Rumpf (Mehrdatei/geg. Rekursion)
+GLOBALDECL <typ> <name>       ; "extern"-Variable, keine eigene Allokation
+                               ; FUNCDECL/GLOBALDECL: nur backend-/linkerrelevant,
+                               ; von TinyVM nicht interpretierbar
+
+; --- Werte laden/speichern (lokal L / global G; int / char / pointer) ---
+LOADL / STOREL <i>            ; lokaler int-Slot
+LOADC / STOREC <i>            ; lokaler char-Slot (maskiert auf 0xff)
+LOADP / STOREP <i>            ; lokaler Pointer-Slot
+LOADG / STOREG   <name>       ; globale int-Variable
+LOADGC / STOREGC <name>       ; globale char-Variable
+LOADGP / STOREGP <name>       ; globaler Pointer
+PUSH <n>                      ; Integer-Konstante -> Stack
+LARRAY                        ; lokales Array reservieren
+
+; --- Adressen, Arrays, Pointer ---
+ADDRL / ADDRG                 ; Adresse eines lokalen/globalen Slots -> Pointer
+PUSHADDR L/G/P <i>            ; Adresse eines lokalen/globalen Arrays bzw. Pointer-Werts
+LOADIDX / STOREIDX L/P/G <i> <typtag>  ; Array-Element lesen/schreiben (Index vom Stack)
+PTRINDEX <typtag>             ; Pointer+Index -> skalierte Adresse (echter Pointer p[i])
+LOADIND / STOREIND <typtag>   ; durch Pointer dereferenzieren
+PADD / IPADD <typtag>         ; Pointer +/- Ganzzahl, skaliert (feste Typgroesse)
+IPADDN <bytesize>             ; wie IPADD, aber LAUFZEIT-Bytegroesse (arr[i].feld bei structs)
+PSUB <typtag>                 ; Pointer - Ganzzahl
+PDIFF <typtag>                ; Pointer - Pointer -> skalierte Ganzzahl-Differenz
+
+; --- Arithmetik/Logik ---
+ADD  SUB  MUL  DIV  MOD       ; signed
+UDIV  UMOD                    ; unsigned
+NEG                           ; unaeres Minus
+NOT                           ; logisches Nicht (0/1)
+NOTBIT                        ; bitweises Komplement
+BAND  BXOR  BOR               ; bitweise Ops
+SHL                           ; Shift links
+SHR  /  USHR                  ; Shift rechts, signed(arithmetisch) / unsigned(logisch)
+NARROWC                       ; auf ein Byte einschraenken (char-Zuweisung/-Cast)
+DUP  /  DUPP                  ; oberstes Stackelement duplizieren (Wert / Pointer)
+
+; --- Vergleiche: pop2 -> push 0/1 ---
+CMPLT  CMPGT  CMPLE  CMPGE  CMPEQ  CMPNE          ; signed
+CMPULT CMPUGT CMPULE CMPUGE                        ; unsigned
+PCMPEQ PCMPNE PCMPLT PCMPLE PCMPGT PCMPGE          ; Pointer (mit Block-Identitaetspruefung)
+
+; --- Kontrollfluss / Aufrufe ---
+JMP  <L>
+JZ   <L>                      ; pop; springe wenn == 0
+JNZ  <L>                      ; pop; springe wenn != 0
+CALL / CALLP <name> <nargs>   ; nargs Werte vom Stack (links->rechts gepusht) -> Ergebnis auf Stack
+                               ; (P-Variante: Kennzeichnung Pointer-Rueckgabewert)
+RET / RETP                    ; pop = Rueckgabewert; Rahmen abbauen; zum Aufrufer
+CALLEXT / CALLEXTP <name> <argc> <...>  ; Aufruf einer echten extern-Funktion ueber die
+                               ; Microware-ABI (feste Parameter d0/d1, nur variadischer
+                               ; Ueberschuss auf den Stack); backend-only (68k), TinyVM kann das nicht
+
+; --- Sonstiges ---
 DROP             ; oberen Stackwert verwerfen (unbenutztes Ausdrucksergebnis)
-PRINT            ; pop; als Zahl ausgeben (Builtin putint; spaeter OS-9 I$Write)
+PRINT / PRINTU / PRINTC   ; Debug-Ausgabe int/unsigned/char (Builtins putint/putuint/putchar)
 ```
 
 ### 10.6 Emissions-Muster: wie Aktionen die IR erzeugen
