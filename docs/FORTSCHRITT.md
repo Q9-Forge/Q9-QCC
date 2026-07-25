@@ -142,6 +142,29 @@ meldet einen unbekannten Opcode nur bei tatsaechlicher AUSFUEHRUNG, was hier
 unproblematisch war. Dauerhafte Regression wie ueblich: echter `r68`+`l68`
 gegen echte `clib.l`, in `runtests.sh` verankert.
 
+**2026-07-25 (noch spaeter, direkt im Anschluss): C-Backend-Codegenerator
+portiert** (`emitCString`/`emitLongerLiteralRejectC`/`genNodeC`,
+`Source/codegen.cpp` Zeilen 858-1000). Das ist die ERSTE Beruehrung mit
+ECHTER Dateiausgabe im Port (`fopen`/`fprintf`/`fputc`/`fclose` statt nur
+stdout-Diagnosen wie bisher) -- `FILE*` wird als `void*` gefuehrt (Tiny-C hat
+keinen `FILE`-Struct-Typ, der ABI-Aufruf braucht nur einen opaken Zeiger, den
+`clib.l` selbst interpretiert). `clib.l` hat KEIN `snprintf` (nur `sprintf`,
+per `strings` bestaetigt, aeltere Microware-Bibliothek) -- deshalb `sprintf`
+ohne Laengenlimit verwendet (unschaedlich hier: alle Aufrufe schreiben kurze,
+feste Formate in ausreichend grosse Puffer). `charComment` (nur vom 68k-Chunk
+gebraucht) wurde bewusst NOCH NICHT mitportiert, da fuer den C-Backend-Chunk
+selbst ungenutzt.
+
+**NEUE, bisher unbekannte Tiny-C-Grenze gefunden:** Tiny-C kann KEINE EIGENEN
+variadischen Funktionen definieren (nur variadische `extern`-Aufrufe wie
+`printf`/`fprintf` selbst) -- ein Tiny-C-eigener Stand-in fuer `fprintf`
+(fuer eine TinyVM/ARM64-Tiefenverifikation wie bei den String-Funktionen
+zuvor) ist deshalb grundsaetzlich NICHT moeglich. Verifikation bleibt daher
+bei "kompiliert sauber + echter `r68`/`l68`-Link" (wie beim ActionRoutine-
+Chunk) -- erfolgreich mit einem Testfall, der alle sieben `AstKind`-Faelle
+(SEQ/ALT/OPT/REP/TS/RNG/NTS) durchlaeuft und in eine echte Datei schreibt.
+Echte Textinhalts-Verifikation bleibt der Live-Q9-Ausfuehrung vorbehalten.
+
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
 
