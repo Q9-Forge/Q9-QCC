@@ -1,17 +1,22 @@
 # Fortschritt und Roadmap
 
-## Selfhosting L2 Vollport: begonnen (2026-07-25), WICHTIGER Architektur-Fund
+## Selfhosting L2 Vollport: `codegen.cpp` ABGESCHLOSSEN (2026-07-25)
+
+**Stand 2026-07-25 abends: der komplette Vollport von `Source/codegen.cpp`
+(1582 Zeilen) nach `SourceTinyC/codegen.tc` ist fertig** -- AST-Aufbau,
+LEXER-/CODEGEN-/ACTIONS-Konfigurationsparser, AST-Validierung, sowie C- UND
+68k-Backend-Codegenerator. Sieben Vollport-Regressionstests in `runtests.sh`
+verankert (jeweils echter `r68`+`l68`-Link gegen echte `clib.l`). Naechster
+Schritt: `Source/ebnf.cpp` (2149 Zeilen, komplett unberuehrt), danach
+Live-Q9-Verifikation. Details zur Entstehung (chronologisch) unten.
 
 Nutzerwunsch: `codegen.cpp` (kleinere der beiden Kerndateien) nach Tiny-C
-portieren -- `SourceTinyC/codegen.tc` (neues Verzeichnis) enthaelt bisher die
-AST-Aufbau-Schicht (`astReset`/`astMark`/`newNode`/`pushNode`/`astPushTS`/
+portieren -- `SourceTinyC/codegen.tc` (neues Verzeichnis) enthaelt zunaechst
+die AST-Aufbau-Schicht (`astReset`/`astMark`/`newNode`/`pushNode`/`astPushTS`/
 `astPushRNG`/`astPushNTS`/`groupAs`/`astGroupSeq`/`astGroupAlt`/`wrapAs`/
 `astWrapOpt`/`astWrapRep`/`astFinishRule`) + gemeinsame Helfer
 (`sanitizeName`/`newLabel`/`ruleIndexByName`), verifiziert in TinyVM UND per
-echtem `r68`-Assembler. Das ist ein kleiner Teil von `codegen.cpp` (1569
-Zeilen) -- der Rest (LEXER/CODEGEN/ACTIONS-Konfigurationsparser, AST-Validierung,
-C- UND 68k-Text-Codegen) sowie ganz `ebnf.cpp` (2149 Zeilen) sind NOCH NICHT
-angefasst.
+echtem `r68`-Assembler.
 
 **2026-07-25 (spaeter, direkt im Anschluss an den -largedata-Funktionsaufruf-
 Fix): naechster Ausschnitt portiert -- LEXER-Konfigurationsparser** (`lexAnyBlockNested`/
@@ -209,8 +214,9 @@ selbst, sondern in der Toolchain):**
    `emitCall()`-Kommentar): ein bisher freies Register (`a3`) wird EINMAL beim
    Programmstart auf die absolute Adresse EINER kombinierten Tabelle
    (`tc_gadata`, direkt nach `tc_functab`, VOR allen Funktionsrumpf-Texten)
-   gesetzt (`"lea tc_gadata(pc),a3"`, NUR falls `globalCount > 0` -- sonst
-   Referenz auf ein nie definiertes Label); jeder Globalzugriff wird zu
+   gesetzt (`"lea tc_gadata(pc),a3"`; die Tabelle selbst wird seit dem
+   68k-Backend-Chunk unten IMMER emittiert, auch ohne echte Globale, siehe
+   dort); jeder Globalzugriff wird zu
    `"move.l <gidx*4>(a3),reg"` statt einem PC-relativen Tabellen-Label-Load.
    `tools/tiny68sim.py` (Test-Simulator) musste dafuer `a3` in sein
    generisches Adressregister-Dict aufnehmen (war zuvor auf a0/a2/a4
@@ -220,6 +226,45 @@ selbst, sondern in der Toolchain):**
    urspruenglich aufdeckte, kompiliert/assembliert/linkt jetzt fehlerfrei),
    sowie die bereits bestehenden `-largedata`-Tests (grosses struct-Array,
    150-Funktionen-Skalierungstest) weiterhin gruen.
+
+**2026-07-25 (noch spaeter, direkt im Anschluss): 68k-Backend portiert --
+DAMIT IST DER GESAMTE VOLLPORT VON `codegen.cpp` NACH TINY-C ABGESCHLOSSEN.**
+(`charComment`/`emitConsume68k`/`emitLongerLiteralReject68k`/`genNode68k`/
+`emitLexHelpers68k`/`genParser68kTo`/`genParser68k`/`genParser68kOS9`,
+`Source/codegen.cpp` Zeilen 858 + 1181-1580). Erzeugt reinen 68k-
+Assemblertext -- KEINE C-Operatoren (`&&`/`||`) und KEINE eingebetteten
+Anfuehrungszeichen im generierten Code, daher weder der `emitAndAnd`/
+`emitOrOr`- noch der `fputc(34,fp)`-Workaround aus `genParserC` hier
+gebraucht.
+
+**Drei weitere Funde/Fixes waehrend dieses Chunks:**
+
+1. **Dieselbe `"?"`-Variante des logical-frame-Bugs** (siehe oben): ein
+   String-Literal mit `"?"` als Text (`"Identifikator-Zeichen? d0.b..."`)
+   loeste `"tinyc: conditional-frame mismatch"` aus (`tcTernaryDepth`-
+   Tracking fuer den Ternary-Operator). Gefixt per neuem `emitQMark(fp)`-
+   Helfer (ein `fputc(63,fp)`), analog zu `emitAndAnd`/`emitOrOr`.
+2. **Backend-eigene `MAX_GLOBALS`-Grenze (256, GETRENNT von der Frontend-
+   Grenze in `Data/tinyc.lextab`)** blockierte den Skalierungsnachweis:
+   JEDES String-Literal im Tiny-C-Quelltext wird zu einem anonymen
+   `__strN`-Global, das kumulative Kompilat hat inzwischen weit ueber 256
+   davon. Erhoeht auf 1024 (`Source/tinyc_backend_c.cpp`).
+3. **Ein WEITERER echter Skalierungsbug im 68k-Backend:** `tc_extcall_tmp`
+   (der Scratch-Puffer fuer externe Aufrufe mit Stack-Argumenten) wurde
+   bisher IMMER per PC-relativem `"lea tc_extcall_tmp(pc),a0"` DIREKT an der
+   Aufrufstelle referenziert -- unabhaengig von `-largedata`. Brach aus
+   demselben Grund wie der `tc_gadata`-Fund zuvor (Aufrufstelle kann
+   ueberall im Programm liegen, der Puffer selbst liegt spaet). Gefixt nach
+   demselben `a3`-Muster: `tc_extcall_tmp` bekommt einen ZUSAETZLICHEN
+   Eintrag in `tc_gadata` (Offset `globalCount*4`, direkt nach allen echten
+   Globalen); `tc_gadata` wird deshalb jetzt IMMER emittiert (nicht nur bei
+   `globalCount > 0`), und `"lea tc_gadata(pc),a3"` wird jetzt IMMER gesetzt
+   (wie `a4`), nicht mehr nur bei vorhandenen echten Globalen.
+
+**Verifiziert:** volle `runtests.sh` komplett gruen (alle SIEBEN Vollport-
+Tests), inklusive eines neuen 68k-Backend-Tests mit derselben reichhaltigen
+SEQ/ALT/OPT/REP/NTS-AST-Kombination wie beim `genParserC`-Test -- echter
+`r68` assembliert, echter `l68` linkt gegen echte `clib.l`.
 
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**

@@ -49,6 +49,7 @@ extern int fclose(void* fp);
 extern int fprintf(void* fp, char* fmt, ...);
 extern int fputc(int c, void* fp);
 extern int sprintf(char* buf, char* fmt, ...);
+extern char* strcat(char* dst, char* src);	/* 68k-Backend: psectName-Aufbau in genParser68kTo */
 
 enum AstKind { AST_SEQ, AST_ALT, AST_OPT, AST_REP, AST_TS, AST_RNG, AST_NTS };
 
@@ -1364,4 +1365,505 @@ int genParserC(char* path) {
 	fprintf(fp, ");\n\treturn 1;\n}\n");
 	fclose(fp);
 	return 1;
+}
+
+/* ---------------------------------------------------------------------------
+   68k-Backend (Motorola-Syntax, vasm-kompatibel; keine Assembler-Direktiven
+   noetig). Registerkonvention (siehe ARCHITEKTUR.md Paragraph 4/5): a0 =
+   Eingabezeiger, d0.b = 1 Erfolg/0 Misserfolg, d1 = Scratch. WICHTIG: dieser
+   Abschnitt erzeugt reinen 68k-ASSEMBLERTEXT (keine C-Operatoren wie && /||
+   im generierten Code selbst) -- der "logical-frame mismatch"-Workaround
+   (emitAndAnd/emitOrOr) aus genParserC wird hier NICHT gebraucht. Ebenso
+   KEINE eingebetteten Anfuehrungszeichen im generierten Text (68k-Assembler
+   braucht keine C-String-Literale) -- der fputc(34,fp)-Workaround aus
+   genParserC entfaellt hier ebenfalls.
+--------------------------------------------------------------------------- */
+void charComment(char c, char* out, int outMax) {
+	if (isprint(c) != 0) {
+		sprintf(out, "'%c'", c);
+	} else {
+		sprintf(out, "0x%02X", c);
+	}
+}
+
+/* Wie emitAndAnd/emitOrOr (siehe genParserC-Kommentar): ein Tiny-C-String-
+   Literal mit "?" als reinem TEXT loeste ebenfalls einen falschen
+   Semantikfehler aus ("tinyc: conditional-frame mismatch", tcTernaryDepth-
+   Tracking fuer den Ternary-Operator "? :" wird offenbar auch INNERHALB von
+   String-Literalen faelschlich angestossen -- gleiche Bugklasse, andere
+   interne Zaehlvariable). */
+void emitQMark(void* fp) {
+	fputc(63, fp);
+}
+
+void emitConsume68k(void* fp, int len) {
+	if (len == 0) {
+		return;			/* leeres Literal "" matcht immer, konsumiert nichts */
+	}
+	if (len <= 8) {
+		fprintf(fp, "\taddq.l\t#%d,a0\n", len);
+	} else {
+		fprintf(fp, "\tlea\t%d(a0),a0\n", len);
+	}
+}
+
+void emitLongerLiteralReject68k(void* fp, char* text, int failLabel) {
+	int i;
+	int j;
+	int k;
+	int len;
+	char* longer;
+	char cc[16];
+	int skip;
+	len = strlen(text);
+	if (lexActive == 0 || isWordLiteral(text) != 0) { return; }
+	i = 0;
+	while (i < nodeCnt) {
+		if (nodes[i].kind == AST_TS) {
+			longer = nodes[i].text;
+			if (strlen(longer) > len && strncmp(longer, text, len) == 0) {
+				j = 0;
+				while (j < i && !(nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0)) {
+					j = j + 1;
+				}
+				if (j >= i) {
+					skip = newLabel();
+					k = len;
+					while (longer[k] != 0) {
+						charComment(longer[k], cc, 16);
+						fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; Longest-Match %s\n", longer[k], k, cc);
+						fprintf(fp, "\tbne\tL%d\n", skip);
+						k = k + 1;
+					}
+					fprintf(fp, "\tbra\tL%d\t; kuerzeres Operator-Token ablehnen\nL%d:\n", failLabel, skip);
+				}
+			}
+		}
+		i = i + 1;
+	}
+}
+
+void genNode68k(void* fp, int id, int failLabel, int lexical) {
+	int child;
+	int l1;
+	int l2;
+	int lok;
+	int i;
+	char cc[16];
+	char cc2[16];
+	char aName[64];		/* GEN_NAME_LEN */
+	int idx;
+	int len;
+	char* txt;
+
+	switch (nodes[id].kind) {
+	case AST_TS:
+		txt = nodes[id].text;
+		len = strlen(txt);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		i = 0;
+		while (i < len) {
+			charComment(txt[i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", txt[i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", txt[i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failLabel);
+			i = i + 1;
+		}
+		if (lexActive != 0 && lexical == 0) { emitLongerLiteralReject68k(fp, txt, failLabel); }
+		if (lexActive != 0 && lexical == 0 && isWordLiteral(txt) != 0) {
+			/* Wortgrenze: Folgezeichen darf kein Identifikator-Zeichen sein */
+			fprintf(fp, "\tmove.b\t%d(a0),d1\n", len);
+			fprintf(fp, "\tbsr\tidch\n");
+			fprintf(fp, "\ttst.b\td0\n");
+			fprintf(fp, "\tbne\tL%d\t; Wortgrenze verletzt\n", failLabel);
+		}
+		emitConsume68k(fp, len);
+		break;
+	case AST_RNG:
+		charComment(nodes[id].lo, cc, 16);
+		charComment(nodes[id].hi, cc2, 16);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		fprintf(fp, "\tmove.b\t(a0),d1\n");
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", nodes[id].lo, cc);
+		fprintf(fp, "\tblo\tL%d\n", failLabel);
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", nodes[id].hi, cc2);
+		fprintf(fp, "\tbhi\tL%d\n", failLabel);
+		fprintf(fp, "\taddq.l\t#1,a0\n");
+		break;
+	case AST_NTS:
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		sanitizeName(txt, aName);
+		if (lexActive != 0 && lexical == 0 && idx >= 0 && ruleIsLexical[idx] != 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		fprintf(fp, "\tbsr\tp_%s\n", aName);
+		fprintf(fp, "\ttst.b\td0\n");
+		fprintf(fp, "\tbeq\tL%d\n", failLabel);
+		break;
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			genNode68k(fp, child, failLabel, lexical);
+			child = nodes[child].nextSib;
+		}
+		break;
+	case AST_ALT:
+		lok = newLabel();
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Auswahl\n");
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			l1 = newLabel();
+			genNode68k(fp, child, l1, lexical);
+			fprintf(fp, "\tbra\tL%d\n", lok);
+			if (nodes[child].nextSib >= 0) {
+				fprintf(fp, "L%d:\tmove.l\t(a7),a0\t; naechste Alternative\n", l1);
+			} else {
+				fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Auswahl gescheitert\n", l1);
+				fprintf(fp, "\tbra\tL%d\n", failLabel);
+			}
+			child = nodes[child].nextSib;
+		}
+		fprintf(fp, "L%d:\taddq.l\t#4,a7\n", lok);
+		break;
+	case AST_OPT:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Option\n");
+		genNode68k(fp, nodes[id].firstChild, l1, lexical);
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tbra\tL%d\n", l2);
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Option uebersprungen\n", l1);
+		fprintf(fp, "L%d:\n", l2);
+		break;
+	case AST_REP:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "L%d:\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Wiederholung\n", l1);
+		genNode68k(fp, nodes[id].firstChild, l2, lexical);
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tbra\tL%d\n", l1);
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Wiederholung beendet\n", l2);
+		break;
+	}
+}
+
+/* Laufzeit-Helfer fuer den LEXER-Modus: ws (ueberliest WHITESPACE-Zeichen
+   und, falls konfiguriert, Kommentare; zerstoert d1) und idch (prueft d1:
+   Identifikator-Zeichen? d0.b = 1 ja / 0 nein). lexLineComment/lexBlockOn/
+   lexBlockOff sind hier FLACHE 1D-Arrays (lexLineCommentFlat[j*9+i] statt
+   lexLineComment[j][i], siehe Kommentar bei TEIL 1 -- Tiny-C erlaubt keine
+   partielle Indizierung eines 2D-Arrays). */
+void emitLexHelpers68k(void* fp, char* cs) {
+	int lTop;
+	int lSkip;
+	int lRet;
+	int lCmtShared;
+	int lLCentry[4];	/* LEX_MARKERS_MAX */
+	int lBCentry[4];
+	int lYes;
+	int lNo1;
+	int lNo2;
+	int lNo3;
+	int i;
+	int j;
+	char cc[16];
+	int failTo;
+	char* d1d2;
+	int lBk;
+	int lBk1;
+	int lBkOpen;
+
+	lTop = newLabel();
+	lSkip = newLabel();
+	lRet = newLabel();
+	lCmtShared = newLabel();
+	lYes = newLabel();
+	lNo1 = newLabel();
+	lNo2 = newLabel();
+	lNo3 = newLabel();
+
+	j = 0;
+	while (j < lexLineCommentCnt) { lLCentry[j] = newLabel(); j = j + 1; }
+	j = 0;
+	while (j < lexBlockCnt) { lBCentry[j] = newLabel(); j = j + 1; }
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	if (lexAnyBlockNested() != 0) { d1d2 = "/d2"; } else { d1d2 = ""; }
+	fprintf(fp, "%s ws -- Whitespace/Kommentare ueberlesen (zerstoert d1%s)\n", cs, d1d2);
+	fprintf(fp, "ws:\n");
+	fprintf(fp, "L%d:\tmove.b\t(a0),d1\n", lTop);
+	fprintf(fp, "\tbeq\tL%d\t; Eingabeende\n", lRet);
+	i = 0;
+	while (i < lexWsLen) {
+		charComment(lexWs[i], cc, 16);
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", lexWs[i], cc);
+		fprintf(fp, "\tbeq\tL%d\n", lSkip);
+		i = i + 1;
+	}
+	/* Zeilenkommentar-Marker der Reihe nach probieren: Mismatch faellt zum
+	   naechsten Marker durch (letzter Marker faellt zum ersten Blockkommentar-
+	   Marker bzw. lRet). Voller Match springt IMMER explizit zu lCmtShared. */
+	j = 0;
+	while (j < lexLineCommentCnt) {
+		if (j + 1 < lexLineCommentCnt) {
+			failTo = lLCentry[j + 1];
+		} else if (lexBlockCnt > 0) {
+			failTo = lBCentry[0];
+		} else {
+			failTo = lRet;
+		}
+		fprintf(fp, "L%d:\n", lLCentry[j]);
+		i = 0;
+		while (i < lexLineCommentLen[j]) {
+			charComment(lexLineCommentFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexLineCommentFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexLineCommentFlat[j * 9 + i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failTo);
+			i = i + 1;
+		}
+		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
+		j = j + 1;
+	}
+	if (lexLineCommentCnt > 0) {
+		fprintf(fp, "L%d:\tmove.b\t(a0),d1\t; Kommentar bis Zeilenende\n", lCmtShared);
+		fprintf(fp, "\tbeq\tL%d\n", lRet);
+		fprintf(fp, "\tcmpi.b\t#$0A,d1\t; LF\n");
+		fprintf(fp, "\tbeq\tL%d\n", lTop);
+		fprintf(fp, "\taddq.l\t#1,a0\n");
+		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
+	}
+	/* Blockkommentar-Marker der Reihe nach probieren (analog); jeder Marker
+	   hat seine eigene Ende-Sequenz und damit seine eigene innere Schleife --
+	   kann NICHT wie bei den Zeilenkommentaren einen gemeinsamen Rumpf teilen. */
+	j = 0;
+	while (j < lexBlockCnt) {
+		if (j + 1 < lexBlockCnt) { failTo = lBCentry[j + 1]; } else { failTo = lRet; }
+		lBk = newLabel();
+		lBk1 = newLabel();
+		if (lexBlockNested[j] != 0) { lBkOpen = newLabel(); } else { lBkOpen = -1; }
+
+		fprintf(fp, "L%d:\n", lBCentry[j]);
+		i = 0;
+		while (i < lexBlockOnLen[j]) {
+			charComment(lexBlockOnFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failTo);
+			i = i + 1;
+		}
+		emitConsume68k(fp, lexBlockOnLen[j]);
+		if (lexBlockNested[j] != 0) {
+			fprintf(fp, "\tmoveq\t#1,d2\t; Schachtelungs-Tiefe\n");
+		}
+		fprintf(fp, "L%d:\tmove.b\t(a0),d1\t; im Blockkommentar\n", lBk);
+		fprintf(fp, "\tbeq\tL%d\t; unterminiert: Eingabeende\n", lRet);
+		i = 0;
+		while (i < lexBlockOffLen[j]) {
+			charComment(lexBlockOffFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOffFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOffFlat[j * 9 + i], i, cc);
+			}
+			if (lexBlockNested[j] != 0) {
+				fprintf(fp, "\tbne\tL%d\n", lBkOpen);
+			} else {
+				fprintf(fp, "\tbne\tL%d\n", lBk1);
+			}
+			i = i + 1;
+		}
+		emitConsume68k(fp, lexBlockOffLen[j]);
+		if (lexBlockNested[j] != 0) {
+			fprintf(fp, "\tsubq.l\t#1,d2\n");
+			fprintf(fp, "\tbeq\tL%d\t; Tiefe 0: Kommentar zu Ende, weiter ueberlesen\n", lTop);
+			fprintf(fp, "\tbra\tL%d\n", lBk);
+			fprintf(fp, "L%d:\n", lBkOpen);
+			i = 0;
+			while (i < lexBlockOnLen[j]) {
+				charComment(lexBlockOnFlat[j * 9 + i], cc, 16);
+				if (i == 0) {
+					fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], cc);
+				} else {
+					fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], i, cc);
+				}
+				fprintf(fp, "\tbne\tL%d\n", lBk1);
+				i = i + 1;
+			}
+			emitConsume68k(fp, lexBlockOnLen[j]);
+			fprintf(fp, "\taddq.l\t#1,d2\t; tiefer geschachtelt\n");
+			fprintf(fp, "\tbra\tL%d\n", lBk);
+		} else {
+			fprintf(fp, "\tbra\tL%d\t; Kommentar zu Ende, weiter ueberlesen\n", lTop);
+		}
+		fprintf(fp, "L%d:\taddq.l\t#1,a0\n", lBk1);
+		fprintf(fp, "\tbra\tL%d\n", lBk);
+		j = j + 1;
+	}
+	if (lexLineCommentCnt == 0 && lexBlockCnt == 0) {
+		fprintf(fp, "\tbra\tL%d\n", lRet);
+	}
+	fprintf(fp, "L%d:\taddq.l\t#1,a0\n", lSkip);
+	fprintf(fp, "\tbra\tL%d\n", lTop);
+	fprintf(fp, "L%d:\trts\n\n", lRet);
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	fprintf(fp, "%s idch -- d1 Identifikator-Zeichen", cs);
+	emitQMark(fp);
+	fprintf(fp, " d0.b = 1/0\n");
+	fprintf(fp, "idch:\n");
+	fprintf(fp, "\tcmpi.b\t#$30,d1\t; '0'\n");
+	fprintf(fp, "\tblo\tL%d\n", lNo1);
+	fprintf(fp, "\tcmpi.b\t#$39,d1\t; '9'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$41,d1\t; 'A'\n", lNo1);
+	fprintf(fp, "\tblo\tL%d\n", lNo2);
+	fprintf(fp, "\tcmpi.b\t#$5A,d1\t; 'Z'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$61,d1\t; 'a'\n", lNo2);
+	fprintf(fp, "\tblo\tL%d\n", lNo3);
+	fprintf(fp, "\tcmpi.b\t#$7A,d1\t; 'z'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$5F,d1\t; '_'\n", lNo3);
+	fprintf(fp, "\tbeq\tL%d\n", lYes);
+	fprintf(fp, "\tcmpi.b\t#$24,d1\t; '$'\n");
+	fprintf(fp, "\tbeq\tL%d\n", lYes);
+	fprintf(fp, "\tmoveq\t#0,d0\n");
+	fprintf(fp, "\trts\n");
+	fprintf(fp, "L%d:\tmoveq\t#1,d0\n", lYes);
+	fprintf(fp, "\trts\n\n");
+}
+
+/* Gemeinsamer Kern beider 68k-Ausgabeformate. os9=0: "nacktes" Motorola-Format
+   (vasm-kompatibel, nur Labels). os9=1: Microware-r68-Format -- gleicher
+   Code-Body, aber '*' fuer VOLLE Kommentarzeilen plus nam/psect/ends-Rahmen. */
+int genParser68kTo(char* path, int os9, char* baseName) {
+	void* fp;
+	int r;
+	int fail;
+	char aName[64];		/* GEN_NAME_LEN */
+	char psectName[68];	/* GEN_NAME_LEN + 4 */
+	char* cs;
+	char* bn;
+	char* lexComment;
+	int lDone;
+
+	if (os9 != 0) { cs = "*"; } else { cs = ";"; }
+
+	if (validateAstForCodegen() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	if (computeLexicalSet() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	fp = fopen(path, "w");
+	if (fp == 0) {
+		printf("CODEGEN: kann '%s' nicht schreiben\n", path);
+		return 0;
+	}
+	labelCnt = 0;
+
+	if (os9 != 0) {
+		if (cgenPsect[0] != 0) {
+			tcCopyBounded(psectName, cgenPsect, 63);
+		} else {
+			if (baseName != 0) { bn = baseName; } else { bn = "parser"; }
+			sanitizeName(bn, psectName);
+			strcat(psectName, "_p");
+		}
+	}
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	fprintf(fp, "%s Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n", cs);
+	fprintf(fp, "%s Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl), 68k/Motorola.\n", cs);
+	fprintf(fp, "%s\n", cs);
+	fprintf(fp, "%s Aufruf:  a0 = Eingabezeiger (NUL-terminiert)\n", cs);
+	fprintf(fp, "%s          bsr parse\n", cs);
+	fprintf(fp, "%s Rueckgabe: d0.b = 1 Erfolg (a0 hinter dem Erkannten), 0 Misserfolg\n", cs);
+	if (lexAnyBlockNested() != 0) { lexComment = "/d2"; } else { lexComment = ""; }
+	fprintf(fp, "%s            (bei Misserfolg ist a0 unveraendert). d1%s wird zerstoert.\n", cs, lexComment);
+	fprintf(fp, "%s Vollstaendige Erkennung: nach Erfolg pruefen, ob (a0) = 0 (Eingabeende).\n", cs);
+	if (lexActive != 0) {
+		fprintf(fp, "%s LEXER aktiv: parse ueberliest nach Erfolg auch Whitespace am Ende;\n", cs);
+		fprintf(fp, "%s lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n", cs);
+	}
+	fprintf(fp, "%s Startregel: %s\n", cs, rules[0].name);
+	fprintf(fp, "%s---------------------------------------------------------------------------\n\n", cs);
+
+	if (os9 != 0) {
+		fprintf(fp, "\tnam\t%s\n", psectName);
+		fprintf(fp, "\tpsect\t%s,0,0,1,0,0\n\n", psectName);
+	}
+
+	sanitizeName(rules[0].name, aName);
+	if (lexActive != 0) {
+		lDone = newLabel();
+		fprintf(fp, "parse:\tbsr\tp_%s\n", aName);
+		fprintf(fp, "\ttst.b\td0\n");
+		fprintf(fp, "\tbeq\tL%d\n", lDone);
+		fprintf(fp, "\tbsr\tws\t; Whitespace am Eingabeende gehoert mit dazu\n");
+		fprintf(fp, "L%d:\trts\n\n", lDone);
+		emitLexHelpers68k(fp, cs);
+	} else {
+		fprintf(fp, "parse:\tbsr\tp_%s\n\trts\n\n", aName);
+	}
+
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, aName);
+		fail = newLabel();
+		fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+		if (ruleIsLexical[r] != 0) { lexComment = " (lexikalisch)"; } else { lexComment = ""; }
+		fprintf(fp, "%s Regel: %s%s\n", cs, rules[r].name, lexComment);
+		fprintf(fp, "p_%s:\n", aName);
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Regel\n");
+		genNode68k(fp, rules[r].root, fail, ruleIsLexical[r]);
+		if (ruleActionCallFlat[r * 64] != 0 && routineText68k(&ruleActionCallFlat[r * 64]) != 0) {
+			fprintf(fp, "\tbsr\t%s\t%s ACTION AFTER %s (a0=Ende, muss erhalten bleiben)\n", &ruleActionCallFlat[r * 64], cs, rules[r].name);
+		}
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tmoveq\t#1,d0\n");
+		fprintf(fp, "\trts\n");
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Regel gescheitert, Position zurueck\n", fail);
+		fprintf(fp, "\tmoveq\t#0,d0\n");
+		fprintf(fp, "\trts\n\n");
+		r = r + 1;
+	}
+	if (routines68kCnt > 0) {
+		fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+		fprintf(fp, "%s ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen)\n", cs);
+		r = 0;
+		while (r < routines68kCnt) {
+			fprintf(fp, "%s\n", routines68k[r].text);
+			r = r + 1;
+		}
+	}
+	if (os9 != 0) {
+		fprintf(fp, "\tends\n");
+	}
+	fclose(fp);
+	return 1;
+}
+
+int genParser68k(char* path) {
+	return genParser68kTo(path, 0, 0);
+}
+
+int genParser68kOS9(char* path, char* baseName) {
+	return genParser68kTo(path, 1, baseName);
 }
