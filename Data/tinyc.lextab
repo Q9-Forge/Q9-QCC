@@ -1416,10 +1416,12 @@ static int tcExternIsVariadic = 0;
 static char tcCallName[64][32];     /* verschachtelbare Aufruf-Frames */
 static int  tcCallArgCount[64];
 static char tcCallSavedAdd[64], tcCallSavedMul[64];
+static char tcCallSavedRel0[64], tcCallSavedRel1[64];
 static int  tcCallDepth = 0;
 static char tcPendingAdd = 0;       /* '+' oder '-' */
 static char tcPendingMul = 0;       /* '*' oder '/' */
 static char tcIndexSavedAdd[64], tcIndexSavedMul[64];
+static char tcIndexSavedRel0[64], tcIndexSavedRel1[64];
 static int  tcIndexDepth = 0;
 static char tcRel0 = 0, tcRel1 = 0; /* Relop-Zeichen; tcRel1==0 wenn einstellig */
 static int  tcTargetSlot = -1;
@@ -2910,21 +2912,41 @@ void tc_assign(const char* start, const char* end) {
 }
 END
 ROUTINE C tc_callname
+/* Rettet/setzt zurueck: tcPendingAdd/tcPendingMul (wie schon immer) UND seit
+   2026-07-25 auch tcRel0/tcRel1. Gefundener Bug: ein Vergleich wie "nc != name[j]"
+   (die INDIZIERTE Seite RECHTS vom Vergleichsoperator) lieferte falsche Typfehler
+   ("array index expects int, got bool") -- tc_relop setzt tcRel0/tcRel1 schon beim
+   Sehen von "!=", BEVOR die rechte Seite geparst ist; wenn die rechte Seite selbst
+   einen Index (oder einen Funktionsaufruf) enthaelt, feuert deren VERSCHACHTELTE
+   expr-Regel (index = indexOpen expr "]"; arg = expr) ihre EIGENE tc_expr-Aktion,
+   die die noch gesetzten (aber fuer den AEUSSEREN, noch nicht abgeschlossenen
+   Vergleich gedachten) tcRel0/tcRel1 faelschlich auf den INNEREN Indexausdruck
+   anwendet -- und dabei auf 0 zuruecksetzt, sodass der eigentliche aeussere
+   Vergleich beim spaeteren echten tc_expr gar nicht mehr feuert. War bisher nie
+   aufgefallen, da kein bestehender Test eine Indizierung/einen Aufruf als RECHTEN
+   Operanden eines Vergleichs hatte (nur links, z.B. "arr[i] != 0"). Fix: exakt
+   dasselbe Rette-und-nulle-Muster wie bei tcPendingAdd/tcPendingMul. */
 void tc_callname(const char* start, const char* end) {
 	if (start < end && *start == '[') {
 		if (tcIndexDepth >= 64) { fprintf(stderr, "tinyc: index nesting too deep\n"); return; }
 		tcIndexSavedAdd[tcIndexDepth] = tcPendingAdd;
 		tcIndexSavedMul[tcIndexDepth] = tcPendingMul;
-		tcPendingAdd = 0; tcPendingMul = 0; tcIndexDepth++; return;
+		tcIndexSavedRel0[tcIndexDepth] = tcRel0;
+		tcIndexSavedRel1[tcIndexDepth] = tcRel1;
+		tcPendingAdd = 0; tcPendingMul = 0; tcRel0 = 0; tcRel1 = 0; tcIndexDepth++; return;
 	}
 	if (tcCallDepth >= 64) { fprintf(stderr, "tinyc: call nesting too deep\\n"); return; }
 	tcCopy(tcCallName[tcCallDepth], start, end);
 	tcCallArgCount[tcCallDepth] = 0;
-	/* Argument-Ausdruecke duerfen einen aeusseren +/*-Operator nicht sehen. */
+	/* Argument-Ausdruecke duerfen einen aeusseren +/*-Operator (oder Vergleich) nicht sehen. */
 	tcCallSavedAdd[tcCallDepth] = tcPendingAdd;
 	tcCallSavedMul[tcCallDepth] = tcPendingMul;
+	tcCallSavedRel0[tcCallDepth] = tcRel0;
+	tcCallSavedRel1[tcCallDepth] = tcRel1;
 	tcPendingAdd = 0;
 	tcPendingMul = 0;
+	tcRel0 = 0;
+	tcRel1 = 0;
 	tcCallDepth++;
 }
 END
@@ -2940,7 +2962,8 @@ void tc_arg(const char* start, const char* end) {
 	if (start < end && *start == '[') {
 		int frame; TCType indexType = tcTypePop(); if (!tcIsInteger(indexType)) tcTypeError("array index", tcMakeType('i', 0), indexType);
 		if (tcIndexDepth <= 0) { fprintf(stderr, "tinyc: missing index frame\n"); return; }
-		frame = --tcIndexDepth; tcPendingAdd = tcIndexSavedAdd[frame]; tcPendingMul = tcIndexSavedMul[frame]; return;
+		frame = --tcIndexDepth; tcPendingAdd = tcIndexSavedAdd[frame]; tcPendingMul = tcIndexSavedMul[frame];
+		tcRel0 = tcIndexSavedRel0[frame]; tcRel1 = tcIndexSavedRel1[frame]; return;
 	}
 	(void)end;
 	if (tcCallDepth <= 0) { fprintf(stderr, "tinyc: missing call frame\\n"); return; }
@@ -2957,6 +2980,8 @@ void tc_call(const char* start, const char* end) {
 	frame = --tcCallDepth;
 	tcPendingAdd = tcCallSavedAdd[frame];
 	tcPendingMul = tcCallSavedMul[frame];
+	tcRel0 = tcCallSavedRel0[frame];
+	tcRel1 = tcCallSavedRel1[frame];
 	if (tcEq(tcCallName[frame], "putint")) {
 		printf("PRINT\n");
 		tcLastWasPrint = 1;

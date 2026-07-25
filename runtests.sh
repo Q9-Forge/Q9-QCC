@@ -928,7 +928,17 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 143 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		# Gefundener und behobener Bug (2026-07-25, beim Bau des Milestone-B-Piloten entdeckt):
+		# eine indizierte (oder Funktionsaufruf-)Expression als RECHTER Operand eines
+		# Vergleichs ("nc != name[j]") lieferte falsche Typfehler -- tcRel0/tcRel1 (vom
+		# Vergleichsoperator gesetzt) wurden von der VERSCHACHTELTEN tc_expr-Aktion des
+		# inneren Index-Ausdrucks faelschlich verbraucht, bevor der aeussere Vergleich
+		# abgeschlossen war. Fix: dasselbe Rette-und-nulle-Muster wie bei tcPendingAdd/
+		# tcPendingMul (tc_callname/tc_arg/tc_call). War VORHER (auch schon vor dieser
+		# Session) nie aufgefallen, da kein Test eine Indizierung/einen Aufruf als
+		# rechten Vergleichsoperanden hatte (nur links, z.B. "arr[i] != 0").
+		tc_check 'int main(){ char a[2]; char b[2]; a[0]=65; b[0]=65; if (a[0] != b[0]) { putint(0); } else { putint(1); } b[0]=66; if (a[0] != b[0]) { putint(2); } else { putint(3); } }' '1\n2'
+		[ $tcfail -eq 0 ] && echo "ok    tinyc: 144 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
 	else
 		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
 	fi
@@ -1119,6 +1129,52 @@ if [ -x tools/vasmm68k_mot ]; then
 		else
 			echo "FAIL  tinyc extern 68000: IR/Backend fuer String-Literal-Fall fehlgeschlagen"; fail=1
 		fi
+		# Fall 5 (2026-07-25, Selfhosting L2 Milestone A/B): malloc/realloc/free ueber
+		# extern+CALLEXT -- Voraussetzung fuer den ActionRoutine-Piloten (siehe SELFHOSTING_
+		# LUECKENLISTE.md). Mock: einfacher Bump-Allokator (kein echter Speicher-Freigabe-
+		# Mechanismus -- reicht fuer diesen Test). Verifiziert die Aufrufmechanik END-TO-END
+		# (Argumentplatzierung d0/d0+d1, Rueckgabewert in d0 als echt benutzbarer Pointer,
+		# Schreiben/Lesen durch den zurueckgegebenen Pointer) -- NICHT das Kopierverhalten
+		# von realloc (alte Daten ueber die Grenze hinweg erhalten bleiben), das braucht
+		# entweder echten Q9-Zugriff oder einen deutlich aufwendigeren Mock (tiny68sim
+		# modelliert nur EIN generisches Adressregister a0, kein registerindiziertes
+		# Kopieren beliebiger Laenge) -- separat schon strukturell verifiziert: derselbe
+		# IR/68k-Code wurde erfolgreich gegen die ECHTE clib.l gelinkt (echter r68+l68-Lauf,
+		# siehe FORTSCHRITT.md).
+		if build/tinyc_p 'extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); int main(){ int* p; int* q; p = malloc(16); p[0] = 111; p[1] = 222; q = realloc(p, 32); putint(p[0]); putint(p[1]); free(q); putint(1); }' > build/tinyc_extmalloc.ir && \
+			build/tinyc_backend build/tinyc_extmalloc.ir build/tinyc_extmalloc.s68; then
+			cp build/tinyc_extmalloc.s68 build/tinyc_extmalloc_test.s68
+			{
+				echo ""
+				echo "; Mock-Stubs (Bump-Allokator) -- testet die Aufrufmechanik, nicht das"
+				echo "; Kopierverhalten von realloc (siehe Kommentar oben)."
+				echo "tc_g_heap:	dc.l	9000000"
+				echo "malloc:	lea	tc_g_heap(pc),a0"
+				echo "	move.l	(a0),d1"
+				echo "	move.l	d1,d2"
+				echo "	add.l	d0,d1"
+				echo "	move.l	d1,(a0)"
+				echo "	move.l	d2,d0"
+				echo "	rts"
+				echo "realloc:	move.l	d1,d0"
+				echo "	lea	tc_g_heap(pc),a0"
+				echo "	move.l	(a0),d1"
+				echo "	move.l	d1,d2"
+				echo "	add.l	d0,d1"
+				echo "	move.l	d1,(a0)"
+				echo "	move.l	d2,d0"
+				echo "	rts"
+				echo "free:	rts"
+			} >> build/tinyc_extmalloc_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extmalloc_test.bin build/tinyc_extmalloc_test.s68 2>/dev/null && \
+				[ "$(python3 tools/tiny68sim.py build/tinyc_extmalloc_test.s68 2>/dev/null)" = "$(printf '111\n222\n1')" ]; then
+				echo "ok    tinyc extern 68000: malloc/realloc/free ueber CALLEXT korrekt (Aufrufmechanik + Pointer-Nutzung)"
+			else
+				echo "FAIL  tinyc extern 68000: malloc/realloc/free-ABI fehlerhaft"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc extern 68000: IR/Backend fuer malloc/realloc/free-Fall fehlgeschlagen"; fail=1
+		fi
 	else
 		echo "warn  tinyc extern 68000: Backend fehlt -- uebersprungen"
 	fi
@@ -1130,6 +1186,49 @@ if [ -x tools/vasmm68k_mot ]; then
 		else
 			echo "FAIL  tinyc extern ARM64: CALLEXT wird nicht sauber abgelehnt"; fail=1
 		fi
+	fi
+
+	# Selfhosting L2, Milestone B (2026-07-25): Pilot-Portierung des ACTION/ROUTINE-
+	# Ausschnitts aus codegen.cpp (ActionRoutine/pushRoutine/freeRoutines/routineTextC,
+	# Source/codegen.cpp:560-650) nach Tiny-C -- testet Pointer-struct-Felder, ptr[i].feld
+	# UND malloc/realloc/free ueber extern GLEICHZEITIG, in genau der Kombination, die der
+	# echte Generator braucht. Bewusste Vereinfachung ggue. dem C-Original: pushRoutine
+	# GIBT den (ggf. reallozierten) Array-Pointer zurueck statt ihn ueber einen ActionRoutine**-
+	# Out-Parameter zu schreiben (Tiny-C hat keine Pointer-auf-Pointer-Indizierung noetig,
+	# dasselbe beobachtbare Verhalten ohne dieses Sprachmittel); kein strcpy/memcpy
+	# (Tiny-C hat keine Standardbibliothek), stattdessen manuelle Byte-Kopierschleifen.
+	# Verifiziert per echtem r68+l68-Link gegen die ECHTE clib.l (malloc/realloc/free
+	# loesen echt auf) -- STRUKTURELL bestaetigt, dass der Mechanismus korrekt ist. Echte
+	# Ausfuehrung (bestaetigt, dass "one"/"two" nach dem realloc-Wachstum ueber "three"
+	# hinaus noch korrekt lesbar sind) braucht entweder echten Q9-Zugriff oder einen
+	# Kopier-faehigen Mock (tiny68sim modelliert nur ein generisches Adressregister a0,
+	# kein registerindiziertes Kopieren beliebiger Laenge) -- bewusst NICHT Teil dieses
+	# Schritts, siehe SELFHOSTING_LUECKENLISTE.md.
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		pilot_src='extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); struct ActionRoutine { char name[16]; char* text; }; struct ActionRoutine* pushRoutine(struct ActionRoutine* arr, int* cnt, int* cap, char* name, char* text, int textLen) { struct ActionRoutine* newArr; int newCap; int i; char* dst; if (*cnt >= *cap) { newCap = *cap > 0 ? *cap * 2 : 2; newArr = realloc(arr, newCap * sizeof(struct ActionRoutine)); arr = newArr; *cap = newCap; } dst = arr[*cnt].name; i = 0; while (name[i] != 0) { dst[i] = name[i]; i = i + 1; } dst[i] = 0; arr[*cnt].text = malloc(textLen + 1); dst = arr[*cnt].text; i = 0; while (i < textLen) { dst[i] = text[i]; i = i + 1; } dst[i] = 0; *cnt = *cnt + 1; return arr; } int routineIndexC(struct ActionRoutine* arr, int cnt, char* name) { int i; int j; bool match; char* n; char nc; for (i = 0; i < cnt; i = i + 1) { n = arr[i].name; match = true; j = 0; nc = n[j]; while (nc != 0) { if (nc != name[j]) { match = false; } j = j + 1; nc = n[j]; } if (name[j] != 0) { match = false; } if (match) { return i; } } return -1; } void freeRoutines(struct ActionRoutine* arr, int cnt) { int i; for (i = 0; i < cnt; i = i + 1) { free(arr[i].text); } } int main() { struct ActionRoutine* routines; int cnt; int cap; int idx; char* t; routines = 0; cnt = 0; cap = 0; routines = pushRoutine(routines, &cnt, &cap, "one", "TEXT-ONE", 8); routines = pushRoutine(routines, &cnt, &cap, "two", "TEXT-TWO", 8); routines = pushRoutine(routines, &cnt, &cap, "three", "TEXT-THREE", 10); putint(cnt); putint(cap); idx = routineIndexC(routines, cnt, "one"); t = routines[idx].text; putchar(t[0]); putchar(t[5]); idx = routineIndexC(routines, cnt, "three"); t = routines[idx].text; putchar(t[0]); putchar(t[9]); idx = routineIndexC(routines, cnt, "nope"); putint(idx); freeRoutines(routines, cnt); free(routines); return 0; }'
+		if build/tinyc_p "$pilot_src" > build/tinyc_pilot.ir 2>build/tinyc_pilot.err && [ ! -s build/tinyc_pilot.err ] && \
+			build/tinyc_backend build/tinyc_pilot.ir build/tinyc_pilot.s68 -os9; then
+			cp build/tinyc_pilot.s68 "$MWOS_TMP/pilot.a"
+			rm -f "$MWOS_TMP/pilot.r" "$MWOS_TMP/pilot.out" "$MWOS_TMP/pilot.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\pilot.a -o=M:\\TMP\\pilot.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/pilot.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\pilot.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\pilot.out -s=M:\\TMP\\pilot.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/pilot.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Milestone B: ActionRoutine-Pilot kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Milestone B: echter l68-Link fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Milestone B: echte r68-Assemblierung fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/pilot.a "$MWOS_TMP"/pilot.r "$MWOS_TMP/pilot.out" "$MWOS_TMP/pilot.sym"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Milestone B: ActionRoutine-Pilot kompiliert nicht sauber (siehe build/tinyc_pilot.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Milestone B: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): tinyc_backend akzeptiert
