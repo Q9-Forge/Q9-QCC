@@ -1028,6 +1028,26 @@ void emitLongerLiteralRejectC(void* fp, char* text, int failLabel) {
 	}
 }
 
+/* NEU ENTDECKTER TINY-C-PARSER-BUG (2026-07-25): ein Tiny-C-String-Literal,
+   das die Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (z.B. weil
+   generierter C-Code selbst && / || braucht, wie in genParserC's ws()/
+   idch()-Emission), loest eine falsche "tinyc: logical-frame mismatch"-
+   Diagnose aus (tcLogicDepth-Tracking wird offenbar auch INNERHALB von
+   String-Literalen faelschlich angestossen). NICHT die Grammatik gefixt
+   (Risiko/Aufwand vs. Nutzen), sondern jede betroffene Stelle so umgeschrieben,
+   dass "&&"/"||" nie als zusammenhaengende Zeichenfolge in EINEM Tiny-C-
+   String-Literal auftaucht -- stattdessen per fputc() Zeichen fuer Zeichen
+   geschrieben (identischer Ausgabeninhalt, nur anders emittiert). */
+void emitAndAnd(void* fp) {
+	fputc(38, fp);
+	fputc(38, fp);
+}
+
+void emitOrOr(void* fp) {
+	fputc(124, fp);
+	fputc(124, fp);
+}
+
 void genNodeC(void* fp, int id, int failLabel, int lexical) {
 	int child;
 	int l1;
@@ -1122,4 +1142,226 @@ void genNodeC(void* fp, int id, int failLabel, int lexical) {
 		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l2);
 		break;
 	}
+}
+
+/* genParserC: erzeugt den C-Zwilling (Datei <path>). SECHS Stellen im
+   C++-Original betten ein Anfuehrungszeichen DIREKT in einen fprintf-
+   Formatstring ein (z.B. "...fprintf(stderr, \"usage: ...\");...") -- das
+   geht in Tiny-C nicht (siehe Quirk 2 in tinyc-vollport-status.md), deshalb
+   an genau diesen Stellen per fputc(34, fp) aufgeteilt: Text-vor-dem-Quote /
+   fputc(34,fp) / Text-in-den-Quotes / fputc(34,fp) / Text-nach-dem-Quote.
+   ZUSAETZLICH enthalten ZWEI dieser Stellen ein "%%"-Selbstescape im
+   Original (ein literales "%" OHNE eigenes Substitutions-Argument fuer DEN
+   AEUSSEREN fprintf-Aufruf) -- da Tiny-C/clib.l's fprintf ein "%" IMMER als
+   Formatzeichen interpretiert, wird der betroffene Text stattdessen als
+   "%s"-ARGUMENT uebergeben (dessen Inhalt NICHT re-interpretiert wird),
+   statt es direkt in den Formatstring zu schreiben. */
+int genParserC(char* path) {
+	void* fp;
+	int r;
+	int fail;
+	char cName[64];			/* GEN_NAME_LEN */
+	char* replayStr;
+	char* lexComment;
+
+	if (validateAstForCodegen() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	if (computeLexicalSet() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	fp = fopen(path, "w");
+	if (fp == 0) {
+		printf("CODEGEN: kann '%s' nicht schreiben\n", path);
+		return 0;
+	}
+	labelCnt = 0;
+
+	fprintf(fp, "/* Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n");
+	fprintf(fp, " * Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl).\n");
+	fprintf(fp, " * Aufruf: %s ", "parser");
+	fputc(34, fp);
+	fprintf(fp, "<eingabe>");
+	fputc(34, fp);
+	fprintf(fp, "  -> druckt OK/FAIL, exit 0/1.\n");
+	if (lexActive != 0) {
+		fprintf(fp, " * LEXER aktiv: Whitespace/Kommentare werden zwischen Symbolen ueberlesen,\n");
+		fprintf(fp, " * lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n");
+	}
+	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
+	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
+	fprintf(fp, "static const char* p;\n");
+	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n\n");
+	if (lexActive != 0) {
+		fprintf(fp, "static int idch(int c) {\n");
+		fprintf(fp, "\treturn (c >= '0' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= '9') ");
+		emitOrOr(fp);
+		fprintf(fp, " (c >= 'A' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= 'Z')\n");
+		fprintf(fp, "\t    ");
+		emitOrOr(fp);
+		fprintf(fp, " (c >= 'a' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= 'z') ");
+		emitOrOr(fp);
+		fprintf(fp, " c == '_' ");
+		emitOrOr(fp);
+		fprintf(fp, " c == '$';\n}\n\n");
+		fprintf(fp, "static const char wsSet[] = ");
+		emitCString(fp, lexWs);
+		fprintf(fp, ";\n");
+		fprintf(fp, "static void ws(void) {\n\tfor (;;) {\n");
+		fprintf(fp, "\t\tif (*p ");
+		emitAndAnd(fp);
+		fprintf(fp, " strchr(wsSet, *p)) { p++; continue; }\n");
+		r = 0;
+		while (r < lexLineCommentCnt) {
+			fprintf(fp, "\t\tif (strncmp(p, ");
+			emitCString(fp, &lexLineCommentFlat[r * 9]);
+			fprintf(fp, ", %d) == 0) { while (*p ", lexLineCommentLen[r]);
+			emitAndAnd(fp);
+			fprintf(fp, " *p != '\\n') p++; continue; }\n");
+			r = r + 1;
+		}
+		r = 0;
+		while (r < lexBlockCnt) {
+			if (lexBlockNested[r] != 0) {
+				/* geschachtelt (Oberon/Modula-2): Tiefenzaehler; Ende-Sequenz
+				   VOR Start-Sequenz pruefen (wichtig bei ueberlappenden
+				   Zeichen wie "(*" / "*)"). Ein unterminierter Kommentar
+				   laeuft bis zum Eingabeende. */
+				fprintf(fp, "\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) {\n", lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\tint tiefe = 1; p += %d;\n", lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\twhile (*p ");
+				emitAndAnd(fp);
+				fprintf(fp, " tiefe > 0) {\n");
+				fprintf(fp, "\t\t\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOffFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { tiefe--; p += %d; }\n", lexBlockOffLen[r], lexBlockOffLen[r]);
+				fprintf(fp, "\t\t\t\telse if (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { tiefe++; p += %d; }\n", lexBlockOnLen[r], lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\t\telse p++;\n");
+				fprintf(fp, "\t\t\t}\n\t\t\tcontinue;\n\t\t}\n");
+			} else {
+				/* nicht geschachtelt; ein unterminierter Kommentar laeuft
+				   bis zum Eingabeende */
+				fprintf(fp, "\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { p += %d; while (*p ", lexBlockOnLen[r], lexBlockOnLen[r]);
+				emitAndAnd(fp);
+				fprintf(fp, " strncmp(p, ");
+				emitCString(fp, &lexBlockOffFlat[r * 9]);
+				fprintf(fp, ", %d) != 0) p++; if (*p) p += %d; continue; }\n", lexBlockOffLen[r], lexBlockOffLen[r]);
+			}
+			r = r + 1;
+		}
+		fprintf(fp, "\t\treturn;\n\t}\n}\n\n");
+	}
+	if (routinesCCnt > 0) {
+		/* Aktionen feuern NICHT sofort beim Regelerfolg, sondern werden nur
+		   PROTOKOLLIERT (actionLogPush) und erst am Ende bei ENDGUELTIGEM
+		   Gesamterfolg abgespielt (actionLogReplay) -- siehe ARCHITEKTUR.md
+		   Paragraph 9.4. */
+		fprintf(fp, "#define ACTION_LOG_MAX 1048576\n");
+		fprintf(fp, "extern void exit(int);\n");
+		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
+		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
+		fprintf(fp, "static ActionLogEntry actionLog[ACTION_LOG_MAX];\n");
+		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
+		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
+		fprintf(fp, "\t\tfprintf(stderr, ");
+		fputc(34, fp);
+		fprintf(fp, "%s", "tinyc: Aktions-Log-Grenze (%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n");
+		fputc(34, fp);
+		fprintf(fp, ", ACTION_LOG_MAX);\n");
+		fprintf(fp, "\t\texit(1);\n\t}\n");
+		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
+		fprintf(fp, "\tactionLogLen++;\n}\n");
+		fprintf(fp, "static void actionLogReplay(void) {\n");
+		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLog[i].fn(actionLog[i].start, actionLog[i].end);\n}\n\n");
+		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
+		r = 0;
+		while (r < routinesCCnt) {
+			fprintf(fp, "%s\n", routinesC[r].text);
+			r = r + 1;
+		}
+	}
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, cName);
+		fprintf(fp, "static int p_%s(void);\n", cName);
+		r = r + 1;
+	}
+	fprintf(fp, "\n");
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, cName);
+		fail = newLabel();
+		if (ruleIsLexical[r] != 0) { lexComment = " (lexikalisch)"; } else { lexComment = ""; }
+		fprintf(fp, "/* %s%s */\n", rules[r].name, lexComment);
+		fprintf(fp, "static int p_%s(void) {\n", cName);
+		fprintf(fp, "\tconst char* sv[64]; int svLog[64]; int sp;\n");
+		if (lexActive != 0 && ruleIsLexical[r] == 0) {
+			/* entry MUSS erst NACH einem eventuellen fuehrenden ws() erfasst
+			   werden -- sonst landet Whitespace/Kommentar vor dem
+			   eigentlichen Regelinhalt im start/end-Bereich, den eine ACTION
+			   dieser Regel bekommt. */
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tsp = 0;\n\tconst char* entry = p;\n");
+		fprintf(fp, "\tint entryLog = actionLogLen;\n");
+		fprintf(fp, "\t(void)sv; (void)svLog; (void)sp; (void)entryLog;\n");
+		genNodeC(fp, rules[r].root, fail, ruleIsLexical[r]);
+		if (ruleActionCallFlat[r * 64] != 0 && routineTextC(&ruleActionCallFlat[r * 64]) != 0) {
+			fprintf(fp, "\tactionLogPush(%s, entry, p);\t/* ACTION AFTER %s */\n", &ruleActionCallFlat[r * 64], rules[r].name);
+		}
+		fprintf(fp, "\treturn 1;\n");
+		fprintf(fp, "L%d:\tp = entry; actionLogLen = entryLog;\n", fail);
+		fprintf(fp, "\treturn 0;\n}\n\n");
+		r = r + 1;
+	}
+	sanitizeName(rules[0].name, cName);
+	fprintf(fp, "int main(int argc, char* argv[]) {\n");
+	fprintf(fp, "\tif (argc < 2) { fprintf(stderr, ");
+	fputc(34, fp);
+	fprintf(fp, "%s", "usage: %s <eingabe>\\n");
+	fputc(34, fp);
+	fprintf(fp, ", argv[0]); return 2; }\n");
+	fprintf(fp, "\tp = argv[1];\n");
+	/* actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input
+	   erkannt) -- nur dann steht fest, dass keine der protokollierten
+	   Aktionen zu einem inzwischen verworfenen Backtracking-Pfad gehoert. */
+	if (routinesCCnt > 0) { replayStr = " actionLogReplay();"; } else { replayStr = ""; }
+	if (lexActive != 0) {
+		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {%s printf(", cName, replayStr);
+		fputc(34, fp);
+		fprintf(fp, "OK\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 0; } }\n");
+	} else {
+		fprintf(fp, "\tif (p_%s() ", cName);
+		emitAndAnd(fp);
+		fprintf(fp, " *p == '\\0') {%s printf(", replayStr);
+		fputc(34, fp);
+		fprintf(fp, "OK\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 0; }\n");
+	}
+	fprintf(fp, "\tprintf(");
+	fputc(34, fp);
+	fprintf(fp, "FAIL\\n");
+	fputc(34, fp);
+	fprintf(fp, ");\n\treturn 1;\n}\n");
+	fclose(fp);
+	return 1;
 }
