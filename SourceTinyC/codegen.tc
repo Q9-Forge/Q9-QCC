@@ -117,6 +117,11 @@ int lexRootCnt;
 int ruleIsLexical[256];          /* AST_MAX_RULES */
 char* lexUnquoteNext;
 
+/* CODEGEN-Konfiguration ([CODEGEN]-Block der Arbeitsdatei). */
+int cgenOS9;
+char cgenPsect[64];               /* GEN_NAME_LEN */
+char cgenStart[64];               /* GEN_NAME_LEN */
+
 /* ===========================================================================
    TEIL 2: Funktionen
 =========================================================================== */
@@ -522,4 +527,74 @@ int computeLexicalSet() {
 		r = r + 1;
 	}
 	return ok;
+}
+
+int cgenWantOS9() {
+	return cgenOS9;
+}
+
+char* cgenStartRule() {
+	return cgenStart;
+}
+
+int cgenParseConfig(char* buf) {
+	char line[256];
+	int li;
+
+	cgenOS9 = 0;
+	cgenPsect[0] = 0;
+	cgenStart[0] = 0;
+
+	if (buf == 0 || buf[0] == 0) {
+		return 1;
+	}
+	while (*buf != 0) {
+		li = 0;
+		while (*buf != 0 && *buf != 10 && li < 255) {
+			line[li] = *buf;
+			li = li + 1;
+			buf = buf + 1;
+		}
+		line[li] = 0;
+		if (*buf == 10) { buf = buf + 1; }
+
+		if (line[0] == 35 || line[0] == 0) {
+			continue;
+		} else if (strncmp(line, "M68K PSECT", 10) == 0) {
+			/* letztes Wort der Zeile = psect-Name */
+			char* pEnd;
+			char* pStart;
+			int n;
+			pEnd = line + strlen(line);
+			while (pEnd > line && (pEnd[-1] == 32 || pEnd[-1] == 9)) { pEnd = pEnd - 1; }
+			pStart = pEnd;
+			while (pStart > line && pStart[-1] != 32 && pStart[-1] != 9 && pStart[-1] != 61) { pStart = pStart - 1; }
+			if (pEnd > pStart) {
+				n = pEnd - pStart;
+				if (n > 63) { n = 63; }			/* GEN_NAME_LEN - 1 */
+				memcpy(cgenPsect, pStart, n);
+				cgenPsect[n] = 0;
+			}
+		} else if (strncmp(line, "M68K OS9", 8) == 0) {
+			cgenOS9 = 1;
+		} else if (strncmp(line, "START", 5) == 0) {
+			/* letztes Wort der Zeile = Name der Startregel */
+			char* pEnd;
+			char* pStart;
+			int n;
+			pEnd = line + strlen(line);
+			while (pEnd > line && (pEnd[-1] == 32 || pEnd[-1] == 9)) { pEnd = pEnd - 1; }
+			pStart = pEnd;
+			while (pStart > line && pStart[-1] != 32 && pStart[-1] != 9 && pStart[-1] != 61) { pStart = pStart - 1; }
+			if (pEnd > pStart) {
+				n = pEnd - pStart;
+				if (n > 63) { n = 63; }			/* GEN_NAME_LEN - 1 */
+				memcpy(cgenStart, pStart, n);
+				cgenStart[n] = 0;
+			}
+		} else {
+			printf("CODEGEN: unbekannte Konfigurationszeile ignoriert: %s\n", line);
+		}
+	}
+	return 1;
 }
