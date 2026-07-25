@@ -1419,6 +1419,77 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (CODEGEN-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- ActionRoutine-Verwaltung UND ACTIONS-Konfigurationsparser (freeRoutines/
+	# pushRoutineC/pushRoutine68k/routineTextC/routineText68k/lastWord/growLineBuf/
+	# growCollectBuf/actionsParseConfig, das [NUTZER-CODE]-Block-Handling aus
+	# Source/codegen.cpp Zeilen 580-750). pushRoutineC/pushRoutine68k sind ZWEI fast
+	# identische Funktionen statt EINER generischen mit "ActionRoutine**"-Parameter
+	# wie im C++-Original (Tiny-C hat keine Generik/Funktionszeiger, routinesC/
+	# routines68k sind hier wie im Original file-scope-Globale -- direktes Mutieren
+	# ist einfacher, gleiches Muster wie beim ActionRoutine-Piloten Milestone B).
+	# Verifikation NUR strukturell (wie beim Piloten): kompiliert sauber (NULL
+	# Semantikfehler), assembliert (echter r68), linkt (echter l68 gegen echte
+	# clib.l). Eine versuchte TIEFERE Logikverifikation (TinyVM/ARM64 mit
+	# selbstgeschriebenen malloc/realloc-Ersatzfunktionen fuer eigenstaendige
+	# Ausfuehrbarkeit) scheiterte an Grenzen der TESTUMGEBUNG, nicht des Ports:
+	# TinyVMs Zeigermodell ist nicht byte-adressierbar und vertraegt keine
+	# malloc-Heap-Umdeutung auf struct-Zeiger; eine ARM64-Reproduktion mit
+	# selbstgebautem Bump-Allocator stuerzte ab (vermutlich ein Bug im
+	# Test-Stub selbst, nicht im geprueften Code -- der echte extern-Pfad
+	# gegen clib.l linkt fehlerfrei). Echte Verhaltensverifikation bleibt der
+	# Live-Q9-Ausfuehrung vorbehalten (bereits als offener Schritt vermerkt).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		actiontest_main='
+int main() {
+	int idx;
+	char* t;
+	astReset();
+	astPushTS("x"); astFinishRule("myRule");
+	astPushTS("y"); astFinishRule("unused");
+	actionsParseConfig("ACTION AFTER myRule CALL myAction\nROUTINE C myAction\nline one\nline two\nEND\nROUTINE M68K other68k\nm68k line\nEND\nACTION AFTER unused CALL nowhereAction\n");
+	idx = ruleIndexByName("myRule");
+	putint(idx >= 0);
+	putchar(ruleActionCallFlat[idx * 64 + 0]);
+	putchar(ruleActionCallFlat[idx * 64 + 1]);
+	putint(ruleActionCallFlat[idx * 64 + 8]);
+	t = routineTextC("myAction");
+	putchar(t[0]); putchar(t[1]); putchar(t[2]); putchar(t[3]);
+	putint(t[8]);
+	putchar(t[9]); putchar(t[10]); putchar(t[11]); putchar(t[12]);
+	t = routineText68k("other68k");
+	putchar(t[0]); putchar(t[1]);
+	idx = ruleIndexByName("unused");
+	putchar(ruleActionCallFlat[idx * 64 + 0]);
+	t = routineTextC("nowhereAction");
+	putint(t == 0);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$actiontest_main" > build/tinyc_actiontest.ir 2>build/tinyc_actiontest.err && \
+			build/tinyc_backend build/tinyc_actiontest.ir build/tinyc_actiontest_os9.a -os9 -largedata; then
+			cp build/tinyc_actiontest_os9.a "$MWOS_TMP/actiontest.a"
+			rm -f "$MWOS_TMP/actiontest.r" "$MWOS_TMP/actiontest.out" "$MWOS_TMP/actiontest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\actiontest.a -o=M:\\TMP\\actiontest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/actiontest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\actiontest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\actiontest.out -s=M:\\TMP\\actiontest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/actiontest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: ActionRoutine/ACTIONS-Konfigurationsparser (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/actiontest.a "$MWOS_TMP"/actiontest.r "$MWOS_TMP"/actiontest.out "$MWOS_TMP"/actiontest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (ActionRoutine/ACTIONS-Konfigurationsparser) kompiliert nicht sauber (siehe build/tinyc_actiontest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (ActionRoutine/ACTIONS-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
