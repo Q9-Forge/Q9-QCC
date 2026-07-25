@@ -59,6 +59,20 @@ NICHT dauerhaft in `runtests.sh` verankert (Wartungsaufwand einer zweiten
 String-Bibliothek nur fuers Testen unverhaeltnismaessig) -- nur (a) ist die
 dauerhafte Regression.
 
+**2026-07-25 (noch spaeter, direkt im Anschluss): CODEGEN-Konfigurationsparser
+portiert** (`cgenWantOS9`/`cgenStartRule`/`cgenParseConfig`, das
+`[CODEGEN]`-Konfigurationsblock-Handling aus `Source/codegen.cpp` Zeilen
+462-535) -- strukturell fast identisch zu `lexParseConfig` (letztes Wort einer
+Zeile extrahieren), aber deutlich einfacher (kein Escape-Handling noetig, das
+Konfigurationsformat braucht keine Anfuehrungszeichen). Gleiche dreifache
+Verifikationsmethode: (a) echte Version mit `extern strncmp`/`strlen`/`memcpy`
+kompiliert, assembliert (echter `r68`) und linkt (echter `l68` gegen echte
+`clib.l`) -- Regressionstest in `runtests.sh` verankert; (b)/(c) eine einmalige
+Kopie mit den bereits vorhandenen Tiny-C-String-Helfern lieferte ueber TinyVM
+UND nativ per ARM64 identische Werte fuer eine Test-Konfiguration
+(`M68K OS9` + `M68K PSECT = mySect` + `START myRule`): `cgenWantOS9()`=1,
+`cgenPsect`="mySect"+Nullterminator, `cgenStartRule()`="myRule"+Nullterminator.
+
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
 
