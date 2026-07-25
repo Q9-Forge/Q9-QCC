@@ -1086,16 +1086,29 @@ int genParserC(const char* path) {
 		// AST_ALT/OPT/REP) sowie beim Fehlschlag einer ganzen Regel (entryLog).
 		// Siehe ARCHITEKTUR.md §9.4, Test/actionrollback fuer die Reproduktion ohne diesen
 		// Mechanismus (ROUTINE C note_tag feuerte dort bei "T2" faelschlich 2x statt 1x).
-		fprintf(fp, "#define ACTION_LOG_MAX 4096\n");
+		/* 2026-07-25 GEFUNDEN: ACTION_LOG_MAX war 4096 -- bei Ueberschreitung wurden
+		   WEITERE Aktionen STILLSCHWEIGEND verworfen (nur "if (actionLogLen < MAX)",
+		   kein Fehler), was sich als scheinbar erfolgreicher, aber HALB LEERER Parse
+		   aeusserte (z.B. bei einem groesseren Tiny-C-Programm mit vielen Funktionen:
+		   "OK" wurde gedruckt, aber spaetere Funktionen/main fehlten in der IR-Ausgabe
+		   komplett) -- entdeckt beim Testen des -largedata-Funktionsaufruf-Schalters
+		   mit mehreren generierten Testfunktionen. Behoben nach demselben Muster wie
+		   die anderen heute gefundenen stillen Puffer-Grenzen (ebnf.cpp USER_CODE_LEN,
+		   68k-Backend MAX_ARRAY_LEN): Grenze grosszuegig erhoeht UND ein lauter Fehler
+		   statt stillem Verwerfen. */
+		fprintf(fp, "#define ACTION_LOG_MAX 1048576\n");
+		fprintf(fp, "extern void exit(int);\n");
 		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
 		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
 		fprintf(fp, "static ActionLogEntry actionLog[ACTION_LOG_MAX];\n");
 		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
-		fprintf(fp, "\tif (actionLogLen < ACTION_LOG_MAX) {\n");
-		fprintf(fp, "\t\tactionLog[actionLogLen].fn = fn;\n");
-		fprintf(fp, "\t\tactionLog[actionLogLen].start = start;\n");
-		fprintf(fp, "\t\tactionLog[actionLogLen].end = end;\n");
-		fprintf(fp, "\t\tactionLogLen++;\n\t}\n}\n");
+		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
+		fprintf(fp, "\t\tfprintf(stderr, \"tinyc: Aktions-Log-Grenze (%%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n\", ACTION_LOG_MAX);\n");
+		fprintf(fp, "\t\texit(1);\n\t}\n");
+		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
+		fprintf(fp, "\tactionLogLen++;\n}\n");
 		fprintf(fp, "static void actionLogReplay(void) {\n");
 		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLog[i].fn(actionLog[i].start, actionLog[i].end);\n}\n\n");
 		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
