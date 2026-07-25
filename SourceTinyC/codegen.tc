@@ -55,6 +55,11 @@ struct AstRule {
 	int root;
 };
 
+struct ActionRoutine {
+	char name[64];		/* GEN_NAME_LEN */
+	char* text;			/* malloc'd, exakt strlen(text)+1 gross */
+};
+
 /* AST_MAX_NODES auf die ORIGINALE Kapazitaet 8192 zurueckgesetzt (2026-07-25):
    war zwischenzeitlich wegen einer echten 68000-PC-relative-Adressierungsgrenze
    (siehe emitLeaGlobal()-Kommentar in Source/tinyc_backend_c.cpp) auf 64
@@ -121,6 +126,25 @@ char* lexUnquoteNext;
 int cgenOS9;
 char cgenPsect[64];               /* GEN_NAME_LEN */
 char cgenStart[64];               /* GEN_NAME_LEN */
+
+/* ACTIONS-Konfiguration ([NUTZER-CODE]-Block, siehe ARCHITEKTUR.md Paragraph 9).
+   ACTION_ROUTINE_INITIAL_CAP = 8 (Original-Konstante, als Literal in
+   pushRoutineC/pushRoutine68k). ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN]
+   ist im Original ein 2D-Array -- hier wieder FLACH (siehe Kommentar bei
+   TEIL 1 oben, gleicher Grund wie bei lexLineComment/lexBlockOn/lexRoots). */
+char ruleActionCallFlat[16384];   /* AST_MAX_RULES * GEN_NAME_LEN = 256 * 64 */
+struct ActionRoutine* routinesC;
+int routinesCCnt;
+int routinesCCap;
+struct ActionRoutine* routines68k;
+int routines68kCnt;
+int routines68kCap;
+/* lineBuf/collectBuf: wachsende Puffer, ueber den Aufruf hinaus statisch
+   (Kapazitaet bleibt erhalten, wird beim naechsten Aufruf wiederverwendet). */
+char* lineBuf;
+int lineBufCap;
+char* collectBuf;
+int collectBufCap;
 
 /* ===========================================================================
    TEIL 2: Funktionen
@@ -595,6 +619,206 @@ int cgenParseConfig(char* buf) {
 		} else {
 			printf("CODEGEN: unbekannte Konfigurationszeile ignoriert: %s\n", line);
 		}
+	}
+	return 1;
+}
+
+void freeRoutines(struct ActionRoutine* arr, int cnt) {
+	int i;
+	for (i = 0; i < cnt; i = i + 1) { free(arr[i].text); }
+}
+
+/* pushRoutineC/pushRoutine68k: haengt (name, text[0..textLen)) als neue Routine
+   an routinesC/routines68k an, verdoppelt bei Bedarf. ZWEI fast identische
+   Funktionen statt EINER generischen (wie im C++-Original, das ein
+   "ActionRoutine** arr, int* cnt, int* cap"-Tripel entgegennimmt) -- Tiny-C
+   hat keine Generik/Funktionszeiger, und routinesC/routines68k sind hier
+   (wie im echten codegen.cpp) file-scope-Globale, kein lokal weitergereichtes
+   Tripel; direktes Mutieren der jeweiligen globalen Trias ist daher einfacher
+   und sicherer als ein "struct ActionRoutine**"-Ausgabeparameter (gleiches
+   Vereinfachungsmuster wie beim ActionRoutine-Piloten, Milestone B). */
+void pushRoutineC(char* name, char* text, int textLen) {
+	int newCap;
+	char* dst;
+	if (routinesCCnt >= routinesCCap) {
+		if (routinesCCap > 0) { newCap = routinesCCap * 2; } else { newCap = 8; }	/* ACTION_ROUTINE_INITIAL_CAP */
+		routinesC = realloc(routinesC, newCap * sizeof(struct ActionRoutine));
+		routinesCCap = newCap;
+	}
+	dst = routinesC[routinesCCnt].name;
+	tcCopyBounded(dst, name, 63);
+	routinesC[routinesCCnt].text = malloc(textLen + 1);
+	dst = routinesC[routinesCCnt].text;
+	memcpy(dst, text, textLen);
+	dst[textLen] = 0;
+	routinesCCnt = routinesCCnt + 1;
+}
+
+void pushRoutine68k(char* name, char* text, int textLen) {
+	int newCap;
+	char* dst;
+	if (routines68kCnt >= routines68kCap) {
+		if (routines68kCap > 0) { newCap = routines68kCap * 2; } else { newCap = 8; }
+		routines68k = realloc(routines68k, newCap * sizeof(struct ActionRoutine));
+		routines68kCap = newCap;
+	}
+	dst = routines68k[routines68kCnt].name;
+	tcCopyBounded(dst, name, 63);
+	routines68k[routines68kCnt].text = malloc(textLen + 1);
+	dst = routines68k[routines68kCnt].text;
+	memcpy(dst, text, textLen);
+	dst[textLen] = 0;
+	routines68kCnt = routines68kCnt + 1;
+}
+
+char* routineTextC(char* name) {
+	int i;
+	for (i = 0; i < routinesCCnt; i = i + 1) {
+		if (strcmp(routinesC[i].name, name) == 0) { return routinesC[i].text; }
+	}
+	return 0;
+}
+
+char* routineText68k(char* name) {
+	int i;
+	for (i = 0; i < routines68kCnt; i = i + 1) {
+		if (strcmp(routines68k[i].name, name) == 0) { return routines68k[i].text; }
+	}
+	return 0;
+}
+
+/* letztes Wort einer Zeile (durch Leerraum getrennt) in out kopieren, max
+   outMax-1 Zeichen. */
+void lastWord(char* line, char* out, int outMax) {
+	char* pEnd;
+	char* pStart;
+	int n;
+	pEnd = line + strlen(line);
+	while (pEnd > line && (pEnd[-1] == 32 || pEnd[-1] == 9)) { pEnd = pEnd - 1; }
+	pStart = pEnd;
+	while (pStart > line && pStart[-1] != 32 && pStart[-1] != 9) { pStart = pStart - 1; }
+	n = pEnd - pStart;
+	if (n > outMax - 1) { n = outMax - 1; }
+	memcpy(out, pStart, n);
+	out[n] = 0;
+}
+
+void growLineBuf(int needed) {
+	int newCap;
+	if (needed <= lineBufCap) { return; }
+	if (lineBufCap > 0) { newCap = lineBufCap; } else { newCap = 256; }
+	while (newCap < needed) { newCap = newCap * 2; }
+	lineBuf = realloc(lineBuf, newCap);
+	lineBufCap = newCap;
+}
+
+void growCollectBuf(int needed) {
+	int newCap;
+	if (needed <= collectBufCap) { return; }
+	if (collectBufCap > 0) { newCap = collectBufCap; } else { newCap = 256; }
+	while (newCap < needed) { newCap = newCap * 2; }
+	collectBuf = realloc(collectBuf, newCap);
+	collectBufCap = newCap;
+}
+
+int actionsParseConfig(char* buf) {
+	int r;
+	int collecting;			/* 0=nichts, 1=ROUTINE C, 2=ROUTINE M68K */
+	char collectName[64];		/* GEN_NAME_LEN */
+	int collectLen;
+	char* nl;
+	int lineLen;
+
+	collecting = 0;
+	collectLen = 0;
+	r = 0;
+	while (r < 256) { ruleActionCallFlat[r * 64] = 0; r = r + 1; }	/* AST_MAX_RULES */
+	freeRoutines(routinesC, routinesCCnt);
+	routinesCCnt = 0;
+	freeRoutines(routines68k, routines68kCnt);
+	routines68kCnt = 0;
+
+	if (buf == 0 || buf[0] == 0) {
+		return 1;
+	}
+	while (*buf != 0) {
+		nl = strchr(buf, 10);
+		if (nl != 0) { lineLen = nl - buf; } else { lineLen = strlen(buf); }
+		growLineBuf(lineLen + 1);
+		memcpy(lineBuf, buf, lineLen);
+		lineBuf[lineLen] = 0;
+		buf = buf + lineLen;
+		if (*buf == 10) { buf = buf + 1; }
+
+		if (collecting != 0) {
+			if (strcmp(lineBuf, "END") == 0) {
+				if (collecting == 1) { pushRoutineC(collectName, collectBuf, collectLen); }
+				else if (collecting == 2) { pushRoutine68k(collectName, collectBuf, collectLen); }
+				collecting = 0;
+				continue;
+			}
+			{
+				int ln;
+				ln = strlen(lineBuf);
+				growCollectBuf(collectLen + ln + 2);
+				memcpy(&collectBuf[collectLen], lineBuf, ln);
+				collectLen = collectLen + ln;
+				collectBuf[collectLen] = 10;
+				collectLen = collectLen + 1;
+			}
+			continue;
+		}
+
+		if (lineBuf[0] == 35 || lineBuf[0] == 0) {
+			continue;
+		} else if (strncmp(lineBuf, "ACTION AFTER", 12) == 0) {
+			char ruleName[41];		/* AST_TEXT_LEN + 1 */
+			char callName[64];		/* GEN_NAME_LEN */
+			char* callPos;
+			char* p;
+			int n;
+			int idx;
+			callPos = strstr(lineBuf, "CALL");
+			if (callPos == 0) {
+				printf("ACTIONS: 'ACTION AFTER ... CALL <name>' erwartet, ignoriert: %s\n", lineBuf);
+				continue;
+			}
+			p = lineBuf + 12;
+			while (*p == 32 || *p == 9) { p = p + 1; }
+			n = 0;
+			while (p + n < callPos && p[n] != 32 && p[n] != 9 && n < 40) { n = n + 1; }
+			memcpy(ruleName, p, n);
+			ruleName[n] = 0;
+			lastWord(lineBuf, callName, 64);
+			idx = ruleIndexByName(ruleName);
+			if (idx < 0) {
+				printf("ACTIONS: unbekannte Regel '%s' -- ACTION ignoriert.\n", ruleName);
+				continue;
+			}
+			tcCopyBounded(&ruleActionCallFlat[idx * 64], callName, 63);
+		} else if (strncmp(lineBuf, "ROUTINE C", 9) == 0) {
+			lastWord(lineBuf, collectName, 64);
+			collecting = 1;
+			collectLen = 0;
+		} else if (strncmp(lineBuf, "ROUTINE M68K", 12) == 0) {
+			lastWord(lineBuf, collectName, 64);
+			collecting = 2;
+			collectLen = 0;
+		} else {
+			printf("ACTIONS: unbekannte Konfigurationszeile ignoriert: %s\n", lineBuf);
+		}
+	}
+	/* jede ACTION braucht mindestens EINE der beiden ROUTINEn, sonst verpufft sie
+	   vollstaendig -- das ist erlaubt (z.B. waehrend nur ein Backend entwickelt
+	   wird), aber eine klare Warnung ist besser als stilles Weglassen. */
+	r = 0;
+	while (r < 256) {
+		if (ruleActionCallFlat[r * 64] != 0) {
+			if (routineTextC(&ruleActionCallFlat[r * 64]) == 0 && routineText68k(&ruleActionCallFlat[r * 64]) == 0) {
+				printf("ACTIONS: Aktion '%s' hat weder ROUTINE C noch ROUTINE M68K -- wird nirgends aufgerufen.\n", &ruleActionCallFlat[r * 64]);
+			}
+		}
+		r = r + 1;
 	}
 	return 1;
 }
