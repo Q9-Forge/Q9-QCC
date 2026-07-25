@@ -1298,6 +1298,78 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "warn  tinyc Selfhosting L2 (globale Variante): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25): naechster Ausschnitt von codegen.cpp nach
+	# SourceTinyC/codegen.tc portiert -- LEXER-Konfigurationsparser (lexUnquote/
+	# lexUnquoteAt/lexParseConfig/markLexicalNode/computeLexicalSet, das [LEXER]-
+	# Konfigurationsblock-Handling). Haengt an strncmp/strchr/strrchr/strstr/memcpy
+	# (CALLEXT/clib.l) -- TinyVM kennt CALLEXT NICHT (keine libc-Simulation), daher
+	# hier wie beim ActionRoutine-Piloten oben NUR strukturell verifiziert: kompiliert
+	# sauber, echter r68 assembliert, echter l68 linkt gegen echte clib.l. Die
+	# eigentliche ALGORITHMUS-Korrektheit (WHITESPACE-Escape-Dekodierung, mehrere
+	# COMMENT LINE/BLOCK-Marker, COMMENT BLOCK NESTED-Erkennung, TOKEN-Registrierung,
+	# UND -- am wichtigsten -- die TRANSITIVE lexikalische Markierung ueber NTS-
+	# Referenzen in markLexicalNode) wurde EINMALIG separat verifiziert: eine Kopie
+	# mit Tiny-C-eigenen String-Helfern statt extern/CALLEXT (tcStrncmp/tcStrchr/...)
+	# lieferte ueber TinyVM UND nativ per ARM64-Backend exakt dieselben 19 erwarteten
+	# Werte (inkl. der transitiven Markierung einer per NTS referenzierten Regel) --
+	# siehe docs/FORTSCHRITT.md fuer die Details, hier bewusst nicht dauerhaft als
+	# Skript verankert (Wartungsaufwand einer zweiten String-Bibliothek nur fuers
+	# Testen steht in keinem Verhaeltnis zum Grenzwert).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		cgtest_main='
+int main() {
+	char cfg[300];
+	char* srcTemplate;
+	int i;
+	int r;
+	astReset();
+	astPushTS("x"); astFinishRule("letter");
+	astPushNTS("letter"); astFinishRule("ident");
+	astPushTS("5"); astFinishRule("number");
+	astPushTS("s"); astFinishRule("stringLit");
+	astPushTS("z"); astFinishRule("other");
+	srcTemplate = "WHITESPACE = ` \\t\\r\\n`\nTOKEN ident\nTOKEN number\nTOKEN stringLit\nCOMMENT LINE = `//`\nCOMMENT BLOCK = `/*` `*/`\nCOMMENT BLOCK NESTED = `(*` `*)`\n";
+	i = 0;
+	while (srcTemplate[i] != 0) {
+		if (srcTemplate[i] == 96) { cfg[i] = 34; } else { cfg[i] = srcTemplate[i]; }
+		i = i + 1;
+	}
+	cfg[i] = 0;
+	lexParseConfig(cfg);
+	computeLexicalSet();
+	putint(lexActive); putint(lexWsLen); putint(lexRootCnt);
+	putint(lexLineCommentCnt); putint(lexBlockCnt);
+	putint(lexBlockNested[0]); putint(lexBlockNested[1]);
+	r = ruleIndexByName("ident"); putint(ruleIsLexical[r]);
+	r = ruleIndexByName("letter"); putint(ruleIsLexical[r]);
+	r = ruleIndexByName("other"); putint(ruleIsLexical[r]);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$cgtest_main" > build/tinyc_cgtest.ir 2>build/tinyc_cgtest.err && \
+			build/tinyc_backend build/tinyc_cgtest.ir build/tinyc_cgtest_os9.a -os9 -largedata; then
+			cp build/tinyc_cgtest_os9.a "$MWOS_TMP/cgtest.a"
+			rm -f "$MWOS_TMP/cgtest.r" "$MWOS_TMP/cgtest.out" "$MWOS_TMP/cgtest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\cgtest.a -o=M:\\TMP\\cgtest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/cgtest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\cgtest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\cgtest.out -s=M:\\TMP\\cgtest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/cgtest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: LEXER-Konfigurationsparser (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/cgtest.a "$MWOS_TMP"/cgtest.r "$MWOS_TMP"/cgtest.out "$MWOS_TMP"/cgtest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc kompiliert nicht sauber (siehe build/tinyc_cgtest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (LEXER-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
