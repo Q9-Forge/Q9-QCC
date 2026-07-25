@@ -2472,13 +2472,40 @@ void tc_varref(const char* start, const char* end) {
 	   indiziertes Nicht-struct mit einem sinnlosen Feldanhang. OHNE diesen Schutz wuerden
 	   die bestehenden Index-Zweige weiter unten die "."-Fortsetzung STILLSCHWEIGEND
 	   ignorieren (stiller Fehlcode statt Diagnose) -- deshalb hier VOR jedem
-	   spezifischen Zweig ablehnen, ausser fuer die EINE Kombination, die tatsaechlich
-	   gebaut ist (lokales, als Array deklariertes struct). */
-	if (indexed && *nameEnd == '[' && !(slot >= 0 && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's')) {
+	   spezifischen Zweig ablehnen, ausser fuer die ZWEI Kombinationen, die tatsaechlich
+	   gebaut sind (lokales, als Array deklariertes struct; lokale Pointer-auf-struct-
+	   Variable, siehe naechster Block -- Letzteres seit 2026-07-25 fuer Milestone B). */
+	if (indexed && *nameEnd == '[' &&
+	    !(slot >= 0 && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's') &&
+	    !(slot >= 0 && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's')) {
 		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs in this version\n");
+			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs, or a local pointer to struct, in this version\n");
 			tcSemanticErrors++; tcTypePush(tcBadType()); return;
+		}
+	}
+	/* ptr[i].feld (2026-07-25, Milestone B): eine LOKALE Pointer-auf-struct-Variable,
+	   indiziert, dann Feldzugriff -- braucht der Selfhosting-Pilot fuer routinesC[i].name/
+	   .text (ActionRoutine*, ein malloc/realloc-gewachsenes Array, kein festes lokales
+	   Array wie beim bereits fertigen arr[i].feld oben). Stack-Reihenfolge identisch zum
+	   Array-Fall, nur PUSHADDR (Blockadresse) durch LOADP (geladener Pointer-WERT) ersetzt --
+	   IPADDN skaliert genauso um die Laufzeit-Byte-Groesse des Elements. */
+	if (slot >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			int sid = tcPointee(tcLocalTypes[slot]).structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
+			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
+			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 	}
 	/* arr[i].feld (2026-07-25): ein ARRAY von structs, indiziert, dann Feldzugriff --
@@ -2734,11 +2761,32 @@ void tc_target(const char* start, const char* end) {
 	   Kombinationen (z.B. "ptr[i].feld = ..") ohne Codegen-Unterstuetzung; ohne diesen
 	   Schutz wuerden die Index-Zweige weiter unten die "."-Fortsetzung stillschweigend
 	   ignorieren statt sauber zu diagnostizieren. */
-	if (tcTargetIsArray && *nameEnd == '[' && !(tcTargetSlot >= 0 && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's')) {
+	if (tcTargetIsArray && *nameEnd == '[' &&
+	    !(tcTargetSlot >= 0 && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's') &&
+	    !(tcTargetSlot >= 0 && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's')) {
 		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs in this version\n");
+			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed local array of structs, or a local pointer to struct, in this version\n");
 			tcSemanticErrors++; return;
+		}
+	}
+	/* ptr[i].feld = .. (2026-07-25, Milestone B): siehe tc_varref fuer die Erklaerung.
+	   LOADP statt PUSHADDR, sonst identisch zum Array-Fall (tcTargetIndirect=1). */
+	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') {
+		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		if (afterIdx < end && *afterIdx == '.') {
+			int sid = tcPointee(tcTargetType).structId - 1;
+			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+			int structSize = tcStructByteSize[sid];
+			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fieldEnd < end && *fieldEnd == '[') {
+				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+			}
+			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
+			tcTargetType = tcStructFieldTypes[sid][fi];
+			tcTargetIndirect = 1;
+			return;
 		}
 	}
 	/* arr[i].feld = .. (2026-07-25): siehe tc_varref fuer die vollstaendige Erklaerung
