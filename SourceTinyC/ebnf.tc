@@ -1,0 +1,754 @@
+/* ebnf.tc -- Tiny-C-Port von Source/ebnf.cpp (EBNF-Uebersetzer: Grammatik-Parser,
+   Tabellen-/Arbeitsdatei-Verwaltung, Stack-Maschine, Linksrekursions-Pruefung).
+   Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md / [[tinyc-vollport-status]]
+   (Memory) fuer den Kontext. Zusammen mit SourceTinyC/codegen.tc (bereits komplett
+   portiert) das Gegenstueck zum echten C++-Toolchain-Paar ebnf.cpp+codegen.cpp.
+
+   ARCHITEKTUR: eigene Datei, GETRENNT von codegen.tc (nicht angehaengt) --
+   entspricht der echten C++-Projektstruktur (ebnf.cpp ruft codegen.cpp, nicht
+   umgekehrt) und dem bereits bewiesenen Mehrdatei-Feature (Tiny-C Mehrdatei M1/M2/M3
+   in runtests.sh). Cross-Datei-Aufrufe von codegen.tc-Funktionen sind BARE
+   Funktionsprototypen OHNE Rumpf (interne bsr/bl-ABI, NICHT "extern" -- das waere
+   die Microware-ABI/CALLEXT fuer echte clib.l-Funktionen). Beim ECHTEN Zwei-Datei-
+   Build: codegen.tc mit "-part" (kein eigenes main), ebnf.tc mit "-part -runtime"
+   (traegt main() UND den gemeinsamen 68k-Core/I/O-Anker). Waehrend der Entwicklung
+   zum SCHNELLEN Testen weiterhin per Konkatenation ($(cat codegen.tc)$(cat ebnf.tc)
+   plus Testmain) in EINER tinyc_p-Kompilation geprueft -- Prototyp+spaetere-echte-
+   Definition IN DERSELBEN Datei wurde verifiziert unproblematisch (kein "duplicate
+   function"), siehe [[tinyc-vollport-status]].
+
+   Alle in SourceTinyC/codegen.tc etablierten Tiny-C-Sprachquirks/Workarounds gelten
+   unveraendert weiter (numerische ASCII-Codes statt Zeichenliterale, int/bool strikt
+   unterschieden, keine partielle 2D-Array-Indizierung -> flache 1D-Arrays, keine
+   escapten Anfuehrungszeichen in String-Literalen -> Byte-Helfer wie appendQuoteChar
+   unten, "&&"/"||"/"?" als reiner Text in einem String-Literal kann "logical-frame"/
+   "conditional-frame mismatch" ausloesen -> emitAndAnd/emitOrOr/emitQMark-Analoga bei
+   Bedarf, Deklarationen-vor-Funktionen-Zwang, keine eigenen variadischen Funktionen).
+
+   NEUE, ebnf.cpp-spezifische Anpassung: EOF-Sentinel. Das Original nutzt "char
+   aktChar" und vergleicht direkt mit dem Standard-"EOF" (typischerweise -1) --
+   ohne <stdio.h>-Makro hier als LITERALER Wert -1 nachgebildet, aktChar/lastChar/
+   nextChar deshalb bewusst als "int" (nicht "char") gefuehrt, um den Sentinel-Wert
+   -1 eindeutig von jedem echten Byte-Wert 0-255 zu unterscheiden (entspricht dem
+   ueblichen C-Idiom, warum getchar()/fgetc() "int" statt "char" zurueckgeben). */
+
+/* ===========================================================================
+   TEIL 1: Deklarationen (extern/enum/struct/global) -- MUSS komplett vor
+   TEIL 2 (Funktionen) stehen, siehe Kommentar in codegen.tc.
+=========================================================================== */
+
+extern int strcmp(char* a, char* b);
+extern int strncmp(char* a, char* b, int n);
+extern int strlen(char* s);
+extern char* strchr(char* s, int c);
+extern char* strrchr(char* s, int c);
+extern char* strstr(char* hay, char* needle);
+extern void* memcpy(void* dst, void* src, int n);
+extern int isalpha(int c);
+extern int isalnum(int c);
+extern int isspace(int c);
+extern int printf(char* fmt, ...);
+extern void* fopen(char* path, char* mode);
+extern int fclose(void* fp);
+extern int fprintf(void* fp, char* fmt, ...);
+extern int fputc(int c, void* fp);
+extern int sprintf(char* buf, char* fmt, ...);
+extern char* strcat(char* dst, char* src);
+/* fgets/feof: Zeilenweises Einlesen der .ebnf-Quelldatei bzw. einer alten
+   Arbeitsdatei (loadPreservedTests/getAktLine/loadWorkfileAsGrammar). char*
+   fgets(char* buf, int size, void* fp) liefert buf bei Erfolg, 0 (NULL) bei
+   EOF/Fehler -- exakt wie im echten C. */
+extern char* fgets(char* buf, int size, void* fp);
+extern int feof(void* fp);
+extern void exit(int code);
+
+/* Original-Konstanten (siehe Source/ebnf.cpp) -- als Literale eingesetzt:
+     IDENT_LEN=32 (Puffer 33)   FILENAME_LEN=64   IDENTLIST_MAX=1024
+     LEXTAB_LEN=1024            MAX_RULES=256      MAX_EDGES=1024
+     MAX_RULE_NAMES=256         MAX_TESTS=256      TEST_INPUT_LEN=256
+     WORKFILE_LINE=512          USER_CODE_LEN=1048576
+     LEXER_CFG_LEN=4096         CGEN_CFG_LEN=4096  LINESTACK_MAX=1024
+     CHARBUFFER_LEN=512         QUELLTEXT_BUF_SIZE=65536
+
+   TOKEN_*-Werte (im Original #define, hier als literale Zahlen belassen --
+   ein Tiny-C enum wuerde bei 0 beginnen, das Original startet bei 0x80/128,
+   daher bewusst KEIN enum hier, um exakte Wertegleichheit mit eventuell
+   gespeicherten/verglichenen Rohwerten zu vermeiden -- reine Vorsichtsmassnahme,
+   nicht funktional zwingend):
+     TOKEN_START=128(0x80) TOKEN_EQUAL=129 TOKEN_SEQ=130 TOKEN_OR=131
+     TOKEN_BLOCKON=132 TOKEN_BLOCKOFF=133 TOKEN_OPTIONON=134 TOKEN_OPTIONOFF=135
+     TOKEN_REPEATON=136 TOKEN_REPEATOFF=137 TOKEN_IDENT=138 TOKEN_LITERAL=139
+     TOKEN_QUOT=140 TOKEN_END=143(0x8F) TOKEN_EXIT=144(0x90) TOKEN_ERROR=145
+     TOKEN_RANGE=146
+
+   EOS=0 ('\0') EOL=10 ('\n') EOF_SENTINEL=-1 (siehe Kommentar oben) */
+
+struct TabEntry {
+	char ident[33];		/* IDENT_LEN + 1 */
+	char* mode;			/* "TS"/"NTS"/"RNG" -- persistente Stringliterale, keine Puffer */
+	char TS[33];		/* IDENT_LEN + 1 */
+	int trueAction;
+	int falseAction;
+	int callAddr;
+	char rangeLo;
+	char rangeHi;
+	char ambigF;
+};
+
+struct RuleSym {
+	char name[33];		/* IDENT_LEN + 1 */
+	int addr;
+};
+
+struct Edge {
+	char from[33];		/* IDENT_LEN + 1 */
+	char to[33];
+};
+
+struct TestCase {
+	char input[256];	/* TEST_INPUT_LEN */
+	int expectOk;
+};
+
+/* Lexer-/Token-Zustand */
+int aktChar;
+int lastChar;
+int nextChar;
+int aktToken;
+int lastToken;
+int restartToken[16];
+char aktName[33];		/* IDENT_LEN + 1 */
+char lastName[33];
+char aktRule[33];
+char aktString[33];
+char lastString[33];
+
+/* Dateien (siehe codegen.tc-Kommentar: FILE* als void* gefuehrt) */
+void* fpIn;
+void* fpOut;
+void* fpLst;
+int aktTabIndex;
+int errorCnt;
+int tableReady;
+
+/* Quelltext-Sammelpuffer fuer die Arbeitsdatei (Block "EBNF-QUELLTEXT") */
+char quelltextBuf[65536];		/* QUELLTEXT_BUF_SIZE */
+int quelltextLen;
+
+/* Listing-Zeile (pro Regel neu aufgebaut) */
+char lst[8192];
+
+/* Parser-Tabelle (Kern der ganzen Codegenerierung) */
+struct TabEntry lexTab[1024];		/* LEXTAB_LEN */
+
+/* Regel-Adressaufloesung */
+struct RuleSym ruleSymbols[256];	/* MAX_RULES */
+int ruleSymbolCnt;
+
+/* Linksrekursions-Erkennung */
+char currentDefRule[33];
+int firstPos;
+int lastFactorWasComplex;
+int lastFactorSkippable;
+int ambigFalseWarned;
+char ruleNameListFlat[8448];		/* MAX_RULE_NAMES * 33 = 256 * 33, flach (siehe
+					   codegen.tc-Kommentar: keine partielle 2D-Indizierung) */
+int ruleNameListCnt;
+struct Edge firstEdges[1024];		/* MAX_EDGES */
+int firstEdgeCnt;
+int dfsColor[256];			/* MAX_RULE_NAMES */
+char dfsPathFlat[8448];		/* MAX_RULE_NAMES * 33, flach */
+int dfsPathLen;
+int leftRecursionFound;
+
+/* Stack-Maschine (execFrom) */
+char* inputBuf;
+int inputLen;
+
+/* Original schreibt die neue Position ueber einen "int* pos"-Out-Parameter
+   zurueck (execFrom(int startRow, int* pos)). Ein einzelner Skalar-Pointer
+   wird in dieser Tiny-C-Version bisher nur INDIZIERT genutzt (ruleNullable[r]
+   in codegen.tc), nie ueber "*p = wert" beschrieben -- daher hier bewusst ein
+   globales Ergebnisfeld statt des Pointer-Parameters (execFrom nimmt "pos"
+   jetzt per Wert, siehe Prototyp in TEIL 2). */
+int execPosResult;
+
+/* Arbeitsdatei / Tests / NUTZER-CODE / LEXER- und CODEGEN-Konfigurationsbloecke */
+struct TestCase testCases[256];	/* MAX_TESTS */
+int testCaseCnt;
+char userCodeBuf[1048576];		/* USER_CODE_LEN */
+int userCodeLen;
+int userCodeTruncated;
+char lexerCfgBuf[4096];		/* LEXER_CFG_LEN */
+int lexerCfgLen;
+char cgenCfgBuf[4096];			/* CGEN_CFG_LEN */
+int cgenCfgLen;
+
+/* lineStack (fuer expression()/term(), siehe push/pop) */
+int lineStack[1024];			/* LINESTACK_MAX */
+int lineStackIndex;
+
+/* Ausdruckszaehler (Listing-Formatierung in expression()) */
+int expressionCount;
+
+/* Lexikalischer Scanner (zeichenweise ueber sourceBuffer, zeilenweise per fgets
+   aus fpIn nachgefuellt) */
+int flagEOF;
+char sourceBuffer[512];		/* CHARBUFFER_LEN */
+char* sourcePtr;
+int flagStartLineComment;
+char* startLineCommentString;
+int flagRestLineComment;
+char* restLineCommendString;
+int flagBlockComment;
+int flagBlockCommentActive;
+char* startBlockCommandString;
+char* endBlockCommandString;
+int lineCnt;
+int charLen;
+char* readPtr;
+
+/* ===========================================================================
+   TEIL 2: Funktionen
+=========================================================================== */
+
+/* Bare Prototypen fuer die (bereits vollstaendig portierten) codegen.tc-
+   Funktionen -- interne Tiny-C-ABI ueber Dateigrenze hinweg, siehe Kommentar
+   oben. Reihenfolge/Signaturen 1:1 aus SourceTinyC/codegen.tc uebernommen. */
+void astReset();
+int astMark();
+void astPushTS(char* text);
+void astPushRNG(char lo, char hi);
+void astPushNTS(char* name);
+void astGroupSeq(int mark);
+void astGroupAlt(int mark);
+void astWrapOpt();
+void astWrapRep();
+void astFinishRule(char* name);
+int lexParseConfig(char* buf);
+int cgenWantOS9();
+int cgenParseConfig(char* buf);
+int actionsParseConfig(char* buf);
+int genParserC(char* path);
+int genParser68k(char* path);
+int genParser68kOS9(char* path, char* baseName);
+void tcCopyBounded(char* dst, char* src, int maxlen);
+
+/* Eigene Vorwaertsdeklarationen (gegenseitige Rekursion des EBNF-Parsers:
+   rule/expression/term/factor/block/repeat/option rufen sich gegenseitig --
+   1:1 wie im C++-Original noetig). */
+void literal();
+void ident();
+void block();
+void repeat();
+void option();
+void factor();
+void term();
+void expression();
+void rule();
+void patchLocalTrue(int fromRow, int toRowExclusive, int target);
+void patchLocalFalse(int fromRow, int toRowExclusive, int target);
+void put();
+int getAktChar();
+char* getAktLine();
+void ebnfSyntax();
+void semantischeAnylyse();
+void lexikalischeAnalyse();
+void exitProgram(int exitCode);
+
+/* Wie emitAndAnd/emitOrOr/emitQMark in codegen.tc (siehe dortiger Kommentar):
+   ein Tiny-C-String-Literal kann kein escaptes Anfuehrungszeichen enthalten
+   UND keine literale Ein-Zeichen-Zeichenkette "\"" darstellen (der Delimiter
+   selbst kann nie Inhalt sein). Das Original haengt an mehreren Stellen genau
+   EIN Anfuehrungszeichen an einen Laufzeitpuffer an (z.B. strcat_s(dst, ...,
+   "\"")) -- hier stattdessen ein direkter Byte-Schreib-Helfer: haengt ASCII 34
+   ('"') ans Ende von buf an (buf muss NUL-terminiert und gross genug sein). */
+void appendQuoteChar(char* buf) {
+	int n;
+	n = strlen(buf);
+	buf[n] = 34;
+	buf[n + 1] = 0;
+}
+
+int isIdentChar(int ch) {
+	if (isalnum(ch) != 0 || ch == 95 || ch == 36) {		/* '_'=95 '$'=36 */
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+int isFirstIdentChar(int ch) {
+	if (isalpha(ch) != 0 || ch == 95 || ch == 36) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+int isLiteralDelimiter(int ch) {
+	if (ch == 34) {		/* '"' */
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+/* Zeilenende (\n und ggf. Windows-\r) entfernen -- Arbeitsdateien koennen von
+   beiden Plattformen stammen. */
+void chompLine(char* line) {
+	int len;
+	len = strlen(line);
+	while (len > 0 && (line[len - 1] == 10 || line[len - 1] == 13)) {
+		len = len - 1;
+		line[len] = 0;
+	}
+}
+
+void appendQuelltext(char* text) {
+	int len;
+	len = strlen(text);
+	if (quelltextLen + len < 65535) {		/* QUELLTEXT_BUF_SIZE - 1 */
+		memcpy(&quelltextBuf[quelltextLen], text, len);
+		quelltextLen = quelltextLen + len;
+		quelltextBuf[quelltextLen] = 0;
+	}
+}
+
+void clearLst() {
+	lst[0] = 0;
+}
+
+/* Original: strcat_s(lst, ..., " "); strcat_s(lst, ..., str); dann ggf. mit
+   Leerzeichen auf "num" Zeichen auffuellen. */
+void addLst(char* str, int num) {
+	int i;
+	int pad;
+	strcat(lst, " ");
+	strcat(lst, str);
+	if (num > 0) {
+		pad = num - strlen(str);
+		i = 0;
+		while (i < pad) {
+			strcat(lst, " ");
+			i = i + 1;
+		}
+	}
+}
+
+/* Escape-Sequenzen in Literalen dekodieren: \ddd (1-3 Oktalziffern), \t \n \r,
+   \\ und \" (alle anderen \x ergeben x). In-place (Original: r/w-Zeiger auf
+   demselben Puffer, Ergebnis ist nie laenger als die Eingabe). */
+void decodeEscapes(char* s) {
+	int r;
+	int w;
+	int v;
+	int n;
+	r = 0;
+	w = 0;
+	while (s[r] != 0) {
+		if (s[r] == 92 && s[r + 1] != 0) {		/* '\\'=92 */
+			r = r + 1;
+			if (s[r] >= 48 && s[r] <= 55) {		/* '0'..'7' */
+				v = 0;
+				n = 0;
+				while (n < 3 && s[r] >= 48 && s[r] <= 55) {
+					v = v * 8 + (s[r] - 48);
+					r = r + 1;
+					n = n + 1;
+				}
+				s[w] = v;
+				w = w + 1;
+			} else {
+				if (s[r] == 116) { s[w] = 9; }			/* 't' -> \t */
+				else if (s[r] == 110) { s[w] = 10; }		/* 'n' -> \n */
+				else if (s[r] == 114) { s[w] = 13; }		/* 'r' -> \r */
+				else { s[w] = s[r]; }				/* '\\' und '"' und alles andere */
+				w = w + 1;
+				r = r + 1;
+			}
+		} else {
+			s[w] = s[r];
+			w = w + 1;
+			r = r + 1;
+		}
+	}
+	s[w] = 0;
+}
+
+/* Gegenstueck fuer die Arbeitsdatei: Steuerzeichen und Backslash als \ooo
+   enkodieren, damit die zeilenbasierte PARSER-TABELLE robust bleibt. */
+void encodeTSField(char* in, char* out, int outMax) {
+	int n;
+	int i;
+	int c;
+	n = 0;
+	i = 0;
+	while (in[i] != 0 && n < outMax - 5) {
+		c = in[i];
+		if (c < 32 || c == 127 || c == 92) {
+			n = n + sprintf(&out[n], "\\%03o", c);
+		} else {
+			out[n] = in[i];
+			n = n + 1;
+		}
+		i = i + 1;
+	}
+	out[n] = 0;
+}
+
+/* ===========================================================================
+   TEIL 3: Tabellendruck, Adressaufloesung, Linksrekursion, Stack-Maschine
+=========================================================================== */
+
+/* statString[-stat] aus dem Original (ein durch negative Statuswerte
+   indiziertes char[]) wird durch eine if/else-Kette ersetzt -- weder ein
+   global initialisiertes "char x[] = \"...\";" noch eine char*-Variable, der
+   ein String-Literal zugewiesen wird, ist in dieser Tiny-C-Version bisher
+   erprobt (String-Literale werden bislang nur DIREKT als Funktionsargument
+   verwendet). Aus demselben Grund werden head0/head1/value0 (das Original
+   haelt sie als const char* vor) als Literal an jeder Aufrufstelle wiederholt
+   statt zwischengespeichert. STAT_TRUE=-1 STAT_FALSE=-2 STAT_ERROR=-3
+   STAT_NEXT=-4 STAT_NONE=-5 (aus ebnf.cpp, hier als Literalzahlen belassen). */
+void printLexTab() {
+	char trueStr[8];
+	char falseStr[8];
+	char addrStr[8];
+	char identDisp[35];		/* IDENT_LEN + 3 */
+	char tsDisp[35];
+	int i;
+	int stat;
+
+	printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+	printf("| Nr  | Rule                            | Mode| NTS/TS                          | Addr | T  | F  |\n");
+	fprintf(fpLst, "+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+	fprintf(fpLst, "| Nr  | Rule                            | Mode| NTS/TS                          | Addr | T  | F  |\n");
+	i = 0;
+	while (i < aktTabIndex) {
+		if (strlen(lexTab[i].ident) != 0) {
+			printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+			fprintf(fpLst, "+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+		}
+		stat = lexTab[i].trueAction;
+		if (stat < 0) {
+			if (stat == -1) { trueStr[0] = 84; trueStr[1] = 0; }
+			else if (stat == -2) { trueStr[0] = 70; trueStr[1] = 0; }
+			else if (stat == -3) { trueStr[0] = 69; trueStr[1] = 0; }
+			else if (stat == -4) { trueStr[0] = 78; trueStr[1] = 0; }
+			else { trueStr[0] = 45; trueStr[1] = 0; }
+		} else {
+			sprintf(trueStr, "%d", stat);
+		}
+		stat = lexTab[i].falseAction;
+		if (stat < 0) {
+			if (stat == -1) { falseStr[0] = 84; falseStr[1] = 0; }
+			else if (stat == -2) { falseStr[0] = 70; falseStr[1] = 0; }
+			else if (stat == -3) { falseStr[0] = 69; falseStr[1] = 0; }
+			else if (stat == -4) { falseStr[0] = 78; falseStr[1] = 0; }
+			else { falseStr[0] = 45; falseStr[1] = 0; }
+		} else {
+			sprintf(falseStr, "%d", stat);
+		}
+		if (strcmp(lexTab[i].mode, "NTS") == 0) {
+			if (lexTab[i].callAddr >= 0) {
+				sprintf(addrStr, "%d", lexTab[i].callAddr);
+			} else {
+				/* "???" als String-Literal triggert den bekannten "?"-Bug (siehe
+				   emitQMark in codegen.tc) -- daher direkte Byte-Zuweisung. */
+				addrStr[0] = 63; addrStr[1] = 63; addrStr[2] = 63; addrStr[3] = 0;
+			}
+		} else {
+			sprintf(addrStr, "-");
+		}
+		if (strlen(lexTab[i].ident) != 0) {
+			sprintf(identDisp, "<%s>", lexTab[i].ident);
+		} else {
+			identDisp[0] = 0;
+		}
+		if (strcmp(lexTab[i].mode, "NTS") == 0) {
+			sprintf(tsDisp, "<%s>", lexTab[i].TS);
+		} else {
+			tcCopyBounded(tsDisp, lexTab[i].TS, 32);
+		}
+		printf("| %-4d| %-32s| %-4s| %-32s| %-5s| %-3s| %-3s|\n", i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
+		fprintf(fpLst, "| %-4d| %-32s| %-4s| %-32s| %-5s| %-3s| %-3s|\n", i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
+		i = i + 1;
+	}
+	printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+	fprintf(fpLst, "+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+}
+
+void resolveCallAddresses() {
+	int i;
+	int j;
+	int found;
+
+	ruleSymbolCnt = 0;
+	i = 0;
+	while (i < aktTabIndex) {
+		if (strlen(lexTab[i].ident) != 0 && ruleSymbolCnt < 256) {
+			tcCopyBounded(ruleSymbols[ruleSymbolCnt].name, lexTab[i].ident, 32);
+			ruleSymbols[ruleSymbolCnt].addr = i;
+			ruleSymbolCnt = ruleSymbolCnt + 1;
+		}
+		i = i + 1;
+	}
+
+	i = 0;
+	while (i < aktTabIndex) {
+		if (strcmp(lexTab[i].mode, "NTS") == 0) {
+			found = -1;
+			j = 0;
+			while (j < ruleSymbolCnt) {
+				if (strcmp(ruleSymbols[j].name, lexTab[i].TS) == 0) {
+					found = ruleSymbols[j].addr;
+					break;
+				}
+				j = j + 1;
+			}
+			lexTab[i].callAddr = found;
+			if (found < 0) {
+				printf("FEHLER: Zeile %d referenziert undefinierte Regel '%s'\n", i, lexTab[i].TS);
+				errorCnt = errorCnt + 1;
+			}
+		} else {
+			lexTab[i].callAddr = -1;
+		}
+		i = i + 1;
+	}
+}
+
+void addRuleNameIfNew(char* name) {
+	int i;
+	i = 0;
+	while (i < ruleNameListCnt) {
+		if (strcmp(&ruleNameListFlat[i * 33], name) == 0) { return; }
+		i = i + 1;
+	}
+	if (ruleNameListCnt < 256) {		/* MAX_RULE_NAMES */
+		tcCopyBounded(&ruleNameListFlat[ruleNameListCnt * 33], name, 32);
+		ruleNameListCnt = ruleNameListCnt + 1;
+	}
+}
+
+void addFirstEdge(char* from, char* to) {
+	if (firstEdgeCnt < 1024) {		/* MAX_EDGES */
+		tcCopyBounded(firstEdges[firstEdgeCnt].from, from, 32);
+		tcCopyBounded(firstEdges[firstEdgeCnt].to, to, 32);
+		firstEdgeCnt = firstEdgeCnt + 1;
+	}
+}
+
+int findRuleNameIndex(char* name) {
+	int i;
+	i = 0;
+	while (i < ruleNameListCnt) {
+		if (strcmp(&ruleNameListFlat[i * 33], name) == 0) { return i; }
+		i = i + 1;
+	}
+	return -1;
+}
+
+void printCyclePath(int targetIdx) {
+	int i;
+	int startPos;
+	startPos = 0;
+	i = 0;
+	while (i < dfsPathLen) {
+		if (strcmp(&dfsPathFlat[i * 33], &ruleNameListFlat[targetIdx * 33]) == 0) {
+			startPos = i;
+			break;
+		}
+		i = i + 1;
+	}
+	printf("FEHLER: LINKSREKURSION erkannt: ");
+	i = startPos;
+	while (i < dfsPathLen) {
+		printf("%s -> ", &dfsPathFlat[i * 33]);
+		i = i + 1;
+	}
+	printf("%s\n", &ruleNameListFlat[targetIdx * 33]);
+	leftRecursionFound = 1;
+}
+
+void dfsVisit(int idx) {
+	int i;
+	int targetIdx;
+
+	dfsColor[idx] = 1;
+	tcCopyBounded(&dfsPathFlat[dfsPathLen * 33], &ruleNameListFlat[idx * 33], 32);
+	dfsPathLen = dfsPathLen + 1;
+
+	i = 0;
+	while (i < firstEdgeCnt) {
+		if (strcmp(firstEdges[i].from, &ruleNameListFlat[idx * 33]) == 0) {
+			targetIdx = findRuleNameIndex(firstEdges[i].to);
+			if (targetIdx >= 0) {
+				if (dfsColor[targetIdx] == 1) {
+					printCyclePath(targetIdx);
+					errorCnt = errorCnt + 1;
+				} else if (dfsColor[targetIdx] == 0) {
+					dfsVisit(targetIdx);
+				}
+			}
+		}
+		i = i + 1;
+	}
+
+	dfsPathLen = dfsPathLen - 1;
+	dfsColor[idx] = 2;
+}
+
+void checkLeftRecursion() {
+	int i;
+	i = 0;
+	while (i < ruleNameListCnt) {
+		dfsColor[i] = 0;
+		i = i + 1;
+	}
+	i = 0;
+	while (i < ruleNameListCnt) {
+		if (dfsColor[i] == 0) {
+			dfsPathLen = 0;
+			dfsVisit(i);
+		}
+		i = i + 1;
+	}
+}
+
+void extractLiteralText(char* quoted, char* out, int outMax) {
+	int len;
+	int n;
+	len = strlen(quoted);
+	n = len - 2;		/* ohne die beiden umschliessenden Anfuehrungszeichen */
+	if (n < 0) { n = 0; }
+	if (n > outMax - 1) { n = outMax - 1; }
+	tcCopyBounded(out, &quoted[1], n);
+}
+
+/* Original-Signatur: int execFrom(int startRow, int* pos) -- schreibt die
+   neue Position ueber den Out-Parameter zurueck. Hier: "pos" per Wert,
+   Ergebnis ueber das globale execPosResult (siehe Kommentar bei dessen
+   Deklaration in TEIL 1). "while (true)" statt "while (1)": ein bloser
+   Integer-Literal als Bedingung ist nicht erprobt (die Sprache unterscheidet
+   strikt int/bool), "true"/"false" sind dagegen echte Schluesselwoerter der
+   Tiny-C-Grammatik. */
+int execFrom(int startRow, int pos) {
+	int row;
+	int curPos;
+	int matched;
+	int next;
+	char lit[33];
+	int litLen;
+	int subPos;
+
+	row = startRow;
+	curPos = pos;
+
+	while (true) {
+		matched = 0;
+
+		if (strcmp(lexTab[row].mode, "TS") == 0) {
+			extractLiteralText(lexTab[row].TS, lit, 33);
+			litLen = strlen(lit);
+			if (curPos + litLen <= inputLen && strncmp(&inputBuf[curPos], lit, litLen) == 0) {
+				matched = 1;
+				curPos = curPos + litLen;
+			}
+		} else if (strcmp(lexTab[row].mode, "RNG") == 0) {
+			if (curPos < inputLen && inputBuf[curPos] >= lexTab[row].rangeLo && inputBuf[curPos] <= lexTab[row].rangeHi) {
+				matched = 1;
+				curPos = curPos + 1;
+			}
+		} else if (strcmp(lexTab[row].mode, "NTS") == 0) {
+			if (lexTab[row].callAddr < 0) {
+				printf("LAUFZEITFEHLER: Aufruf einer undefinierten Regel in Zeile %d\n", row);
+				return 0;
+			}
+			subPos = curPos;
+			if (execFrom(lexTab[row].callAddr, subPos) != 0) {
+				matched = 1;
+				curPos = execPosResult;
+			} else {
+				matched = 0;
+			}
+		} else {
+			printf("LAUFZEITFEHLER: unbekannter Modus '%s' in Zeile %d\n", lexTab[row].mode, row);
+			return 0;
+		}
+
+		if (matched != 0) { next = lexTab[row].trueAction; } else { next = lexTab[row].falseAction; }
+
+		if (next == -1) {		/* STAT_TRUE */
+			execPosResult = curPos;
+			return 1;
+		}
+		if (next == -2 || next == -3) {		/* STAT_FALSE / STAT_ERROR */
+			return 0;
+		}
+		if (next < 0) {
+			printf("LAUFZEITFEHLER: unerwarteter Status %d in Zeile %d\n", next, row);
+			return 0;
+		}
+		row = next;
+	}
+}
+
+/* ===========================================================================
+   TEIL 4: Arbeitsdatei (NUTZER-CODE/LEXER/CODEGEN-Rohbloecke, TS-Symboltabelle)
+=========================================================================== */
+
+void appendUserCodeLine(char* line) {
+	int n;
+	n = strlen(line);
+	if (userCodeLen + n + 2 >= 1048576) {		/* USER_CODE_LEN */
+		userCodeTruncated = 1;
+		return;
+	}
+	memcpy(&userCodeBuf[userCodeLen], line, n);
+	userCodeLen = userCodeLen + n;
+	userCodeBuf[userCodeLen] = 10;
+	userCodeLen = userCodeLen + 1;
+	userCodeBuf[userCodeLen] = 0;
+}
+
+void appendLexerCfgLine(char* line) {
+	int n;
+	n = strlen(line);
+	if (lexerCfgLen + n + 2 >= 4096) {		/* LEXER_CFG_LEN */
+		printf("WARNUNG: [LEXER]-Block groesser als %d Bytes -- Rest ignoriert.\n", 4095);
+		return;
+	}
+	memcpy(&lexerCfgBuf[lexerCfgLen], line, n);
+	lexerCfgLen = lexerCfgLen + n;
+	lexerCfgBuf[lexerCfgLen] = 10;
+	lexerCfgLen = lexerCfgLen + 1;
+	lexerCfgBuf[lexerCfgLen] = 0;
+}
+
+void appendCgenCfgLine(char* line) {
+	int n;
+	n = strlen(line);
+	if (cgenCfgLen + n + 2 >= 4096) {		/* CGEN_CFG_LEN */
+		printf("WARNUNG: [CODEGEN]-Block groesser als %d Bytes -- Rest ignoriert.\n", 4095);
+		return;
+	}
+	memcpy(&cgenCfgBuf[cgenCfgLen], line, n);
+	cgenCfgLen = cgenCfgLen + n;
+	cgenCfgBuf[cgenCfgLen] = 10;
+	cgenCfgLen = cgenCfgLen + 1;
+	cgenCfgBuf[cgenCfgLen] = 0;
+}
+
+/* Original-Signatur: int tsSymbolIndexOf(char tsList[][IDENT_LEN+1], int tsCnt,
+   const char* sym) -- 2D-Array-Parameter geht nicht (Quirk 4), daher flaches
+   Array + fest verdrahtete Breite 33 (IDENT_LEN+1), analog ruleNameListFlat. */
+int tsSymbolIndexOf(char* tsListFlat, int tsCnt, char* sym) {
+	int i;
+	i = 0;
+	while (i < tsCnt) {
+		if (strcmp(&tsListFlat[i * 33], sym) == 0) { return i; }
+		i = i + 1;
+	}
+	return -1;
+}
