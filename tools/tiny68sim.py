@@ -36,8 +36,18 @@ def load(path):
             if match:
                 labels[match.group(1)] = len(instructions)
                 line = match.group(2).strip()
-                if match.group(1).startswith("tc_g_"):
+                if match.group(1).startswith("tc_g_") or match.group(1).startswith("tc_ga_"):
+                    # "tc_ga_X"-Eintraege (2026-07-25, -largedata-Indirektionstabelle,
+                    # siehe tinyc_backend_c.cpp) sind selbst EIGENSTAENDIGE "Globale" mit
+                    # genau einem dc.l-Wert (einer Symbolreferenz) -- brauchen dieselbe
+                    # current_global-Zuordnung wie ein echtes "tc_g_"-Global, sonst wird
+                    # ihr eigener Wert nie in global_initials erfasst.
                     current_global, current_offset = match.group(1), 0
+                else:
+                    # JEDES andere Label beendet die Zuordnung nachfolgender dc.l/dc.b-
+                    # Zeilen zum vorherigen Globalen, sonst wuerden z.B. Funktionslabels
+                    # faelschlich als dessen Fortsetzung gelesen.
+                    current_global = None
             if current_global and (line.startswith("dc.l") or line.startswith("dc.b")):
                 # mehrere kommagetrennte Werte pro Zeile (2026-07-25, kompakte Nullfuellung
                 # grosser Arrays, z.B. "dc.l 0,0,0,0,0,0,0,0" -- schon vorher fuer
@@ -45,7 +55,15 @@ def load(path):
                 # EINEN Wert pro Zeile zu erwarten).
                 step = 1 if line.startswith("dc.b") else 4
                 for tok in line.split(None, 1)[1].split(","):
-                    value = int(tok.strip(), 0)
+                    tok = tok.strip()
+                    try:
+                        value = int(tok, 0)
+                    except ValueError:
+                        # Symbolreferenz statt Zahlenliteral (2026-07-25, -largedata-
+                        # Indirektionstabelle: "tc_ga_X: dc.l tc_g_X" -- die Adresse von
+                        # tc_g_X ist erst bekannt, sobald global_addresses in run()
+                        # berechnet ist, deshalb hier nur als Marker vormerken).
+                        value = ("symbol", tok)
                     global_initials[(current_global, current_offset)] = value
                     if current_offset == 0:
                         global_initials[current_global] = value
@@ -64,12 +82,18 @@ def run(instructions, labels, global_initials=None):
     # bewusst OHNE "tc_g_"-Praefix (kollisionsfrei zu echten Tiny-C-Globalen), daher hier
     # explizit mit aufgenommen statt ueber das generische "tc_g_"-Praefixmuster.
     global_addresses = {name: 0x200000 + i * 0x10000 for i, name in enumerate(
-        name for name in labels if name.startswith("tc_g_") or name == "tc_extcall_tmp")}
+        name for name in labels if name.startswith("tc_g_") or name.startswith("tc_ga_") or name == "tc_extcall_tmp")}
+    def resolve(value):
+        # Symbolreferenz aus der -largedata-Indirektionstabelle (siehe load()) --
+        # erst hier aufloesbar, da global_addresses vorher noch nicht feststand.
+        if isinstance(value, tuple) and value[0] == "symbol":
+            return global_addresses[value[1]]
+        return u32(value)
     for key, value in (global_initials or {}).items():
         if isinstance(key, tuple):
-            name, offset = key; memory[global_addresses[name] + offset] = u32(value)
+            name, offset = key; memory[global_addresses[name] + offset] = resolve(value)
         elif key in global_addresses:
-            memory[global_addresses[key]] = u32(value)
+            memory[global_addresses[key]] = resolve(value)
     d = [0] * 8
     a6 = 0
     a7 = 0x100000
@@ -110,7 +134,7 @@ def run(instructions, labels, global_initials=None):
         match = re.match(r"(-?\d+)\(a6\)$", text)
         if match:
             return memory.get(a6 + int(match.group(1)), 0)
-        match = re.match(r"(tc_g_\w+|tc_extcall_tmp)\(pc\)$", text)
+        match = re.match(r"(tc_g_\w+|tc_ga_\w+|tc_extcall_tmp)\(pc\)$", text)
         if match:
             return memory.get(global_addresses[match.group(1)], 0)
         if text == "(a0)":
@@ -147,7 +171,7 @@ def run(instructions, labels, global_initials=None):
         if match:
             memory[a6 + int(match.group(1))] = value
             return
-        match = re.match(r"(tc_g_\w+|tc_extcall_tmp)\(pc\)$", text)
+        match = re.match(r"(tc_g_\w+|tc_ga_\w+|tc_extcall_tmp)\(pc\)$", text)
         if match:
             memory[global_addresses[match.group(1)]] = value
             return
@@ -267,7 +291,7 @@ def run(instructions, labels, global_initials=None):
         if match:
             write_operand(match.group(2), read_operand(match.group(1)))
             continue
-        match = re.match(r"move\.l (.+),a0$", ins)
+        match = re.match(r"movea?\.l (.+),a0$", ins)
         if match:
             a0_global = read_operand(match.group(1))
             continue
@@ -391,7 +415,7 @@ def run(instructions, labels, global_initials=None):
         if match:
             a0_global = a6 + int(match.group(1))
             continue
-        match = re.match(r"lea (tc_g_\w+|tc_extcall_tmp)\(pc\),a0$", ins)
+        match = re.match(r"lea (tc_g_\w+|tc_ga_\w+|tc_extcall_tmp)\(pc\),a0$", ins)
         if match:
             a0_global = global_addresses[match.group(1)]
             continue
