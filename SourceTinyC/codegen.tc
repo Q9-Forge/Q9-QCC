@@ -146,6 +146,13 @@ int lineBufCap;
 char* collectBuf;
 int collectBufCap;
 
+/* AST-Validierung: ruleNullable[AST_MAX_RULES] war im Original ein LOKALES
+   Array mit Nullinitialisierer ("= { 0 }") in validateAstForCodegen selbst --
+   hier als GLOBAL angelegt und per Schleife genullt (gleiches Muster wie bei
+   ruleIsLexical/computeLexicalSet), um die Initialisierer-Frage bei lokalen
+   int-Arrays gar nicht erst zu stellen. */
+int ruleNullableArr[256];         /* AST_MAX_RULES */
+
 /* ===========================================================================
    TEIL 2: Funktionen
 =========================================================================== */
@@ -817,6 +824,140 @@ int actionsParseConfig(char* buf) {
 			if (routineTextC(&ruleActionCallFlat[r * 64]) == 0 && routineText68k(&ruleActionCallFlat[r * 64]) == 0) {
 				printf("ACTIONS: Aktion '%s' hat weder ROUTINE C noch ROUTINE M68K -- wird nirgends aufgerufen.\n", &ruleActionCallFlat[r * 64]);
 			}
+		}
+		r = r + 1;
+	}
+	return 1;
+}
+
+/* wortartiges Literal: beginnt wie ein Bezeichner und besteht nur aus
+   Bezeichner-Zeichen -> bekommt im syntaktischen Kontext einen
+   Wortgrenzen-Check. */
+int isWordLiteral(char* s) {
+	int i;
+	if (!(isalpha(s[0]) != 0 || s[0] == 95 || s[0] == 36)) { return 0; }		/* '_'=95 '$'=36 */
+	i = 0;
+	while (s[i] != 0) {
+		if (!(isalnum(s[i]) != 0 || s[i] == 95 || s[i] == 36)) { return 0; }
+		i = i + 1;
+	}
+	return 1;
+}
+
+/* Ein rekursiver Abstieg darf eine Wiederholung nur dann als einfache greedy-
+   Schleife erzeugen, wenn ihr Rumpf mindestens ein Zeichen konsumiert --
+   sonst waere die erfolgreiche Iteration ohne Fortschritt eine Endlosschleife.
+   "nullable" = kann der Knoten erfolgreich sein, ohne Eingabe zu verbrauchen?
+   NTS gelten konservativ als nicht-nullable (eine nullable NTS in einer
+   Wiederholung wird per Regel-Fixpunktanalyse in validateAstForCodegen
+   erkannt). Nimmt (wie schon markLexicalNode) eine Knoten-ID statt eines
+   "AstNode*"-Zeigers entgegen (kein unindizierter Pointer-Feldzugriff in
+   dieser Tiny-C-Version, siehe FORTSCHRITT.md). */
+int nodeNullable(int id, int* ruleNullable) {
+	int child;
+	int r;
+	char* txt;
+	switch (nodes[id].kind) {
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			if (nodeNullable(child, ruleNullable) == 0) { return 0; }
+			child = nodes[child].nextSib;
+		}
+		return 1;
+	case AST_ALT:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			if (nodeNullable(child, ruleNullable) != 0) { return 1; }
+			child = nodes[child].nextSib;
+		}
+		return 0;
+	case AST_OPT:
+		return 1;
+	case AST_REP:
+		return 1;
+	case AST_TS:
+		txt = nodes[id].text;
+		if (txt[0] == 0) { return 1; } else { return 0; }
+	case AST_RNG:
+		return 0;
+	case AST_NTS:
+		txt = nodes[id].text;
+		r = 0;
+		while (r < ruleCnt) {
+			if (strcmp(rules[r].name, txt) == 0) { return ruleNullable[r]; }
+			r = r + 1;
+		}
+		return 0;			/* undefinierte Regeln werden bereits von ebnf.cpp gemeldet */
+	}
+	return 0;
+}
+
+int validateRepeatProgress(int id, int* ruleNullable) {
+	int child;
+	if (nodes[id].kind == AST_REP && nodeNullable(nodes[id].firstChild, ruleNullable) != 0) {
+		printf("CODEGEN: Wiederholung hat einen leeren Rumpf -- Endlosschleife verhindert.\n");
+		return 0;
+	}
+	child = nodes[id].firstChild;
+	while (child >= 0) {
+		if (validateRepeatProgress(child, ruleNullable) == 0) { return 0; }
+		child = nodes[child].nextSib;
+	}
+	return 1;
+}
+
+int validateAstForCodegen() {
+	int changed;
+	int r;
+	int s;
+	char a[64];			/* GEN_NAME_LEN */
+	char b[64];
+
+	if (ruleCnt == 0 || astOverflow != 0) {
+		printf("CODEGEN: kein AST vorhanden (leer oder Ueberlauf).\n");
+		return 0;
+	}
+
+	r = 0;
+	while (r < ruleCnt) { ruleNullableArr[r] = 0; r = r + 1; }
+
+	/* Die Nullbarkeit gegenseitig rekursiver Regeln braucht einen kleinen Fixpunkt. */
+	do {
+		changed = 0;
+		r = 0;
+		while (r < ruleCnt) {
+			if (ruleNullableArr[r] == 0 && nodeNullable(rules[r].root, ruleNullableArr) != 0) {
+				ruleNullableArr[r] = 1;
+				changed = 1;
+			}
+			r = r + 1;
+		}
+	} while (changed != 0);
+
+	r = 0;
+	while (r < ruleCnt) {
+		if (validateRepeatProgress(rules[r].root, ruleNullableArr) == 0) {
+			printf("         betroffen: Regel '%s'.\n", rules[r].name);
+			return 0;
+		}
+		r = r + 1;
+	}
+
+	/* '$' wird fuer beide Backends zu '_' normalisiert. Eine Kollision wuerde
+	   sonst doppelte C-Funktionen bzw. 68k-Labels erzeugen und ist daher ein
+	   klarer Fehler. */
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, a);
+		s = r + 1;
+		while (s < ruleCnt) {
+			sanitizeName(rules[s].name, b);
+			if (strcmp(a, b) == 0) {
+				printf("CODEGEN: Regeln '%s' und '%s' kollidieren als '%s'.\n", rules[r].name, rules[s].name, a);
+				return 0;
+			}
+			s = s + 1;
 		}
 		r = r + 1;
 	}

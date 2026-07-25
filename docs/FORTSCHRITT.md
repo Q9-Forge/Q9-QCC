@@ -102,6 +102,46 @@ Zwischenvariable). Echte End-zu-End-Verhaltensverifikation bleibt der
 Live-Q9-Ausfuehrung vorbehalten (bereits als eigener offener Schritt vermerkt,
 siehe "Bewusst offen").
 
+**2026-07-25 (noch spaeter, direkt im Anschluss): AST-Validierung portiert**
+(`isWordLiteral`/`nodeNullable`/`validateRepeatProgress`/
+`validateAstForCodegen`, `Source/codegen.cpp` Zeilen 750-857). Prueft VOR der
+Ausgabe zwei Dinge: (1) eine Wiederholung mit nullbarem Rumpf (z.B. `{ [x] }`)
+waere im erzeugten Parser eine Endlosschleife -- wird per Fixpunktanalyse
+ueber gegenseitig rekursive Regeln erkannt und abgelehnt; (2) zwei Regeln, die
+nach der `$`->`_`-Normalisierung denselben Namen ergeben, wuerden doppelte
+C-Funktionen bzw. 68k-Labels erzeugen -- wird ebenfalls erkannt und abgelehnt.
+`ruleNullable[AST_MAX_RULES]` war im Original ein LOKALES Array mit
+Nullinitialisierer (`= { 0 }`) -- hier als GLOBAL angelegt und per Schleife
+genullt (gleiches Muster wie `ruleIsLexical`), um die Frage nach lokalen
+int-Array-Initialisierern gar nicht erst zu stellen.
+
+**Zwei weitere Stolperfallen dabei gefunden** (beide sofort im Port behoben):
+ein `return <Vergleichsausdruck>;` (z.B. `return txt[0] == 0;`) aus einer als
+`int` deklarierten Funktion wird ALS RUECKGABEWERT ebenfalls als Typfehler
+abgelehnt ("return expects int, got bool") -- staerker als die bereits
+bekannte int/bool-Regel bei `if`/`&&`, da hier sogar der Aufruf noch als
+"exit 0, OK" durchlaeuft und der Fehler nur im STDOUT auftaucht (siehe
+naechster Punkt). Und: **semantische Fehler stoppen den generierten Parser
+NICHT** -- `tcSemanticErrors` wird zwar hochgezaehlt, aber NIRGENDS
+ausgewertet (weder in `Data/tinyc.lextab` noch im `codegen.cpp`-Treiber);
+der Compiler druckt die Fehlermeldung, gibt trotzdem "OK" aus und exit 0.
+**Deshalb ab sofort bei jedem Kompilieren zusaetzlich `grep -n "^tinyc:"`
+auf STDOUT/stderr pruefen, nicht nur auf "OK"/exit-Code verlassen** (nach
+diesem Fund rueckwirkend den gesamten kumulativen Dateistand erneut
+geprüft -- keine versteckten Fehler in den bereits gemergten Chunks).
+
+**Verifiziert:** einmalig per TinyVM (mit Tiny-C-eigenen Stand-ins fuer
+`strcmp`/`isalpha`/`isalnum` statt `extern`) -- alle 10 erwarteten Werte
+trafen exakt zu, inklusive BEIDER Diagnosepfade (nullbare Wiederholung UND
+Regelnamenkollision, mit den erwarteten Diagnose-Seiteneffekten VOR dem
+jeweiligen Rueckgabewert). ARM64 hier NICHT moeglich: das kumulative
+Gesamtkompilat enthaelt bereits `free`-Aufrufe aus dem ActionRoutine-Chunk,
+und ARM64 lehnt `CALLEXT` GRUNDSAETZLICH ab (Ganzprogrammpruefung beim
+Codegen, unabhaengig von tatsaechlicher Erreichbarkeit) -- TinyVM dagegen
+meldet einen unbekannten Opcode nur bei tatsaechlicher AUSFUEHRUNG, was hier
+unproblematisch war. Dauerhafte Regression wie ueblich: echter `r68`+`l68`
+gegen echte `clib.l`, in `runtests.sh` verankert.
+
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
 
