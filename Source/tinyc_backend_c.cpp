@@ -16,7 +16,12 @@
 #define NAME_LEN        64
 #define LINE_LEN        512
 #define MAX_ARGS        6
-#define MAX_IR_LINES    8192
+/* 2026-07-25: von 8192 erhoeht -- beim Skalierungstest fuer den -largedata-
+   Funktionsaufruf-Schalter (a4/a2-Indirektionstabelle statt bsr) blockierte
+   dieser Cap den Nachweis bei realistischer Groessenordnung (150 generierte
+   Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
+   sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
+#define MAX_IR_LINES    65536
 #define MAX_FUNCS       256
 #define MAX_GLOBALS     256
 #define MAX_ARRAY_LEN   4096
@@ -151,9 +156,10 @@ static void emitAlign(FILE* out) {
    hier auf 68k-PC-relative-Adressierung uebertragen. Kostet einen
    zusaetzlichen Speicherzugriff pro Globalzugriff (movea.l statt lea/direktem
    move.l) -- deshalb bewusst NICHT der Standard, nur bei Bedarf.
-   WICHTIG: loest NICHT das analoge Problem bei FUNKTIONSAUFRUFEN (bsr ist
-   ebenfalls PC-relativ-16-Bit) -- das ist ein eigener, separater Sonderfall,
-   falls er je auftritt (Code-Groesse statt Daten-Groesse als Ursache). */
+   Das ANALOGE Problem bei FUNKTIONSAUFRUFEN (bsr ist ebenfalls PC-relativ-
+   16-Bit) -- Code-Groesse statt Daten-Groesse als Ursache -- wird seit
+   2026-07-25 (Nutzerwunsch "automatisch eine jmp table bauen") ebenfalls
+   von -largedata mitgeloest, siehe emitCall()/tc_functab weiter unten. */
 static void emitLeaGlobal(FILE* out, const char* gAsmName, const char* reg) {
 	if (largeDataMode) {
 		fprintf(out, "\tmovea.l\ttc_ga_%s(pc),%s\n", gAsmName + 5, reg);	/* "tc_g_" ist 5 Zeichen */
@@ -177,6 +183,48 @@ static int findGlobal(const char* name) {
 	int i;
 	for (i = 0; i < globalCount; i++) if (strcmp(globals[i].name, name) == 0) return i;
 	return -1;
+}
+
+/* -largedata (Funktionsaufruf-Teil, 2026-07-25, Nutzerwunsch "automatisch eine
+   jmp table bauen wenn die Spruenge zu gross werden"): bsr ist wie lea(pc)
+   PC-relativ-16-Bit -- betrifft NICHT die internen bra/beq/bne-Sprungziele
+   INNERHALB einer Funktion (LABEL/JMP/JZ/JNZ, immer durch die Groesse EINER
+   Funktion begrenzt), sondern FUNKTIONSUEBERGREIFENDE Aufrufe (CALL/CALLP,
+   interne Laufzeit-Helfer wie tc_mul_i32), deren Aufrufstellen ueber ein
+   beliebig grosses Programm verstreut sein koennen.
+   Loesung: EIN Register (a4) wird EINMAL beim Programmstart auf die absolute
+   Adresse einer kleinen Tabelle (tc_functab) gesetzt ("lea tc_functab(pc),a4"
+   -- die Tabelle liegt bewusst DIREKT nach tc_start/main, bleibt also immer
+   erreichbar, WIE GROSS der Rest des Programms auch wird). Jeder Aufruf wird
+   dann zu "move.l N(a4),a2\njsr (a2)" statt "bsr X" -- a4-relative
+   Adressierung hat zwar auch nur 16-Bit-Displacement, aber die Tabelle selbst
+   waechst nur mit der ANZAHL der Funktionen (4 Byte/Eintrag), nicht mit der
+   Code-GROESSE -- bleibt fuer jede realistische Anzahl Funktionen klein genug.
+   a2 als Scratch-Register gewaehlt (NICHT a0/a1): a0 ist z.B. in IPADDN ueber
+   den bsr hinweg belegt (Pointer-Wert), a1 in tc_putint/tc_putuint/tc_putchar
+   (Puffer-Zeiger, siehe deren Definition) -- a2 ist an JEDER betroffenen
+   Aufrufstelle nachweislich frei. */
+static int helperTableOffset(const char* rawName) {
+	static const char* helperNames[8] = {
+		"tc_mul_i32", "tc_div_i32", "tc_udiv_u32", "tc_mod_i32", "tc_umod_u32",
+		"tc_putint", "tc_putuint", "tc_putchar"
+	};
+	int i;
+	for (i = 0; i < 8; i++) if (strcmp(helperNames[i], rawName) == 0) return funcCount * 4 + i * 4;
+	fatal("interner Fehler: unbekannter Laufzeit-Helfer fuer -largedata-Funktionstabelle");
+	return -1;
+}
+
+/* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer Tiny-C-
+   Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
+   Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
+   asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben. */
+static void emitCall(FILE* out, const char* asmName, int tableOffset) {
+	if (largeDataMode) {
+		fprintf(out, "\tmove.l\t%d(a4),a2\n\tjsr\t(a2)\n", tableOffset);
+	} else {
+		fprintf(out, "\tbsr\t%s\n", asmName);
+	}
 }
 
 static int isNumWord(const char* w) {
@@ -525,6 +573,8 @@ static void emitIR(FILE* out) {
 	int fi, k;
 	char msg[300];
 	char addrBuf[64];
+	int order[MAX_FUNCS];
+	int oi;
 
 	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
 	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
@@ -541,14 +591,67 @@ static void emitIR(FILE* out) {
 		fprintf(out, "%s Beenden -- a6 bleibt dadurch als dessen statischer Datenzeiger\n", fullCommentPrefix());
 		fprintf(out, "%s unangetastet (siehe framePtr()-Kommentar oben im Quelltext).\n\n", fullCommentPrefix());
 	} else {
-		fputs("tc_start:\tbsr\ttc_main\n\tbra\ttc_exit\n\n", out);
+		int mainIdx = findFunction("main");
+		fputs("tc_start:\n", out);
+		if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
+		if (mainIdx >= 0) {
+			char mainAsmName[NAME_LEN + 40];
+			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
+			emitCall(out, mainAsmName, mainIdx * 4);
+		} else {
+			fputs("\tbsr\ttc_main\n", out); /* main nicht in dieser Datei -- wie zuvor, siehe -part oben */
+		}
+		fputs("\tbra\ttc_exit\n\n", out);
+	}
+	if (largeDataMode) {
+		/* Funktions-Indirektionstabelle (siehe emitCall()-Kommentar): MUSS direkt nach
+		   tc_start/main stehen (VOR den potenziell riesigen Funktionsrumpf-Texten),
+		   damit das einmalige "lea tc_functab(pc),a4" immer erreichbar bleibt, egal wie
+		   gross der Rest des Programms wird. Reihenfolge MUSS exakt zu funcIndex*4 (fuer
+		   Tiny-C-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
+		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
+		emitAlign(out);
+		fputs("tc_functab:\n", out);
+		for (fi = 0; fi < funcCount; fi++) {
+			char asmName[NAME_LEN + 40];
+			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
+			fprintf(out, "\tdc.l\t%s\n", asmName);
+		}
+		fputs("\tdc.l\ttc_mul_i32\n\tdc.l\ttc_div_i32\n\tdc.l\ttc_udiv_u32\n", out);
+		fputs("\tdc.l\ttc_mod_i32\n\tdc.l\ttc_umod_u32\n", out);
+		fputs("\tdc.l\ttc_putint\n\tdc.l\ttc_putuint\n\tdc.l\ttc_putchar\n", out);
 	}
 
-	for (fi = 0; fi < funcCount; fi++) {
+	/* os9Mode + largeDataMode: main ist der einzige Einsprungpunkt (kein
+	   eigener tc_start) und muss dort "lea tc_functab(pc),a4" ausfuehren --
+	   diese lea ist selbst PC-relativ und daher nur gueltig, wenn main DIREKT
+	   nach der Tabelle liegt. main kann aber an beliebiger Stelle in funcs[]
+	   registriert sein -- steht main nicht zuerst im Quelltext, koennen
+	   riesige Funktionsrumpf-Texte ZWISCHEN Tabelle und main landen (genau
+	   das brach beim 150-Funktionen-Skalierungstest fuer diese Erweiterung:
+	   main stand am Ende, >32 KB entfernt, "value out of range" bei echtem
+	   r68). Deshalb wird main hier -- NUR bei os9+largedata -- unabhaengig
+	   von ihrer Position in funcs[] als allererste Funktion emittiert. Die
+	   Funktionsindirektionstabelle selbst bleibt in Registrierungsreihenfolge
+	   (ihre Eintraege sind absolute, vom Linker aufgeloeste Adressen und
+	   haengen nicht von der Emissionsreihenfolge ab). */
+	if (os9Mode && largeDataMode) {
+		int mainIdx = findFunction("main");
+		oi = 0;
+		if (mainIdx >= 0) order[oi++] = mainIdx;
+		for (fi = 0; fi < funcCount; fi++) if (fi != mainIdx) order[oi++] = fi;
+	} else {
+		for (fi = 0; fi < funcCount; fi++) order[fi] = fi;
+	}
+	for (oi = 0; oi < funcCount; oi++) {
+		fi = order[oi];
 		Function* fn = &funcs[fi];
 		char asmName[NAME_LEN + 40];
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
-		if (os9Mode && strcmp(fn->name, "main") == 0) fputs("main:\n", out);
+		if (os9Mode && strcmp(fn->name, "main") == 0) {
+			fputs("main:\n", out);
+			if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
+		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
 		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
 		for (k = fn->first; k < fn->last; k++) {
@@ -698,7 +801,9 @@ static void emitIR(FILE* out) {
 				   statt einer festen Typtag-Groesse -- kein lsl.l (Groesse ist beliebig, nicht
 				   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
 				   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
-				fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n\tbsr\ttc_mul_i32\n\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", insP->args[0]);
+				fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n", insP->args[0]);
+				emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"));
+				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
 			} else if (strcmp(op, "PDIFF") == 0 && insP->argc == 1) {
 				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tsub.l\td1,d0\n", out);
 				if (!isByteWord(insP->args[0])) fputs("\tasr.l\t#2,d0\n", out);
@@ -728,7 +833,11 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7),-(a7)\n", out);
 			} else if (strcmp(op, "MUL") == 0 || strcmp(op, "DIV") == 0 || strcmp(op, "UDIV") == 0 || strcmp(op, "MOD") == 0 || strcmp(op, "UMOD") == 0) {
 				const char* fn2 = strcmp(op, "MUL") == 0 ? "mul_i32" : strcmp(op, "DIV") == 0 ? "div_i32" : strcmp(op, "UDIV") == 0 ? "udiv_u32" : strcmp(op, "MOD") == 0 ? "mod_i32" : "umod_u32";
-				fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tbsr\ttc_%s\n\tmove.l\td0,-(a7)\n", fn2);
+				char helperAsmName[24];
+				sprintf(helperAsmName, "tc_%s", fn2);
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
+				emitCall(out, helperAsmName, helperTableOffset(helperAsmName));
+				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "CMPLT") == 0) { emitCompare(out, "blt", &serial);
 			} else if (strcmp(op, "CMPGT") == 0) { emitCompare(out, "bgt", &serial);
 			} else if (strcmp(op, "CMPLE") == 0) { emitCompare(out, "ble", &serial);
@@ -759,7 +868,7 @@ static void emitIR(FILE* out) {
 				char asmName[NAME_LEN + 40];
 				if (callee < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
-				fprintf(out, "\tbsr\t%s\n", asmName);
+				emitCall(out, asmName, callee * 4);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
@@ -837,11 +946,14 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "DROP") == 0) {
 				fputs("\taddq.l\t#4,a7\n", out);
 			} else if (strcmp(op, "PRINT") == 0) {
-				fputs("\tmove.l\t(a7)+,d0\n\tbsr\ttc_putint\n", out);
+				fputs("\tmove.l\t(a7)+,d0\n", out);
+				emitCall(out, "tc_putint", helperTableOffset("tc_putint"));
 			} else if (strcmp(op, "PRINTU") == 0) {
-				fputs("\tmove.l\t(a7)+,d0\n\tbsr\ttc_putuint\n", out);
+				fputs("\tmove.l\t(a7)+,d0\n", out);
+				emitCall(out, "tc_putuint", helperTableOffset("tc_putuint"));
 			} else if (strcmp(op, "PRINTC") == 0) {
-				fputs("\tmove.l\t(a7)+,d0\n\tbsr\ttc_putchar\n", out);
+				fputs("\tmove.l\t(a7)+,d0\n", out);
+				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"));
 			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
 				/* static lokale Variable: bereits von collectGlobals() ausgewertet (Adresse/
 				   Initialwert stehen im DATA/BSS-Abschnitt) -- an dieser Stelle im Funktions-

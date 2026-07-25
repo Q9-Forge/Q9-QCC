@@ -1359,21 +1359,34 @@ static int  tcEnumConstCount = 0;
 #define MAX_ENUM_TYPES 16
 static char tcEnumTypeNames[MAX_ENUM_TYPES][32];
 static int  tcEnumTypeCount = 0;
-static char tcNames[64][32];        /* lokale Variablen der aktuellen Funktion */
+/* 2026-07-25: MAX_LOCALS/MAX_GLOBALS/MAX_FUNCTIONS waren vorher als nackte
+   "64"-Literale verstreut -- tcLocalCount hatte dabei ueberhaupt KEINE
+   Grenzpruefung vor dem Schreiben in tcNames[]/tcLocalTypes[]/... (echter
+   Pufferueberlauf bei >64 Parametern+Lokalen einer einzigen Funktion, nicht
+   nur ein zu kleines Limit). Gefunden beim Skalierungstest fuer den
+   -largedata-Funktionsaufruf-Schalter (Source/tinyc_backend_c.cpp) mit 150
+   generierten Funktionen, die prompt tcFunctionCount>=64 rissen. Grenzen
+   grosszuegig erhoeht UND tcLocalCount erstmals ueberhaupt geprueft (siehe
+   tc_param/tc_local), analog zum bereits vorhandenen Muster bei MAX_STRUCTS/
+   MAX_TYPEDEFS/MAX_ENUM_CONSTANTS weiter oben. */
+#define MAX_LOCALS 256
+#define MAX_GLOBALS 512
+#define MAX_FUNCTIONS 512
+static char tcNames[MAX_LOCALS][32];        /* lokale Variablen der aktuellen Funktion */
 static int  tcLocalCount = 0;
-static TCType tcLocalTypes[64];
-static int  tcLocalArrayLen[64];     /* 0 = Skalar, sonst GESAMTE (flache) Elementzahl */
+static TCType tcLocalTypes[MAX_LOCALS];
+static int  tcLocalArrayLen[MAX_LOCALS];     /* 0 = Skalar, sonst GESAMTE (flache) Elementzahl */
 #define TC_MAXDIMS 6                 /* grosszuegige Obergrenze fuer Array-Dimensionen, siehe tcEmitNDCombine */
-static int  tcLocalArrayNDims[64];   /* 1 = kein Mehrdim-Array (Skalar/1D zaehlt auch als 1) */
-static int  tcLocalArrayDims[64][TC_MAXDIMS - 1]; /* [0]=dim2, [1]=dim3, ... -- nur die ersten NDims-1 Eintraege gueltig */
-static int  tcLocalConst[64];        /* 1 = mit "const" deklariert (auch Parameter) */
-static char tcGlobalNames[64][32];   /* globale Variablen des Programms */
+static int  tcLocalArrayNDims[MAX_LOCALS];   /* 1 = kein Mehrdim-Array (Skalar/1D zaehlt auch als 1) */
+static int  tcLocalArrayDims[MAX_LOCALS][TC_MAXDIMS - 1]; /* [0]=dim2, [1]=dim3, ... -- nur die ersten NDims-1 Eintraege gueltig */
+static int  tcLocalConst[MAX_LOCALS];        /* 1 = mit "const" deklariert (auch Parameter) */
+static char tcGlobalNames[MAX_GLOBALS][32];   /* globale Variablen des Programms */
 static int  tcGlobalCount = 0;
-static TCType tcGlobalTypes[64];
-static int  tcGlobalArrayLen[64];
-static int  tcGlobalArrayNDims[64];  /* siehe tcLocalArrayNDims */
-static int  tcGlobalArrayDims[64][TC_MAXDIMS - 1]; /* siehe tcLocalArrayDims */
-static int  tcGlobalConst[64];       /* 1 = mit "const" deklariert */
+static TCType tcGlobalTypes[MAX_GLOBALS];
+static int  tcGlobalArrayLen[MAX_GLOBALS];
+static int  tcGlobalArrayNDims[MAX_GLOBALS];  /* siehe tcLocalArrayNDims */
+static int  tcGlobalArrayDims[MAX_GLOBALS][TC_MAXDIMS - 1]; /* siehe tcLocalArrayDims */
+static int  tcGlobalConst[MAX_GLOBALS];       /* 1 = mit "const" deklariert */
 /* Mehrdatei-Uebersetzung (2026-07-25): tcFunctionIsDeclOnly/tcGlobalIsDeclOnly
    markieren eine bare-Prototyp- bzw. "extern <typ> <name>;"-Deklaration --
    existiert in dieser Datei nur als Signatur/Typ, OHNE Speicher/Rumpf (wird in
@@ -1383,10 +1396,10 @@ static int  tcGlobalConst[64];       /* 1 = mit "const" deklariert */
    tcFunctionIsStatic/tcGlobalIsStatic geben "static" zum ersten Mal echte
    Bedeutung (Sichtbarkeitssteuerung fuer den Linker in den Backends, siehe
    docs/STATUS.md). */
-static int  tcFunctionIsDeclOnly[64];
-static int  tcFunctionIsStatic[64];
-static int  tcGlobalIsDeclOnly[64];
-static int  tcGlobalIsStatic[64];
+static int  tcFunctionIsDeclOnly[MAX_FUNCTIONS];
+static int  tcFunctionIsStatic[MAX_FUNCTIONS];
+static int  tcGlobalIsDeclOnly[MAX_GLOBALS];
+static int  tcGlobalIsStatic[MAX_GLOBALS];
 static int  tcIdxNDScratchDeclared[TC_MAXDIMS + 1]; /* Index 2..TC_MAXDIMS: GLOBAL __idxNd_<lvl> einmalig deklariert */
 static int  tcStringCounter = 0;    /* naechster freier __strN-Name fuer String-Literale */
 static int  tcPendingConst = 0;      /* gesetzt durch constKw, konsumiert von tc_local/tc_param/tc_globalend */
@@ -1401,11 +1414,11 @@ static int  tcStaticRuntimeInitPending = 0; /* gesetzt von tc_staticruntimeinit,
 static TCType tcCurrentType;
 static TCType tcFuncType;
 static char tcFuncName[32];
-static char tcFunctionNames[64][32];
-static TCType tcFunctionReturnTypes[64], tcFunctionParamTypes[64][64];
-static int tcFunctionNargs[64], tcFunctionCount = 0;
-static int tcFunctionIsExternal[64];  /* 1 = extern-Deklaration, kein Tiny-C-Rumpf/FUNC-Block */
-static int tcFunctionIsVariadic[64];  /* 1 = "..." am Ende der Parameterliste (wie printf) */
+static char tcFunctionNames[MAX_FUNCTIONS][32];
+static TCType tcFunctionReturnTypes[MAX_FUNCTIONS], tcFunctionParamTypes[MAX_FUNCTIONS][64];
+static int tcFunctionNargs[MAX_FUNCTIONS], tcFunctionCount = 0;
+static int tcFunctionIsExternal[MAX_FUNCTIONS];  /* 1 = extern-Deklaration, kein Tiny-C-Rumpf/FUNC-Block */
+static int tcFunctionIsVariadic[MAX_FUNCTIONS];  /* 1 = "..." am Ende der Parameterliste (wie printf) */
 /* Sammelzustand waehrend eine einzelne externDecl geparst wird (analog zu
    tcStructBuildFieldTypes fuer struct-Felder). */
 static char tcExternName[32];
@@ -1911,7 +1924,7 @@ ROUTINE C tc_externdeclend
 void tc_externdeclend(const char* start, const char* end) {
 	int i; (void)start; (void)end;
 	if (tcLookupFunction(tcExternName) >= 0) { fprintf(stderr, "tinyc: duplicate function\n"); tcSemanticErrors++; return; }
-	if (tcFunctionCount >= 64) { fprintf(stderr, "tinyc: too many functions\n"); return; }
+	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "tinyc: too many functions\n"); tcSemanticErrors++; return; }
 	i = tcFunctionCount++;
 	tcCopy(tcFunctionNames[i], tcExternName, tcExternName + strlen(tcExternName));
 	tcFunctionReturnTypes[i] = tcExternReturnType;
@@ -1957,6 +1970,7 @@ END
 ROUTINE C tc_param
 void tc_param(const char* start, const char* end) {
 	const char* nameEnd = tcNameEnd(start, end);
+	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "tinyc: too many locals\n"); tcSemanticErrors++; return; }
 	tcCopy(tcNames[tcLocalCount], start, nameEnd);
 	tcLocalTypes[tcLocalCount] = nameEnd < end ? tcPointerTo(tcCurrentType) : tcCurrentType;
 	if (!tcIsPointer(tcLocalTypes[tcLocalCount]) && tcLocalTypes[tcLocalCount].base == 'v') {
@@ -1981,7 +1995,7 @@ void tc_funcbegin(const char* start, const char* end) {
 	tcCurrentFuncIndex = -1;
 	f = tcLookupFunction(tcFuncName);
 	if (f >= 0) { fprintf(stderr, "tinyc: duplicate function\n"); return; }
-	if (tcFunctionCount >= 64) { fprintf(stderr, "tinyc: too many functions\n"); return; }
+	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "tinyc: too many functions\n"); tcSemanticErrors++; return; }
 	f = tcFunctionCount++;
 	tcCopy(tcFunctionNames[f], tcFuncName, tcFuncName + strlen(tcFuncName));
 	tcFunctionReturnTypes[f] = tcFuncType;
@@ -2032,6 +2046,7 @@ void tc_funcend(const char* start, const char* end) {
 END
 ROUTINE C tc_local
 void tc_local(const char* start, const char* end) {
+	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "tinyc: too many locals\n"); tcSemanticErrors++; return; }
 	tcCopy(tcNames[tcLocalCount], start, end);
 	tcLocalTypes[tcLocalCount] = tcCurrentType;
 	if (!tcIsPointer(tcLocalTypes[tcLocalCount]) && tcLocalTypes[tcLocalCount].base == 'v') {
@@ -2171,7 +2186,7 @@ void tc_staticlocal(const char* start, const char* end) {
 			if (!tcCurrentType.pointers && tcCurrentType.base == 'b') value = value ? 1 : 0;
 		}
 	}
-	if (tcGlobalCount >= 64) { fprintf(stderr, "tinyc: too many globals\n"); return; }
+	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "tinyc: too many globals\n"); tcSemanticErrors++; return; }
 	for (i = 0; i < tcGlobalCount; i++) {
 		if (tcEq(tcGlobalNames[i], tcStaticLocalName)) { fprintf(stderr, "tinyc: duplicate global\n"); return; }
 	}
@@ -2310,7 +2325,7 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 			if (type.pointers && value != 0) { fprintf(stderr, "tinyc: global pointer initializer must be 0\n"); tcSemanticErrors++; return; }
 		}
 	}
-	if (tcGlobalCount >= 64) { fprintf(stderr, "tinyc: too many globals\n"); return; }
+	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "tinyc: too many globals\n"); tcSemanticErrors++; return; }
 	for (i = 0; i < tcGlobalCount; i++) if (tcEq(tcGlobalNames[i], name)) { fprintf(stderr, "tinyc: duplicate global\n"); return; }
 	tcCopy(tcGlobalNames[tcGlobalCount], name, name + n);
 	/* siehe tc_param: "const" auf einem Pointertyp ist Pointee-Constness (pointeeConst-Bit),
@@ -2375,7 +2390,7 @@ void tc_externglobaldecl(const char* start, const char* end) {
 	while (p < end && *p != ' ' && *p != '\t' && *p != ';' && n < 31) name[n++] = *p++;
 	name[n] = 0;
 	if (tcLookupGlobal(name, name + n) >= 0) { fprintf(stderr, "tinyc: duplicate global\n"); tcSemanticErrors++; return; }
-	if (tcGlobalCount >= 64) { fprintf(stderr, "tinyc: too many globals\n"); return; }
+	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "tinyc: too many globals\n"); tcSemanticErrors++; return; }
 	tcCopy(tcGlobalNames[tcGlobalCount], name, name + n);
 	tcGlobalTypes[tcGlobalCount] = type;
 	tcGlobalConst[tcGlobalCount] = 0;

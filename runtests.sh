@@ -1356,6 +1356,91 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "FAIL  tinyc: IR/Backend fuer -largedata-Gegenprobe fehlgeschlagen"; fail=1
 	fi
 
+	# -largedata fuer FUNKTIONSAUFRUFE (2026-07-25): "bsr tc_<name>" ist GENAUSO
+	# PC-relativ (16-Bit-Displacement) begrenzt wie die Global-Adressierung oben --
+	# ein Programm mit vielen/grossen Funktionen kann denselben "value out of
+	# range" bei r68 ausloesen, nur ueber Code- statt Datendistanz. -largedata
+	# loest das jetzt auch hierfuer: eine Funktions-Indirektionstabelle
+	# (tc_functab, absolute vom Linker aufgeloeste Adressen) plus ein einmalig
+	# gesetztes Adressregister a4 ("lea tc_functab(pc),a4"); Aufrufe werden zu
+	# "move.l N(a4),a2 / jsr (a2)" statt "bsr tc_target". a2 wurde als
+	# Aufruf-Scratchregister gewaehlt, weil es an JEDER Aufrufstelle frei ist
+	# (anders als a0/a1, die an manchen Stellen ueber den Aufruf hinweg leben).
+	# 150 generierte Funktionen ergeben >32 KB 68k-Code zwischen tc_functab und
+	# der letzten Funktion -- genau die Groessenordnung, an der "bsr" ohne
+	# -largedata real mit "branch out of range" bricht (empirisch bestaetigt,
+	# siehe Gegenprobe unten -- andere Fehlermeldung als "value out of range"
+	# bei lea/movea fuer Daten oben). Dabei wurde ein echter
+	# Skalierungsbug gefunden und behoben: im -os9-Modus ist "main" selbst der
+	# Einsprungpunkt (kein separates tc_start) und fuehrt sein eigenes
+	# "lea tc_functab(pc),a4" aus -- das ist selbst PC-relativ und brach, wenn
+	# main (wie hier) NICHT die erste Funktion im Quelltext ist und daher weit
+	# hinter der Tabelle liegt. Fix: main wird bei -os9 -largedata jetzt immer
+	# als allererste Funktion emittiert, unabhaengig von ihrer Quelltextposition.
+	largefunc_src=""
+	lfi=0
+	while [ $lfi -lt 150 ]; do
+		largefunc_src="$largefunc_src int f$lfi(int x){ int a;int b;int c;int d; a=x;b=x;c=x;d=x; a=a+0+$lfi;b=b*2-0;c=c/2+a;d=d-b+a*2-0; a=a+1+$lfi;b=b*2-1;c=c/2+a;d=d-b+a*2-1; a=a+2+$lfi;b=b*2-2;c=c/2+a;d=d-b+a*2-2; a=a+3+$lfi;b=b*2-3;c=c/2+a;d=d-b+a*2-3; a=a+4+$lfi;b=b*2-4;c=c/2+a;d=d-b+a*2-4; a=a+5+$lfi;b=b*2-5;c=c/2+a;d=d-b+a*2-5; a=a+6+$lfi;b=b*2-6;c=c/2+a;d=d-b+a*2-6; a=a+7+$lfi;b=b*2-7;c=c/2+a;d=d-b+a*2-7; return d+a+b+c; }"
+		lfi=$((lfi+1))
+	done
+	largefunc_src="$largefunc_src int main(){ putint(f0(1)); putint(f149(1)); putint(f75(5)); }"
+	if [ -x build/tinyc_backend ] && command -v python3 >/dev/null 2>&1; then
+		if build/tinyc_p "$largefunc_src" > build/tinyc_largefunc.ir && \
+			build/tinyc_backend build/tinyc_largefunc.ir build/tinyc_largefunc.s68 -largedata && \
+			[ "$(python3 tools/tiny68sim.py build/tinyc_largefunc.s68 2>/dev/null)" = "$(printf '196\n14204\n6311')" ]; then
+			echo "ok    tinyc -largedata Funktionsaufrufe: 150 Funktionen (>32 KB Code) ueber Indirektionstabelle (a4/a2) statt bsr = tinyvm"
+		else
+			echo "FAIL  tinyc -largedata Funktionsaufrufe: 150-Funktionen-Testfall stimmt nicht mit tinyvm ueberein"; fail=1
+		fi
+		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+		   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+			mkdir -p "$MWOS_TMP"
+			if build/tinyc_backend build/tinyc_largefunc.ir build/tinyc_largefunc_os9.a -os9 -largedata; then
+				cp build/tinyc_largefunc_os9.a "$MWOS_TMP/largefunc.a"
+				rm -f "$MWOS_TMP/largefunc.r" "$MWOS_TMP/largefunc.out" "$MWOS_TMP/largefunc.sym"
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largefunc.a -o=M:\\TMP\\largefunc.r -q" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/largefunc.r" ]; then
+					WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\largefunc.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\largefunc.out -s=M:\\TMP\\largefunc.sym" >/dev/null 2>&1
+					if [ -s "$MWOS_TMP/largefunc.out" ]; then
+						echo "ok    tinyc -largedata Funktionsaufrufe: 150-Funktionen-Programm (>32 KB Code) assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					else
+						echo "FAIL  tinyc -largedata Funktionsaufrufe: echter l68-Link fehlgeschlagen"; fail=1
+					fi
+				else
+					echo "FAIL  tinyc -largedata Funktionsaufrufe: echte r68-Assemblierung fehlgeschlagen"; fail=1
+				fi
+				rm -f "$MWOS_TMP"/largefunc.a "$MWOS_TMP"/largefunc.r "$MWOS_TMP"/largefunc.out "$MWOS_TMP"/largefunc.sym
+			else
+				echo "FAIL  tinyc -largedata Funktionsaufrufe: -os9-Backend-Lauf fehlgeschlagen"; fail=1
+			fi
+			# Gegenprobe: dasselbe 150-Funktionen-Programm OHNE -largedata muss der
+			# echte r68 tatsaechlich mit "branch out of range" ablehnen (bsr ueber
+			# mehr als 32 KB -- andere Fehlermeldung als "value out of range" bei
+			# lea/movea fuer Daten) -- belegt die Notwendigkeit auch fuer
+			# Funktionsaufrufe, nicht nur fuer globale Daten.
+			if build/tinyc_backend build/tinyc_largefunc.ir build/tinyc_largefunc2_os9.a -os9; then
+				cp build/tinyc_largefunc2_os9.a "$MWOS_TMP/largefunc2.a"
+				rm -f "$MWOS_TMP/largefunc2.r"
+				out=$(WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largefunc2.a -o=M:\\TMP\\largefunc2.r -q" 2>&1)
+				# "branch out of range" (nicht "value out of range" wie bei lea/movea
+				# fuer Daten) ist die reale r68-Fehlermeldung fuer ein zu weit
+				# entferntes bsr-Ziel -- empirisch bestaetigt (2026-07-25).
+				if echo "$out" | grep -q 'branch out of range'; then
+					echo "ok    tinyc: echter r68 lehnt dasselbe 150-Funktionen-Programm OHNE -largedata tatsaechlich mit 'branch out of range' ab"
+				else
+					echo "FAIL  tinyc: r68 haette OHNE -largedata (Funktionsaufrufe) ablehnen muessen -- Gegenprobe ungueltig"; fail=1
+				fi
+				rm -f "$MWOS_TMP"/largefunc2.a "$MWOS_TMP"/largefunc2.r
+			else
+				echo "FAIL  tinyc: -os9-Backend-Lauf (Funktionsaufruf-Gegenprobe) fehlgeschlagen"; fail=1
+			fi
+		else
+			echo "warn  tinyc -largedata Funktionsaufrufe: Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter r68/l68-Test uebersprungen"
+		fi
+	else
+		echo "warn  tinyc -largedata Funktionsaufrufe: Backend oder python3 fehlt -- uebersprungen"
+	fi
+
 	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): tinyc_backend akzeptiert
 	# ein optionales 4. Argument "-os9" und schaltet dann auf nam/psect/ends-
 	# Rahmung, "*" statt ";" fuer volle Kommentarzeilen und "align 4"/"dc.l 0,.."
