@@ -2067,3 +2067,173 @@ void lexikalischeAnalyse() {
 		getAktChar();
 	}
 }
+
+/* ===========================================================================
+   TEIL 7: Programmstart (Source/ebnf.cpp:170-334, 1357-1369) -- LETZTER
+   Abschnitt des ebnf.cpp-Vollports. exitProgram/ebnfSyntax haben bereits
+   bare Prototypen (TEIL 2); ebnfMain ist neu und wird von main() gerufen
+   (unten). Danach sollte ein voller l68-Link von ebnf.tc gegen codegen.tc
+   ohne unresolved Symbole durchlaufen -- siehe [[tinyc-vollport-status]]. */
+
+void exitProgram(int exitCode) {
+	/* fflush(stdout) im Original bewusst weggelassen: exit() flusht/schliesst
+	   laut C-Standard ohnehin alle offenen Streams automatisch beim Beenden,
+	   und ein stdout-FILE*-Handle ist ueber die Microware-ABI nicht ohne
+	   Weiteres als einfacher Tiny-C-Wert zu bekommen (keine simple
+	   "stdout"-Externvariable, siehe clib.l-_iob-Layout). */
+	if (fpIn != 0) { fclose(fpIn); }
+	if (fpOut != 0) { fclose(fpOut); }
+	if (fpLst != 0) { fclose(fpLst); }
+	exit(exitCode);
+}
+
+void ebnfSyntax() {
+	restartToken[0] = 143;		/* TOKEN_END */
+	restartToken[1] = 144;		/* TOKEN_EXIT */
+	restartToken[2] = 0;		/* EOS */
+
+	getAktChar();
+	lexikalischeAnalyse();
+	while (aktToken != 144) {		/* TOKEN_EXIT */
+		rule();
+	}
+	put();
+}
+
+/* Ersatz fuer das Original-main(argc, argv): Tiny-C main() kann KEINE
+   Kommandozeilenargumente empfangen -- tc_start ruft main() ohne jedes
+   Argument auf (siehe emitCall()/tc_start in Source/tinyc_backend_c.cpp,
+   kein argc/argv-Mechanismus irgendwo in Grammatik oder Backend). Die
+   komplette Original-Logik lebt deshalb hier in einer eigenen, mit dem
+   Basisnamen PARAMETRISIERTEN Funktion -- main() selbst wird weiter unten
+   zu einem duennen, klar markierten Platzhalter-Wrapper.
+
+   Bewusst entfallen (kein argv[0]/argc mehr vorhanden): die "usage:
+   %s <inputfile> ..."-Meldungen (inkl. des argc<2-Frueh-Checks, der bei
+   einem Funktionsparameter nie zutreffen kann) UND der optionale dritte
+   CLI-Parameter <teststring> (manueller Testlauf gegen EINEN Eingabestring,
+   Original-Zeilen 288-315) -- runTests() (der TESTS-Block der Arbeitsdatei)
+   deckt den eigentlichen Testmechanismus bereits ab. */
+void ebnfMain(char* baseArg) {
+	char inputFileName[70];		/* FILENAME_LEN + 6 */
+	char outputFileName[72];		/* FILENAME_LEN + 8 */
+	char listFileName[72];
+	char cgenCName[72];
+	char cgen68kName[72];
+	char cgenOS9Name[72];
+	char* base;
+	char* slash;
+
+	int fileRet;
+	int fallB;
+	int len;
+
+	fallB = 0;
+
+	len = strlen(baseArg);
+	if (len > 64) { len = 64; }		/* FILENAME_LEN */
+	tcCopyBounded(inputFileName, baseArg, len);
+	strcat(inputFileName, ".ebnf");
+	tcCopyBounded(outputFileName, baseArg, len);
+	strcat(outputFileName, ".lextab");
+	tcCopyBounded(listFileName, baseArg, len);
+	strcat(listFileName, ".lexlst");
+	tcCopyBounded(cgenCName, baseArg, len);
+	strcat(cgenCName, "_p.c");
+	tcCopyBounded(cgen68kName, baseArg, len);
+	strcat(cgen68kName, ".s68");
+
+	printf("EBNF Translator on OS-9/68k\n");
+	astReset();
+
+	/* WICHTIG (Reihenfolge!): den TESTS-Block der alten Arbeitsdatei retten,
+	   BEVOR sie spaeter per "w" geoeffnet und damit geleert wird. */
+	loadPreservedTests(outputFileName);
+
+	fpIn = fopen(inputFileName, "r");
+	if (fpIn == 0) { fileRet = 1; } else { fileRet = 0; }
+	if (fileRet != 0) {
+		/* Fall B: keine .ebnf-Quelle -- die Arbeitsdatei selbst ist die
+		   Grammatik-Quelle. */
+		fallB = 1;
+		printf("Hinweis: '%s' nicht gefunden -- lade Grammatik aus Arbeitsdatei '%s'\n", inputFileName, outputFileName);
+		if (loadWorkfileAsGrammar(outputFileName) == 0) {
+			printf("    error: weder '%s' noch eine Arbeitsdatei '%s' lesbar\n", inputFileName, outputFileName);
+			exitProgram(-2);
+		}
+	}
+
+	fpLst = fopen(listFileName, "w");
+	if (fpLst == 0) { fileRet = 1; } else { fileRet = 0; }
+	if (fileRet != 0) {
+		printf("    error: can't open list file: %s", listFileName);
+		exitProgram(-2);
+	}
+
+	if (fallB != 0) {
+		/* Fall A erledigt all das innerhalb von ebnfSyntax()/semantischeAnylyse() */
+		resolveCallAddresses();
+		rebuildFirstEdgesFromTable();
+		checkLeftRecursion();
+		printf("%s", quelltextBuf);
+		fprintf(fpLst, "%s", quelltextBuf);
+		printLexTab();
+		tableReady = 1;
+	} else {
+		ebnfSyntax();
+	}
+
+	/* Arbeitsdatei erst JETZT (nach loadPreservedTests) neu schreiben -- und
+	   nur, wenn tatsaechlich eine vollstaendige Tabelle entstanden ist. Bei
+	   Parse-Fehlern bleibt die alte Arbeitsdatei (inkl. TESTS-Block)
+	   unangetastet statt wie frueher geleert. */
+	if (tableReady != 0) {
+		fpOut = fopen(outputFileName, "w");
+		if (fpOut == 0) { fileRet = 1; } else { fileRet = 0; }
+		if (fileRet != 0) {
+			printf("    error: can't open output file: %s", outputFileName);
+			exitProgram(-2);
+		}
+		writeWorkfile(fpOut);
+	} else {
+		printf("Hinweis: Grammatik fehlerhaft -- Arbeitsdatei '%s' bleibt unveraendert.\n", outputFileName);
+	}
+
+	/* Codegenerierung (siehe docs/ARCHITEKTUR.md): nur im Fall A (echte
+	   .ebnf geparst, nur dann existiert der AST) und nur bei fehlerfreier,
+	   nicht-linksrekursiver Grammatik. */
+	if (fallB == 0 && tableReady != 0 && errorCnt == 0 && leftRecursionFound == 0) {
+		actionsParseConfig(userCodeBuf);
+		if (lexParseConfig(lexerCfgBuf) == 0 || cgenParseConfig(cgenCfgBuf) == 0) {
+			printf("CODEGEN: Konfiguration fehlerhaft -- Codegenerierung uebersprungen.\n");
+		} else if (genParserC(cgenCName) != 0 && genParser68k(cgen68kName) != 0) {
+			printf("CODEGEN: '%s' und '%s' erzeugt.\n", cgenCName, cgen68kName);
+			if (cgenWantOS9() != 0) {
+				/* Basisname ohne Verzeichnis-Anteil als Default-psect-Name */
+				base = baseArg;
+				slash = strrchr(base, 47);		/* '/' */
+				if (slash == 0) { slash = strrchr(base, 92); }		/* '\' */
+				if (slash != 0) { base = slash + 1; }
+				tcCopyBounded(cgenOS9Name, baseArg, len);
+				strcat(cgenOS9Name, "_os9.a");
+				if (genParser68kOS9(cgenOS9Name, base) != 0) {
+					printf("CODEGEN: '%s' (OS-9/r68-Format) erzeugt.\n", cgenOS9Name);
+				}
+			}
+		}
+	}
+
+	runTests();
+
+	exitProgram(0);
+}
+
+/* Tiny-C main() hat keinen argc/argv-Mechanismus (siehe ebnfMain()-Kommentar
+   oben) -- der Basisname ist deshalb hier eine feste Compile-Zeit-Konstante.
+   BEKANNTE, BEWUSSTE GRENZE: fuer einen echten OS-9-Build mit variablem
+   Dateinamen muesste das durch einen Syscall zum Lesen der OS-9-
+   Kommandozeile (Process-Descriptor) ersetzt werden -- nicht implementiert,
+   siehe [[tinyc-vollport-status]] (Memory) fuer den Kontext. */
+void main() {
+	ebnfMain("tinyc");
+}
