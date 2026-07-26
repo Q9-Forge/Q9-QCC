@@ -1333,3 +1333,431 @@ void loadPreservedTests(char* path) {
 		printf("WARNUNG: [NUTZER-CODE] ist groesser als %d Bytes und wurde gekuerzt.\n", 1048575);		/* USER_CODE_LEN - 1 */
 	}
 }
+
+/* ===========================================================================
+   TEIL 5: Rekursive-Abstiegs-Parsergruppe (Source/ebnf.cpp:920-1774, 1279-1330)
+   -- literal/ident/block/repeat/option/factor/term/expression/rule rufen sich
+   gegenseitig; die bare Prototypen dafuer stehen bereits oben in TEIL 2 (siehe
+   Kommentar dort). Reihenfolge unten: alles, was NOCH KEINE Vorwaertsdeklaration
+   hat (push/pop/restart/errorMsg/test/addIdentList/patchLocalTrue/
+   patchLocalFalse), MUSS vor seiner ersten Verwendung stehen -- die neun
+   bereits vorwaertsdeklarierten Funktionen selbst koennen sich weiterhin in
+   beliebiger Reihenfolge gegenseitig aufrufen.
+
+   TOKEN_*-Werte als Literalzahlen (siehe TEIL-1-Kommentar): IDENT=138
+   LITERAL=139 BLOCKON=132 BLOCKOFF=133 OPTIONON=134 OPTIONOFF=135 REPEATON=136
+   REPEATOFF=137 SEQ=130 OR=131 EQUAL=129 END=143 RANGE=146.
+   STAT_TRUE=-1 STAT_FALSE=-2 STAT_ERROR=-3 (wie bereits in execFrom/TEIL 3). */
+
+/* Im Original nur ein auskommentierter Rumpf (totes Feature, identList/
+   identListCnt werden nirgends sonst benutzt) -- hier bewusst als echtes
+   No-op portiert statt der ungenutzten Globalen. */
+void addIdentList() {
+}
+
+void push(int line) {
+	if (lineStackIndex < 1024) {		/* LINESTACK_MAX */
+		lineStack[lineStackIndex] = line;
+		lineStackIndex = lineStackIndex + 1;
+	} else {
+		printf("LEX_ERROR >>> Stack Overflow");
+	}
+}
+
+int pop() {
+	if (lineStackIndex > 0) {
+		lineStackIndex = lineStackIndex - 1;
+		return lineStack[lineStackIndex];
+	} else {
+		printf("LEX_ERROR >>> Stack underflow");
+		return -1;
+	}
+}
+
+int restart() {
+	int i;
+	i = 0;
+	while (restartToken[i] != 0) {
+		if (aktToken == restartToken[i]) {
+			return 1;
+		}
+		i = i + 1;
+	}
+	return 0;
+}
+
+void errorMsg(char* msg) {
+	printf("<< %s erwartet. >>", msg);
+	errorCnt = errorCnt + 1;
+	while (restart() == 0) {
+		lexikalischeAnalyse();
+	}
+}
+
+void test(int checkTS, char* msg) {
+	if (aktToken != checkTS) {
+		errorMsg(msg);
+	} else {
+		lexikalischeAnalyse();
+	}
+}
+
+/* Nachbearbeitung fuer block()/repeat()/option(): siehe ausfuehrlicher
+   Original-Kommentar in Source/ebnf.cpp bei patchLocalTrue/patchLocalFalse. */
+void patchLocalTrue(int fromRow, int toRowExclusive, int target) {
+	int i;
+	i = fromRow;
+	while (i < toRowExclusive) {
+		if (lexTab[i].trueAction == -1 || lexTab[i].trueAction >= toRowExclusive) {		/* STAT_TRUE */
+			lexTab[i].trueAction = target;
+		}
+		i = i + 1;
+	}
+}
+
+void patchLocalFalse(int fromRow, int toRowExclusive, int target) {
+	int i;
+	i = fromRow;
+	while (i < toRowExclusive) {
+		if (lexTab[i].falseAction == -2) {		/* STAT_FALSE */
+			if (target >= 0 && lexTab[i].ambigF != 0 && ambigFalseWarned == 0) {
+				/* Auf zwei printf-Aufrufe aufgeteilt: eine einzelne Tiny-C-
+				   String-Literal-Konstante ist auf 256 Bytes begrenzt
+				   (tcDecodeStringLit), der komplette Text ueberschreitet das. */
+				printf("WARNUNG: Regel '%s': Pflicht-Faktor nach ueberspringbarer Gruppe ([..]/{..})\n         vor einer Alternative/umschliessenden Gruppe: konsumiert die Gruppe\n", currentDefRule);
+				printf("         Eingabe und der Faktor schlaegt fehl, wird die Position NICHT\n         zurueckgesetzt (moeglicher Fehlakzept). Grammatik ggf. umformen.\n");
+				ambigFalseWarned = 1;
+			}
+			lexTab[i].falseAction = target;
+		}
+		i = i + 1;
+	}
+}
+
+void block() {
+	int blockStart;
+	blockStart = aktTabIndex;
+
+	addLst("(", 0);
+	lexikalischeAnalyse();
+	expression();
+	test(133, "BLOCKOFF Symbol )");		/* TOKEN_BLOCKOFF */
+	addLst(")", 0);
+	firstPos = 0;
+
+	patchLocalTrue(blockStart, aktTabIndex, aktTabIndex);
+	lastFactorWasComplex = 1;
+	lastFactorSkippable = 0;
+}
+
+void repeat() {
+	int repStart;
+	int savedFirstPos;
+	repStart = aktTabIndex;
+	savedFirstPos = firstPos;
+
+	addLst("{", 0);
+	lexikalischeAnalyse();
+	expression();
+	test(137, "REPEATOFF Symbol }");		/* TOKEN_REPEATOFF */
+	addLst("}", 0);
+	firstPos = savedFirstPos;
+
+	patchLocalTrue(repStart, aktTabIndex, repStart);
+	patchLocalFalse(repStart, aktTabIndex, aktTabIndex);
+	lastFactorWasComplex = 1;
+	lastFactorSkippable = 1;
+	astWrapRep();
+}
+
+void option() {
+	int optStart;
+	int savedFirstPos;
+	optStart = aktTabIndex;
+	savedFirstPos = firstPos;
+
+	addLst("[", 0);
+	lexikalischeAnalyse();
+	expression();
+	test(135, "OPTIONOFF Symbol ]");		/* TOKEN_OPTIONOFF */
+	addLst("]", 0);
+	firstPos = savedFirstPos;
+
+	patchLocalTrue(optStart, aktTabIndex, aktTabIndex);
+	patchLocalFalse(optStart, aktTabIndex, aktTabIndex);
+	lastFactorWasComplex = 1;
+	lastFactorSkippable = 1;
+	astWrapOpt();
+}
+
+void ident() {
+	char bracketedName[35];		/* IDENT_LEN + 3 */
+
+	if (firstPos != 0) {
+		addFirstEdge(currentDefRule, aktName);
+	}
+	firstPos = 0;
+	lastFactorWasComplex = 0;
+	lastFactorSkippable = 0;
+	astPushNTS(aktName);
+	sprintf(bracketedName, "<%s>", aktName);		/* Listing zeigt NTS immer als <name> */
+	addLst(bracketedName, 0);
+	put();
+	lexikalischeAnalyse();
+}
+
+/* Anfuehrungszeichen um Roh-/Dekodierwert im Listing (lst) UND im TS-Feld
+   koennen nicht als String-Literal geschrieben werden (Quirk 2) -- ueber
+   appendQuoteChar (bereits vorhanden) byteweise angehaengt. Das TS-Feld selbst
+   wird zusaetzlich NICHT direkt beschrieben (strcpy_s(lexTab[...].TS, ..., "\"")
+   im Original waere hier wieder das arr[i].field[j]-Zuweisungsziel-Problem,
+   siehe loadWorkfileAsGrammar) -- stattdessen in einem lokalen Puffer tsBuf
+   aufgebaut und per tcCopyBounded uebernommen (gleiches Muster durchgehend
+   fuer .ident weiter unten). */
+void literal() {
+	char loChar[33];		/* IDENT_LEN + 1 */
+	char loRaw[33];
+	char hiChar[33];
+	char hiRaw[33];
+	char tsBuf[35];
+
+	firstPos = 0;
+	lastFactorWasComplex = 0;
+	lastFactorSkippable = 0;
+	tcCopyBounded(loRaw, aktString, 32);		/* Original-Schreibweise fuers Listing */
+	tcCopyBounded(loChar, aktString, 32);
+	decodeEscapes(loChar);				/* dekodiert fuer Tabelle + AST */
+	lexikalischeAnalyse();		/* ein Token vorausschauen: folgt ein '~' Bereichs-Operator? */
+
+	if (aktToken == 146) {		/* TOKEN_RANGE */
+		lexikalischeAnalyse();		/* '~' konsumieren */
+		if (aktToken != 139) {		/* TOKEN_LITERAL */
+			errorMsg("LITERAL nach '~' (Zeichenbereich) erwartet");
+			return;
+		}
+		tcCopyBounded(hiRaw, aktString, 32);
+		tcCopyBounded(hiChar, aktString, 32);
+		decodeEscapes(hiChar);
+
+		astPushRNG(loChar[0], hiChar[0]);
+		strcat(lst, " ");
+		appendQuoteChar(lst);
+		strcat(lst, loRaw);
+		appendQuoteChar(lst);
+		strcat(lst, "~");
+		appendQuoteChar(lst);
+		strcat(lst, hiRaw);
+		appendQuoteChar(lst);
+
+		if (errorCnt == 0) {
+			if (strlen(aktRule) != 0) {
+				tcCopyBounded(lexTab[aktTabIndex].ident, aktRule, 32);
+				aktRule[0] = 0;
+			} else {
+				tcCopyBounded(lexTab[aktTabIndex].ident, "", 32);
+			}
+			lexTab[aktTabIndex].mode = "RNG";
+			lexTab[aktTabIndex].rangeLo = loChar[0];
+			lexTab[aktTabIndex].rangeHi = hiChar[0];
+			tsBuf[0] = 0;
+			appendQuoteChar(tsBuf);
+			strcat(tsBuf, loChar);
+			appendQuoteChar(tsBuf);
+			strcat(tsBuf, "~");
+			appendQuoteChar(tsBuf);
+			strcat(tsBuf, hiChar);
+			appendQuoteChar(tsBuf);
+			tcCopyBounded(lexTab[aktTabIndex].TS, tsBuf, 32);
+		}
+		lexikalischeAnalyse();		/* weiter zum Token nach dem zweiten Literal */
+	} else {
+		astPushTS(loChar);
+		strcat(lst, " ");
+		appendQuoteChar(lst);
+		strcat(lst, loRaw);
+		appendQuoteChar(lst);
+
+		if (errorCnt == 0) {
+			if (strlen(aktRule) != 0) {
+				tcCopyBounded(lexTab[aktTabIndex].ident, aktRule, 32);
+				aktRule[0] = 0;
+			} else {
+				tcCopyBounded(lexTab[aktTabIndex].ident, "", 32);
+			}
+			lexTab[aktTabIndex].mode = "TS";
+			tsBuf[0] = 0;
+			appendQuoteChar(tsBuf);
+			strcat(tsBuf, loChar);
+			appendQuoteChar(tsBuf);
+			tcCopyBounded(lexTab[aktTabIndex].TS, tsBuf, 32);
+		}
+		/* aktToken zeigt bereits auf das naechste Token (s.o. vorausgeschaut) --
+		   hier KEIN weiteres lexikalischeAnalyse() mehr aufrufen! */
+	}
+}
+
+void factor() {
+	switch (aktToken) {
+	case 138:		/* TOKEN_IDENT */
+		ident();
+		aktTabIndex = aktTabIndex + 1;
+		break;
+	case 132:		/* TOKEN_BLOCKON */
+		block();
+		break;
+	case 136:		/* TOKEN_REPEATON */
+		repeat();
+		break;
+	case 134:		/* TOKEN_OPTIONON */
+		option();
+		break;
+	case 139:		/* TOKEN_LITERAL */
+		literal();
+		aktTabIndex = aktTabIndex + 1;
+		break;
+	default:
+		errorMsg("IDENT or BLOCK or REPEAT or OPTION or LITERAL");
+	}
+}
+
+void term() {
+	int last;
+	int firstFactorComplex;
+	int committed;
+	int hadSkippable;
+	int factorStart;
+	int wasAmbig;
+	int i;
+	int astM;
+
+	last = 0;
+	committed = 0;
+	hadSkippable = 0;
+	astM = astMark();		/* AST: alle Faktoren dieser Sequenz sammeln */
+
+	if (aktToken == 143) {		/* TOKEN_END */
+		return;
+	}
+
+	push(aktTabIndex);
+	factor();
+	firstFactorComplex = lastFactorWasComplex;		/* NUR direkt nach dem ERSTEN Faktor auswerten */
+	if (lastFactorSkippable != 0) { hadSkippable = 1; } else { committed = 1; }
+
+	while (aktToken == 138 || aktToken == 139 || aktToken == 132 || aktToken == 136 || aktToken == 134 || aktToken == 130) {
+		if (committed == 0 && hadSkippable != 0) { wasAmbig = 1; } else { wasAmbig = 0; }
+		lexTab[aktTabIndex].trueAction = aktTabIndex + 1;
+		if (committed != 0) { lexTab[aktTabIndex].falseAction = -3; } else { lexTab[aktTabIndex].falseAction = -2; }		/* STAT_ERROR / STAT_FALSE */
+
+		if (aktToken == 130) {		/* TOKEN_SEQ */
+			lexikalischeAnalyse();
+		}
+		if (aktToken == 138 || aktToken == 139 || aktToken == 132 || aktToken == 136 || aktToken == 134) {
+			factorStart = aktTabIndex;
+			factor();
+			if (committed != 0) {
+				patchLocalFalse(factorStart, aktTabIndex, -3);		/* STAT_ERROR */
+			} else if (wasAmbig != 0) {
+				i = factorStart;
+				while (i < aktTabIndex) {
+					if (lexTab[i].falseAction == -2) {		/* STAT_FALSE */
+						lexTab[i].ambigF = 1;
+					}
+					i = i + 1;
+				}
+			}
+			if (lastFactorSkippable != 0) { hadSkippable = 1; } else { committed = 1; }
+		}
+	}
+	if (lineStackIndex > 0) {
+		last = pop();
+		if (firstFactorComplex == 0) {
+			lexTab[last].trueAction = last + 1;
+			lexTab[last].falseAction = -2;		/* STAT_FALSE */
+		}
+	}
+	astGroupSeq(astM);
+}
+
+void expression() {
+	int entryFirstPos;
+	int altStart;
+	int astM;
+	int poppedLine;
+
+	entryFirstPos = firstPos;		/* jede Alternative beginnt an derselben "ersten Position" */
+	altStart = aktTabIndex;		/* Startzeile DER AKTUELLEN Alternative */
+	astM = astMark();			/* AST: alle Alternativen dieser Auswahl sammeln */
+
+	push(aktTabIndex);
+	term();
+
+	while (aktToken == 131) {		/* TOKEN_OR */
+		patchLocalTrue(altStart, aktTabIndex, -1);		/* STAT_TRUE */
+		patchLocalFalse(altStart, aktTabIndex, aktTabIndex);
+
+		if (expressionCount == 0) {
+			addLst("\n", 34);
+		}
+		addLst("|", 0);
+		lexikalischeAnalyse();
+		expressionCount = expressionCount + 1;
+		firstPos = entryFirstPos;
+		altStart = aktTabIndex;
+		term();
+		expressionCount = expressionCount - 1;
+	}
+	if (lineStackIndex > 0) {
+		poppedLine = pop();
+	}
+	astGroupAlt(astM);
+}
+
+void rule() {
+	char bracketedName[35];		/* IDENT_LEN + 3 */
+	int ruleStart;
+	int i;
+
+	ruleStart = aktTabIndex;
+
+	clearLst();
+	test(138, "IDENT ident ");		/* TOKEN_IDENT */
+	addIdentList();
+	sprintf(bracketedName, "<%s>", aktName);		/* Listing zeigt NTS immer als <name> */
+	addLst(bracketedName, 32);
+	tcCopyBounded(aktRule, aktName, 32);
+	tcCopyBounded(currentDefRule, aktName, 32);
+	addRuleNameIfNew(currentDefRule);
+	firstPos = 1;
+	ambigFalseWarned = 0;
+	test(129, "EQUAL Symbol =");		/* TOKEN_EQUAL */
+	addLst("=", 0);
+	expression();
+	if (aktToken == 143) {		/* TOKEN_END */
+		put();
+		test(143, "END Symbol .");		/* TOKEN_END */
+
+		/* UEBER DIE GANZE REGEL scannen, nicht nur die letzte Zeile: ein {..}/[..]/(..)
+		   als LETZTES Konstrukt der Regel patcht seine eigene falseAction/trueAction
+		   (Schleifen-/Gruppen-Ende) auf "aktTabIndex zum Zeitpunkt des Patches" --
+		   steht danach nichts mehr in DIESER Regel, zeigt das faelschlich auf die
+		   naechste Regel (Zeilennummern sind fortlaufend ueber alle Regeln hinweg). */
+		i = ruleStart;
+		while (i < aktTabIndex) {
+			if (lexTab[i].trueAction >= aktTabIndex) {
+				lexTab[i].trueAction = -1;		/* STAT_TRUE */
+			}
+			if (lexTab[i].falseAction >= aktTabIndex) {
+				lexTab[i].falseAction = -1;		/* STAT_TRUE */
+			}
+			i = i + 1;
+		}
+
+		addLst(".", 0);
+		printf("%s\n\n", lst);
+		fprintf(fpLst, "%s\n\n", lst);
+		appendQuelltext(lst);
+		appendQuelltext("\n\n");
+	}
+	astFinishRule(currentDefRule);
+}

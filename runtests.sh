@@ -3015,5 +3015,45 @@ else
 	echo "warn  tinyc Selfhosting L2 Vollport (runTests/loadPreservedTests): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): die rekursive-
+# Abstiegs-Parsergruppe nach SourceTinyC/ebnf.tc -- literal/ident/block/repeat/
+# option/factor/term/expression/rule (Source/ebnf.cpp:1371-1774) PLUS die bisher
+# fehlenden Helfer push/pop/restart/errorMsg/test/addIdentList/patchLocalTrue/
+# patchLocalFalse (920-1330). Alle neun Kernfunktionen hatten bereits seit
+# Projektbeginn bare Prototypen in ebnf.tc (gegenseitige Rekursion) -- der
+# FUNCDECL/FUNC-Blocker dafuer wurde am 2026-07-25 im Backend gefixt (siehe
+# commit 7102de2). Kann NICHT sinnvoll ausgefuehrt/getestet werden (haengt an
+# lexikalischeAnalyse()/getAktChar(), beides noch nicht portiert -- naechster
+# Schritt) -- Verifikation bleibt bei kompiliert+assembliert sauber. WICHTIGES
+# Zwischenergebnis: ein echter l68-Link von ebnf.tc+codegen.tc zeigt nach diesem
+# Chunk nur noch GENAU die 7 erwarteten Lexer-Funktionen als unresolved
+# (getAktChar/getAktLine/put/ebnfSyntax/semantischeAnylyse/
+# lexikalischeAnalyse/exitProgram) -- die Parsergruppe selbst ist vollstaendig
+# und korrekt verdrahtet, keine ueberraschenden fehlenden Symbole.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)void main(){putint(1);}" > build/tinyc_parser1.ir 2>build/tinyc_parser1.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_parser1b.ir 2>build/tinyc_parser1b.err && \
+		build/tinyc_backend build/tinyc_parser1.ir build/tinyc_parser1.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_parser1b.ir build/tinyc_parser1b.s68 -os9 -largedata -part; then
+		cp build/tinyc_parser1.s68 "$MWOS_TMP/parser1a.a"
+		cp build/tinyc_parser1b.s68 "$MWOS_TMP/parser1b.a"
+		rm -f "$MWOS_TMP/parser1a.r" "$MWOS_TMP/parser1b.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1a.a -o=M:\\TMP\\parser1a.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1b.a -o=M:\\TMP\\parser1b.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/parser1a.r" ] && [ -s "$MWOS_TMP/parser1b.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: rekursive-Abstiegs-Parsergruppe (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (Parsergruppe) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/parser1a.a "$MWOS_TMP"/parser1b.a "$MWOS_TMP"/parser1a.r "$MWOS_TMP"/parser1b.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (Parsergruppe) kompiliert nicht sauber (siehe build/tinyc_parser1.err/build/tinyc_parser1b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (Parsergruppe): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail
