@@ -578,6 +578,40 @@ Lexer-Funktionen als unresolved (`getAktChar`/`getAktLine`/`put`/
 `ebnfSyntax`/`semantischeAnylyse`/`lexikalischeAnalyse`/`exitProgram`) -- die
 Parsergruppe selbst ist vollstaendig und korrekt verdrahtet.
 
+**2026-07-26 (direkt im Anschluss): der Lexer portiert** (`Source/ebnf.cpp:
+1810-2147, 1906-1970`) -- `lexikalischeAnalyse`/`getNext`/`getAktChar`/
+`comment`/`getAktLine`/`put`/`semantischeAnylyse`.
+
+**Neu: `initLexer()`.** Das C++-Original initialisiert die Lexer-Config-
+Globalen (`startLineCommentString`, `flagBlockComment`, ...) per automatischem
+C++-Globalen-Initialisierer VOR `main()` -- Tiny-C `GLOBAL`-Deklarationen
+koennen das nicht fuer String-Pointer-Werte, daher eine explizite Init-
+Funktion, die `main()`/`ebnfSyntax()` (naechster, letzter Schritt) EINMAL zu
+Programmbeginn rufen muss.
+
+**Wichtigster neuer Grenzfall: rohes Zeiger-Dereferenzieren** (`*p` lesen UND
+`*p = wert` schreiben, nicht nur `p[i]`) wurde hier zum ERSTEN Mal im
+gesamten Port gebraucht (`getNext`/`comment`). Da eine bestehende
+Projektnotiz (`execPosResult`-Kommentar) genau diesen Fall als bisher
+unerprobt markierte, vorab per Standalone-Test gegen TinyVM verifiziert:
+Lesen UND Schreiben ueber einen Pointer auf ein globales `char`-Array liefert
+exakt die erwarteten Werte -- danach bedenkenlos wie im Original eingesetzt.
+Ebenfalls dabei verifiziert: ein nicht verwendeter Rueckgabewert (`comment();`
+als blosse Anweisung) kompiliert und laeuft korrekt (TinyVM-Test) -- die
+vorsichtshalber-Variable aus dem Parsergruppen-Chunk (`expression()`s
+`poppedLine`) war also nicht zwingend noetig, bleibt aber unveraendert stehen.
+`strcpy` (ohne `_s`/Laengenlimit, wie `strcat`/`sprintf`) neu extern
+deklariert.
+
+Verifiziert wie die vorigen Chunks (kompiliert + assembliert sauber) PLUS ein
+echter Tokenizer-Lauf (`"rule1 = \"a\" ;"` -> IDENT/EQUAL/LITERAL/END) einmalig
+gegen eine native C-Uebersetzung ALLER Lexer-Funktionen gegengeprueft: beide
+liefern exakt dieselbe Tokenfolge (`138/129/139/143`) und `aktName="rule1"`.
+Regressionstest in `runtests.sh`. **Wichtiges Zwischenergebnis:** ein echter
+`l68`-Link von `ebnf.tc`+`codegen.tc` zeigt nach diesem Chunk nur noch GENAU
+2 unresolved Symbole (`ebnfSyntax`/`exitProgram`) -- der komplette Rest der
+Datei ist vollstaendig und korrekt verdrahtet.
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |
