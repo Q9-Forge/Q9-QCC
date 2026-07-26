@@ -1155,3 +1155,181 @@ int loadWorkfileAsGrammar(char* path) {
 	}
 	return 1;
 }
+
+/* Alle TEST-Zeilen durch die Stack-Maschine jagen und mit dem erwarteten
+   Ergebnis vergleichen (Source/ebnf.cpp:1233-1268). Liefert die Anzahl der
+   MISMATCHes (0 = alles gruen). Original ruft execFrom(0, &pos) mit
+   int*-Ausgabeparameter -- unser bereits portiertes execFrom (TEIL 3) nimmt
+   "pos" per Wert und liefert die neue Position ueber das globale
+   execPosResult (siehe dortiger Kommentar), daher hier execFrom(0, 0) plus
+   anschliessendem execPosResult-Read statt eines lokalen "pos". Ternaere
+   OK/FAIL-Textwahl als Funktionsargument bewusst vermieden (siehe
+   writeWorkfile-Kommentar) -- komplette if/else-Zweige stattdessen.
+   Anfuehrungszeichen um den Testeingabe-Text: Builtin putchar(34) (PRINTC)
+   statt eines String-Literal-Workarounds, da das Ziel hier STDOUT ist
+   (printf), nicht ein FILE*-Strom wie bei writeWorkfile (dort fputc(34, fp)). */
+int runTests() {
+	int i;
+	int mismatches;
+	int ok;
+	int fullOk;
+	int passCount;
+
+	mismatches = 0;
+
+	if (testCaseCnt == 0) {
+		return 0;
+	}
+	printf("\n=== TESTS (%d Testfaelle) ===\n", testCaseCnt);
+	if (leftRecursionFound != 0 || errorCnt > 0) {
+		if (leftRecursionFound != 0) {
+			printf("uebersprungen: Grammatik ist linksrekursiv\n");
+		} else {
+			printf("uebersprungen: Grammatik ist fehlerhaft\n");
+		}
+		return 0;
+	}
+	i = 0;
+	while (i < testCaseCnt) {
+		inputBuf = testCases[i].input;
+		inputLen = strlen(inputBuf);
+		ok = execFrom(0, 0);
+		if (ok != 0 && execPosResult == inputLen) {
+			fullOk = 1;
+		} else {
+			fullOk = 0;
+		}
+		if (fullOk == testCases[i].expectOk) {
+			printf("PASS      TEST ");
+			putchar(34);
+			printf("%s", testCases[i].input);
+			putchar(34);
+			if (testCases[i].expectOk != 0) {
+				printf(" OK\n");
+			} else {
+				printf(" FAIL\n");
+			}
+		} else {
+			printf("MISMATCH  TEST ");
+			putchar(34);
+			printf("%s", testCases[i].input);
+			putchar(34);
+			printf(" erwartet ");
+			if (testCases[i].expectOk != 0) { printf("OK"); } else { printf("FAIL"); }
+			printf(", erhalten ");
+			if (fullOk != 0) { printf("OK"); } else { printf("FAIL"); }
+			if (ok != 0 && fullOk == 0) {
+				printf(" (nur %d von %d Zeichen erkannt)", execPosResult, inputLen);
+			}
+			printf("\n");
+			mismatches = mismatches + 1;
+		}
+		i = i + 1;
+	}
+	passCount = testCaseCnt - mismatches;
+	if (mismatches != 0) {
+		printf("=== %d/%d PASS, MISMATCHES! ===\n", passCount, testCaseCnt);
+	} else {
+		printf("=== %d/%d PASS ===\n", passCount, testCaseCnt);
+	}
+	return mismatches;
+}
+
+/* TESTS/NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer ALTEN Arbeitsdatei retten,
+   BEVOR sie durch writeWorkfile ueberschrieben wird (Source/ebnf.cpp:920-993).
+   Keine escapten Anfuehrungszeichen im Code selbst noetig -- nur die
+   GELESENEN Daten (Zeilen aus einer bestehenden Datei) enthalten '"', das
+   ist Laufzeittext, kein Tiny-C-String-Literal-Problem. Zwei Anpassungen:
+   (1) char-Literal '"' -> ASCII-Code 34 (Quirk 1). (2)
+   "testCases[testCaseCnt].input[n] = 0;" (arr[i].field[j] als Zuweisungsziel)
+   wird wie bei loadWorkfileAsGrammar abgelehnt -- Umweg ueber einen lokalen
+   Puffer tmpInput, NUL-Terminierung dort (normale Array-Indizierung, kein
+   struct-Array-Feld), danach per tcCopyBounded in testCases[...].input
+   kopiert. Bool-Ausdruecke (strncmp(...)==0, strstr(...)==0) werden NICHT
+   direkt einer int-Variable/einem int-Feld zugewiesen (dieselbe strikte
+   int/bool-Trennung wie bei Quirk 3/10) -- komplette if/else-Zweige. */
+void loadPreservedTests(char* path) {
+	void* fp;
+	char line[512];		/* WORKFILE_LINE */
+	int inTests;
+	int inUserCode;
+	int inLexer;
+	int inCgen;
+	char* firstQuote;
+	char* lastQuote;
+	int n;
+	char tmpInput[256];		/* TEST_INPUT_LEN */
+
+	inTests = 0;
+	inUserCode = 0;
+	inLexer = 0;
+	inCgen = 0;
+
+	testCaseCnt = 0;
+	userCodeLen = 0;
+	userCodeTruncated = 0;
+	userCodeBuf[0] = 0;
+	lexerCfgLen = 0;
+	lexerCfgBuf[0] = 0;
+	cgenCfgLen = 0;
+	cgenCfgBuf[0] = 0;
+
+	fp = fopen(path, "r");
+	if (fp == 0) { return; }		/* keine alte Arbeitsdatei vorhanden -- nichts zu retten */
+
+	while (fgets(line, 512, fp) != 0) {
+		chompLine(line);
+		if (inUserCode != 0) {
+			if (strcmp(line, "[ENDE]") == 0) {
+				inUserCode = 0;
+			} else {
+				appendUserCodeLine(line);
+			}
+			continue;
+		}
+		if (inLexer != 0) {
+			if (strcmp(line, "[ENDE]") == 0) {
+				inLexer = 0;
+			} else {
+				appendLexerCfgLine(line);
+			}
+			continue;
+		}
+		if (inCgen != 0) {
+			if (strcmp(line, "[ENDE]") == 0) {
+				inCgen = 0;
+			} else {
+				appendCgenCfgLine(line);
+			}
+			continue;
+		}
+		if (line[0] == 91) {		/* '[' */
+			if (strncmp(line, "[TESTS]", 7) == 0) { inTests = 1; } else { inTests = 0; }
+			if (strncmp(line, "[NUTZER-CODE]", 13) == 0) { inUserCode = 1; } else { inUserCode = 0; }
+			if (strncmp(line, "[LEXER]", 7) == 0) { inLexer = 1; } else { inLexer = 0; }
+			if (strncmp(line, "[CODEGEN]", 9) == 0) { inCgen = 1; } else { inCgen = 0; }
+			continue;
+		}
+		if (inTests != 0 && strncmp(line, "TEST", 4) == 0) {
+			firstQuote = strchr(line, 34);		/* '"' */
+			lastQuote = strrchr(line, 34);
+			if (firstQuote != 0 && lastQuote != 0 && lastQuote > firstQuote && testCaseCnt < 256) {
+				n = lastQuote - firstQuote - 1;
+				if (n > 255) { n = 255; }		/* TEST_INPUT_LEN - 1 */
+				memcpy(tmpInput, firstQuote + 1, n);
+				tmpInput[n] = 0;
+				tcCopyBounded(testCases[testCaseCnt].input, tmpInput, 255);
+				if (strstr(lastQuote + 1, "FAIL") == 0) {
+					testCases[testCaseCnt].expectOk = 1;
+				} else {
+					testCases[testCaseCnt].expectOk = 0;
+				}
+				testCaseCnt = testCaseCnt + 1;
+			}
+		}
+	}
+	fclose(fp);
+	if (userCodeTruncated != 0) {
+		printf("WARNUNG: [NUTZER-CODE] ist groesser als %d Bytes und wurde gekuerzt.\n", 1048575);		/* USER_CODE_LEN - 1 */
+	}
+}

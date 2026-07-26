@@ -2930,5 +2930,90 @@ else
 	echo "warn  tinyc Selfhosting L2 Vollport (loadWorkfileAsGrammar): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechste zwei
+# Ausschnitte nach SourceTinyC/ebnf.tc -- runTests (Source/ebnf.cpp:1233-1268,
+# alle TEST-Zeilen durch execFrom jagen und mit dem erwarteten Ergebnis
+# vergleichen) UND loadPreservedTests (Source/ebnf.cpp:920-993, TESTS/
+# NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei retten, bevor
+# sie ueberschrieben wird). ZWEI weitere Grenzfaelle gefunden: (1) dieselbe
+# arr[i].field[j]-Zuweisungsziel-Ablehnung wie bei loadWorkfileAsGrammar,
+# diesmal fuer testCases[i].input[n] -- Umweg ueber einen lokalen Puffer plus
+# tcCopyBounded. (2) Bool-Ausdruecke (strncmp(...)==0 etc.) koennen NICHT
+# direkt einer int-Variable/einem int-Feld zugewiesen werden (dieselbe
+# strikte int/bool-Trennung wie bei Quirk 3/10 fuer Bedingungen/Rueckgaben,
+# hier erstmals fuer eine normale Zuweisung getroffen) -- komplette if/else-
+# Zweige statt "x = (a == b);". Verifiziert wie die vorigen Chunks (kompiliert
+# + assembliert sauber, ebnf.tc+codegen.tc getrennt) -- Regressionstest in
+# runtests.sh. ZUSAETZLICH ein voller Rundlauf (Arbeitsdatei mit einer
+# RNG-Regel + drei TEST-Zeilen schreiben, per loadWorkfileAsGrammar +
+# loadPreservedTests wieder einlesen, runTests ausfuehren) einmalig gegen
+# eine native C-Uebersetzung aller vier beteiligten Funktionen gegengeprueft:
+# beide liefern aktTabIndex=1/testCaseCnt=3/mismatches=0 (alle drei Testfaelle
+# PASS).
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	rtlp_main='
+int main() {
+	void* fp;
+	int mismatches;
+
+	fp = fopen("/tmp/tinyc_rtlp_test.txt", "w");
+	fprintf(fp, "[PARSER-TABELLE]\n");
+	fprintf(fp, "0     -1    -2    -1    48    57    -                RNG  digit\n");
+	fprintf(fp, "[ENDE]\n\n");
+	fprintf(fp, "[TESTS]\n");
+	fprintf(fp, "TEST ");
+	fputc(34, fp);
+	fprintf(fp, "5");
+	fputc(34, fp);
+	fprintf(fp, " OK\n");
+	fprintf(fp, "TEST ");
+	fputc(34, fp);
+	fprintf(fp, "ab");
+	fputc(34, fp);
+	fprintf(fp, " FAIL\n");
+	fprintf(fp, "TEST ");
+	fputc(34, fp);
+	fprintf(fp, "x");
+	fputc(34, fp);
+	fprintf(fp, " FAIL\n");
+	fclose(fp);
+
+	if (loadWorkfileAsGrammar("/tmp/tinyc_rtlp_test.txt") == 0) {
+		putint(-1);
+		return;
+	}
+	loadPreservedTests("/tmp/tinyc_rtlp_test.txt");
+
+	putint(aktTabIndex);
+	putint(testCaseCnt);
+
+	mismatches = runTests();
+	putint(mismatches);
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rtlp_main" > build/tinyc_rtlp_a.ir 2>build/tinyc_rtlp_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rtlp_b.ir 2>build/tinyc_rtlp_b.err && \
+		build/tinyc_backend build/tinyc_rtlp_a.ir build/tinyc_rtlp_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_rtlp_b.ir build/tinyc_rtlp_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_rtlp_a.s68 "$MWOS_TMP/rtlpa.a"
+		cp build/tinyc_rtlp_b.s68 "$MWOS_TMP/rtlpb.a"
+		rm -f "$MWOS_TMP/rtlpa.r" "$MWOS_TMP/rtlpb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpa.a -o=M:\\TMP\\rtlpa.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpb.a -o=M:\\TMP\\rtlpb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/rtlpa.r" ] && [ -s "$MWOS_TMP/rtlpb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: runTests + loadPreservedTests (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (runTests/loadPreservedTests) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/rtlpa.a "$MWOS_TMP"/rtlpb.a "$MWOS_TMP"/rtlpa.r "$MWOS_TMP"/rtlpb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (runTests/loadPreservedTests) kompiliert nicht sauber (siehe build/tinyc_rtlp_a.err/build/tinyc_rtlp_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (runTests/loadPreservedTests): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail
