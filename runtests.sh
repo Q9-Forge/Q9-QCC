@@ -2681,7 +2681,7 @@ if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/project
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	wwtest_main='
-int main() {
+int wwtestFn() {
 	void* fp;
 
 	aktTabIndex = 3;
@@ -2729,7 +2729,7 @@ int main() {
 }'
 	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$wwtest_main" > build/tinyc_wwtest_a.ir 2>build/tinyc_wwtest_a.err && \
 		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_wwtest_b.ir 2>build/tinyc_wwtest_b.err && \
-		build/tinyc_backend build/tinyc_wwtest_a.ir build/tinyc_wwtest_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_wwtest_a.ir build/tinyc_wwtest_a.s68 -os9 -largedata -part && \
 		build/tinyc_backend build/tinyc_wwtest_b.ir build/tinyc_wwtest_b.s68 -os9 -largedata -part; then
 		cp build/tinyc_wwtest_a.s68 "$MWOS_TMP/wwtesta.a"
 		cp build/tinyc_wwtest_b.s68 "$MWOS_TMP/wwtestb.a"
@@ -2767,7 +2767,7 @@ if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/project
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	rebuildtest_main='
-int main() {
+int rebuildtestFn() {
 	aktTabIndex = 4;
 
 	lexTab[0].mode = "NTS";
@@ -2798,7 +2798,7 @@ int main() {
 }'
 	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rebuildtest_main" > build/tinyc_rebuildtest_a.ir 2>build/tinyc_rebuildtest_a.err && \
 		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rebuildtest_b.ir 2>build/tinyc_rebuildtest_b.err && \
-		build/tinyc_backend build/tinyc_rebuildtest_a.ir build/tinyc_rebuildtest_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_rebuildtest_a.ir build/tinyc_rebuildtest_a.s68 -os9 -largedata -part && \
 		build/tinyc_backend build/tinyc_rebuildtest_b.ir build/tinyc_rebuildtest_b.s68 -os9 -largedata -part; then
 		cp build/tinyc_rebuildtest_a.s68 "$MWOS_TMP/rebuilda.a"
 		cp build/tinyc_rebuildtest_b.s68 "$MWOS_TMP/rebuildb.a"
@@ -2843,7 +2843,7 @@ if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/project
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	lwtest_main='
-int main() {
+int lwtestFn() {
 	void* fp;
 	int savedCnt;
 
@@ -2910,7 +2910,7 @@ int main() {
 }'
 	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lwtest_main" > build/tinyc_lwtest_a.ir 2>build/tinyc_lwtest_a.err && \
 		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_lwtest_b.ir 2>build/tinyc_lwtest_b.err && \
-		build/tinyc_backend build/tinyc_lwtest_a.ir build/tinyc_lwtest_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_lwtest_a.ir build/tinyc_lwtest_a.s68 -os9 -largedata -part && \
 		build/tinyc_backend build/tinyc_lwtest_b.ir build/tinyc_lwtest_b.s68 -os9 -largedata -part; then
 		cp build/tinyc_lwtest_a.s68 "$MWOS_TMP/lwtesta.a"
 		cp build/tinyc_lwtest_b.s68 "$MWOS_TMP/lwtestb.a"
@@ -2954,7 +2954,7 @@ if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/project
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	rtlp_main='
-int main() {
+int rtlpFn() {
 	void* fp;
 	int mismatches;
 
@@ -2995,7 +2995,7 @@ int main() {
 }'
 	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rtlp_main" > build/tinyc_rtlp_a.ir 2>build/tinyc_rtlp_a.err && \
 		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rtlp_b.ir 2>build/tinyc_rtlp_b.err && \
-		build/tinyc_backend build/tinyc_rtlp_a.ir build/tinyc_rtlp_a.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_rtlp_a.ir build/tinyc_rtlp_a.s68 -os9 -largedata -part && \
 		build/tinyc_backend build/tinyc_rtlp_b.ir build/tinyc_rtlp_b.s68 -os9 -largedata -part; then
 		cp build/tinyc_rtlp_a.s68 "$MWOS_TMP/rtlpa.a"
 		cp build/tinyc_rtlp_b.s68 "$MWOS_TMP/rtlpb.a"
@@ -3033,9 +3033,9 @@ fi
 if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)void main(){putint(1);}" > build/tinyc_parser1.ir 2>build/tinyc_parser1.err && \
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)" > build/tinyc_parser1.ir 2>build/tinyc_parser1.err && \
 		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_parser1b.ir 2>build/tinyc_parser1b.err && \
-		build/tinyc_backend build/tinyc_parser1.ir build/tinyc_parser1.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_parser1.ir build/tinyc_parser1.s68 -os9 -largedata -part && \
 		build/tinyc_backend build/tinyc_parser1b.ir build/tinyc_parser1b.s68 -os9 -largedata -part; then
 		cp build/tinyc_parser1.s68 "$MWOS_TMP/parser1a.a"
 		cp build/tinyc_parser1b.s68 "$MWOS_TMP/parser1b.a"
@@ -3089,7 +3089,7 @@ if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/project
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	lextest_main='
-int main() {
+int lextestFn() {
 	void* fp;
 	int tokens[16];
 	int tokenCnt;
@@ -3124,7 +3124,7 @@ int main() {
 	putint(1);
 }'
 	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lextest_main" > build/tinyc_lextest_a.ir 2>build/tinyc_lextest_a.err && \
-		build/tinyc_backend build/tinyc_lextest_a.ir build/tinyc_lextest_a.s68 -os9 -largedata -part -runtime; then
+		build/tinyc_backend build/tinyc_lextest_a.ir build/tinyc_lextest_a.s68 -os9 -largedata -part; then
 		cp build/tinyc_lextest_a.s68 "$MWOS_TMP/lextesta.a"
 		rm -f "$MWOS_TMP/lextesta.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lextesta.a -o=M:\\TMP\\lextesta.r -q" >/dev/null 2>&1
@@ -3139,6 +3139,60 @@ int main() {
 	fi
 else
 	echo "warn  tinyc Selfhosting L2 Vollport (Lexer): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): ebnfMain/
+# ebnfSyntax/exitProgram (Source/ebnf.cpp:170-334, 1357-1369, 322-334) --
+# LETZTER Abschnitt des ebnf.cpp-Vollports. Tiny-C main() kann keine
+# argc/argv empfangen (kein Mechanismus dafuer in Grammatik/Backend) -- die
+# komplette Original-main()-Logik lebt deshalb in ebnfMain(char* baseArg),
+# main() selbst ist ein duenner Wrapper mit fest einprogrammiertem
+# Basisnamen ("tinyc"). Bewusst entfallen: die argc<2-Usage-Meldung und der
+# optionale <teststring>-Testlauf (runTests() deckt das bereits ab).
+#
+# WICHTIGSTER Unterschied zu allen bisherigen ebnf.tc-Chunks: ebnf.tc hat ab
+# jetzt eine ECHTE main()-Funktion -- die sechs AELTEREN Tests oben (die
+# bisher je ein eigenes "void main(){...}" an ebnf.tc anhaengten) wurden
+# deshalb umgebaut (Testfunktion umbenannt, kein "main" mehr; Backend-Aufruf
+# von "-part -runtime" auf reines "-part" reduziert -- r68-Assemblierung
+# braucht keinen echten Einspringpunkt, nur echtes Linken (l68) wuerde einen
+# brauchen, das pruefen jene sechs Tests aber ohnehin nicht).
+#
+# DAS HIER IST DER MEILENSTEIN-TEST: zum ERSTEN Mal ein VOLLER l68-Link von
+# ebnf.tc (mit seiner echten main()) GEGEN codegen.tc, ohne jedes unresolved
+# Symbol -- der komplette Tiny-C-Vollport von Source/ebnf.cpp (Schritt 2 aus
+# dem urspruenglichen 3-Schritt-Plan, siehe [[tinyc-vollport-status]]) ist
+# damit strukturell/kompilatorisch VOLLSTAENDIG. (Was das noch NICHT
+# abdeckt: echte Ausfuehrung/Verhalten auf dem Q9-Emulator -- Schritt 3 des
+# Plans, separat vermerkt.)
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)" > build/tinyc_final1.ir 2>build/tinyc_final1.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_final1b.ir 2>build/tinyc_final1b.err && \
+		build/tinyc_backend build/tinyc_final1.ir build/tinyc_final1.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_final1b.ir build/tinyc_final1b.s68 -os9 -largedata -part; then
+		cp build/tinyc_final1.s68 "$MWOS_TMP/final1a.a"
+		cp build/tinyc_final1b.s68 "$MWOS_TMP/final1b.a"
+		rm -f "$MWOS_TMP/final1a.r" "$MWOS_TMP/final1b.r" "$MWOS_TMP/final1.out"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\final1a.a -o=M:\\TMP\\final1a.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\final1b.a -o=M:\\TMP\\final1b.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/final1a.r" ] && [ -s "$MWOS_TMP/final1b.r" ]; then
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\final1a.r M:\\TMP\\final1b.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\final1.out" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/final1.out" ]; then
+				echo "ok    tinyc Selfhosting L2 Vollport: KOMPLETT -- ebnf.tc (mit echter main()) + codegen.tc kompilieren, assemblieren UND linken (echter r68+l68 gegen echte clib.l) vollstaendig OHNE unresolved Symbole"
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: voller l68-Link (ebnf.tc+codegen.tc) fehlgeschlagen"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (ebnfMain/main) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/final1a.a "$MWOS_TMP"/final1b.a "$MWOS_TMP"/final1a.r "$MWOS_TMP"/final1b.r "$MWOS_TMP"/final1.out
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (ebnfMain/main) kompiliert nicht sauber (siehe build/tinyc_final1.err/build/tinyc_final1b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

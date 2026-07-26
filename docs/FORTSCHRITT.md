@@ -612,6 +612,62 @@ Regressionstest in `runtests.sh`. **Wichtiges Zwischenergebnis:** ein echter
 2 unresolved Symbole (`ebnfSyntax`/`exitProgram`) -- der komplette Rest der
 Datei ist vollstaendig und korrekt verdrahtet.
 
+## Selfhosting L2 Vollport `ebnf.cpp`: ABGESCHLOSSEN (2026-07-26)
+
+**Letzter Abschnitt portiert: `ebnfMain`/`ebnfSyntax`/`exitProgram`**
+(`Source/ebnf.cpp:170-334, 1357-1369, 322-334`).
+
+**Wichtigste Design-Entscheidung: Tiny-C `main()` kann keine
+Kommandozeilenargumente empfangen** -- weder die Grammatik noch der Backend-
+Einsprungpunkt (`tc_start`/`emitCall`) sehen einen `argc`/`argv`-Mechanismus
+vor (verifiziert: `emitCall` fuer `main` pusht keinerlei Argumente). Die
+komplette Original-`main(argc, argv)`-Logik lebt deshalb in
+`ebnfMain(char* baseArg)`, einer regulaeren, mit dem Basisnamen
+PARAMETRISIERTEN Funktion; `main()` selbst ist nur noch ein duenner Wrapper
+mit fest einprogrammiertem Platzhalter-Basisnamen (`"tinyc"`). Bewusst
+entfallen: die `argc<2`-Usage-Meldung (kann bei einem Funktionsparameter nie
+eintreten) und der optionale dritte CLI-Parameter `<teststring>` (manueller
+Testlauf gegen einen Eingabestring) -- `runTests()` (der TESTS-Block der
+Arbeitsdatei) deckt den eigentlichen Testmechanismus bereits ab. Fuer einen
+echten, dateinamen-flexiblen OS-9-Build muesste der Basisname kuenftig ueber
+einen Syscall zum Lesen der OS-9-Kommandozeile (Process-Descriptor) kommen --
+nicht implementiert, dokumentierte bekannte Grenze.
+
+`exitProgram()`: `fflush(stdout)` aus dem Original bewusst weggelassen --
+`exit()` flusht/schliesst laut C-Standard ohnehin alle offenen Streams
+automatisch, und ein `stdout`-`FILE*`-Handle ist ueber die Microware-ABI
+nicht ohne Weiteres als einfacher Tiny-C-Wert zu bekommen (keine simple
+`stdout`-Externvariable, `clib.l` exportiert nur ein `_iob`-Array mit
+unbekanntem Layout).
+
+**MEILENSTEIN-TEST:** zum ersten Mal ein VOLLER `l68`-Link von `ebnf.tc` (mit
+seiner eigenen, echten `main()`) gegen `codegen.tc`, OHNE jedes unresolved
+Symbol -- der resultierende `.out` ist ein vollstaendig gelinktes,
+2,1-MB-OS-9-Modul. **Der komplette Tiny-C-Vollport von `Source/ebnf.cpp` ist
+damit abgeschlossen** (Schritt 2 aus dem urspruenglichen 3-Schritt-Plan,
+siehe `[[tinyc-vollport-status]]`) -- zusammen mit dem bereits fertigen
+`codegen.cpp`-Vollport sind beide Kerndateien des EBNF-Generators als
+Tiny-C-Quelltext vorhanden.
+
+**Kollateral-Aufwand:** da `ebnf.tc` jetzt eine ECHTE `main()`-Funktion
+enthaelt, mussten die sechs AELTEREN Regressionstests in `runtests.sh`
+(`writeWorkfile`/`rebuildFirstEdgesFromTable`/`loadWorkfileAsGrammar`/
+`runTests+loadPreservedTests`/Parsergruppe/Lexer) umgebaut werden -- sie
+haengten bisher je ein eigenes `"void main(){...}"` an `ebnf.tc` an, was ab
+jetzt mit der echten `main()` kollidiert (zwei REALE Funktionskoerper
+gleichen Namens, kein harmloses FUNCDECL-Rauschen mehr). Fix: Testfunktionen
+umbenannt (kein `main` mehr) und Backend-Aufruf von `-part -runtime` auf
+reines `-part` reduziert -- reine `r68`-Assemblierung (wie diese sechs Tests
+sie pruefen) braucht keinen echten Einsprungpunkt, nur echtes Linken (`l68`)
+wuerde einen brauchen, und das pruefte keiner dieser sechs Tests ohnehin.
+
+**Noch NICHT abgedeckt (Schritt 3 des urspruenglichen Plans, separat
+vermerkt):** echte Ausfuehrung/Verhalten des selbstgehosteten `ebnf_gen` auf
+dem Q9-Emulator -- insbesondere Live-Verifikation von `malloc`/`realloc`/
+`free` (`realloc`s Kopierverhalten ueber die Wachstumsgrenze hinweg) sowie
+ein vollstaendiger End-zu-End-Vergleich mit dem bereits `xcc`-gebauten,
+live-auf-Q9-bestaetigten `ebnf_gen` (siehe `docs/STATUS.md`).
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |

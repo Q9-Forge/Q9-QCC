@@ -1,6 +1,8 @@
 # Projektstatus
 
-Stand: **2026-07-25 (Nachtrag: Mehrdatei-Uebersetzung M1-M3 erledigt)**
+Stand: **2026-07-26 (Nachtrag: kompletter Tiny-C-Vollport von `Source/ebnf.cpp`
+abgeschlossen -- echter `l68`-Link von `ebnf.tc`+`codegen.tc` ohne unresolved
+Symbole, siehe eigener Abschnitt weiter unten)**
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
 
@@ -60,6 +62,50 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
 
 Diese Untersuchung ist inhaltlich unabhängig von der Tiny-C-Sprachfeature-
 Arbeit unten und betrifft ausschließlich den Generator selbst, nicht Tiny-C.
+
+### Selfhosting L2 Vollport: `ebnf.cpp` nach Tiny-C ABGESCHLOSSEN (2026-07-26)
+
+**Der komplette Vollport von `Source/ebnf.cpp` (2149 Zeilen) nach
+`SourceTinyC/ebnf.tc` ist fertig** -- zusammen mit dem bereits am 2026-07-25
+abgeschlossenen `codegen.cpp`-Vollport (`SourceTinyC/codegen.tc`) sind damit
+BEIDE Kerndateien des EBNF-Generators als Tiny-C-Quelltext vorhanden. Ein
+echter `l68`-Link von `ebnf.tc` (inkl. seiner eigenen `main()`) gegen
+`codegen.tc` läuft zum ersten Mal komplett OHNE unresolved Symbole durch
+(Regressionstest in `runtests.sh`, letzter Eintrag) -- der resultierende
+2,1-MB-`.out`-Binary ist ein vollständig gelinktes OS-9-Modul.
+
+Chronologischer Fortschritt, alle gefundenen Tiny-C-Sprachquirks und die
+Details jedes einzelnen Portierungsschritts stehen in `docs/FORTSCHRITT.md`
+(Abschnitt "Selfhosting L2 Vollport: `ebnf.cpp`") und der Memory-Datei
+`[[tinyc-vollport-status]]` -- hier nur die Kurzfassung:
+
+- Alle neun Kernfunktionen der rekursiven-Abstiegs-Parsergruppe
+  (`rule`/`expression`/`term`/`factor`/`block`/`repeat`/`option`/`ident`/
+  `literal`) sowie der komplette Lexer (`lexikalischeAnalyse`/`getNext`/
+  `getAktChar`/`comment`/`getAktLine`) und die Arbeitsdatei-Ein-/Ausgabe
+  (`writeWorkfile`/`loadWorkfileAsGrammar`/`loadPreservedTests`/`runTests`)
+  sind portiert.
+- **Bewusste, dokumentierte Abweichung vom Original:** Tiny-C `main()` kann
+  keine Kommandozeilenargumente (`argc`/`argv`) empfangen -- die komplette
+  Original-`main()`-Logik lebt deshalb in `ebnfMain(char* baseArg)`, `main()`
+  selbst ruft sie mit einem fest einprogrammierten Platzhalter-Basisnamen
+  (`"tinyc"`) auf. Für einen echten, dateinamen-flexiblen OS-9-Build müsste
+  das durch einen Syscall zum Lesen der OS-9-Kommandozeile ersetzt werden --
+  nicht implementiert.
+- Dabei zwei bisher unentdeckte Backend-Bugs gefunden und gefixt
+  (`Source/tinyc_backend_c.cpp`): interne Sprungmarken (`tc_L<n>`,
+  `tc_cmp_yes/done_<n>`) und die `-largedata`-Tabellen (`tc_functab`/
+  `tc_gadata`) kollidierten beim Mehrdatei-Link, weil ihre Zähler in jeder
+  Datei wieder bei 0 starten -- gefixt mit demselben `psectName`-Suffix-Muster
+  wie die bestehende `static`-Namensverfremdung.
+- Rohes Zeiger-Dereferenzieren (`*p` lesen/schreiben, nicht nur `p[i]`) wurde
+  zum ersten Mal im gesamten Projekt gebraucht (Lexer-Scanner) -- vorab per
+  Standalone-Test gegen TinyVM verifiziert, funktioniert einwandfrei.
+- **Noch NICHT abgedeckt (Schritt 3 des ursprünglichen 3-Schritt-Plans):**
+  echte Ausführung/Verhalten des selbstgehosteten `ebnf_gen` auf dem
+  Q9-Emulator (Live-Q9-Verifikation von `malloc`/`realloc`/`free` und darüber
+  hinaus ein vollständiger End-zu-End-Vergleich mit dem `xcc`-gebauten
+  `ebnf_gen` aus dem Abschnitt oben).
 
 ## Kurzfassung
 
