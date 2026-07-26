@@ -321,9 +321,36 @@ static int helperTableOffset(const char* rawName) {
    Versuch, a4 hier bei JEDEM Aufruf neu zu laden -- brach r68 mit "value out
    of range", siehe emitLeaGlobal()-Kommentar): a4 wird stattdessen NUR direkt
    NACH jedem CALLEXT/CALLEXTP neu geladen (dort, wo es kaputtgehen kann). */
-static void emitCall(FILE* out, const char* asmName, int tableOffset) {
+/* BUG 5 (2026-07-26, live auf Q9 gefunden, FUENFTER -largedata-Bug dieser
+   Sitzung): jede Funktion frischt a3/a4 seit dem Bug-4-Fix GLEICH NACH dem
+   eigenen "link" auf IHRE EIGENE Tabelle auf -- das heisst aber auch: NACH
+   der Rueckkehr aus JEDEM internen Aufruf (CALL/CALLP, auch Laufzeit-Helfer
+   wie tc_putint) zeigen a3/a4 auf die Tabelle der AUFGERUFENEN Funktion,
+   NICHT mehr auf die eigene! Bei einem gleichdatei-Aufruf faellt das nicht
+   auf (dieselbe Tabelle), bei einem Cross-File-Aufruf (FUNCDECL-Ziel in
+   einer ANDEREN Datei, z.B. tcCopyBounded in codegen.tc von ebnf.tc aus
+   aufgerufen) zeigt a4 danach auf die TABELLE DER FREMDEN DATEI -- der
+   naechste Tabellen-Zugriff im Aufrufer (z.B. ein simples putchar(...)
+   direkt nach dem Aufruf) laedt dadurch einen voellig falschen
+   Funktionszeiger und stuerzt ab ("PMMU: Unhandled Table C/D mode 0",
+   sofortiger Komplettabsturz des Emulators). Live bewiesen per gezielter
+   Bisektion: Eintritt in tcCopyBounded UND ihr kompletter Funktionskoerper
+   (samt Schleife) laufen nachweislich fehlerfrei -- der Fehler tritt exakt
+   zwischen ihrer Rueckkehr und dem naechsten Tabellenzugriff im Aufrufer
+   auf. FIX: nach JEDEM internen Aufruf (jsr ueber die Tabelle) frischt der
+   AUFRUFER a3/a4 sofort wieder auf SEINE EIGENE Tabelle auf -- per
+   selbstreferenzierendem lea+adda auf ein NEUES, direkt an dieser Stelle
+   emittiertes lokales Label (nicht auf den Funktionsnamen selbst, der bei
+   einem Aufruf mitten in einer langen Funktion zu weit entfernt sein
+   koennte -- exakt dasselbe Distanzproblem, das der Bug-4-Fix schon einmal
+   loesen musste). */
+static void emitCall(FILE* out, const char* asmName, int tableOffset, int* serial, const char* psectName) {
 	if (largeDataMode) {
+		int id = (*serial)++;
 		fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", tableOffset);
+		fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
+		fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a4\n\tadda.l\t#(tc_functab__%s-tc_callret_%d__%s),a4\n", id, psectName, psectName, id, psectName);
+		fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-tc_callret_%d__%s),a3\n", id, psectName, psectName, id, psectName);
 	} else {
 		fprintf(out, "\tbsr\t%s\n", asmName);
 	}
@@ -750,7 +777,7 @@ static void emitIR(FILE* out) {
 		if (mainIdx >= 0) {
 			char mainAsmName[NAME_LEN + 40];
 			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
-			emitCall(out, mainAsmName, mainIdx * 4);
+			emitCall(out, mainAsmName, mainIdx * 4, &serial, psectName);
 		} else {
 			fputs("\tbsr\ttc_main\n", out); /* main nicht in dieser Datei -- wie zuvor, siehe -part oben */
 		}
@@ -1189,7 +1216,7 @@ static void emitIR(FILE* out) {
 				   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
 				   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
 				fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n", insP->args[0]);
-				emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"));
+				emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"), &serial, psectName);
 				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
 			} else if (strcmp(op, "PDIFF") == 0 && insP->argc == 1) {
 				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tsub.l\td1,d0\n", out);
@@ -1223,7 +1250,7 @@ static void emitIR(FILE* out) {
 				char helperAsmName[24];
 				sprintf(helperAsmName, "tc_%s", fn2);
 				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
-				emitCall(out, helperAsmName, helperTableOffset(helperAsmName));
+				emitCall(out, helperAsmName, helperTableOffset(helperAsmName), &serial, psectName);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "CMPLT") == 0) { emitCompare(out, "blt", &serial);
 			} else if (strcmp(op, "CMPGT") == 0) { emitCompare(out, "bgt", &serial);
@@ -1261,7 +1288,7 @@ static void emitIR(FILE* out) {
 				char asmName[NAME_LEN + 40];
 				if (callee < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
-				emitCall(out, asmName, callee * 4);
+				emitCall(out, asmName, callee * 4, &serial, psectName);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
@@ -1371,13 +1398,13 @@ static void emitIR(FILE* out) {
 				fputs("\taddq.l\t#4,a7\n", out);
 			} else if (strcmp(op, "PRINT") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitCall(out, "tc_putint", helperTableOffset("tc_putint"));
+				emitCall(out, "tc_putint", helperTableOffset("tc_putint"), &serial, psectName);
 			} else if (strcmp(op, "PRINTU") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitCall(out, "tc_putuint", helperTableOffset("tc_putuint"));
+				emitCall(out, "tc_putuint", helperTableOffset("tc_putuint"), &serial, psectName);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"));
+				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"), &serial, psectName);
 			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
 				/* static lokale Variable: bereits von collectGlobals() ausgewertet (Adresse/
 				   Initialwert stehen im DATA/BSS-Abschnitt) -- an dieser Stelle im Funktions-

@@ -2130,6 +2130,15 @@ void ebnfMain(char* baseArg) {
 
 	fallB = 0;
 
+	/* 2026-07-26, live auf Q9 gefunden: initLexer() war definiert, aber NIRGENDS
+	   aufgerufen -- flagStartLineComment/startLineCommentString/... etc. blieben
+	   dadurch auf undefiniertem BSS-Inhalt statt den in initLexer() gesetzten
+	   Werten, comment()/getNext() riefen frueh strlen() auf einem ungueltigen
+	   Zeiger auf (echter PMMU-Absturz). Muss VOR jeder Lexer-Nutzung UND vor
+	   jedem strlen(baseArg) direkt darunter stehen -- siehe initLexer()-
+	   Kommentar oben, der genau das schon lange forderte. */
+	initLexer();
+
 	len = strlen(baseArg);
 	if (len > 64) { len = 64; }		/* FILENAME_LEN */
 	tcCopyBounded(inputFileName, baseArg, len);
