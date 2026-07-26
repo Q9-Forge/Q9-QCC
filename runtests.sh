@@ -1107,35 +1107,39 @@ if [ -x tools/vasmm68k_mot ]; then
 		else
 			echo "FAIL  tinyc extern 68000: IR/Backend fuer 4-Argumente-Fall fehlgeschlagen"; fail=1
 		fi
-		# Fall 3 (2026-07-24, KORRIGIERT nach echtem Q9-Befund): variadisch (wie printf) --
-		# NUR der variadische UEBERSCHUSS (ueber die fest deklarierten Parameter hinaus)
-		# geht auf den Stack; die fest deklarierten Parameter (hier: "fmt", 1 Stueck)
-		# gehen GENAUSO nach d0/d1 wie bei einem nicht-variadischen Aufruf. Die fruehere
-		# Annahme "variadisch = ausnahmslos alles auf dem Stack" war NIE gegen echten
-		# Compiler-generierten Code verifiziert und stellte sich beim ersten echten
-		# printf-Test auf dem echten Q9 als falsch heraus (PMMU-Absturz: Formatstring-
-		# Adresse landete auf dem Stack statt in d0, printf laas stattdessen die Zahl 1
-		# als Adresse). Siehe docs/FORTSCHRITT.md.
+		# Fall 3 (2026-07-26/27, KORRIGIERT nach echtem Q9-Befund UND capstone-
+		# Disassemblierung der ECHTEN clib.l-printf): die ERSTEN ZWEI ARGUMENTE
+		# INSGESAMT (fest deklariert + variadisch zusammengezaehlt) gehen nach
+		# d0/d1, GENAU wie bei einem nicht-variadischen Aufruf -- NUR ab dem
+		# DRITTEN Argument geht es auf den Stack. Die vorherige Annahme (2026-07-24,
+		# "nur die FEST deklarierten Parameter gehen nach d0/d1, der GESAMTE
+		# variadische Teil auf den Stack") war NIE gegen echten, kompilierten
+		# clib.l-Code verifiziert und erwies sich beim ersten echten End-zu-Ende-
+		# Testlauf des selbstgehosteten Generators als falsch: printf(fmt,...)
+		# stuerzte bei JEDEM variadischen Argument ab (PMMU-Fehler, kleine
+		# Ganzzahl statt echtem Pointer/Wert gelesen), weil die echte, kompilierte
+		# printf() als ALLERERSTE Instruktion "move.l d1,d0" macht -- sie erwartet
+		# ihr erstes variadisches Argument also IMMER in d1, unabhaengig von der
+		# "..."-Deklaration. Siehe docs/FORTSCHRITT.md.
 		if build/tinyc_p 'extern int myprintf(int fmt, ...); int main(){ int x = 42; putint(myprintf(1, x, 7)); }' > build/tinyc_extv.ir && \
 			build/tinyc_backend build/tinyc_extv.ir build/tinyc_extv.s68; then
 			cp build/tinyc_extv.s68 build/tinyc_extv_test.s68
 			{
 				echo ""
-				echo "; Mock: NUR der deklarierte Parameter (fmt) geht nach d0, der variadische"
-				echo "; Rest (x, 7) auf den Stack. Erwartet d0=fmt=1, 4(a7)=x=42, 8(a7)=7 --"
-				echo "; Ergebnis = fmt+x*16+7en*256 = 1 + 42*16 + 7*256 = 2465"
-				echo "myprintf:	move.l	d0,d1"
-				echo "	move.l	4(a7),d0"
-				echo "	move.l	8(a7),d2"
-				echo "	lsl.l	#4,d0"
-				echo "	lsl.l	#8,d2"
-				echo "	add.l	d1,d0"
+				echo "; Mock: die ERSTEN ZWEI Argumente insgesamt (fmt, x) gehen nach d0/d1,"
+				echo "; NUR das dritte (7) auf den Stack. Erwartet d0=fmt=1, d1=x=42, 4(a7)=7 --"
+				echo "; Ergebnis = fmt+x*16+7*256 = 1 + 42*16 + 7*256 = 2465"
+				echo "myprintf:	move.l	d1,d2"
+				echo "	move.l	4(a7),d3"
+				echo "	lsl.l	#4,d2"
+				echo "	lsl.l	#8,d3"
 				echo "	add.l	d2,d0"
+				echo "	add.l	d3,d0"
 				echo "	rts"
 			} >> build/tinyc_extv_test.s68
 			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extv_test.bin build/tinyc_extv_test.s68 2>/dev/null && \
 				[ "$(python3 tools/tiny68sim.py build/tinyc_extv_test.s68 2>/dev/null)" = "2465" ]; then
-				echo "ok    tinyc extern 68000: variadischer Aufruf (fester Parameter in d0, Rest auf dem Stack) korrekt platziert"
+				echo "ok    tinyc extern 68000: variadischer Aufruf (erste zwei Argumente insgesamt in d0/d1, Rest auf dem Stack) korrekt platziert"
 			else
 				echo "FAIL  tinyc extern 68000: variadische ABI fehlerhaft"; fail=1
 			fi
