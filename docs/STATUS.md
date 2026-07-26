@@ -1,8 +1,12 @@
 # Projektstatus
 
-Stand: **2026-07-26 (Nachtrag: kompletter Tiny-C-Vollport von `Source/ebnf.cpp`
-abgeschlossen -- echter `l68`-Link von `ebnf.tc`+`codegen.tc` ohne unresolved
-Symbole, siehe eigener Abschnitt weiter unten)**
+Stand: **2026-07-26 spät abends (Nachtrag: Schritt 3 [Live-Q9-Verifikation]
+läuft -- fünf echte `-largedata`/`-os9`-Backend-Bugs live auf Q9 gefunden
+und gefixt, main sauber (PR #48+#49). Ein sechster, neuer Laufzeitfehler
+ist beim ersten vollständigen End-zu-Ende-Testlauf aufgetaucht und wird
+gerade untersucht -- Details in der Claude-Memory-Datei
+`tinyc-vollport-status.md`, die für diesen Strang aktueller ist als dieser
+Abschnitt hier.)**
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
 
@@ -101,11 +105,19 @@ Details jedes einzelnen Portierungsschritts stehen in `docs/FORTSCHRITT.md`
 - Rohes Zeiger-Dereferenzieren (`*p` lesen/schreiben, nicht nur `p[i]`) wurde
   zum ersten Mal im gesamten Projekt gebraucht (Lexer-Scanner) -- vorab per
   Standalone-Test gegen TinyVM verifiziert, funktioniert einwandfrei.
-- **Noch NICHT abgedeckt (Schritt 3 des ursprünglichen 3-Schritt-Plans):**
-  echte Ausführung/Verhalten des selbstgehosteten `ebnf_gen` auf dem
-  Q9-Emulator (Live-Q9-Verifikation von `malloc`/`realloc`/`free` und darüber
-  hinaus ein vollständiger End-zu-End-Vergleich mit dem `xcc`-gebauten
-  `ebnf_gen` aus dem Abschnitt oben).
+- **Schritt 3 (Live-Q9-Verifikation) LÄUFT (Stand 2026-07-26 spät abends):**
+  fünf unabhängige, tiefe Bugs im `-largedata`/`-os9`-68k-Backend
+  gefunden+gefixt (alle nur auf echter Hardware sichtbar, da weder TinyVM
+  noch `tools/tiny68sim.py` echte CPU-Flags/Register-Konventionen/Modul-
+  Relokation nachbilden): Tabellen-Relokation, a3/a4-Registerkonvention nach
+  externen `clib.l`-Aufrufen, `moveq`-Flag-Clobber zwischen Vergleich und
+  bedingtem Branch, und a3/a4-Konvention nach INTERNEN Cross-File-Aufrufen.
+  Alle committet+gemergt (`Source/tinyc_backend_c.cpp`, PR #48+#49). Beim
+  ersten kompletten End-zu-Ende-Testlauf mit dem bereinigten Stand ist ein
+  SECHSTER, neuer (milderer, von OS-9 abgefangener statt Emulator-
+  abstürzender) Laufzeitfehler aufgetaucht -- noch nicht behoben, aktueller
+  Ermittlungsstand in der Claude-Memory-Datei `tinyc-vollport-status.md`
+  (Bisektionsmethodik + genaue nächste Schritte dort dokumentiert).
 
 ## Kurzfassung
 
