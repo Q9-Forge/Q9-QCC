@@ -537,6 +537,47 @@ schreiben, per `loadWorkfileAsGrammar`+`loadPreservedTests` wieder einlesen,
 beteiligten Funktionen gegengeprueft: beide liefern
 `aktTabIndex=1`/`testCaseCnt=3`/`mismatches=0` (alle drei Testfaelle PASS).
 
+**2026-07-26 (direkt im Anschluss): die rekursive-Abstiegs-Parsergruppe
+portiert** (`Source/ebnf.cpp:1371-1774` + Helfer `920-1330`) --
+`literal`/`ident`/`block`/`repeat`/`option`/`factor`/`term`/`expression`/`rule`
+PLUS `push`/`pop`/`restart`/`errorMsg`/`test`/`addIdentList`/`patchLocalTrue`/
+`patchLocalFalse`. Die neun Kernfunktionen hatten bereits seit Projektbeginn
+bare Prototypen in `ebnf.tc` (gegenseitige Rekursion); der FUNCDECL/FUNC-
+Blocker dafuer wurde bereits am 2026-07-25 im Backend gefixt (Commit
+`7102de2`, siehe `[[tinyc-vollport-status]]`).
+
+Groesster Chunk bisher, aber KEINE grundsaetzlich neuen Sprachquirks -- alle
+bereits bekannten Muster kamen konzentriert zusammen zur Anwendung:
+- `arr[i].field[j]`-Zuweisungsziel erneut mehrfach (`lexTab[aktTabIndex].
+  ident[0]`, TS-Feldaufbau) -- durchgehend ueber lokale Puffer + `tcCopyBounded`
+  geloest (Muster aus `loadWorkfileAsGrammar` fortgesetzt).
+- Anfuehrungszeichen im Listing-Text (`lst`) und im TS-Feld ueber das
+  bestehende `appendQuoteChar` byteweise angehaengt, TS-Feld dabei komplett in
+  einem lokalen `tsBuf` aufgebaut statt direkt in der struct.
+- Bool-Ausdruecke nicht direkt zugewiesen (`wasAmbig = (!committed &&
+  hadSkippable);` -> if/else), int-als-Bedingung durchgehend mit `!= 0`.
+- Eine `printf`-Warnmeldung mit vier Zeilen (String-Literal-Konkatenation im
+  Original) ueberschritt die 256-Byte-Grenze fuer Tiny-C-String-Literale
+  (`tcDecodeStringLit`) -- auf zwei `printf`-Aufrufe aufgeteilt.
+- Post-/Prae-Inkrement INNERHALB eines Ausdrucks (`restartToken[i++]`,
+  `lineStack[lineStackIndex++]`, `lineStack[--lineStackIndex]`) durchgehend
+  in separate Anweisungen aufgeloest (Muster: nie `++`/`--` verwendet, siehe
+  Kommentar in `ebnf.tc`).
+- Ein nicht verwendeter Rueckgabewert (`pop();` als blosse Anweisung in
+  `expression()`) wurde vorsichtshalber einer eigenen Variable zugewiesen
+  statt verworfen (unerprobtes Terrain, kein bekannter Präzedenzfall im
+  Projekt).
+- `switch`/`case` (in `factor()`) funktionierte direkt wie erwartet.
+
+Kann NICHT sinnvoll ausgefuehrt/getestet werden (haengt an
+`lexikalischeAnalyse()`/`getAktChar()`, beides noch nicht portiert) --
+Verifikation bleibt bei kompiliert + assembliert sauber (Regressionstest in
+`runtests.sh`). **Wichtiges Zwischenergebnis:** ein echter `l68`-Link von
+`ebnf.tc`+`codegen.tc` zeigt nach diesem Chunk nur noch GENAU die 7 erwarteten
+Lexer-Funktionen als unresolved (`getAktChar`/`getAktLine`/`put`/
+`ebnfSyntax`/`semantischeAnylyse`/`lexikalischeAnalyse`/`exitProgram`) -- die
+Parsergruppe selbst ist vollstaendig und korrekt verdrahtet.
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |
