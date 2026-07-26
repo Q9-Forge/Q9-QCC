@@ -54,11 +54,19 @@ def load(path):
                     try:
                         value = int(tok, 0)
                     except ValueError:
-                        # Symbolreferenz statt Zahlenliteral (2026-07-25, -largedata-
-                        # Indirektionstabelle: "tc_ga_X: dc.l tc_g_X" -- die Adresse von
-                        # tc_g_X ist erst bekannt, sobald global_addresses in run()
-                        # berechnet ist, deshalb hier nur als Marker vormerken).
-                        value = ("symbol", tok)
+                        # 2026-07-26: "labelA-labelB" (Link-Zeit-Offset relativ zur
+                        # Tabellenbasis, siehe tc_functab/tc_gadata-Kommentar in
+                        # tinyc_backend_c.cpp -- ersetzt die fruehere rohe absolute
+                        # Symbolreferenz, echtes OS-9 relokiert "dc.l label" NICHT).
+                        diff = re.match(r"^(\w+)-(\w+)$", tok)
+                        if diff:
+                            value = ("diff", diff.group(1), diff.group(2))
+                        else:
+                            # Symbolreferenz statt Zahlenliteral (2026-07-25, -largedata-
+                            # Indirektionstabelle: "tc_ga_X: dc.l tc_g_X" -- die Adresse von
+                            # tc_g_X ist erst bekannt, sobald global_addresses in run()
+                            # berechnet ist, deshalb hier nur als Marker vormerken).
+                            value = ("symbol", tok)
                     global_initials[(current_global, current_offset)] = value
                     if current_offset == 0:
                         global_initials[current_global] = value
@@ -88,6 +96,12 @@ def run(instructions, labels, global_initials=None):
         # erst hier aufloesbar, da global_addresses vorher noch nicht feststand.
         if isinstance(value, tuple) and value[0] == "symbol":
             return global_addresses[value[1]]
+        # 2026-07-26: "labelA-labelB"-Link-Zeit-Offset (siehe load()) -- die
+        # fiktiven Adressen sind zwar willkuerlich, die DIFFERENZ ist trotzdem
+        # arithmetisch korrekt: (a4+diff) rekonstruiert bei emitCall()/
+        # emitLeaGlobal() ueber "adda.l a4/a3,reg" wieder die echte Zieladresse.
+        if isinstance(value, tuple) and value[0] == "diff":
+            return u32(global_addresses[value[1]] - global_addresses[value[2]])
         return u32(value)
     for key, value in (global_initials or {}).items():
         if isinstance(key, tuple):
@@ -359,6 +373,18 @@ def run(instructions, labels, global_initials=None):
             delta = s32(read_operand(match.group(1)))
             areg[0] += delta
             continue
+        # 2026-07-26 (-largedata Tabellenbasis-Fix, siehe emitCall()/emitLeaGlobal()-
+        # Kommentar in tinyc_backend_c.cpp): tc_functab/tc_gadata enthalten jetzt
+        # Link-Zeit-OFFSETS statt absoluter Adressen -- die echte Zieladresse
+        # entsteht erst durch "adda.l aBase,aDst" (Adressregister als Quelle UND
+        # Ziel, nicht nur d0-a0 wie oben).
+        match = re.match(r"adda?\.l a([0-9]),a([0-9])$", ins)
+        if match:
+            src, dst = int(match.group(1)), int(match.group(2))
+            if areg.get(src) is None: raise SimError("a%d zeigt auf keine Adresse" % src)
+            if dst not in areg: areg[dst] = 0
+            areg[dst] = u32((areg[dst] or 0) + areg[src])
+            continue
         match = re.match(r"lsl\.l #(\d+),(d[0-7])$", ins)
         if match:
             count, dst = match.groups()
@@ -460,6 +486,22 @@ def run(instructions, labels, global_initials=None):
         match = re.match(r"lea (\w+)\(pc\),a([0-9])$", ins)
         if match and match.group(1) in global_addresses and int(match.group(2)) in areg:
             areg[int(match.group(2))] = global_addresses[match.group(1)]
+            continue
+        # 2026-07-26 (Bug 4, Mehrdatei-a3/a4-Refresh in JEDER Funktion, siehe
+        # tinyc_backend_c.cpp-Kommentar bei der Funktionsrumpf-Emission): eine
+        # Funktion laedt IHRE EIGENE Adresse (Distanz 0, immer sicher) per
+        # "lea <eigenerName>(pc),aN", dann per "adda.l #(ziel-eigenerName),aN"
+        # eine Link-Zeit-KONSTANTE Differenz -- diese Differenz hat KEINE
+        # PC-relativ-Distanzgrenze (reiner arithmetischer Immediate-Wert).
+        match = re.match(r"adda?\.l #\((\w+)-(\w+)\),a([0-9])$", ins)
+        if match:
+            target, base, reg = match.group(1), match.group(2), int(match.group(3))
+            if target not in global_addresses or base not in global_addresses:
+                raise SimError("adda.l #(label-label): unbekanntes Label in " + ins)
+            if reg not in areg or areg[reg] is None:
+                raise SimError("adda.l #(label-label),a%d: Register nicht vorher gesetzt" % reg)
+            diff = u32(global_addresses[target] - global_addresses[base])
+            areg[reg] = u32(areg[reg] + diff)
             continue
         match = re.match(r"addq\.l #4,a7$", ins)
         if match:

@@ -73,6 +73,52 @@ static int funcCount = 0;
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
 
+static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer registerExtern()/externTableOffset() vorwaertsdeklariert */
+
+/* 2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/emitCall()-Kommentar
+   in tinyc_backend_c.cpp): jeder CALLEXT/CALLEXTP-Aufruf ging bisher per rohem
+   "bsr <rawname>" direkt an die externe clib.l-Funktion -- das zerstoert a3/a4
+   (reine ABI-Temporaer-Register, siehe Ultra-C/C++ Processor Guide Table
+   1-12), UND ein Versuch, a3/a4 direkt an der Aufrufstelle wieder aufzufrischen
+   ("lea (pc)"), scheitert bei r68 mit "value out of range", sobald die
+   Aufrufstelle mehr als 32 KB von tc_functab/tc_gadata entfernt liegt (die
+   ganze a3/a4-Indirektion existiert ja GENAU wegen dieser Grenze). LOESUNG:
+   jede ECHTE externe Funktion, die per CALLEXT/CALLEXTP gerufen wird, bekommt
+   einen EIGENEN kleinen Wrapper-Stub ("tc_extwrap_<name>", physisch DIREKT
+   neben tc_gadata platziert, siehe emitIR()) -- der Wrapper macht den echten
+   "bsr <rawname>" (immer PC-relativ sicher, da er nah an allem anderen
+   Fruehen liegt) und frischt DANACH a3/a4 auf (ebenfalls sicher, da der
+   Wrapper selbst nah an den Tabellen liegt). Aufrufstellen rufen NICHT mehr
+   direkt "bsr <rawname>", sondern den Wrapper -- ueber genau denselben
+   a4-Tabellen-Indirektionsmechanismus wie interne Tiny-C-Funktionen
+   (emitCall()), der beliebige Entfernungen bereits beherrscht (Register-
+   indirekter jsr, keine PC-relative Distanzgrenze). */
+#define MAX_EXTERNS 128
+static char externNames[MAX_EXTERNS][NAME_LEN];
+static int externCount = 0;
+
+static int findExtern(const char* name) {
+	int i;
+	for (i = 0; i < externCount; i++) if (strcmp(externNames[i], name) == 0) return i;
+	return -1;
+}
+
+static int registerExtern(const char* name) {
+	int idx = findExtern(name);
+	if (idx >= 0) return idx;
+	if (externCount >= MAX_EXTERNS) fatal("zu viele verschiedene externe Funktionen (CALLEXT/CALLEXTP)");
+	strncpy(externNames[externCount], name, NAME_LEN - 1);
+	return externCount++;
+}
+
+/* Tabellen-Offset EINES externen Wrappers, direkt NACH Tiny-C-Funktionen und
+   den 8 eingebauten Laufzeit-Helfern (siehe helperTableOffset()). */
+static int externTableOffset(const char* name) {
+	int idx = findExtern(name);
+	if (idx < 0) fatal("interner Fehler: externe Funktion nicht registriert");
+	return funcCount * 4 + 8 * 4 + idx * 4;
+}
+
 /* -os9: Microware-r68-Ausgabeformat statt vasm-kompatiblem "nacktem" Motorola-
    Format (siehe genParser68kTo in Source/codegen.cpp fuer denselben Trick beim
    Parser-Codegen -- dort empirisch verifiziert: r68 akzeptiert Label-Doppel-
@@ -176,9 +222,36 @@ static void emitAlign(FILE* out) {
    keiner Stelle im Backend belegt (a0=Skalar-Scratch, a1=Puffer in tc_putint/
    tc_putuint/tc_putchar, a2=Aufruf-Scratch fuer emitCall, a4=Funktionstabelle,
    a5/a6=Frame-Pointer je nach os9Mode). */
+/* WICHTIG (2026-07-26, live auf Q9 gefunden, siehe emitCall()-Kommentar):
+   tc_gadata enthaelt KEINE absoluten Adressen mehr, sondern Link-Zeit-Offsets
+   (Ziel minus Tabellenbasis) -- move.l laedt den Offset, "adda.l a3,reg" macht
+   daraus die echte Laufzeitadresse (a3 ist per "lea (pc)" bereits korrekt
+   geladen). reg ist an JEDER Aufrufstelle ein Adressregister (a0), adda.l
+   akzeptiert ein Adressregister als Quelle problemlos.
+   ZWEITER FUND (2026-07-26, live auf Q9, Ultra-C/C++ Processor Guide Table
+   1-12 "Register Use"): a3 (wie a4, a0-a2) ist laut offizieller Microware-ABI
+   ein reines TEMPORAER-Register ("The compiler uses all other registers for
+   temporaries") -- NUR d0/d1 (Parameter/Rueckgabe), a5 (Frame), a6 (Static
+   Storage) und a7 (Stack) sind reserviert. Jede ECHTE clib.l-Funktion
+   (fopen/strlen/fprintf/_os_write/...) darf a3 also ungefragt ueberschreiben.
+   Das urspruengliche Design ("a3 EINMAL beim Programmstart setzen, bleibt
+   fuer immer gueltig") bricht deshalb beim ERSTEN echten externen Aufruf nach
+   dem allerersten Globalzugriff -- live reproduziert (tc_putint ->
+   tc_io_write -> bsr _os_write zerstoerte a3, der naechste Globalzugriff las
+   von einer falschen Basisadresse).
+   ERSTER FIX-VERSUCH (verworfen): a3 vor JEDEM Zugriff per "lea (pc)" neu
+   laden -- brach den echten r68-Assembler ("value out of range"), weil "lea
+   X(pc)" selbst wieder der 16-Bit-PC-relativ-Distanzgrenze unterliegt, die
+   die ganze a3/a4-Indirektion ja gerade umgehen sollte. RICHTIGER FIX: a3/a4
+   werden NUR direkt NACH jedem CALLEXT/CALLEXTP neu geladen (siehe dortigen
+   Kommentar) -- das ist der EINZIGE Ort, an dem sie kaputtgehen koennen, und
+   die Auffrischung steht IMMER im selben Funktionskoerper wie der Aufruf
+   selbst (kurze Distanz, nie ueber 32 KB). emitLeaGlobal()/emitCall() selbst
+   bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
+   aufgefrischten Wert). */
 static void emitLeaGlobal(FILE* out, int gidx, const char* reg) {
 	if (largeDataMode) {
-		fprintf(out, "\tmove.l\t%d(a3),%s\n", gidx * 4, reg);
+		fprintf(out, "\tmove.l\t%d(a3),%s\n\tadda.l\ta3,%s\n", gidx * 4, reg, reg);
 	} else {
 		char gAsmName[NAME_LEN + 40];
 		mangledName(gAsmName, "tc_g_", globals[gidx].name, globals[gidx].isStatic);
@@ -236,10 +309,21 @@ static int helperTableOffset(const char* rawName) {
 /* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer Tiny-C-
    Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
    Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
-   asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben. */
+   asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben.
+   WICHTIG (2026-07-26, live auf Q9 gefunden): die Tabelle enthaelt KEINE
+   absoluten Adressen mehr (siehe tc_functab-Emissionskommentar) -- a2 traegt
+   nach dem move.l erst den Link-Zeit-Offset (Ziel minus Tabellenbasis), "adda.l
+   a4,a2" macht daraus die echte Laufzeitadresse (a4 ist per "lea (pc)" bereits
+   korrekt geladen).
+   ZWEITER FUND (2026-07-26, siehe emitLeaGlobal()-Kommentar): a4 ist laut
+   Ultra-C/C++-ABI (Table 1-12) genauso ein reines Temporaer-Register wie a3 --
+   jede echte clib.l-Funktion darf es zerstoeren. Fix (nach verworfenem
+   Versuch, a4 hier bei JEDEM Aufruf neu zu laden -- brach r68 mit "value out
+   of range", siehe emitLeaGlobal()-Kommentar): a4 wird stattdessen NUR direkt
+   NACH jedem CALLEXT/CALLEXTP neu geladen (dort, wo es kaputtgehen kann). */
 static void emitCall(FILE* out, const char* asmName, int tableOffset) {
 	if (largeDataMode) {
-		fprintf(out, "\tmove.l\t%d(a4),a2\n\tjsr\t(a2)\n", tableOffset);
+		fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", tableOffset);
 	} else {
 		fprintf(out, "\tbsr\t%s\n", asmName);
 	}
@@ -502,6 +586,20 @@ static void collectFunctions(void) {
 	}
 }
 
+/* 2026-07-26 (siehe registerExtern()-Kommentar oben): sammelt EINMAL vorab
+   alle in dieser Datei per CALLEXT/CALLEXTP gerufenen externen Rohnamen
+   (strlen/fopen/printf/...) -- muss VOR jeder Codeemission laufen, damit
+   Tabellenindex UND Wrapper-Emission konsistent dieselbe Reihenfolge sehen. */
+static void collectExterns(void) {
+	int i;
+	for (i = 0; i < irCount; i++) {
+		Instr* insP = &ir[i];
+		if ((strcmp(insP->op, "CALLEXT") == 0 || strcmp(insP->op, "CALLEXTP") == 0) && insP->argc == 3) {
+			registerExtern(insP->args[0]);
+		}
+	}
+}
+
 static int arrayOffset(const Function* fn, int wanted, int* isChar, int line) {
 	int offset = fn->locals * 4;
 	int k;
@@ -548,10 +646,26 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	   siehe mangledName()-Kommentar -- id allein ist nur PRO DATEI eindeutig,
 	   der serial-Zaehler startet in jeder Datei wieder bei 0). Live gefunden
 	   beim ersten echten Zwei-Datei-Link von SourceTinyC/ebnf.tc gegen
-	   codegen.tc (2026-07-26, writeWorkfile-Chunk), siehe docs/FORTSCHRITT.md. */
+	   codegen.tc (2026-07-26, writeWorkfile-Chunk), siehe docs/FORTSCHRITT.md.
+	   FUNDAMENTALER FUND (2026-07-26, live auf Q9 gefunden -- ALLE Vergleiche
+	   waren betroffen, live reproduziert bis in ein winziges Standalone-
+	   Programm): "moveq #0,d0" ZWISCHEN "cmp.l" und dem bedingten Branch
+	   (frueherer Code hier) ZERSTOERT die von cmp.l gesetzten Flags, BEVOR der
+	   Branch sie liest -- MOVEQ setzt selbst N/Z (loescht V/C) basierend auf
+	   dem bewegten Wert, und "moveq #0,d0" bewegt IMMER eine 0, setzt also
+	   IMMER Z=1. Ergebnis: "beq" (End-Test auf Z=1) sprang IMMER (jeder
+	   "=="-Vergleich war IMMER wahr), "bne" sprang NIE (jeder "!="-Vergleich
+	   war IMMER falsch) -- UNABHAENGIG von den tatsaechlichen Werten. Nie
+	   vorher aufgefallen, weil TinyVM UND tools/tiny68sim.py (unser Test-
+	   Simulator) Vergleiche als reinen Werttransport modellieren, NICHT ueber
+	   echte CPU-Flags -- der Bug war fuer BEIDE unsichtbar, erst die echte
+	   68030-Hardware auf Q9 zeigte ihn. FIX: "moveq #0,d0" NACH den Branch
+	   verschoben (in den sonst-Zweig, der NUR erreicht wird, wenn der Branch
+	   NICHT genommen wurde) -- die Flags von cmp.l bleiben bis zum Branch
+	   selbst unangetastet. */
 	int id = (*serial)++;
-	fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tcmp.l\td1,d0\n\tmoveq\t#0,d0\n");
-	fprintf(out, "\t%s\ttc_cmp_yes_%d__%s\n\tbra\ttc_cmp_done_%d__%s\n", branch, id, psectName, id, psectName);
+	fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tcmp.l\td1,d0\n");
+	fprintf(out, "\t%s\ttc_cmp_yes_%d__%s\n\tmoveq\t#0,d0\n\tbra\ttc_cmp_done_%d__%s\n", branch, id, psectName, id, psectName);
 	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
@@ -648,17 +762,46 @@ static void emitIR(FILE* out) {
 		   damit das einmalige "lea tc_functab(pc),a4" immer erreichbar bleibt, egal wie
 		   gross der Rest des Programms wird. Reihenfolge MUSS exakt zu funcIndex*4 (fuer
 		   Tiny-C-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
-		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
+		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- echter PMMU-Absturz beim
+		   allerersten Funktionsaufruf in main()): "dc.l <label>" ist auf OS-9
+		   KEINE automatisch relozierte absolute Adresse! Laut OS-9 for 68K
+		   Processors Technical Manual muss ein Assemblerprogrammierer absolute
+		   Adressmodi selbst vermeiden -- der einzige eingebaute Loader-
+		   Relokationsmechanismus (M$IRefs/F$Fork) gilt nur fuer
+		   Compiler-generierte initialisierte Zeigervariablen in vsects (eigenes,
+		   rohes MS-Word/Count/LS-Word-Tabellenformat), nicht fuer beliebige
+		   "dc.l label" in einem psect. l68 loest so ein "dc.l label" nur als
+		   psect-INTERNEN Offset auf (gueltig fuer einen angenommenen Ladeort 0),
+		   NICHT als echte Laufzeitadresse -- deshalb Tabelleneintraege jetzt als
+		   Link-Zeit-KONSTANTE Differenz zur Tabellenbasis selbst ("label-tab",
+		   von l68 rein psect-intern berechnet, KEINE Laufzeit-Relokation noetig,
+		   da beide Labels im selben Psect fest zueinander stehen). emitCall()
+		   addiert die per "lea (pc)" bereits korrekt geladene Tabellenbasis
+		   (a4) auf diesen Offset, BEVOR gesprungen wird. */
+		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): Link-Zeit-Offsets relativ zur Tabellenbasis (siehe emitCall())\n", fullCommentPrefix());
 		emitAlign(out);
 		fprintf(out, "tc_functab__%s:\n", psectName);
 		for (fi = 0; fi < funcCount; fi++) {
 			char asmName[NAME_LEN + 40];
 			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
-			fprintf(out, "\tdc.l\t%s\n", asmName);
+			fprintf(out, "\tdc.l\t%s-tc_functab__%s\n", asmName, psectName);
 		}
-		fputs("\tdc.l\ttc_mul_i32\n\tdc.l\ttc_div_i32\n\tdc.l\ttc_udiv_u32\n", out);
-		fputs("\tdc.l\ttc_mod_i32\n\tdc.l\ttc_umod_u32\n", out);
-		fputs("\tdc.l\ttc_putint\n\tdc.l\ttc_putuint\n\tdc.l\ttc_putchar\n", out);
+		fprintf(out, "\tdc.l\ttc_mul_i32-tc_functab__%s\n\tdc.l\ttc_div_i32-tc_functab__%s\n\tdc.l\ttc_udiv_u32-tc_functab__%s\n",
+			psectName, psectName, psectName);
+		fprintf(out, "\tdc.l\ttc_mod_i32-tc_functab__%s\n\tdc.l\ttc_umod_u32-tc_functab__%s\n", psectName, psectName);
+		fprintf(out, "\tdc.l\ttc_putint-tc_functab__%s\n\tdc.l\ttc_putuint-tc_functab__%s\n\tdc.l\ttc_putchar-tc_functab__%s\n",
+			psectName, psectName, psectName);
+		/* 2026-07-26 (siehe registerExtern()-Kommentar): externe CALLEXT/CALLEXTP-
+		   Ziele bekommen KEINEN direkten Tabelleneintrag auf den rohen externen
+		   Namen (der laege ausserhalb dieses Psects, "label-tab" waere dann keine
+		   Link-Zeit-Konstante mehr innerhalb DIESES Psects -- tatsaechlich hatten
+		   wir das fuer echte externe Symbole schon erfolgreich getestet, aber der
+		   eigentliche Grund fuer diese Tabelle ist ja gerade, a3/a4 NACH dem
+		   externen Aufruf aufzufrischen, siehe emitCallExtWrapper()) -- sondern
+		   auf den WRAPPER-Stub direkt darunter. */
+		for (fi = 0; fi < externCount; fi++) {
+			fprintf(out, "\tdc.l\ttc_extwrap_%s__%s-tc_functab__%s\n", externNames[fi], psectName, psectName);
+		}
 		/* Daten-Indirektionstabelle (siehe emitLeaGlobal()-Kommentar): MUSS wie
 		   tc_functab direkt nach tc_start/main stehen (VOR den potenziell
 		   riesigen Funktionsrumpf-Texten), damit das einmalige
@@ -674,16 +817,148 @@ static void emitIR(FILE* out) {
 		   Skalierungsproblem wie bei echten Globalen (PC-relatives
 		   "lea tc_extcall_tmp(pc),a0" direkt an der Aufrufstelle wuerde brechen,
 		   sobald der Abstand zum spaet liegenden Scratch-Puffer >32 KB wird). */
-		fprintf(out, "%s Daten-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
+		/* WICHTIG (2026-07-26, siehe tc_functab-Kommentar oben): auch hier
+		   Link-Zeit-Offsets relativ zur Tabellenbasis statt roher "dc.l label"
+		   -- exakt dieselbe OS-9-Positionsunabhaengigkeits-Anforderung betrifft
+		   Globalzugriffe genauso wie Funktionsaufrufe. emitLeaGlobal() addiert
+		   die Tabellenbasis (a3) auf diesen Offset. */
+		fprintf(out, "%s Daten-Indirektionstabelle (-largedata): Link-Zeit-Offsets relativ zur Tabellenbasis (siehe emitLeaGlobal())\n", fullCommentPrefix());
 		emitAlign(out);
 		fprintf(out, "tc_gadata__%s:\n", psectName);
 		for (gi = 0; gi < globalCount; gi++) {
 			char gAsmName[NAME_LEN + 40];
 			mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
-			fprintf(out, "\tdc.l\t%s\n", gAsmName);
+			fprintf(out, "\tdc.l\t%s-tc_gadata__%s\n", gAsmName, psectName);
 		}
-		fputs("\tdc.l\ttc_extcall_tmp\n", out);
+		fprintf(out, "\tdc.l\ttc_extcall_tmp-tc_gadata__%s\n", psectName);
+		/* 2026-07-26 (siehe registerExtern()-Kommentar oben): ein Wrapper-Stub pro
+		   externer Funktion, DIREKT hier (nah an tc_functab/tc_gadata, also immer
+		   PC-relativ sicher erreichbar) platziert. "jsr (a2)" (von der Aufrufstelle,
+		   ueber den a4-Tabellenmechanismus) hat bereits EINE Ruecksprungadresse auf
+		   a7 gepusht -- die wird zuerst nach d7 (freies Scratch-Register)
+		   herausgeholt, DAMIT "bsr rawname" exakt dieselbe Stack-Position fuer
+		   seine EIGENE Ruecksprungadresse UND fuer eventuelle Stack-Argumente
+		   sieht, die die Aufrufstelle VOR dem jsr bereits gepusht hat (ohne diesen
+		   Zwischenschritt saehe die externe Funktion ihre eigenen Stack-Argumente
+		   um vier Byte verschoben -- durch die zusaetzliche jsr-Ruecksprungadresse
+		   des Wrappers). Nach der Rueckkehr von rawname (d0 traegt den
+		   Rueckgabewert, bleibt unangetastet) a3/a4 auffrischen (siehe
+		   emitCall()/emitLeaGlobal()-Kommentar), dann die urspruengliche
+		   Ruecksprungadresse aus d7 zurueckpushen und rts -- geht exakt zur
+		   Aufrufstelle zurueck, als waere direkt "bsr rawname" aufgerufen worden,
+		   nur mit aufgefrischtem a3/a4. */
+		for (fi = 0; fi < externCount; fi++) {
+			fprintf(out, "tc_extwrap_%s__%s:\n", externNames[fi], psectName);
+			fprintf(out, "\tmove.l\t(a7)+,d7\n");
+			fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", externNames[fi]);
+			fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
+			fprintf(out, "\tmove.l\td7,-(a7)\n\trts\n");
+		}
 	}
+
+	/* 2026-07-26, live auf Q9 gefunden: emitM68kCore()/tc_putint/tc_putuint/
+	   tc_putchar/tc_io_write MUESSEN (wie tc_functab/tc_gadata/die Extern-
+	   Wrapper-Stubs oben) NAH BEIEINANDER UND NAH AN DEN TABELLEN liegen --
+	   vorher stand dieser ganze Block NACH der kompletten Funktionsrumpf-
+	   Schleife weiter unten, was bei einem grossen Programm (z.B. ebnf.tc
+	   allein, >17000 Zeilen generierter Assembler) "value out of range" fuer
+	   das "lea tc_functab/tc_gadata(pc)" INNERHALB von tc_io_write ausloeste
+	   (echter r68-Assemblierungsfehler, live reproduziert) -- tc_io_write lag
+	   dann selbst weit ausserhalb der 32-KB-PC-relativ-Reichweite zu den
+	   Tabellen. Deshalb JETZT hier (VOR der Funktionsrumpf-Schleife) statt
+	   danach emittiert -- inhaltlich unveraendert, nur die Position im
+	   erzeugten Assemblertext verschoben (keine der INTERNEN "bsr"-Distanzen
+	   innerhalb dieses Blocks aendert sich dadurch, nur seine absolute
+	   Position im Gesamttext). Mehrdatei-Uebersetzung (2026-07-25): der
+	   gemeinsame 68k-Core/I/O-Anker (siehe partMode/runtimeMode-Kommentar
+	   oben) wird unter -part NUR in GENAU EINER Datei emittiert (-runtime) --
+	   sonst meldet l68 fuer JEDES dieser Symbole "duplicate symbol", da jede
+	   Datei sonst ihre eigene Kopie mitbraechte. Ohne -part unveraendert
+	   immer emittiert (Vollprogramm). */
+	if (!partMode || runtimeMode) {
+	emitM68kCore(out);
+	if (os9Mode) {
+		/* Echte Ausgabe ueber die reale Microware-clib.l-Funktion _os_write
+		   (Signatur laut OS9/SRC/DEFS/modes.h: error_code _os_write(path_id,
+		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
+		   = stdout, analog zu Unix-Filedeskriptoren). BEWUSST nicht ueber
+		   printf/clib-Formatierung: Tiny-C hat noch keine String-Literale, und
+		   die direkte Ganzzahl->ASCII-Umwandlung hier (analog zu
+		   runtime/arm64_darwin/start.s) haelt das gelinkte Programm klein --
+		   kein printf-Formatstring-Parser wird ueberhaupt erst hereingezogen.
+		   Ziffernzerlegung nutzt die BEREITS VORHANDENEN tc_udiv_u32/
+		   tc_umod_u32-Routinen aus emitM68kCore (kein neuer Opcode). d2/d3/d4
+		   ueberleben den bsr in diese Routinen unveraendert, da beide selbst
+		   d2-d4 sichern/wiederherstellen (siehe deren Definition oben) --
+		   deshalb hier KEIN eigenes Push/Pop noetig. */
+		fprintf(out, "tc_putint:\n\tlink\t%s,#0\n", framePtr());
+		fputs("\tmove.l\td0,d2\n\tmoveq\t#0,d3\n\ttst.l\td2\n\tbge\ttc_pi_nonneg\n", out);
+		fputs("\tneg.l\td2\n\tmoveq\t#1,d3\n", out);
+		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
+		fputs("tc_pi_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
+		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
+		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
+		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pi_loop\n", out);
+		fputs("\ttst.l\td3\n\tbeq\ttc_pi_go\n\tsubq.l\t#1,a1\n\tmove.b\t#45,(a1)\n", out);
+		fputs("tc_pi_go:\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
+
+		fprintf(out, "tc_putuint:\n\tlink\t%s,#0\n", framePtr());
+		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
+		fputs("tc_pu_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
+		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
+		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
+		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pu_loop\n", out);
+		fputs("\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
+
+		fprintf(out, "tc_putchar:\n\tlink\t%s,#0\n", framePtr());
+		fputs("\tlea\ttc_io_buf(pc),a1\n\tmove.b\td0,(a1)\n\tmoveq\t#1,d1\n\tbsr\ttc_io_write\n", out);
+		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
+
+		/* a1=Puffer, d1=Laenge -- ruft _os_write(1,a1,&tc_io_cnt) auf.
+		   2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/CALLEXT-
+		   Kommentar): "bsr _os_write" ist ein ECHTER externer Aufruf wie jeder
+		   CALLEXT, zerstoert also genauso a3/a4 (reine ABI-Temporaer-Register).
+		   Dieser Aufruf hier ist aber FEST verdrahtet (nicht ueber die generische
+		   CALLEXT-IR-Behandlung, siehe registerExtern()-Kommentar), muss daher
+		   SEPARAT geschuetzt werden -- sonst korrumpiert JEDER putint/putuint/
+		   putchar-Aufruf a3/a4 fuer den Rest des Programms (live reproduziert:
+		   eigene Debug-putchar/putint-Aufrufe waehrend der Fehlersuche
+		   korrumpierten a3/a4 und verfaelschten genau die Werte, die beobachtet
+		   werden sollten). Auffrischung NUR bei largeDataMode noetig (ohne
+		   -largedata gibt es keine a3/a4-Tabellenbasis) -- UND jetzt, da dieser
+		   ganze Block nah an den Tabellen liegt, ist auch das "lea (pc)" hier
+		   selbst immer sicher erreichbar. */
+		fputs("tc_io_write:\n\tlea\ttc_io_cnt(pc),a2\n\tmove.l\td1,(a2)\n\tmove.l\ta1,d1\n", out);
+		fputs("\tmove.l\ta2,-(a7)\n\tmoveq\t#1,d0\n\tbsr\t_os_write\n\tlea\t4(a7),a7\n", out);
+		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
+		fputs("\trts\n\n", out);
+	} else {
+		// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
+		fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
+		fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
+		fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
+		fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
+	}
+	/* Scratch-Feld fuer CALLEXT/CALLEXTP (siehe dort) -- max. 8 auf den Stack
+	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
+	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. vasm kennt
+	   "ds.l" (reservierter, uninitialisierter Speicher); der echte Microware-
+	   r68-Assembler kennt "ds.l" NICHT (empirisch verifiziert: "bad mnemonic"),
+	   daher im os9-Modus stattdessen 8x "dc.l 0" (funktional gleichwertig: alle
+	   Backend-Opcodes lesen den Wert erst NACH einem STORE hierher). */
+	emitAlign(out);
+	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
+	if (os9Mode) {
+		/* tc_io_buf: Ziffernpuffer fuer tc_putint/tc_putuint (max. "-2147483648\r"
+		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
+		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
+		   echten _os_write-Aufruf (siehe tc_io_write oben). */
+		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
+		fputs("tc_io_cnt:\tdc.l\t0\n", out);
+	}
+	} /* !partMode || runtimeMode */
 
 	/* os9Mode + largeDataMode: main ist der einzige Einsprungpunkt (kein
 	   eigener tc_start) und muss dort "lea tc_functab(pc),a4" ausfuehren --
@@ -718,6 +993,60 @@ static void emitIR(FILE* out) {
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
 		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
+		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- vierter, tiefster
+		   -largedata-Bug dieser Sitzung): a3/a4 werden bisher NUR beim
+		   Programmstart (main:) einmalig gesetzt UND nach jedem CALLEXT/
+		   CALLEXTP aufgefrischt (siehe emitCall()/emitLeaGlobal()-Kommentar)
+		   -- das reicht NICHT, sobald eine Funktion PER FUNCDECL AUS EINER
+		   ANDEREN DATEI aufgerufen wird (Mehrdatei-Uebersetzung, jede Datei
+		   hat ihre EIGENE tc_functab/tc_gadata)! Live reproduziert: ruft
+		   Datei A eine in Datei B definierte Funktion auf (a4 zeigt zu
+		   diesem Zeitpunkt noch auf DATEI A's Tabelle, vom Aufrufer
+		   gesetzt), und DIESE Funktion ruft INTERN eine dritte Funktion
+		   (z.B. einen Laufzeit-Helfer wie tc_putint) per emitCall() auf, so
+		   verwendet dieser interne Aufruf FAELSCHLICH weiterhin Datei A's
+		   Tabelle (a4 wurde nie auf Datei B's EIGENE Tabelle umgestellt) --
+		   der Tabellenoffset selbst ist korrekt (verifiziert), aber er zeigt
+		   in die FALSCHE Tabelle, ruft also eine VOELLIG ANDERE Funktion an
+		   derselben Indexposition auf. Symptom im minimalen Reproduktionsfall:
+		   ein Aufruf zu "putint(99)" in einer cross-file Funktion rief
+		   stattdessen lautlos "tc_div_i32" auf (kein Absturz, aber keine
+		   Ausgabe) -- im echten, groesseren ebnf.tc+codegen.tc-Programm mit
+		   VIEL laengeren, unterschiedlich sortierten Tabellen fuehrt derselbe
+		   Mechanismus zum beobachteten PMMU-Absturz (falscher Tabelleneintrag
+		   zeigt auf Datenmuell, der als Adresse interpretiert wird). FIX:
+		   JEDE Funktion (nicht nur main) frischt a3/a4 auf IHRE EIGENE Tabelle
+		   auf, GLEICH NACH dem eigenen "link" -- unabhaengig davon, ob sie
+		   aus derselben oder einer anderen Datei aufgerufen wurde. Kostet
+		   zwei zusaetzliche Instruktionen pro Funktionsaufruf (ueberschaubarer
+		   Overhead), garantiert aber Korrektheit unabhaengig vom Aufrufer.
+		   main() selbst behaelt sein bereits vorhandenes Refresh VOR dem
+		   eigenen Label (siehe oben) -- das hier ist zusaetzlich, harmlos
+		   redundant fuer main, aber noetig fuer ALLE anderen Funktionen.
+		   ZWEITER FUND (direkt im Anschluss, live auf Q9): ein simples
+		   "lea tc_functab(pc),a4" HIER (an JEDER Funktion, potenziell weit
+		   von der eigenen Tabelle entfernt in einer grossen Datei) sprengt
+		   sofort wieder die 16-Bit-PC-relativ-Grenze ("value out of range"
+		   bei echtem r68, live reproduziert an writeWorkfile()) -- GENAU das
+		   Problem, das die ganze a3/a4-Indirektion ja eigentlich umgehen
+		   sollte. RICHTIGER FIX (verifiziert per direkter Byte-Analyse eines
+		   Minimaltests mit 20000 nop dazwischen, sowohl r68-Assemblierung ALS
+		   AUCH die erzeugten Bytes bestaetigt korrekt): PC-relative
+		   Adressierung selbst hat KEINE Moeglichkeit, weiter als 32 KB zu
+		   reichen -- das ist eine echte 68000-Hardwaregrenze, keine
+		   Syntaxfrage. Aber eine Funktion kann IMMER sicher (Distanz 0) ihre
+		   EIGENE Adresse per "lea <eigenerName>(pc),aX" laden (bezieht sich
+		   auf sich selbst!), und DANACH per "adda.l #(ziel-eigenerName),aX"
+		   eine LINK-ZEIT-KONSTANTE Differenz addieren -- diese Differenz ist
+		   ein reiner arithmetischer 32-Bit-Immediate-Wert OHNE jede
+		   Distanzbeschraenkung (nur "adda.l"/"add.l #imm32,Dn" selbst hat
+		   keine PC-relativ-Grenze, im Gegensatz zu "d(pc)"-Adressierungs-
+		   arten). So kann JEDE Funktion, egal wie weit von ihrer eigenen
+		   Tabelle entfernt, diese trotzdem sicher erreichen. */
+		if (largeDataMode) {
+			fprintf(out, "\tlea\t%s(pc),a4\n\tadda.l\t#(tc_functab__%s-%s),a4\n", asmName, psectName, asmName);
+			fprintf(out, "\tlea\t%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-%s),a3\n", asmName, psectName, asmName);
+		}
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
@@ -987,7 +1316,10 @@ static void emitIR(FILE* out) {
 				   dafuer einen zusaetzlichen Tabelleneintrag NACH allen echten Globalen
 				   (Offset globalCount*4). */
 				if (stackArgs > 0) {
-					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n", globalCount * 4);
+					/* 2026-07-26: tc_gadata-Eintrag ist ein Link-Zeit-Offset, kein
+					   absoluter Zeiger (siehe emitLeaGlobal()-Kommentar) -- adda.l
+					   noetig wie ueberall sonst. */
+					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n\tadda.l\ta3,a0\n", globalCount * 4);
 					else fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
 				}
 				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n", ai * 4);
@@ -1008,8 +1340,29 @@ static void emitIR(FILE* out) {
 				   Jumptable-Indirektion ein (l68 -a). NUR im -os9-Modus relevant --
 				   im Default-/vasm-/Simulator-Modus bleibt "jsr" (von
 				   tools/tiny68sim.py als Mock-Aufruf-Marker erkannt, keine echte
-				   Positionsunabhaengigkeit noetig, keine Regression riskieren). */
-				fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", insP->args[0]);
+				   Positionsunabhaengigkeit noetig, keine Regression riskieren).
+				   ZWEITER FUND (2026-07-26, live auf Q9, Ultra-C/C++ Processor Guide
+				   Table 1-12 "Register Use"): a3/a4 (unsere -largedata-Tabellenbasen)
+				   sind reine ABI-Temporaer-Register -- JEDE echte clib.l-Funktion darf
+				   sie zerstoeren. Ein direktes "bsr/jsr <name>" HIER wuerde a3/a4 also
+				   unbemerkt korrumpieren. Deshalb (NUR largeDataMode): nicht direkt
+				   rufen, sondern ueber denselben a4-Tabellen-Indirektionsmechanismus
+				   wie interne Tiny-C-Funktionen (emitCall()) einen kleinen Wrapper-Stub
+				   rufen (tc_extwrap_<name>, siehe Tabellen-Emission weiter oben) -- der
+				   macht den echten Aufruf UND frischt a3/a4 danach auf, physisch nah an
+				   den Tabellen platziert (PC-relativ immer sicher erreichbar, anders als
+				   die Aufrufstelle hier, die beliebig weit entfernt sein kann). Der
+				   Wrapper ist transparent: er sieht/reicht dieselben d0/d1/Stack-Werte
+				   durch wie ein direkter Aufruf, der Aufrufer hier aendert sich NICHT
+				   (Push der Stack-Argumente vorher, Cleanup+d0-Auswertung danach exakt
+				   wie zuvor). Ohne largeDataMode bleibt der direkte "bsr/jsr <name>"
+				   unveraendert (keine Tabellen, kein Korruptionsrisiko in der Praxis,
+				   da dieser Modus bisher nur fuer Simulator-Mocks genutzt wird). */
+				if (largeDataMode) {
+					fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", externTableOffset(insP->args[0]));
+				} else {
+					fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", insP->args[0]);
+				}
 				if (stackArgs) fprintf(out, "\tlea\t%d(a7),a7\n", stackArgs * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
@@ -1036,80 +1389,6 @@ static void emitIR(FILE* out) {
 		}
 		fputs("\n", out);
 	}
-	/* Mehrdatei-Uebersetzung (2026-07-25): der gemeinsame 68k-Core/I/O-Anker
-	   (siehe partMode/runtimeMode-Kommentar oben) wird unter -part NUR in
-	   GENAU EINER Datei emittiert (-runtime) -- sonst meldet l68 fuer JEDES
-	   dieser Symbole "duplicate symbol", da jede Datei sonst ihre eigene Kopie
-	   mitbraechte. Ohne -part unveraendert immer emittiert (Vollprogramm). */
-	if (!partMode || runtimeMode) {
-	emitM68kCore(out);
-	if (os9Mode) {
-		/* Echte Ausgabe ueber die reale Microware-clib.l-Funktion _os_write
-		   (Signatur laut OS9/SRC/DEFS/modes.h: error_code _os_write(path_id,
-		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
-		   = stdout, analog zu Unix-Filedeskriptoren). BEWUSST nicht ueber
-		   printf/clib-Formatierung: Tiny-C hat noch keine String-Literale, und
-		   die direkte Ganzzahl->ASCII-Umwandlung hier (analog zu
-		   runtime/arm64_darwin/start.s) haelt das gelinkte Programm klein --
-		   kein printf-Formatstring-Parser wird ueberhaupt erst hereingezogen.
-		   Ziffernzerlegung nutzt die BEREITS VORHANDENEN tc_udiv_u32/
-		   tc_umod_u32-Routinen aus emitM68kCore (kein neuer Opcode). d2/d3/d4
-		   ueberleben den bsr in diese Routinen unveraendert, da beide selbst
-		   d2-d4 sichern/wiederherstellen (siehe deren Definition oben) --
-		   deshalb hier KEIN eigenes Push/Pop noetig. */
-		fprintf(out, "tc_putint:\n\tlink\t%s,#0\n", framePtr());
-		fputs("\tmove.l\td0,d2\n\tmoveq\t#0,d3\n\ttst.l\td2\n\tbge\ttc_pi_nonneg\n", out);
-		fputs("\tneg.l\td2\n\tmoveq\t#1,d3\n", out);
-		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
-		fputs("tc_pi_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
-		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
-		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
-		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pi_loop\n", out);
-		fputs("\ttst.l\td3\n\tbeq\ttc_pi_go\n\tsubq.l\t#1,a1\n\tmove.b\t#45,(a1)\n", out);
-		fputs("tc_pi_go:\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
-		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
-
-		fprintf(out, "tc_putuint:\n\tlink\t%s,#0\n", framePtr());
-		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
-		fputs("tc_pu_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
-		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
-		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
-		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pu_loop\n", out);
-		fputs("\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
-		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
-
-		fprintf(out, "tc_putchar:\n\tlink\t%s,#0\n", framePtr());
-		fputs("\tlea\ttc_io_buf(pc),a1\n\tmove.b\td0,(a1)\n\tmoveq\t#1,d1\n\tbsr\ttc_io_write\n", out);
-		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
-
-		/* a1=Puffer, d1=Laenge -- ruft _os_write(1,a1,&tc_io_cnt) auf. */
-		fputs("tc_io_write:\n\tlea\ttc_io_cnt(pc),a2\n\tmove.l\td1,(a2)\n\tmove.l\ta1,d1\n", out);
-		fputs("\tmove.l\ta2,-(a7)\n\tmoveq\t#1,d0\n\tbsr\t_os_write\n\tlea\t4(a7),a7\n\trts\n\n", out);
-	} else {
-		// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
-		fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
-		fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
-		fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
-		fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
-	}
-	/* Scratch-Feld fuer CALLEXT/CALLEXTP (siehe dort) -- max. 8 auf den Stack
-	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
-	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. vasm kennt
-	   "ds.l" (reservierter, uninitialisierter Speicher); der echte Microware-
-	   r68-Assembler kennt "ds.l" NICHT (empirisch verifiziert: "bad mnemonic"),
-	   daher im os9-Modus stattdessen 8x "dc.l 0" (funktional gleichwertig: alle
-	   Backend-Opcodes lesen den Wert erst NACH einem STORE hierher). */
-	emitAlign(out);
-	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
-	if (os9Mode) {
-		/* tc_io_buf: Ziffernpuffer fuer tc_putint/tc_putuint (max. "-2147483648\r"
-		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
-		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
-		   echten _os_write-Aufruf (siehe tc_io_write oben). */
-		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
-		fputs("tc_io_cnt:\tdc.l\t0\n", out);
-	}
-	} /* !partMode || runtimeMode */
 
 	{
 		int hasData = 0, hasBss = 0, gi;
@@ -1213,6 +1492,7 @@ int main(int argc, char* argv[]) {
 	readIR(argv[1]);
 	collectGlobals();
 	collectFunctions();
+	collectExterns();
 	if (!largeDataMode) {
 		/* Heuristik-Warnung (2026-07-25, siehe -largedata/emitLeaGlobal()): wir koennen
 		   NICHT wissen, ob r68 die PC-relative Reichweite tatsaechlich ueberschreiten
