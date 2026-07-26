@@ -506,6 +506,37 @@ sie zurueck) einmalig gegen eine native C-Uebersetzung BEIDER Funktionen
 gegengeprueft: alle Werte (Modi, Ident-/TS-Text, true/falseAction,
 rangeLo/rangeHi, Quelltextlaenge) kommen exakt wie geschrieben zurueck.
 
+**2026-07-26 (direkt im Anschluss): `runTests` + `loadPreservedTests` portiert**
+(`Source/ebnf.cpp:1233-1268` bzw. `920-993`). `runTests` jagt alle TEST-Zeilen
+durch `execFrom` und vergleicht mit dem erwarteten Ergebnis; `loadPreservedTests`
+rettet TESTS/NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei,
+bevor sie ueberschrieben wird. Original-`execFrom(0, &pos)` (Ausgabeparameter)
+wird zu `execFrom(0, 0)` + anschliessendem `execPosResult`-Read (passend zur
+bereits portierten Signatur, siehe dortiger Kommentar).
+
+**ZWEI weitere Grenzfaelle:**
+- Dieselbe `arr[i].field[j]`-Zuweisungsziel-Ablehnung wie bei
+  `loadWorkfileAsGrammar`, diesmal fuer `testCases[i].input[n] = 0` -- Umweg
+  ueber einen lokalen Puffer (`tmpInput`) plus `tcCopyBounded`.
+- **Bool-Ausdruecke koennen nicht direkt einer `int`-Variable/einem
+  `int`-Feld zugewiesen werden** (`inTests = (strncmp(...) == 0);`,
+  `testCases[i].expectOk = (strstr(...) == 0);` -- beides vom Frontend
+  abgelehnt). Dieselbe strikte int/bool-Trennung wie bei Quirk 3 (Bedingungen)
+  und Quirk 10 (Rueckgabewerte), hier erstmals fuer eine normale ZUWEISUNG
+  getroffen -- komplette if/else-Zweige statt `x = (a == b);` verwendet.
+
+Ternaere OK/FAIL-Textwahl als Funktionsargument weiterhin bewusst vermieden;
+Anfuehrungszeichen um Testeingabe-Text ueber das Builtin `putchar(34)`
+(PRINTC) statt eines String-Literal-Workarounds, da das Ziel hier STDOUT
+(`printf`) ist, nicht ein `FILE*`-Strom wie bei `writeWorkfile`. Verifiziert
+wie die vorigen Chunks (kompiliert + assembliert sauber, `ebnf.tc`+
+`codegen.tc` getrennt) -- Regressionstest in `runtests.sh`. ZUSAETZLICH ein
+voller Rundlauf (Arbeitsdatei mit einer RNG-Regel + drei TEST-Zeilen
+schreiben, per `loadWorkfileAsGrammar`+`loadPreservedTests` wieder einlesen,
+`runTests` ausfuehren) einmalig gegen eine native C-Uebersetzung aller vier
+beteiligten Funktionen gegengeprueft: beide liefern
+`aktTabIndex=1`/`testCaseCnt=3`/`mismatches=0` (alle drei Testfaelle PASS).
+
 ## Erledigte Meilensteine
 
 | Bereich | Status | Bemerkung |
