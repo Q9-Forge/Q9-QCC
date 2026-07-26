@@ -54,6 +54,7 @@ extern int fprintf(void* fp, char* fmt, ...);
 extern int fputc(int c, void* fp);
 extern int sprintf(char* buf, char* fmt, ...);
 extern char* strcat(char* dst, char* src);
+extern char* strcpy(char* dst, char* src);
 /* fgets/feof: Zeilenweises Einlesen der .ebnf-Quelldatei bzw. einer alten
    Arbeitsdatei (loadPreservedTests/getAktLine/loadWorkfileAsGrammar). char*
    fgets(char* buf, int size, void* fp) liefert buf bei Erfolg, 0 (NULL) bei
@@ -1760,4 +1761,309 @@ void rule() {
 		appendQuelltext("\n\n");
 	}
 	astFinishRule(currentDefRule);
+}
+
+/* ===========================================================================
+   TEIL 6: Lexer (Source/ebnf.cpp:1810-2147, 1906-1970) -- lexikalischeAnalyse/
+   getAktChar sind bereits seit Projektbeginn bare-vorwaertsdeklariert
+   (TEIL 2); getNext/comment/getAktLine/put/semantischeAnylyse teils ebenfalls
+   (put/semantischeAnylyse ja, getNext/comment NEIN -- daher strikte
+   Reihenfolge unten: comment() vor getAktLine() (ruft es auf), getNext() vor
+   getAktChar() (ruft es auf).
+
+   initLexer(): das C++-Original initialisiert flagStartLineComment/
+   startLineCommentString/... etc. per GLOBALEM Initialisierer bei
+   Programmstart (automatisch, VOR main()). Tiny-C globale Variablen haben
+   dafuer keine Entsprechung (GLOBAL <name> [init] deckt nur einfache
+   Zahlenwerte ab, keine String-Pointer) -- deshalb hier eine explizite
+   Init-Funktion, die von ebnfSyntax()/main() (naechster, letzter Schritt)
+   EINMAL zu Programmbeginn aufgerufen werden MUSS, bevor irgendeine
+   Lexer-Funktion benutzt wird. */
+void initLexer() {
+	flagEOF = 0;
+	flagStartLineComment = 1;
+	startLineCommentString = "#";
+	flagRestLineComment = 1;
+	restLineCommendString = "//";
+	flagBlockComment = 1;
+	flagBlockCommentActive = 0;
+	startBlockCommandString = "/*";
+	endBlockCommandString = "*/";
+	lineCnt = 0;
+	charLen = 0;
+}
+
+/* Rohes Zeiger-Dereferenzieren (*index lesen UND *index = wert schreiben,
+   nicht nur p[i]) wird hier zum ERSTEN Mal im Port gebraucht -- eigens per
+   Standalone-Test gegen TinyVM verifiziert (Lesen+Schreiben ueber einen
+   Pointer auf ein globales char-Array, Ergebnis exakt wie erwartet), bevor
+   es hier grossflaechig eingesetzt wird. strcpy (ohne "_s"/Laengenlimit,
+   siehe strcat/sprintf-Praezedenzfaelle) neu extern deklariert (TEIL 1). */
+char* comment() {
+	char* index;
+	char* indexEnd;
+	int len;
+
+	if (flagBlockCommentActive != 0) {
+		if (flagBlockComment != 0) {
+			index = strstr(sourceBuffer, endBlockCommandString);
+			if (index != 0) {
+				strcpy(sourceBuffer, index + strlen(endBlockCommandString));
+				charLen = strlen(sourceBuffer);
+				flagBlockCommentActive = 0;
+			} else {
+				sourceBuffer[0] = 0;
+				charLen = 0;
+			}
+		}
+	} else {
+		if (flagBlockComment != 0 && strlen(startBlockCommandString) > 0 && strlen(endBlockCommandString) > 0) {
+			index = strstr(sourceBuffer, startBlockCommandString);
+			if (index != 0) {
+				indexEnd = strstr(sourceBuffer, endBlockCommandString);
+				if (indexEnd != 0) {
+					len = strlen(endBlockCommandString);
+					indexEnd = indexEnd + len;
+					strcpy(index, indexEnd);
+					charLen = strlen(sourceBuffer);
+				} else {
+					*index = 0;
+					charLen = strlen(sourceBuffer);
+					flagBlockCommentActive = 1;
+				}
+			}
+		}
+	}
+
+	/* Kommentar bis Zeilenende NUR wenn das Kommentarzeichen das ERSTE
+	   Nicht-Leerzeichen der Zeile ist (siehe Original-Kommentar). */
+	if (flagStartLineComment != 0 && strlen(startLineCommentString) > 0) {
+		index = sourceBuffer;
+		while (*index == 32 || *index == 9) {		/* ' ' '\t' */
+			index = index + 1;
+		}
+		if (strncmp(index, startLineCommentString, strlen(startLineCommentString)) == 0) {
+			sourceBuffer[0] = 0;
+			charLen = 0;
+		}
+	}
+
+	if (flagRestLineComment != 0 && strlen(restLineCommendString) > 0) {
+		index = strstr(sourceBuffer, restLineCommendString);
+		if (index != 0) {
+			*index = 0;
+			charLen = strlen(sourceBuffer);
+		}
+	}
+	return sourceBuffer;
+}
+
+char* getAktLine() {
+	while (charLen == 0 && feof(fpIn) == 0) {
+		lineCnt = lineCnt + 1;
+		readPtr = fgets(sourceBuffer, 512, fpIn);		/* CHARBUFFER_LEN */
+		if (readPtr != 0) {
+			charLen = strlen(sourceBuffer);
+			comment();
+		} else {
+			charLen = 0;
+			break;
+		}
+	}
+	if (charLen == 0 && feof(fpIn) != 0) {
+		printf("EOF\n");
+		flagEOF = 1;
+		sourceBuffer[0] = 0;
+		readPtr = sourceBuffer;
+	} else if (charLen == 0 && feof(fpIn) == 0) {
+		printf("LINE %-3d %s Scanner read Error, \n", lineCnt, sourceBuffer);
+		sourceBuffer[0] = 10;		/* EOL */
+		readPtr = sourceBuffer;
+	} else if (charLen > 0) {
+		readPtr = sourceBuffer;
+	}
+	return readPtr;
+}
+
+int getNext() {
+	if (charLen > 0) {
+		lastChar = aktChar;
+		aktChar = *sourcePtr;
+		sourcePtr = sourcePtr + 1;
+		nextChar = *sourcePtr;
+		charLen = charLen - 1;
+		return aktChar;
+	} else {
+		if (flagEOF != 0) {
+			lastChar = aktChar;
+			aktChar = -1;		/* EOF */
+			nextChar = -1;
+			return aktChar;
+		} else {
+			sourcePtr = getAktLine();
+			lastChar = aktChar;
+			aktChar = *sourcePtr;
+			sourcePtr = sourcePtr + 1;
+			nextChar = *sourcePtr;
+			charLen = charLen - 1;
+			return aktChar;
+		}
+	}
+}
+
+int getAktChar() {
+	if (flagEOF != 0 || aktChar == -1) {		/* EOF */
+		return -1;
+	}
+	aktChar = getNext();
+	if (isspace(aktChar) != 0) {
+		while (isspace(nextChar) != 0) {
+			aktChar = getNext();
+		}
+		aktChar = 32;		/* ' ' */
+	}
+	if (aktChar < 32 || aktChar > 127) {
+		aktChar = 63;		/* '?' */
+	}
+	return aktChar;
+}
+
+void semantischeAnylyse() {
+	char tsBuf[35];
+	switch (aktToken) {
+	case 138:		/* TOKEN_IDENT */
+		if (strlen(aktRule) != 0) {
+			tcCopyBounded(lexTab[aktTabIndex].ident, aktRule, 32);
+			aktRule[0] = 0;
+		} else {
+			tcCopyBounded(lexTab[aktTabIndex].ident, "", 32);
+		}
+		lexTab[aktTabIndex].mode = "NTS";
+		tcCopyBounded(lexTab[aktTabIndex].TS, aktName, 32);
+		break;
+	case 139:		/* TOKEN_LITERAL */
+		if (strlen(aktRule) != 0) {
+			tcCopyBounded(lexTab[aktTabIndex].ident, aktRule, 32);
+			aktRule[0] = 0;
+		} else {
+			tcCopyBounded(lexTab[aktTabIndex].ident, "", 32);
+		}
+		lexTab[aktTabIndex].mode = "TS";
+		tsBuf[0] = 0;
+		appendQuoteChar(tsBuf);
+		strcat(tsBuf, aktString);
+		appendQuoteChar(tsBuf);
+		tcCopyBounded(lexTab[aktTabIndex].TS, tsBuf, 32);
+		break;
+	case 128: case 129: case 130: case 131:
+	case 132: case 133: case 134: case 135:
+	case 136: case 137: case 140: case 143:
+		/* TOKEN_START/EQUAL/SEQ/OR/BLOCKON/BLOCKOFF/OPTIONON/OPTIONOFF/
+		   REPEATON/REPEATOFF/QUOT/END */
+		break;
+	case 144:		/* TOKEN_EXIT */
+		resolveCallAddresses();
+		checkLeftRecursion();
+		printLexTab();
+		tableReady = 1;
+		break;
+	case 145:		/* TOKEN_ERROR */
+		break;
+	default:
+		break;
+	}
+}
+
+void put() {
+	if (errorCnt == 0) {
+		semantischeAnylyse();
+	}
+}
+
+void lexikalischeAnalyse() {
+	int index;
+	index = 0;
+
+	/* ignore spaces */
+	while (isspace(aktChar) != 0 && aktChar != -1) {		/* EOF */
+		getAktChar();
+	}
+	if (aktChar == -1) {		/* EOF */
+		lastToken = aktToken;
+		aktToken = 144;		/* TOKEN_EXIT */
+		return;
+	}
+	if (isFirstIdentChar(aktChar) != 0) {
+		aktName[index] = aktChar;
+		index = index + 1;
+		getAktChar();
+		tcCopyBounded(lastName, aktName, 32);
+		while (isIdentChar(aktChar) != 0) {
+			if (index < 32) {		/* IDENT_LEN */
+				aktName[index] = aktChar;
+				index = index + 1;
+			}
+			getAktChar();
+		}
+		aktName[index] = 0;
+		lastToken = aktToken;
+		aktToken = 138;		/* TOKEN_IDENT */
+	} else if (aktChar == 60) {		/* '<' -- alternative NTS-Schreibweise <name> */
+		getAktChar();
+		while (isIdentChar(aktChar) != 0) {
+			if (index < 32) {		/* IDENT_LEN */
+				aktName[index] = aktChar;
+				index = index + 1;
+			}
+			getAktChar();
+		}
+		aktName[index] = 0;
+		if (aktChar == 62) {		/* '>' */
+			getAktChar();
+		} else {
+			printf("LEX_ERROR: '>' nach <%s erwartet\n", aktName);
+		}
+		lastToken = aktToken;
+		aktToken = 138;		/* TOKEN_IDENT */
+	} else if (isLiteralDelimiter(aktChar) != 0) {
+		getAktChar();
+		tcCopyBounded(lastString, aktString, 32);
+		while (aktChar != 34 || lastChar == 92) {		/* solange NICHT ('"' UND lastChar != '\') */
+			if (index < 32) {		/* IDENT_LEN */
+				aktString[index] = aktChar;
+				index = index + 1;
+			}
+			getAktChar();
+		}
+		aktString[index] = 0;
+		getAktChar();
+		lastToken = aktToken;
+		aktToken = 139;		/* TOKEN_LITERAL */
+	} else {
+		if (flagEOF != 0) {
+			lastToken = aktToken;
+			aktToken = 144;		/* TOKEN_EXIT */
+		} else {
+			lastToken = aktToken;
+			if (aktChar == 61) { aktToken = 129; }			/* '=' TOKEN_EQUAL */
+			else if (aktChar == 44) { aktToken = 130; }		/* ',' TOKEN_SEQ */
+			else if (aktChar == 124) { aktToken = 131; }		/* '|' TOKEN_OR */
+			else if (aktChar == 34) { aktToken = 140; }		/* '"' TOKEN_QUOT */
+			else if (aktChar == 40) { aktToken = 132; }		/* '(' TOKEN_BLOCKON */
+			else if (aktChar == 41) { aktToken = 133; }		/* ')' TOKEN_BLOCKOFF */
+			else if (aktChar == 91) { aktToken = 134; }		/* '[' TOKEN_OPTIONON */
+			else if (aktChar == 93) { aktToken = 135; }		/* ']' TOKEN_OPTIONOFF */
+			else if (aktChar == 123) { aktToken = 136; }		/* '{' TOKEN_REPEATON */
+			else if (aktChar == 125) { aktToken = 137; }		/* '}' TOKEN_REPEATOFF */
+			else if (aktChar == 59) { aktToken = 143; }		/* ';' TOKEN_END */
+			else if (aktChar == 46) { aktToken = 143; }		/* '.' TOKEN_END */
+			else if (aktChar == 126) { aktToken = 146; }		/* '~' TOKEN_RANGE (bewusst nicht "-") */
+			else if (aktChar == -1) { aktToken = 144; }		/* EOF TOKEN_EXIT */
+			else {
+				aktToken = 145;		/* TOKEN_ERROR */
+				printf("LEX_ERROR: flasches Zeichen <%c>\n", aktChar);
+			}
+		}
+		getAktChar();
+	}
 }

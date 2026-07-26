@@ -3055,5 +3055,91 @@ else
 	echo "warn  tinyc Selfhosting L2 Vollport (Parsergruppe): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): der Lexer nach
+# SourceTinyC/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
+# getAktLine/put/semantischeAnylyse (Source/ebnf.cpp:1810-2147, 1906-1970).
+# lexikalischeAnalyse/getAktChar/put/semantischeAnylyse hatten bereits bare
+# Prototypen; getNext/comment sind neu UND werden ihrerseits von getAktChar
+# bzw. getAktLine gerufen -- strikte Definitions-Reihenfolge eingehalten.
+# NEU dabei: initLexer() (das C++-Original initialisiert die Lexer-Config-
+# Globalen wie startLineCommentString etc. per automatischem C++-Globalen-
+# Initialisierer VOR main() -- Tiny-C GLOBAL-Deklarationen koennen das nicht
+# fuer String-Pointer, daher eine explizite Init-Funktion, die main()/
+# ebnfSyntax() [naechster, letzter Schritt] einmal zu Programmbeginn rufen
+# muss). WICHTIGSTER neuer Grenzfall: rohes Zeiger-Dereferenzieren (*p lesen
+# UND *p = wert schreiben, nicht nur p[i]) wird hier zum ERSTEN Mal im ganzen
+# Port gebraucht (getNext/comment) -- vorab per Standalone-Test gegen TinyVM
+# verifiziert (Lesen+Schreiben ueber einen Pointer auf ein globales
+# char-Array liefert exakt die erwarteten Werte), danach bedenkenlos wie im
+# Original eingesetzt. Ebenfalls verifiziert: ein nicht verwendeter
+# Rueckgabewert (comment() als blosse Anweisung) kompiliert und laeuft
+# korrekt (TinyVM-Test) -- die vorsichtshalber-Variable aus dem vorigen
+# Chunk (expression()s poppedLine) war also nicht zwingend noetig, bleibt
+# aber unveraendert stehen.
+#
+# Verifiziert wie die vorigen Chunks (kompiliert + assembliert sauber) PLUS
+# ein echter Tokenizer-Lauf ("rule1 = \"a\" ;" -> IDENT/EQUAL/LITERAL/END)
+# einmalig gegen eine native C-Uebersetzung ALLER Lexer-Funktionen
+# gegengeprueft: beide liefern exakt dieselbe Tokenfolge (138/129/139/143)
+# und aktName="rule1". WICHTIGES Zwischenergebnis: ein echter l68-Link von
+# ebnf.tc+codegen.tc zeigt nach diesem Chunk nur noch GENAU 2 unresolved
+# Symbole (ebnfSyntax/exitProgram) -- der komplette Rest der Datei ist
+# vollstaendig und korrekt verdrahtet.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	lextest_main='
+int main() {
+	void* fp;
+	int tokens[16];
+	int tokenCnt;
+
+	fp = fopen("/tmp/tinyc_lextest_in.ebnf", "w");
+	fprintf(fp, "rule1 = ");
+	fputc(34, fp);
+	fprintf(fp, "a");
+	fputc(34, fp);
+	fprintf(fp, " ;\n");
+	fclose(fp);
+
+	initLexer();
+	fpIn = fopen("/tmp/tinyc_lextest_in.ebnf", "r");
+	tokenCnt = 0;
+
+	getAktChar();
+	lexikalischeAnalyse();
+	while (aktToken != 144 && tokenCnt < 16) {		/* TOKEN_EXIT */
+		tokens[tokenCnt] = aktToken;
+		tokenCnt = tokenCnt + 1;
+		lexikalischeAnalyse();
+	}
+	fclose(fpIn);
+
+	putint(tokenCnt);
+	putint(tokens[0]);
+	putint(tokens[1]);
+	putint(tokens[2]);
+	putint(tokens[3]);
+	putint(strcmp(aktName, "rule1"));
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lextest_main" > build/tinyc_lextest_a.ir 2>build/tinyc_lextest_a.err && \
+		build/tinyc_backend build/tinyc_lextest_a.ir build/tinyc_lextest_a.s68 -os9 -largedata -part -runtime; then
+		cp build/tinyc_lextest_a.s68 "$MWOS_TMP/lextesta.a"
+		rm -f "$MWOS_TMP/lextesta.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lextesta.a -o=M:\\TMP\\lextesta.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/lextesta.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: Lexer (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (Lexer) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/lextesta.a "$MWOS_TMP"/lextesta.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (Lexer) kompiliert nicht sauber (siehe build/tinyc_lextest_a.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (Lexer): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="
 exit $fail
