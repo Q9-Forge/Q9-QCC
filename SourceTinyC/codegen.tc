@@ -38,6 +38,18 @@ extern int isalpha(int c);
 extern int isalnum(int c);
 extern int isprint(int c);
 extern int printf(char* fmt, ...);
+/* C-Backend (genNodeC/genParserC) braucht echte Dateiausgabe. FILE* wird als
+   "void*" gefuehrt -- Tiny-C hat keinen FILE-Struct-Typ, aber der ABI-Aufruf
+   braucht nur einen opaken Zeiger, den clib.l selbst interpretiert. clib.l
+   hat KEIN snprintf (nur sprintf, aeltere Microware-Bibliothek, per `strings`
+   bestaetigt) -- deshalb sprintf ohne Laengenlimit (unschaedlich hier: alle
+   Aufrufe schreiben nur kurze, feste Formate in ausreichend grosse Puffer). */
+extern void* fopen(char* path, char* mode);
+extern int fclose(void* fp);
+extern int fprintf(void* fp, char* fmt, ...);
+extern int fputc(int c, void* fp);
+extern int sprintf(char* buf, char* fmt, ...);
+extern char* strcat(char* dst, char* src);	/* 68k-Backend: psectName-Aufbau in genParser68kTo */
 
 enum AstKind { AST_SEQ, AST_ALT, AST_OPT, AST_REP, AST_TS, AST_RNG, AST_NTS };
 
@@ -145,6 +157,13 @@ char* lineBuf;
 int lineBufCap;
 char* collectBuf;
 int collectBufCap;
+
+/* AST-Validierung: ruleNullable[AST_MAX_RULES] war im Original ein LOKALES
+   Array mit Nullinitialisierer ("= { 0 }") in validateAstForCodegen selbst --
+   hier als GLOBAL angelegt und per Schleife genullt (gleiches Muster wie bei
+   ruleIsLexical/computeLexicalSet), um die Initialisierer-Frage bei lokalen
+   int-Arrays gar nicht erst zu stellen. */
+int ruleNullableArr[256];         /* AST_MAX_RULES */
 
 /* ===========================================================================
    TEIL 2: Funktionen
@@ -821,4 +840,1030 @@ int actionsParseConfig(char* buf) {
 		r = r + 1;
 	}
 	return 1;
+}
+
+/* wortartiges Literal: beginnt wie ein Bezeichner und besteht nur aus
+   Bezeichner-Zeichen -> bekommt im syntaktischen Kontext einen
+   Wortgrenzen-Check. */
+int isWordLiteral(char* s) {
+	int i;
+	if (!(isalpha(s[0]) != 0 || s[0] == 95 || s[0] == 36)) { return 0; }		/* '_'=95 '$'=36 */
+	i = 0;
+	while (s[i] != 0) {
+		if (!(isalnum(s[i]) != 0 || s[i] == 95 || s[i] == 36)) { return 0; }
+		i = i + 1;
+	}
+	return 1;
+}
+
+/* Ein rekursiver Abstieg darf eine Wiederholung nur dann als einfache greedy-
+   Schleife erzeugen, wenn ihr Rumpf mindestens ein Zeichen konsumiert --
+   sonst waere die erfolgreiche Iteration ohne Fortschritt eine Endlosschleife.
+   "nullable" = kann der Knoten erfolgreich sein, ohne Eingabe zu verbrauchen?
+   NTS gelten konservativ als nicht-nullable (eine nullable NTS in einer
+   Wiederholung wird per Regel-Fixpunktanalyse in validateAstForCodegen
+   erkannt). Nimmt (wie schon markLexicalNode) eine Knoten-ID statt eines
+   "AstNode*"-Zeigers entgegen (kein unindizierter Pointer-Feldzugriff in
+   dieser Tiny-C-Version, siehe FORTSCHRITT.md). */
+int nodeNullable(int id, int* ruleNullable) {
+	int child;
+	int r;
+	char* txt;
+	switch (nodes[id].kind) {
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			if (nodeNullable(child, ruleNullable) == 0) { return 0; }
+			child = nodes[child].nextSib;
+		}
+		return 1;
+	case AST_ALT:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			if (nodeNullable(child, ruleNullable) != 0) { return 1; }
+			child = nodes[child].nextSib;
+		}
+		return 0;
+	case AST_OPT:
+		return 1;
+	case AST_REP:
+		return 1;
+	case AST_TS:
+		txt = nodes[id].text;
+		if (txt[0] == 0) { return 1; } else { return 0; }
+	case AST_RNG:
+		return 0;
+	case AST_NTS:
+		txt = nodes[id].text;
+		r = 0;
+		while (r < ruleCnt) {
+			if (strcmp(rules[r].name, txt) == 0) { return ruleNullable[r]; }
+			r = r + 1;
+		}
+		return 0;			/* undefinierte Regeln werden bereits von ebnf.cpp gemeldet */
+	}
+	return 0;
+}
+
+int validateRepeatProgress(int id, int* ruleNullable) {
+	int child;
+	if (nodes[id].kind == AST_REP && nodeNullable(nodes[id].firstChild, ruleNullable) != 0) {
+		printf("CODEGEN: Wiederholung hat einen leeren Rumpf -- Endlosschleife verhindert.\n");
+		return 0;
+	}
+	child = nodes[id].firstChild;
+	while (child >= 0) {
+		if (validateRepeatProgress(child, ruleNullable) == 0) { return 0; }
+		child = nodes[child].nextSib;
+	}
+	return 1;
+}
+
+int validateAstForCodegen() {
+	int changed;
+	int r;
+	int s;
+	char a[64];			/* GEN_NAME_LEN */
+	char b[64];
+
+	if (ruleCnt == 0 || astOverflow != 0) {
+		printf("CODEGEN: kein AST vorhanden (leer oder Ueberlauf).\n");
+		return 0;
+	}
+
+	r = 0;
+	while (r < ruleCnt) { ruleNullableArr[r] = 0; r = r + 1; }
+
+	/* Die Nullbarkeit gegenseitig rekursiver Regeln braucht einen kleinen Fixpunkt. */
+	do {
+		changed = 0;
+		r = 0;
+		while (r < ruleCnt) {
+			if (ruleNullableArr[r] == 0 && nodeNullable(rules[r].root, ruleNullableArr) != 0) {
+				ruleNullableArr[r] = 1;
+				changed = 1;
+			}
+			r = r + 1;
+		}
+	} while (changed != 0);
+
+	r = 0;
+	while (r < ruleCnt) {
+		if (validateRepeatProgress(rules[r].root, ruleNullableArr) == 0) {
+			printf("         betroffen: Regel '%s'.\n", rules[r].name);
+			return 0;
+		}
+		r = r + 1;
+	}
+
+	/* '$' wird fuer beide Backends zu '_' normalisiert. Eine Kollision wuerde
+	   sonst doppelte C-Funktionen bzw. 68k-Labels erzeugen und ist daher ein
+	   klarer Fehler. */
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, a);
+		s = r + 1;
+		while (s < ruleCnt) {
+			sanitizeName(rules[s].name, b);
+			if (strcmp(a, b) == 0) {
+				printf("CODEGEN: Regeln '%s' und '%s' kollidieren als '%s'.\n", rules[r].name, rules[s].name, a);
+				return 0;
+			}
+			s = s + 1;
+		}
+		r = r + 1;
+	}
+	return 1;
+}
+
+/* Erzeugte Struktur (C-Backend): "static const char* p;" pro Regel eine
+   Funktion p_<name>() -> 1/0, bei Misserfolg ist p unveraendert (Ruecksetzung
+   an Regel-/Auswahl-/Options-/Wiederholungs-Grenzen ueber lokalen save-Stack
+   sv[]). Quotet einen C-String-Literal-Text nach fp (Escapes \\ \" und nicht-
+   druckbare Bytes als \xHH). */
+void emitCString(void* fp, char* s) {
+	int i;
+	fputc(34, fp);				/* '"' */
+	i = 0;
+	while (s[i] != 0) {
+		if (s[i] == 92 || s[i] == 34) {		/* '\\' '"' */
+			fputc(92, fp);
+			fputc(s[i], fp);
+		} else if (isprint(s[i]) != 0) {
+			fputc(s[i], fp);
+		} else {
+			fprintf(fp, "\\x%02x", s[i]);
+		}
+		i = i + 1;
+	}
+	fputc(34, fp);
+}
+
+/* Syntaktische Operator-Literale folgen bei aktivem Lexer der ueblichen
+   Longest-Match-Regel. Ohne diese Regel waere z.B. "a && &b" scannerlos auch
+   als "a & &b" lesbar, sobald die Sprache den Adressoperator unterstuetzt. */
+void emitLongerLiteralRejectC(void* fp, char* text, int failLabel) {
+	int i;
+	int j;
+	int len;
+	char* longer;
+	len = strlen(text);
+	if (lexActive == 0 || isWordLiteral(text) != 0) { return; }
+	i = 0;
+	while (i < nodeCnt) {
+		if (nodes[i].kind == AST_TS) {
+			longer = nodes[i].text;
+			if (strlen(longer) > len && strncmp(longer, text, len) == 0) {
+				j = 0;
+				while (j < i && !(nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0)) {
+					j = j + 1;
+				}
+				if (j >= i) {
+					fprintf(fp, "\tif (strncmp(p, ");
+					emitCString(fp, longer);
+					fprintf(fp, ", %d) == 0) goto L%d;\t/* Longest-Match */\n", strlen(longer), failLabel);
+				}
+			}
+		}
+		i = i + 1;
+	}
+}
+
+/* NEU ENTDECKTER TINY-C-PARSER-BUG (2026-07-25): ein Tiny-C-String-Literal,
+   das die Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (z.B. weil
+   generierter C-Code selbst && / || braucht, wie in genParserC's ws()/
+   idch()-Emission), loest eine falsche "tinyc: logical-frame mismatch"-
+   Diagnose aus (tcLogicDepth-Tracking wird offenbar auch INNERHALB von
+   String-Literalen faelschlich angestossen). NICHT die Grammatik gefixt
+   (Risiko/Aufwand vs. Nutzen), sondern jede betroffene Stelle so umgeschrieben,
+   dass "&&"/"||" nie als zusammenhaengende Zeichenfolge in EINEM Tiny-C-
+   String-Literal auftaucht -- stattdessen per fputc() Zeichen fuer Zeichen
+   geschrieben (identischer Ausgabeninhalt, nur anders emittiert). */
+void emitAndAnd(void* fp) {
+	fputc(38, fp);
+	fputc(38, fp);
+}
+
+void emitOrOr(void* fp) {
+	fputc(124, fp);
+	fputc(124, fp);
+}
+
+void genNodeC(void* fp, int id, int failLabel, int lexical) {
+	int child;
+	int l1;
+	int l2;
+	int lok;
+	int len;
+	char* txt;
+	char cName[64];			/* GEN_NAME_LEN */
+	int idx;
+
+	switch (nodes[id].kind) {
+	case AST_TS:
+		txt = nodes[id].text;
+		len = strlen(txt);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif (strncmp(p, ");
+		emitCString(fp, txt);
+		fprintf(fp, ", %d) != 0) goto L%d;\n", len, failLabel);
+		if (lexActive != 0 && lexical == 0) { emitLongerLiteralRejectC(fp, txt, failLabel); }
+		if (lexActive != 0 && lexical == 0 && isWordLiteral(txt) != 0) {
+			/* Wortgrenze: "MODULEX" darf nicht als "MODULE" + Rest gelten */
+			fprintf(fp, "\tif (idch((unsigned char)p[%d])) goto L%d;\n", len, failLabel);
+		}
+		fprintf(fp, "\tp += %d;\n", len);
+		break;
+	case AST_RNG:
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif ((unsigned char)*p < 0x%02X || (unsigned char)*p > 0x%02X) goto L%d;\n",
+			nodes[id].lo, nodes[id].hi, failLabel);
+		fprintf(fp, "\tp++;\n");
+		break;
+	case AST_NTS:
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		sanitizeName(txt, cName);
+		/* vor dem Einstieg in ein TOKEN (lexikalische Regel) aus syntaktischem
+		   Kontext Whitespace ueberlesen; syntaktische Unterregeln erledigen
+		   das selbst. */
+		if (lexActive != 0 && lexical == 0 && idx >= 0 && ruleIsLexical[idx] != 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif (!p_%s()) goto L%d;\n", cName, failLabel);
+		break;
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			genNodeC(fp, child, failLabel, lexical);
+			child = nodes[child].nextSib;
+		}
+		break;
+	case AST_ALT:
+		lok = newLabel();
+		fprintf(fp, "\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n");
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			l1 = newLabel();
+			genNodeC(fp, child, l1, lexical);
+			fprintf(fp, "\tgoto L%d;\n", lok);
+			if (nodes[child].nextSib >= 0) {
+				/* naechste Alternative versuchen: Position UND Aktions-Log auf
+				   den Stand vor dieser (verworfenen) Alternative zuruecksetzen
+				   -- sonst bleiben Aktionen einer abgebrochenen Alternative im
+				   Log haengen (siehe ARCHITEKTUR.md Paragraph 9.4). */
+				fprintf(fp, "L%d:\tp = sv[sp-1]; actionLogLen = svLog[sp-1];\n", l1);
+			} else {
+				/* letzte Alternative gescheitert -> Auswahl gescheitert */
+				fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L%d;\n", l1, failLabel);
+			}
+			child = nodes[child].nextSib;
+		}
+		fprintf(fp, "L%d:\tsp--;\n", lok);
+		break;
+	case AST_OPT:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n");
+		genNodeC(fp, nodes[id].firstChild, l1, lexical);
+		fprintf(fp, "\tsp--; goto L%d;\n", l2);
+		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l1);
+		fprintf(fp, "L%d:\t;\n", l2);
+		break;
+	case AST_REP:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "L%d:\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n", l1);
+		genNodeC(fp, nodes[id].firstChild, l2, lexical);
+		fprintf(fp, "\tsp--; goto L%d;\n", l1);
+		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l2);
+		break;
+	}
+}
+
+/* genParserC: erzeugt den C-Zwilling (Datei <path>). SECHS Stellen im
+   C++-Original betten ein Anfuehrungszeichen DIREKT in einen fprintf-
+   Formatstring ein (z.B. "...fprintf(stderr, \"usage: ...\");...") -- das
+   geht in Tiny-C nicht (siehe Quirk 2 in tinyc-vollport-status.md), deshalb
+   an genau diesen Stellen per fputc(34, fp) aufgeteilt: Text-vor-dem-Quote /
+   fputc(34,fp) / Text-in-den-Quotes / fputc(34,fp) / Text-nach-dem-Quote.
+   ZUSAETZLICH enthalten ZWEI dieser Stellen ein "%%"-Selbstescape im
+   Original (ein literales "%" OHNE eigenes Substitutions-Argument fuer DEN
+   AEUSSEREN fprintf-Aufruf) -- da Tiny-C/clib.l's fprintf ein "%" IMMER als
+   Formatzeichen interpretiert, wird der betroffene Text stattdessen als
+   "%s"-ARGUMENT uebergeben (dessen Inhalt NICHT re-interpretiert wird),
+   statt es direkt in den Formatstring zu schreiben. */
+int genParserC(char* path) {
+	void* fp;
+	int r;
+	int fail;
+	char cName[64];			/* GEN_NAME_LEN */
+	char* replayStr;
+	char* lexComment;
+
+	if (validateAstForCodegen() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	if (computeLexicalSet() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	fp = fopen(path, "w");
+	if (fp == 0) {
+		printf("CODEGEN: kann '%s' nicht schreiben\n", path);
+		return 0;
+	}
+	labelCnt = 0;
+
+	fprintf(fp, "/* Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n");
+	fprintf(fp, " * Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl).\n");
+	fprintf(fp, " * Aufruf: %s ", "parser");
+	fputc(34, fp);
+	fprintf(fp, "<eingabe>");
+	fputc(34, fp);
+	fprintf(fp, "  -> druckt OK/FAIL, exit 0/1.\n");
+	if (lexActive != 0) {
+		fprintf(fp, " * LEXER aktiv: Whitespace/Kommentare werden zwischen Symbolen ueberlesen,\n");
+		fprintf(fp, " * lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n");
+	}
+	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
+	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
+	fprintf(fp, "static const char* p;\n");
+	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n\n");
+	if (lexActive != 0) {
+		fprintf(fp, "static int idch(int c) {\n");
+		fprintf(fp, "\treturn (c >= '0' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= '9') ");
+		emitOrOr(fp);
+		fprintf(fp, " (c >= 'A' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= 'Z')\n");
+		fprintf(fp, "\t    ");
+		emitOrOr(fp);
+		fprintf(fp, " (c >= 'a' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= 'z') ");
+		emitOrOr(fp);
+		fprintf(fp, " c == '_' ");
+		emitOrOr(fp);
+		fprintf(fp, " c == '$';\n}\n\n");
+		fprintf(fp, "static const char wsSet[] = ");
+		emitCString(fp, lexWs);
+		fprintf(fp, ";\n");
+		fprintf(fp, "static void ws(void) {\n\tfor (;;) {\n");
+		fprintf(fp, "\t\tif (*p ");
+		emitAndAnd(fp);
+		fprintf(fp, " strchr(wsSet, *p)) { p++; continue; }\n");
+		r = 0;
+		while (r < lexLineCommentCnt) {
+			fprintf(fp, "\t\tif (strncmp(p, ");
+			emitCString(fp, &lexLineCommentFlat[r * 9]);
+			fprintf(fp, ", %d) == 0) { while (*p ", lexLineCommentLen[r]);
+			emitAndAnd(fp);
+			fprintf(fp, " *p != '\\n') p++; continue; }\n");
+			r = r + 1;
+		}
+		r = 0;
+		while (r < lexBlockCnt) {
+			if (lexBlockNested[r] != 0) {
+				/* geschachtelt (Oberon/Modula-2): Tiefenzaehler; Ende-Sequenz
+				   VOR Start-Sequenz pruefen (wichtig bei ueberlappenden
+				   Zeichen wie "(*" / "*)"). Ein unterminierter Kommentar
+				   laeuft bis zum Eingabeende. */
+				fprintf(fp, "\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) {\n", lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\tint tiefe = 1; p += %d;\n", lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\twhile (*p ");
+				emitAndAnd(fp);
+				fprintf(fp, " tiefe > 0) {\n");
+				fprintf(fp, "\t\t\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOffFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { tiefe--; p += %d; }\n", lexBlockOffLen[r], lexBlockOffLen[r]);
+				fprintf(fp, "\t\t\t\telse if (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { tiefe++; p += %d; }\n", lexBlockOnLen[r], lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\t\telse p++;\n");
+				fprintf(fp, "\t\t\t}\n\t\t\tcontinue;\n\t\t}\n");
+			} else {
+				/* nicht geschachtelt; ein unterminierter Kommentar laeuft
+				   bis zum Eingabeende */
+				fprintf(fp, "\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { p += %d; while (*p ", lexBlockOnLen[r], lexBlockOnLen[r]);
+				emitAndAnd(fp);
+				fprintf(fp, " strncmp(p, ");
+				emitCString(fp, &lexBlockOffFlat[r * 9]);
+				fprintf(fp, ", %d) != 0) p++; if (*p) p += %d; continue; }\n", lexBlockOffLen[r], lexBlockOffLen[r]);
+			}
+			r = r + 1;
+		}
+		fprintf(fp, "\t\treturn;\n\t}\n}\n\n");
+	}
+	if (routinesCCnt > 0) {
+		/* Aktionen feuern NICHT sofort beim Regelerfolg, sondern werden nur
+		   PROTOKOLLIERT (actionLogPush) und erst am Ende bei ENDGUELTIGEM
+		   Gesamterfolg abgespielt (actionLogReplay) -- siehe ARCHITEKTUR.md
+		   Paragraph 9.4. */
+		fprintf(fp, "#define ACTION_LOG_MAX 1048576\n");
+		fprintf(fp, "extern void exit(int);\n");
+		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
+		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
+		fprintf(fp, "static ActionLogEntry actionLog[ACTION_LOG_MAX];\n");
+		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
+		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
+		fprintf(fp, "\t\tfprintf(stderr, ");
+		fputc(34, fp);
+		fprintf(fp, "%s", "tinyc: Aktions-Log-Grenze (%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n");
+		fputc(34, fp);
+		fprintf(fp, ", ACTION_LOG_MAX);\n");
+		fprintf(fp, "\t\texit(1);\n\t}\n");
+		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
+		fprintf(fp, "\tactionLogLen++;\n}\n");
+		fprintf(fp, "static void actionLogReplay(void) {\n");
+		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLog[i].fn(actionLog[i].start, actionLog[i].end);\n}\n\n");
+		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
+		r = 0;
+		while (r < routinesCCnt) {
+			fprintf(fp, "%s\n", routinesC[r].text);
+			r = r + 1;
+		}
+	}
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, cName);
+		fprintf(fp, "static int p_%s(void);\n", cName);
+		r = r + 1;
+	}
+	fprintf(fp, "\n");
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, cName);
+		fail = newLabel();
+		if (ruleIsLexical[r] != 0) { lexComment = " (lexikalisch)"; } else { lexComment = ""; }
+		fprintf(fp, "/* %s%s */\n", rules[r].name, lexComment);
+		fprintf(fp, "static int p_%s(void) {\n", cName);
+		fprintf(fp, "\tconst char* sv[64]; int svLog[64]; int sp;\n");
+		if (lexActive != 0 && ruleIsLexical[r] == 0) {
+			/* entry MUSS erst NACH einem eventuellen fuehrenden ws() erfasst
+			   werden -- sonst landet Whitespace/Kommentar vor dem
+			   eigentlichen Regelinhalt im start/end-Bereich, den eine ACTION
+			   dieser Regel bekommt. */
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tsp = 0;\n\tconst char* entry = p;\n");
+		fprintf(fp, "\tint entryLog = actionLogLen;\n");
+		fprintf(fp, "\t(void)sv; (void)svLog; (void)sp; (void)entryLog;\n");
+		genNodeC(fp, rules[r].root, fail, ruleIsLexical[r]);
+		if (ruleActionCallFlat[r * 64] != 0 && routineTextC(&ruleActionCallFlat[r * 64]) != 0) {
+			fprintf(fp, "\tactionLogPush(%s, entry, p);\t/* ACTION AFTER %s */\n", &ruleActionCallFlat[r * 64], rules[r].name);
+		}
+		fprintf(fp, "\treturn 1;\n");
+		fprintf(fp, "L%d:\tp = entry; actionLogLen = entryLog;\n", fail);
+		fprintf(fp, "\treturn 0;\n}\n\n");
+		r = r + 1;
+	}
+	sanitizeName(rules[0].name, cName);
+	fprintf(fp, "int main(int argc, char* argv[]) {\n");
+	fprintf(fp, "\tif (argc < 2) { fprintf(stderr, ");
+	fputc(34, fp);
+	fprintf(fp, "%s", "usage: %s <eingabe>\\n");
+	fputc(34, fp);
+	fprintf(fp, ", argv[0]); return 2; }\n");
+	fprintf(fp, "\tp = argv[1];\n");
+	/* actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input
+	   erkannt) -- nur dann steht fest, dass keine der protokollierten
+	   Aktionen zu einem inzwischen verworfenen Backtracking-Pfad gehoert. */
+	if (routinesCCnt > 0) { replayStr = " actionLogReplay();"; } else { replayStr = ""; }
+	if (lexActive != 0) {
+		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {%s printf(", cName, replayStr);
+		fputc(34, fp);
+		fprintf(fp, "OK\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 0; } }\n");
+	} else {
+		fprintf(fp, "\tif (p_%s() ", cName);
+		emitAndAnd(fp);
+		fprintf(fp, " *p == '\\0') {%s printf(", replayStr);
+		fputc(34, fp);
+		fprintf(fp, "OK\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 0; }\n");
+	}
+	fprintf(fp, "\tprintf(");
+	fputc(34, fp);
+	fprintf(fp, "FAIL\\n");
+	fputc(34, fp);
+	fprintf(fp, ");\n\treturn 1;\n}\n");
+	fclose(fp);
+	return 1;
+}
+
+/* ---------------------------------------------------------------------------
+   68k-Backend (Motorola-Syntax, vasm-kompatibel; keine Assembler-Direktiven
+   noetig). Registerkonvention (siehe ARCHITEKTUR.md Paragraph 4/5): a0 =
+   Eingabezeiger, d0.b = 1 Erfolg/0 Misserfolg, d1 = Scratch. WICHTIG: dieser
+   Abschnitt erzeugt reinen 68k-ASSEMBLERTEXT (keine C-Operatoren wie && /||
+   im generierten Code selbst) -- der "logical-frame mismatch"-Workaround
+   (emitAndAnd/emitOrOr) aus genParserC wird hier NICHT gebraucht. Ebenso
+   KEINE eingebetteten Anfuehrungszeichen im generierten Text (68k-Assembler
+   braucht keine C-String-Literale) -- der fputc(34,fp)-Workaround aus
+   genParserC entfaellt hier ebenfalls.
+--------------------------------------------------------------------------- */
+void charComment(char c, char* out, int outMax) {
+	if (isprint(c) != 0) {
+		sprintf(out, "'%c'", c);
+	} else {
+		sprintf(out, "0x%02X", c);
+	}
+}
+
+/* Wie emitAndAnd/emitOrOr (siehe genParserC-Kommentar): ein Tiny-C-String-
+   Literal mit "?" als reinem TEXT loeste ebenfalls einen falschen
+   Semantikfehler aus ("tinyc: conditional-frame mismatch", tcTernaryDepth-
+   Tracking fuer den Ternary-Operator "? :" wird offenbar auch INNERHALB von
+   String-Literalen faelschlich angestossen -- gleiche Bugklasse, andere
+   interne Zaehlvariable). */
+void emitQMark(void* fp) {
+	fputc(63, fp);
+}
+
+void emitConsume68k(void* fp, int len) {
+	if (len == 0) {
+		return;			/* leeres Literal "" matcht immer, konsumiert nichts */
+	}
+	if (len <= 8) {
+		fprintf(fp, "\taddq.l\t#%d,a0\n", len);
+	} else {
+		fprintf(fp, "\tlea\t%d(a0),a0\n", len);
+	}
+}
+
+void emitLongerLiteralReject68k(void* fp, char* text, int failLabel) {
+	int i;
+	int j;
+	int k;
+	int len;
+	char* longer;
+	char cc[16];
+	int skip;
+	len = strlen(text);
+	if (lexActive == 0 || isWordLiteral(text) != 0) { return; }
+	i = 0;
+	while (i < nodeCnt) {
+		if (nodes[i].kind == AST_TS) {
+			longer = nodes[i].text;
+			if (strlen(longer) > len && strncmp(longer, text, len) == 0) {
+				j = 0;
+				while (j < i && !(nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0)) {
+					j = j + 1;
+				}
+				if (j >= i) {
+					skip = newLabel();
+					k = len;
+					while (longer[k] != 0) {
+						charComment(longer[k], cc, 16);
+						fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; Longest-Match %s\n", longer[k], k, cc);
+						fprintf(fp, "\tbne\tL%d\n", skip);
+						k = k + 1;
+					}
+					fprintf(fp, "\tbra\tL%d\t; kuerzeres Operator-Token ablehnen\nL%d:\n", failLabel, skip);
+				}
+			}
+		}
+		i = i + 1;
+	}
+}
+
+void genNode68k(void* fp, int id, int failLabel, int lexical) {
+	int child;
+	int l1;
+	int l2;
+	int lok;
+	int i;
+	char cc[16];
+	char cc2[16];
+	char aName[64];		/* GEN_NAME_LEN */
+	int idx;
+	int len;
+	char* txt;
+
+	switch (nodes[id].kind) {
+	case AST_TS:
+		txt = nodes[id].text;
+		len = strlen(txt);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		i = 0;
+		while (i < len) {
+			charComment(txt[i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", txt[i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", txt[i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failLabel);
+			i = i + 1;
+		}
+		if (lexActive != 0 && lexical == 0) { emitLongerLiteralReject68k(fp, txt, failLabel); }
+		if (lexActive != 0 && lexical == 0 && isWordLiteral(txt) != 0) {
+			/* Wortgrenze: Folgezeichen darf kein Identifikator-Zeichen sein */
+			fprintf(fp, "\tmove.b\t%d(a0),d1\n", len);
+			fprintf(fp, "\tbsr\tidch\n");
+			fprintf(fp, "\ttst.b\td0\n");
+			fprintf(fp, "\tbne\tL%d\t; Wortgrenze verletzt\n", failLabel);
+		}
+		emitConsume68k(fp, len);
+		break;
+	case AST_RNG:
+		charComment(nodes[id].lo, cc, 16);
+		charComment(nodes[id].hi, cc2, 16);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		fprintf(fp, "\tmove.b\t(a0),d1\n");
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", nodes[id].lo, cc);
+		fprintf(fp, "\tblo\tL%d\n", failLabel);
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", nodes[id].hi, cc2);
+		fprintf(fp, "\tbhi\tL%d\n", failLabel);
+		fprintf(fp, "\taddq.l\t#1,a0\n");
+		break;
+	case AST_NTS:
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		sanitizeName(txt, aName);
+		if (lexActive != 0 && lexical == 0 && idx >= 0 && ruleIsLexical[idx] != 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		fprintf(fp, "\tbsr\tp_%s\n", aName);
+		fprintf(fp, "\ttst.b\td0\n");
+		fprintf(fp, "\tbeq\tL%d\n", failLabel);
+		break;
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			genNode68k(fp, child, failLabel, lexical);
+			child = nodes[child].nextSib;
+		}
+		break;
+	case AST_ALT:
+		lok = newLabel();
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Auswahl\n");
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			l1 = newLabel();
+			genNode68k(fp, child, l1, lexical);
+			fprintf(fp, "\tbra\tL%d\n", lok);
+			if (nodes[child].nextSib >= 0) {
+				fprintf(fp, "L%d:\tmove.l\t(a7),a0\t; naechste Alternative\n", l1);
+			} else {
+				fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Auswahl gescheitert\n", l1);
+				fprintf(fp, "\tbra\tL%d\n", failLabel);
+			}
+			child = nodes[child].nextSib;
+		}
+		fprintf(fp, "L%d:\taddq.l\t#4,a7\n", lok);
+		break;
+	case AST_OPT:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Option\n");
+		genNode68k(fp, nodes[id].firstChild, l1, lexical);
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tbra\tL%d\n", l2);
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Option uebersprungen\n", l1);
+		fprintf(fp, "L%d:\n", l2);
+		break;
+	case AST_REP:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "L%d:\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Wiederholung\n", l1);
+		genNode68k(fp, nodes[id].firstChild, l2, lexical);
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tbra\tL%d\n", l1);
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Wiederholung beendet\n", l2);
+		break;
+	}
+}
+
+/* Laufzeit-Helfer fuer den LEXER-Modus: ws (ueberliest WHITESPACE-Zeichen
+   und, falls konfiguriert, Kommentare; zerstoert d1) und idch (prueft d1:
+   Identifikator-Zeichen? d0.b = 1 ja / 0 nein). lexLineComment/lexBlockOn/
+   lexBlockOff sind hier FLACHE 1D-Arrays (lexLineCommentFlat[j*9+i] statt
+   lexLineComment[j][i], siehe Kommentar bei TEIL 1 -- Tiny-C erlaubt keine
+   partielle Indizierung eines 2D-Arrays). */
+void emitLexHelpers68k(void* fp, char* cs) {
+	int lTop;
+	int lSkip;
+	int lRet;
+	int lCmtShared;
+	int lLCentry[4];	/* LEX_MARKERS_MAX */
+	int lBCentry[4];
+	int lYes;
+	int lNo1;
+	int lNo2;
+	int lNo3;
+	int i;
+	int j;
+	char cc[16];
+	int failTo;
+	char* d1d2;
+	int lBk;
+	int lBk1;
+	int lBkOpen;
+
+	lTop = newLabel();
+	lSkip = newLabel();
+	lRet = newLabel();
+	lCmtShared = newLabel();
+	lYes = newLabel();
+	lNo1 = newLabel();
+	lNo2 = newLabel();
+	lNo3 = newLabel();
+
+	j = 0;
+	while (j < lexLineCommentCnt) { lLCentry[j] = newLabel(); j = j + 1; }
+	j = 0;
+	while (j < lexBlockCnt) { lBCentry[j] = newLabel(); j = j + 1; }
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	if (lexAnyBlockNested() != 0) { d1d2 = "/d2"; } else { d1d2 = ""; }
+	fprintf(fp, "%s ws -- Whitespace/Kommentare ueberlesen (zerstoert d1%s)\n", cs, d1d2);
+	fprintf(fp, "ws:\n");
+	fprintf(fp, "L%d:\tmove.b\t(a0),d1\n", lTop);
+	fprintf(fp, "\tbeq\tL%d\t; Eingabeende\n", lRet);
+	i = 0;
+	while (i < lexWsLen) {
+		charComment(lexWs[i], cc, 16);
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", lexWs[i], cc);
+		fprintf(fp, "\tbeq\tL%d\n", lSkip);
+		i = i + 1;
+	}
+	/* Zeilenkommentar-Marker der Reihe nach probieren: Mismatch faellt zum
+	   naechsten Marker durch (letzter Marker faellt zum ersten Blockkommentar-
+	   Marker bzw. lRet). Voller Match springt IMMER explizit zu lCmtShared. */
+	j = 0;
+	while (j < lexLineCommentCnt) {
+		if (j + 1 < lexLineCommentCnt) {
+			failTo = lLCentry[j + 1];
+		} else if (lexBlockCnt > 0) {
+			failTo = lBCentry[0];
+		} else {
+			failTo = lRet;
+		}
+		fprintf(fp, "L%d:\n", lLCentry[j]);
+		i = 0;
+		while (i < lexLineCommentLen[j]) {
+			charComment(lexLineCommentFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexLineCommentFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexLineCommentFlat[j * 9 + i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failTo);
+			i = i + 1;
+		}
+		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
+		j = j + 1;
+	}
+	if (lexLineCommentCnt > 0) {
+		fprintf(fp, "L%d:\tmove.b\t(a0),d1\t; Kommentar bis Zeilenende\n", lCmtShared);
+		fprintf(fp, "\tbeq\tL%d\n", lRet);
+		fprintf(fp, "\tcmpi.b\t#$0A,d1\t; LF\n");
+		fprintf(fp, "\tbeq\tL%d\n", lTop);
+		fprintf(fp, "\taddq.l\t#1,a0\n");
+		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
+	}
+	/* Blockkommentar-Marker der Reihe nach probieren (analog); jeder Marker
+	   hat seine eigene Ende-Sequenz und damit seine eigene innere Schleife --
+	   kann NICHT wie bei den Zeilenkommentaren einen gemeinsamen Rumpf teilen. */
+	j = 0;
+	while (j < lexBlockCnt) {
+		if (j + 1 < lexBlockCnt) { failTo = lBCentry[j + 1]; } else { failTo = lRet; }
+		lBk = newLabel();
+		lBk1 = newLabel();
+		if (lexBlockNested[j] != 0) { lBkOpen = newLabel(); } else { lBkOpen = -1; }
+
+		fprintf(fp, "L%d:\n", lBCentry[j]);
+		i = 0;
+		while (i < lexBlockOnLen[j]) {
+			charComment(lexBlockOnFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failTo);
+			i = i + 1;
+		}
+		emitConsume68k(fp, lexBlockOnLen[j]);
+		if (lexBlockNested[j] != 0) {
+			fprintf(fp, "\tmoveq\t#1,d2\t; Schachtelungs-Tiefe\n");
+		}
+		fprintf(fp, "L%d:\tmove.b\t(a0),d1\t; im Blockkommentar\n", lBk);
+		fprintf(fp, "\tbeq\tL%d\t; unterminiert: Eingabeende\n", lRet);
+		i = 0;
+		while (i < lexBlockOffLen[j]) {
+			charComment(lexBlockOffFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOffFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOffFlat[j * 9 + i], i, cc);
+			}
+			if (lexBlockNested[j] != 0) {
+				fprintf(fp, "\tbne\tL%d\n", lBkOpen);
+			} else {
+				fprintf(fp, "\tbne\tL%d\n", lBk1);
+			}
+			i = i + 1;
+		}
+		emitConsume68k(fp, lexBlockOffLen[j]);
+		if (lexBlockNested[j] != 0) {
+			fprintf(fp, "\tsubq.l\t#1,d2\n");
+			fprintf(fp, "\tbeq\tL%d\t; Tiefe 0: Kommentar zu Ende, weiter ueberlesen\n", lTop);
+			fprintf(fp, "\tbra\tL%d\n", lBk);
+			fprintf(fp, "L%d:\n", lBkOpen);
+			i = 0;
+			while (i < lexBlockOnLen[j]) {
+				charComment(lexBlockOnFlat[j * 9 + i], cc, 16);
+				if (i == 0) {
+					fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], cc);
+				} else {
+					fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], i, cc);
+				}
+				fprintf(fp, "\tbne\tL%d\n", lBk1);
+				i = i + 1;
+			}
+			emitConsume68k(fp, lexBlockOnLen[j]);
+			fprintf(fp, "\taddq.l\t#1,d2\t; tiefer geschachtelt\n");
+			fprintf(fp, "\tbra\tL%d\n", lBk);
+		} else {
+			fprintf(fp, "\tbra\tL%d\t; Kommentar zu Ende, weiter ueberlesen\n", lTop);
+		}
+		fprintf(fp, "L%d:\taddq.l\t#1,a0\n", lBk1);
+		fprintf(fp, "\tbra\tL%d\n", lBk);
+		j = j + 1;
+	}
+	if (lexLineCommentCnt == 0 && lexBlockCnt == 0) {
+		fprintf(fp, "\tbra\tL%d\n", lRet);
+	}
+	fprintf(fp, "L%d:\taddq.l\t#1,a0\n", lSkip);
+	fprintf(fp, "\tbra\tL%d\n", lTop);
+	fprintf(fp, "L%d:\trts\n\n", lRet);
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	fprintf(fp, "%s idch -- d1 Identifikator-Zeichen", cs);
+	emitQMark(fp);
+	fprintf(fp, " d0.b = 1/0\n");
+	fprintf(fp, "idch:\n");
+	fprintf(fp, "\tcmpi.b\t#$30,d1\t; '0'\n");
+	fprintf(fp, "\tblo\tL%d\n", lNo1);
+	fprintf(fp, "\tcmpi.b\t#$39,d1\t; '9'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$41,d1\t; 'A'\n", lNo1);
+	fprintf(fp, "\tblo\tL%d\n", lNo2);
+	fprintf(fp, "\tcmpi.b\t#$5A,d1\t; 'Z'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$61,d1\t; 'a'\n", lNo2);
+	fprintf(fp, "\tblo\tL%d\n", lNo3);
+	fprintf(fp, "\tcmpi.b\t#$7A,d1\t; 'z'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$5F,d1\t; '_'\n", lNo3);
+	fprintf(fp, "\tbeq\tL%d\n", lYes);
+	fprintf(fp, "\tcmpi.b\t#$24,d1\t; '$'\n");
+	fprintf(fp, "\tbeq\tL%d\n", lYes);
+	fprintf(fp, "\tmoveq\t#0,d0\n");
+	fprintf(fp, "\trts\n");
+	fprintf(fp, "L%d:\tmoveq\t#1,d0\n", lYes);
+	fprintf(fp, "\trts\n\n");
+}
+
+/* Gemeinsamer Kern beider 68k-Ausgabeformate. os9=0: "nacktes" Motorola-Format
+   (vasm-kompatibel, nur Labels). os9=1: Microware-r68-Format -- gleicher
+   Code-Body, aber '*' fuer VOLLE Kommentarzeilen plus nam/psect/ends-Rahmen. */
+int genParser68kTo(char* path, int os9, char* baseName) {
+	void* fp;
+	int r;
+	int fail;
+	char aName[64];		/* GEN_NAME_LEN */
+	char psectName[68];	/* GEN_NAME_LEN + 4 */
+	char* cs;
+	char* bn;
+	char* lexComment;
+	int lDone;
+
+	if (os9 != 0) { cs = "*"; } else { cs = ";"; }
+
+	if (validateAstForCodegen() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	if (computeLexicalSet() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	fp = fopen(path, "w");
+	if (fp == 0) {
+		printf("CODEGEN: kann '%s' nicht schreiben\n", path);
+		return 0;
+	}
+	labelCnt = 0;
+
+	if (os9 != 0) {
+		if (cgenPsect[0] != 0) {
+			tcCopyBounded(psectName, cgenPsect, 63);
+		} else {
+			if (baseName != 0) { bn = baseName; } else { bn = "parser"; }
+			sanitizeName(bn, psectName);
+			strcat(psectName, "_p");
+		}
+	}
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	fprintf(fp, "%s Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n", cs);
+	fprintf(fp, "%s Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl), 68k/Motorola.\n", cs);
+	fprintf(fp, "%s\n", cs);
+	fprintf(fp, "%s Aufruf:  a0 = Eingabezeiger (NUL-terminiert)\n", cs);
+	fprintf(fp, "%s          bsr parse\n", cs);
+	fprintf(fp, "%s Rueckgabe: d0.b = 1 Erfolg (a0 hinter dem Erkannten), 0 Misserfolg\n", cs);
+	if (lexAnyBlockNested() != 0) { lexComment = "/d2"; } else { lexComment = ""; }
+	fprintf(fp, "%s            (bei Misserfolg ist a0 unveraendert). d1%s wird zerstoert.\n", cs, lexComment);
+	fprintf(fp, "%s Vollstaendige Erkennung: nach Erfolg pruefen, ob (a0) = 0 (Eingabeende).\n", cs);
+	if (lexActive != 0) {
+		fprintf(fp, "%s LEXER aktiv: parse ueberliest nach Erfolg auch Whitespace am Ende;\n", cs);
+		fprintf(fp, "%s lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n", cs);
+	}
+	fprintf(fp, "%s Startregel: %s\n", cs, rules[0].name);
+	fprintf(fp, "%s---------------------------------------------------------------------------\n\n", cs);
+
+	if (os9 != 0) {
+		fprintf(fp, "\tnam\t%s\n", psectName);
+		fprintf(fp, "\tpsect\t%s,0,0,1,0,0\n\n", psectName);
+	}
+
+	sanitizeName(rules[0].name, aName);
+	if (lexActive != 0) {
+		lDone = newLabel();
+		fprintf(fp, "parse:\tbsr\tp_%s\n", aName);
+		fprintf(fp, "\ttst.b\td0\n");
+		fprintf(fp, "\tbeq\tL%d\n", lDone);
+		fprintf(fp, "\tbsr\tws\t; Whitespace am Eingabeende gehoert mit dazu\n");
+		fprintf(fp, "L%d:\trts\n\n", lDone);
+		emitLexHelpers68k(fp, cs);
+	} else {
+		fprintf(fp, "parse:\tbsr\tp_%s\n\trts\n\n", aName);
+	}
+
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, aName);
+		fail = newLabel();
+		fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+		if (ruleIsLexical[r] != 0) { lexComment = " (lexikalisch)"; } else { lexComment = ""; }
+		fprintf(fp, "%s Regel: %s%s\n", cs, rules[r].name, lexComment);
+		fprintf(fp, "p_%s:\n", aName);
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Regel\n");
+		genNode68k(fp, rules[r].root, fail, ruleIsLexical[r]);
+		if (ruleActionCallFlat[r * 64] != 0 && routineText68k(&ruleActionCallFlat[r * 64]) != 0) {
+			fprintf(fp, "\tbsr\t%s\t%s ACTION AFTER %s (a0=Ende, muss erhalten bleiben)\n", &ruleActionCallFlat[r * 64], cs, rules[r].name);
+		}
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tmoveq\t#1,d0\n");
+		fprintf(fp, "\trts\n");
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Regel gescheitert, Position zurueck\n", fail);
+		fprintf(fp, "\tmoveq\t#0,d0\n");
+		fprintf(fp, "\trts\n\n");
+		r = r + 1;
+	}
+	if (routines68kCnt > 0) {
+		fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+		fprintf(fp, "%s ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen)\n", cs);
+		r = 0;
+		while (r < routines68kCnt) {
+			fprintf(fp, "%s\n", routines68k[r].text);
+			r = r + 1;
+		}
+	}
+	if (os9 != 0) {
+		fprintf(fp, "\tends\n");
+	}
+	fclose(fp);
+	return 1;
+}
+
+int genParser68k(char* path) {
+	return genParser68kTo(path, 0, 0);
+}
+
+int genParser68kOS9(char* path, char* baseName) {
+	return genParser68kTo(path, 1, baseName);
 }

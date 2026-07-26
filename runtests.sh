@@ -1490,6 +1490,284 @@ int main() {
 		echo "warn  tinyc Selfhosting L2 Vollport (ActionRoutine/ACTIONS-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- AST-Validierung (isWordLiteral/nodeNullable/validateRepeatProgress/
+	# validateAstForCodegen, Zeilen 750-857 in Source/codegen.cpp). Prueft VOR der
+	# Ausgabe: (1) eine Wiederholung mit nullbarem Rumpf (z.B. "{ [x] }") waere eine
+	# Endlosschleife im erzeugten Parser -- wird erkannt und abgelehnt (Fixpunkt-
+	# analyse ueber gegenseitig rekursive Regeln); (2) zwei Regeln, die nach der
+	# "$"->"_"-Normalisierung denselben Namen ergeben, wuerden doppelte C-Funktionen/
+	# 68k-Labels erzeugen -- wird erkannt und abgelehnt. Einmalig per TinyVM
+	# tiefenverifiziert (mit Tiny-C-eigenen Stand-ins fuer strcmp/isalpha/isalnum
+	# statt extern): alle 10 erwarteten Werte trafen exakt zu, inklusive beider
+	# Diagnosepfade -- siehe docs/FORTSCHRITT.md. ARM64 hier NICHT moeglich (das
+	# kumulative Gesamtkompilat enthaelt bereits "free" aus dem ActionRoutine-Chunk,
+	# CALLEXT wird von ARM64 grundsaetzlich abgelehnt, unabhaengig von Erreichbarkeit
+	# -- TinyVM meldet den Fehler dagegen nur bei tatsaechlicher Ausfuehrung, hier
+	# also unproblematisch). Dauerhafte Regression wie ueblich: echter r68+l68.
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		astvaltest_main='
+int main() {
+	putint(isWordLiteral("hello"));
+	putint(isWordLiteral("_foo$bar"));
+	putint(isWordLiteral("foo-bar"));
+	putint(isWordLiteral("5abc"));
+	astReset();
+	astPushTS("x"); astWrapOpt(); astWrapRep(); astFinishRule("bad");
+	putint(validateAstForCodegen());
+	astReset();
+	astPushTS("y"); astWrapRep(); astFinishRule("good");
+	putint(validateAstForCodegen());
+	astReset();
+	astPushTS("a"); astFinishRule("foo$bar");
+	astPushTS("b"); astFinishRule("foo_bar");
+	putint(validateAstForCodegen());
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$astvaltest_main" > build/tinyc_astvaltest.ir 2>build/tinyc_astvaltest.err && \
+			build/tinyc_backend build/tinyc_astvaltest.ir build/tinyc_astvaltest_os9.a -os9 -largedata; then
+			cp build/tinyc_astvaltest_os9.a "$MWOS_TMP/astvaltest.a"
+			rm -f "$MWOS_TMP/astvaltest.r" "$MWOS_TMP/astvaltest.out" "$MWOS_TMP/astvaltest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\astvaltest.a -o=M:\\TMP\\astvaltest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/astvaltest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\astvaltest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\astvaltest.out -s=M:\\TMP\\astvaltest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/astvaltest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: AST-Validierung (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (AST-Validierung) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (AST-Validierung) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/astvaltest.a "$MWOS_TMP"/astvaltest.r "$MWOS_TMP"/astvaltest.out "$MWOS_TMP"/astvaltest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (AST-Validierung) kompiliert nicht sauber (siehe build/tinyc_astvaltest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (AST-Validierung): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- C-Backend-Codegenerator (emitCString/emitLongerLiteralRejectC/genNodeC,
+	# Source/codegen.cpp Zeilen 858-1000). Erste Beruehrung mit ECHTER Dateiausgabe
+	# (fopen/fprintf/fputc/fclose statt nur stdout-Diagnosen wie bisher) -- FILE*
+	# wird als "void*" gefuehrt (Tiny-C hat keinen FILE-Struct-Typ, der ABI-Aufruf
+	# braucht nur einen opaken Zeiger). clib.l hat KEIN snprintf (nur sprintf,
+	# per `strings` bestaetigt) -- deshalb sprintf ohne Laengenlimit verwendet.
+	# NEUE Tiny-C-Grenze gefunden: Tiny-C kann KEINE EIGENEN variadischen
+	# Funktionen definieren (nur variadische extern-Aufrufe) -- ein Tiny-C-
+	# Stand-in fuer fprintf (fuer TinyVM/ARM64-Tiefenverifikation wie bei den
+	# String-Funktionen zuvor) ist deshalb NICHT moeglich. Verifikation bleibt
+	# bei kompiliert sauber + echter r68/l68-Link (wie beim ActionRoutine-Chunk).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		gennodetest_main='
+int main() {
+	void* fp;
+	int m;
+	int m2;
+	astReset();
+	astPushTS("x"); astFinishRule("sub");
+	m = astMark();
+	astPushTS("a");
+	m2 = astMark();
+	astPushTS("b"); astPushTS("c"); astGroupAlt(m2);
+	astPushTS("d"); astWrapOpt();
+	astPushTS("e"); astWrapRep();
+	astPushNTS("sub");
+	astGroupSeq(m);
+	astFinishRule("test");
+	computeLexicalSet();
+	fp = fopen("/tmp/tinyc_gennodetest_output.c", "w");
+	if (fp == 0) { putint(-1); return 1; }
+	genNodeC(fp, rules[1].root, 999, 0);
+	fclose(fp);
+	putint(1);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$gennodetest_main" > build/tinyc_gennodetest.ir 2>build/tinyc_gennodetest.err && \
+			build/tinyc_backend build/tinyc_gennodetest.ir build/tinyc_gennodetest_os9.a -os9 -largedata; then
+			cp build/tinyc_gennodetest_os9.a "$MWOS_TMP/gennodetest.a"
+			rm -f "$MWOS_TMP/gennodetest.r" "$MWOS_TMP/gennodetest.out" "$MWOS_TMP/gennodetest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\gennodetest.a -o=M:\\TMP\\gennodetest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/gennodetest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\gennodetest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\gennodetest.out -s=M:\\TMP\\gennodetest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/gennodetest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: C-Backend-Codegenerator (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/gennodetest.a "$MWOS_TMP"/gennodetest.r "$MWOS_TMP"/gennodetest.out "$MWOS_TMP"/gennodetest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (C-Backend-Codegenerator) kompiliert nicht sauber (siehe build/tinyc_gennodetest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (C-Backend-Codegenerator): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
+	# -- genParserC (der Rest des C-Backends: Datei-Header, Lexer-Helfer ws()/idch(),
+	# Action-Log-Runtime-Geruest, eine p_<regel>()-Funktion pro Regel, main() --
+	# Source/codegen.cpp Zeilen 1002-1168). SECHS Stellen im C++-Original betten ein
+	# Anfuehrungszeichen DIREKT in einen fprintf-Formatstring ein -- geht in Tiny-C
+	# nicht (siehe Quirk in tinyc-vollport-status.md), per fputc(34,fp)-Aufteilung
+	# umgeschrieben. ZWEI dieser Stellen haben zusaetzlich ein "%%"-Selbstescape im
+	# Original (literales "%" ohne eigenes Substitutionsargument) -- als "%s"-Argument
+	# uebergeben statt direkt in den Formatstring geschrieben (sonst re-interpretiert
+	# Tiny-C/clib.l's fprintf das "%" als Formatzeichen).
+	#
+	# WICHTIGER, EIGENSTAENDIGER FUND waehrend dieses Chunks (nicht der Port selbst,
+	# sondern ZWEI echte Bugs in der Toolchain):
+	# 1. Ein bisher unbekannter Tiny-C-PARSER-Bug: ein Tiny-C-String-Literal, das die
+	#    Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (hier: generierter C-Code
+	#    braucht selbst && / || in ws()/idch()), loeste eine falsche "tinyc: logical-
+	#    frame mismatch"-Diagnose aus. NICHT die Grammatik gefixt (Risiko/Aufwand vs.
+	#    Nutzen) -- stattdessen jede betroffene Stelle per fputc(38,fp)/fputc(124,fp)
+	#    umgeschrieben (emitAndAnd/emitOrOr-Helfer), sodass "&&"/"||" nie als
+	#    zusammenhaengende Zeichenfolge in einem Tiny-C-String-Literal auftaucht.
+	# 2. Ein ECHTER SKALIERUNGSBUG im 68k-Backend selbst (Source/tinyc_backend_c.cpp):
+	#    das -largedata-Datenmodell lud JEDEN Tabelleneintrag bisher per EIGENEM
+	#    PC-relativem Label ("movea.l tc_ga_X(pc),reg") -- das brach, sobald der
+	#    GESAMTE Funktionscode zwischen einer fruehen Funktion (z.B. "main", die per
+	#    -largedata-Funktionsaufruf-Fix immer zuerst emittiert wird) und der Tabelle
+	#    selbst (die NACH allen Funktionsrumpf-Texten lag) mehr als 32 KB umfasste --
+	#    genau das trat beim ersten echten Skalierungstest fuer SourceTinyC/codegen.tc
+	#    auf (kumulatives Kompilat inzwischen weit ueber 32 KB Code) und liess
+	#    RUECKWIRKEND ALLE bisherigen Vollport-Regressionstests fehlschlagen (der
+	#    naechste Funktionsaufruf/Global-Zugriff konnte die Tabelle nicht mehr
+	#    erreichen). GEFIXT nach EXAKT demselben Muster wie tc_functab/a4: ein Register
+	#    (a3) wird EINMAL beim Programmstart auf die absolute Adresse EINER
+	#    kombinierten Tabelle (tc_gadata, direkt nach tc_functab, vor allen
+	#    Funktionsrumpf-Texten) gesetzt; jeder Globalzugriff wird zu "move.l
+	#    <gidx*4>(a3),reg" statt einem PC-relativen Tabellen-Label-Load. tools/
+	#    tiny68sim.py (Test-Simulator) musste dafuer a3 in sein generisches
+	#    Adressregister-Dict aufnehmen (war zuvor auf a0/a2/a4 beschraenkt).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		genparsertest_main='
+int main() {
+	int m;
+	int m2;
+	int ok;
+	astReset();
+	astPushTS("x"); astFinishRule("sub");
+	m = astMark();
+	astPushTS("a");
+	m2 = astMark();
+	astPushTS("b"); astPushTS("c"); astGroupAlt(m2);
+	astPushTS("d"); astWrapOpt();
+	astPushTS("e"); astWrapRep();
+	astPushNTS("sub");
+	astGroupSeq(m);
+	astFinishRule("test");
+	ok = genParserC("/tmp/tinyc_genparserc_output.c");
+	putint(ok);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$genparsertest_main" > build/tinyc_genparsertest.ir 2>build/tinyc_genparsertest.err && \
+			build/tinyc_backend build/tinyc_genparsertest.ir build/tinyc_genparsertest_os9.a -os9 -largedata; then
+			cp build/tinyc_genparsertest_os9.a "$MWOS_TMP/genparsertest.a"
+			rm -f "$MWOS_TMP/genparsertest.r" "$MWOS_TMP/genparsertest.out" "$MWOS_TMP/genparsertest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\genparsertest.a -o=M:\\TMP\\genparsertest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/genparsertest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparsertest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparsertest.out -s=M:\\TMP\\genparsertest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/genparsertest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: genParserC (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (genParserC) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (genParserC) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/genparsertest.a "$MWOS_TMP"/genparsertest.r "$MWOS_TMP"/genparsertest.out "$MWOS_TMP"/genparsertest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (genParserC) kompiliert nicht sauber (siehe build/tinyc_genparsertest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (genParserC): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
+	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): letzter Ausschnitt
+	# von codegen.cpp -- 68k-Backend (charComment/emitConsume68k/
+	# emitLongerLiteralReject68k/genNode68k/emitLexHelpers68k/genParser68kTo/
+	# genParser68k/genParser68kOS9, Source/codegen.cpp Zeilen 858+1181-1580). Damit
+	# ist der GESAMTE Vollport von codegen.cpp abgeschlossen. Erzeugt reinen
+	# 68k-Assemblertext -- KEINE C-Operatoren (&&/||) und KEINE eingebetteten
+	# Anfuehrungszeichen im generierten Code, daher weder der emitAndAnd/emitOrOr-
+	# noch der fputc(34,fp)-Workaround aus genParserC hier gebraucht.
+	#
+	# DREI weitere Funde/Fixes waehrend dieses Chunks:
+	# 1. DIESELBE "?"-Variante des logical-frame-Bugs (siehe genParserC): ein
+	#    String-Literal mit "?" als Text ("Identifikator-Zeichen? d0.b...") loeste
+	#    "tinyc: conditional-frame mismatch" aus (tcTernaryDepth-Tracking).
+	#    Gefixt per neuem emitQMark(fp)-Helfer (ein fputc(63,fp)), analog zu
+	#    emitAndAnd/emitOrOr.
+	# 2. Backend-eigene MAX_GLOBALS-Grenze (256, GETRENNT von der Frontend-
+	#    Grenze in Data/tinyc.lextab) blockierte den Skalierungsnachweis: JEDES
+	#    String-Literal im Tiny-C-Quelltext wird zu einem anonymen __strN-Global,
+	#    das kumulative Kompilat hat inzwischen weit ueber 256 davon. Erhoeht auf
+	#    1024 (Source/tinyc_backend_c.cpp).
+	# 3. Ein WEITERER echter Skalierungsbug im 68k-Backend: tc_extcall_tmp (der
+	#    Scratch-Puffer fuer externe Aufrufe mit Stack-Argumenten) wurde bisher
+	#    IMMER per PC-relativem "lea tc_extcall_tmp(pc),a0" direkt an der
+	#    Aufrufstelle referenziert -- unabhaengig von -largedata. Brach aus
+	#    demselben Grund wie der tc_gadata-Fund zuvor. Gefixt nach demselben
+	#    a3-Muster: tc_extcall_tmp bekommt einen ZUSAETZLICHEN Eintrag in
+	#    tc_gadata (Offset globalCount*4, direkt nach allen echten Globalen);
+	#    tc_gadata wird jetzt IMMER emittiert (nicht nur bei globalCount > 0).
+	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+		mkdir -p "$MWOS_TMP"
+		genparser68ktest_main='
+int main() {
+	int m;
+	int m2;
+	int ok;
+	astReset();
+	astPushTS("x"); astFinishRule("sub");
+	m = astMark();
+	astPushTS("a");
+	m2 = astMark();
+	astPushTS("b"); astPushTS("c"); astGroupAlt(m2);
+	astPushTS("d"); astWrapOpt();
+	astPushTS("e"); astWrapRep();
+	astPushNTS("sub");
+	astGroupSeq(m);
+	astFinishRule("test");
+	ok = genParser68kOS9("/tmp/tinyc_genparser68k_output.a", "testbase");
+	putint(ok);
+	return 0;
+}'
+		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$genparser68ktest_main" > build/tinyc_genparser68ktest.ir 2>build/tinyc_genparser68ktest.err && \
+			build/tinyc_backend build/tinyc_genparser68ktest.ir build/tinyc_genparser68ktest_os9.a -os9 -largedata; then
+			cp build/tinyc_genparser68ktest_os9.a "$MWOS_TMP/genparser68ktest.a"
+			rm -f "$MWOS_TMP/genparser68ktest.r" "$MWOS_TMP/genparser68ktest.out" "$MWOS_TMP/genparser68ktest.sym"
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\genparser68ktest.a -o=M:\\TMP\\genparser68ktest.r -q" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/genparser68ktest.r" ]; then
+				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparser68ktest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparser68ktest.out -s=M:\\TMP\\genparser68ktest.sym" >/dev/null 2>&1
+				if [ -s "$MWOS_TMP/genparser68ktest.out" ]; then
+					echo "ok    tinyc Selfhosting L2 Vollport: 68k-Backend (SourceTinyC/codegen.tc, Vollport von codegen.cpp abgeschlossen) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+				else
+					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (68k-Backend) fehlgeschlagen"; fail=1
+				fi
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (68k-Backend) fehlgeschlagen"; fail=1
+			fi
+			rm -f "$MWOS_TMP"/genparser68ktest.a "$MWOS_TMP"/genparser68ktest.r "$MWOS_TMP"/genparser68ktest.out "$MWOS_TMP"/genparser68ktest.sym
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (68k-Backend) kompiliert nicht sauber (siehe build/tinyc_genparser68ktest.err)"; fail=1
+		fi
+	else
+		echo "warn  tinyc Selfhosting L2 Vollport (68k-Backend): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+	fi
+
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
 	# Globale standardmaessig AUSSCHLIESSLICH PC-relativ -- eine ECHTE 68000-Grenze
 	# (16-Bit-Displacement, +-32 KB), die schon bei einem Array von wenigen Dutzend
@@ -2370,6 +2648,551 @@ if [ -x build/tinyc_arm64_backend ]; then
 	fi
 else
 	echo "warn  tinyc static-Laufzeit-Initialisierer ARM64: Backend fehlt -- uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26): ebnf.cpp-Vollport, naechster Ausschnitt
+# nach SourceTinyC/ebnf.tc -- writeWorkfile (Source/ebnf.cpp:1007-1130, die
+# komplette Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/
+# NTS-SYMBOLTABELLE/PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke).
+# ZWEI neue, live gefundene und gefixte Backend-Bugs (Source/tinyc_backend_c.cpp)
+# waren Voraussetzung: (1) LABEL/JMP/JZ/JNZ ("tc_L<n>") und emitCompare()s interne
+# Sprungmarken ("tc_cmp_yes_<n>"/"tc_cmp_done_<n>") hingen nur von einem PRO-DATEI
+# neu bei 0 startenden Zaehler ab -- kollidierten beim Mehrdatei-Link, sobald
+# ZWEI separat kompilierte Dateien beide Kontrollfluss/Vergleiche enthalten
+# (praktisch immer). (2) Dieselbe Kollision fuer die "-largedata"-Tabellen
+# tc_functab/tc_gadata, sobald zwei Dateien beide -largedata brauchen. Beide
+# jetzt mit psectName-Suffix eindeutig gemacht (Muster wie die bestehende
+# static-Namensverfremdung). Grund fuer den Fund: dies ist der ERSTE Test, der
+# ebnf.tc UND codegen.tc als ZWEI GETRENNT kompilierte Dateien real linkt
+# (bisherige ebnf.tc-Chunks wurden nur ALLEIN kompiliert/assembliert, nie
+# gegen codegen.tc gelinkt -- Konkatenation beider Dateien in EINER
+# tinyc_p-Kompilation, wie im Kopfkommentar von ebnf.tc als "schneller Test"
+# beschrieben, verletzt Quirk 8 (Deklarationen-vor-Funktionen GESAMT), siehe
+# docs/FORTSCHRITT.md -- ebnf.tc muss daher ALLEIN kompiliert werden, seine
+# eigenen Bare-Prototypen fuer codegen.tc-Funktionen reichen dem Frontend).
+# Ein VOLLER l68-Link ist fuer diesen Test bewusst NICHT das Kriterium: die
+# rekursive-Abstiegs-Parsergruppe (rule/expression/term/factor/.../
+# ebnfSyntax/lexikalischeAnalyse/exitProgram) hat noch KEINEN echten Rumpf
+# (siehe [[tinyc-vollport-status]]) -- ein l68-Lauf schlaegt deshalb ERWARTET
+# mit "unresolved symbol" fuer genau diese (hier nicht aufgerufenen) Funktionen
+# fehl. Verifiziert wird daher wie bei den bisherigen ebnf.tc-Chunks: kompiliert
+# sauber (Frontend) + assembliert fehlerfrei (echter r68) fuer BEIDE Dateien.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	wwtest_main='
+int wwtestFn() {
+	void* fp;
+
+	aktTabIndex = 3;
+
+	lexTab[0].mode = "TS";
+	tcCopyBounded(lexTab[0].ident, "", 32);
+	tcCopyBounded(lexTab[0].TS, "ident", 32);
+	lexTab[0].trueAction = 1;
+	lexTab[0].falseAction = -2;
+	lexTab[0].callAddr = -1;
+
+	lexTab[1].mode = "RNG";
+	tcCopyBounded(lexTab[1].ident, "", 32);
+	tcCopyBounded(lexTab[1].TS, "digit", 32);
+	lexTab[1].rangeLo = 48;
+	lexTab[1].rangeHi = 57;
+	lexTab[1].trueAction = 2;
+	lexTab[1].falseAction = -2;
+	lexTab[1].callAddr = -1;
+
+	lexTab[2].mode = "NTS";
+	tcCopyBounded(lexTab[2].ident, "rule1", 32);
+	tcCopyBounded(lexTab[2].TS, "rule1", 32);
+	lexTab[2].trueAction = -1;
+	lexTab[2].falseAction = -2;
+	lexTab[2].callAddr = 0;
+
+	tcCopyBounded(ruleSymbols[0].name, "rule1", 32);
+	ruleSymbols[0].addr = 2;
+	ruleSymbolCnt = 1;
+
+	tcCopyBounded(testCases[0].input, "abc123", 255);
+	testCases[0].expectOk = 1;
+	tcCopyBounded(testCases[1].input, "xyz", 255);
+	testCases[1].expectOk = 0;
+	testCaseCnt = 2;
+
+	appendQuelltext("rule1 = ident ;");
+
+	fp = fopen("/tmp/tinyc_workfile_test.txt", "w");
+	writeWorkfile(fp);
+	fclose(fp);
+
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$wwtest_main" > build/tinyc_wwtest_a.ir 2>build/tinyc_wwtest_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_wwtest_b.ir 2>build/tinyc_wwtest_b.err && \
+		build/tinyc_backend build/tinyc_wwtest_a.ir build/tinyc_wwtest_a.s68 -os9 -largedata -part && \
+		build/tinyc_backend build/tinyc_wwtest_b.ir build/tinyc_wwtest_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_wwtest_a.s68 "$MWOS_TMP/wwtesta.a"
+		cp build/tinyc_wwtest_b.s68 "$MWOS_TMP/wwtestb.a"
+		rm -f "$MWOS_TMP/wwtesta.r" "$MWOS_TMP/wwtestb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtesta.a -o=M:\\TMP\\wwtesta.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtestb.a -o=M:\\TMP\\wwtestb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/wwtesta.r" ] && [ -s "$MWOS_TMP/wwtestb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: writeWorkfile (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (writeWorkfile) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/wwtesta.a "$MWOS_TMP"/wwtestb.a "$MWOS_TMP"/wwtesta.r "$MWOS_TMP"/wwtestb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (writeWorkfile) kompiliert nicht sauber (siehe build/tinyc_wwtest_a.err/build/tinyc_wwtest_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (writeWorkfile): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
+# nach SourceTinyC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/ebnf.cpp:1132-1156,
+# Fall B: Linksrekursions-Kanten aus einer GELADENEN Arbeitsdatei rekonstruieren,
+# statt sie waehrend des normalen Parsens ueber das firstPos-Flag zu sammeln).
+# Haengt wie fast alles in ebnf.tc an extern strcmp/strlen (CALLEXT) -- TinyVM
+# kennt CALLEXT nicht, daher wie bei den bisherigen ebnf.tc-Chunks NUR strukturell
+# verifiziert (kompiliert sauber, echter r68 assembliert, ebnf.tc+codegen.tc
+# getrennt). ZUSAETZLICH die reine ALGORITHMUS-Logik einmalig gegen eine
+# native C-Uebersetzung derselben Funktion samt Testdaten (4 lexTab-Zeilen mit
+# einer Linksrekursions-Kette, 2 falseAction-erreichbare NTS-Kanten erwartet)
+# gegengeprueft -- beide liefern firstEdgeCnt=2/ruleNameListCnt=2, exakt wie im
+# Original-Algorithmus erwartet. Nicht dauerhaft als Skript verankert (gleiche
+# Abwaegung wie beim LEXER-Konfigurationsparser-Chunk: Wartungsaufwand einer
+# zweiten Testumgebung nur fuers Testen steht in keinem Verhaeltnis zum Nutzen).
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	rebuildtest_main='
+int rebuildtestFn() {
+	aktTabIndex = 4;
+
+	lexTab[0].mode = "NTS";
+	tcCopyBounded(lexTab[0].ident, "start", 32);
+	tcCopyBounded(lexTab[0].TS, "middle", 32);
+	lexTab[0].falseAction = 1;
+
+	lexTab[1].mode = "TS";
+	tcCopyBounded(lexTab[1].ident, "", 32);
+	tcCopyBounded(lexTab[1].TS, "ident", 32);
+	lexTab[1].falseAction = 2;
+
+	lexTab[2].mode = "NTS";
+	tcCopyBounded(lexTab[2].ident, "", 32);
+	tcCopyBounded(lexTab[2].TS, "other", 32);
+	lexTab[2].falseAction = -2;
+
+	lexTab[3].mode = "TS";
+	tcCopyBounded(lexTab[3].ident, "middle", 32);
+	tcCopyBounded(lexTab[3].TS, "digit", 32);
+	lexTab[3].falseAction = -2;
+
+	rebuildFirstEdgesFromTable();
+
+	putint(firstEdgeCnt);
+	putint(ruleNameListCnt);
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rebuildtest_main" > build/tinyc_rebuildtest_a.ir 2>build/tinyc_rebuildtest_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rebuildtest_b.ir 2>build/tinyc_rebuildtest_b.err && \
+		build/tinyc_backend build/tinyc_rebuildtest_a.ir build/tinyc_rebuildtest_a.s68 -os9 -largedata -part && \
+		build/tinyc_backend build/tinyc_rebuildtest_b.ir build/tinyc_rebuildtest_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_rebuildtest_a.s68 "$MWOS_TMP/rebuilda.a"
+		cp build/tinyc_rebuildtest_b.s68 "$MWOS_TMP/rebuildb.a"
+		rm -f "$MWOS_TMP/rebuilda.r" "$MWOS_TMP/rebuildb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuilda.a -o=M:\\TMP\\rebuilda.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuildb.a -o=M:\\TMP\\rebuildb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/rebuilda.r" ] && [ -s "$MWOS_TMP/rebuildb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: rebuildFirstEdgesFromTable (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (rebuildFirstEdgesFromTable) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/rebuilda.a "$MWOS_TMP"/rebuildb.a "$MWOS_TMP"/rebuilda.r "$MWOS_TMP"/rebuildb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (rebuildFirstEdgesFromTable) kompiliert nicht sauber (siehe build/tinyc_rebuildtest_a.err/build/tinyc_rebuildtest_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (rebuildFirstEdgesFromTable): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
+# nach SourceTinyC/ebnf.tc -- loadWorkfileAsGrammar (Source/ebnf.cpp:1162-1231,
+# Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus einer Arbeitsdatei laden, ohne
+# .ebnf). Das Original nutzt EIN grosses sscanf(...) mit NEUN Ausgabeparametern --
+# geht hier NICHT 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (neun
+# ueberschreiten das), (2) int*-Ausgabeparameter mit "*p = wert"-Schreibzugriff
+# sind in dieser Tiny-C-Version generell unerprobt (siehe execPosResult/execFrom).
+# Stattdessen ein Handparser (wfParseInt/wfParseToken, globale Parse-Position
+# wfParsePos statt int*-Out-Parameter) passend zum writeWorkfile-Zeilenformat.
+# ZWEI neue Grenzfaelle live gefunden: "lexTab[aktTabIndex].ident[0] = 0;"
+# (arr[i].field[j] als Zuweisungsziel) wird vom Frontend abgelehnt -- durch
+# tcCopyBounded(..., "", 32) ersetzt (identisch zum bereits vorhandenen
+# "-"-Fall). Und: "?" als reiner Text in einer Fehlermeldung loeste erneut den
+# bekannten "conditional-frame mismatch"-Bug aus (Quirk 15) -- ohne Fragezeichen
+# umformuliert. Verifiziert wie bei writeWorkfile: kompiliert+assembliert sauber
+# (echter r68, ebnf.tc+codegen.tc getrennt). ZUSAETZLICH die komplette
+# Rundreise (writeWorkfile schreibt eine Tabelle -> Tabelle "vergessen" ->
+# loadWorkfileAsGrammar laedt sie zurueck) einmalig gegen eine native
+# C-Uebersetzung BEIDER Funktionen gegengeprueft: alle Werte (Modi, Ident-/
+# TS-Text, true/falseAction, rangeLo/rangeHi, Quelltextlaenge) kommen exakt wie
+# geschrieben zurueck.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	lwtest_main='
+int lwtestFn() {
+	void* fp;
+	int savedCnt;
+
+	aktTabIndex = 3;
+
+	lexTab[0].mode = "TS";
+	tcCopyBounded(lexTab[0].ident, "", 32);
+	tcCopyBounded(lexTab[0].TS, "ident", 32);
+	lexTab[0].trueAction = 1;
+	lexTab[0].falseAction = -2;
+	lexTab[0].callAddr = -1;
+	lexTab[0].rangeLo = 0;
+	lexTab[0].rangeHi = 0;
+
+	lexTab[1].mode = "RNG";
+	tcCopyBounded(lexTab[1].ident, "", 32);
+	tcCopyBounded(lexTab[1].TS, "digit", 32);
+	lexTab[1].rangeLo = 48;
+	lexTab[1].rangeHi = 57;
+	lexTab[1].trueAction = 2;
+	lexTab[1].falseAction = -2;
+	lexTab[1].callAddr = -1;
+
+	lexTab[2].mode = "NTS";
+	tcCopyBounded(lexTab[2].ident, "rule1", 32);
+	tcCopyBounded(lexTab[2].TS, "rule1", 32);
+	lexTab[2].trueAction = -1;
+	lexTab[2].falseAction = -2;
+	lexTab[2].callAddr = 0;
+	lexTab[2].rangeLo = 0;
+	lexTab[2].rangeHi = 0;
+
+	appendQuelltext("rule1 = ident | digit ;");
+
+	fp = fopen("/tmp/tinyc_roundtrip_test.txt", "w");
+	writeWorkfile(fp);
+	fclose(fp);
+
+	savedCnt = aktTabIndex;
+
+	aktTabIndex = 0;
+	quelltextLen = 0;
+
+	if (loadWorkfileAsGrammar("/tmp/tinyc_roundtrip_test.txt") == 0) {
+		putint(-1);
+		return;
+	}
+
+	putint(aktTabIndex);
+	putint(savedCnt);
+	putint(strcmp(lexTab[0].mode, "TS"));
+	putint(strcmp(lexTab[0].TS, "ident"));
+	putint(lexTab[0].trueAction);
+	putint(lexTab[0].falseAction);
+	putint(strcmp(lexTab[1].mode, "RNG"));
+	putint(strcmp(lexTab[1].TS, "digit"));
+	putint((int) lexTab[1].rangeLo);
+	putint((int) lexTab[1].rangeHi);
+	putint(strcmp(lexTab[2].mode, "NTS"));
+	putint(strcmp(lexTab[2].ident, "rule1"));
+	putint(strcmp(lexTab[2].TS, "rule1"));
+	putint(quelltextLen);
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lwtest_main" > build/tinyc_lwtest_a.ir 2>build/tinyc_lwtest_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_lwtest_b.ir 2>build/tinyc_lwtest_b.err && \
+		build/tinyc_backend build/tinyc_lwtest_a.ir build/tinyc_lwtest_a.s68 -os9 -largedata -part && \
+		build/tinyc_backend build/tinyc_lwtest_b.ir build/tinyc_lwtest_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_lwtest_a.s68 "$MWOS_TMP/lwtesta.a"
+		cp build/tinyc_lwtest_b.s68 "$MWOS_TMP/lwtestb.a"
+		rm -f "$MWOS_TMP/lwtesta.r" "$MWOS_TMP/lwtestb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtesta.a -o=M:\\TMP\\lwtesta.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtestb.a -o=M:\\TMP\\lwtestb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/lwtesta.r" ] && [ -s "$MWOS_TMP/lwtestb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: loadWorkfileAsGrammar (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (loadWorkfileAsGrammar) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/lwtesta.a "$MWOS_TMP"/lwtestb.a "$MWOS_TMP"/lwtesta.r "$MWOS_TMP"/lwtestb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (loadWorkfileAsGrammar) kompiliert nicht sauber (siehe build/tinyc_lwtest_a.err/build/tinyc_lwtest_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (loadWorkfileAsGrammar): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechste zwei
+# Ausschnitte nach SourceTinyC/ebnf.tc -- runTests (Source/ebnf.cpp:1233-1268,
+# alle TEST-Zeilen durch execFrom jagen und mit dem erwarteten Ergebnis
+# vergleichen) UND loadPreservedTests (Source/ebnf.cpp:920-993, TESTS/
+# NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei retten, bevor
+# sie ueberschrieben wird). ZWEI weitere Grenzfaelle gefunden: (1) dieselbe
+# arr[i].field[j]-Zuweisungsziel-Ablehnung wie bei loadWorkfileAsGrammar,
+# diesmal fuer testCases[i].input[n] -- Umweg ueber einen lokalen Puffer plus
+# tcCopyBounded. (2) Bool-Ausdruecke (strncmp(...)==0 etc.) koennen NICHT
+# direkt einer int-Variable/einem int-Feld zugewiesen werden (dieselbe
+# strikte int/bool-Trennung wie bei Quirk 3/10 fuer Bedingungen/Rueckgaben,
+# hier erstmals fuer eine normale Zuweisung getroffen) -- komplette if/else-
+# Zweige statt "x = (a == b);". Verifiziert wie die vorigen Chunks (kompiliert
+# + assembliert sauber, ebnf.tc+codegen.tc getrennt) -- Regressionstest in
+# runtests.sh. ZUSAETZLICH ein voller Rundlauf (Arbeitsdatei mit einer
+# RNG-Regel + drei TEST-Zeilen schreiben, per loadWorkfileAsGrammar +
+# loadPreservedTests wieder einlesen, runTests ausfuehren) einmalig gegen
+# eine native C-Uebersetzung aller vier beteiligten Funktionen gegengeprueft:
+# beide liefern aktTabIndex=1/testCaseCnt=3/mismatches=0 (alle drei Testfaelle
+# PASS).
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	rtlp_main='
+int rtlpFn() {
+	void* fp;
+	int mismatches;
+
+	fp = fopen("/tmp/tinyc_rtlp_test.txt", "w");
+	fprintf(fp, "[PARSER-TABELLE]\n");
+	fprintf(fp, "0     -1    -2    -1    48    57    -                RNG  digit\n");
+	fprintf(fp, "[ENDE]\n\n");
+	fprintf(fp, "[TESTS]\n");
+	fprintf(fp, "TEST ");
+	fputc(34, fp);
+	fprintf(fp, "5");
+	fputc(34, fp);
+	fprintf(fp, " OK\n");
+	fprintf(fp, "TEST ");
+	fputc(34, fp);
+	fprintf(fp, "ab");
+	fputc(34, fp);
+	fprintf(fp, " FAIL\n");
+	fprintf(fp, "TEST ");
+	fputc(34, fp);
+	fprintf(fp, "x");
+	fputc(34, fp);
+	fprintf(fp, " FAIL\n");
+	fclose(fp);
+
+	if (loadWorkfileAsGrammar("/tmp/tinyc_rtlp_test.txt") == 0) {
+		putint(-1);
+		return;
+	}
+	loadPreservedTests("/tmp/tinyc_rtlp_test.txt");
+
+	putint(aktTabIndex);
+	putint(testCaseCnt);
+
+	mismatches = runTests();
+	putint(mismatches);
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rtlp_main" > build/tinyc_rtlp_a.ir 2>build/tinyc_rtlp_a.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rtlp_b.ir 2>build/tinyc_rtlp_b.err && \
+		build/tinyc_backend build/tinyc_rtlp_a.ir build/tinyc_rtlp_a.s68 -os9 -largedata -part && \
+		build/tinyc_backend build/tinyc_rtlp_b.ir build/tinyc_rtlp_b.s68 -os9 -largedata -part; then
+		cp build/tinyc_rtlp_a.s68 "$MWOS_TMP/rtlpa.a"
+		cp build/tinyc_rtlp_b.s68 "$MWOS_TMP/rtlpb.a"
+		rm -f "$MWOS_TMP/rtlpa.r" "$MWOS_TMP/rtlpb.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpa.a -o=M:\\TMP\\rtlpa.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpb.a -o=M:\\TMP\\rtlpb.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/rtlpa.r" ] && [ -s "$MWOS_TMP/rtlpb.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: runTests + loadPreservedTests (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (runTests/loadPreservedTests) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/rtlpa.a "$MWOS_TMP"/rtlpb.a "$MWOS_TMP"/rtlpa.r "$MWOS_TMP"/rtlpb.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (runTests/loadPreservedTests) kompiliert nicht sauber (siehe build/tinyc_rtlp_a.err/build/tinyc_rtlp_b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (runTests/loadPreservedTests): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): die rekursive-
+# Abstiegs-Parsergruppe nach SourceTinyC/ebnf.tc -- literal/ident/block/repeat/
+# option/factor/term/expression/rule (Source/ebnf.cpp:1371-1774) PLUS die bisher
+# fehlenden Helfer push/pop/restart/errorMsg/test/addIdentList/patchLocalTrue/
+# patchLocalFalse (920-1330). Alle neun Kernfunktionen hatten bereits seit
+# Projektbeginn bare Prototypen in ebnf.tc (gegenseitige Rekursion) -- der
+# FUNCDECL/FUNC-Blocker dafuer wurde am 2026-07-25 im Backend gefixt (siehe
+# commit 7102de2). Kann NICHT sinnvoll ausgefuehrt/getestet werden (haengt an
+# lexikalischeAnalyse()/getAktChar(), beides noch nicht portiert -- naechster
+# Schritt) -- Verifikation bleibt bei kompiliert+assembliert sauber. WICHTIGES
+# Zwischenergebnis: ein echter l68-Link von ebnf.tc+codegen.tc zeigt nach diesem
+# Chunk nur noch GENAU die 7 erwarteten Lexer-Funktionen als unresolved
+# (getAktChar/getAktLine/put/ebnfSyntax/semantischeAnylyse/
+# lexikalischeAnalyse/exitProgram) -- die Parsergruppe selbst ist vollstaendig
+# und korrekt verdrahtet, keine ueberraschenden fehlenden Symbole.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)" > build/tinyc_parser1.ir 2>build/tinyc_parser1.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_parser1b.ir 2>build/tinyc_parser1b.err && \
+		build/tinyc_backend build/tinyc_parser1.ir build/tinyc_parser1.s68 -os9 -largedata -part && \
+		build/tinyc_backend build/tinyc_parser1b.ir build/tinyc_parser1b.s68 -os9 -largedata -part; then
+		cp build/tinyc_parser1.s68 "$MWOS_TMP/parser1a.a"
+		cp build/tinyc_parser1b.s68 "$MWOS_TMP/parser1b.a"
+		rm -f "$MWOS_TMP/parser1a.r" "$MWOS_TMP/parser1b.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1a.a -o=M:\\TMP\\parser1a.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1b.a -o=M:\\TMP\\parser1b.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/parser1a.r" ] && [ -s "$MWOS_TMP/parser1b.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: rekursive-Abstiegs-Parsergruppe (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (Parsergruppe) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/parser1a.a "$MWOS_TMP"/parser1b.a "$MWOS_TMP"/parser1a.r "$MWOS_TMP"/parser1b.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (Parsergruppe) kompiliert nicht sauber (siehe build/tinyc_parser1.err/build/tinyc_parser1b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (Parsergruppe): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): der Lexer nach
+# SourceTinyC/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
+# getAktLine/put/semantischeAnylyse (Source/ebnf.cpp:1810-2147, 1906-1970).
+# lexikalischeAnalyse/getAktChar/put/semantischeAnylyse hatten bereits bare
+# Prototypen; getNext/comment sind neu UND werden ihrerseits von getAktChar
+# bzw. getAktLine gerufen -- strikte Definitions-Reihenfolge eingehalten.
+# NEU dabei: initLexer() (das C++-Original initialisiert die Lexer-Config-
+# Globalen wie startLineCommentString etc. per automatischem C++-Globalen-
+# Initialisierer VOR main() -- Tiny-C GLOBAL-Deklarationen koennen das nicht
+# fuer String-Pointer, daher eine explizite Init-Funktion, die main()/
+# ebnfSyntax() [naechster, letzter Schritt] einmal zu Programmbeginn rufen
+# muss). WICHTIGSTER neuer Grenzfall: rohes Zeiger-Dereferenzieren (*p lesen
+# UND *p = wert schreiben, nicht nur p[i]) wird hier zum ERSTEN Mal im ganzen
+# Port gebraucht (getNext/comment) -- vorab per Standalone-Test gegen TinyVM
+# verifiziert (Lesen+Schreiben ueber einen Pointer auf ein globales
+# char-Array liefert exakt die erwarteten Werte), danach bedenkenlos wie im
+# Original eingesetzt. Ebenfalls verifiziert: ein nicht verwendeter
+# Rueckgabewert (comment() als blosse Anweisung) kompiliert und laeuft
+# korrekt (TinyVM-Test) -- die vorsichtshalber-Variable aus dem vorigen
+# Chunk (expression()s poppedLine) war also nicht zwingend noetig, bleibt
+# aber unveraendert stehen.
+#
+# Verifiziert wie die vorigen Chunks (kompiliert + assembliert sauber) PLUS
+# ein echter Tokenizer-Lauf ("rule1 = \"a\" ;" -> IDENT/EQUAL/LITERAL/END)
+# einmalig gegen eine native C-Uebersetzung ALLER Lexer-Funktionen
+# gegengeprueft: beide liefern exakt dieselbe Tokenfolge (138/129/139/143)
+# und aktName="rule1". WICHTIGES Zwischenergebnis: ein echter l68-Link von
+# ebnf.tc+codegen.tc zeigt nach diesem Chunk nur noch GENAU 2 unresolved
+# Symbole (ebnfSyntax/exitProgram) -- der komplette Rest der Datei ist
+# vollstaendig und korrekt verdrahtet.
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	lextest_main='
+int lextestFn() {
+	void* fp;
+	int tokens[16];
+	int tokenCnt;
+
+	fp = fopen("/tmp/tinyc_lextest_in.ebnf", "w");
+	fprintf(fp, "rule1 = ");
+	fputc(34, fp);
+	fprintf(fp, "a");
+	fputc(34, fp);
+	fprintf(fp, " ;\n");
+	fclose(fp);
+
+	initLexer();
+	fpIn = fopen("/tmp/tinyc_lextest_in.ebnf", "r");
+	tokenCnt = 0;
+
+	getAktChar();
+	lexikalischeAnalyse();
+	while (aktToken != 144 && tokenCnt < 16) {		/* TOKEN_EXIT */
+		tokens[tokenCnt] = aktToken;
+		tokenCnt = tokenCnt + 1;
+		lexikalischeAnalyse();
+	}
+	fclose(fpIn);
+
+	putint(tokenCnt);
+	putint(tokens[0]);
+	putint(tokens[1]);
+	putint(tokens[2]);
+	putint(tokens[3]);
+	putint(strcmp(aktName, "rule1"));
+	putint(1);
+}'
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lextest_main" > build/tinyc_lextest_a.ir 2>build/tinyc_lextest_a.err && \
+		build/tinyc_backend build/tinyc_lextest_a.ir build/tinyc_lextest_a.s68 -os9 -largedata -part; then
+		cp build/tinyc_lextest_a.s68 "$MWOS_TMP/lextesta.a"
+		rm -f "$MWOS_TMP/lextesta.r"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lextesta.a -o=M:\\TMP\\lextesta.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/lextesta.r" ]; then
+			echo "ok    tinyc Selfhosting L2 Vollport: Lexer (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68) korrekt"
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (Lexer) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/lextesta.a "$MWOS_TMP"/lextesta.r
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (Lexer) kompiliert nicht sauber (siehe build/tinyc_lextest_a.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (Lexer): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+fi
+
+# Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): ebnfMain/
+# ebnfSyntax/exitProgram (Source/ebnf.cpp:170-334, 1357-1369, 322-334) --
+# LETZTER Abschnitt des ebnf.cpp-Vollports. Tiny-C main() kann keine
+# argc/argv empfangen (kein Mechanismus dafuer in Grammatik/Backend) -- die
+# komplette Original-main()-Logik lebt deshalb in ebnfMain(char* baseArg),
+# main() selbst ist ein duenner Wrapper mit fest einprogrammiertem
+# Basisnamen ("tinyc"). Bewusst entfallen: die argc<2-Usage-Meldung und der
+# optionale <teststring>-Testlauf (runTests() deckt das bereits ab).
+#
+# WICHTIGSTER Unterschied zu allen bisherigen ebnf.tc-Chunks: ebnf.tc hat ab
+# jetzt eine ECHTE main()-Funktion -- die sechs AELTEREN Tests oben (die
+# bisher je ein eigenes "void main(){...}" an ebnf.tc anhaengten) wurden
+# deshalb umgebaut (Testfunktion umbenannt, kein "main" mehr; Backend-Aufruf
+# von "-part -runtime" auf reines "-part" reduziert -- r68-Assemblierung
+# braucht keinen echten Einspringpunkt, nur echtes Linken (l68) wuerde einen
+# brauchen, das pruefen jene sechs Tests aber ohnehin nicht).
+#
+# DAS HIER IST DER MEILENSTEIN-TEST: zum ERSTEN Mal ein VOLLER l68-Link von
+# ebnf.tc (mit seiner echten main()) GEGEN codegen.tc, ohne jedes unresolved
+# Symbol -- der komplette Tiny-C-Vollport von Source/ebnf.cpp (Schritt 2 aus
+# dem urspruenglichen 3-Schritt-Plan, siehe [[tinyc-vollport-status]]) ist
+# damit strukturell/kompilatorisch VOLLSTAENDIG. (Was das noch NICHT
+# abdeckt: echte Ausfuehrung/Verhalten auf dem Q9-Emulator -- Schritt 3 des
+# Plans, separat vermerkt.)
+if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
+	mkdir -p "$MWOS_TMP"
+	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)" > build/tinyc_final1.ir 2>build/tinyc_final1.err && \
+		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_final1b.ir 2>build/tinyc_final1b.err && \
+		build/tinyc_backend build/tinyc_final1.ir build/tinyc_final1.s68 -os9 -largedata -part -runtime && \
+		build/tinyc_backend build/tinyc_final1b.ir build/tinyc_final1b.s68 -os9 -largedata -part; then
+		cp build/tinyc_final1.s68 "$MWOS_TMP/final1a.a"
+		cp build/tinyc_final1b.s68 "$MWOS_TMP/final1b.a"
+		rm -f "$MWOS_TMP/final1a.r" "$MWOS_TMP/final1b.r" "$MWOS_TMP/final1.out"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\final1a.a -o=M:\\TMP\\final1a.r -q" >/dev/null 2>&1
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\final1b.a -o=M:\\TMP\\final1b.r -q" >/dev/null 2>&1
+		if [ -s "$MWOS_TMP/final1a.r" ] && [ -s "$MWOS_TMP/final1b.r" ]; then
+			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\final1a.r M:\\TMP\\final1b.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\final1.out" >/dev/null 2>&1
+			if [ -s "$MWOS_TMP/final1.out" ]; then
+				echo "ok    tinyc Selfhosting L2 Vollport: KOMPLETT -- ebnf.tc (mit echter main()) + codegen.tc kompilieren, assemblieren UND linken (echter r68+l68 gegen echte clib.l) vollstaendig OHNE unresolved Symbole"
+			else
+				echo "FAIL  tinyc Selfhosting L2 Vollport: voller l68-Link (ebnf.tc+codegen.tc) fehlgeschlagen"; fail=1
+			fi
+		else
+			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (ebnfMain/main) fehlgeschlagen"; fail=1
+		fi
+		rm -f "$MWOS_TMP"/final1a.a "$MWOS_TMP"/final1b.a "$MWOS_TMP"/final1a.r "$MWOS_TMP"/final1b.r "$MWOS_TMP"/final1.out
+	else
+		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (ebnfMain/main) kompiliert nicht sauber (siehe build/tinyc_final1.err/build/tinyc_final1b.err)"; fail=1
+	fi
+else
+	echo "warn  tinyc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

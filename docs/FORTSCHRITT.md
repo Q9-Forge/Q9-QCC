@@ -1,17 +1,22 @@
 # Fortschritt und Roadmap
 
-## Selfhosting L2 Vollport: begonnen (2026-07-25), WICHTIGER Architektur-Fund
+## Selfhosting L2 Vollport: `codegen.cpp` ABGESCHLOSSEN (2026-07-25)
+
+**Stand 2026-07-25 abends: der komplette Vollport von `Source/codegen.cpp`
+(1582 Zeilen) nach `SourceTinyC/codegen.tc` ist fertig** -- AST-Aufbau,
+LEXER-/CODEGEN-/ACTIONS-Konfigurationsparser, AST-Validierung, sowie C- UND
+68k-Backend-Codegenerator. Sieben Vollport-Regressionstests in `runtests.sh`
+verankert (jeweils echter `r68`+`l68`-Link gegen echte `clib.l`). Naechster
+Schritt: `Source/ebnf.cpp` (2149 Zeilen, komplett unberuehrt), danach
+Live-Q9-Verifikation. Details zur Entstehung (chronologisch) unten.
 
 Nutzerwunsch: `codegen.cpp` (kleinere der beiden Kerndateien) nach Tiny-C
-portieren -- `SourceTinyC/codegen.tc` (neues Verzeichnis) enthaelt bisher die
-AST-Aufbau-Schicht (`astReset`/`astMark`/`newNode`/`pushNode`/`astPushTS`/
+portieren -- `SourceTinyC/codegen.tc` (neues Verzeichnis) enthaelt zunaechst
+die AST-Aufbau-Schicht (`astReset`/`astMark`/`newNode`/`pushNode`/`astPushTS`/
 `astPushRNG`/`astPushNTS`/`groupAs`/`astGroupSeq`/`astGroupAlt`/`wrapAs`/
 `astWrapOpt`/`astWrapRep`/`astFinishRule`) + gemeinsame Helfer
 (`sanitizeName`/`newLabel`/`ruleIndexByName`), verifiziert in TinyVM UND per
-echtem `r68`-Assembler. Das ist ein kleiner Teil von `codegen.cpp` (1569
-Zeilen) -- der Rest (LEXER/CODEGEN/ACTIONS-Konfigurationsparser, AST-Validierung,
-C- UND 68k-Text-Codegen) sowie ganz `ebnf.cpp` (2149 Zeilen) sind NOCH NICHT
-angefasst.
+echtem `r68`-Assembler.
 
 **2026-07-25 (spaeter, direkt im Anschluss an den -largedata-Funktionsaufruf-
 Fix): naechster Ausschnitt portiert -- LEXER-Konfigurationsparser** (`lexAnyBlockNested`/
@@ -101,6 +106,165 @@ dieselben, bereits mehrfach bewiesenen Muster wie `arr[i].feld` ueber
 Zwischenvariable). Echte End-zu-End-Verhaltensverifikation bleibt der
 Live-Q9-Ausfuehrung vorbehalten (bereits als eigener offener Schritt vermerkt,
 siehe "Bewusst offen").
+
+**2026-07-25 (noch spaeter, direkt im Anschluss): AST-Validierung portiert**
+(`isWordLiteral`/`nodeNullable`/`validateRepeatProgress`/
+`validateAstForCodegen`, `Source/codegen.cpp` Zeilen 750-857). Prueft VOR der
+Ausgabe zwei Dinge: (1) eine Wiederholung mit nullbarem Rumpf (z.B. `{ [x] }`)
+waere im erzeugten Parser eine Endlosschleife -- wird per Fixpunktanalyse
+ueber gegenseitig rekursive Regeln erkannt und abgelehnt; (2) zwei Regeln, die
+nach der `$`->`_`-Normalisierung denselben Namen ergeben, wuerden doppelte
+C-Funktionen bzw. 68k-Labels erzeugen -- wird ebenfalls erkannt und abgelehnt.
+`ruleNullable[AST_MAX_RULES]` war im Original ein LOKALES Array mit
+Nullinitialisierer (`= { 0 }`) -- hier als GLOBAL angelegt und per Schleife
+genullt (gleiches Muster wie `ruleIsLexical`), um die Frage nach lokalen
+int-Array-Initialisierern gar nicht erst zu stellen.
+
+**Zwei weitere Stolperfallen dabei gefunden** (beide sofort im Port behoben):
+ein `return <Vergleichsausdruck>;` (z.B. `return txt[0] == 0;`) aus einer als
+`int` deklarierten Funktion wird ALS RUECKGABEWERT ebenfalls als Typfehler
+abgelehnt ("return expects int, got bool") -- staerker als die bereits
+bekannte int/bool-Regel bei `if`/`&&`, da hier sogar der Aufruf noch als
+"exit 0, OK" durchlaeuft und der Fehler nur im STDOUT auftaucht (siehe
+naechster Punkt). Und: **semantische Fehler stoppen den generierten Parser
+NICHT** -- `tcSemanticErrors` wird zwar hochgezaehlt, aber NIRGENDS
+ausgewertet (weder in `Data/tinyc.lextab` noch im `codegen.cpp`-Treiber);
+der Compiler druckt die Fehlermeldung, gibt trotzdem "OK" aus und exit 0.
+**Deshalb ab sofort bei jedem Kompilieren zusaetzlich `grep -n "^tinyc:"`
+auf STDOUT/stderr pruefen, nicht nur auf "OK"/exit-Code verlassen** (nach
+diesem Fund rueckwirkend den gesamten kumulativen Dateistand erneut
+geprüft -- keine versteckten Fehler in den bereits gemergten Chunks).
+
+**Verifiziert:** einmalig per TinyVM (mit Tiny-C-eigenen Stand-ins fuer
+`strcmp`/`isalpha`/`isalnum` statt `extern`) -- alle 10 erwarteten Werte
+trafen exakt zu, inklusive BEIDER Diagnosepfade (nullbare Wiederholung UND
+Regelnamenkollision, mit den erwarteten Diagnose-Seiteneffekten VOR dem
+jeweiligen Rueckgabewert). ARM64 hier NICHT moeglich: das kumulative
+Gesamtkompilat enthaelt bereits `free`-Aufrufe aus dem ActionRoutine-Chunk,
+und ARM64 lehnt `CALLEXT` GRUNDSAETZLICH ab (Ganzprogrammpruefung beim
+Codegen, unabhaengig von tatsaechlicher Erreichbarkeit) -- TinyVM dagegen
+meldet einen unbekannten Opcode nur bei tatsaechlicher AUSFUEHRUNG, was hier
+unproblematisch war. Dauerhafte Regression wie ueblich: echter `r68`+`l68`
+gegen echte `clib.l`, in `runtests.sh` verankert.
+
+**2026-07-25 (noch spaeter, direkt im Anschluss): C-Backend-Codegenerator
+portiert** (`emitCString`/`emitLongerLiteralRejectC`/`genNodeC`,
+`Source/codegen.cpp` Zeilen 858-1000). Das ist die ERSTE Beruehrung mit
+ECHTER Dateiausgabe im Port (`fopen`/`fprintf`/`fputc`/`fclose` statt nur
+stdout-Diagnosen wie bisher) -- `FILE*` wird als `void*` gefuehrt (Tiny-C hat
+keinen `FILE`-Struct-Typ, der ABI-Aufruf braucht nur einen opaken Zeiger, den
+`clib.l` selbst interpretiert). `clib.l` hat KEIN `snprintf` (nur `sprintf`,
+per `strings` bestaetigt, aeltere Microware-Bibliothek) -- deshalb `sprintf`
+ohne Laengenlimit verwendet (unschaedlich hier: alle Aufrufe schreiben kurze,
+feste Formate in ausreichend grosse Puffer). `charComment` (nur vom 68k-Chunk
+gebraucht) wurde bewusst NOCH NICHT mitportiert, da fuer den C-Backend-Chunk
+selbst ungenutzt.
+
+**NEUE, bisher unbekannte Tiny-C-Grenze gefunden:** Tiny-C kann KEINE EIGENEN
+variadischen Funktionen definieren (nur variadische `extern`-Aufrufe wie
+`printf`/`fprintf` selbst) -- ein Tiny-C-eigener Stand-in fuer `fprintf`
+(fuer eine TinyVM/ARM64-Tiefenverifikation wie bei den String-Funktionen
+zuvor) ist deshalb grundsaetzlich NICHT moeglich. Verifikation bleibt daher
+bei "kompiliert sauber + echter `r68`/`l68`-Link" (wie beim ActionRoutine-
+Chunk) -- erfolgreich mit einem Testfall, der alle sieben `AstKind`-Faelle
+(SEQ/ALT/OPT/REP/TS/RNG/NTS) durchlaeuft und in eine echte Datei schreibt.
+Echte Textinhalts-Verifikation bleibt der Live-Q9-Ausfuehrung vorbehalten.
+
+**2026-07-25 (noch spaeter, direkt im Anschluss): genParserC portiert** (der
+Rest des C-Backends: Datei-Header, Lexer-Helfer `ws()`/`idch()`, Action-Log-
+Runtime-Geruest, eine `p_<regel>()`-Funktion pro Regel, `main()` --
+`Source/codegen.cpp` Zeilen 1002-1168). SECHS Stellen im C++-Original betten
+ein Anfuehrungszeichen DIREKT in einen `fprintf`-Formatstring ein -- geht in
+Tiny-C nicht, per `fputc(34,fp)`-Aufteilung umgeschrieben (Text-vor-dem-Quote
+/ `fputc(34,fp)` / Text-in-den-Quotes / `fputc(34,fp)` / Text-danach). ZWEI
+dieser Stellen haben zusaetzlich ein `"%%"`-Selbstescape im Original
+(literales `%` ohne eigenes Substitutionsargument) -- als `"%s"`-Argument
+uebergeben statt direkt in den Formatstring geschrieben, da Tiny-C/`clib.l`s
+`fprintf` ein `%` sonst als Formatzeichen re-interpretiert haette.
+
+**Dabei ZWEI eigenstaendige, echte Bugs gefunden und behoben (nicht im Port
+selbst, sondern in der Toolchain):**
+
+1. **Neuer Tiny-C-PARSER-Bug:** ein Tiny-C-String-Literal, das die
+   Zeichenfolge `"&&"` oder `"||"` als reinen TEXT enthaelt (hier: generierter
+   C-Code braucht selbst `&&`/`||` in `ws()`/`idch()`), loeste eine falsche
+   `"tinyc: logical-frame mismatch"`-Diagnose aus (das interne
+   `tcLogicDepth`-Tracking fuer Kurzschluss-Operatoren wird offenbar auch
+   INNERHALB von String-Literalen faelschlich angestossen). NICHT die
+   Grammatik gefixt (Risiko/Aufwand vs. Nutzen zu hoch fuer diesen Zweck) --
+   stattdessen jede betroffene Stelle per `fputc(38,fp)`/`fputc(124,fp)`
+   umgeschrieben (`emitAndAnd`/`emitOrOr`-Helfer in `SourceTinyC/codegen.tc`),
+   sodass `"&&"`/`"||"` nie als zusammenhaengende Zeichenfolge in EINEM
+   Tiny-C-String-Literal auftaucht -- identischer Ausgabeninhalt, nur anders
+   emittiert.
+2. **Echter SKALIERUNGSBUG im 68k-Backend selbst** (`Source/tinyc_backend_c.cpp`):
+   das `-largedata`-Datenmodell lud JEDEN Tabelleneintrag bisher per EIGENEM
+   PC-relativem Label (`"movea.l tc_ga_X(pc),reg"`) -- das brach, sobald der
+   GESAMTE Funktionscode zwischen einer frueh emittierten Funktion (z.B.
+   `main`, die per `-largedata`-Funktionsaufruf-Fix aus PR #43 immer zuerst
+   emittiert wird) und der Tabelle selbst (die NACH ALLEN Funktionsrumpf-
+   Texten lag) mehr als 32 KB umfasste -- derselbe 16-Bit-PC-relative-
+   Displacement-Grenzwert wie ueberall, nur diesmal fuer den TABELLENZUGRIFF
+   SELBST statt fuer die Daten dahinter. Trat zum ersten Mal beim
+   Skalierungstest fuer `SourceTinyC/codegen.tc` selbst auf (kumulatives
+   Kompilat inzwischen weit ueber 32 KB Code) und liess dabei RUECKWIRKEND
+   **ALLE fuenf bisherigen Vollport-Regressionstests** fehlschlagen (nicht nur
+   den neuen) -- ein ernstes, dringendes Infrastrukturproblem, sofort behoben.
+   GEFIXT nach EXAKT demselben Muster wie `tc_functab`/`a4` (siehe
+   `emitCall()`-Kommentar): ein bisher freies Register (`a3`) wird EINMAL beim
+   Programmstart auf die absolute Adresse EINER kombinierten Tabelle
+   (`tc_gadata`, direkt nach `tc_functab`, VOR allen Funktionsrumpf-Texten)
+   gesetzt (`"lea tc_gadata(pc),a3"`; die Tabelle selbst wird seit dem
+   68k-Backend-Chunk unten IMMER emittiert, auch ohne echte Globale, siehe
+   dort); jeder Globalzugriff wird zu
+   `"move.l <gidx*4>(a3),reg"` statt einem PC-relativen Tabellen-Label-Load.
+   `tools/tiny68sim.py` (Test-Simulator) musste dafuer `a3` in sein
+   generisches Adressregister-Dict aufnehmen (war zuvor auf a0/a2/a4
+   beschraenkt). **Verifiziert:** volle `runtests.sh` wieder komplett gruen
+   (alle sechs Vollport-Tests inkl. des NEUEN, reichhaltigen genParserC-Tests
+   mit SEQ/ALT/OPT/REP/NTS-Kombination -- genau der Testfall, der den Bug
+   urspruenglich aufdeckte, kompiliert/assembliert/linkt jetzt fehlerfrei),
+   sowie die bereits bestehenden `-largedata`-Tests (grosses struct-Array,
+   150-Funktionen-Skalierungstest) weiterhin gruen.
+
+**2026-07-25 (noch spaeter, direkt im Anschluss): 68k-Backend portiert --
+DAMIT IST DER GESAMTE VOLLPORT VON `codegen.cpp` NACH TINY-C ABGESCHLOSSEN.**
+(`charComment`/`emitConsume68k`/`emitLongerLiteralReject68k`/`genNode68k`/
+`emitLexHelpers68k`/`genParser68kTo`/`genParser68k`/`genParser68kOS9`,
+`Source/codegen.cpp` Zeilen 858 + 1181-1580). Erzeugt reinen 68k-
+Assemblertext -- KEINE C-Operatoren (`&&`/`||`) und KEINE eingebetteten
+Anfuehrungszeichen im generierten Code, daher weder der `emitAndAnd`/
+`emitOrOr`- noch der `fputc(34,fp)`-Workaround aus `genParserC` hier
+gebraucht.
+
+**Drei weitere Funde/Fixes waehrend dieses Chunks:**
+
+1. **Dieselbe `"?"`-Variante des logical-frame-Bugs** (siehe oben): ein
+   String-Literal mit `"?"` als Text (`"Identifikator-Zeichen? d0.b..."`)
+   loeste `"tinyc: conditional-frame mismatch"` aus (`tcTernaryDepth`-
+   Tracking fuer den Ternary-Operator). Gefixt per neuem `emitQMark(fp)`-
+   Helfer (ein `fputc(63,fp)`), analog zu `emitAndAnd`/`emitOrOr`.
+2. **Backend-eigene `MAX_GLOBALS`-Grenze (256, GETRENNT von der Frontend-
+   Grenze in `Data/tinyc.lextab`)** blockierte den Skalierungsnachweis:
+   JEDES String-Literal im Tiny-C-Quelltext wird zu einem anonymen
+   `__strN`-Global, das kumulative Kompilat hat inzwischen weit ueber 256
+   davon. Erhoeht auf 1024 (`Source/tinyc_backend_c.cpp`).
+3. **Ein WEITERER echter Skalierungsbug im 68k-Backend:** `tc_extcall_tmp`
+   (der Scratch-Puffer fuer externe Aufrufe mit Stack-Argumenten) wurde
+   bisher IMMER per PC-relativem `"lea tc_extcall_tmp(pc),a0"` DIREKT an der
+   Aufrufstelle referenziert -- unabhaengig von `-largedata`. Brach aus
+   demselben Grund wie der `tc_gadata`-Fund zuvor (Aufrufstelle kann
+   ueberall im Programm liegen, der Puffer selbst liegt spaet). Gefixt nach
+   demselben `a3`-Muster: `tc_extcall_tmp` bekommt einen ZUSAETZLICHEN
+   Eintrag in `tc_gadata` (Offset `globalCount*4`, direkt nach allen echten
+   Globalen); `tc_gadata` wird deshalb jetzt IMMER emittiert (nicht nur bei
+   `globalCount > 0`), und `"lea tc_gadata(pc),a3"` wird jetzt IMMER gesetzt
+   (wie `a4`), nicht mehr nur bei vorhandenen echten Globalen.
+
+**Verifiziert:** volle `runtests.sh` komplett gruen (alle SIEBEN Vollport-
+Tests), inklusive eines neuen 68k-Backend-Tests mit derselben reichhaltigen
+SEQ/ALT/OPT/REP/NTS-AST-Kombination wie beim `genParserC`-Test -- echter
+`r68` assembliert, echter `l68` linkt gegen echte `clib.l`.
 
 **Bei diesem ersten Schritt vier eigenstaendige, bisher unbekannte
 Einschraenkungen gefunden und (bis auf die letzte) behoben:**
@@ -214,6 +378,295 @@ Einschraenkungen gefunden und (bis auf die letzte) behoben:**
    **Damit ist der zuvor bewusst offen gelassene Fall ("dasselbe Problem bei
    FUNKTIONSAUFRUFEN") jetzt geloest** -- `-largedata` deckt Daten UND
    Funktionsaufrufe vollstaendig ab.
+
+## Selfhosting L2 Vollport: `ebnf.cpp`, Schritt 2 -- LAEUFT (ab 2026-07-25 nachts)
+
+Nach dem kompletten `codegen.cpp`-Vollport (siehe oben) folgt jetzt `Source/ebnf.cpp`
+(2149 Zeilen) nach `SourceTinyC/ebnf.tc`, gleiche Architektur (eigene Datei, ruft
+`codegen.tc`s Funktionen ueber bare Prototypen/interne bsr-ABI, siehe Mehrdatei-
+Feature). Chronologischer Fortschritt und alle dabei gefundenen Tiny-C-Sprachquirks
+stehen in der Memory-Datei `[[tinyc-vollport-status]]` (dort laufend aktualisiert,
+nicht hier dupliziert). Bisher portiert: globale Structs/Zustandsvariablen (TEIL 1),
+Zeichen-/Puffer-Helfer, Tabellendruck (`printLexTab`), Adressaufloesung
+(`resolveCallAddresses`), Linksrekursions-Pruefung (komplett), Stack-Maschine
+(`execFrom`), Arbeitsdatei-Helfer (`appendUserCodeLine`/`appendLexerCfgLine`/
+`appendCgenCfgLine`/`tsSymbolIndexOf`).
+
+**2026-07-26: `writeWorkfile` portiert** (`Source/ebnf.cpp:1007-1130`, die komplette
+Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/NTS-SYMBOLTABELLE/
+PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke). Neue Tiny-C-Erkenntnisse:
+
+- **Literale Backslash-Buchstabenfolgen als TEXT** (z. B. das Original schreibt
+  `"\ooo"` oder `" \t\r\n"` als dokumentierende BEISPIEL-Konfigurationswerte in
+  die generierte Datei, nicht als Escape-Sequenz) lassen sich NICHT einfach als
+  Tiny-C-String-Literal schreiben: der echte Tiny-C-String-Literal-Dekoder
+  (`tcDecodeStringLit`, `Data/tinyc.lextab`) verschluckt JEDEN Backslash
+  zusammen mit dem Folgezeichen (wird zu einem Escape-Byte fuer `n`/`t`/`r`/`0`,
+  sonst zum blossen Folgezeichen OHNE den Backslash). Workaround: den Backslash
+  und den Folgebuchstaben in ZWEI GETRENNTEN `fputc`/`fprintf`-Aufrufen ausgeben,
+  damit sie nie im selben Literal aufeinandertreffen (ein einzelner, direkt vor
+  dem schliessenden Anfuehrungszeichen stehender Backslash entkommt der
+  Sonderbehandlung, da dann kein Folgezeichen mehr im selben Literal existiert).
+  ECHTE Tabs (Einrueckung in einem Assembler-Beispieltext, einfaches `\t` im
+  C++-Original) sind davon NICHT betroffen und bleiben normale `\t`-Literale --
+  die normale Escape-Dekodierung liefert dort genau das gewuenschte Tab-Byte.
+- **CALLEXT-Grenze "max. 8 Stack-Argumente" real getroffen:** eine `fprintf`-Zeile
+  mit neun Werten nach dem Formatstring (Zeile/true/false/addr/rngLo/rngHi/
+  ident/modus/symbol) musste auf zwei `fprintf`-Aufrufe aufgeteilt werden.
+- Ternaere Ausdruecke als `fprintf`-Argument weiterhin bewusst vermieden (siehe
+  bereits bekannte Gruende in `SourceTinyC/ebnf.tc`) -- komplette if/else-Zweige
+  mit dupliziertem Aufruf stattdessen.
+
+**ZWEI live gefundene und gefixte Backend-Bugs (`Source/tinyc_backend_c.cpp`),
+Voraussetzung fuer den ersten ECHTEN Zwei-Datei-Link von `ebnf.tc` gegen
+`codegen.tc`** (bisherige `ebnf.tc`-Chunks wurden nur ALLEIN kompiliert/
+assembliert, nie gegen `codegen.tc` gelinkt): beide Male dieselbe Bugklasse wie
+schon beim `-largedata`-a3-Fund (siehe oben) -- ein rein INTERNER, in JEDER
+Datei wieder bei 0 startender Zaehler erzeugt einen Symbolnamen, der r68/l68
+(kein Sichtbarkeitskonzept, jedes Label automatisch global sichtbar beim
+Linken) als ECHTEN globalen Namen sieht:
+1. `LABEL`/`JMP`/`JZ`/`JNZ` (`tc_L<n>`) UND `emitCompare()`s interne
+   Sprungmarken (`tc_cmp_yes_<n>`/`tc_cmp_done_<n>`) kollidierten, sobald zwei
+   getrennt kompilierte Dateien BEIDE Kontrollfluss bzw. einen Vergleichsoperator
+   enthalten (praktisch immer der Fall).
+2. Dieselbe Kollision fuer die `-largedata`-Indirektionstabellen `tc_functab`/
+   `tc_gadata` (inkl. aller `lea ...(pc),a3`/`a4`-Referenzen darauf), sobald
+   zwei Dateien beide mit `-largedata` kompiliert werden.
+
+Beide Faelle jetzt mit `psectName`-Suffix eindeutig gemacht (exakt dasselbe
+Namensverfremdungs-Muster wie bei `static`-Funktionen/-Globalen, nur OHNE die
+`isStatic`-Bedingung -- diese Namen sind NIE etwas, das eine andere Datei
+ansprechen koennen soll). Volle `runtests.sh`-Suite nach dem Fix weiterhin
+komplett gruen (inkl. der bestehenden Mehrdatei-M2-Tests, die pruefen, dass
+eine ECHTE Namenskollision -- zwei nicht-static Definitionen desselben
+Symbols -- weiterhin korrekt als `"duplicate symbol"` abgelehnt wird).
+
+**Wichtig fuer den Verifikationsmassstab:** ein VOLLER `l68`-Link von `ebnf.tc`
+gegen `codegen.tc` ist weiterhin NICHT das Kriterium fuer diesen Chunk -- die
+rekursive-Abstiegs-Parsergruppe (`rule`/`expression`/`term`/`factor`/.../
+`ebnfSyntax`/`lexikalischeAnalyse`/`exitProgram`) hat noch keinen echten Rumpf
+(siehe `[[tinyc-vollport-status]]`), ein Link schlaegt daher ERWARTET mit
+"unresolved symbol" fuer genau diese (hier nicht aufgerufenen) Funktionen fehl.
+Verifiziert wie bei den bisherigen `ebnf.tc`-Chunks: `ebnf.tc` kompiliert sauber
+(Frontend, ALLEIN -- Konkatenation mit `codegen.tc` in einer `tinyc_p`-
+Kompilation verletzt Quirk 8, Deklarationen-vor-Funktionen GESAMT ueber beide
+Dateien) UND assembliert fehlerfrei (echter `r68`) fuer BEIDE Dateien getrennt.
+Regressionstest in `runtests.sh` verankert.
+
+**2026-07-26 (direkt im Anschluss): `rebuildFirstEdgesFromTable` portiert**
+(`Source/ebnf.cpp:1132-1156`, Fall B: Linksrekursions-Kanten aus einer
+GELADENEN Arbeitsdatei rekonstruieren statt waehrend des normalen Parsens
+ueber das `firstPos`-Flag). Kleiner, unproblematischer Chunk -- keine neuen
+Tiny-C-Grenzfaelle. Original nutzt C++s `for`/`continue`; hier wie im Rest
+der Datei per `while` umgesetzt (bewusst OHNE `continue`: der Trailing-
+Increment `r = r + 1` muesste sonst vor jedem `continue` wiederholt werden --
+die if-umschlossene Form vermeidet dieses Fussangel-Risiko). Das lokale
+`static int visited[LEXTAB_LEN]` des Originals wurde zu einem globalen
+`rebuildVisited[1024]` (analog `dfsColor`, reiner Scratch-Speicher, keine
+echte Persistenz noetig). Verifizierung wie bei `writeWorkfile`: kompiliert
+sauber, assembliert fehlerfrei (echter `r68`, `ebnf.tc`+`codegen.tc`
+getrennt) -- Regressionstest in `runtests.sh`. ZUSAETZLICH die reine
+Algorithmus-Logik einmalig gegen eine native C-Uebersetzung derselben
+Funktion samt Testdaten gegengeprueft (4 `lexTab`-Zeilen mit einer
+Linksrekursions-Kette): beide liefern `firstEdgeCnt=2`/`ruleNameListCnt=2`.
+
+**2026-07-26 (direkt im Anschluss): `loadWorkfileAsGrammar` portiert**
+(`Source/ebnf.cpp:1162-1231`, Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus
+einer Arbeitsdatei laden, ohne `.ebnf`). War laut Plan ein Kandidat fuer
+vereinfachte Behandlung (Fall A -- Parsen aus einer frischen `.ebnf` -- ist der
+eigentlich noetige Pfad fuers Selfhosting-Ziel), auf Nutzerwunsch trotzdem
+regulaer portiert. Das Original nutzt EIN grosses `sscanf(...)` mit NEUN
+Ausgabeparametern (sechs `int*`, zwei `char*`, ein `int*` fuer die
+Consumed-Position via `%n`) -- geht hier aus zwei Gruenden nicht 1:1:
+- CALLEXT erlaubt max. 8 Stack-Argumente (siehe `writeWorkfile`), neun
+  ueberschreiten das.
+- `int*`-Ausgabeparameter mit `*p = wert`-Schreibzugriff sind in dieser
+  Tiny-C-Version generell unerprobt (siehe `execPosResult`/`execFrom`).
+
+Stattdessen ein Handparser (`wfParseInt`/`wfParseToken`, globale Parse-Position
+`wfParsePos` statt `int*`-Out-Parameter) passend zum `writeWorkfile`-
+Zeilenformat (`"%-5d ... %-16s %-4s %s\n"` -- sechs Ganzzahlen, zwei
+whitespace-getrennte Tokens, Rest der Zeile ist der Symbolwert).
+
+**ZWEI neue Grenzfaelle live gefunden:**
+- `lexTab[aktTabIndex].ident[0] = 0;` (`arr[i].field[j]` als Zuweisungsziel)
+  wird vom Frontend abgelehnt (`"arr[i].field[j] not supported in this
+  version"` + `"unknown assignment target"`) -- durch
+  `tcCopyBounded(lexTab[aktTabIndex].ident, "", 32)` ersetzt (identisch zum
+  bereits vorhandenen `"-"`-Fall daneben).
+- Ein `"?"` als reiner Text in einer Fehlermeldungs-Zeichenkette
+  (`"...CSV-Datei?)\n"`) loeste erneut den bekannten `"conditional-frame
+  mismatch"`-Bug aus (Quirk 15) -- ohne Fragezeichen umformuliert.
+
+Verifiziert wie bei den vorigen Chunks: kompiliert + assembliert sauber
+(echter `r68`, `ebnf.tc`+`codegen.tc` weiterhin getrennt) -- Regressionstest
+in `runtests.sh`. ZUSAETZLICH die komplette Rundreise (`writeWorkfile`
+schreibt eine Tabelle -> Tabelle "vergessen" -> `loadWorkfileAsGrammar` laedt
+sie zurueck) einmalig gegen eine native C-Uebersetzung BEIDER Funktionen
+gegengeprueft: alle Werte (Modi, Ident-/TS-Text, true/falseAction,
+rangeLo/rangeHi, Quelltextlaenge) kommen exakt wie geschrieben zurueck.
+
+**2026-07-26 (direkt im Anschluss): `runTests` + `loadPreservedTests` portiert**
+(`Source/ebnf.cpp:1233-1268` bzw. `920-993`). `runTests` jagt alle TEST-Zeilen
+durch `execFrom` und vergleicht mit dem erwarteten Ergebnis; `loadPreservedTests`
+rettet TESTS/NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei,
+bevor sie ueberschrieben wird. Original-`execFrom(0, &pos)` (Ausgabeparameter)
+wird zu `execFrom(0, 0)` + anschliessendem `execPosResult`-Read (passend zur
+bereits portierten Signatur, siehe dortiger Kommentar).
+
+**ZWEI weitere Grenzfaelle:**
+- Dieselbe `arr[i].field[j]`-Zuweisungsziel-Ablehnung wie bei
+  `loadWorkfileAsGrammar`, diesmal fuer `testCases[i].input[n] = 0` -- Umweg
+  ueber einen lokalen Puffer (`tmpInput`) plus `tcCopyBounded`.
+- **Bool-Ausdruecke koennen nicht direkt einer `int`-Variable/einem
+  `int`-Feld zugewiesen werden** (`inTests = (strncmp(...) == 0);`,
+  `testCases[i].expectOk = (strstr(...) == 0);` -- beides vom Frontend
+  abgelehnt). Dieselbe strikte int/bool-Trennung wie bei Quirk 3 (Bedingungen)
+  und Quirk 10 (Rueckgabewerte), hier erstmals fuer eine normale ZUWEISUNG
+  getroffen -- komplette if/else-Zweige statt `x = (a == b);` verwendet.
+
+Ternaere OK/FAIL-Textwahl als Funktionsargument weiterhin bewusst vermieden;
+Anfuehrungszeichen um Testeingabe-Text ueber das Builtin `putchar(34)`
+(PRINTC) statt eines String-Literal-Workarounds, da das Ziel hier STDOUT
+(`printf`) ist, nicht ein `FILE*`-Strom wie bei `writeWorkfile`. Verifiziert
+wie die vorigen Chunks (kompiliert + assembliert sauber, `ebnf.tc`+
+`codegen.tc` getrennt) -- Regressionstest in `runtests.sh`. ZUSAETZLICH ein
+voller Rundlauf (Arbeitsdatei mit einer RNG-Regel + drei TEST-Zeilen
+schreiben, per `loadWorkfileAsGrammar`+`loadPreservedTests` wieder einlesen,
+`runTests` ausfuehren) einmalig gegen eine native C-Uebersetzung aller vier
+beteiligten Funktionen gegengeprueft: beide liefern
+`aktTabIndex=1`/`testCaseCnt=3`/`mismatches=0` (alle drei Testfaelle PASS).
+
+**2026-07-26 (direkt im Anschluss): die rekursive-Abstiegs-Parsergruppe
+portiert** (`Source/ebnf.cpp:1371-1774` + Helfer `920-1330`) --
+`literal`/`ident`/`block`/`repeat`/`option`/`factor`/`term`/`expression`/`rule`
+PLUS `push`/`pop`/`restart`/`errorMsg`/`test`/`addIdentList`/`patchLocalTrue`/
+`patchLocalFalse`. Die neun Kernfunktionen hatten bereits seit Projektbeginn
+bare Prototypen in `ebnf.tc` (gegenseitige Rekursion); der FUNCDECL/FUNC-
+Blocker dafuer wurde bereits am 2026-07-25 im Backend gefixt (Commit
+`7102de2`, siehe `[[tinyc-vollport-status]]`).
+
+Groesster Chunk bisher, aber KEINE grundsaetzlich neuen Sprachquirks -- alle
+bereits bekannten Muster kamen konzentriert zusammen zur Anwendung:
+- `arr[i].field[j]`-Zuweisungsziel erneut mehrfach (`lexTab[aktTabIndex].
+  ident[0]`, TS-Feldaufbau) -- durchgehend ueber lokale Puffer + `tcCopyBounded`
+  geloest (Muster aus `loadWorkfileAsGrammar` fortgesetzt).
+- Anfuehrungszeichen im Listing-Text (`lst`) und im TS-Feld ueber das
+  bestehende `appendQuoteChar` byteweise angehaengt, TS-Feld dabei komplett in
+  einem lokalen `tsBuf` aufgebaut statt direkt in der struct.
+- Bool-Ausdruecke nicht direkt zugewiesen (`wasAmbig = (!committed &&
+  hadSkippable);` -> if/else), int-als-Bedingung durchgehend mit `!= 0`.
+- Eine `printf`-Warnmeldung mit vier Zeilen (String-Literal-Konkatenation im
+  Original) ueberschritt die 256-Byte-Grenze fuer Tiny-C-String-Literale
+  (`tcDecodeStringLit`) -- auf zwei `printf`-Aufrufe aufgeteilt.
+- Post-/Prae-Inkrement INNERHALB eines Ausdrucks (`restartToken[i++]`,
+  `lineStack[lineStackIndex++]`, `lineStack[--lineStackIndex]`) durchgehend
+  in separate Anweisungen aufgeloest (Muster: nie `++`/`--` verwendet, siehe
+  Kommentar in `ebnf.tc`).
+- Ein nicht verwendeter Rueckgabewert (`pop();` als blosse Anweisung in
+  `expression()`) wurde vorsichtshalber einer eigenen Variable zugewiesen
+  statt verworfen (unerprobtes Terrain, kein bekannter Präzedenzfall im
+  Projekt).
+- `switch`/`case` (in `factor()`) funktionierte direkt wie erwartet.
+
+Kann NICHT sinnvoll ausgefuehrt/getestet werden (haengt an
+`lexikalischeAnalyse()`/`getAktChar()`, beides noch nicht portiert) --
+Verifikation bleibt bei kompiliert + assembliert sauber (Regressionstest in
+`runtests.sh`). **Wichtiges Zwischenergebnis:** ein echter `l68`-Link von
+`ebnf.tc`+`codegen.tc` zeigt nach diesem Chunk nur noch GENAU die 7 erwarteten
+Lexer-Funktionen als unresolved (`getAktChar`/`getAktLine`/`put`/
+`ebnfSyntax`/`semantischeAnylyse`/`lexikalischeAnalyse`/`exitProgram`) -- die
+Parsergruppe selbst ist vollstaendig und korrekt verdrahtet.
+
+**2026-07-26 (direkt im Anschluss): der Lexer portiert** (`Source/ebnf.cpp:
+1810-2147, 1906-1970`) -- `lexikalischeAnalyse`/`getNext`/`getAktChar`/
+`comment`/`getAktLine`/`put`/`semantischeAnylyse`.
+
+**Neu: `initLexer()`.** Das C++-Original initialisiert die Lexer-Config-
+Globalen (`startLineCommentString`, `flagBlockComment`, ...) per automatischem
+C++-Globalen-Initialisierer VOR `main()` -- Tiny-C `GLOBAL`-Deklarationen
+koennen das nicht fuer String-Pointer-Werte, daher eine explizite Init-
+Funktion, die `main()`/`ebnfSyntax()` (naechster, letzter Schritt) EINMAL zu
+Programmbeginn rufen muss.
+
+**Wichtigster neuer Grenzfall: rohes Zeiger-Dereferenzieren** (`*p` lesen UND
+`*p = wert` schreiben, nicht nur `p[i]`) wurde hier zum ERSTEN Mal im
+gesamten Port gebraucht (`getNext`/`comment`). Da eine bestehende
+Projektnotiz (`execPosResult`-Kommentar) genau diesen Fall als bisher
+unerprobt markierte, vorab per Standalone-Test gegen TinyVM verifiziert:
+Lesen UND Schreiben ueber einen Pointer auf ein globales `char`-Array liefert
+exakt die erwarteten Werte -- danach bedenkenlos wie im Original eingesetzt.
+Ebenfalls dabei verifiziert: ein nicht verwendeter Rueckgabewert (`comment();`
+als blosse Anweisung) kompiliert und laeuft korrekt (TinyVM-Test) -- die
+vorsichtshalber-Variable aus dem Parsergruppen-Chunk (`expression()`s
+`poppedLine`) war also nicht zwingend noetig, bleibt aber unveraendert stehen.
+`strcpy` (ohne `_s`/Laengenlimit, wie `strcat`/`sprintf`) neu extern
+deklariert.
+
+Verifiziert wie die vorigen Chunks (kompiliert + assembliert sauber) PLUS ein
+echter Tokenizer-Lauf (`"rule1 = \"a\" ;"` -> IDENT/EQUAL/LITERAL/END) einmalig
+gegen eine native C-Uebersetzung ALLER Lexer-Funktionen gegengeprueft: beide
+liefern exakt dieselbe Tokenfolge (`138/129/139/143`) und `aktName="rule1"`.
+Regressionstest in `runtests.sh`. **Wichtiges Zwischenergebnis:** ein echter
+`l68`-Link von `ebnf.tc`+`codegen.tc` zeigt nach diesem Chunk nur noch GENAU
+2 unresolved Symbole (`ebnfSyntax`/`exitProgram`) -- der komplette Rest der
+Datei ist vollstaendig und korrekt verdrahtet.
+
+## Selfhosting L2 Vollport `ebnf.cpp`: ABGESCHLOSSEN (2026-07-26)
+
+**Letzter Abschnitt portiert: `ebnfMain`/`ebnfSyntax`/`exitProgram`**
+(`Source/ebnf.cpp:170-334, 1357-1369, 322-334`).
+
+**Wichtigste Design-Entscheidung: Tiny-C `main()` kann keine
+Kommandozeilenargumente empfangen** -- weder die Grammatik noch der Backend-
+Einsprungpunkt (`tc_start`/`emitCall`) sehen einen `argc`/`argv`-Mechanismus
+vor (verifiziert: `emitCall` fuer `main` pusht keinerlei Argumente). Die
+komplette Original-`main(argc, argv)`-Logik lebt deshalb in
+`ebnfMain(char* baseArg)`, einer regulaeren, mit dem Basisnamen
+PARAMETRISIERTEN Funktion; `main()` selbst ist nur noch ein duenner Wrapper
+mit fest einprogrammiertem Platzhalter-Basisnamen (`"tinyc"`). Bewusst
+entfallen: die `argc<2`-Usage-Meldung (kann bei einem Funktionsparameter nie
+eintreten) und der optionale dritte CLI-Parameter `<teststring>` (manueller
+Testlauf gegen einen Eingabestring) -- `runTests()` (der TESTS-Block der
+Arbeitsdatei) deckt den eigentlichen Testmechanismus bereits ab. Fuer einen
+echten, dateinamen-flexiblen OS-9-Build muesste der Basisname kuenftig ueber
+einen Syscall zum Lesen der OS-9-Kommandozeile (Process-Descriptor) kommen --
+nicht implementiert, dokumentierte bekannte Grenze.
+
+`exitProgram()`: `fflush(stdout)` aus dem Original bewusst weggelassen --
+`exit()` flusht/schliesst laut C-Standard ohnehin alle offenen Streams
+automatisch, und ein `stdout`-`FILE*`-Handle ist ueber die Microware-ABI
+nicht ohne Weiteres als einfacher Tiny-C-Wert zu bekommen (keine simple
+`stdout`-Externvariable, `clib.l` exportiert nur ein `_iob`-Array mit
+unbekanntem Layout).
+
+**MEILENSTEIN-TEST:** zum ersten Mal ein VOLLER `l68`-Link von `ebnf.tc` (mit
+seiner eigenen, echten `main()`) gegen `codegen.tc`, OHNE jedes unresolved
+Symbol -- der resultierende `.out` ist ein vollstaendig gelinktes,
+2,1-MB-OS-9-Modul. **Der komplette Tiny-C-Vollport von `Source/ebnf.cpp` ist
+damit abgeschlossen** (Schritt 2 aus dem urspruenglichen 3-Schritt-Plan,
+siehe `[[tinyc-vollport-status]]`) -- zusammen mit dem bereits fertigen
+`codegen.cpp`-Vollport sind beide Kerndateien des EBNF-Generators als
+Tiny-C-Quelltext vorhanden.
+
+**Kollateral-Aufwand:** da `ebnf.tc` jetzt eine ECHTE `main()`-Funktion
+enthaelt, mussten die sechs AELTEREN Regressionstests in `runtests.sh`
+(`writeWorkfile`/`rebuildFirstEdgesFromTable`/`loadWorkfileAsGrammar`/
+`runTests+loadPreservedTests`/Parsergruppe/Lexer) umgebaut werden -- sie
+haengten bisher je ein eigenes `"void main(){...}"` an `ebnf.tc` an, was ab
+jetzt mit der echten `main()` kollidiert (zwei REALE Funktionskoerper
+gleichen Namens, kein harmloses FUNCDECL-Rauschen mehr). Fix: Testfunktionen
+umbenannt (kein `main` mehr) und Backend-Aufruf von `-part -runtime` auf
+reines `-part` reduziert -- reine `r68`-Assemblierung (wie diese sechs Tests
+sie pruefen) braucht keinen echten Einsprungpunkt, nur echtes Linken (`l68`)
+wuerde einen brauchen, und das pruefte keiner dieser sechs Tests ohnehin.
+
+**Noch NICHT abgedeckt (Schritt 3 des urspruenglichen Plans, separat
+vermerkt):** echte Ausfuehrung/Verhalten des selbstgehosteten `ebnf_gen` auf
+dem Q9-Emulator -- insbesondere Live-Verifikation von `malloc`/`realloc`/
+`free` (`realloc`s Kopierverhalten ueber die Wachstumsgrenze hinweg) sowie
+ein vollstaendiger End-zu-End-Vergleich mit dem bereits `xcc`-gebauten,
+live-auf-Q9-bestaetigten `ebnf_gen` (siehe `docs/STATUS.md`).
 
 ## Erledigte Meilensteine
 

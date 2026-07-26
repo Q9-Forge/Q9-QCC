@@ -23,7 +23,14 @@
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
 #define MAX_IR_LINES    65536
 #define MAX_FUNCS       256
-#define MAX_GLOBALS     256
+/* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceTinyC/
+   codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
+   Nachweis: JEDES String-Literal im Tiny-C-Quelltext wird zu einem
+   anonymen __strN-Global, und das kumulative Kompilat hat inzwischen weit
+   ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
+   Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
+   nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
+#define MAX_GLOBALS     1024
 #define MAX_ARRAY_LEN   4096
 
 typedef struct {
@@ -146,24 +153,35 @@ static void emitAlign(FILE* out) {
    willkuerliche Software-Grenze. Empirisch am echten r68-Assembler bestaetigt
    (siehe docs/FORTSCHRITT.md): ein 8192-Elemente-Array (458 KB) wird mit
    "value out of range" abgelehnt.
-   "-largedata" wechselt auf eine zusaetzliche, PC-relativ ERREICHBARE
-   Indirektionstabelle (ein 4-Byte-Eintrag "tc_ga_X: dc.l tc_g_X" pro Globaler,
-   siehe emitGlobalAddressTable() weiter unten) -- l68 loest "dc.l tc_g_X" als
-   ABSOLUTE Adresse auf (normale Relokation, keine Distanzbeschraenkung), das
-   Laden DIESES Tabelleneintrags selbst bleibt PC-relativ (die Tabelle ist nur
-   4 Byte pro Eintrag gross und liegt nahe am Code). Genau das klassische
-   "Far-Pointer"/"Large-Model"-Prinzip alter segmentierter Architekturen,
-   hier auf 68k-PC-relative-Adressierung uebertragen. Kostet einen
-   zusaetzlichen Speicherzugriff pro Globalzugriff (movea.l statt lea/direktem
-   move.l) -- deshalb bewusst NICHT der Standard, nur bei Bedarf.
-   Das ANALOGE Problem bei FUNKTIONSAUFRUFEN (bsr ist ebenfalls PC-relativ-
-   16-Bit) -- Code-Groesse statt Daten-Groesse als Ursache -- wird seit
-   2026-07-25 (Nutzerwunsch "automatisch eine jmp table bauen") ebenfalls
-   von -largedata mitgeloest, siehe emitCall()/tc_functab weiter unten. */
-static void emitLeaGlobal(FILE* out, const char* gAsmName, const char* reg) {
+   "-largedata" wechselt auf eine zusaetzliche Indirektionstabelle (tc_gadata,
+   ein 4-Byte-Eintrag "dc.l tc_g_X" pro Globaler IN globals[]-REIHENFOLGE,
+   siehe emitIR() weiter unten) -- l68 loest "dc.l tc_g_X" als ABSOLUTE Adresse
+   auf (normale Relokation, keine Distanzbeschraenkung).
+   URSPRUENGLICHES Design (bis 2026-07-25 abends) lud JEDEN Tabelleneintrag per
+   EIGENEM PC-relativem Label "movea.l tc_ga_X(pc),reg" -- das brach beim
+   ersten genParserC-artigen Skalierungstest (SourceTinyC/codegen.tc mit vielen
+   Funktionen VOR der Tabelle, die selbst NACH dem gesamten Funktionscode
+   liegt): "main" (per Funktionstabellen-Fix immer zuerst emittiert) konnte die
+   Tabelle nicht mehr per PC-relativem Label erreichen, sobald der GESAMTE
+   Funktionscode zwischen main und Tabelle mehr als 32 KB umfasste -- derselbe
+   Grenzwert, nur diesmal fuer den TABELLENZUGRIFF SELBST statt fuer die Daten
+   dahinter. GEFIXT nach EXAKT demselben Muster wie tc_functab/a4 (siehe
+   emitCall()-Kommentar): EIN Register (a3) wird EINMAL beim Programmstart auf
+   die absolute Adresse von tc_gadata gesetzt ("lea tc_gadata(pc),a3" -- die
+   Tabelle liegt bewusst DIREKT nach tc_functab, also VOR allen Funktionsrumpf-
+   Texten, bleibt also immer erreichbar). Jeder Globalzugriff wird dann zu
+   "move.l <gidx*4>(a3),reg" -- a3-relative Adressierung hat zwar auch nur
+   16-Bit-Displacement, aber die Tabelle waechst nur mit der ANZAHL der
+   Globalen (4 Byte/Eintrag), nicht mit der Code-GROESSE. a3 war zuvor an
+   keiner Stelle im Backend belegt (a0=Skalar-Scratch, a1=Puffer in tc_putint/
+   tc_putuint/tc_putchar, a2=Aufruf-Scratch fuer emitCall, a4=Funktionstabelle,
+   a5/a6=Frame-Pointer je nach os9Mode). */
+static void emitLeaGlobal(FILE* out, int gidx, const char* reg) {
 	if (largeDataMode) {
-		fprintf(out, "\tmovea.l\ttc_ga_%s(pc),%s\n", gAsmName + 5, reg);	/* "tc_g_" ist 5 Zeichen */
+		fprintf(out, "\tmove.l\t%d(a3),%s\n", gidx * 4, reg);
 	} else {
+		char gAsmName[NAME_LEN + 40];
+		mangledName(gAsmName, "tc_g_", globals[gidx].name, globals[gidx].isStatic);
 		fprintf(out, "\tlea\t%s(pc),%s\n", gAsmName, reg);
 	}
 }
@@ -428,9 +446,20 @@ static void collectFunctions(void) {
 	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("IR: keine Funktion");
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
+		int existing;
 		if (strcmp(insP->op, "FUNCDECL") != 0) continue;
 		if (insP->argc != 2) fatal("ungueltiges FUNCDECL");
-		if (findFunction(insP->args[0]) >= 0) { fprintf(stderr, "tinyc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion"); }
+		existing = findFunction(insP->args[0]);
+		if (existing >= 0) {
+			/* Vorwaertsdeklaration innerhalb DERSELBEN Datei, deren echter Rumpf
+			   bereits (an anderer Stelle im selben IR) gefunden wurde -- das ist
+			   der normale Fall bei gegenseitig rekursiven Funktionen (A ruft B vor
+			   dessen Definition auf), KEIN Duplikat. Nur wenn die vorhandene
+			   Registrierung selbst noch declOnly ist (zwei FUNCDECL fuer denselben
+			   Namen ohne jemals einen echten Rumpf), bleibt es ein echter Fehler. */
+			if (!funcs[existing].declOnly) continue;
+			fprintf(stderr, "tinyc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion");
+		}
 		if (funcCount >= MAX_FUNCS) fatal("zu viele Funktionen");
 		memset(&current, 0, sizeof(current));
 		strncpy(current.name, insP->args[0], NAME_LEN - 1);
@@ -512,10 +541,18 @@ static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 }
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
+	/* tc_cmp_yes_<id>/tc_cmp_done_<id> sind reine interne Sprungmarken, KEINE
+	   Tiny-C-Symbole -- ohne psectName-Suffix kollidieren sie beim Mehrdatei-
+	   Link, sobald ZWEI separat kompilierte Dateien beide mindestens einen
+	   Vergleichsoperator benutzen (r68/l68 kennen kein Sichtbarkeitskonzept,
+	   siehe mangledName()-Kommentar -- id allein ist nur PRO DATEI eindeutig,
+	   der serial-Zaehler startet in jeder Datei wieder bei 0). Live gefunden
+	   beim ersten echten Zwei-Datei-Link von SourceTinyC/ebnf.tc gegen
+	   codegen.tc (2026-07-26, writeWorkfile-Chunk), siehe docs/FORTSCHRITT.md. */
 	int id = (*serial)++;
 	fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tcmp.l\td1,d0\n\tmoveq\t#0,d0\n");
-	fprintf(out, "\t%s\ttc_cmp_yes_%d\n\tbra\ttc_cmp_done_%d\n", branch, id, id);
-	fprintf(out, "tc_cmp_yes_%d:\tmoveq\t#1,d0\ntc_cmp_done_%d:\tmove.l\td0,-(a7)\n", id, id);
+	fprintf(out, "\t%s\ttc_cmp_yes_%d__%s\n\tbra\ttc_cmp_done_%d__%s\n", branch, id, psectName, id, psectName);
+	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
 // 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
@@ -575,6 +612,7 @@ static void emitIR(FILE* out) {
 	char addrBuf[64];
 	int order[MAX_FUNCS];
 	int oi;
+	int gi;
 
 	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
 	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
@@ -593,7 +631,8 @@ static void emitIR(FILE* out) {
 	} else {
 		int mainIdx = findFunction("main");
 		fputs("tc_start:\n", out);
-		if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
+		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n", psectName);
+			if (largeDataMode) fprintf(out, "\tlea\ttc_gadata__%s(pc),a3\n", psectName);
 		if (mainIdx >= 0) {
 			char mainAsmName[NAME_LEN + 40];
 			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
@@ -611,7 +650,7 @@ static void emitIR(FILE* out) {
 		   Tiny-C-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
 		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
 		emitAlign(out);
-		fputs("tc_functab:\n", out);
+		fprintf(out, "tc_functab__%s:\n", psectName);
 		for (fi = 0; fi < funcCount; fi++) {
 			char asmName[NAME_LEN + 40];
 			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
@@ -620,6 +659,30 @@ static void emitIR(FILE* out) {
 		fputs("\tdc.l\ttc_mul_i32\n\tdc.l\ttc_div_i32\n\tdc.l\ttc_udiv_u32\n", out);
 		fputs("\tdc.l\ttc_mod_i32\n\tdc.l\ttc_umod_u32\n", out);
 		fputs("\tdc.l\ttc_putint\n\tdc.l\ttc_putuint\n\tdc.l\ttc_putchar\n", out);
+		/* Daten-Indirektionstabelle (siehe emitLeaGlobal()-Kommentar): MUSS wie
+		   tc_functab direkt nach tc_start/main stehen (VOR den potenziell
+		   riesigen Funktionsrumpf-Texten), damit das einmalige
+		   "lea tc_gadata(pc),a3" immer erreichbar bleibt, egal wie gross der
+		   Rest des Programms wird. Reihenfolge MUSS exakt zu gidx*4 (siehe
+		   findGlobal()) passen -- AUCH declOnly-Externe bekommen einen
+		   Eintrag ("dc.l tc_g_X" ist fuer diese eine ganz normale externe
+		   Symbolreferenz, von l68 wie jede andere aufgeloest). IMMER emittiert
+		   (nicht nur bei globalCount > 0): der ZUSAETZLICHE Eintrag am Ende
+		   (Offset globalCount*4, siehe extcallTmpTableOffset()) fuer
+		   tc_extcall_tmp wird UNABHAENGIG von echten Globalen gebraucht, sobald
+		   irgendein externer Aufruf mit Stack-Argumenten vorkommt -- dasselbe
+		   Skalierungsproblem wie bei echten Globalen (PC-relatives
+		   "lea tc_extcall_tmp(pc),a0" direkt an der Aufrufstelle wuerde brechen,
+		   sobald der Abstand zum spaet liegenden Scratch-Puffer >32 KB wird). */
+		fprintf(out, "%s Daten-Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
+		emitAlign(out);
+		fprintf(out, "tc_gadata__%s:\n", psectName);
+		for (gi = 0; gi < globalCount; gi++) {
+			char gAsmName[NAME_LEN + 40];
+			mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
+			fprintf(out, "\tdc.l\t%s\n", gAsmName);
+		}
+		fputs("\tdc.l\ttc_extcall_tmp\n", out);
 	}
 
 	/* os9Mode + largeDataMode: main ist der einzige Einsprungpunkt (kein
@@ -650,7 +713,8 @@ static void emitIR(FILE* out) {
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
-			if (largeDataMode) fputs("\tlea\ttc_functab(pc),a4\n", out);
+			if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n", psectName);
+			if (largeDataMode) fprintf(out, "\tlea\ttc_gadata__%s(pc),a3\n", psectName);
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
 		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
@@ -683,10 +747,8 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tlea\t%s,a0\n\tmove.l\ta0,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "ADDRG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]);
-				char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) fatal("unbekannte globale Variable");
-				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				emitLeaGlobal(out, gAsmName, "a0");
+				emitLeaGlobal(out, gidx, "a0");
 				fputs("\tmove.l\ta0,-(a7)\n", out);
 			} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
 				/* nur Frame-Layout, kein Code */
@@ -698,10 +760,8 @@ static void emitIR(FILE* out) {
 				} else if (strcmp(insP->args[0], "P") == 0) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
-				} else if (strcmp(insP->args[0], "G") == 0 && findGlobal(insP->args[1]) >= 0) {
-					char gAsmName[NAME_LEN + 40];
-					mangledName(gAsmName, "tc_g_", insP->args[1], globals[findGlobal(insP->args[1])].isStatic);
-					emitLeaGlobal(out, gAsmName, "a0");
+				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
+					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
 				} else {
 					fatal("unbekanntes Array");
 				}
@@ -718,10 +778,8 @@ static void emitIR(FILE* out) {
 				} else if (strcmp(insP->args[0], "P") == 0) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
-				} else if (strcmp(insP->args[0], "G") == 0 && findGlobal(insP->args[1]) >= 0) {
-					char gAsmName[NAME_LEN + 40];
-					mangledName(gAsmName, "tc_g_", insP->args[1], globals[findGlobal(insP->args[1])].isStatic);
-					emitLeaGlobal(out, gAsmName, "a0");
+				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
+					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
 				} else {
 					fatal("unbekanntes Array");
 				}
@@ -740,38 +798,38 @@ static void emitIR(FILE* out) {
 				/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
 				   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
 				   siehe emitLeaGlobal()-Kommentar. */
-				if (largeDataMode) { emitLeaGlobal(out, gAsmName, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+				if (largeDataMode) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 				else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
 				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitLeaGlobal(out, gAsmName, "a0");
+				emitLeaGlobal(out, gidx, "a0");
 				fputs("\tmove.l\td0,(a0)\n", out);
 			} else if (strcmp(op, "LOADGC") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				if (largeDataMode) { emitLeaGlobal(out, gAsmName, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+				if (largeDataMode) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
 				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
 				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitLeaGlobal(out, gAsmName, "a0");
+				emitLeaGlobal(out, gidx, "a0");
 				fputs("\tmove.b\td0,(a0)\n", out);
 			} else if ((strcmp(op, "LOADGP") == 0 || strcmp(op, "STOREGP") == 0) && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) fatal("unbekannte globale Variable");
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
 				if (strcmp(op, "LOADGP") == 0) {
-					if (largeDataMode) { emitLeaGlobal(out, gAsmName, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+					if (largeDataMode) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 					else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 				} else {
 					fputs("\tmove.l\t(a7)+,d0\n", out);
-					emitLeaGlobal(out, gAsmName, "a0");
+					emitLeaGlobal(out, gidx, "a0");
 					fputs("\tmove.l\td0,(a0)\n", out);
 				}
 			} else if (strcmp(op, "PTRINDEX") == 0 && insP->argc == 1) {
@@ -855,13 +913,19 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PCMPLE") == 0) { emitCompare(out, "bls", &serial);
 			} else if (strcmp(op, "PCMPGE") == 0) { emitCompare(out, "bcc", &serial);
 			} else if (strcmp(op, "LABEL") == 0 && insP->argc == 1) {
-				fprintf(out, "tc_%s:\n", insP->args[0]);
+				/* psectName-Suffix aus demselben Grund wie bei emitCompare oben:
+				   LABEL-Namen (tc_L0, tc_L1, ...) kommen aus der Tiny-C-Frontend-
+				   eigenen Label-Nummerierung, die in JEDER Datei wieder bei 0
+				   startet -- ohne Suffix kollidieren sie beim Mehrdatei-Link,
+				   sobald zwei Dateien beide Kontrollfluss (if/while/for/...)
+				   enthalten (praktisch immer der Fall). */
+				fprintf(out, "tc_%s__%s:\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JMP") == 0 && insP->argc == 1) {
-				fprintf(out, "\tbra\ttc_%s\n", insP->args[0]);
+				fprintf(out, "\tbra\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JZ") == 0 && insP->argc == 1) {
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbeq\ttc_%s\n", insP->args[0]);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbeq\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JNZ") == 0 && insP->argc == 1) {
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s\n", insP->args[0]);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if ((strcmp(op, "CALL") == 0 || strcmp(op, "CALLP") == 0) && insP->argc == 2) {
 				int nargsC = number(insP->args[1], insP->line);
 				int callee = findFunction(insP->args[0]);
@@ -914,11 +978,18 @@ static void emitIR(FILE* out) {
 				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
 				int ai;
 				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
-				/* PC-relative Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein
-				   freies Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen
-				   eigene Emission hinaus als gueltig vorausgesetzt) -- passend zum PIC-Stil
-				   des restlichen Backends (vgl. tc_g_<name>(pc)-Zugriffe). */
-				if (stackArgs > 0) fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
+				/* Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein freies
+				   Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen eigene
+				   Emission hinaus als gueltig vorausgesetzt). small: PC-relative "lea"
+				   passend zum PIC-Stil des restlichen Backends (vgl. tc_g_<name>(pc)-
+				   Zugriffe); large: derselbe a3-Indirektionsmechanismus wie bei echten
+				   Globalen (siehe emitLeaGlobal()-Kommentar) -- tc_extcall_tmp bekommt
+				   dafuer einen zusaetzlichen Tabelleneintrag NACH allen echten Globalen
+				   (Offset globalCount*4). */
+				if (stackArgs > 0) {
+					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n", globalCount * 4);
+					else fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
+				}
 				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n", ai * 4);
 				if (hasD1) fputs("\tmove.l\t(a7)+,d1\n", out);
 				if (hasD0) fputs("\tmove.l\t(a7)+,d0\n", out);
@@ -1050,28 +1121,12 @@ static void emitIR(FILE* out) {
 			hasData |= globals[gi].isArray || globals[gi].initialValue != 0;
 			hasBss |= !globals[gi].isArray && globals[gi].initialValue == 0;
 		}
-		if (largeDataMode && globalCount > 0) {
-			/* WICHTIG: MUSS vor dem DATA/BSS-Block stehen (2026-07-25 empirisch am echten
-			   r68 gefunden) -- die eigentlichen globalen Daten koennen SEHR gross sein
-			   (genau der Fall, den -largedata loesen soll), die Tabelle selbst aber MUSS
-			   klein UND PC-relativ nah am referenzierenden Code bleiben. Nach dem grossen
-			   DATA-Block waere die Tabelle selbst schon zu weit vom Code entfernt --
-			   "value out of range" fuer die movea.l-Zugriffe auf die Tabelle selbst! Siehe
-			   emitLeaGlobal()-Kommentar fuer das Gesamtprinzip: ein 4-Byte-Eintrag
-			   "tc_ga_X: dc.l tc_g_X" pro Globaler (AUCH fuer declOnly-Externe, in einer
-			   ANDEREN Datei definiert -- "dc.l tc_g_X" ist eine ganz normale externe
-			   Symbolreferenz). l68 loest "dc.l tc_g_X" als ABSOLUTE Adresse auf (Standard-
-			   Relokation, keine Distanzbeschraenkung) -- nur das LADEN dieses Tabellen-
-			   eintrags selbst ist PC-relativ und muss deshalb nah am Code bleiben. */
-			fprintf(out, "\n%s Indirektionstabelle (-largedata): absolute Adressen, PC-relativ erreichbar\n", fullCommentPrefix());
-			emitAlign(out);
-			for (gi = 0; gi < globalCount; gi++) {
-				Global* g = &globals[gi];
-				char gAsmName[NAME_LEN + 40];
-				mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
-				fprintf(out, "tc_ga_%s:\tdc.l\t%s\n", gAsmName + 5, gAsmName);
-			}
-		}
+		/* Die -largedata-Datenindirektionstabelle (tc_gadata) wird NICHT mehr
+		   hier emittiert (siehe emitLeaGlobal()-Kommentar) -- sie sitzt jetzt
+		   VOR allen Funktionsrumpf-Texten, direkt nach tc_functab, damit sie
+		   ueber das einmalige "lea tc_gadata(pc),a3" immer erreichbar bleibt,
+		   egal wie gross der Rest des Programms (inkl. dieses DATA/BSS-Blocks)
+		   wird. */
 		if (hasData) {
 			fprintf(out, "\n%s DATA-Aequivalent des flachen Einzelmoduls: statisch initialisierte int32-Globals\n", fullCommentPrefix());
 			emitAlign(out);
