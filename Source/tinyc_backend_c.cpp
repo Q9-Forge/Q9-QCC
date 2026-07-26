@@ -1329,8 +1329,21 @@ static void emitIR(FILE* out) {
 				   NICHT Teil dieses Schritts, siehe docs/FORTSCHRITT.md. */
 				int nargsC = number(insP->args[1], insP->line);
 				int fixedCount = number(insP->args[2], insP->line);
-				int hasD0 = fixedCount >= 1 && nargsC >= 1;
-				int hasD1 = fixedCount >= 2 && nargsC >= 2;
+				/* BUG (2026-07-26/27, live auf Q9 gefunden, per capstone-Disassemblierung
+				   der ECHTEN clib.l-printf bestaetigt): die Annahme "NUR die FEST
+				   deklarierten Parameter gehen nach d0/d1, der GESAMTE variadische Teil
+				   auf den Stack" (2026-07-24-Fund) war FALSCH bzw. unvollstaendig. Die
+				   echte, kompilierte printf(char* fmt, ...) beginnt mit "move.l d0,-(a7)"
+				   gefolgt von "move.l d1,d0" -- sie erwartet also ihr ERSTES variadisches
+				   Argument (falls vorhanden) IMMER in d1, unabhaengig davon, ob es laut
+				   Deklaration "fest" oder Teil von "..." ist. Die REALE Regel ist: die
+				   ERSTEN ZWEI ARGUMENTE INSGESAMT (fest+variadisch zusammengezaehlt) gehen
+				   nach d0/d1, NUR ab dem DRITTEN Argument geht es auf den Stack -- exakt
+				   wie bei einem nicht-variadischen Aufruf, OHNE Sonderrolle fuer "...".
+				   fixedCount wird nicht mehr fuer die Register/Stack-Aufteilung gebraucht
+				   (bleibt nur zur IR-Validierung erhalten). */
+				int hasD0 = nargsC >= 1;
+				int hasD1 = nargsC >= 2;
 				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
 				int ai;
 				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
