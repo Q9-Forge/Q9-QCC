@@ -1994,7 +1994,23 @@ void tc_funcbegin(const char* start, const char* end) {
 	int i, f; (void)start; (void)end;
 	tcCurrentFuncIndex = -1;
 	f = tcLookupFunction(tcFuncName);
-	if (f >= 0) { fprintf(stderr, "tinyc: duplicate function\n"); return; }
+	if (f >= 0) {
+		/* Eine bare Vorwaertsdeklaration darf spaeter in derselben Datei
+		   durch den echten Funktionsrumpf aufgeloest werden. */
+		if (!tcFunctionIsDeclOnly[f] || tcFunctionIsExternal[f] ||
+			tcFunctionNargs[f] != tcLocalCount ||
+			!tcSameType(tcFunctionReturnTypes[f], tcFuncType)) {
+			fprintf(stderr, "tinyc: duplicate function\n"); return;
+		}
+		for (i = 0; i < tcLocalCount; i++) {
+			if (!tcSameType(tcFunctionParamTypes[f][i], tcLocalTypes[i])) {
+				fprintf(stderr, "tinyc: function prototype mismatch\n");
+				tcSemanticErrors++; return;
+			}
+		}
+		tcCurrentFuncIndex = f;
+		return;
+	}
 	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "tinyc: too many functions\n"); tcSemanticErrors++; return; }
 	f = tcFunctionCount++;
 	tcCopy(tcFunctionNames[f], tcFuncName, tcFuncName + strlen(tcFuncName));
@@ -2015,6 +2031,7 @@ ROUTINE C tc_funcbodybegin
 /* Feuert bei "{" (Beginn eines echten Funktionsrumpfs) -- siehe tc_funcbegin. */
 void tc_funcbodybegin(const char* start, const char* end) {
 	(void)start; (void)end;
+	if (tcCurrentFuncIndex >= 0) tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 0;
 	printf("FUNC %s %d %d\n", tcFuncName, tcLocalCount, tcCurrentFuncIndex >= 0 ? tcFunctionIsStatic[tcCurrentFuncIndex] : 0);
 }
 END
