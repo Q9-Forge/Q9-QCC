@@ -57,3 +57,19 @@ int main() {
 - `runtests.sh`: verbindliche Regressionstests
 - `docs/STATUS.md`: aktueller Stand
 
+## OS-9/Q9-Workflow
+
+Der Tiny-C-Compiler kann auf dem Q9/OS-9-Emulator bereits die einzelnen
+Übersetzungsschritte ausführen. Eine vollständige Übersicht mit den nötigen
+Microware-Komponenten steht in [`OS9_BOOTSTRAP.md`](OS9_BOOTSTRAP.md).
+
+Kurzform:
+
+```text
+tinyc_p @quelle.tc >quelle.ir
+tinyc_backend quelle.ir quelle.s68 -os9
+r68 -o=quelle.r quelle.s68
+```
+
+Danach wird `quelle.r` mit `cstart.r`, `clib.l`, `os_lib.l` und `sys.l` zu
+einem ausführbaren OS-9-Modul gelinkt.

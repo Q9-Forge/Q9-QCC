@@ -479,7 +479,17 @@ bewusst umbenennt oder entfernt -- aktuell werden ACTION-Zeilen mit unbekannter
 Regel beim Parsen der Konfiguration schlicht mit Warnung ignoriert (codegen.cpp,
 `actionsParseConfig()`).
 
-## 10. Tiny-C: der erste komplette Sprach-zu-IR-zu-68k-Weg (geplant 2026-07-20)
+## 10. Tiny-C: der erste komplette Sprach-zu-IR-zu-68k-Weg (verifiziert 2026-07-29)
+
+### 10.0 Q9/OS-9-Bootstrap (verifiziert 2026-07-29)
+
+Die zuvor geplante OS-9-Kette ist inzwischen live auf dem Q9-Emulator
+verifiziert: `tinyc_p` erzeugt IR, `tinyc_backend` erzeugt Microware-Assembler,
+`r68` erzeugt ein relocatable Objekt und `l68` linkt daraus ein ausführbares
+OS-9-Modul. Ein Testprogramm mit `putint(42)` läuft bis zur sichtbaren Ausgabe
+`42`. Der native EBNF-Parser wurde zusätzlich als OS-9-Modul gelinkt und über
+eine Datei sowie `argv[1]` getestet. Der noch offene Komfortschritt ist ein
+einheitliches `cc`-Frontend; die einzelnen Compilerstufen sind vorhanden.
 
 Neuer Projektfokus statt des oberon0-Handdurchlaufs (Abschnitt 7): eine kleine,
 grammatisch EINDEUTIGE C-Teilsprache komplett bis zum lauffaehigen OS-9/68k-Code

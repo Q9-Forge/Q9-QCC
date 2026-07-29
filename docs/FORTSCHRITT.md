@@ -1,5 +1,15 @@
 # Fortschritt und Roadmap
 
+## Aktueller Meilenstein: Q9/OS-9-Bootstrap (2026-07-29)
+
+Die praktische Bootstrap-Kette ist auf dem Q9-Emulator verifiziert:
+`tinyc_p` übersetzt C nach IR, `tinyc_backend` erzeugt 68k-Assembler,
+`r68` assembliert, `l68` linkt und das OS-9-Modul läuft mit sichtbarer Ausgabe.
+Der selbstübersetzte EBNF-Parser ist ebenfalls als OS-9-Modul lauffähig und
+kann eine Quelldatei über `argv[1]` prüfen. Die reproduzierbaren Befehle und
+die noch offenen Komfortschritte stehen in
+[`OS9_BOOTSTRAP.md`](OS9_BOOTSTRAP.md).
+
 ## Selfhosting L2 Vollport: `codegen.cpp` ABGESCHLOSSEN (2026-07-25)
 
 **Stand 2026-07-25 abends: der komplette Vollport von `Source/codegen.cpp`
@@ -797,4 +807,3 @@ Ziel: Generator + Tiny-C-Toolchain irgendwann in Tiny-C selbst schreib- und
 6. 68000- und ARM64-Backend ergänzen.
 7. Kleinen gezielten Regressionstest in `runtests.sh` aufnehmen.
 8. `./runtests.sh` vollständig ausführen und diese Datei aktualisieren.
-

@@ -1791,6 +1791,23 @@ void initLexer() {
 	endBlockCommandString = "*/";
 	lineCnt = 0;
 	charLen = 0;
+	/* 2026-07-27, live auf Q9 gefunden: aktChar/lastChar/nextChar/sourcePtr
+	   blieben bisher UNINITIALISIERT -- getAktChar()/getNext() lesen
+	   aktChar/nextChar VOR dem allerersten Schreibzugriff (z.B. "if
+	   (flagEOF != 0 || aktChar == -1)" in getAktChar()). Auf echter
+	   Q9-Hardware liegt dort KEIN garantiert genullter Speicher (anders als
+	   TinyVM/tiny68sim.py, die BSS immer als Nullen modellieren) --
+	   je nach Speicherinhalt eines VORHERIGEN Programmlaufs im selben
+	   Emulator-Boot fuehrte das zu einem nicht-deterministischen Ein-Zeichen-
+	   Versatz gleich beim ersten getNext()-Aufruf, der die Kommentar-
+	   Erkennung (comment(), die "/*" als ERSTE Bytes von sourceBuffer
+	   erwartet) bei jedem ZWEITEN Kommentar im Dokument zuverlaessig
+	   zerstoerte (Symptom: "LEX_ERROR: flasches Zeichen <*>" statt "</>" --
+	   das fuehrende "/" war bereits lautlos verschluckt). */
+	aktChar = 0;
+	lastChar = 0;
+	nextChar = 0;
+	sourcePtr = sourceBuffer;
 }
 
 /* Rohes Zeiger-Dereferenzieren (*index lesen UND *index = wert schreiben,
@@ -1801,36 +1818,60 @@ void initLexer() {
    siehe strcat/sprintf-Praezedenzfaelle) neu extern deklariert (TEIL 1). */
 char* comment() {
 	char* index;
-	char* indexEnd;
-	int len;
+	int i;
+	int j;
+	int k;
+	int found;
 
+	/* Die alte Variante verwendete ueberlappende strcpy-Aufrufe. Das ist
+	   auf der Microware-libc nicht sicher; der Lexer darf dabei keinen Text
+	   verlieren. */
 	if (flagBlockCommentActive != 0) {
-		if (flagBlockComment != 0) {
-			index = strstr(sourceBuffer, endBlockCommandString);
-			if (index != 0) {
-				strcpy(sourceBuffer, index + strlen(endBlockCommandString));
-				charLen = strlen(sourceBuffer);
-				flagBlockCommentActive = 0;
-			} else {
-				sourceBuffer[0] = 0;
-				charLen = 0;
-			}
+		found = 0;
+		i = 0;
+		while (sourceBuffer[i] != 0 && found == 0) {
+			if (sourceBuffer[i] == 42 && sourceBuffer[i + 1] == 47) { found = 1; }
+			else { i = i + 1; }
 		}
-	} else {
-		if (flagBlockComment != 0 && strlen(startBlockCommandString) > 0 && strlen(endBlockCommandString) > 0) {
-			index = strstr(sourceBuffer, startBlockCommandString);
-			if (index != 0) {
-				indexEnd = strstr(sourceBuffer, endBlockCommandString);
-				if (indexEnd != 0) {
-					len = strlen(endBlockCommandString);
-					indexEnd = indexEnd + len;
-					strcpy(index, indexEnd);
-					charLen = strlen(sourceBuffer);
-				} else {
-					*index = 0;
-					charLen = strlen(sourceBuffer);
-					flagBlockCommentActive = 1;
+		if (found != 0) {
+			j = i + 2;
+			k = 0;
+			while (sourceBuffer[j] != 0) {
+				sourceBuffer[k] = sourceBuffer[j];
+				j = j + 1;
+				k = k + 1;
+			}
+			sourceBuffer[k] = 0;
+			charLen = strlen(sourceBuffer);
+			flagBlockCommentActive = 0;
+		} else {
+			sourceBuffer[0] = 0;
+			charLen = 0;
+		}
+	} else if (flagBlockComment != 0) {
+		found = 0;
+		i = 0;
+		while (sourceBuffer[i] != 0 && found == 0) {
+			if (sourceBuffer[i] == 47 && sourceBuffer[i + 1] == 42) { found = 1; }
+			else { i = i + 1; }
+		}
+		if (found != 0) {
+			j = i + 2;
+			while (sourceBuffer[j] != 0 && !(sourceBuffer[j] == 42 && sourceBuffer[j + 1] == 47)) { j = j + 1; }
+			if (sourceBuffer[j] != 0) {
+				j = j + 2;
+				k = i;
+				while (sourceBuffer[j] != 0) {
+					sourceBuffer[k] = sourceBuffer[j];
+					j = j + 1;
+					k = k + 1;
 				}
+				sourceBuffer[k] = 0;
+				charLen = strlen(sourceBuffer);
+			} else {
+				sourceBuffer[i] = 0;
+				charLen = strlen(sourceBuffer);
+				flagBlockCommentActive = 1;
 			}
 		}
 	}
@@ -1849,8 +1890,9 @@ char* comment() {
 	}
 
 	if (flagRestLineComment != 0 && strlen(restLineCommendString) > 0) {
-		index = strstr(sourceBuffer, restLineCommendString);
-		if (index != 0) {
+		index = sourceBuffer;
+		while (*index != 0 && !(*index == 47 && index[1] == 47)) { index = index + 1; }
+		if (*index != 0) {
 			*index = 0;
 			charLen = strlen(sourceBuffer);
 		}
@@ -1916,6 +1958,22 @@ int getAktChar() {
 		return -1;
 	}
 	aktChar = getNext();
+	/* Blockkommentare nochmals auf Zeichenebene ueberspringen. Der
+	   zeilenweise Filter ist fuer die Ausgabe praktisch, darf aber nicht die
+	   einzige Erkennung sein: auf OS-9 kann die String-libc bei einem frisch
+	   gelesenen Puffer den Beginn "/*" verfehlen. */
+	if (flagBlockComment != 0 && aktChar == 47 && nextChar == 42) {
+		getNext();
+		aktChar = getNext();
+		while (aktChar != -1) {
+			if (aktChar == 42 && nextChar == 47) {
+				getNext();
+				aktChar = getNext();
+				break;
+			}
+			aktChar = getNext();
+		}
+	}
 	if (isspace(aktChar) != 0) {
 		while (isspace(nextChar) != 0) {
 			aktChar = getNext();
@@ -2217,7 +2275,9 @@ void ebnfMain(char* baseArg) {
 			printf("CODEGEN: Konfiguration fehlerhaft -- Codegenerierung uebersprungen.\n");
 		} else if (genParserC(cgenCName) != 0 && genParser68k(cgen68kName) != 0) {
 			printf("CODEGEN: '%s' und '%s' erzeugt.\n", cgenCName, cgen68kName);
-			if (cgenWantOS9() != 0) {
+			/* Der OS-9-Selfhost-Build soll immer auch das r68-Format liefern;
+			   die generische .s68-Datei bleibt fuer Host-Tests erhalten. */
+			if (true) {
 				/* Basisname ohne Verzeichnis-Anteil als Default-psect-Name */
 				base = baseArg;
 				slash = strrchr(base, 47);		/* '/' */
