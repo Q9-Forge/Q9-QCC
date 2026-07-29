@@ -1342,8 +1342,16 @@ int genParserC(char* path) {
 	fputc(34, fp);
 	fprintf(fp, ", argv[0]); return 2; }\n");
 	fprintf(fp, "\tif (argv[1][0] == '@') {\n");
-	fprintf(fp, "\t\tinputFile = fopen(argv[1] + 1, \"r\");\n");
-	fprintf(fp, "\t\tif (!inputFile) { fprintf(stderr, \"can't open %%s\\n\", argv[1] + 1); return 2; }\n");
+	fprintf(fp, "\t\tinputFile = fopen(argv[1] + 1, ");
+	fputc(34, fp);
+	fprintf(fp, "r");
+	fputc(34, fp);
+	fprintf(fp, ");\n");
+	fprintf(fp, "\t\tif (!inputFile) { fprintf(stderr, ");
+	fputc(34, fp);
+	fprintf(fp, "can't open %%s\\n");
+	fputc(34, fp);
+	fprintf(fp, ", argv[1] + 1); return 2; }\n");
 	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
 	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
 	fprintf(fp, "\t} else p = argv[1];\n");
