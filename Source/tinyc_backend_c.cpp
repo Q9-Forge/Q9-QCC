@@ -1,12 +1,12 @@
-//================================================================================
-// tinyc_backend_c.cpp -- reines-C-Gegenstueck zu tinyc_backend.cpp
-//
-// Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
-// Tabellen + lineare Suche, im selben Stil wie ebnf.cpp/codegen.cpp. Das
-// Original (tinyc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
-// docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
-// C++-Version zurueckzuschalten, in runtests.sh wieder tinyc_backend.cpp bauen.
-//================================================================================
+/*==============================================================================
+ * tinyc_backend_c.cpp -- reines-C-Gegenstueck zu tinyc_backend.cpp
+ *
+ * Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
+ * Tabellen + lineare Suche, im selben Stil wie ebnf.cpp/codegen.cpp. Das
+ * Original (tinyc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
+ * docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
+ * C++-Version zurueckzuschalten, in runtests.sh wieder tinyc_backend.cpp bauen.
+ *============================================================================*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,8 +30,8 @@
    ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
    Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
    nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
-#define MAX_GLOBALS     1024
-#define MAX_ARRAY_LEN   4096
+#define MAX_GLOBALS     512
+#define MAX_ARRAY_LEN   1024
 
 typedef struct {
 	char op[OP_LEN];
@@ -696,9 +696,9 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
-// 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
-// Schablonen bilden deshalb die definierte Tiny-C-int32-Arithmetik nach. Sie
-// erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
+/* 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
+ * Schablonen bilden deshalb die definierte Tiny-C-int32-Arithmetik nach. Sie
+ * erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck. */
 static void emitM68kCore(FILE* out) {
 	fprintf(out, "%s 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n", fullCommentPrefix());
 	fputs("tc_mul_i32:\n", out);
@@ -754,6 +754,10 @@ static void emitIR(FILE* out) {
 	int order[MAX_FUNCS];
 	int oi;
 	int gi;
+	Function* fn;
+	char asmName[NAME_LEN + 40];
+	int nargsC;
+	int callee;
 
 	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
 	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
@@ -809,7 +813,6 @@ static void emitIR(FILE* out) {
 		emitAlign(out);
 		fprintf(out, "tc_functab__%s:\n", psectName);
 		for (fi = 0; fi < funcCount; fi++) {
-			char asmName[NAME_LEN + 40];
 			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
 			fprintf(out, "\tdc.l\t%s-tc_functab__%s\n", asmName, psectName);
 		}
@@ -921,22 +924,22 @@ static void emitIR(FILE* out) {
 		fprintf(out, "tc_putint:\n\tlink\t%s,#0\n", framePtr());
 		fputs("\tmove.l\td0,d2\n\tmoveq\t#0,d3\n\ttst.l\td2\n\tbge\ttc_pi_nonneg\n", out);
 		fputs("\tneg.l\td2\n\tmoveq\t#1,d3\n", out);
-		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
+		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n\tmove.b\t#10,1(a1)\n", out);
 		fputs("tc_pi_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
 		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
 		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
 		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pi_loop\n", out);
 		fputs("\ttst.l\td3\n\tbeq\ttc_pi_go\n\tsubq.l\t#1,a1\n\tmove.b\t#45,(a1)\n", out);
-		fputs("tc_pi_go:\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fputs("tc_pi_go:\tlea\ttc_io_buf+13(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
 		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
 
 		fprintf(out, "tc_putuint:\n\tlink\t%s,#0\n", framePtr());
-		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
+		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n\tmove.b\t#10,1(a1)\n", out);
 		fputs("tc_pu_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
 		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
 		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
 		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pu_loop\n", out);
-		fputs("\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fputs("\tlea\ttc_io_buf+13(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
 		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
 
 		fprintf(out, "tc_putchar:\n\tlink\t%s,#0\n", framePtr());
@@ -962,7 +965,7 @@ static void emitIR(FILE* out) {
 		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		fputs("\trts\n\n", out);
 	} else {
-		// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
+		/* Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich. */
 		fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
@@ -982,7 +985,7 @@ static void emitIR(FILE* out) {
 		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
 		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
 		   echten _os_write-Aufruf (siehe tc_io_write oben). */
-		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
+		fputs("tc_io_buf:\tdc.l\t0,0,0,0\n", out);
 		fputs("tc_io_cnt:\tdc.l\t0\n", out);
 	}
 	} /* !partMode || runtimeMode */
@@ -1010,8 +1013,7 @@ static void emitIR(FILE* out) {
 	}
 	for (oi = 0; oi < funcCount; oi++) {
 		fi = order[oi];
-		Function* fn = &funcs[fi];
-		char asmName[NAME_LEN + 40];
+		fn = &funcs[fi];
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
@@ -1283,9 +1285,8 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "JNZ") == 0 && insP->argc == 1) {
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if ((strcmp(op, "CALL") == 0 || strcmp(op, "CALLP") == 0) && insP->argc == 2) {
-				int nargsC = number(insP->args[1], insP->line);
-				int callee = findFunction(insP->args[0]);
-				char asmName[NAME_LEN + 40];
+				nargsC = number(insP->args[1], insP->line);
+				callee = findFunction(insP->args[0]);
 				if (callee < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
 				emitCall(out, asmName, callee * 4, &serial, psectName);
@@ -1432,9 +1433,9 @@ static void emitIR(FILE* out) {
 
 	{
 		int hasData = 0, hasBss = 0, gi;
-		// std::vector<int>(len) im Original ist NIE leer -- jedes Array landet
-		// deshalb immer im DATA-Zweig, nie im BSS-Zweig. Das wird hier bewusst
-		// direkt als Regel (isArray || initialValue!=0) nachgebildet.
+		/* std::vector<int>(len) im Original ist NIE leer -- jedes Array landet
+		 * deshalb immer im DATA-Zweig, nie im BSS-Zweig. Das wird hier bewusst
+		 * direkt als Regel (isArray || initialValue!=0) nachgebildet. */
 		for (gi = 0; gi < globalCount; gi++) {
 			if (globals[gi].declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
 			hasData |= globals[gi].isArray || globals[gi].initialValue != 0;
@@ -1568,7 +1569,7 @@ int main(int argc, char* argv[]) {
 		psectName[n] = '\0';
 		strcat(psectName, "_p");
 	}
-	out = fopen(argv[2], "w");
+	out = fopen(argv[2], "wb");
 	if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
 	emitIR(out);
 	if (ferror(out)) fatal("Schreibfehler in Assembler-Ausgabe");

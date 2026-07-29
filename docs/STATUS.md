@@ -1,8 +1,20 @@
 # Projektstatus
 
-Stand: **2026-07-26 spät abends (Nachtrag: Schritt 3 [Live-Q9-Verifikation]
-läuft -- fünf echte `-largedata`/`-os9`-Backend-Bugs live auf Q9 gefunden
-und gefixt, main sauber (PR #48+#49). Ein sechster, neuer Laufzeitfehler
+## 2026-07-29: Q9/OS-9-Tiny-C-Bootstrap verifiziert
+
+Die erste praktische Bootstrap-Stufe ist abgeschlossen. Auf dem Q9-Emulator
+funktioniert die Kette `C → IR → 68k-Assembler → r68 → l68 → OS-9-Modul`.
+Ein aus `test_one.tc` erzeugtes Modul läuft auf OS-9 und gibt `42` aus.
+Details und die reproduzierbaren Kommandos stehen in
+[`docs/OS9_BOOTSTRAP.md`](OS9_BOOTSTRAP.md).
+
+Zusätzlich läuft der selbstübersetzte EBNF-Parser als OS-9-Modul und kann eine
+Tiny-C-Datei über `argv[1]` öffnen und syntaktisch prüfen.
+
+Stand: **2026-07-29 (Nachtrag: Schritt 3 [Live-Q9-Verifikation]
+abgeschlossen -- die echte `-largedata`/`-os9`-Kette läuft live auf Q9,
+inklusive Link und sichtbarer Ausgabe. Die folgenden historischen Einträge
+bleiben als Entwicklungstagebuch erhalten. Ein sechster, neuer Laufzeitfehler
 ist beim ersten vollständigen End-zu-Ende-Testlauf aufgetaucht und wird
 gerade untersucht -- Details in der Claude-Memory-Datei
 `tinyc-vollport-status.md`, die für diesen Strang aktueller ist als dieser
@@ -358,4 +370,3 @@ M1-M3), alle live gegen die echten Toolchains verifiziert:
 `./runtests.sh`: 8 neue Mehrdatei-Tests (4x TinyVM/M1, 2x echter 68k/`l68`-
 Link/M2, 2x echter ARM64/`clang`+`ld`-Link/M3), alle grün neben den 135
 bestehenden Tiny-C-Programmen.
-
