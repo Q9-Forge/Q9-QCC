@@ -1,9 +1,9 @@
-# Tiny-C Stack-IR — Opcode-Referenz
+# QCC Stack-IR — Opcode-Referenz
 
 Stand: **2026-07-25**
 
 Ausführliches Referenzdokument zur Text-IR, die zwischen dem generierten
-Tiny-C-Frontend-Parser und den Backends (TinyVM, 68000, ARM64, C) steht.
+QCC-Frontend-Parser und den Backends (QCCVM, 68000, ARM64, C) steht.
 Kurzfassung mit Einbettung in den Gesamtkontext: `docs/ARCHITEKTUR.md`
 Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
 
@@ -13,17 +13,17 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
   Opcode, optional gefolgt von Argumenten, getrennt durch Whitespace.
   Kommentarzeilen beginnen mit `;` oder `#`.
 - **Werte und Pointer sind getrennte Konzepte.** Ein Pointer ist intern ein
-  Paar `(Block, Offset)` (siehe `Pointer`-Klasse in `tools/tinyvm.py`),
+  Paar `(Block, Offset)` (siehe `Pointer`-Klasse in `tools/qccvm.py`),
   kein simpler Integer — Pointer-Arithmetik läuft über eigene Opcodes
   (`PADD`/`IPADD`/`PSUB`/`PDIFF`), nicht über `ADD`/`SUB`.
 - **Typtags** (`<typtag>`), wo relevant: `c`/`b` = 1 Byte (char/bool),
   `p` = Pointer-Breite (architekturabhängig, 68k kleiner als ARM64),
   alles andere = 4 Byte (int/unsigned/enum).
-- **Kanonische Semantik-Quelle:** `tools/tinyvm.py` — jeder Backend-Codegen
+- **Kanonische Semantik-Quelle:** `tools/qccvm.py` — jeder Backend-Codegen
   (68k, ARM64, C) muss für dieselbe IR dasselbe Ergebnis liefern wie der
-  TinyVM-Interpreter. Bei Zweifeln an der Semantik eines Opcodes: dort
+  QCCVM-Interpreter. Bei Zweifeln an der Semantik eines Opcodes: dort
   nachschauen, nicht raten.
-- Zwei Opcode-Familien sind **backend-only** und von TinyVM nicht
+- Zwei Opcode-Familien sind **backend-only** und von QCCVM nicht
   ausführbar: `CALLEXT`/`CALLEXTP` (echte `extern`-Aufrufe gegen Microware-
   `clib.l`, nur 68k) und `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
   deklarationen ohne Rumpf — reine Backend-/Linker-Information).
@@ -126,7 +126,7 @@ Alle Vergleiche: `a, b → 0|1`.
 
 - `docs/ARCHITEKTUR.md` Abschnitt 10 — Entstehung der IR, Emissions-Muster
   (wie Parser-Aktionen die IR erzeugen), Funktions-ABI (Slots/Frames).
-- `tools/tinyvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
+- `tools/qccvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
   alle Backends.
-- `docs/SELFHOSTING_LUECKENLISTE.md` / `[[tinyc-vollport-status]]` (Memory)
-  — Kontext zum laufenden Tiny-C-Vollport von `codegen.cpp`/`ebnf.cpp`.
+- `docs/SELFHOSTING_LUECKENLISTE.md` / `[[qcc-vollport-status]]` (Memory)
+  — Kontext zum laufenden QCC-Vollport von `codegen.cpp`/`ebnf.cpp`.

@@ -6,7 +6,7 @@ Zielsysteme können unabhängig wachsen.
 
 ## Hauptprojekt: C-Sprachkern
 
-Dieses Projekt enthält Grammatik, semantisches Typmodell, IR, TinyVM und die
+Dieses Projekt enthält Grammatik, semantisches Typmodell, IR, QCCVM und die
 bereits vorhandenen Ziel-Backends nur soweit sie zum Testen des Sprachkerns
 notwendig sind.
 
@@ -34,7 +34,7 @@ in kleinen, aufeinander aufbauenden Einheiten.
 - Funktionspointer
 - Funktionsprototypen (bare, ohne Rumpf), `static`-Sichtbarkeit, `extern` bei
   globalen Variablen und mehrere Übersetzungseinheiten: **erledigt für
-  Tiny-C (2026-07-25)**, siehe `docs/STATUS.md`/`docs/FORTSCHRITT.md`
+  QCC (2026-07-25)**, siehe `docs/STATUS.md`/`docs/FORTSCHRITT.md`
   ("Mehrdatei-Übersetzung") -- live gegen echten `l68`- und `clang`/`ld`-Link
   verifiziert, bewusste Grenze: kein `#include`-Mechanismus/Header-Datei
 

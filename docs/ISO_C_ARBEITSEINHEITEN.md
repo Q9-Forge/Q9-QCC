@@ -66,7 +66,7 @@ Bei der Umsetzung wird die genaue Normstelle jeweils ergänzt.
 | D1 | Constraint-Diagnosen und Fehlerklassen | C90 | alle Frontendtypen | teilweise |
 | D2 | Implementation-defined/undefined/unspecified Verhalten dokumentieren | C90 | Semantik | offen |
 | D3 | Übersetzung mehrerer Dateien reproduzierbar machen | C90 | O3, Präprozessor | offen |
-| A1 | Struct-/Union-Layout im IR und TinyVM | C90 | T7/T9 | offen |
+| A1 | Struct-/Union-Layout im IR und QCCVM | C90 | T7/T9 | offen |
 | A2 | Struct-/Union-Parameter und Rückgabewerte im 68000-ABI | C90 | A1, Backend | offen |
 | A3 | Gleiches ABI im ARM64-Backend | C90 | A1/A2 | offen |
 | A4 | Floating-Point-IR und ARM64-Codegen | C90 | T4 | offen |
@@ -96,13 +96,13 @@ Danach folgt die allgemeine Typausbaustufe:
 
 `T1/T2` → `T3` → `T4` → `T11` → `T12`
 
-Nach jeder Einheit müssen mindestens Typprüfung, IR-Größen, TinyVM und die
+Nach jeder Einheit müssen mindestens Typprüfung, IR-Größen, QCCVM und die
 betroffenen Backends geprüft werden. Erst nach `T7` ist es sinnvoll, Structs als
 Basis für ABI-Arbeiten einzuplanen.
 
 ## Definition einer abgeschlossenen Einheit
 
-Eine Einheit ist abgeschlossen, wenn Grammatik/Frontend, IR, TinyVM und die
+Eine Einheit ist abgeschlossen, wenn Grammatik/Frontend, IR, QCCVM und die
 betroffenen Backends konsistent sind, mindestens ein positiver und ein negativer
 Test existieren und `./runtests.sh` weiterhin erfolgreich läuft. Bei großen
 Einheiten wird der Eintrag in Untereinheiten wie `T7a`, `T7b` usw. geteilt.

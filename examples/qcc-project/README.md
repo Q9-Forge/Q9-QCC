@@ -1,14 +1,14 @@
-# Tiny-C Mehrdatei-Projekt
+# QCC Mehrdatei-Projekt
 
 Dieses kleine Beispiel prüft den ersten praktischen Workflow:
 
 ```text
 main.tc + math.tc
-        ↓ tinyc_p
+        ↓ qcc_p
         IR pro Datei
-        ↓ tinyc_merge.py
+        ↓ qcc_merge.py
         project.ir
-        ↓ tinyc_backend -os9
+        ↓ qcc_backend -os9
         project.s68
         ↓ r68 + l68
         project.out
@@ -43,7 +43,7 @@ Der OS-9-Bashtreiber `q9build` führt denselben Ablauf direkt im Q9 aus:
 q9build main.tc math.tc
 ```
 
-Er verwendet `merge`, `tinyc_backend`, `r68` und `l68` aus `/dd/CMDS` sowie
+Er verwendet `merge`, `qcc_backend`, `r68` und `l68` aus `/dd/CMDS` sowie
 die Libraries aus `/dd/LIB`.
 
 Das Programm gibt beim Ausführen `42` mit CR/LF aus.
