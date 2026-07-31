@@ -5,7 +5,7 @@ läuft -- fünf echte `-largedata`/`-os9`-Backend-Bugs live auf Q9 gefunden
 und gefixt, main sauber (PR #48+#49). Ein sechster, neuer Laufzeitfehler
 ist beim ersten vollständigen End-zu-Ende-Testlauf aufgetaucht und wird
 gerade untersucht -- Details in der Claude-Memory-Datei
-`tinyc-vollport-status.md`, die für diesen Strang aktueller ist als dieser
+`qcc-vollport-status.md`, die für diesen Strang aktueller ist als dieser
 Abschnitt hier.)**
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
@@ -48,11 +48,11 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
   wachsen) statt fester Arrays. Host-Datensegment damit von ~34,6 MB auf
   ~1 MB gesunken (`size build/ebnf`), passt jetzt auch für ein 8-MB-System.
   Bestätigt: die Microware-`stdlib.h` stellt `malloc`/`realloc`/`free` bereit,
-  betrifft also nur Tiny-C als Sprache fürs spätere Selfhosting, nicht die
+  betrifft also nur QCC als Sprache fürs spätere Selfhosting, nicht die
   OS-9-Zielplattform (siehe `docs/SELFHOSTING_LUECKENLISTE.md`, neue Zeile
   "malloc/realloc/free"). `./runtests.sh` komplett grün nach der Umstellung.
 - **Bestätigt auf dem echten Q9-Emulator (2026-07-24, Nachtrag):** kompletter
-  EBNF-Generator (Source-Stand nach PR #26, inkl. aller Tiny-C-Sprachfeatures
+  EBNF-Generator (Source-Stand nach PR #26, inkl. aller QCC-Sprachfeatures
   bis String-Literale) mit `xcc -tp=68030,ld` neu gebaut, per ToolShed als
   `PROJECTS/ebnf_gen/ebnf_gen` eingespielt und live ausgeführt. `ident` zeigt
   **Data size $FE7D0 = 1.042.384 Byte (~1 MB)** statt der vorherigen ~34,6 MB
@@ -64,24 +64,24 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
   Memory-Datei `q9-xcc-toolchain-milestone.md`. Damit ist dieser Strang
   vollständig abgeschlossen.
 
-Diese Untersuchung ist inhaltlich unabhängig von der Tiny-C-Sprachfeature-
-Arbeit unten und betrifft ausschließlich den Generator selbst, nicht Tiny-C.
+Diese Untersuchung ist inhaltlich unabhängig von der QCC-Sprachfeature-
+Arbeit unten und betrifft ausschließlich den Generator selbst, nicht QCC.
 
-### Selfhosting L2 Vollport: `ebnf.cpp` nach Tiny-C ABGESCHLOSSEN (2026-07-26)
+### Selfhosting L2 Vollport: `ebnf.cpp` nach QCC ABGESCHLOSSEN (2026-07-26)
 
 **Der komplette Vollport von `Source/ebnf.cpp` (2149 Zeilen) nach
-`SourceTinyC/ebnf.tc` ist fertig** -- zusammen mit dem bereits am 2026-07-25
-abgeschlossenen `codegen.cpp`-Vollport (`SourceTinyC/codegen.tc`) sind damit
-BEIDE Kerndateien des EBNF-Generators als Tiny-C-Quelltext vorhanden. Ein
+`SourceQCC/ebnf.tc` ist fertig** -- zusammen mit dem bereits am 2026-07-25
+abgeschlossenen `codegen.cpp`-Vollport (`SourceQCC/codegen.tc`) sind damit
+BEIDE Kerndateien des EBNF-Generators als QCC-Quelltext vorhanden. Ein
 echter `l68`-Link von `ebnf.tc` (inkl. seiner eigenen `main()`) gegen
 `codegen.tc` läuft zum ersten Mal komplett OHNE unresolved Symbole durch
 (Regressionstest in `runtests.sh`, letzter Eintrag) -- der resultierende
 2,1-MB-`.out`-Binary ist ein vollständig gelinktes OS-9-Modul.
 
-Chronologischer Fortschritt, alle gefundenen Tiny-C-Sprachquirks und die
+Chronologischer Fortschritt, alle gefundenen QCC-Sprachquirks und die
 Details jedes einzelnen Portierungsschritts stehen in `docs/FORTSCHRITT.md`
 (Abschnitt "Selfhosting L2 Vollport: `ebnf.cpp`") und der Memory-Datei
-`[[tinyc-vollport-status]]` -- hier nur die Kurzfassung:
+`[[qcc-vollport-status]]` -- hier nur die Kurzfassung:
 
 - Alle neun Kernfunktionen der rekursiven-Abstiegs-Parsergruppe
   (`rule`/`expression`/`term`/`factor`/`block`/`repeat`/`option`/`ident`/
@@ -89,42 +89,42 @@ Details jedes einzelnen Portierungsschritts stehen in `docs/FORTSCHRITT.md`
   `getAktChar`/`comment`/`getAktLine`) und die Arbeitsdatei-Ein-/Ausgabe
   (`writeWorkfile`/`loadWorkfileAsGrammar`/`loadPreservedTests`/`runTests`)
   sind portiert.
-- **Bewusste, dokumentierte Abweichung vom Original:** Tiny-C `main()` kann
+- **Bewusste, dokumentierte Abweichung vom Original:** QCC `main()` kann
   keine Kommandozeilenargumente (`argc`/`argv`) empfangen -- die komplette
   Original-`main()`-Logik lebt deshalb in `ebnfMain(char* baseArg)`, `main()`
   selbst ruft sie mit einem fest einprogrammierten Platzhalter-Basisnamen
-  (`"tinyc"`) auf. Für einen echten, dateinamen-flexiblen OS-9-Build müsste
+  (`"qcc"`) auf. Für einen echten, dateinamen-flexiblen OS-9-Build müsste
   das durch einen Syscall zum Lesen der OS-9-Kommandozeile ersetzt werden --
   nicht implementiert.
 - Dabei zwei bisher unentdeckte Backend-Bugs gefunden und gefixt
-  (`Source/tinyc_backend_c.cpp`): interne Sprungmarken (`tc_L<n>`,
+  (`Source/qcc_backend_c.cpp`): interne Sprungmarken (`tc_L<n>`,
   `tc_cmp_yes/done_<n>`) und die `-largedata`-Tabellen (`tc_functab`/
   `tc_gadata`) kollidierten beim Mehrdatei-Link, weil ihre Zähler in jeder
   Datei wieder bei 0 starten -- gefixt mit demselben `psectName`-Suffix-Muster
   wie die bestehende `static`-Namensverfremdung.
 - Rohes Zeiger-Dereferenzieren (`*p` lesen/schreiben, nicht nur `p[i]`) wurde
   zum ersten Mal im gesamten Projekt gebraucht (Lexer-Scanner) -- vorab per
-  Standalone-Test gegen TinyVM verifiziert, funktioniert einwandfrei.
+  Standalone-Test gegen QCCVM verifiziert, funktioniert einwandfrei.
 - **Schritt 3 (Live-Q9-Verifikation) LÄUFT (Stand 2026-07-26 spät abends):**
   fünf unabhängige, tiefe Bugs im `-largedata`/`-os9`-68k-Backend
-  gefunden+gefixt (alle nur auf echter Hardware sichtbar, da weder TinyVM
-  noch `tools/tiny68sim.py` echte CPU-Flags/Register-Konventionen/Modul-
+  gefunden+gefixt (alle nur auf echter Hardware sichtbar, da weder QCCVM
+  noch `tools/qcc68sim.py` echte CPU-Flags/Register-Konventionen/Modul-
   Relokation nachbilden): Tabellen-Relokation, a3/a4-Registerkonvention nach
   externen `clib.l`-Aufrufen, `moveq`-Flag-Clobber zwischen Vergleich und
   bedingtem Branch, und a3/a4-Konvention nach INTERNEN Cross-File-Aufrufen.
-  Alle committet+gemergt (`Source/tinyc_backend_c.cpp`, PR #48+#49). Beim
+  Alle committet+gemergt (`Source/qcc_backend_c.cpp`, PR #48+#49). Beim
   ersten kompletten End-zu-Ende-Testlauf mit dem bereinigten Stand ist ein
   SECHSTER, neuer (milderer, von OS-9 abgefangener statt Emulator-
   abstürzender) Laufzeitfehler aufgetaucht -- noch nicht behoben, aktueller
-  Ermittlungsstand in der Claude-Memory-Datei `tinyc-vollport-status.md`
+  Ermittlungsstand in der Claude-Memory-Datei `qcc-vollport-status.md`
   (Bisektionsmethodik + genaue nächste Schritte dort dokumentiert).
 
 ## Kurzfassung
 
 Der EBNF-Generator erzeugt aus Grammatiken Parsercode. Als vollständiger
-Referenzpfad ist Tiny-C verfügbar:
+Referenzpfad ist QCC verfügbar:
 
-`Data/tinyc.ebnf` → generierter Parser → Stack-IR → TinyVM / 68000 / ARM64
+`Data/qcc.ebnf` → generierter Parser → Stack-IR → QCCVM / 68000 / ARM64
 
 Alle derzeitigen Regressionstests sind erfolgreich.
 
@@ -161,7 +161,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - `static`: bei globalen Variablen/Funktionen ein reines No-op (interne
   Verlinkung ist bei einer einzigen Übersetzungseinheit bedeutungslos); bei
   lokalen Variablen echte Aufruf-übergreifende Persistenz (als GLOBAL
-  registriert, funktioniert in TinyVM, 68000 und ARM64), inkl. konstantem
+  registriert, funktioniert in QCCVM, 68000 und ARM64), inkl. konstantem
   UND nicht-konstantem Laufzeit-Initialisierer (Runs-once-Guard mit
   verstecktem bool-Flag-Global, siehe docs/FORTSCHRITT.md). Bewusst OHNE
   struct/Array in dieser Version, siehe docs/FORTSCHRITT.md
@@ -177,7 +177,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Initialisierer funktionieren mit; bewusst NICHT bei struct-Feldern/
   Parametern oder verschachtelten Brace-Initialisierern, siehe
   docs/FORTSCHRITT.md
-- `extern`-Deklarationen für nicht in Tiny-C definierte Funktionen (z. B. echte
+- `extern`-Deklarationen für nicht in QCC definierte Funktionen (z. B. echte
   OS-9/Microware-`clib`-Funktionen wie `strcmp`/`printf`/`malloc`) -- Aufruf
   über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`): die FEST
   deklarierten Parameter gehen nach `d0`/`d1` (genau wie bei einem
@@ -221,7 +221,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   plus einen unabhängigen, vorher nie entdeckten Bug im `%`-Operator des
   68000-Backends (`tc_mod_i32`/`tc_umod_u32` multiplizierten Quotient*Dividend
   statt Quotient*Divisor). Details siehe docs/FORTSCHRITT.md.
-- TinyVM als ausführbares Testorakel
+- QCCVM als ausführbares Testorakel
 - 68000-Backend mit Simulatorprüfung
 - natives ARM64/Darwin-Backend mit Runtime
 - **Mehrdatei-Übersetzung** (erledigt 2026-07-25, siehe eigener Abschnitt unten) --
@@ -234,7 +234,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 `./runtests.sh` meldet aktuell:
 
 ```text
-135 Tiny-C-Programme korrekt
+135 QCC-Programme korrekt
 68000-Pointer-End-to-End-Test korrekt
 ARM64/Darwin-Test korrekt
 struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
@@ -246,7 +246,7 @@ extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch / char*-String-L
 String-Literal-Adressierung (GARRAY/GINIT/ADDRG) 68000 + ARM64 korrekt
 -os9-Ausgabemodus: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei mit dem echten r68 (via Wine)
 68k signed/unsigned MUL/DIV/MOD + Fakultaet korrekt (inkl. der 2026-07-24 gefundenen %-Regression)
-Mehrdatei M1: Funktionsaufruf+Global ueber Dateigrenze, static-Isolation, Duplicate-/Signatur-Konsistenzpruefung (TinyVM-Merge-Tool)
+Mehrdatei M1: Funktionsaufruf+Global ueber Dateigrenze, static-Isolation, Duplicate-/Signatur-Konsistenzpruefung (QCCVM-Merge-Tool)
 Mehrdatei M2: echter r68+l68-Link zweier getrennt kompilierter Dateien + Duplicate-Symbol-Erkennung durch l68
 Mehrdatei M3: echte getrennte .o-Kompilate + clang/ld-Link + Duplicate-Symbol-Erkennung durch ld
 === ALLE TESTS OK ===
@@ -287,17 +287,17 @@ Zwei unabhängige Stränge stehen zur Wahl:
    docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 1 vollstaendig abgearbeitet.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
-   oben) -- dieser Strang ist damit abgeschlossen. Die Tiny-C-68k-Backend-
+   oben) -- dieser Strang ist damit abgeschlossen. Die QCC-68k-Backend-
    Laufzeit-Anbindung (`putint`/`putchar` gegen `clib.l`) ist bereits erledigt
    (siehe oben); `exit`/Rückgabewert-Weitergabe an
    `F$Exit` noch nicht gesondert geprüft.
 
-Vor jeder Sprach-Erweiterung sind Frontend, IR, TinyVM, 68000- und
+Vor jeder Sprach-Erweiterung sind Frontend, IR, QCCVM, 68000- und
 ARM64-Backend sowie ein Regressionstest zu prüfen.
 
 ## Mehrdatei-Übersetzung (2026-07-25, M1-M3 erledigt)
 
-Getrennt kompilierte Tiny-C-Dateien können jetzt echt separat übersetzt und
+Getrennt kompilierte QCC-Dateien können jetzt echt separat übersetzt und
 gelinkt werden (Nutzerwunsch: bei größeren Projekten soll nicht mehr alles
 in einem Rutsch kompiliert werden müssen). Vier Meilensteine (M0-Spike +
 M1-M3), alle live gegen die echten Toolchains verifiziert:
@@ -311,8 +311,8 @@ M1-M3), alle live gegen die echten Toolchains verifiziert:
   Funktionen/Variablen (bisher reines No-op).
 - **Neue IR-Pseudo-Opcodes** `FUNCDECL`/`GLOBALDECL`: "existiert, ist aber
   nicht hier definiert".
-- **`tools/tinyc_merge.py`** (neu): Mini-Linker-Simulation für TinyVM, da
-  TinyVM selbst kein Objektdatei-/Linker-Modell hat -- prüft doppelte
+- **`tools/qcc_merge.py`** (neu): Mini-Linker-Simulation für QCCVM, da
+  QCCVM selbst kein Objektdatei-/Linker-Modell hat -- prüft doppelte
   Definitionen, genau ein `main`, `static`-Sichtbarkeit und als Bonus
   Signatur-Konsistenz (Parameterzahl) zwischen Deklaration und Definition.
 - **M0-Spike-Ergebnis (wichtiger, planändernder Fund):** `r68`/`l68` (68k/
@@ -353,9 +353,9 @@ M1-M3), alle live gegen die echten Toolchains verifiziert:
   Global-Typen von Hand in beiden Dateien konsistent halten (wie rohes C
   ohne Header-Disziplin). Für die ECHTEN Backends (68k, ARM64) gibt es
   dafür KEINE Prüfung (reale Linker kennen nur Namen, keine Typen) -- nur
-  der TinyVM-Merge-Check bietet das als Bonus.
+  der QCCVM-Merge-Check bietet das als Bonus.
 
-`./runtests.sh`: 8 neue Mehrdatei-Tests (4x TinyVM/M1, 2x echter 68k/`l68`-
+`./runtests.sh`: 8 neue Mehrdatei-Tests (4x QCCVM/M1, 2x echter 68k/`l68`-
 Link/M2, 2x echter ARM64/`clang`+`ld`-Link/M3), alle grün neben den 135
-bestehenden Tiny-C-Programmen.
+bestehenden QCC-Programmen.
 

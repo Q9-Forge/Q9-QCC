@@ -5,9 +5,9 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PROJECT="$(cd "$(dirname "$0")" && pwd)"
 OUT="${PROJECT}/build"
 WORK="${OUT}/.work"
-PARSER="${TINYC_PARSER:-${ROOT}/build/tinyc_p}"
-BACKEND="${TINYC_BACKEND:-${ROOT}/build/tinyc_backend}"
-MERGE="${TINYC_MERGE:-${ROOT}/tools/tinyc_merge.py}"
+PARSER="${QCC_PARSER:-${ROOT}/build/qcc_p}"
+BACKEND="${QCC_BACKEND:-${ROOT}/build/qcc_backend}"
+MERGE="${QCC_MERGE:-${ROOT}/tools/qcc_merge.py}"
 MWOS_TMP="${MWOS_TMP:-/Volumes/SSD1TB/projects/MWOS/TMP}"
 WINE_APP="${WINE_APP:-$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine}"
 WINEPREFIX="${WINEPREFIX:-$HOME/.wine}"
@@ -32,8 +32,8 @@ while (($# > 0)); do
     shift
 done
 
-[[ -x "$PARSER" ]] || { echo "tinyc_p fehlt: $PARSER" >&2; exit 2; }
-[[ -x "$BACKEND" ]] || { echo "tinyc_backend fehlt: $BACKEND" >&2; exit 2; }
+[[ -x "$PARSER" ]] || { echo "qcc_p fehlt: $PARSER" >&2; exit 2; }
+[[ -x "$BACKEND" ]] || { echo "qcc_backend fehlt: $BACKEND" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "python3 fehlt" >&2; exit 2; }
 
 rm -rf "$WORK"
@@ -91,17 +91,17 @@ for file in cstart.r clib.l os_lib.l sys.l; do
     }
 done
 
-cp "${WORK}/${OUTPUT_NAME}.s68" "${MWOS_TMP}/tinyc_project.s68"
+cp "${WORK}/${OUTPUT_NAME}.s68" "${MWOS_TMP}/qcc_project.s68"
 WINEPREFIX="$WINEPREFIX" arch -x86_64 "$WINE_APP" cmd /c \
-    "${MWOS_WIN_ROOT}\\DOS\\BIN\\r68.exe ${MWOS_WIN_ROOT}\\TMP\\tinyc_project.s68 -o=${MWOS_WIN_ROOT}\\TMP\\tinyc_project.r -q"
+    "${MWOS_WIN_ROOT}\\DOS\\BIN\\r68.exe ${MWOS_WIN_ROOT}\\TMP\\qcc_project.s68 -o=${MWOS_WIN_ROOT}\\TMP\\qcc_project.r -q"
 link_status=0
 WINEPREFIX="$WINEPREFIX" arch -x86_64 "$WINE_APP" cmd /c \
-    "${MWOS_WIN_ROOT}\\DOS\\BIN\\l68.exe -a ${MWOS_WIN_ROOT}\\TMP\\cstart.r ${MWOS_WIN_ROOT}\\TMP\\tinyc_project.r -l=${MWOS_WIN_ROOT}\\TMP\\clib.l -l=${MWOS_WIN_ROOT}\\TMP\\os_lib.l -l=${MWOS_WIN_ROOT}\\TMP\\sys.l -o=${MWOS_WIN_ROOT}\\TMP\\tinyc_project.out -s=${MWOS_WIN_ROOT}\\TMP\\tinyc_project.sym" || link_status=$?
-[[ -f "${MWOS_TMP}/tinyc_project.out" ]] || {
+    "${MWOS_WIN_ROOT}\\DOS\\BIN\\l68.exe -a ${MWOS_WIN_ROOT}\\TMP\\cstart.r ${MWOS_WIN_ROOT}\\TMP\\qcc_project.r -l=${MWOS_WIN_ROOT}\\TMP\\clib.l -l=${MWOS_WIN_ROOT}\\TMP\\os_lib.l -l=${MWOS_WIN_ROOT}\\TMP\\sys.l -o=${MWOS_WIN_ROOT}\\TMP\\qcc_project.out -s=${MWOS_WIN_ROOT}\\TMP\\qcc_project.sym" || link_status=$?
+[[ -f "${MWOS_TMP}/qcc_project.out" ]] || {
     echo "FEHLER: l68 hat kein OS-9-Modul erzeugt (Status ${link_status})" >&2
     exit 1
 }
-cp "${MWOS_TMP}/tinyc_project.out" "$FINAL_OUT"
+cp "${MWOS_TMP}/qcc_project.out" "$FINAL_OUT"
 if (( link_status != 0 )); then
     echo "WARNUNG: l68 meldete Status ${link_status}; Modul ist dennoch vorhanden"
 fi

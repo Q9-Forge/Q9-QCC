@@ -15,11 +15,11 @@ Ein Compiler besteht dabei aus mindestens vier getrennten Bereichen:
 3. ABI, Linker-Anbindung und Ziel-Runtime
 4. C-Standardbibliothek
 
-Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
+QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 
 ## Legende
 
-- **erledigt**: im aktuellen Tiny-C-Pfad implementiert und getestet
+- **erledigt**: im aktuellen QCC-Pfad implementiert und getestet
 - **teilweise**: Grundfunktion vorhanden, ISO-Semantik noch unvollständig
 - **offen**: noch nicht implementiert
 - **separat**: gehört primär in Präprozessor, ABI oder Bibliothek
@@ -102,7 +102,7 @@ Tiny-C deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 
 | Thema | Status | Priorität |
 |---|---|---|
-| Stack-IR und TinyVM | erledigt | — |
+| Stack-IR und QCCVM | erledigt | — |
 | 68000-Backend und Simulator | funktionsfähig | — |
 | ARM64/Darwin-Backend | funktionsfähig | — |
 | vollständiges Ziel-ABI für ein Betriebssystem | teilweise | sehr hoch |

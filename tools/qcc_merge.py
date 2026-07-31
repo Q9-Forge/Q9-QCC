@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# Tiny-C Mehrdatei-"Linker" fuer TinyVM (siehe docs/ARCHITEKTUR.md Kapitel 10,
-# Mehrdatei-Uebersetzung). TinyVM selbst hat kein Objektdatei-/Linker-Modell --
-# dieses Werkzeug fuehrt mehrere IR-Dateien (je ein separat mit tinyc_p
-# uebersetztes Tiny-C-Quelldokument) zu EINEM Programm zusammen und prueft dabei
+# QCC Mehrdatei-"Linker" fuer QCCVM (siehe docs/ARCHITEKTUR.md Kapitel 10,
+# Mehrdatei-Uebersetzung). QCCVM selbst hat kein Objektdatei-/Linker-Modell --
+# dieses Werkzeug fuehrt mehrere IR-Dateien (je ein separat mit qcc_p
+# uebersetztes QCC-Quelldokument) zu EINEM Programm zusammen und prueft dabei
 # explizit, was ein echter Linker (l68 fuers 68k/OS-9-Ziel, ld/clang fuers
 # ARM64-Ziel) ebenfalls durchsetzen wuerde -- ohne diese Pruefungen wuerden die
-# einfachen Python-Dicts in tinyvm.run() Namenskollisionen stillschweigend
+# einfachen Python-Dicts in qccvm.run() Namenskollisionen stillschweigend
 # ueberschreiben und echte Mehrdatei-Bugs maskieren statt sie aufzudecken.
 #
-# Nutzung: python3 tools/tinyc_merge.py datei1.ir datei2.ir [...] > merged.ir
-#          python3 tools/tinyvm.py merged.ir
+# Nutzung: python3 tools/qcc_merge.py datei1.ir datei2.ir [...] > merged.ir
+#          python3 tools/qccvm.py merged.ir
 import sys
 
-from tinyvm import parse_ir
+from qccvm import parse_ir
 
 
 def load(paths):
@@ -38,7 +38,7 @@ def defs_and_decls(files):
                 if name in defs:
                     okind, ostatic, opath = defs[name][0], defs[name][1], defs[name][2]
                     sys.stderr.write(
-                        "tinyc_merge: doppelte Definition von '%s' (%s UND %s) -- "
+                        "qcc_merge: doppelte Definition von '%s' (%s UND %s) -- "
                         "simuliert 'duplicate symbol' eines echten Linkers\n"
                         % (name, opath, path))
                     return None, None, None
@@ -55,7 +55,7 @@ def defs_and_decls(files):
                 if name in defs:
                     opath = defs[name][2]
                     sys.stderr.write(
-                        "tinyc_merge: doppelte Definition von '%s' (%s UND %s) -- "
+                        "qcc_merge: doppelte Definition von '%s' (%s UND %s) -- "
                         "simuliert 'duplicate symbol' eines echten Linkers\n"
                         % (name, opath, path))
                     return None, None, None
@@ -70,28 +70,28 @@ def defs_and_decls(files):
 def check(defs, decls, mains):
     ok = True
     if len(mains) == 0:
-        sys.stderr.write("tinyc_merge: keine Datei definiert 'main'\n")
+        sys.stderr.write("qcc_merge: keine Datei definiert 'main'\n")
         ok = False
     elif len(mains) > 1:
-        sys.stderr.write("tinyc_merge: 'main' in mehreren Dateien definiert: %s\n" % ", ".join(mains))
+        sys.stderr.write("qcc_merge: 'main' in mehreren Dateien definiert: %s\n" % ", ".join(mains))
         ok = False
     for kind, name, path, extra in decls:
         if name not in defs:
             sys.stderr.write(
-                "tinyc_merge: '%s' (deklariert in %s) ist in KEINER Datei definiert\n"
+                "qcc_merge: '%s' (deklariert in %s) ist in KEINER Datei definiert\n"
                 % (name, path))
             ok = False
             continue
         dkind, dstatic, dpath, dextra = defs[name]
         if dkind != kind:
             sys.stderr.write(
-                "tinyc_merge: '%s' ist in %s als %s deklariert, aber in %s als %s definiert\n"
+                "qcc_merge: '%s' ist in %s als %s deklariert, aber in %s als %s definiert\n"
                 % (name, path, kind, dpath, dkind))
             ok = False
             continue
         if dstatic:
             sys.stderr.write(
-                "tinyc_merge: '%s' ist in %s als static definiert -- fuer %s nicht sichtbar\n"
+                "qcc_merge: '%s' ist in %s als static definiert -- fuer %s nicht sichtbar\n"
                 % (name, dpath, path))
             ok = False
             continue
@@ -100,7 +100,7 @@ def check(defs, decls, mains):
         # klassischen "veralteter Handschrift-Prototyp"-Bug.
         if kind == "FUNC" and dextra is not None and dextra != extra:
             sys.stderr.write(
-                "tinyc_merge: '%s' hat in %s %d Parameter deklariert, in %s aber %d definiert\n"
+                "qcc_merge: '%s' hat in %s %d Parameter deklariert, in %s aber %d definiert\n"
                 % (name, path, extra, dpath, dextra))
             ok = False
     return ok
@@ -109,7 +109,7 @@ def check(defs, decls, mains):
 def main():
     paths = sys.argv[1:]
     if not paths:
-        sys.stderr.write("usage: tinyc_merge.py datei1.ir datei2.ir [...]\n")
+        sys.stderr.write("usage: qcc_merge.py datei1.ir datei2.ir [...]\n")
         return 2
     files = load(paths)
     defs, decls, mains = defs_and_decls(files)

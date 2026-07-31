@@ -1,7 +1,7 @@
 //================================================================================
-// tinyc_backend.cpp -- Tiny-C Stack-IR -> position-unabhaengiger 68k-Assembler
+// qcc_backend.cpp -- QCC Stack-IR -> position-unabhaengiger 68k-Assembler
 //
-// Eigenstaendiger Teil des Tiny-C-Compilers, NICHT Teil des allgemeinen EBNF-
+// Eigenstaendiger Teil des QCCs, NICHT Teil des allgemeinen EBNF-
 // Generators. Die Ausgabe verwendet nur PC-relative interne Aufrufe/Spruenge und
 // Stackframe-relative Daten. Der 68k-Core liefert auch die fehlenden 32-Bit-
 // MUL/DIV-Helfer; eine austauschbare Target Runtime liefert nur noch tc_putint
@@ -197,7 +197,7 @@ static void emitCompare(std::ostream& out, const std::string& branch, int& seria
 }
 
 // 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
-// Schablonen bilden deshalb die definierte Tiny-C-int32-Arithmetik nach. Sie
+// Schablonen bilden deshalb die definierte QCC-int32-Arithmetik nach. Sie
 // erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
 static void emitM68kCore(std::ostream& out) {
 	out << "; 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n";
@@ -247,7 +247,7 @@ static void emitIR(std::ostream& out, const std::vector<Instr>& ir, const std::v
 	for (const Global& global : globals) globalByName[global.name] = global;
 	if (byName.find("main") == byName.end()) throw std::runtime_error("IR: Funktion main fehlt");
 
-	out << "; Tiny-C 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n";
+	out << "; QCC 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n";
 	out << "; a7: Operand-Stack, a6: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n";
 	out << "tc_start:\tbsr\ttc_main\n\tbra\ttc_exit\n\n";
 	for (const Function& fn : funcs) {
@@ -429,7 +429,7 @@ int main(int argc, char* argv[]) {
 		if (!out) throw std::runtime_error("Schreibfehler in Assembler-Ausgabe");
 	}
 	catch (const std::exception& e) {
-		std::cerr << "tinyc_backend: " << e.what() << "\n";
+		std::cerr << "qcc_backend: " << e.what() << "\n";
 		return 1;
 	}
 	return 0;

@@ -1,5 +1,5 @@
 //============================================================================
-// tinyc_arm64_backend.cpp -- Tiny-C Stack-IR -> ARM64/Darwin-Assembler
+// qcc_arm64_backend.cpp -- QCC Stack-IR -> ARM64/Darwin-Assembler
 //
 // Eigenstaendiges Architecture Backend. start.s stellt die Plattform-Schicht
 // (_start, tc_putint, tc_exit); dieser Generator emittiert nur Programmcode
@@ -120,7 +120,7 @@ static void emit(std::ostream& o, const std::vector<Instr>& ir, const std::vecto
 	for (const Function& f : fs) fn[f.name] = f;
 	for (const Global& g : gs) global[g.name] = true;
 	if (!fn.count("main")) throw std::runtime_error("IR: Funktion main fehlt");
-	o << "; Tiny-C ARM64/Darwin -- PIC Programmmodul\n\t.text\n\t.p2align\t2\n";
+	o << "; QCC ARM64/Darwin -- PIC Programmmodul\n\t.text\n\t.p2align\t2\n";
 	for (const Function& f : fs) {
 		o << "\t.globl\t_tc_" << f.name << "\n_tc_" << f.name << ":\n\tstp\tx29,x30,[sp,#-16]!\n\tmov\tx29,sp\n";
 		if (f.frameBytes) o << "\tsub\tsp,sp,#" << f.frameBytes << "\n";
@@ -269,6 +269,6 @@ int main(int argc, char* argv[]) {
 		if (argc != 3) { std::cerr << "usage: " << argv[0] << " <input.ir> <output.s>\n"; return 2; }
 		auto ir = readIR(argv[1]); auto gs = globals(ir); auto fs = functions(ir); std::ofstream out(argv[2]);
 		if (!out) throw std::runtime_error("kann Ausgabe nicht schreiben"); emit(out, ir, fs, gs);
-	} catch (const std::exception& e) { std::cerr << "tinyc_arm64_backend: " << e.what() << "\n"; return 1; }
+	} catch (const std::exception& e) { std::cerr << "qcc_arm64_backend: " << e.what() << "\n"; return 1; }
 	return 0;
 }

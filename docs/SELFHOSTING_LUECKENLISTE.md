@@ -4,8 +4,8 @@ Stand: **2026-07-25 (Nachtrag: Mehrdatei-Übersetzung erledigt -- damit ist auch
 
 ## Zieldefinition
 
-Frage: Welche Sprachmittel und Bibliotheksfunktionen braucht Tiny-C, damit die
-**eigene Toolchain** (EBNF-Generator + generierter Parser) irgendwann in Tiny-C
+Frage: Welche Sprachmittel und Bibliotheksfunktionen braucht QCC, damit die
+**eigene Toolchain** (EBNF-Generator + generierter Parser) irgendwann in QCC
 geschrieben und von ihr selbst übersetzt werden könnte -- "Selfhosting" im
 klassischen Compilerbau-Sinn?
 
@@ -14,7 +14,7 @@ Diese Liste ist NICHT aus dem ISO-C-Standard abgeleitet (siehe dazu
 Toolchain gemessen: Es wurde durchsucht, welche C/C++-Konstrukte
 `Source/ebnf.cpp`, `Source/codegen.cpp`, `Source/tiny-regex.cpp` sowie die
 generierten Parser-Zwillinge (`Data/*_p.c`) wirklich verwenden. Die Liste
-haken wir ab, sobald Tiny-C das jeweilige Sprachmittel beherrscht -- unabhängig
+haken wir ab, sobald QCC das jeweilige Sprachmittel beherrscht -- unabhängig
 davon, ob es in der ISO-Liste eine andere Priorität hat.
 
 ## Die drei Selfhosting-Schichten
@@ -24,9 +24,9 @@ unterschiedliche Bausteine, die getrennt zu betrachten sind:
 
 | Schicht | Datei(en) | Heutiger Stil | Aufwand |
 |---|---|---|---|
-| **L1: generierter Parser-Zwilling** | `Data/*_p.c` (z. B. `tinyc_p.c`, 2967 Zeilen) | bereits fast reines C, wird von `codegen.cpp` per `fprintf` erzeugt | am kleinsten -- natürlicher erster Bootstrap-Schritt |
-| **L2: EBNF-Generator selbst** | `Source/ebnf.cpp` (2149 Z.), `Source/codegen.cpp` (1527 Z.), `Source/tiny-regex.cpp` (494 Z.) | C-Stil-C++: keine STL, größtenteils feste globale Puffer, **seit 2026-07-24 mit gezieltem `malloc`/`realloc`/`free`** (siehe unten) | größter Brocken, aber architektonisch am nächsten an Tiny-C |
-| **L3: IR-Backends** | `Source/tinyc_backend.cpp`, `Source/tinyc_arm64_backend.cpp` | modernes C++: `std::vector`/`map`/`string`/`fstream`/Exceptions | eigener, andersartiger Umbau -- siehe unten |
+| **L1: generierter Parser-Zwilling** | `Data/*_p.c` (z. B. `qcc_p.c`, 2967 Zeilen) | bereits fast reines C, wird von `codegen.cpp` per `fprintf` erzeugt | am kleinsten -- natürlicher erster Bootstrap-Schritt |
+| **L2: EBNF-Generator selbst** | `Source/ebnf.cpp` (2149 Z.), `Source/codegen.cpp` (1527 Z.), `Source/tiny-regex.cpp` (494 Z.) | C-Stil-C++: keine STL, größtenteils feste globale Puffer, **seit 2026-07-24 mit gezieltem `malloc`/`realloc`/`free`** (siehe unten) | größter Brocken, aber architektonisch am nächsten an QCC |
+| **L3: IR-Backends** | `Source/qcc_backend.cpp`, `Source/qcc_arm64_backend.cpp` | modernes C++: `std::vector`/`map`/`string`/`fstream`/Exceptions | eigener, andersartiger Umbau -- siehe unten |
 
 **Update 2026-07-24 (Q9-Speicherbedarf):** Der frühere Befund "L2 braucht keine
 dynamische Speicherverwaltung" gilt nicht mehr uneingeschränkt. Ursache des
@@ -39,18 +39,18 @@ weil Anzahl und Länge der Routinen pro Grammatik unbekannt sind. Gelöst über
 `malloc`/`realloc`-Verdopplung (klein anfangen, bei Bedarf wachsen, siehe
 `pushRoutine`/`growBuf` in `codegen.cpp`) statt fester Arrays. Bestätigt: die
 Microware-`clib`/`stdlib.h` (`/Volumes/SSD1TB/projects/MWOS/SRC/DEFS/stdlib.h`)
-stellt `malloc`/`realloc`/`free` bereit, betrifft also nur Tiny-C selbst als
+stellt `malloc`/`realloc`/`free` bereit, betrifft also nur QCC selbst als
 Sprache (siehe neue Zeile in der Tabelle unten), nicht die OS-9-Zielplattform.
 Alle übrigen Tabellen in L2 bleiben feste globale Arrays -- die Hürde für
-Selfhosting von L2 ist dadurch etwas, aber nicht grundlegend gestiegen: Tiny-C
+Selfhosting von L2 ist dadurch etwas, aber nicht grundlegend gestiegen: QCC
 braucht vor einem L2-Selfhosting-Versuch zusätzlich einen `malloc`/`free`-
 Laufzeit-Baustein (aktuell nicht vorhanden, siehe Tabelle).
 
 ## Legende
 
-- **fehlt**: Tiny-C hat das Sprachmittel noch nicht (siehe `FORTSCHRITT.md`/ISO-Liste)
+- **fehlt**: QCC hat das Sprachmittel noch nicht (siehe `FORTSCHRITT.md`/ISO-Liste)
 - **teilweise**: Grundfunktion vorhanden, für den konkreten Gebrauch hier noch nicht ausreichend
-- **vorhanden**: Tiny-C kann das bereits
+- **vorhanden**: QCC kann das bereits
 
 ## 1. Sprachmittel, die der Generator selbst braucht (L2)
 
@@ -58,46 +58,46 @@ Alle Fundstellen wurden geprüft: Sie stehen im echten Kontrollfluss der Tools,
 nicht nur innerhalb von `fprintf(fp, "...")`-Textbausteinen, die Code für L1
 erzeugen.
 
-| Sprachmittel | Belegstellen (Beispiele) | Tiny-C-Status | Priorität |
+| Sprachmittel | Belegstellen (Beispiele) | QCC-Status | Priorität |
 |---|---|---|---|
-| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:568-571` (`ActionRoutine.text`), `ebnf.cpp:398-408` (`TabEntry.mode`) | **erledigt** (2026-07-24/25: GEMISCHTE skalare Feldtypen, `typedef struct { ... } Name;` mit anonymem struct inline, Array-Felder UND Pointer-Felder (2026-07-25, IMMER 8 Byte Groesse/Ausrichtung -- architekturneutrales Layout, 68k nutzt nur die ersten 4 Byte) jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment. Direkte `rec.name[i]`-Syntax funktioniert; direkte Indizierung DURCH ein Pointer-Feld (`p.field[i]`) bewusst noch nicht (Zugriff nur ueber Pointer-Zwischenvariable, analog zur fruehren Array-Feld-Einschraenkung). Bewusst noch offen: verschachtelte structs. **`arr[i].feld` (2026-07-25, erledigt fuer LOKALE, fest dimensionierte struct-Arrays:** ein ARRAY von structs, per Laufzeit-Index adressiert, dann Feldzugriff -- neue Grammatikform (`directTarget`/`varRef` jetzt `ident [index...] [.member [index]]` statt Alternation) + neuer IR-Opcode `IPADDN` (Zeiger-Skalierung um eine LAUFZEIT-Byte-Groesse wie `tcStructByteSize`, da `IPADD` nur feste Typtag-Groessen kennt). Ein vorausgesetzter, eigenstaendiger Bug wurde dabei zuerst repariert: die Speicher-Allokation fuer Arrays von structs war kaputt (`tc_localdecl` reservierte fuer `struct Rec arr[3];` nur Platz fuer EIN Element, `[N]`-Suffix bei struct-Locals wurde ignoriert) -- siehe FORTSCHRITT.md fuer Details. Verifiziert in TinyVM, 68000 (`tiny68sim` + echter `r68`) und ARM64. **`ptr[i].feld` (2026-07-25, ebenfalls erledigt, Milestone B):** genau das Muster, das `routinesC[i].name`/`.text` braucht (`routinesC` ist `ActionRoutine*`, ein POINTER auf ein malloc/realloc-gewachsenes Array, kein festes lokales Array) -- Codegen identisch zu `arr[i].feld`, nur `LOADP` (geladener Pointer-Wert) statt `PUSHADDR` (Blockadresse). Verifiziert in TinyVM, 68000 (`tiny68sim` + echter `r68`) und ARM64 (Lesen+Schreiben ueber einen lokalen Pointer, der per Zuweisung auf ein bestehendes struct-Array zeigt). **Globale structs (2026-07-25, ebenfalls noch am selben Tag erledigt):** skalare globale struct-Variablen, globale Arrays von structs UND globale Pointer-auf-struct-Variablen -- `tc_globalend` erkennt `struct` jetzt als Basistyp (vorher "bad global declaration"), Codegen in `tc_varref`/`tc_target` ist strukturell identisch zu den drei bereits fertigen lokalen Mustern (`.field`, `arr[i].feld`, `ptr[i].feld`), nur `ADDRG`/`PUSHADDR G`/`LOADGP` statt der lokalen Pendants. Verifiziert in TinyVM/68000 (echter `r68`)/ARM64 UND strukturell mit dem ECHTEN `routinesC`/`routinesCCnt`/`routinesCCap`-Muster (file-scope-Globale statt Testfunktions-Lokalen) gegen die echte `clib.l` gelinkt. Damit ist die letzte Sprach-Blockade fuer den vollen Port beseitigt. **Milestone B (2026-07-25, erledigt):** der eigentliche Pilot (`ActionRoutine`/`pushRoutine`/`freeRoutines`/`routineTextC`-Ausschnitt) wurde nach Tiny-C portiert (Vereinfachung: `pushRoutine` gibt den Array-Pointer zurueck statt `ActionRoutine**`-Out-Parameter, manuelle Byte-Kopierschleifen statt strcpy/memcpy) und kompiliert/assembliert/linkt fehlerfrei gegen die echte `clib.l` (r68+l68), fest in `runtests.sh` verankert. `malloc`/`realloc`/`free` selbst brauchten keinen neuen Compiler-Code (der bestehende `extern`-Mechanismus deckt `void*` schon ab) -- verifiziert strukturell (echter Link) UND end-to-end per Mock-Stub in `tiny68sim` (Aufrufmechanik + Pointer-Nutzung, nicht das Kopierverhalten von `realloc` selbst -- das braucht echten Q9-Zugriff). Dabei nebenbei gefunden und behoben: ein PRE-EXISTING Compiler-Bug (unabhaengig von arr[i].feld/ptr[i].feld), bei dem eine indizierte Expression als RECHTER Vergleichsoperand (`nc != name[j]`) falsche Typfehler auslöste (`tcRel0`/`tcRel1` fehlte das gleiche Rette-und-nulle-Muster wie `tcPendingAdd`/`tcPendingMul`) -- siehe FORTSCHRITT.md. | sehr hoch |
+| `struct` (auch anonym via `typedef struct`) | `codegen.cpp:568-571` (`ActionRoutine.text`), `ebnf.cpp:398-408` (`TabEntry.mode`) | **erledigt** (2026-07-24/25: GEMISCHTE skalare Feldtypen, `typedef struct { ... } Name;` mit anonymem struct inline, Array-Felder UND Pointer-Felder (2026-07-25, IMMER 8 Byte Groesse/Ausrichtung -- architekturneutrales Layout, 68k nutzt nur die ersten 4 Byte) jetzt moeglich, echtes Byte-Layout mit natuerlichem Alignment. Direkte `rec.name[i]`-Syntax funktioniert; direkte Indizierung DURCH ein Pointer-Feld (`p.field[i]`) bewusst noch nicht (Zugriff nur ueber Pointer-Zwischenvariable, analog zur fruehren Array-Feld-Einschraenkung). Bewusst noch offen: verschachtelte structs. **`arr[i].feld` (2026-07-25, erledigt fuer LOKALE, fest dimensionierte struct-Arrays:** ein ARRAY von structs, per Laufzeit-Index adressiert, dann Feldzugriff -- neue Grammatikform (`directTarget`/`varRef` jetzt `ident [index...] [.member [index]]` statt Alternation) + neuer IR-Opcode `IPADDN` (Zeiger-Skalierung um eine LAUFZEIT-Byte-Groesse wie `tcStructByteSize`, da `IPADD` nur feste Typtag-Groessen kennt). Ein vorausgesetzter, eigenstaendiger Bug wurde dabei zuerst repariert: die Speicher-Allokation fuer Arrays von structs war kaputt (`tc_localdecl` reservierte fuer `struct Rec arr[3];` nur Platz fuer EIN Element, `[N]`-Suffix bei struct-Locals wurde ignoriert) -- siehe FORTSCHRITT.md fuer Details. Verifiziert in QCCVM, 68000 (`qcc68sim` + echter `r68`) und ARM64. **`ptr[i].feld` (2026-07-25, ebenfalls erledigt, Milestone B):** genau das Muster, das `routinesC[i].name`/`.text` braucht (`routinesC` ist `ActionRoutine*`, ein POINTER auf ein malloc/realloc-gewachsenes Array, kein festes lokales Array) -- Codegen identisch zu `arr[i].feld`, nur `LOADP` (geladener Pointer-Wert) statt `PUSHADDR` (Blockadresse). Verifiziert in QCCVM, 68000 (`qcc68sim` + echter `r68`) und ARM64 (Lesen+Schreiben ueber einen lokalen Pointer, der per Zuweisung auf ein bestehendes struct-Array zeigt). **Globale structs (2026-07-25, ebenfalls noch am selben Tag erledigt):** skalare globale struct-Variablen, globale Arrays von structs UND globale Pointer-auf-struct-Variablen -- `tc_globalend` erkennt `struct` jetzt als Basistyp (vorher "bad global declaration"), Codegen in `tc_varref`/`tc_target` ist strukturell identisch zu den drei bereits fertigen lokalen Mustern (`.field`, `arr[i].feld`, `ptr[i].feld`), nur `ADDRG`/`PUSHADDR G`/`LOADGP` statt der lokalen Pendants. Verifiziert in QCCVM/68000 (echter `r68`)/ARM64 UND strukturell mit dem ECHTEN `routinesC`/`routinesCCnt`/`routinesCCap`-Muster (file-scope-Globale statt Testfunktions-Lokalen) gegen die echte `clib.l` gelinkt. Damit ist die letzte Sprach-Blockade fuer den vollen Port beseitigt. **Milestone B (2026-07-25, erledigt):** der eigentliche Pilot (`ActionRoutine`/`pushRoutine`/`freeRoutines`/`routineTextC`-Ausschnitt) wurde nach QCC portiert (Vereinfachung: `pushRoutine` gibt den Array-Pointer zurueck statt `ActionRoutine**`-Out-Parameter, manuelle Byte-Kopierschleifen statt strcpy/memcpy) und kompiliert/assembliert/linkt fehlerfrei gegen die echte `clib.l` (r68+l68), fest in `runtests.sh` verankert. `malloc`/`realloc`/`free` selbst brauchten keinen neuen Compiler-Code (der bestehende `extern`-Mechanismus deckt `void*` schon ab) -- verifiziert strukturell (echter Link) UND end-to-end per Mock-Stub in `qcc68sim` (Aufrufmechanik + Pointer-Nutzung, nicht das Kopierverhalten von `realloc` selbst -- das braucht echten Q9-Zugriff). Dabei nebenbei gefunden und behoben: ein PRE-EXISTING Compiler-Bug (unabhaengig von arr[i].feld/ptr[i].feld), bei dem eine indizierte Expression als RECHTER Vergleichsoperand (`nc != name[j]`) falsche Typfehler auslöste (`tcRel0`/`tcRel1` fehlte das gleiche Rette-und-nulle-Muster wie `tcPendingAdd`/`tcPendingMul`) -- siehe FORTSCHRITT.md. | sehr hoch |
 | `enum` | `codegen.cpp:42` (`AstKind`), `ebnf.cpp:1165` (`BLK_NONE` etc.) | **erledigt** (2026-07-23, Nachtrag: `enum Name var;` als Deklaration moeglich, `enum Name` auch als Parameter-/Rueckgabetyp; im Speicher/Typsystem bleibt es schlicht `int`, keine eigene Typidentitaet -- entspricht C) | hoch |
 | `union` | `tiny-regex.cpp:45` (anonyme Union in `regex_t`) | fehlt | mittel |
 | `typedef` (auch für Structs) | durchgehend in allen drei Dateien | **erledigt** (2026-07-24: Skalar-/Pointer-Aliase, `typedef struct Name Alias;` und die im Generator gebräuchliche Form `typedef struct { ... } Name;` mit anonymem struct INLINE im typedef funktionieren jetzt alle. Der typedef-Zielname dient dabei intern als struct-Tag -- bewusste, harmlose Vereinfachung gegenüber striktem C, das dort keinen Tag kennt) | sehr hoch |
 | mehrdimensionale Arrays | 26 Fundstellen, z. B. `ruleNameList[MAX_RULE_NAMES][IDENT_LEN+1]`, `dfsPath[...][...]`, `lexBlockOn[...][...]` | **erledigt** (2026-07-24: alle 26 Fundstellen sind exakt 2D, waren damit bereits mit der urspruenglichen 2D-Loesung abgedeckt -- `arr[i][j]` wird im Frontend zu einem flachen row-major-Index zusammengefuehrt, kein neuer Opcode/Backend-Change. Zusaetzlich seit 2026-07-24 (spaeter) generalisiert auf beliebig viele Dimensionen (`TC_MAXDIMS=6`, Horner-Schema ueber Scratch-Globals), obwohl der Generator selbst keine 3D+-Arrays braucht) | sehr hoch |
 | `for`-Schleife | 69 echte Vorkommen (nicht mitgezählt: 2 nur in erzeugten Strings) | **erledigt** (2026-07-23) | hoch |
 | `do`/`while`-Schleife | `codegen.cpp:782` (Fixpunkt-Iteration über Regel-Nullbarkeit) | **erledigt** (2026-07-23) | hoch |
-| `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt Tiny-C jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
+| `switch`/`case` | 13 echte Vorkommen in allen drei Dateien | **erledigt fuer die reale Nutzung** (2026-07-23: alle 13 Fundstellen nutzen entweder `break` oder gestapelte leere Case-Label -- genau das unterstuetzt QCC jetzt; echtes Fallthrough MIT Code zwischen Bodies fehlt, wird aber nirgends im Generator gebraucht) | hoch |
 | `static` (Funktionen/lokale Variablen als Speicherklasse, nicht nur globale Objekte) | 101 echte Vorkommen, u. a. alle großen Tabellenpuffer | **erledigt** (2026-07-24: bei globalen Variablen/Funktionen ein reines No-op -- deckt damit die weit ueberwiegende Mehrheit der 101 Fundstellen ab, da fast alle file-scope `static` auf Tabellenpuffern sind, keine lokalen; bei lokalen Variablen echte Aufruf-uebergreifende Persistenz ohne Initialisierer, siehe docs/FORTSCHRITT.md) | hoch |
 | `const`-Qualifizierer | 99 echte Vorkommen (meist `const char*`-Parameter) | **erledigt** (2026-07-24: `const` bei Skalaren/Arrays UND Pointee-Constness bei Pointertypen -- `const char* line`-Parameter wie im Generator selbst wird jetzt semantisch durchgesetzt (Schreiben durch den Pointer verboten, Pointer selbst bleibt frei zuweisbar, `p++`-Idiom funktioniert), TCType.pointeeConst-Bit siehe docs/FORTSCHRITT.md) | hoch |
 | `sizeof` | `codegen.cpp:333,1151,...`; `ebnf.cpp:1043,1062` (Puffergrößen an Hilfsfunktionen reichen) | **erledigt** (2026-07-23, Nachtrag: `sizeof(variable)` auf lokale/globale Skalare und Arrays ergänzt -- genau die Form, die alle echten Fundstellen hier nutzen, z. B. `sizeof(line)`) | hoch |
 | Prä-/Postinkrement (`++`/`--`) | nicht im Original-Scope dieser Liste, aber jetzt erledigt (2026-07-23) fuer einfache int/char/unsigned-Skalare | — |
 | Casts | nicht im Original-Scope dieser Liste, aber jetzt teilweise erledigt (2026-07-23) fuer int/unsigned/char/bool | — |
 | einfache `#define`-Konstanten (objektartig, ohne Parameter) | keine parametrisierten Makros im Generator-Source gefunden -- nur einfache Namenskonstanten nötig | fehlt (Präprozessor komplett offen) | hoch (aber kleiner Umfang als volles CPP) |
-| Mehrdatei-Übersetzung (`ebnf.cpp`/`codegen.cpp`/`tiny-regex.cpp` + zugehörige `.h`) | Generator ist auf 3 `.cpp` + 3 `.h` verteilt | **erledigt** (2026-07-25: bare Funktionsprototyp ohne Rumpf für normale interne bsr/bl-Verlinkung -- bewusst getrennt vom bestehenden `extern`/Microware-ABI-Feature; `extern <typ> <name>;` für globale Variablen; `static` bekommt echte Bedeutung; neue IR-Pseudo-Opcodes `FUNCDECL`/`GLOBALDECL`. Live gegen echte Toolchains verifiziert: 68k/OS-9 über echten `l68`-Link, ARM64 über echte getrennte `.o`-Kompilate + `clang`/`ld`-Link. Bekannte Grenze: keine Header-Datei/`#include`-Mechanismus, Signaturkonsistenz zwischen Deklaration und Definition wird nur vom TinyVM-Merge-Werkzeug geprüft, nicht von den echten Linkern -- siehe docs/STATUS.md) | sehr hoch |
-| `malloc`/`realloc`/`free` (dynamische Speicherverwaltung) | `codegen.cpp`: `pushRoutine`/`growBuf` für die ACTION/ROUTINE-Tabellen (seit 2026-07-24, ersetzt vormals feste 32-MB-Arrays) | **erledigt** (2026-07-25: kein neuer Compiler-Code nötig -- der bestehende `extern`-Mechanismus deckt `void*`-Rückgabe/-Parameter generisch ab. Verifiziert strukturell (echter `r68`+`l68`-Link gegen die echte `clib.l`) UND end-to-end per Mock-Stub in `tiny68sim`. Live-Ausführung auf echtem Q9 -- inkl. `realloc`s Kopierverhalten über die Wachstumsgrenze hinweg -- noch offen, siehe FORTSCHRITT.md) | hoch |
+| Mehrdatei-Übersetzung (`ebnf.cpp`/`codegen.cpp`/`tiny-regex.cpp` + zugehörige `.h`) | Generator ist auf 3 `.cpp` + 3 `.h` verteilt | **erledigt** (2026-07-25: bare Funktionsprototyp ohne Rumpf für normale interne bsr/bl-Verlinkung -- bewusst getrennt vom bestehenden `extern`/Microware-ABI-Feature; `extern <typ> <name>;` für globale Variablen; `static` bekommt echte Bedeutung; neue IR-Pseudo-Opcodes `FUNCDECL`/`GLOBALDECL`. Live gegen echte Toolchains verifiziert: 68k/OS-9 über echten `l68`-Link, ARM64 über echte getrennte `.o`-Kompilate + `clang`/`ld`-Link. Bekannte Grenze: keine Header-Datei/`#include`-Mechanismus, Signaturkonsistenz zwischen Deklaration und Definition wird nur vom QCCVM-Merge-Werkzeug geprüft, nicht von den echten Linkern -- siehe docs/STATUS.md) | sehr hoch |
+| `malloc`/`realloc`/`free` (dynamische Speicherverwaltung) | `codegen.cpp`: `pushRoutine`/`growBuf` für die ACTION/ROUTINE-Tabellen (seit 2026-07-24, ersetzt vormals feste 32-MB-Arrays) | **erledigt** (2026-07-25: kein neuer Compiler-Code nötig -- der bestehende `extern`-Mechanismus deckt `void*`-Rückgabe/-Parameter generisch ab. Verifiziert strukturell (echter `r68`+`l68`-Link gegen die echte `clib.l`) UND end-to-end per Mock-Stub in `qcc68sim`. Live-Ausführung auf echtem Q9 -- inkl. `realloc`s Kopierverhalten über die Wachstumsgrenze hinweg -- noch offen, siehe FORTSCHRITT.md) | hoch |
 
 ## 2. Was NICHT extra gebraucht wird
 - **Keine echten C++-Templates/Exceptions/STL im Generator selbst** -- die
   kommen erst in L3 vor (siehe unten), nicht in L2.
 - **Keine variadischen FunktionsDEFINITIONEN** im Generator -- `printf`/
   `fprintf` werden nur AUFGERUFEN (Bibliotheksfunktion), nirgends definiert
-  der Generator selbst eine Funktion mit `...`. Tiny-C muss also nicht sofort
+  der Generator selbst eine Funktion mit `...`. QCC muss also nicht sofort
   eigene variadische Funktionen unterstützen, nur variadische Aufrufe gegen
   eine mitgelieferte Runtime-Funktion erlauben.
 
 ## 3. Bibliotheks-/Laufzeitbedarf des Generators (kein Sprachmerkmal, sondern Runtime)
 
-**Strategiewechsel 2026-07-24:** Statt diese drei Punkte als eigene Tiny-C-
+**Strategiewechsel 2026-07-24:** Statt diese drei Punkte als eigene QCC-
 Runtime NACHZUBAUEN, ruft man die ECHTEN OS-9/Microware-`clib.l`-Funktionen
 direkt auf -- vorausgesetzt man trifft deren Aufrufkonvention. Diese ist im
 Ultra-C/C++-Prozessorhandbuch dokumentiert (`DOC/PDF/ultrac_pg.pdf`, "Passing
 Arguments to Functions": 1./2. Argument in `d0`/`d1`, Rest auf dem Stack in
 umgekehrter Reihenfolge; bei variadischen Funktionen wie `printf` alles auf
-dem Stack) und weicht von Tiny-Cs eigener (rein stapelbasierter) interner
+dem Stack) und weicht von QCCs eigener (rein stapelbasierter) interner
 Aufrufkonvention ab. `clib.l` exportiert die Symbole klarnamig ohne
 Underscore-Praefix (`strcmp`, `printf`, `malloc`, `strlen`, `fopen` u.a.,
-per `strings` bestaetigt). Tiny-C hat dafuer jetzt `extern`-Deklarationen
+per `strings` bestaetigt). QCC hat dafuer jetzt `extern`-Deklarationen
 (kein Rumpf, nur Signatur) + einen eigenen Aufrufpfad im 68k-Backend
 (`CALLEXT`/`CALLEXTP`), der genau dieser ABI folgt -- siehe docs/FORTSCHRITT.md
 fuer die Details. Die Platzierung wurde end-to-end gegen handgeschriebene
@@ -124,21 +124,21 @@ der ERSTEN Datei auf der `l68`-Kommandozeile -- `cstart.r` MUSS zuerst
 stehen, sonst laeuft das Programm ohne jede Laufzeit-Initialisierung los.
 Siehe docs/FORTSCHRITT.md fuer alle Details (inkl. eines vierten,
 unabhaengigen Bugs im `%`-Operator, der beim Debuggen nebenbei gefunden
-wurde). NOCH OFFEN: String-Literale in Tiny-C (ohne die ist ein echter
+wurde). NOCH OFFEN: String-Literale in QCC (ohne die ist ein echter
 `printf("format", ...)`-Aufruf mit Formatstring nicht schreibbar, nur mit
 rein numerischen/Pointer-Argumenten oder ueber den jetzt echten `_os_write`-Weg).
 
 | Funktion(en) | Belegstellen (Anzahl) | Bemerkung |
 |---|---|---|
-| `strcmp`, `strncmp`, `strlen`, `strstr`, `strchr` | ca. 120 Aufrufe insgesamt in `ebnf.cpp`+`codegen.cpp` | Kernwerkzeug für Tabellen-/Namensvergleich; jetzt per `extern`-Deklaration gegen die echte `clib.l` aufrufbar UND linkbar (Codegen UND Linken erledigt, siehe oben) statt als Tiny-C-Runtime nachgebaut |
+| `strcmp`, `strncmp`, `strlen`, `strstr`, `strchr` | ca. 120 Aufrufe insgesamt in `ebnf.cpp`+`codegen.cpp` | Kernwerkzeug für Tabellen-/Namensvergleich; jetzt per `extern`-Deklaration gegen die echte `clib.l` aufrufbar UND linkbar (Codegen UND Linken erledigt, siehe oben) statt als QCC-Runtime nachgebaut |
 | `printf`/`fprintf` (Textausgabe des generierten Codes) | `ebnf.cpp`: 73, `codegen.cpp`: 236 | Der Generator IST im Kern ein Textgenerator -- ohne formatierte Ausgabe kein Codegen. `extern`-Deklaration + variadischer CALLEXT-Codegen + echtes Linken erledigt; braucht zusaetzlich String-Literale (noch offen) fuer den Formatstring |
 | Datei-I/O (`fopen`/`fread`/`fwrite`/`fclose`) | durchgehend zum Einlesen der `.ebnf`/`.lextab` und Schreiben der `_p.c`/`.s68`-Ausgabe | Aufrufkonvention (bis zu 4 Argumente, `fread`/`fwrite`) durch den 4-Argumente-Testfall (2 Register + 2 Stack) bereits verifiziert; echtes Linken jetzt ebenfalls erledigt (siehe oben) |
 
-Diese drei Punkte sind der eigentliche Hebel: Selbst wenn Tiny-C morgen
+Diese drei Punkte sind der eigentliche Hebel: Selbst wenn QCC morgen
 `struct`/`for`/`switch` könnte, bräuchte es zusätzlich eine kleine
 Standardbibliothek (String-Vergleich, formatierte Ausgabe, Datei-I/O), bevor
 der Generator überhaupt lauffähig wäre -- der Weg dahin ist jetzt aber
-"echte `clib.l` anbinden" statt "in Tiny-C nachbauen".
+"echte `clib.l` anbinden" statt "in QCC nachbauen".
 
 ## 4. Zusatzbedarf für L1 (generierter Parser-Zwilling selbst hosten)
 
@@ -156,7 +156,7 @@ der Generator selbst sie an keiner Stelle in eigener Logik braucht.
 
 ## 5. L3 -- die beiden C++/STL-Backends (andersartiger Umbau)
 
-`Source/tinyc_backend.cpp` und `Source/tinyc_arm64_backend.cpp` sind die
+`Source/qcc_backend.cpp` und `Source/qcc_arm64_backend.cpp` sind die
 jüngsten Dateien im Projekt und einzige Stellen mit echtem "modernem" C++:
 `std::vector`, `std::map`, `std::string`, `std::ifstream`/`ofstream`,
 `std::runtime_error`/`invalid_argument`, `std::stoi`, `std::to_string`.
@@ -215,7 +215,7 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
 
 ## Empfohlene Reihenfolge
 
-1. **Sprachmittel aus Abschnitt 1** in Tiny-C nachziehen: `struct` mit
+1. **Sprachmittel aus Abschnitt 1** in QCC nachziehen: `struct` mit
    gemischten skalaren Feldtypen, Array-Feldern UND direkter `rec.name[i]`-
    Indizierung (erledigt, 2026-07-24), `typedef` inkl.
    `typedef struct { ... } Name;` inline (erledigt, 2026-07-24), `enum`
@@ -228,7 +228,7 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    Generator selbst): `union` (nur 1 Fundstelle), Pointer-Felder/
    verschachtelte structs.
 2. **Mini-Runtime aus Abschnitt 3** anbinden: statt String-Vergleichsfunktionen,
-   formatierte Ausgabe und Datei-I/O in Tiny-C nachzubauen, die echten
+   formatierte Ausgabe und Datei-I/O in QCC nachzubauen, die echten
    `clib.l`-Funktionen direkt aufrufen (Strategiewechsel 2026-07-24). `extern`-
    Deklarationen + Microware-ABI-Aufrufcodegen (CALLEXT/CALLEXTP), der
    `-os9`-r68-Ausgabemodus, echtes `l68`-Linken gegen `clib.l` (inkl. echter

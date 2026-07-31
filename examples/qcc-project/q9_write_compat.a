@@ -1,4 +1,4 @@
-* Tiny-C OS-9 compatibility wrapper for the classic Microware clib.
+* QCC OS-9 compatibility wrapper for the classic Microware clib.
 * The backend uses _os_write(path, buffer, &count); the old clib exports
 * write(path, buffer, count).
 

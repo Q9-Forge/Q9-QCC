@@ -1,38 +1,38 @@
 # Q9-QCC
 
-Tiny-C-Compiler-Toolchain für Q9 (C-Sprachkern, IR, 68000-/ARM64-Backends).
+QCC-Toolchain für Q9 (C-Sprachkern, IR, 68000-/ARM64-Backends).
 Extrahiert aus dem ehemaligen `ebnf`-Repo (2026-07-31, volle Historie
 erhalten), das jetzt als [Q9-Parsec](https://github.com/Q9-Forge/Q9-Parsec)
 weiterlebt.
 
 ## Abhängigkeit zu Q9-Parsec
 
-Der Tiny-C-Parser (`Data/tinyc_p.c`, nicht eingecheckt, generiert) wird vom
+Der QCC-Parser (`Data/qcc_p.c`, nicht eingecheckt, generiert) wird vom
 EBNF-Generator aus Q9-Parsec erzeugt:
 
 ```
-Data/tinyc.ebnf + Data/tinyc.lextab  --[ebnf-Tool aus Q9-Parsec]-->  Data/tinyc_p.c
+Data/qcc.ebnf + Data/qcc.lextab  --[ebnf-Tool aus Q9-Parsec]-->  Data/qcc_p.c
 ```
 
-`Data/tinyc.ebnf`/`tinyc.lextab` (die Tiny-C-Sprachdefinition) liegen deshalb
+`Data/qcc.ebnf`/`qcc.lextab` (die QCC-Sprachdefinition) liegen deshalb
 hier als Kopie — Q9-Parsec zum Bauen des `ebnf`-Tools zusätzlich auschecken:
 
 ```sh
 git clone git@github.com:Q9-Forge/Q9-Parsec.git ../Q9-Parsec
 (cd ../Q9-Parsec && clang++ -std=c++17 -o build/ebnf Source/ebnf.cpp Source/codegen.cpp)
-../Q9-Parsec/build/ebnf Data/tinyc
+../Q9-Parsec/build/ebnf Data/qcc
 ```
 
 ## Struktur
 
-- `Source/tinyc_backend*.cpp`, `tinyc_arm64_backend*.cpp` — IR-zu-68k- bzw.
+- `Source/qcc_backend*.cpp`, `qcc_arm64_backend*.cpp` — IR-zu-68k- bzw.
   IR-zu-ARM64-Codegenerierung
-- `SourceTinyC/` — der EBNF-Generator selbst, nach Tiny-C portiert
+- `SourceQCC/` — der EBNF-Generator selbst, nach QCC portiert
   (Selfhosting-Nachweis: beweist, dass dieser Compiler ein echtes,
   größeres Programm übersetzen kann)
 - `runtime/arm64_darwin/` — Laufzeit-Unterstützung fürs ARM64-Testbackend
-- `examples/tinyc-project/` — Beispielprojekt
-- `tools/tiny68sim.py`, `tinyvm.py`, `tinyc_merge.py`, `vasmm68k_mot` —
+- `examples/qcc-project/` — Beispielprojekt
+- `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` —
   Test-Orakel/Simulatoren + vendorter 68k-Assembler
 - `docs/` — Status, Fortschritt, IR-Opcodes, ISO-C-Lückenlisten,
   OS-9-Bootstrap, Selfhosting-Lückenliste, Teilprojekt-Roadmap
@@ -40,7 +40,7 @@ git clone git@github.com:Q9-Forge/Q9-Parsec.git ../Q9-Parsec
 ## Bekannte Lücke (Stand 2026-07-31)
 
 Die vollständige Regressionssuite (`runtests.sh`, ehemals im gemeinsamen
-`ebnf`-Repo, testet EBNF-Generator und Tiny-C-Compiler in einem
+`ebnf`-Repo, testet EBNF-Generator und QCC in einem
 gemischten 3200-Zeilen-Skript) wurde **noch nicht sauber aufgetrennt** —
 bleibt vorerst nur in Q9-Parsec. Eigenständiges Bauen/Testen hier
 erfordert manuell die obigen Schritte, bis ein eigenes `runtests.sh`

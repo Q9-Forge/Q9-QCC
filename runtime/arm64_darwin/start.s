@@ -1,4 +1,4 @@
-// Tiny-C ARM64/Darwin Plattform-Runtime: bewusst klein und ohne C-Laufzeit.
+// QCC ARM64/Darwin Plattform-Runtime: bewusst klein und ohne C-Laufzeit.
 // Vertragsgrenze zum Backend: _tc_main, _tc_putint(w0), _tc_exit(w0).
 	.text
 	.p2align 2
