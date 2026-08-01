@@ -2,7 +2,7 @@
 // File:   codegen.h                                                                      Ver. 1.00
 // Owner:  AF
 // Desc.:  Schnittstelle AST-Aufbau + Codegenerierung (siehe docs/ARCHITEKTUR.md).
-//         Der Parser in ebnf.cpp baut ueber die astPush*/astGroup*-Aufrufe waehrend des
+//         Der Parser in parsec.cpp baut ueber die astPush*/astGroup*-Aufrufe waehrend des
 //         normalen Parsens einen AST auf; daraus erzeugen genParserC()/genParser68k()
 //         einen backtracking-rekursiven Abstiegsparser (C-Zwilling zur Validierung,
 //         68k-Assembler als eigentliches Ziel).
@@ -17,7 +17,7 @@
 #define CODEGEN_H
 
 //------------------------------------------------------------------------------------------------
-// AST-Aufbau -- wird vom Parser (ebnf.cpp) waehrend des Parsens aufgerufen.
+// AST-Aufbau -- wird vom Parser (parsec.cpp) waehrend des Parsens aufgerufen.
 // Konvention: factor() hinterlaesst genau EINEN Knoten auf dem AST-Stack;
 // term()/expression() fassen mit astGroupSeq()/astGroupAlt() alles oberhalb ihrer
 // gemerkten Marke (astMark()) zusammen; rule() schliesst mit astFinishRule() ab.

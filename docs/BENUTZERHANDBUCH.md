@@ -24,7 +24,7 @@ QCC-Parser gebaut. Ein kleines Programm kann anschließend als IR erzeugt und
 mit der VM ausgeführt werden:
 
 ```sh
-build/ebnf Data/qcc
+build/parsec Data/qcc
 cc -w -o build/qcc_p Data/qcc_p.c
 build/qcc_p 'int main(){ putint(2 + 3 * 4); }' > build/example.ir
 python3 tools/qccvm.py build/example.ir
@@ -56,4 +56,3 @@ int main() {
 - `tools/qccvm.py`: IR-Interpreter
 - `runtests.sh`: verbindliche Regressionstests
 - `docs/STATUS.md`: aktueller Stand
-

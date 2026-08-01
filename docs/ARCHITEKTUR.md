@@ -9,7 +9,7 @@ Die Sprungtabelle (PARSER-TABELLE) + Stack-Maschine (`execFrom()`) funktioniert 
 per TESTS-Bloecken abgesichert. Sie hat aber eine **inhaerente** Grenze: Ruecksetzpunkte
 fuer die Eingabeposition existieren nur an NTS-Aufruf-Grenzen (der native Aufrufstack
 uebernimmt das Sichern/Verwerfen). Innerhalb einer Regel gibt es keine Positionssicherung
-pro Alternative. Konsequenzen (in ebnf.cpp gefixt bzw. gewarnt, Ver. 2.10):
+pro Alternative. Konsequenzen (in parsec.cpp gefixt bzw. gewarnt, Ver. 2.10):
 
 - Fehlschlag-ohne-Konsum (STAT_FALSE) vs. committed (STAT_ERROR) wird jetzt beim
   Erzeugen positionsabhaengig verdrahtet (Bugs 5+6, siehe context.txt Abschnitt 11).
@@ -25,7 +25,7 @@ TESTS erhalten. Die **Codegenerierung geht einen eigenen, korrekteren Weg**.
 
 ## 2. Entscheidung: AST als zweite Datenquelle (additiv, riskolos)
 
-Der Parser in ebnf.cpp baut waehrend des normalen Parsens **zusaetzlich** einen AST auf
+Der Parser in parsec.cpp baut waehrend des normalen Parsens **zusaetzlich** einen AST auf
 (Knotenarten: SEQ, ALT, OPT `[..]`, REP `{..}`, TS-Literal, RNG-Bereich, NTS-Referenz;
 `(..)` ist im AST einfach der Inhalt selbst). Die bestehende Tabellen-Erzeugung bleibt
 **unangetastet** -- der AST haengt sich nur mit wenigen Aufrufen (`astPush*/astGroup*`)
@@ -107,7 +107,7 @@ Lok:addq.l  #4,a7                   ;   Position sichern, Body, bei Fail restaur
 
 ## 6. Umsetzungsstand in dieser Session
 
-- [x] AST-Aufbau parallel zum Parsen (Source/codegen.cpp/.h, Hooks in ebnf.cpp)
+- [x] AST-Aufbau parallel zum Parsen (Source/codegen.cpp/.h, Hooks in parsec.cpp)
 - [x] C-Backend (`<basis>_p.c`) als semantischer Zwilling
 - [x] 68k-Backend (`<basis>.s68`)
 - [x] runtests.sh validiert den erzeugten C-Parser gegen alle TESTS-Bloecke
@@ -332,7 +332,7 @@ Klammern/Rekursion -- siehe Grenze unten) komplett mit ACTION/ROUTINE C durchges
   verifiziert -- nicht mehr aktuell, hier nur als Chronik stehen gelassen.**
 - NEBENFUND: Das Testen dieser Grammatik deckte einen eigenstaendigen, vorbestehenden
   Bug im TABELLEN-Generator auf (nichts mit ACTION/Codegen zu tun) -- `rule()` in
-  ebnf.cpp prüfte am Regelende nur die LETZTE Tabellenzeile auf offene Vorwaertsreferenzen
+  parsec.cpp prüfte am Regelende nur die LETZTE Tabellenzeile auf offene Vorwaertsreferenzen
   statt die ganze Regel. Bei `X = A {B A}.` als letztem Konstrukt einer Regel sitzt die
   offene Referenz auf der B-Zeile, nicht der letzten A-Zeile. Gefixt: `rule()` merkt sich
   jetzt `ruleStart` und scannt beim Regelende die GANZE Regel.
@@ -712,7 +712,7 @@ differenzielle Muster, das die Suite heute fuer den Parser faehrt (C-Zwilling vs
 Wichtiges Ergebnis dieses Entwurfs: Mit den Keyword-/Positions-Huellregeln (10.3/10.6)
 liefert der VORHANDENE "eine ACTION AFTER pro Regel"-Mechanismus Hooks an jeder
 noetigen Stelle, auch "vor" einem Teil. Ein ACTION-BEFORE ist damit fuer M1-M4 NICHT
-erforderlich; das ebnf-Tool (ebnf.cpp/codegen.cpp) bleibt fuer die QCC-Arbeit
+erforderlich; das ebnf-Tool (parsec.cpp/codegen.cpp) bleibt fuer die QCC-Arbeit
 unveraendert. (Ein echtes ACTION-BEFORE bliebe eine spaetere Bequemlichkeit, kein
 Blocker.) Ebenfalls unveraendert: die 68k-Aktions-Rollback-Luecke (9.4c) ist irrelevant,
 weil der QCC-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog calcexpr.

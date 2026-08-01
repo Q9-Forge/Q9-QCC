@@ -1,8 +1,8 @@
-# PROJECT.md - ebnf
+# PROJECT.md - Q9-Parsec
 
 ## Übersicht
 
-C++-Compiler-Baukasten rund um EBNF-Grammatiken: Parser/Scanner-Generator (`ebnf`) plus ein
+C++-Compiler-Baukasten rund um EBNF-Grammatiken: Parser/Scanner-Generator (`parsec`) plus ein
 separates C#/.NET-Tool zur grafischen Darstellung von Syntaxdiagrammen (`ebnfVisualizer`).
 
 Ursprünglich am 2020-04-28 begonnen (Visual Studio C++ Projekt), von
@@ -12,14 +12,14 @@ Projekt aufgenommen.
 ## Struktur
 
 ```
-ebnf/
-├── ebnf.sln / ebnf.vcxproj(.filters)   # Visual Studio Projekt (C++), baut auch unter macOS/clang
+Q9-Parsec/
+├── ebnf.sln / ebnf.vcxproj(.filters)   # Visual Studio Projekt (C++), erzeugt parsec
 ├── runtests.sh                         # KOMPLETTE Regressionssuite (baut + testet alles)
 ├── context.txt                         # Arbeitsstand/Session-Log (zuerst lesen!)
 ├── docs/
 │   └── ARCHITEKTUR.md                  # Architektur der Codegenerierung (68k zuerst)
 ├── Source/
-│   ├── ebnf.cpp                        # EBNF-Parser, Sprungtabelle, Stack-Maschine, Arbeitsdatei
+│   ├── parsec.cpp                      # EBNF-Parser, Sprungtabelle, Stack-Maschine, Arbeitsdatei
 │   ├── codegen.cpp/.h                  # AST + Codegenerierung: C-Zwilling + 68k-Assembler
 │   ├── msvc_compat.h                   # *_s-Funktionen fuer macOS/Linux (unter Windows No-Op)
 │   └── tiny-regex.cpp/.h               # Eingebettete Regex-Engine (derzeit ungenutzt)

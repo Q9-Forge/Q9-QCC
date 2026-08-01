@@ -1,5 +1,5 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
-// File:   ebnf.cpp                                                                       Ver. 2.30
+// File:   parsec.cpp                                                                      Ver. 2.30
 // Owner:  AF
 // Desc.:  EBNF-Uebersetzer (Wirth-Dialekt): parst eine .ebnf-Grammatik, erzeugt daraus eine
 //         Sprungtabelle mit Call/Return-Semantik (Stack-Maschine), fuehrt sie gegen Testeingaben
@@ -9,7 +9,7 @@
 //         Endziel des Projekts: Codegenerierung (rekursiver Abstieg) fuer die Grammatik,
 //         zuerst als 68k-Assembler.
 //
-// Call:   ebnf <basis> [<teststring>]
+// Call:   parsec <basis> [<teststring>]
 //         Fall A: <basis>.ebnf vorhanden -> Grammatik neu uebersetzen (die .ebnf ist die
 //                 Wahrheit), Arbeitsdatei <basis>.lextab neu schreiben (TESTS bleiben erhalten),
 //                 Listing nach <basis>.lexlst.
@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
 
 	if (argc < 2) {
 		printf("usage: %s <inputfile> [<teststring>]\n", argv[0]);
-		printf("Translate ebnf grammer to syntax table\n");
+		printf("Translate EBNF grammar to syntax table\n");
 		exitProgram(-1);
 	}
 
@@ -198,7 +198,7 @@ int main(int argc, char* argv[]) {
 	strncpy_s(cgen68kName, sizeof(cgen68kName), argv[1], len);
 	strcat_s(cgen68kName, sizeof(cgen68kName), ".s68");
 
-	printf("EBNF Translator on %s\n", OS);
+	printf("Parsec EBNF Translator on %s\n", OS);
 	astReset();
 
 	// WICHTIG (Reihenfolge!): den TESTS-Block der alten Arbeitsdatei retten, BEVOR sie
@@ -1011,7 +1011,7 @@ void writeWorkfile(FILE* fp) {
 	int i;
 
 	fprintf(fp, "#================================================================================\n");
-	fprintf(fp, "# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf\n");
+	fprintf(fp, "# EBNF-ARBEITSDATEI -- automatisch erzeugt von parsec\n");
 	fprintf(fp, "# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben\n");
 	fprintf(fp, "# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht\n");
 	fprintf(fp, "# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).\n");
@@ -2145,5 +2145,4 @@ char* getAktLine() {
 	}
 	return readPtr;
 }
-
 
