@@ -5,9 +5,9 @@
 ```text
 EBNF-Quelle
   → Source/parsec.cpp (Generator)
-  → Data/tinyc_p.c (Parser mit Nutzer-Aktionen)
+  → Data/qcc_p.c (Parser mit Nutzer-Aktionen)
   → Stack-IR
-  → tools/tinyvm.py oder Target-Backend
+  → tools/qccvm.py oder Target-Backend
 ```
 
 Die Stack-IR ist die zentrale Grenze. Frontend-Aktionen dürfen keine
@@ -26,7 +26,7 @@ Adressen und Werte sind getrennt: `ADDRL`/`ADDRG` bilden Adressen, `LOADIND` und
 
 ## Backend-Verträge
 
-- TinyVM nutzt abstrakte Block-/Byteadressen und ist das schnellste Semantik-Orakel.
+- QCCVM nutzt abstrakte Block-/Byteadressen und ist das schnellste Semantik-Orakel.
 - Das 68000-Backend erzeugt 32-Bit-Pointercode.
 - Das ARM64-Backend erzeugt 64-Bit-Pointercode und linkt gegen
   `runtime/arm64_darwin`.
@@ -35,7 +35,7 @@ Adressen und Werte sind getrennt: `ADDRL`/`ADDRG` bilden Adressen, `LOADIND` und
 ## Änderungsregeln
 
 Bei jedem neuen Sprachfeature müssen Grammatik, semantische Aktionen, IR,
-TinyVM, beide Backends und mindestens ein Regressionstest gemeinsam betrachtet
+QCCVM, beide Backends und mindestens ein Regressionstest gemeinsam betrachtet
 werden. Zuerst wird die Semantik in der VM abgesichert, danach werden die
 Maschinen-Backends angepasst. Überlappende Operatoren benötigen
 Longest-Match-Behandlung im Generator.
@@ -80,7 +80,7 @@ auf `typedefTargetName` (dort scheitert es dann an `{` statt am erwarteten
 Namen) -- zu spaet fuer ein Backtracking zurueck zu `anonStructType`, weil
 die Sequenz `type pointerDecl` schon als ganzes "erfolgreich" durchlaufen
 wurde. Fix: Alternativenreihenfolge getauscht --
-`typedefType = anonStructType | type pointerDecl` (`Data/tinyc.ebnf:11`).
+`typedefType = anonStructType | type pointerDecl` (`Data/qcc.ebnf:11`).
 `anonStructType` scheitert bei einem echten `struct Tag`-Aufruf sauber und
 lokal an `anonStructOpen = "{"` (kein `ident`-Fallback in dieser Alternative
 moeglich), das Backtracking zu `type pointerDecl` funktioniert dann

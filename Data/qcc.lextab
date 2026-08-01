@@ -1,5 +1,5 @@
 #================================================================================
-# EBNF-ARBEITSDATEI -- automatisch erzeugt von parsec
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
 # Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
 # beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
 # in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
@@ -1192,7 +1192,7 @@ COMMENT BLOCK = "/*" "*/"
 [ENDE]
 
 [NUTZER-CODE]
-# Tiny-C Frontend (Meilenstein 1): Aktionen emittieren Stack-IR nach stdout.
+# QCC Frontend (Meilenstein 1): Aktionen emittieren Stack-IR nach stdout.
 # Siehe docs/ARCHITEKTUR.md Kapitel 10. Nur ROUTINE C (IR-Emission), analog calcexpr.
 ACTION AFTER defName CALL tc_defname
 ACTION AFTER constKw CALL tc_const
@@ -1300,7 +1300,7 @@ ACTION AFTER switchStmt CALL tc_switchend
 ACTION AFTER castType CALL tc_castcapture
 ACTION AFTER castExpr CALL tc_cast
 ROUTINE C tc_defname
-/* ---- Tiny-C Frontend: globaler Zustand + Helfer (ARCHITEKTUR.md Kap.10) ---- */
+/* ---- QCC Frontend: globaler Zustand + Helfer (ARCHITEKTUR.md Kap.10) ---- */
 typedef struct TCType {
 	char base;                    /* i=int32, u=uint32, c=char, b=bool, z=Nullkonstante, s=struct */
 	unsigned char pointers;       /* 0=Skalar, 1=T*, 2=T** usw. */
@@ -1364,7 +1364,7 @@ static int  tcEnumTypeCount = 0;
    Grenzpruefung vor dem Schreiben in tcNames[]/tcLocalTypes[]/... (echter
    Pufferueberlauf bei >64 Parametern+Lokalen einer einzigen Funktion, nicht
    nur ein zu kleines Limit). Gefunden beim Skalierungstest fuer den
-   -largedata-Funktionsaufruf-Schalter (Source/tinyc_backend_c.cpp) mit 150
+   -largedata-Funktionsaufruf-Schalter (Source/qcc_backend_c.cpp) mit 150
    generierten Funktionen, die prompt tcFunctionCount>=64 rissen. Grenzen
    grosszuegig erhoeht UND tcLocalCount erstmals ueberhaupt geprueft (siehe
    tc_param/tc_local), analog zum bereits vorhandenen Muster bei MAX_STRUCTS/
@@ -1390,7 +1390,7 @@ static int  tcGlobalConst[MAX_GLOBALS];       /* 1 = mit "const" deklariert */
 /* Mehrdatei-Uebersetzung (2026-07-25): tcFunctionIsDeclOnly/tcGlobalIsDeclOnly
    markieren eine bare-Prototyp- bzw. "extern <typ> <name>;"-Deklaration --
    existiert in dieser Datei nur als Signatur/Typ, OHNE Speicher/Rumpf (wird in
-   einer ANDEREN Tiny-C-Datei mit normaler interner ABI definiert, siehe
+   einer ANDEREN QCC-Datei mit normaler interner ABI definiert, siehe
    FUNCDECL/GLOBALDECL-IR). Bewusst getrennt von tcFunctionIsExternal (das
    bleibt die Microware-ABI/clib.l-Bedeutung von "extern" bei Funktionen).
    tcFunctionIsStatic/tcGlobalIsStatic geben "static" zum ersten Mal echte
@@ -1417,7 +1417,7 @@ static char tcFuncName[32];
 static char tcFunctionNames[MAX_FUNCTIONS][32];
 static TCType tcFunctionReturnTypes[MAX_FUNCTIONS], tcFunctionParamTypes[MAX_FUNCTIONS][64];
 static int tcFunctionNargs[MAX_FUNCTIONS], tcFunctionCount = 0;
-static int tcFunctionIsExternal[MAX_FUNCTIONS];  /* 1 = extern-Deklaration, kein Tiny-C-Rumpf/FUNC-Block */
+static int tcFunctionIsExternal[MAX_FUNCTIONS];  /* 1 = extern-Deklaration, kein QCC-Rumpf/FUNC-Block */
 static int tcFunctionIsVariadic[MAX_FUNCTIONS];  /* 1 = "..." am Ende der Parameterliste (wie printf) */
 /* Sammelzustand waehrend eine einzelne externDecl geparst wird (analog zu
    tcStructBuildFieldTypes fuer struct-Felder). */
@@ -1476,7 +1476,7 @@ static char tcPendingShift0 = 0, tcPendingShift1 = 0;
 static int tcTernaryFalse[64], tcTernaryDone[64], tcTernaryDepth = 0;
 static TCType tcTernaryTrueType[64];
 static void tcPushCtrl(char kind, int top, int cont, int end, int extra) {
-	if (tcCtrlDepth >= 64) { fprintf(stderr, "tinyc: control nesting too deep\\n"); return; }
+	if (tcCtrlDepth >= 64) { fprintf(stderr, "qcc: control nesting too deep\\n"); return; }
 	tcCtrlKind[tcCtrlDepth] = kind;
 	tcCtrlTop[tcCtrlDepth] = top;
 	tcCtrlCont[tcCtrlDepth] = cont;
@@ -1486,7 +1486,7 @@ static void tcPushCtrl(char kind, int top, int cont, int end, int extra) {
 }
 static int tcNeedCtrl(char kind) {
 	if (tcCtrlDepth > 0 && tcCtrlKind[tcCtrlDepth - 1] == kind) return 1;
-	fprintf(stderr, "tinyc: internal control-frame mismatch\\n");
+	fprintf(stderr, "qcc: internal control-frame mismatch\\n");
 	return 0;
 }
 /* Naechste umschliessende Schleife suchen (if-Rahmen ueberspringen) -- NUR fuer continue,
@@ -1615,13 +1615,13 @@ static void tcPrintType(FILE* out, TCType t) {
 	fputs(name, out); for (i = 0; i < t.pointers; i++) fputc('*', out);
 }
 static void tcTypeError(const char* what, TCType wanted, TCType got) {
-	fprintf(stderr, "tinyc: %s expects ", what); tcPrintType(stderr, wanted);
+	fprintf(stderr, "qcc: %s expects ", what); tcPrintType(stderr, wanted);
 	fputs(", got ", stderr); tcPrintType(stderr, got); fputc('\n', stderr); tcSemanticErrors++;
 }
 static void tcLogicBegin(char kind) {
 	TCType left = tcTypePop(); int branch, end;
 	if (!tcIsBool(left)) tcTypeError("logical operator", tcMakeType('b', 0), left);
-	if (tcLogicDepth >= 64) { fprintf(stderr, "tinyc: logical nesting too deep\n"); tcSemanticErrors++; return; }
+	if (tcLogicDepth >= 64) { fprintf(stderr, "qcc: logical nesting too deep\n"); tcSemanticErrors++; return; }
 	branch = tcNextLabel++; end = tcNextLabel++;
 	tcLogicKind[tcLogicDepth] = kind; tcLogicBranch[tcLogicDepth] = branch; tcLogicDone[tcLogicDepth] = end; tcLogicDepth++;
 	printf("%s L%d\n", kind == '&' ? "JZ" : "JNZ", branch);
@@ -1658,7 +1658,7 @@ static int tcHasTopChar(const char* s, const char* e, char c) {
 }
 static void tcLogicEnd(char kind) {
 	TCType right; int frame;
-	if (tcLogicDepth <= 0 || tcLogicKind[tcLogicDepth - 1] != kind) { fprintf(stderr, "tinyc: logical-frame mismatch\n"); tcSemanticErrors++; return; }
+	if (tcLogicDepth <= 0 || tcLogicKind[tcLogicDepth - 1] != kind) { fprintf(stderr, "qcc: logical-frame mismatch\n"); tcSemanticErrors++; return; }
 	right = tcTypePop(); if (!tcIsBool(right)) tcTypeError("logical operator", tcMakeType('b', 0), right);
 	frame = --tcLogicDepth;
 	printf("%s L%d\nPUSH %d\nJMP L%d\nLABEL L%d\nPUSH %d\nLABEL L%d\n",
@@ -1667,12 +1667,12 @@ static void tcLogicEnd(char kind) {
 	tcTypePush(tcMakeType('b', 0));
 }
 static void tcBitBegin(char kind) {
-	if (tcBitDepth >= 64) { fprintf(stderr, "tinyc: bitwise nesting too deep\n"); tcSemanticErrors++; return; }
+	if (tcBitDepth >= 64) { fprintf(stderr, "qcc: bitwise nesting too deep\n"); tcSemanticErrors++; return; }
 	tcBitKind[tcBitDepth++] = kind;
 }
 static void tcBitEnd(char kind) {
 	TCType right, left;
-	if (tcBitDepth <= 0 || tcBitKind[tcBitDepth - 1] != kind) { fprintf(stderr, "tinyc: bitwise-frame mismatch\n"); tcSemanticErrors++; return; }
+	if (tcBitDepth <= 0 || tcBitKind[tcBitDepth - 1] != kind) { fprintf(stderr, "qcc: bitwise-frame mismatch\n"); tcSemanticErrors++; return; }
 	tcBitDepth--;
 	right = tcTypePop(); left = tcTypePop();
 	if (!tcIsInteger(left)) tcTypeError("bitwise operator", tcMakeType('i', 0), left);
@@ -1691,7 +1691,7 @@ static void tcShiftEnd(void) {
 static void tcTernaryBegin(void) {
 	TCType condition = tcTypePop(); int falseLabel, endLabel;
 	if (!tcIsBool(condition)) tcTypeError("conditional condition", tcMakeType('b', 0), condition);
-	if (tcTernaryDepth >= 64) { fprintf(stderr, "tinyc: conditional nesting too deep\n"); tcSemanticErrors++; return; }
+	if (tcTernaryDepth >= 64) { fprintf(stderr, "qcc: conditional nesting too deep\n"); tcSemanticErrors++; return; }
 	falseLabel = tcNextLabel++; endLabel = tcNextLabel++;
 	tcTernaryFalse[tcTernaryDepth] = falseLabel;
 	tcTernaryDone[tcTernaryDepth] = endLabel;
@@ -1699,13 +1699,13 @@ static void tcTernaryBegin(void) {
 	printf("JZ L%d\n", falseLabel);
 }
 static void tcTernaryMiddle(void) {
-	if (tcTernaryDepth <= 0) { fprintf(stderr, "tinyc: conditional-frame mismatch\n"); tcSemanticErrors++; return; }
+	if (tcTernaryDepth <= 0) { fprintf(stderr, "qcc: conditional-frame mismatch\n"); tcSemanticErrors++; return; }
 	tcTernaryTrueType[tcTernaryDepth - 1] = tcTypePop();
 	printf("JMP L%d\nLABEL L%d\n", tcTernaryDone[tcTernaryDepth - 1], tcTernaryFalse[tcTernaryDepth - 1]);
 }
 static void tcTernaryEnd(void) {
 	TCType falseType, trueType, result;
-	if (tcTernaryDepth <= 0) { fprintf(stderr, "tinyc: conditional-frame mismatch\n"); tcSemanticErrors++; return; }
+	if (tcTernaryDepth <= 0) { fprintf(stderr, "qcc: conditional-frame mismatch\n"); tcSemanticErrors++; return; }
 	falseType = tcTypePop();
 	trueType = tcTernaryTrueType[tcTernaryDepth - 1];
 	if (tcSameType(trueType, falseType)) result = trueType;
@@ -1724,7 +1724,7 @@ static void tcLoadTarget(void) {
 	else if (tcTargetIsGlobal) printf("LOADG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
 	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("DUP\nLOADIDX L %d %c\n", tcTargetSlot, tag);
 	else if (tcTargetSlot >= 0) printf("LOAD%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
-	else { fprintf(stderr, "tinyc: unknown assignment target\n"); tcSemanticErrors++; return; }
+	else { fprintf(stderr, "qcc: unknown assignment target\n"); tcSemanticErrors++; return; }
 	tcTypePush(tcTargetType);
 }
 static void tcCompoundAssign(void) {
@@ -1771,7 +1771,7 @@ static int tcConstIndex(const char* s, const char* e, int* value) {
 static void tcCheckConstIndex(const char* text, const char* end, int length) {
 	int index;
 	if (tcConstIndex(text, end, &index) && (index < 0 || index >= length)) {
-		fprintf(stderr, "tinyc: constant array index %d out of range (length %d)\n", index, length);
+		fprintf(stderr, "qcc: constant array index %d out of range (length %d)\n", index, length);
 		tcSemanticErrors++;
 	}
 }
@@ -1836,12 +1836,12 @@ static void tcEmitNDCombine(int ndims, const int* trailingDims) {
    runtests.sh), fuer ndims>2 gibt es generalisierte Entsprechungen. */
 static void tcCheckNDIndex(int ndims, const int* trailingDims, int idxCount) {
 	if (idxCount == ndims) { if (ndims > 1) tcEmitNDCombine(ndims, trailingDims); return; }
-	if (ndims == 1 && idxCount == 2) { fprintf(stderr, "tinyc: array is not two-dimensional\n"); tcSemanticErrors++; return; }
+	if (ndims == 1 && idxCount == 2) { fprintf(stderr, "qcc: array is not two-dimensional\n"); tcSemanticErrors++; return; }
 	if (ndims > 1 && idxCount == ndims - 1) {
-		fprintf(stderr, "tinyc: partial indexing of a %dD array is not supported (use arr[i1]...[i%d])\n", ndims, ndims);
+		fprintf(stderr, "qcc: partial indexing of a %dD array is not supported (use arr[i1]...[i%d])\n", ndims, ndims);
 		tcSemanticErrors++; return;
 	}
-	fprintf(stderr, "tinyc: array has %d dimension(s), but %d index(es) were given\n", ndims, idxCount);
+	fprintf(stderr, "qcc: array has %d dimension(s), but %d index(es) were given\n", ndims, idxCount);
 	tcSemanticErrors++;
 }
 static int tcInitList(const char* start, const char* end, long* values, int cap) {
@@ -1903,7 +1903,7 @@ void tc_externparam(const char* start, const char* end) {
 	(void)start; (void)end;
 	tcPendingConst = 0; /* rein dokumentarisch, siehe Grammatik-Kommentar -- nur konsumieren */
 	if (tcExternBuildParamCount < 64) tcExternBuildParamTypes[tcExternBuildParamCount++] = tcCurrentType;
-	else { fprintf(stderr, "tinyc: too many extern parameters\n"); tcSemanticErrors++; }
+	else { fprintf(stderr, "qcc: too many extern parameters\n"); tcSemanticErrors++; }
 }
 END
 ROUTINE C tc_externvariadic
@@ -1914,17 +1914,17 @@ void tc_externvariadic(const char* start, const char* end) {
 END
 ROUTINE C tc_externdeclend
 /* Registriert dieselbe Signatur-Tabelle (tcFunctionNames/tcFunctionReturnTypes/
-   tcFunctionParamTypes/tcFunctionNargs) wie eine echte Tiny-C-Funktion (siehe
+   tcFunctionParamTypes/tcFunctionNargs) wie eine echte QCC-Funktion (siehe
    tc_funcbegin) -- dadurch funktionieren Aufrufpruefung (tc_arg/tc_call:
    tcLookupFunction, Argumentanzahl/-typen) unveraendert fuer externe wie interne
    Funktionen. tcFunctionIsExternal/tcFunctionIsVariadic (neue Parallel-Arrays)
-   steuern in tc_call, ob CALL/CALLP (interner Tiny-C-Aufruf, "bsr tc_<name>")
+   steuern in tc_call, ob CALL/CALLP (interner QCC-Aufruf, "bsr tc_<name>")
    oder CALLEXT/CALLEXTP (Microware-ABI, siehe Backend) emittiert wird. KEIN
-   FUNC/ENDFUNC-IR-Block -- eine extern-Deklaration hat keinen Tiny-C-Rumpf. */
+   FUNC/ENDFUNC-IR-Block -- eine extern-Deklaration hat keinen QCC-Rumpf. */
 void tc_externdeclend(const char* start, const char* end) {
 	int i; (void)start; (void)end;
-	if (tcLookupFunction(tcExternName) >= 0) { fprintf(stderr, "tinyc: duplicate function\n"); tcSemanticErrors++; return; }
-	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "tinyc: too many functions\n"); tcSemanticErrors++; return; }
+	if (tcLookupFunction(tcExternName) >= 0) { fprintf(stderr, "qcc: duplicate function\n"); tcSemanticErrors++; return; }
+	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "qcc: too many functions\n"); tcSemanticErrors++; return; }
 	i = tcFunctionCount++;
 	tcCopy(tcFunctionNames[i], tcExternName, tcExternName + strlen(tcExternName));
 	tcFunctionReturnTypes[i] = tcExternReturnType;
@@ -1947,17 +1947,17 @@ void tc_type(const char* start, const char* end) {
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 		ne = tcWordEnd(p, end);
 		sid = tcLookupStruct(p, ne);
-		if (sid < 0) { fprintf(stderr, "tinyc: unknown struct\n"); tcSemanticErrors++; tcCurrentType = tcBadType(); return; }
+		if (sid < 0) { fprintf(stderr, "qcc: unknown struct\n"); tcSemanticErrors++; tcCurrentType = tcBadType(); return; }
 		tcCurrentType = tcMakeType('s', 0); tcCurrentType.structId = (unsigned char)(sid + 1);
 	} else if (tcEqSpan(start, we, "enum")) {
 		const char* p = we; const char* ne;
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 		ne = tcWordEnd(p, end);
-		if (tcLookupEnumType(p, ne) < 0) { fprintf(stderr, "tinyc: unknown enum\n"); tcSemanticErrors++; tcCurrentType = tcBadType(); return; }
+		if (tcLookupEnumType(p, ne) < 0) { fprintf(stderr, "qcc: unknown enum\n"); tcSemanticErrors++; tcCurrentType = tcBadType(); return; }
 		tcCurrentType = tcMakeType('i', 0);
 	} else {
 		int td = tcLookupTypedef(start, we);
-		if (td < 0) { fprintf(stderr, "tinyc: unknown type name '%.*s'\n", (int)(we - start), start); tcSemanticErrors++; tcCurrentType = tcBadType(); return; }
+		if (td < 0) { fprintf(stderr, "qcc: unknown type name '%.*s'\n", (int)(we - start), start); tcSemanticErrors++; tcCurrentType = tcBadType(); return; }
 		tcCurrentType = tcTypedefTypes[td];
 	}
 }
@@ -1970,11 +1970,11 @@ END
 ROUTINE C tc_param
 void tc_param(const char* start, const char* end) {
 	const char* nameEnd = tcNameEnd(start, end);
-	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "tinyc: too many locals\n"); tcSemanticErrors++; return; }
+	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "qcc: too many locals\n"); tcSemanticErrors++; return; }
 	tcCopy(tcNames[tcLocalCount], start, nameEnd);
 	tcLocalTypes[tcLocalCount] = nameEnd < end ? tcPointerTo(tcCurrentType) : tcCurrentType;
 	if (!tcIsPointer(tcLocalTypes[tcLocalCount]) && tcLocalTypes[tcLocalCount].base == 'v') {
-		fprintf(stderr, "tinyc: void is not a valid parameter type\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: void is not a valid parameter type\n"); tcSemanticErrors++;
 		tcLocalTypes[tcLocalCount] = tcMakeType('i', 0);
 	}
 	tcLocalArrayLen[tcLocalCount] = 0;
@@ -1994,24 +1994,8 @@ void tc_funcbegin(const char* start, const char* end) {
 	int i, f; (void)start; (void)end;
 	tcCurrentFuncIndex = -1;
 	f = tcLookupFunction(tcFuncName);
-	if (f >= 0) {
-		/* Eine bare Vorwaertsdeklaration darf spaeter in derselben Datei
-		   durch den echten Funktionsrumpf aufgeloest werden. */
-		if (!tcFunctionIsDeclOnly[f] || tcFunctionIsExternal[f] ||
-			tcFunctionNargs[f] != tcLocalCount ||
-			!tcSameType(tcFunctionReturnTypes[f], tcFuncType)) {
-			fprintf(stderr, "tinyc: duplicate function\n"); return;
-		}
-		for (i = 0; i < tcLocalCount; i++) {
-			if (!tcSameType(tcFunctionParamTypes[f][i], tcLocalTypes[i])) {
-				fprintf(stderr, "tinyc: function prototype mismatch\n");
-				tcSemanticErrors++; return;
-			}
-		}
-		tcCurrentFuncIndex = f;
-		return;
-	}
-	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "tinyc: too many functions\n"); tcSemanticErrors++; return; }
+	if (f >= 0) { fprintf(stderr, "qcc: duplicate function\n"); return; }
+	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "qcc: too many functions\n"); tcSemanticErrors++; return; }
 	f = tcFunctionCount++;
 	tcCopy(tcFunctionNames[f], tcFuncName, tcFuncName + strlen(tcFuncName));
 	tcFunctionReturnTypes[f] = tcFuncType;
@@ -2031,13 +2015,12 @@ ROUTINE C tc_funcbodybegin
 /* Feuert bei "{" (Beginn eines echten Funktionsrumpfs) -- siehe tc_funcbegin. */
 void tc_funcbodybegin(const char* start, const char* end) {
 	(void)start; (void)end;
-	if (tcCurrentFuncIndex >= 0) tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 0;
 	printf("FUNC %s %d %d\n", tcFuncName, tcLocalCount, tcCurrentFuncIndex >= 0 ? tcFunctionIsStatic[tcCurrentFuncIndex] : 0);
 }
 END
 ROUTINE C tc_funcdeclend
 /* Feuert bei ";" statt einem Rumpf (protoEnd) -- reine Prototyp-Deklaration:
-   "definiert in einer anderen Tiny-C-Datei", normale interne bsr/bl-ABI (KEIN
+   "definiert in einer anderen QCC-Datei", normale interne bsr/bl-ABI (KEIN
    CALLEXT/Microware-ABI wie beim bestehenden extern-Funktions-Feature). Setzt
    nur das Flag, KEINE FUNC/ENDFUNC-IR -- der Aufrufer (tc_call) emittiert
    trotzdem ganz normal CALL/CALLP, da die Signatur (tcFunctionNargs etc.)
@@ -2046,7 +2029,7 @@ void tc_funcdeclend(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (tcCurrentFuncIndex < 0) return;
 	if (tcFunctionIsStatic[tcCurrentFuncIndex]) {
-		fprintf(stderr, "tinyc: static function declaration without body is meaningless\n");
+		fprintf(stderr, "qcc: static function declaration without body is meaningless\n");
 		tcSemanticErrors++;
 	}
 	tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 1;
@@ -2063,11 +2046,11 @@ void tc_funcend(const char* start, const char* end) {
 END
 ROUTINE C tc_local
 void tc_local(const char* start, const char* end) {
-	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "tinyc: too many locals\n"); tcSemanticErrors++; return; }
+	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "qcc: too many locals\n"); tcSemanticErrors++; return; }
 	tcCopy(tcNames[tcLocalCount], start, end);
 	tcLocalTypes[tcLocalCount] = tcCurrentType;
 	if (!tcIsPointer(tcLocalTypes[tcLocalCount]) && tcLocalTypes[tcLocalCount].base == 'v') {
-		fprintf(stderr, "tinyc: void is not a valid variable type\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: void is not a valid variable type\n"); tcSemanticErrors++;
 		tcLocalTypes[tcLocalCount] = tcCurrentType = tcMakeType('i', 0);
 	}
 	/* NUR 0 hier -- die tatsaechliche Array-Laenge (falls "[N]" folgt) wird erst
@@ -2107,14 +2090,14 @@ void tc_localdecl(const char* start, const char* end) {
 		int len = 0;
 		p++;
 		while (p < end && *p >= '0' && *p <= '9') len = len * 10 + (*p++ - '0');
-		if (len <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
-		if (p >= end || *p != ']') { fprintf(stderr, "tinyc: bad array declaration\n"); return; }
+		if (len <= 0) { fprintf(stderr, "qcc: array size must be positive\n"); return; }
+		if (p >= end || *p != ']') { fprintf(stderr, "qcc: bad array declaration\n"); return; }
 		p++;
-		if (ndims >= TC_MAXDIMS) { fprintf(stderr, "tinyc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
+		if (ndims >= TC_MAXDIMS) { fprintf(stderr, "qcc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
 		dims[ndims++] = len;
 	}
 	if (isStruct && ndims > 1) {
-		fprintf(stderr, "tinyc: multi-dimensional struct arrays not supported in this version\n");
+		fprintf(stderr, "qcc: multi-dimensional struct arrays not supported in this version\n");
 		tcSemanticErrors++; return;
 	}
 	total = dims[0];
@@ -2176,12 +2159,12 @@ void tc_staticlocal(const char* start, const char* end) {
 	tcPendingConst = 0;
 	tcPendingStatic = 0;
 	if (tcCurrentType.base == 's') {
-		fprintf(stderr, "tinyc: static struct locals not yet supported\n");
+		fprintf(stderr, "qcc: static struct locals not yet supported\n");
 		tcSemanticErrors++;
 		return;
 	}
 	if (!tcIsPointer(tcCurrentType) && tcCurrentType.base == 'v') {
-		fprintf(stderr, "tinyc: void is not a valid variable type\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: void is not a valid variable type\n"); tcSemanticErrors++;
 		return;
 	}
 	if (!runtimeInit) {
@@ -2196,16 +2179,16 @@ void tc_staticlocal(const char* start, const char* end) {
 				if (neg) value = -value;
 			}
 			if (tcCurrentType.pointers && value != 0) {
-				fprintf(stderr, "tinyc: static local pointer initializer must be 0\n");
+				fprintf(stderr, "qcc: static local pointer initializer must be 0\n");
 				tcSemanticErrors++;
 			}
 			if (!tcCurrentType.pointers && tcCurrentType.base == 'c') value &= 255;
 			if (!tcCurrentType.pointers && tcCurrentType.base == 'b') value = value ? 1 : 0;
 		}
 	}
-	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "tinyc: too many globals\n"); tcSemanticErrors++; return; }
+	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "qcc: too many globals\n"); tcSemanticErrors++; return; }
 	for (i = 0; i < tcGlobalCount; i++) {
-		if (tcEq(tcGlobalNames[i], tcStaticLocalName)) { fprintf(stderr, "tinyc: duplicate global\n"); return; }
+		if (tcEq(tcGlobalNames[i], tcStaticLocalName)) { fprintf(stderr, "qcc: duplicate global\n"); return; }
 	}
 	tcCopy(tcGlobalNames[tcGlobalCount], tcStaticLocalName, tcStaticLocalName + strlen(tcStaticLocalName));
 	tcGlobalTypes[tcGlobalCount] = tcCurrentType;
@@ -2260,7 +2243,7 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 		ne = tcWordEnd(p, end);
 		sid = tcLookupStruct(p, ne);
-		if (sid < 0) { fprintf(stderr, "tinyc: unknown struct\n"); tcSemanticErrors++; return; }
+		if (sid < 0) { fprintf(stderr, "qcc: unknown struct\n"); tcSemanticErrors++; return; }
 		type = tcMakeType('s', 0); type.structId = (unsigned char)(sid + 1);
 		p = ne;
 	}
@@ -2269,11 +2252,11 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
-	else { fprintf(stderr, "tinyc: bad global declaration\n"); return; }
+	else { fprintf(stderr, "qcc: bad global declaration\n"); return; }
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	while (p < end && *p == '*') { type = tcPointerTo(type); p++; while (p < end && (*p == ' ' || *p == '\t')) p++; }
 	if (!tcIsPointer(type) && type.base == 'v') {
-		fprintf(stderr, "tinyc: void is not a valid variable type\n"); tcSemanticErrors++; return;
+		fprintf(stderr, "qcc: void is not a valid variable type\n"); tcSemanticErrors++; return;
 	}
 	while (p < end && *p != ' ' && *p != '\t' && *p != '=' && *p != ';' && *p != '[' && n < 31) name[n++] = *p++;
 	name[n] = 0;
@@ -2284,24 +2267,24 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 			int len = 0;
 			p++;
 			while (p < end && *p >= '0' && *p <= '9') len = len * 10 + (*p++ - '0');
-			if (p >= end || *p != ']') { fprintf(stderr, "tinyc: bad array declaration\n"); return; }
+			if (p >= end || *p != ']') { fprintf(stderr, "qcc: bad array declaration\n"); return; }
 			p++;
-			if (len <= 0) { fprintf(stderr, "tinyc: array size must be positive\n"); return; }
-			if (ndims >= TC_MAXDIMS) { fprintf(stderr, "tinyc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
+			if (len <= 0) { fprintf(stderr, "qcc: array size must be positive\n"); return; }
+			if (ndims >= TC_MAXDIMS) { fprintf(stderr, "qcc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
 			dims[ndims++] = len;
 		}
 		arrayLen = dims[0];
 		for (k = 1; k < ndims; k++) { arrayLen *= dims[k]; arrayDims[k - 1] = dims[k]; }
 		arrayNDims = ndims;
 		if (!type.pointers && type.base == 's' && ndims > 1) {
-			fprintf(stderr, "tinyc: multi-dimensional struct arrays not supported in this version\n");
+			fprintf(stderr, "qcc: multi-dimensional struct arrays not supported in this version\n");
 			tcSemanticErrors++; return;
 		}
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
 	if (p < end && *p == '=') {
 		if (!type.pointers && type.base == 's') {
-			fprintf(stderr, "tinyc: struct global cannot have an initializer in this version\n");
+			fprintf(stderr, "qcc: struct global cannot have an initializer in this version\n");
 			tcSemanticErrors++; return;
 		}
 		p++;
@@ -2321,29 +2304,29 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 				if (strEnd < end) strEnd++;
 				if (!type.pointers && type.base == 'c') {
 					strLen = tcDecodeStringLit(q, strEnd, strBytes, 256);
-					if (strLen > arrayLen) { fprintf(stderr, "tinyc: string literal too long for array\n"); tcSemanticErrors++; return; }
+					if (strLen > arrayLen) { fprintf(stderr, "qcc: string literal too long for array\n"); tcSemanticErrors++; return; }
 					initCount = strLen < arrayLen ? strLen + 1 : strLen;
 					for (i = 0; i < strLen; i++) initValues[i] = strBytes[i];
 					if (strLen < arrayLen) initValues[strLen] = 0;
 				} else {
-					fprintf(stderr, "tinyc: string literal initializer requires a char array\n"); tcSemanticErrors++; return;
+					fprintf(stderr, "qcc: string literal initializer requires a char array\n"); tcSemanticErrors++; return;
 				}
 			} else {
 				initCount = tcInitList(p, end, initValues, 256);
-				if (initCount < 0 || initCount > arrayLen) { fprintf(stderr, "tinyc: bad or oversized array initializer\n"); return; }
+				if (initCount < 0 || initCount > arrayLen) { fprintf(stderr, "qcc: bad or oversized array initializer\n"); return; }
 			}
 		} else {
 			while (p < end && (*p == ' ' || *p == '\t')) p++;
-			if (p < end && *p == '{') { fprintf(stderr, "tinyc: scalar cannot use array initializer\n"); return; }
+			if (p < end && *p == '{') { fprintf(stderr, "qcc: scalar cannot use array initializer\n"); return; }
 			if (!type.pointers && type.base == 'b' && p + 4 <= end && p[0] == 't') value = 1;
 			else { if (p < end && *p == '-') { neg = 1; p++; }
 				while (p < end && *p >= '0' && *p <= '9') value = value * 10 + (*p++ - '0');
 				if (neg) value = -value; }
-			if (type.pointers && value != 0) { fprintf(stderr, "tinyc: global pointer initializer must be 0\n"); tcSemanticErrors++; return; }
+			if (type.pointers && value != 0) { fprintf(stderr, "qcc: global pointer initializer must be 0\n"); tcSemanticErrors++; return; }
 		}
 	}
-	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "tinyc: too many globals\n"); tcSemanticErrors++; return; }
-	for (i = 0; i < tcGlobalCount; i++) if (tcEq(tcGlobalNames[i], name)) { fprintf(stderr, "tinyc: duplicate global\n"); return; }
+	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "qcc: too many globals\n"); tcSemanticErrors++; return; }
+	for (i = 0; i < tcGlobalCount; i++) if (tcEq(tcGlobalNames[i], name)) { fprintf(stderr, "qcc: duplicate global\n"); return; }
 	tcCopy(tcGlobalNames[tcGlobalCount], name, name + n);
 	/* siehe tc_param: "const" auf einem Pointertyp ist Pointee-Constness (pointeeConst-Bit),
 	   nicht Bindungs-Immutabilitaet. */
@@ -2360,7 +2343,7 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	   NIE die einzellige GLOBAL-Form -- unabhaengig davon, ob ein "[N]"-Suffix dabeisteht
 	   (arrayLen==0 fuer eine skalare struct-Variable heisst hier "ein Element", NICHT
 	   "kein Block", anders als bei tcLocalArrayLen/tcGlobalArrayLen als Index-Laenge weiter
-	   unten -- ADDRG braucht ohnehin IMMER einen Block, siehe tinyvm.py: globals_ ist bei
+	   unten -- ADDRG braucht ohnehin IMMER einen Block, siehe qccvm.py: globals_ ist bei
 	   GLOBAL wie bei GARRAY einheitlich eine Liste, ADDRG unterscheidet nicht). */
 	if (!type.pointers && type.base == 's') {
 		int structSize = tcStructByteSize[type.structId - 1];
@@ -2380,7 +2363,7 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 END
 ROUTINE C tc_externglobaldecl
 /* "extern <typ> <name>;" -- Deklaration OHNE Speicherallokation, definiert in
-   einer ANDEREN Tiny-C-Datei. Bewusst EIGENE Aktion (nicht tc_globalend) --
+   einer ANDEREN QCC-Datei. Bewusst EIGENE Aktion (nicht tc_globalend) --
    die Rohtext-Form unterscheidet sich (kein optionales static/const, keine
    Array-Groesse, kein Initialisierer) und die Semantik ist grundverschieden
    (keine Speicherallokation, kein GLOBAL/GARRAY, sondern GLOBALDECL). Siehe
@@ -2398,16 +2381,16 @@ void tc_externglobaldecl(const char* start, const char* end) {
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
-	else { fprintf(stderr, "tinyc: bad extern global declaration\n"); return; }
+	else { fprintf(stderr, "qcc: bad extern global declaration\n"); return; }
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	while (p < end && *p == '*') { type = tcPointerTo(type); p++; while (p < end && (*p == ' ' || *p == '\t')) p++; }
 	if (!tcIsPointer(type) && type.base == 'v') {
-		fprintf(stderr, "tinyc: void is not a valid variable type\n"); tcSemanticErrors++; return;
+		fprintf(stderr, "qcc: void is not a valid variable type\n"); tcSemanticErrors++; return;
 	}
 	while (p < end && *p != ' ' && *p != '\t' && *p != ';' && n < 31) name[n++] = *p++;
 	name[n] = 0;
-	if (tcLookupGlobal(name, name + n) >= 0) { fprintf(stderr, "tinyc: duplicate global\n"); tcSemanticErrors++; return; }
-	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "tinyc: too many globals\n"); tcSemanticErrors++; return; }
+	if (tcLookupGlobal(name, name + n) >= 0) { fprintf(stderr, "qcc: duplicate global\n"); tcSemanticErrors++; return; }
+	if (tcGlobalCount >= MAX_GLOBALS) { fprintf(stderr, "qcc: too many globals\n"); tcSemanticErrors++; return; }
 	tcCopy(tcGlobalNames[tcGlobalCount], name, name + n);
 	tcGlobalTypes[tcGlobalCount] = type;
 	tcGlobalConst[tcGlobalCount] = 0;
@@ -2428,11 +2411,11 @@ void tc_varinit(const char* start, const char* end) {
 		   NICHT nochmal ueber tcInitList (das faelschlich "kein '{'" meldete). */
 		{ const char* q = start; while (q < end && (*q == ' ' || *q == '\t')) q++; if (q < end && *q == '"') return; }
 		count = tcInitList(start, end, values, 256);
-		if (count < 0 || count > tcLocalArrayLen[slot]) { fprintf(stderr, "tinyc: bad or oversized array initializer\n"); return; }
+		if (count < 0 || count > tcLocalArrayLen[slot]) { fprintf(stderr, "qcc: bad or oversized array initializer\n"); return; }
 		for (i = 0; i < count; i++) printf("PUSH %d\nPUSH %ld\nSTOREIDX L %d %c\n", i, !tcLocalTypes[slot].pointers && tcLocalTypes[slot].base == 'c' ? (values[i] & 255) : values[i], slot, tcTypeTag(tcLocalTypes[slot]));
 		return;
 	}
-	if (tcInitList(start, end, values, 256) >= 0) { fprintf(stderr, "tinyc: scalar cannot use array initializer\n"); return; }
+	if (tcInitList(start, end, values, 256) >= 0) { fprintf(stderr, "qcc: scalar cannot use array initializer\n"); return; }
 	{ TCType got = tcTypePop(), wanted = tcLocalType(slot); if (!tcCompatible(wanted, got)) tcTypeError("initializer", wanted, got); }
 	printf("STORE%s %d\n", tcIsPointer(tcLocalType(slot)) ? "P" : tcTypeTag(tcLocalType(slot)) == 'i' ? "L" : "C", slot);
 }
@@ -2461,7 +2444,7 @@ static int tcDecodeStringLit(const char* start, const char* end, unsigned char* 
 		} else {
 			c = (unsigned char)*p++;
 		}
-		if (len >= cap) { fprintf(stderr, "tinyc: string literal too long (max %d bytes)\n", cap); tcSemanticErrors++; break; }
+		if (len >= cap) { fprintf(stderr, "qcc: string literal too long (max %d bytes)\n", cap); tcSemanticErrors++; break; }
 		bytes[len++] = c;
 	}
 	return len;
@@ -2501,10 +2484,10 @@ void tc_arrayinitstring(const char* start, const char* end) {
 	unsigned char bytes[256]; int len, i;
 	if (slot < 0 || !tcLocalArrayLen[slot]) return;
 	if (tcIsPointer(tcLocalTypes[slot]) || tcLocalTypes[slot].base != 'c') {
-		fprintf(stderr, "tinyc: string literal initializer requires a char array\n"); tcSemanticErrors++; return;
+		fprintf(stderr, "qcc: string literal initializer requires a char array\n"); tcSemanticErrors++; return;
 	}
 	len = tcDecodeStringLit(start, end, bytes, 256);
-	if (len > tcLocalArrayLen[slot]) { fprintf(stderr, "tinyc: string literal too long for array\n"); tcSemanticErrors++; return; }
+	if (len > tcLocalArrayLen[slot]) { fprintf(stderr, "qcc: string literal too long for array\n"); tcSemanticErrors++; return; }
 	(void)tcTypePop();
 	printf("DROP\n");
 	for (i = 0; i < len; i++) printf("PUSH %d\nPUSH %d\nSTOREIDX L %d c\n", i, bytes[i], slot);
@@ -2551,7 +2534,7 @@ void tc_varref(const char* start, const char* end) {
 	    !(global >= 0 && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's')) {
 		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
+			fprintf(stderr, "qcc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
 			tcSemanticErrors++; tcTypePush(tcBadType()); return;
 		}
 	}
@@ -2568,9 +2551,9 @@ void tc_varref(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n");
+				fprintf(stderr, "qcc: ptr[i].field[j] not supported in this version\n");
 				tcSemanticErrors++; tcTypePush(tcBadType()); return;
 			}
 			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
@@ -2580,7 +2563,7 @@ void tc_varref(const char* start, const char* end) {
 		}
 	}
 	/* arr[i].feld (2026-07-25): ein ARRAY von structs, indiziert, dann Feldzugriff --
-	   siehe tcSkipOneIndex/IPADDN-Kommentar in tinyc.ebnf. tcLocalArrayLen[slot] > 0
+	   siehe tcSkipOneIndex/IPADDN-Kommentar in qcc.ebnf. tcLocalArrayLen[slot] > 0
 	   bedeutet seit der Allokations-Reparatur (siehe tc_local/tc_localdecl) jetzt
 	   WIRKLICH "als Array deklariert", nicht mehr die Feldanzahl-Verwechslung von
 	   frueher -- die Bedingung ist damit endlich korrekt auswertbar. */
@@ -2591,9 +2574,9 @@ void tc_varref(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n");
+				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n");
 				tcSemanticErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[slot]);
@@ -2613,7 +2596,7 @@ void tc_varref(const char* start, const char* end) {
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
-		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 		/* IPADD poppt Pointer ZUERST (muss oben liegen), dann Count -- daher PUSH vor PUSHADDR. */
 		printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
 		if (hasIndex) {
@@ -2623,7 +2606,7 @@ void tc_varref(const char* start, const char* end) {
 			   eben on top gepusht durch das IPADD oben), exakt die Reihenfolge, die ein
 			   zweites IPADD braucht. */
 			if (!tcStructFieldArrayLen[sid][fi]) {
-				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
+				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
 				tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
@@ -2637,7 +2620,7 @@ void tc_varref(const char* start, const char* end) {
 	/* Globale structs (2026-07-25): dieselben drei Muster wie oben (Pointer-auf-struct
 	   indiziert, Array-von-structs indiziert, direkter Member-Zugriff), aber fuer GLOBALE
 	   Variablen -- ADDRG/LOADGP statt PUSHADDR L/LOADP. ADDRG und PUSHADDR L sind hier
-	   austauschbar (beide liefern denselben Blockzeiger, siehe tinyvm.py: globals_ ist bei
+	   austauschbar (beide liefern denselben Blockzeiger, siehe qccvm.py: globals_ ist bei
 	   GLOBAL wie bei GARRAY einheitlich eine Liste) -- PUSHADDR G verwendet, um optisch
 	   parallel zum lokalen Muster zu bleiben. */
 	if (global >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
@@ -2648,9 +2631,9 @@ void tc_varref(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n");
+				fprintf(stderr, "qcc: ptr[i].field[j] not supported in this version\n");
 				tcSemanticErrors++; tcTypePush(tcBadType()); return;
 			}
 			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
@@ -2667,9 +2650,9 @@ void tc_varref(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n");
+				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n");
 				tcSemanticErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
@@ -2685,11 +2668,11 @@ void tc_varref(const char* start, const char* end) {
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		tcCopy(gname, start, nameEnd);
-		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
-				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
+				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
 				tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
@@ -2711,10 +2694,10 @@ void tc_varref(const char* start, const char* end) {
 		} else if (indexed && tcIsPointer(tcLocalType(slot))) {
 			TCType valueType = tcPointee(tcLocalType(slot));
 			if (!tcIsPointer(valueType) && valueType.base == 'v') {
-				fprintf(stderr, "tinyc: cannot dereference void*\n"); tcSemanticErrors++; tcTypePush(tcMakeType('i', 0)); return;
+				fprintf(stderr, "qcc: cannot dereference void*\n"); tcSemanticErrors++; tcTypePush(tcMakeType('i', 0)); return;
 			}
 			printf("LOADP %d\nPTRINDEX %c\nLOADIND %c\n", slot, tcTypeTag(valueType), tcTypeTag(valueType)); tcTypePush(valueType);
-		} else if (indexed) { fprintf(stderr, "tinyc: scalar variable cannot be indexed\n"); tcSemanticErrors++; }
+		} else if (indexed) { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); tcSemanticErrors++; }
 		else { TCType t = tcLocalType(slot); printf("LOAD%s %d\n", tcIsPointer(t) ? "P" : tcTypeTag(t) == 'i' ? "L" : "C", slot); tcTypePush(t); }
 	} else if ((global = tcLookupGlobal(start, nameEnd)) >= 0) {
 		char name[32]; tcCopy(name, start, nameEnd);
@@ -2728,16 +2711,16 @@ void tc_varref(const char* start, const char* end) {
 		} else if (indexed && tcIsPointer(tcGlobalType(global))) {
 			TCType valueType = tcPointee(tcGlobalType(global));
 			if (!tcIsPointer(valueType) && valueType.base == 'v') {
-				fprintf(stderr, "tinyc: cannot dereference void*\n"); tcSemanticErrors++; tcTypePush(tcMakeType('i', 0)); return;
+				fprintf(stderr, "qcc: cannot dereference void*\n"); tcSemanticErrors++; tcTypePush(tcMakeType('i', 0)); return;
 			}
 			printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, tcTypeTag(valueType), tcTypeTag(valueType)); tcTypePush(valueType);
-		} else if (indexed) { fprintf(stderr, "tinyc: scalar variable cannot be indexed\n"); tcSemanticErrors++; }
+		} else if (indexed) { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); tcSemanticErrors++; }
 		else { TCType t = tcGlobalType(global); printf("LOADG%s %s\n", tcIsPointer(t) ? "P" : tcTypeTag(t) == 'i' ? "" : "C", name); tcTypePush(t); }
 	}
 	else {
 		int ec = tcLookupEnumConst(start, nameEnd);
 		if (ec >= 0 && !indexed) { printf("PUSH %ld\n", tcEnumConstValues[ec]); tcTypePush(tcMakeType('i', 0)); }
-		else { fprintf(stderr, "tinyc: unknown variable\n"); tcSemanticErrors++; }
+		else { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; }
 	}
 }
 END
@@ -2750,7 +2733,7 @@ void tc_addressref(const char* start, const char* end) {
 		if (indexed) {
 			if (tcLocalArrayLen[slot]) { tcCheckConstIndex(name, end, tcLocalArrayLen[slot]); printf("PUSHADDR L %d\n", slot); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADP %d\n", slot); }
-			else { fprintf(stderr, "tinyc: scalar variable cannot be indexed\n"); tcSemanticErrors++; return; }
+			else { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); tcSemanticErrors++; return; }
 			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
 		}
 		if (tcLocalArrayLen[slot]) printf("PUSHADDR L %d\n", slot); else printf("ADDRL %d\n", slot);
@@ -2761,12 +2744,12 @@ void tc_addressref(const char* start, const char* end) {
 		if (indexed) {
 			if (tcGlobalArrayLen[global]) { tcCheckConstIndex(name, end, tcGlobalArrayLen[global]); printf("PUSHADDR G %s\n", globalName); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADGP %s\n", globalName); }
-			else { fprintf(stderr, "tinyc: scalar variable cannot be indexed\n"); tcSemanticErrors++; return; }
+			else { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); tcSemanticErrors++; return; }
 			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
 		}
 		printf("ADDRG %s\n", globalName); tcTypePush(tcPointerTo(valueType)); return;
 	}
-	fprintf(stderr, "tinyc: unknown variable in address expression\n"); tcSemanticErrors++;
+	fprintf(stderr, "qcc: unknown variable in address expression\n"); tcSemanticErrors++;
 }
 END
 ROUTINE C tc_derefref
@@ -2775,7 +2758,7 @@ void tc_derefref(const char* start, const char* end) {
 	if (!tcIsPointer(pointer)) { tcTypeError("dereference", tcPointerTo(tcMakeType('i', 0)), pointer); tcTypePush(tcMakeType('i', 0)); return; }
 	valueType = tcPointee(pointer);
 	if (!tcIsPointer(valueType) && valueType.base == 'v') {
-		fprintf(stderr, "tinyc: cannot dereference void*\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: cannot dereference void*\n"); tcSemanticErrors++;
 		tcTypePush(tcMakeType('i', 0)); return;
 	}
 	printf("LOADIND %c\n", tcTypeTag(valueType)); tcTypePush(valueType);
@@ -2795,7 +2778,7 @@ void tc_postfixindex(const char* start, const char* end) {
 	if (!tcIsPointer(pointer)) { tcTypeError("index", tcPointerTo(tcMakeType('i', 0)), pointer); tcTypePush(tcMakeType('i', 0)); return; }
 	valueType = tcPointee(pointer);
 	if (!tcIsPointer(valueType) && valueType.base == 'v') {
-		fprintf(stderr, "tinyc: cannot index void*\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: cannot index void*\n"); tcSemanticErrors++;
 		tcTypePush(tcMakeType('i', 0)); return;
 	}
 	printf("PADD %c\nLOADIND %c\n", tcTypeTag(valueType), tcTypeTag(valueType)); tcTypePush(valueType);
@@ -2826,7 +2809,7 @@ void tc_term(const char* start, const char* end) {
 		} else if (tcIsInteger(left) && tcIsInteger(right)) {
 			tcTypePush(tcPromoteInteger(left, right)); printf("%s", tcPendingAdd == '+' ? "ADD\n" : "SUB\n");
 		} else if (leftVoidPtr || rightVoidPtr) {
-			fprintf(stderr, "tinyc: arithmetic on void* is not supported\n"); tcSemanticErrors++; tcTypePush(left);
+			fprintf(stderr, "qcc: arithmetic on void* is not supported\n"); tcSemanticErrors++; tcTypePush(left);
 		} else {
 			tcTypeError("arithmetic", left, right); tcTypePush(left);
 		}
@@ -2893,7 +2876,7 @@ void tc_target(const char* start, const char* end) {
 	tcTargetIsGlobal = 0; tcTargetIndirect = 0;
 	tcTargetType = tcLocalType(tcTargetSlot);
 	if (tcTargetSlot >= 0 && tcLocalConst[tcTargetSlot]) {
-		fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: cannot assign to const variable\n"); tcSemanticErrors++;
 	}
 	/* siehe tc_varref fuer die vollstaendige Erklaerung -- die Grammatik erlaubt jetzt
 	   Kombinationen (z.B. "ptr[i].feld = ..") ohne Codegen-Unterstuetzung; ohne diesen
@@ -2909,7 +2892,7 @@ void tc_target(const char* start, const char* end) {
 		    !(targetGlobal >= 0 && tcIsPointer(targetGlobalType) && tcPointee(targetGlobalType).base == 's')) {
 			const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 			if (afterIdx < end && *afterIdx == '.') {
-				fprintf(stderr, "tinyc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
+				fprintf(stderr, "qcc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
 				tcSemanticErrors++; return;
 			}
 		}
@@ -2923,9 +2906,9 @@ void tc_target(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+				fprintf(stderr, "qcc: ptr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
 			}
 			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
 			tcTargetType = tcStructFieldTypes[sid][fi];
@@ -2943,9 +2926,9 @@ void tc_target(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[tcTargetSlot]);
 			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
@@ -2959,7 +2942,7 @@ void tc_target(const char* start, const char* end) {
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
-		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
 		/* Wie tc_varref: IPADD poppt Pointer ZUERST, daher PUSH vor PUSHADDR. tcTargetIndirect=1
 		   laesst tc_assign/tcLoadTarget denselben STOREIND/DUPP+LOADIND-Pfad wie bei einer
 		   echten Pointer-Dereferenz nehmen -- die Feldadresse liegt bereits auf dem Stack. */
@@ -2968,7 +2951,7 @@ void tc_target(const char* start, const char* end) {
 			/* p.field[i] = .. (2026-07-24): siehe tc_varref -- der Index-Ausdruck hat seinen
 			   Wert bereits VOR uns gepusht, ein zweites IPADD kombiniert Feldadresse+Index. */
 			if (!tcStructFieldArrayLen[sid][fi]) {
-				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
+				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
 			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -2977,7 +2960,7 @@ void tc_target(const char* start, const char* end) {
 			return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) {
-			fprintf(stderr, "tinyc: cannot assign to array field\n"); tcSemanticErrors++;
+			fprintf(stderr, "qcc: cannot assign to array field\n"); tcSemanticErrors++;
 		}
 		tcTargetType = tcStructFieldTypes[sid][fi];
 		tcTargetIndirect = 1;
@@ -2995,9 +2978,9 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: ptr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+				fprintf(stderr, "qcc: ptr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
 			}
 			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
 			tcTargetType = tcStructFieldTypes[sid][fi];
@@ -3014,9 +2997,9 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
-			if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
-				fprintf(stderr, "tinyc: arr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
+				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n"); tcSemanticErrors++; return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
 			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
@@ -3032,11 +3015,11 @@ void tc_target(const char* start, const char* end) {
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		tcCopy(gname, start, nameEnd);
-		if (fi < 0) { fprintf(stderr, "tinyc: unknown struct field\n"); tcSemanticErrors++; return; }
+		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
-				fprintf(stderr, "tinyc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
+				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
 			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -3045,7 +3028,7 @@ void tc_target(const char* start, const char* end) {
 			return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) {
-			fprintf(stderr, "tinyc: cannot assign to array field\n"); tcSemanticErrors++;
+			fprintf(stderr, "qcc: cannot assign to array field\n"); tcSemanticErrors++;
 		}
 		tcTargetType = tcStructFieldTypes[sid][fi];
 		tcTargetIndirect = 1;
@@ -3056,31 +3039,31 @@ void tc_target(const char* start, const char* end) {
 		tcCopy(tcTargetGlobal, start, nameEnd);
 		tcTargetIsGlobal = 1;
 		tcTargetType = tcGlobalType(global);
-		if (tcGlobalConst[global]) { fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++; }
+		if (tcGlobalConst[global]) { fprintf(stderr, "qcc: cannot assign to const variable\n"); tcSemanticErrors++; }
 		if (tcTargetIsArray && tcGlobalArrayLen[global]) {
 			tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end));
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 		}
 		else if (tcTargetIsArray && tcIsPointer(tcTargetType)) {
-			if (tcTargetType.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
+			if (tcTargetType.pointeeConst) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
 			tcTargetType = tcPointee(tcTargetType);
 			if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
-				fprintf(stderr, "tinyc: cannot dereference void*\n"); tcSemanticErrors++; tcTargetType = tcMakeType('i', 0);
+				fprintf(stderr, "qcc: cannot dereference void*\n"); tcSemanticErrors++; tcTargetType = tcMakeType('i', 0);
 			}
 			tcTargetIndirect = 1; printf("LOADGP %s\nPTRINDEX %c\n", tcTargetGlobal, tcTypeTag(tcTargetType));
-		} else if (!!tcGlobalArrayLen[global] != tcTargetIsArray) { fprintf(stderr, "tinyc: array index mismatch\n"); tcSemanticErrors++; }
+		} else if (!!tcGlobalArrayLen[global] != tcTargetIsArray) { fprintf(stderr, "qcc: array index mismatch\n"); tcSemanticErrors++; }
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcLocalArrayLen[tcTargetSlot]) {
 		tcCheckNDIndex(tcLocalArrayNDims[tcTargetSlot], tcLocalArrayDims[tcTargetSlot], tcCountTopIndexes(nameEnd, end));
 		tcCheckConstIndex(start, end, tcLocalArrayLen[tcTargetSlot]);
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcIsPointer(tcTargetType)) {
-		if (tcTargetType.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
+		if (tcTargetType.pointeeConst) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
 		tcTargetType = tcPointee(tcTargetType);
 		if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
-			fprintf(stderr, "tinyc: cannot dereference void*\n"); tcSemanticErrors++; tcTargetType = tcMakeType('i', 0);
+			fprintf(stderr, "qcc: cannot dereference void*\n"); tcSemanticErrors++; tcTargetType = tcMakeType('i', 0);
 		}
 		tcTargetIndirect = 1; printf("LOADP %d\nPTRINDEX %c\n", tcTargetSlot, tcTypeTag(tcTargetType));
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray) {
-		fprintf(stderr, "tinyc: array index mismatch\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: array index mismatch\n"); tcSemanticErrors++;
 	}
 }
 END
@@ -3089,10 +3072,10 @@ void tc_indirecttarget(const char* start, const char* end) {
 	TCType pointer = tcTypePop(); (void)start; (void)end;
 	tcTargetSlot = -1; tcTargetIsGlobal = 0; tcTargetIsArray = 0; tcTargetIndirect = 1;
 	if (!tcIsPointer(pointer)) { tcTypeError("indirect assignment", tcPointerTo(tcMakeType('i', 0)), pointer); tcTargetType = tcMakeType('i', 0); return; }
-	if (pointer.pointeeConst) { fprintf(stderr, "tinyc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
+	if (pointer.pointeeConst) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); tcSemanticErrors++; }
 	tcTargetType = tcPointee(pointer);
 	if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
-		fprintf(stderr, "tinyc: cannot dereference void*\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: cannot dereference void*\n"); tcSemanticErrors++;
 		tcTargetType = tcMakeType('i', 0);
 	}
 }
@@ -3118,7 +3101,7 @@ void tc_assign(const char* start, const char* end) {
 	else if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
 	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("STOREIDX L %d %c\n", tcTargetSlot, tag);
 	else if (tcTargetSlot >= 0) printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
-	else fprintf(stderr, "tinyc: unknown assignment target\n");
+	else fprintf(stderr, "qcc: unknown assignment target\n");
 }
 END
 ROUTINE C tc_callname
@@ -3138,14 +3121,14 @@ ROUTINE C tc_callname
    dasselbe Rette-und-nulle-Muster wie bei tcPendingAdd/tcPendingMul. */
 void tc_callname(const char* start, const char* end) {
 	if (start < end && *start == '[') {
-		if (tcIndexDepth >= 64) { fprintf(stderr, "tinyc: index nesting too deep\n"); return; }
+		if (tcIndexDepth >= 64) { fprintf(stderr, "qcc: index nesting too deep\n"); return; }
 		tcIndexSavedAdd[tcIndexDepth] = tcPendingAdd;
 		tcIndexSavedMul[tcIndexDepth] = tcPendingMul;
 		tcIndexSavedRel0[tcIndexDepth] = tcRel0;
 		tcIndexSavedRel1[tcIndexDepth] = tcRel1;
 		tcPendingAdd = 0; tcPendingMul = 0; tcRel0 = 0; tcRel1 = 0; tcIndexDepth++; return;
 	}
-	if (tcCallDepth >= 64) { fprintf(stderr, "tinyc: call nesting too deep\\n"); return; }
+	if (tcCallDepth >= 64) { fprintf(stderr, "qcc: call nesting too deep\\n"); return; }
 	tcCopy(tcCallName[tcCallDepth], start, end);
 	tcCallArgCount[tcCallDepth] = 0;
 	/* Argument-Ausdruecke duerfen einen aeusseren +/*-Operator (oder Vergleich) nicht sehen. */
@@ -3171,12 +3154,12 @@ ROUTINE C tc_arg
 void tc_arg(const char* start, const char* end) {
 	if (start < end && *start == '[') {
 		int frame; TCType indexType = tcTypePop(); if (!tcIsInteger(indexType)) tcTypeError("array index", tcMakeType('i', 0), indexType);
-		if (tcIndexDepth <= 0) { fprintf(stderr, "tinyc: missing index frame\n"); return; }
+		if (tcIndexDepth <= 0) { fprintf(stderr, "qcc: missing index frame\n"); return; }
 		frame = --tcIndexDepth; tcPendingAdd = tcIndexSavedAdd[frame]; tcPendingMul = tcIndexSavedMul[frame];
 		tcRel0 = tcIndexSavedRel0[frame]; tcRel1 = tcIndexSavedRel1[frame]; return;
 	}
 	(void)end;
-	if (tcCallDepth <= 0) { fprintf(stderr, "tinyc: missing call frame\\n"); return; }
+	if (tcCallDepth <= 0) { fprintf(stderr, "qcc: missing call frame\\n"); return; }
 	{ int f = tcLookupFunction(tcCallName[tcCallDepth - 1]); int n = tcCallArgCount[tcCallDepth - 1]; TCType got = tcTypePop();
 	  if (f >= 0 && n < tcFunctionNargs[f] && !tcCompatible(tcFunctionParamTypes[f][n], got)) tcTypeError("argument", tcFunctionParamTypes[f][n], got); }
 	tcCallArgCount[tcCallDepth - 1]++;
@@ -3186,7 +3169,7 @@ ROUTINE C tc_call
 void tc_call(const char* start, const char* end) {
 	int frame;
 	(void)start; (void)end;
-	if (tcCallDepth <= 0) { fprintf(stderr, "tinyc: missing call frame\\n"); return; }
+	if (tcCallDepth <= 0) { fprintf(stderr, "qcc: missing call frame\\n"); return; }
 	frame = --tcCallDepth;
 	tcPendingAdd = tcCallSavedAdd[frame];
 	tcPendingMul = tcCallSavedMul[frame];
@@ -3203,9 +3186,9 @@ void tc_call(const char* start, const char* end) {
 		tcLastWasPrint = 1;
 	} else {
 		int f = tcLookupFunction(tcCallName[frame]);
-		if (f < 0) { fprintf(stderr, "tinyc: unknown function\n"); return; }
+		if (f < 0) { fprintf(stderr, "qcc: unknown function\n"); return; }
 		if (tcFunctionIsVariadic[f] ? tcCallArgCount[frame] < tcFunctionNargs[f] : tcFunctionNargs[f] != tcCallArgCount[frame]) {
-			fprintf(stderr, "tinyc: wrong argument count\n"); return;
+			fprintf(stderr, "qcc: wrong argument count\n"); return;
 		}
 		if (tcFunctionIsExternal[f]) {
 			/* Microware-ABI-Aufruf (siehe tc_externdeclend/Backend), kein "bsr tc_<name>".
@@ -3389,14 +3372,14 @@ END
 ROUTINE C tc_break
 void tc_break(const char* start, const char* end) {
 	int frame = tcFindBreakTarget(); (void)start; (void)end;
-	if (frame < 0) { fprintf(stderr, "tinyc: break outside loop or switch\n"); tcSemanticErrors++; return; }
+	if (frame < 0) { fprintf(stderr, "qcc: break outside loop or switch\n"); tcSemanticErrors++; return; }
 	printf("JMP L%d\n", tcCtrlEnd[frame]);
 }
 END
 ROUTINE C tc_continue
 void tc_continue(const char* start, const char* end) {
 	int frame = tcFindLoop(); (void)start; (void)end;
-	if (frame < 0) { fprintf(stderr, "tinyc: continue outside loop\n"); tcSemanticErrors++; return; }
+	if (frame < 0) { fprintf(stderr, "qcc: continue outside loop\n"); tcSemanticErrors++; return; }
 	printf("JMP L%d\n", tcCtrlCont[frame]);
 }
 END
@@ -3439,7 +3422,7 @@ void tc_structfield(const char* start, const char* end) {
 		tcStructBuildFieldArrayLen[tcStructBuildFieldCount] = arrayLen;
 		tcCopy(tcStructBuildFieldNames[tcStructBuildFieldCount], fieldStart, fieldEnd);
 		tcStructBuildFieldCount++;
-	} else { fprintf(stderr, "tinyc: too many struct fields\n"); tcSemanticErrors++; }
+	} else { fprintf(stderr, "qcc: too many struct fields\n"); tcSemanticErrors++; }
 }
 END
 ROUTINE C tc_registerstruct
@@ -3450,9 +3433,9 @@ ROUTINE C tc_registerstruct
    -1 bei Fehler zurueck. */
 static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	int i; int offset = 0; int sid = tcStructCount;
-	if (tcStructCount >= MAX_STRUCTS) { fprintf(stderr, "tinyc: too many structs\n"); tcSemanticErrors++; return -1; }
-	if (tcLookupStruct(nameStart, nameEnd) >= 0) { fprintf(stderr, "tinyc: duplicate struct\n"); tcSemanticErrors++; return -1; }
-	if (tcStructBuildFieldCount == 0) { fprintf(stderr, "tinyc: struct needs at least one field\n"); tcSemanticErrors++; return -1; }
+	if (tcStructCount >= MAX_STRUCTS) { fprintf(stderr, "qcc: too many structs\n"); tcSemanticErrors++; return -1; }
+	if (tcLookupStruct(nameStart, nameEnd) >= 0) { fprintf(stderr, "qcc: duplicate struct\n"); tcSemanticErrors++; return -1; }
+	if (tcStructBuildFieldCount == 0) { fprintf(stderr, "qcc: struct needs at least one field\n"); tcSemanticErrors++; return -1; }
 	/* Layout: natuerliches Alignment, skalare Feldtypen (inkl. Pointer, seit
 	   2026-07-25) oder Pointer-Arrays -- struct-in-struct bleibt abgelehnt.
 	   Array-Felder: Ausrichtung nach dem ELEMENTtyp, Gesamtgroesse =
@@ -3469,10 +3452,10 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
 		TCType ft = tcStructBuildFieldTypes[i]; int elemSize, align, size;
 		if (ft.base == 's' || ft.base == 'v') {
-			fprintf(stderr, "tinyc: struct field type not supported in this version\n"); tcSemanticErrors++; return -1;
+			fprintf(stderr, "qcc: struct field type not supported in this version\n"); tcSemanticErrors++; return -1;
 		}
 		if (tcIsPointer(ft) && tcStructBuildFieldArrayLen[i] > 0) {
-			fprintf(stderr, "tinyc: pointer arrays as struct field not supported in this version\n"); tcSemanticErrors++; return -1;
+			fprintf(stderr, "qcc: pointer arrays as struct field not supported in this version\n"); tcSemanticErrors++; return -1;
 		}
 		elemSize = tcIsPointer(ft) ? 8 : (ft.base == 'c' || ft.base == 'b') ? 1 : 4;
 		align = elemSize;
@@ -3510,8 +3493,8 @@ void tc_typedefend(const char* start, const char* end) {
 	nameEnd = p + 1;
 	while (p > start && *(p - 1) != ' ' && *(p - 1) != '\t' && *(p - 1) != '*') p--;
 	nameStart = p;
-	if (tcTypedefCount >= MAX_TYPEDEFS) { fprintf(stderr, "tinyc: too many typedefs\n"); tcSemanticErrors++; return; }
-	if (tcLookupTypedef(nameStart, nameEnd) >= 0) { fprintf(stderr, "tinyc: duplicate typedef\n"); tcSemanticErrors++; return; }
+	if (tcTypedefCount >= MAX_TYPEDEFS) { fprintf(stderr, "qcc: too many typedefs\n"); tcSemanticErrors++; return; }
+	if (tcLookupTypedef(nameStart, nameEnd) >= 0) { fprintf(stderr, "qcc: duplicate typedef\n"); tcSemanticErrors++; return; }
 	if (tcAnonStructPending) {
 		/* anonymes struct inline im typedef (2026-07-24): jetzt erst registrieren, mit dem
 		   typedef-Zielnamen selbst als internem struct-Tag (siehe tc_anonstructbegin). */
@@ -3536,7 +3519,7 @@ void tc_enumdecl(const char* start, const char* end) {
 	nameStart = p; nameEnd = tcWordEnd(p, end);
 	if (nameEnd > nameStart) {
 		if (tcEnumTypeCount < MAX_ENUM_TYPES) tcCopy(tcEnumTypeNames[tcEnumTypeCount++], nameStart, nameEnd);
-		else { fprintf(stderr, "tinyc: too many enum types\n"); tcSemanticErrors++; }
+		else { fprintf(stderr, "qcc: too many enum types\n"); tcSemanticErrors++; }
 	}
 	while (p < end && *p != '{') p++;
 	if (p == end) return;
@@ -3547,8 +3530,8 @@ void tc_enumdecl(const char* start, const char* end) {
 		if (p < end && *p == '}') break;
 		ne = tcWordEnd(p, end);
 		if (ne == p) break;
-		if (tcEnumConstCount >= MAX_ENUM_CONSTANTS) { fprintf(stderr, "tinyc: too many enum constants\n"); tcSemanticErrors++; }
-		else if (tcLookupEnumConst(p, ne) >= 0) { fprintf(stderr, "tinyc: duplicate enum constant\n"); tcSemanticErrors++; }
+		if (tcEnumConstCount >= MAX_ENUM_CONSTANTS) { fprintf(stderr, "qcc: too many enum constants\n"); tcSemanticErrors++; }
+		else if (tcLookupEnumConst(p, ne) >= 0) { fprintf(stderr, "qcc: duplicate enum constant\n"); tcSemanticErrors++; }
 		else {
 			tcCopy(tcEnumConstNames[tcEnumConstCount], p, ne);
 			tcEnumConstValues[tcEnumConstCount] = value;
@@ -3567,7 +3550,7 @@ void tc_sizeof(const char* start, const char* end) {
 	int size;
 	tc_type(start, end);
 	if (tcCurrentType.pointers) {
-		fprintf(stderr, "tinyc: sizeof of pointer types not supported in this version\n");
+		fprintf(stderr, "qcc: sizeof of pointer types not supported in this version\n");
 		tcSemanticErrors++; size = 4;
 	} else if (tcCurrentType.base == 's') {
 		size = tcStructByteSize[tcCurrentType.structId - 1];
@@ -3581,11 +3564,11 @@ ROUTINE C tc_sizeofvar
 void tc_sizeofvar(const char* start, const char* end) {
 	int slot = tcLookupLocal(start, end), global = -1; TCType t; int size; int count;
 	if (slot < 0) global = tcLookupGlobal(start, end);
-	if (slot < 0 && global < 0) { fprintf(stderr, "tinyc: unknown variable in sizeof\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable in sizeof\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 	t = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
 	count = slot >= 0 ? tcLocalArrayLen[slot] : tcGlobalArrayLen[global];
 	if (tcIsPointer(t)) {
-		fprintf(stderr, "tinyc: sizeof of pointer types not supported in this version\n");
+		fprintf(stderr, "qcc: sizeof of pointer types not supported in this version\n");
 		tcSemanticErrors++; size = 4;
 	} else if (t.base == 's') {
 		size = (count > 0 ? count : 1) * tcStructByteSize[t.structId - 1];
@@ -3606,13 +3589,13 @@ void tc_preincdec(const char* start, const char* end) {
 	nameStart = p; nameEnd = tcWordEnd(p, end);
 	slot = tcLookupLocal(nameStart, nameEnd);
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
-	if (slot < 0 && global < 0) { fprintf(stderr, "tinyc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 	if ((slot >= 0 && tcLocalConst[slot]) || (global >= 0 && tcGlobalConst[global])) {
-		fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: cannot assign to const variable\n"); tcSemanticErrors++;
 	}
 	t = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
 	if (!tcIncDecCheck(slot, global, t)) {
-		fprintf(stderr, "tinyc: ++/-- only supported for plain int/unsigned/char variables in this version\n");
+		fprintf(stderr, "qcc: ++/-- only supported for plain int/unsigned/char variables in this version\n");
 		tcSemanticErrors++; tcTypePush(tcBadType()); return;
 	}
 	tcIncDecEmit(slot, global, t, isDec, 1);
@@ -3624,13 +3607,13 @@ void tc_postincdec(const char* start, const char* end) {
 	int isDec = (end[-1] == '-');
 	int slot = tcLookupLocal(nameStart, nameEnd), global = -1; TCType t;
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
-	if (slot < 0 && global < 0) { fprintf(stderr, "tinyc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
 	if ((slot >= 0 && tcLocalConst[slot]) || (global >= 0 && tcGlobalConst[global])) {
-		fprintf(stderr, "tinyc: cannot assign to const variable\n"); tcSemanticErrors++;
+		fprintf(stderr, "qcc: cannot assign to const variable\n"); tcSemanticErrors++;
 	}
 	t = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
 	if (!tcIncDecCheck(slot, global, t)) {
-		fprintf(stderr, "tinyc: ++/-- only supported for plain int/unsigned/char variables in this version\n");
+		fprintf(stderr, "qcc: ++/-- only supported for plain int/unsigned/char variables in this version\n");
 		tcSemanticErrors++; tcTypePush(tcBadType()); return;
 	}
 	tcIncDecEmit(slot, global, t, isDec, 0);
@@ -3654,7 +3637,7 @@ END
 ROUTINE C tc_switchbegin
 void tc_switchbegin(const char* start, const char* end) {
 	int endLabel; (void)start; (void)end;
-	if (tcSwitchDepth >= MAX_SWITCH) { fprintf(stderr, "tinyc: switch nesting too deep\n"); tcSemanticErrors++; return; }
+	if (tcSwitchDepth >= MAX_SWITCH) { fprintf(stderr, "qcc: switch nesting too deep\n"); tcSemanticErrors++; return; }
 	endLabel = tcNextLabel++;
 	tcSwitchBodyLabel[tcSwitchDepth] = -1;
 	tcSwitchNextLabel[tcSwitchDepth] = -1;
@@ -3674,7 +3657,7 @@ END
 ROUTINE C tc_caselabel
 void tc_caselabel(const char* start, const char* end) {
 	int d = tcSwitchDepth - 1; long value; const char* p = start + 4; const char* ne;
-	if (d < 0) { fprintf(stderr, "tinyc: case outside switch\n"); tcSemanticErrors++; return; }
+	if (d < 0) { fprintf(stderr, "qcc: case outside switch\n"); tcSemanticErrors++; return; }
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	if (*p == '-' || (*p >= '0' && *p <= '9')) {
 		int neg = 0;
@@ -3686,7 +3669,7 @@ void tc_caselabel(const char* start, const char* end) {
 		int ec;
 		ne = tcWordEnd(p, end);
 		ec = tcLookupEnumConst(p, ne);
-		if (ec < 0) { fprintf(stderr, "tinyc: unknown case value\n"); tcSemanticErrors++; return; }
+		if (ec < 0) { fprintf(stderr, "qcc: unknown case value\n"); tcSemanticErrors++; return; }
 		value = tcEnumConstValues[ec];
 	}
 	if (!tcSwitchGroupOpen[d]) {
@@ -3735,7 +3718,7 @@ ROUTINE C tc_castcapture
 void tc_castcapture(const char* start, const char* end) {
 	tc_type(start, end);
 	if (tcCastDepth < 16) tcCastStack[tcCastDepth++] = tcCurrentType;
-	else { fprintf(stderr, "tinyc: cast nesting too deep\n"); tcSemanticErrors++; }
+	else { fprintf(stderr, "qcc: cast nesting too deep\n"); tcSemanticErrors++; }
 }
 END
 ROUTINE C tc_cast

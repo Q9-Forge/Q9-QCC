@@ -1,11 +1,11 @@
 //============================================================================
-// tinyc_arm64_backend_c.cpp -- reines-C-Gegenstueck zu tinyc_arm64_backend.cpp
+// qcc_arm64_backend_c.cpp -- reines-C-Gegenstueck zu qcc_arm64_backend.cpp
 //
 // Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
 // Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
-// Original (tinyc_arm64_backend.cpp) bleibt unveraendert als Referenz liegen;
+// Original (qcc_arm64_backend.cpp) bleibt unveraendert als Referenz liegen;
 // siehe docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5. Um auf die C++-Version
-// zurueckzuschalten, in runtests.sh wieder tinyc_arm64_backend.cpp bauen.
+// zurueckzuschalten, in runtests.sh wieder qcc_arm64_backend.cpp bauen.
 //============================================================================
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,15 +32,15 @@ typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
 	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
-	   OHNE Rumpf in dieser Datei (definiert in einer anderen Tiny-C-Datei).
+	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei).
 	   isStatic steuert die .globl-Emission (siehe emit()) -- anders als beim
-	   68k/l68-Ziel (kein Sichtbarkeitskonzept, siehe tinyc_backend_c.cpp)
+	   68k/l68-Ziel (kein Sichtbarkeitskonzept, siehe qcc_backend_c.cpp)
 	   unterstuetzt Mach-O/ld ECHTE lokale Symbole: ein Label OHNE .globl ist
 	   fuer andere Objektdateien schlicht unsichtbar (empirisch verifiziert --
 	   zwei separat kompilierte .o mit je einem lokalen "_tc_priv" linken ohne
 	   Konflikt, "duplicate symbol" tritt NICHT auf). Deshalb reicht hier reines
 	   Weglassen von .globl, KEINE Namensverfremdung noetig (Unterschied zu
-	   tinyc_backend_c.cpp!). */
+	   qcc_backend_c.cpp!). */
 	int declOnly, isStatic;
 } Function;
 
@@ -74,7 +74,7 @@ static int globalCount = 0;
 static int partMode = 0;
 
 static void fatal(const char* msg) {
-	fprintf(stderr, "tinyc_arm64_backend: %s\n", msg);
+	fprintf(stderr, "qcc_arm64_backend: %s\n", msg);
 	exit(1);
 }
 
@@ -141,7 +141,7 @@ static void readIR(const char* path) {
 
 static void collectGlobals(void) {
 	/* GLOBAL/GARRAY/GINIT duerfen auch INNERHALB einer Funktion stehen -- eine "static"
-	   lokale Variable (siehe Data/tinyc.lextab, tc_staticlocal) wird als ganz normaler
+	   lokale Variable (siehe Data/qcc.lextab, tc_staticlocal) wird als ganz normaler
 	   GLOBAL registriert, an der Textstelle ihrer Deklaration, also moeglicherweise
 	   mitten in einer FUNC...ENDFUNC-Spanne. collectFunctions() prueft weiterhin, dass
 	   so eine Zeile innerhalb einer offenen Funktion oder vor der ersten Funktion liegt,
@@ -372,7 +372,7 @@ static void emit(FILE* o) {
 	   der echte Linker (ld) von selbst, falls keine der gelinkten Dateien es
 	   liefert. */
 	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
-	fputs("; Tiny-C ARM64/Darwin -- PIC Programmmodul\n\t.text\n\t.p2align\t2\n", o);
+	fputs("; QCC ARM64/Darwin -- PIC Programmmodul\n\t.text\n\t.p2align\t2\n", o);
 
 	for (fi = 0; fi < funcCount; fi++) {
 		Function* f = &funcs[fi];

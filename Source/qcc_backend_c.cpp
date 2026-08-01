@@ -1,12 +1,12 @@
-/*==============================================================================
- * tinyc_backend_c.cpp -- reines-C-Gegenstueck zu tinyc_backend.cpp
- *
- * Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
- * Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
- * Original (tinyc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
- * docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
- * C++-Version zurueckzuschalten, in runtests.sh wieder tinyc_backend.cpp bauen.
- *============================================================================*/
+//================================================================================
+// qcc_backend_c.cpp -- reines-C-Gegenstueck zu qcc_backend.cpp
+//
+// Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
+// Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
+// Original (qcc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
+// docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
+// C++-Version zurueckzuschalten, in runtests.sh wieder qcc_backend.cpp bauen.
+//================================================================================
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,15 +23,15 @@
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
 #define MAX_IR_LINES    65536
 #define MAX_FUNCS       256
-/* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceTinyC/
+/* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceQCC/
    codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
-   Nachweis: JEDES String-Literal im Tiny-C-Quelltext wird zu einem
+   Nachweis: JEDES String-Literal im QCC-Quelltext wird zu einem
    anonymen __strN-Global, und das kumulative Kompilat hat inzwischen weit
    ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
    Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
    nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
-#define MAX_GLOBALS     512
-#define MAX_ARRAY_LEN   1024
+#define MAX_GLOBALS     1024
+#define MAX_ARRAY_LEN   4096
 
 typedef struct {
 	char op[OP_LEN];
@@ -44,7 +44,7 @@ typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
 	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
-	   OHNE Rumpf in dieser Datei (definiert in einer anderen Tiny-C-Datei) --
+	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei) --
 	   first/last/locals/frameBytes bleiben dann unbenutzt (0/-1). isStatic
 	   steuert die Namensverfremdung (siehe mangledName()) -- r68/l68 kennen
 	   KEIN Sichtbarkeitskonzept (siehe docs/STATUS.md), Mangling ist die einzige
@@ -76,7 +76,7 @@ static int globalCount = 0;
 static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer registerExtern()/externTableOffset() vorwaertsdeklariert */
 
 /* 2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/emitCall()-Kommentar
-   in tinyc_backend_c.cpp): jeder CALLEXT/CALLEXTP-Aufruf ging bisher per rohem
+   in qcc_backend_c.cpp): jeder CALLEXT/CALLEXTP-Aufruf ging bisher per rohem
    "bsr <rawname>" direkt an die externe clib.l-Funktion -- das zerstoert a3/a4
    (reine ABI-Temporaer-Register, siehe Ultra-C/C++ Processor Guide Table
    1-12), UND ein Versuch, a3/a4 direkt an der Aufrufstelle wieder aufzufrischen
@@ -90,7 +90,7 @@ static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer re
    Fruehen liegt) und frischt DANACH a3/a4 auf (ebenfalls sicher, da der
    Wrapper selbst nah an den Tabellen liegt). Aufrufstellen rufen NICHT mehr
    direkt "bsr <rawname>", sondern den Wrapper -- ueber genau denselben
-   a4-Tabellen-Indirektionsmechanismus wie interne Tiny-C-Funktionen
+   a4-Tabellen-Indirektionsmechanismus wie interne QCC-Funktionen
    (emitCall()), der beliebige Entfernungen bereits beherrscht (Register-
    indirekter jsr, keine PC-relative Distanzgrenze). */
 #define MAX_EXTERNS 128
@@ -111,7 +111,7 @@ static int registerExtern(const char* name) {
 	return externCount++;
 }
 
-/* Tabellen-Offset EINES externen Wrappers, direkt NACH Tiny-C-Funktionen und
+/* Tabellen-Offset EINES externen Wrappers, direkt NACH QCC-Funktionen und
    den 8 eingebauten Laufzeit-Helfern (siehe helperTableOffset()). */
 static int externTableOffset(const char* name) {
 	int idx = findExtern(name);
@@ -167,7 +167,7 @@ static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
    eigenen Frame statt auf den echten statischen Datenbereich). Deshalb NUR im
    -os9-Modus a5 statt a6 als Frame-Pointer verwenden (a6 bleibt dann komplett
    unangetastet); das Default-/vasm-Format bleibt bei a6 (keine Notwendigkeit,
-   keine Regression an den TinyVM-/Simulator-Tests). */
+   keine Regression an den QCCVM-/Simulator-Tests). */
 static const char* framePtr(void) { return os9Mode ? "a5" : "a6"; }
 /* Namensverfremdung fuer static-Symbole (Mehrdatei-Uebersetzung, 2026-07-25):
    r68/l68 kennen KEIN Sichtbarkeitskonzept (kein xdef/xref, jedes Label ist
@@ -205,7 +205,7 @@ static void emitAlign(FILE* out) {
    auf (normale Relokation, keine Distanzbeschraenkung).
    URSPRUENGLICHES Design (bis 2026-07-25 abends) lud JEDEN Tabelleneintrag per
    EIGENEM PC-relativem Label "movea.l tc_ga_X(pc),reg" -- das brach beim
-   ersten genParserC-artigen Skalierungstest (SourceTinyC/codegen.tc mit vielen
+   ersten genParserC-artigen Skalierungstest (SourceQCC/codegen.tc mit vielen
    Funktionen VOR der Tabelle, die selbst NACH dem gesamten Funktionscode
    liegt): "main" (per Funktionstabellen-Fix immer zuerst emittiert) konnte die
    Tabelle nicht mehr per PC-relativem Label erreichen, sobald der GESAMTE
@@ -260,7 +260,7 @@ static void emitLeaGlobal(FILE* out, int gidx, const char* reg) {
 }
 
 static void fatal(const char* msg) {
-	fprintf(stderr, "tinyc_backend: %s\n", msg);
+	fprintf(stderr, "qcc_backend: %s\n", msg);
 	exit(1);
 }
 
@@ -306,7 +306,7 @@ static int helperTableOffset(const char* rawName) {
 	return -1;
 }
 
-/* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer Tiny-C-
+/* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer QCC-
    Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
    Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
    asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben.
@@ -407,7 +407,7 @@ static void readIR(const char* path) {
 
 static void collectGlobals(void) {
 	/* GLOBAL/GARRAY/GINIT duerfen -- anders als frueher -- auch INNERHALB einer Funktion
-	   stehen: eine "static" lokale Variable (Data/tinyc.lextab, tc_staticlocal) wird als
+	   stehen: eine "static" lokale Variable (Data/qcc.lextab, tc_staticlocal) wird als
 	   ganz normaler GLOBAL registriert, an genau der Textstelle, an der ihre Deklaration
 	   im Quelltext steht, also moeglicherweise mitten in einer FUNC...ENDFUNC-Spanne.
 	   collectFunctions() prueft weiterhin, dass jede Zeile entweder zu GLOBAL/GARRAY/GINIT
@@ -569,7 +569,7 @@ static void collectFunctions(void) {
 			   Registrierung selbst noch declOnly ist (zwei FUNCDECL fuer denselben
 			   Namen ohne jemals einen echten Rumpf), bleibt es ein echter Fehler. */
 			if (!funcs[existing].declOnly) continue;
-			fprintf(stderr, "tinyc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion");
+			fprintf(stderr, "qcc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion");
 		}
 		if (funcCount >= MAX_FUNCS) fatal("zu viele Funktionen");
 		memset(&current, 0, sizeof(current));
@@ -667,12 +667,12 @@ static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
 	/* tc_cmp_yes_<id>/tc_cmp_done_<id> sind reine interne Sprungmarken, KEINE
-	   Tiny-C-Symbole -- ohne psectName-Suffix kollidieren sie beim Mehrdatei-
+	   QCC-Symbole -- ohne psectName-Suffix kollidieren sie beim Mehrdatei-
 	   Link, sobald ZWEI separat kompilierte Dateien beide mindestens einen
 	   Vergleichsoperator benutzen (r68/l68 kennen kein Sichtbarkeitskonzept,
 	   siehe mangledName()-Kommentar -- id allein ist nur PRO DATEI eindeutig,
 	   der serial-Zaehler startet in jeder Datei wieder bei 0). Live gefunden
-	   beim ersten echten Zwei-Datei-Link von SourceTinyC/ebnf.tc gegen
+	   beim ersten echten Zwei-Datei-Link von SourceQCC/ebnf.tc gegen
 	   codegen.tc (2026-07-26, writeWorkfile-Chunk), siehe docs/FORTSCHRITT.md.
 	   FUNDAMENTALER FUND (2026-07-26, live auf Q9 gefunden -- ALLE Vergleiche
 	   waren betroffen, live reproduziert bis in ein winziges Standalone-
@@ -683,7 +683,7 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	   IMMER Z=1. Ergebnis: "beq" (End-Test auf Z=1) sprang IMMER (jeder
 	   "=="-Vergleich war IMMER wahr), "bne" sprang NIE (jeder "!="-Vergleich
 	   war IMMER falsch) -- UNABHAENGIG von den tatsaechlichen Werten. Nie
-	   vorher aufgefallen, weil TinyVM UND tools/tiny68sim.py (unser Test-
+	   vorher aufgefallen, weil QCCVM UND tools/qcc68sim.py (unser Test-
 	   Simulator) Vergleiche als reinen Werttransport modellieren, NICHT ueber
 	   echte CPU-Flags -- der Bug war fuer BEIDE unsichtbar, erst die echte
 	   68030-Hardware auf Q9 zeigte ihn. FIX: "moveq #0,d0" NACH den Branch
@@ -696,9 +696,9 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
-/* 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
- * Schablonen bilden deshalb die definierte Tiny-C-int32-Arithmetik nach. Sie
- * erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck. */
+// 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
+// Schablonen bilden deshalb die definierte QCC-int32-Arithmetik nach. Sie
+// erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
 static void emitM68kCore(FILE* out) {
 	fprintf(out, "%s 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n", fullCommentPrefix());
 	fputs("tc_mul_i32:\n", out);
@@ -734,11 +734,11 @@ static void emitM68kCore(FILE* out) {
 	fputs("tc_udiv_done:\tmove.l\t(a7)+,d4\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 
 	/* Rest = Dividend - Quotient*Divisor. WICHTIG (2026-07-24, gefunden ueber
-	   tools/tiny68sim.py beim Debuggen der neuen -os9-putint-Ziffernzerlegung):
+	   tools/qcc68sim.py beim Debuggen der neuen -os9-putint-Ziffernzerlegung):
 	   vor "bsr tc_mul_i32" muss d0 den DIVISOR (d3) tragen, NICHT nochmal den
 	   Dividenden (d2) -- sonst wird Quotient*Dividend statt Quotient*Divisor
 	   gerechnet. Dieser Bug war seit Einfuehrung von tc_mod_i32/tc_umod_u32
-	   unentdeckt, weil kein einziger 68k-Backend-Test (nur die TinyVM-Tests)
+	   unentdeckt, weil kein einziger 68k-Backend-Test (nur die QCCVM-Tests)
 	   den "%"-Operator ueber den echten 68k-Pfad ausgefuehrt hat. */
 	fputs("tc_mod_i32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
@@ -754,17 +754,13 @@ static void emitIR(FILE* out) {
 	int order[MAX_FUNCS];
 	int oi;
 	int gi;
-	Function* fn;
-	char asmName[NAME_LEN + 40];
-	int nargsC;
-	int callee;
 
 	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
 	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
 	   keine der gelinkten Dateien es liefert. */
 	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
-	fprintf(out, "%s Tiny-C 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
+	fprintf(out, "%s QCC 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
 	fprintf(out, "%s a7: Operand-Stack, %s: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix(), framePtr());
 	if (os9Mode) {
 		fprintf(out, "\tnam\t%s\n", psectName);
@@ -792,7 +788,7 @@ static void emitIR(FILE* out) {
 		   tc_start/main stehen (VOR den potenziell riesigen Funktionsrumpf-Texten),
 		   damit das einmalige "lea tc_functab(pc),a4" immer erreichbar bleibt, egal wie
 		   gross der Rest des Programms wird. Reihenfolge MUSS exakt zu funcIndex*4 (fuer
-		   Tiny-C-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
+		   QCC-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
 		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- echter PMMU-Absturz beim
 		   allerersten Funktionsaufruf in main()): "dc.l <label>" ist auf OS-9
 		   KEINE automatisch relozierte absolute Adresse! Laut OS-9 for 68K
@@ -813,6 +809,7 @@ static void emitIR(FILE* out) {
 		emitAlign(out);
 		fprintf(out, "tc_functab__%s:\n", psectName);
 		for (fi = 0; fi < funcCount; fi++) {
+			char asmName[NAME_LEN + 40];
 			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
 			fprintf(out, "\tdc.l\t%s-tc_functab__%s\n", asmName, psectName);
 		}
@@ -912,7 +909,7 @@ static void emitIR(FILE* out) {
 		   (Signatur laut OS9/SRC/DEFS/modes.h: error_code _os_write(path_id,
 		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
 		   = stdout, analog zu Unix-Filedeskriptoren). BEWUSST nicht ueber
-		   printf/clib-Formatierung: Tiny-C hat noch keine String-Literale, und
+		   printf/clib-Formatierung: QCC hat noch keine String-Literale, und
 		   die direkte Ganzzahl->ASCII-Umwandlung hier (analog zu
 		   runtime/arm64_darwin/start.s) haelt das gelinkte Programm klein --
 		   kein printf-Formatstring-Parser wird ueberhaupt erst hereingezogen.
@@ -924,22 +921,22 @@ static void emitIR(FILE* out) {
 		fprintf(out, "tc_putint:\n\tlink\t%s,#0\n", framePtr());
 		fputs("\tmove.l\td0,d2\n\tmoveq\t#0,d3\n\ttst.l\td2\n\tbge\ttc_pi_nonneg\n", out);
 		fputs("\tneg.l\td2\n\tmoveq\t#1,d3\n", out);
-		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n\tmove.b\t#10,1(a1)\n", out);
+		fputs("tc_pi_nonneg:\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
 		fputs("tc_pi_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
 		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
 		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
 		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pi_loop\n", out);
 		fputs("\ttst.l\td3\n\tbeq\ttc_pi_go\n\tsubq.l\t#1,a1\n\tmove.b\t#45,(a1)\n", out);
-		fputs("tc_pi_go:\tlea\ttc_io_buf+13(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fputs("tc_pi_go:\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
 		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
 
 		fprintf(out, "tc_putuint:\n\tlink\t%s,#0\n", framePtr());
-		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n\tmove.b\t#10,1(a1)\n", out);
+		fputs("\tmove.l\td0,d2\n\tlea\ttc_io_buf+11(pc),a1\n\tmove.b\t#13,(a1)\n", out);
 		fputs("tc_pu_loop:\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d4\n", out);
 		fputs("\tmove.l\td2,d0\n\tmoveq\t#10,d1\n\tbsr\ttc_umod_u32\n", out);
 		fputs("\taddi.b\t#48,d0\n\tsubq.l\t#1,a1\n\tmove.b\td0,(a1)\n", out);
 		fputs("\tmove.l\td4,d2\n\ttst.l\td2\n\tbne\ttc_pu_loop\n", out);
-		fputs("\tlea\ttc_io_buf+13(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
+		fputs("\tlea\ttc_io_buf+12(pc),a2\n\tmove.l\ta2,d1\n\tsub.l\ta1,d1\n\tbsr\ttc_io_write\n", out);
 		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
 
 		fprintf(out, "tc_putchar:\n\tlink\t%s,#0\n", framePtr());
@@ -965,7 +962,7 @@ static void emitIR(FILE* out) {
 		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		fputs("\trts\n\n", out);
 	} else {
-		/* Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich. */
+		// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
 		fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
@@ -985,7 +982,7 @@ static void emitIR(FILE* out) {
 		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
 		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
 		   echten _os_write-Aufruf (siehe tc_io_write oben). */
-		fputs("tc_io_buf:\tdc.l\t0,0,0,0\n", out);
+		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
 		fputs("tc_io_cnt:\tdc.l\t0\n", out);
 	}
 	} /* !partMode || runtimeMode */
@@ -1013,7 +1010,8 @@ static void emitIR(FILE* out) {
 	}
 	for (oi = 0; oi < funcCount; oi++) {
 		fi = order[oi];
-		fn = &funcs[fi];
+		Function* fn = &funcs[fi];
+		char asmName[NAME_LEN + 40];
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
@@ -1272,7 +1270,7 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PCMPGE") == 0) { emitCompare(out, "bcc", &serial);
 			} else if (strcmp(op, "LABEL") == 0 && insP->argc == 1) {
 				/* psectName-Suffix aus demselben Grund wie bei emitCompare oben:
-				   LABEL-Namen (tc_L0, tc_L1, ...) kommen aus der Tiny-C-Frontend-
+				   LABEL-Namen (tc_L0, tc_L1, ...) kommen aus der QCC-Frontend-
 				   eigenen Label-Nummerierung, die in JEDER Datei wieder bei 0
 				   startet -- ohne Suffix kollidieren sie beim Mehrdatei-Link,
 				   sobald zwei Dateien beide Kontrollfluss (if/while/for/...)
@@ -1285,8 +1283,9 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "JNZ") == 0 && insP->argc == 1) {
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbne\ttc_%s__%s\n", insP->args[0], psectName);
 			} else if ((strcmp(op, "CALL") == 0 || strcmp(op, "CALLP") == 0) && insP->argc == 2) {
-				nargsC = number(insP->args[1], insP->line);
-				callee = findFunction(insP->args[0]);
+				int nargsC = number(insP->args[1], insP->line);
+				int callee = findFunction(insP->args[0]);
+				char asmName[NAME_LEN + 40];
 				if (callee < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
 				emitCall(out, asmName, callee * 4, &serial, psectName);
@@ -1297,7 +1296,7 @@ static void emitIR(FILE* out) {
 				   einer echten OS-9/Microware-clib-Funktion (strcmp, printf, malloc, ...).
 				   Nutzt die dokumentierte Microware-68K-C/C++-ABI (Ultra C/C++ Processor
 				   Guide, Kapitel "Passing Arguments to Functions") statt der sonst hier
-				   verwendeten reinen Stack-ABI fuer TINY-C-EIGENE Funktionen: die ERSTEN
+				   verwendeten reinen Stack-ABI fuer QCC-EIGENE Funktionen: die ERSTEN
 				   BEIDEN FEST DEKLARIERTEN Parameter -> d0/d1 (GENAU wie bei einem
 				   nicht-variadischen Aufruf), ALLE weiteren Argumente (der variadische
 				   "..."-Teil, z.B. printfs Werte nach dem Formatstring) auf den Stack, in
@@ -1380,7 +1379,7 @@ static void emitIR(FILE* out) {
 				   Distanz haengt der Microware-Linker automatisch eine PIC-taugliche
 				   Jumptable-Indirektion ein (l68 -a). NUR im -os9-Modus relevant --
 				   im Default-/vasm-/Simulator-Modus bleibt "jsr" (von
-				   tools/tiny68sim.py als Mock-Aufruf-Marker erkannt, keine echte
+				   tools/qcc68sim.py als Mock-Aufruf-Marker erkannt, keine echte
 				   Positionsunabhaengigkeit noetig, keine Regression riskieren).
 				   ZWEITER FUND (2026-07-26, live auf Q9, Ultra-C/C++ Processor Guide
 				   Table 1-12 "Register Use"): a3/a4 (unsere -largedata-Tabellenbasen)
@@ -1388,7 +1387,7 @@ static void emitIR(FILE* out) {
 				   sie zerstoeren. Ein direktes "bsr/jsr <name>" HIER wuerde a3/a4 also
 				   unbemerkt korrumpieren. Deshalb (NUR largeDataMode): nicht direkt
 				   rufen, sondern ueber denselben a4-Tabellen-Indirektionsmechanismus
-				   wie interne Tiny-C-Funktionen (emitCall()) einen kleinen Wrapper-Stub
+				   wie interne QCC-Funktionen (emitCall()) einen kleinen Wrapper-Stub
 				   rufen (tc_extwrap_<name>, siehe Tabellen-Emission weiter oben) -- der
 				   macht den echten Aufruf UND frischt a3/a4 danach auf, physisch nah an
 				   den Tabellen platziert (PC-relativ immer sicher erreichbar, anders als
@@ -1433,9 +1432,9 @@ static void emitIR(FILE* out) {
 
 	{
 		int hasData = 0, hasBss = 0, gi;
-		/* std::vector<int>(len) im Original ist NIE leer -- jedes Array landet
-		 * deshalb immer im DATA-Zweig, nie im BSS-Zweig. Das wird hier bewusst
-		 * direkt als Regel (isArray || initialValue!=0) nachgebildet. */
+		// std::vector<int>(len) im Original ist NIE leer -- jedes Array landet
+		// deshalb immer im DATA-Zweig, nie im BSS-Zweig. Das wird hier bewusst
+		// direkt als Regel (isArray || initialValue!=0) nachgebildet.
 		for (gi = 0; gi < globalCount; gi++) {
 			if (globals[gi].declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
 			hasData |= globals[gi].isArray || globals[gi].initialValue != 0;
@@ -1549,7 +1548,7 @@ int main(int argc, char* argv[]) {
 			totalGlobalBytes += (long)(g->isChar ? 1 : 4) * (g->isArray ? g->length : 1);
 		}
 		if (totalGlobalBytes > 16000) {
-			fprintf(stderr, "tinyc_backend: Warnung: globale Daten sind mit %ld Byte recht gross fuer das\n", totalGlobalBytes);
+			fprintf(stderr, "qcc_backend: Warnung: globale Daten sind mit %ld Byte recht gross fuer das\n", totalGlobalBytes);
 			fprintf(stderr, "  Standard-Speichermodell (PC-relative Adressierung, echte 68000-Grenze ist\n");
 			fprintf(stderr, "  +-32 KB von JEDER referenzierenden Instruktion aus). Falls r68 spaeter mit\n");
 			fprintf(stderr, "  \"value out of range\" fehlschlaegt: mit -largedata neu uebersetzen.\n");
@@ -1569,7 +1568,7 @@ int main(int argc, char* argv[]) {
 		psectName[n] = '\0';
 		strcat(psectName, "_p");
 	}
-	out = fopen(argv[2], "wb");
+	out = fopen(argv[2], "w");
 	if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
 	emitIR(out);
 	if (ferror(out)) fatal("Schreibfehler in Assembler-Ausgabe");

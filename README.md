@@ -1,13 +1,18 @@
 # Q9-Parsec
 
-EBNF-Parser-/Scanner-Generator `parsec` mit Tiny-C-Referenzpfad und 68000-/ARM64-Backends.
+EBNF-Parser-/Scanner-Generator: liest eine EBNF-Grammatik und erzeugt daraus
+Parserquelltext (C-Referenzimplementierung + 68k-Assembler).
+
+Der darauf aufbauende QCC (Sprachkern, IR, 68000-/ARM64-Backends,
+der seinen eigenen Parser mit diesem Tool aus `Data/qcc.ebnf` erzeugt) lebt
+seit 2026-07-31 als eigenständiges Repo:
+[Q9-QCC](https://github.com/Q9-Forge/Q9-QCC) (volle Historie extrahiert).
 
 Die Dokumentation ist nach Zweck getrennt:
 
-- [Aktueller Status](docs/STATUS.md)
-- [Fortschritt und Roadmap](docs/FORTSCHRITT.md)
-- [ISO-C-Lückenliste](docs/ISO_C_LUECKENLISTE.md)
-- [Selfhosting-Lückenliste](docs/SELFHOSTING_LUECKENLISTE.md)
 - [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md)
 - [Entwicklerhandbuch](docs/ENTWICKLERHANDBUCH.md)
 - [Ausführliche Architektur](docs/ARCHITEKTUR.md)
+
+QCC-spezifischer Status/Fortschritt/ISO-C-Lückenliste etc. steht jetzt in
+[Q9-QCC](https://github.com/Q9-Forge/Q9-QCC).

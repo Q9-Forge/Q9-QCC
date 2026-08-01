@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Test-Simulator fuer den vom Tiny-C-C++-Backend erzeugten 68000-Assembler.
+"""Test-Simulator fuer den vom QCC-C++-Backend erzeugten 68000-Assembler.
 
 Kein Teil der auszuliefernden Toolchain: Er prueft die feste Backend-Schablonen
-gegen tools/tinyvm.py, solange die OS-9/Q9-Runtime noch nicht vorhanden ist.
+gegen tools/qccvm.py, solange die OS-9/Q9-Runtime noch nicht vorhanden ist.
 """
 import re
 import sys
@@ -39,7 +39,7 @@ def load(path):
                 # JEDES Label kann eine dc.l/dc.b-Datenserie einleiten (2026-07-25 auf ALLE
                 # Labels verallgemeinert, vorher nur "tc_g_"/"tc_ga_"-Praefixe -- noetig fuer
                 # "tc_functab:" in der -largedata-Funktionsaufruf-Indirektion, siehe
-                # tinyc_backend_c.cpp). Harmlos fuer echte Funktionslabels: die nachfolgende
+                # qcc_backend_c.cpp). Harmlos fuer echte Funktionslabels: die nachfolgende
                 # ECHTE Instruktion (z.B. "link a6,#0") matcht "dc.l"/"dc.b" ohnehin nicht,
                 # faellt also normal in den Instruktionspfad weiter unten.
                 current_global, current_offset = match.group(1), 0
@@ -56,7 +56,7 @@ def load(path):
                     except ValueError:
                         # 2026-07-26: "labelA-labelB" (Link-Zeit-Offset relativ zur
                         # Tabellenbasis, siehe tc_functab/tc_gadata-Kommentar in
-                        # tinyc_backend_c.cpp -- ersetzt die fruehere rohe absolute
+                        # qcc_backend_c.cpp -- ersetzt die fruehere rohe absolute
                         # Symbolreferenz, echtes OS-9 relokiert "dc.l label" NICHT).
                         diff = re.match(r"^(\w+)-(\w+)$", tok)
                         if diff:
@@ -81,8 +81,8 @@ def run(instructions, labels, global_initials=None):
     if "tc_start" not in labels:
         raise SimError("Label tc_start fehlt")
     memory = {}
-    # tc_extcall_tmp: festes Scratch-Feld fuer CALLEXT/CALLEXTP (siehe tinyc_backend_c.cpp),
-    # bewusst OHNE "tc_g_"-Praefix (kollisionsfrei zu echten Tiny-C-Globalen), daher hier
+    # tc_extcall_tmp: festes Scratch-Feld fuer CALLEXT/CALLEXTP (siehe qcc_backend_c.cpp),
+    # bewusst OHNE "tc_g_"-Praefix (kollisionsfrei zu echten QCC-Globalen), daher hier
     # explizit mit aufgenommen statt ueber das generische "tc_g_"-Praefixmuster.
     # 2026-07-25 (-largedata Funktionstabelle, "automatisch eine jmp table bauen"):
     # ALLE Labels (auch Funktionsnamen wie tc_main, nicht nur tc_g_/tc_ga_-Globale)
@@ -114,7 +114,7 @@ def run(instructions, labels, global_initials=None):
     # Adressregister a0/a2/a3/a4 (2026-07-25 auf ein generisches Dict erweitert,
     # vorher nur a0 als eigene Variable -- a2 fuer -largedata-Funktionsaufruf-
     # Indirektion, a4 als Basis der Funktionstabelle (siehe emitCall() in
-    # tinyc_backend_c.cpp), a3 als Basis der -largedata-DATEN-Indirektions-
+    # qcc_backend_c.cpp), a3 als Basis der -largedata-DATEN-Indirektions-
     # tabelle tc_gadata (siehe emitLeaGlobal()-Kommentar dort -- abgeloest das
     # fruehere Design mit einem PC-relativen Label PRO Globaler, das bei
     # grossem kumulativem Code selbst unerreichbar wurde).
@@ -250,7 +250,7 @@ def run(instructions, labels, global_initials=None):
             continue
         match = re.match(r"jsr (\w+)$", ins)
         if match:
-            # CALLEXT/CALLEXTP (siehe tinyc_backend_c.cpp) ruft externe Funktionen per
+            # CALLEXT/CALLEXTP (siehe qcc_backend_c.cpp) ruft externe Funktionen per
             # "jsr <name>" auf (kein "tc_"-Praefix wie bei internen Aufrufen). Fuer diesen
             # Test-Simulator identisch zu "bsr" behandelt (push+jump) -- der Zieltext MUSS
             # ein lokal im selben .s68 vorhandenes Label sein (z.B. ein Test-Mock, der eine
@@ -265,7 +265,7 @@ def run(instructions, labels, global_initials=None):
         match = re.match(r"jsr \(a([0-9])\)$", ins)
         if match:
             # Register-indirekter Aufruf (2026-07-25, -largedata-Funktionsaufruf-
-            # Indirektion, siehe emitCall() in tinyc_backend_c.cpp): das Register haelt
+            # Indirektion, siehe emitCall() in qcc_backend_c.cpp): das Register haelt
             # eine per "move.l N(a4),aN" aus der Funktionstabelle geladene fiktive
             # Adresse -- per Ruecksuche (address_to_label) wieder auf ein Label
             # zurueckgefuehrt, dann identisch zum normalen "bsr"-Pfad behandelt
@@ -374,7 +374,7 @@ def run(instructions, labels, global_initials=None):
             areg[0] += delta
             continue
         # 2026-07-26 (-largedata Tabellenbasis-Fix, siehe emitCall()/emitLeaGlobal()-
-        # Kommentar in tinyc_backend_c.cpp): tc_functab/tc_gadata enthalten jetzt
+        # Kommentar in qcc_backend_c.cpp): tc_functab/tc_gadata enthalten jetzt
         # Link-Zeit-OFFSETS statt absoluter Adressen -- die echte Zieladresse
         # entsteht erst durch "adda.l aBase,aDst" (Adressregister als Quelle UND
         # Ziel, nicht nur d0-a0 wie oben).
@@ -488,7 +488,7 @@ def run(instructions, labels, global_initials=None):
             areg[int(match.group(2))] = global_addresses[match.group(1)]
             continue
         # 2026-07-26 (Bug 4, Mehrdatei-a3/a4-Refresh in JEDER Funktion, siehe
-        # tinyc_backend_c.cpp-Kommentar bei der Funktionsrumpf-Emission): eine
+        # qcc_backend_c.cpp-Kommentar bei der Funktionsrumpf-Emission): eine
         # Funktion laedt IHRE EIGENE Adresse (Distanz 0, immer sicher) per
         # "lea <eigenerName>(pc),aN", dann per "adda.l #(ziel-eigenerName),aN"
         # eine Link-Zeit-KONSTANTE Differenz -- diese Differenz hat KEINE
@@ -512,12 +512,12 @@ def run(instructions, labels, global_initials=None):
 
 def main():
     if len(sys.argv) != 2:
-        print("usage: tiny68sim.py <program.s68>", file=sys.stderr)
+        print("usage: qcc68sim.py <program.s68>", file=sys.stderr)
         return 2
     try:
         sys.stdout.write(run(*load(sys.argv[1])))
     except (OSError, SimError) as error:
-        print("tiny68sim: " + str(error), file=sys.stderr)
+        print("qcc68sim: " + str(error), file=sys.stderr)
         return 1
     return 0
 

@@ -1,6 +1,6 @@
 program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl } { funcdef } .
 
-/* Deklaration einer NICHT in Tiny-C definierten Funktion (z.B. einer echten
+/* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
    Signatur. Parameter brauchen keinen Namen (nur Typen fuer die Aufrufpruefung).
    "..." markiert eine variadische Funktion (wie printf) -- siehe tc_call/
@@ -14,7 +14,7 @@ externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
 /* optionaler Parametername wird NUR geparst und verworfen (rein dokumentarisch,
    wie in echten C-Prototypen "int strcmp(const char *a, const char *b);") --
    fuer die Aufrufpruefung zaehlen nur die Typen. "const" ebenso rein
-   dokumentarisch: eine extern-Deklaration hat keinen Tiny-C-Rumpf, in dem eine
+   dokumentarisch: eine extern-Deklaration hat keinen QCC-Rumpf, in dem eine
    Schreibpruefung greifen koennte. */
 externParam     = [ constKw ] type pointerDecl [ ident ] .
 ellipsisTok     = "..." .
@@ -45,11 +45,11 @@ typedefTargetName = ident .
 /* beliebig viele weitere Dimensionen (2026-07-24) NUR bei globalDecl/localDecl
    (nicht bei structField/paramArray -- siehe Kommentar bei localDecl weiter
    unten fuer den Umfang dieser Version). arraySizeN wiederholt sich beliebig
-   oft (TC_MAXDIMS in tinyc.lextab begrenzt die tatsaechlich unterstuetzte
+   oft (TC_MAXDIMS in qcc.lextab begrenzt die tatsaechlich unterstuetzte
    Anzahl zur Uebersetzungszeit, kein Grammatik-Limit). */
 /* Mehrdatei-Uebersetzung (2026-07-25): externGlobalDecl deklariert eine
    globale Variable OHNE Speicherallokation ("definiert in einer anderen
-   Tiny-C-Datei") -- kein Konflikt mit dem bestehenden extern bei FUNKTIONEN
+   QCC-Datei") -- kein Konflikt mit dem bestehenden extern bei FUNKTIONEN
    (das bleibt Microware-ABI/clib.l-spezifisch, siehe externDecl oben): bei
    globalen Variablen gab es bisher UEBERHAUPT keine extern-Bedeutung. Kein
    Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
@@ -78,7 +78,7 @@ globalNumber = digit { digit } .
 /* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
    IMMER vorhandenen Rumpfs entweder einen echten Rumpf (funcBody) ODER eine
    reine Prototyp-Deklaration ohne Rumpf (protoEnd) = "definiert in einer
-   anderen Tiny-C-Datei", normale interne bsr/bl-Aufrufkonvention. Bewusst
+   anderen QCC-Datei", normale interne bsr/bl-Aufrufkonvention. Bewusst
    NICHT das bestehende extern-Schluesselwort dafuer verwendet -- das ist fest
    mit der Microware-ABI/CALLEXT-Semantik verdrahtet (siehe externDecl oben).
    Kein Backtracking noetig: nach funcHead folgt entweder disjunkt "{" oder
@@ -328,7 +328,7 @@ target    = directTarget | indirectTarget .
    Verkettete Indizierung NACH dem Feld (arr[i].feld[j]) bleibt bewusst
    ausgeschlossen (wie bei p.field[i], siehe member oben) -- tc_varref/
    tc_target diagnostizieren das explizit. Neuer IR-Opcode IPADDN (siehe
-   Backends/tinyvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
+   Backends/qccvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
    (hier: tcStructByteSize des Element-Structs), waehrend das bestehende
    IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
    struct-Arrays ist aber beliebig. */
