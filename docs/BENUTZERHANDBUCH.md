@@ -14,23 +14,23 @@ Auf macOS/Linux:
 ./runtests.sh
 ```
 
-Der Lauf baut die benötigten Programme und prüft TinyVM, 68000-Simulator und
+Der Lauf baut die benötigten Programme und prüft QCCVM, 68000-Simulator und
 ARM64/Darwin. Erfolgreich ist der Lauf nur bei `=== ALLE TESTS OK ===`.
 
-## Tiny-C verwenden
+## QCC verwenden
 
-Die Referenzgrammatik liegt in `Data/tinyc.ebnf`. Nach ihrer Generierung wird der
-Tiny-C-Parser gebaut. Ein kleines Programm kann anschließend als IR erzeugt und
+Die Referenzgrammatik liegt in `Data/qcc.ebnf`. Nach ihrer Generierung wird der
+QCC-Parser gebaut. Ein kleines Programm kann anschließend als IR erzeugt und
 mit der VM ausgeführt werden:
 
 ```sh
-build/ebnf Data/tinyc
-cc -w -o build/tinyc_p Data/tinyc_p.c
-build/tinyc_p 'int main(){ putint(2 + 3 * 4); }' > build/example.ir
-python3 tools/tinyvm.py build/example.ir
+build/ebnf Data/qcc
+cc -w -o build/qcc_p Data/qcc_p.c
+build/qcc_p 'int main(){ putint(2 + 3 * 4); }' > build/example.ir
+python3 tools/qccvm.py build/example.ir
 ```
 
-## Unterstützte Tiny-C-Funktionen
+## Unterstützte QCC-Funktionen
 
 Verfügbar sind Variablen, eindimensionale Arrays, Funktionen mit Parametern und
 Rekursion, `if/else`, `while`, `return`, `putint`, `putuint`, `putchar`,
@@ -51,9 +51,9 @@ int main() {
 
 ## Wichtige Dateien
 
-- `Data/tinyc.ebnf`: Sprachgrammatik
-- `Data/tinyc.lextab`: generierte Tabellen plus Nutzer-Aktionen
-- `tools/tinyvm.py`: IR-Interpreter
+- `Data/qcc.ebnf`: Sprachgrammatik
+- `Data/qcc.lextab`: generierte Tabellen plus Nutzer-Aktionen
+- `tools/qccvm.py`: IR-Interpreter
 - `runtests.sh`: verbindliche Regressionstests
 - `docs/STATUS.md`: aktueller Stand
 

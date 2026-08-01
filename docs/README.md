@@ -10,7 +10,7 @@ normalerweise `STATUS.md` und der passende Abschnitt aus `FORTSCHRITT.md`.
 | `ISO_C_LUECKENLISTE.md` | Fehlende ISO-C17/C23-Bereiche und Ausbauplan |
 | `ISO_C_ARBEITSEINHEITEN.md` | Kleine, testbare Einheiten mit ISO-Zuordnung |
 | `TEILPROJEKTE.md` | Abgrenzung von Sprachkern, Präprozessor, Bibliothek und Backends |
-| `BENUTZERHANDBUCH.md` | Nutzung des Generators, Tiny-C und Testabläufe |
+| `BENUTZERHANDBUCH.md` | Nutzung des Generators, QCC und Testabläufe |
 | `ARBEITSWEISE.md` | Wiederaufnahme, Kontextpflege und Abschlusskriterien |
 | `ENTWICKLERHANDBUCH.md` | Interna, Datenfluss, IR, Backends und Änderungsregeln |
 | `ARCHITEKTUR.md` | Ausführliche technische Entscheidungen und historische Begründungen |
