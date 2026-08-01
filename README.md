@@ -1,6 +1,6 @@
-# ebnf
+# Q9-Parsec
 
-EBNF-Parser-/Scanner-Generator mit Tiny-C-Referenzpfad und 68000-/ARM64-Backends.
+EBNF-Parser-/Scanner-Generator `parsec` mit Tiny-C-Referenzpfad und 68000-/ARM64-Backends.
 
 Die Dokumentation ist nach Zweck getrennt:
 

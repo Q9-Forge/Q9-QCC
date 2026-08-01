@@ -1,5 +1,5 @@
 #================================================================================
-# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von parsec
 # Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
 # beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
 # in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).

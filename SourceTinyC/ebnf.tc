@@ -1,11 +1,11 @@
-/* ebnf.tc -- Tiny-C-Port von Source/ebnf.cpp (EBNF-Uebersetzer: Grammatik-Parser,
+/* ebnf.tc -- Tiny-C-Port von Source/parsec.cpp (EBNF-Uebersetzer: Grammatik-Parser,
    Tabellen-/Arbeitsdatei-Verwaltung, Stack-Maschine, Linksrekursions-Pruefung).
    Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md / [[tinyc-vollport-status]]
    (Memory) fuer den Kontext. Zusammen mit SourceTinyC/codegen.tc (bereits komplett
-   portiert) das Gegenstueck zum echten C++-Toolchain-Paar ebnf.cpp+codegen.cpp.
+   portiert) das Gegenstueck zum echten C++-Toolchain-Paar parsec.cpp+codegen.cpp.
 
    ARCHITEKTUR: eigene Datei, GETRENNT von codegen.tc (nicht angehaengt) --
-   entspricht der echten C++-Projektstruktur (ebnf.cpp ruft codegen.cpp, nicht
+   entspricht der echten C++-Projektstruktur (parsec.cpp ruft codegen.cpp, nicht
    umgekehrt) und dem bereits bewiesenen Mehrdatei-Feature (Tiny-C Mehrdatei M1/M2/M3
    in runtests.sh). Cross-Datei-Aufrufe von codegen.tc-Funktionen sind BARE
    Funktionsprototypen OHNE Rumpf (interne bsr/bl-ABI, NICHT "extern" -- das waere
@@ -25,7 +25,7 @@
    "conditional-frame mismatch" ausloesen -> emitAndAnd/emitOrOr/emitQMark-Analoga bei
    Bedarf, Deklarationen-vor-Funktionen-Zwang, keine eigenen variadischen Funktionen).
 
-   NEUE, ebnf.cpp-spezifische Anpassung: EOF-Sentinel. Das Original nutzt "char
+   NEUE, parsec.cpp-spezifische Anpassung: EOF-Sentinel. Das Original nutzt "char
    aktChar" und vergleicht direkt mit dem Standard-"EOF" (typischerweise -1) --
    ohne <stdio.h>-Makro hier als LITERALER Wert -1 nachgebildet, aktChar/lastChar/
    nextChar deshalb bewusst als "int" (nicht "char") gefuehrt, um den Sentinel-Wert
@@ -63,7 +63,7 @@ extern char* fgets(char* buf, int size, void* fp);
 extern int feof(void* fp);
 extern void exit(int code);
 
-/* Original-Konstanten (siehe Source/ebnf.cpp) -- als Literale eingesetzt:
+/* Original-Konstanten (siehe Source/parsec.cpp) -- als Literale eingesetzt:
      IDENT_LEN=32 (Puffer 33)   FILENAME_LEN=64   IDENTLIST_MAX=1024
      LEXTAB_LEN=1024            MAX_RULES=256      MAX_EDGES=1024
      MAX_RULE_NAMES=256         MAX_TESTS=256      TEST_INPUT_LEN=256
@@ -430,7 +430,7 @@ void encodeTSField(char* in, char* out, int outMax) {
    verwendet). Aus demselben Grund werden head0/head1/value0 (das Original
    haelt sie als const char* vor) als Literal an jeder Aufrufstelle wiederholt
    statt zwischengespeichert. STAT_TRUE=-1 STAT_FALSE=-2 STAT_ERROR=-3
-   STAT_NEXT=-4 STAT_NONE=-5 (aus ebnf.cpp, hier als Literalzahlen belassen). */
+   STAT_NEXT=-4 STAT_NONE=-5 (aus parsec.cpp, hier als Literalzahlen belassen). */
 void printLexTab() {
 	char trueStr[8];
 	char falseStr[8];
@@ -771,7 +771,7 @@ int tsSymbolIndexOf(char* tsListFlat, int tsCnt, char* sym) {
 
 /* Schreibt die komplette Arbeitsdatei. fp muss bereits per "w" geoeffnet sein
    (WICHTIG: erst NACH loadPreservedTests() oeffnen, sonst ist der alte
-   TESTS-Block schon weg -- siehe Source/ebnf.cpp:1007-1130).
+   TESTS-Block schon weg -- siehe Source/parsec.cpp:1007-1130).
 
    Tiny-C-Anpassungen gegenueber dem Original:
    (1) tsList/tsMode: siehe Kommentar bei tsListFlat/tsModeFlat in TEIL 1.
@@ -793,7 +793,7 @@ int tsSymbolIndexOf(char* tsListFlat, int tsCnt, char* sym) {
        (fputc(92, fp), dann ein EIGENES fprintf/fputc fuer den Buchstaben),
        damit beide nie im selben Literal aufeinandertreffen. Die ZWEI echten
        Tab-Zeichen im NUTZER-CODE-Beispieltext unten (einfaches "\t", nicht
-       doppelt escaped wie im ebnf.cpp-Original) sind dagegen ECHTE Tabs
+       doppelt escaped wie im parsec.cpp-Original) sind dagegen ECHTE Tabs
        (Einrueckung eines Assembler-Beispiels) -- die brauchen genau die
        normale Escape-Dekodierung, bleiben also direkte "\t"-Literale.
    (3) Ternaere Ausdruecke als fprintf-Argument sind bewusst vermieden:
@@ -813,7 +813,7 @@ void writeWorkfile(void* fp) {
 	tsCnt = 0;
 
 	fprintf(fp, "#================================================================================\n");
-	fprintf(fp, "# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf\n");
+	fprintf(fp, "# EBNF-ARBEITSDATEI -- automatisch erzeugt von parsec\n");
 	fprintf(fp, "# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben\n");
 	fprintf(fp, "# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht\n");
 	fprintf(fp, "# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).\n");
@@ -972,7 +972,7 @@ void writeWorkfile(void* fp) {
 }
 
 /* Fall B: Kanten fuer die Linksrekursions-Pruefung aus der GELADENEN Tabelle
-   rekonstruieren (Source/ebnf.cpp:1132-1156) -- Gegenstueck zur normalen
+   rekonstruieren (Source/parsec.cpp:1132-1156) -- Gegenstueck zur normalen
    Ermittlung waehrend des Parsens (ueber das firstPos-Flag). Idee: ein
    Fehlschlag konsumiert nie Eingabe -- alles, was vom Regelstart aus NUR ueber
    falseAction-Kanten erreichbar ist, liegt an "erster Position" der Regel.
@@ -1055,7 +1055,7 @@ void wfParseToken(char* line, char* out, int outMax) {
 }
 
 /* Fall B: PARSER-TABELLE- und EBNF-QUELLTEXT-Block direkt aus der Arbeitsdatei
-   laden (keine .ebnf vorhanden), Source/ebnf.cpp:1162-1231. Liefert 1 bei
+   laden (keine .ebnf vorhanden), Source/parsec.cpp:1162-1231. Liefert 1 bei
    Erfolg, 0 wenn die Datei keine Arbeitsdatei im neuen Format ist (kein
    [PARSER-TABELLE]-Block gefunden) oder nicht lesbar war. blk als einfacher
    int statt des anonymen lokalen enums im Original (0=NONE 1=QUELLTEXT
@@ -1153,7 +1153,7 @@ int loadWorkfileAsGrammar(char* path) {
 }
 
 /* Alle TEST-Zeilen durch die Stack-Maschine jagen und mit dem erwarteten
-   Ergebnis vergleichen (Source/ebnf.cpp:1233-1268). Liefert die Anzahl der
+   Ergebnis vergleichen (Source/parsec.cpp:1233-1268). Liefert die Anzahl der
    MISMATCHes (0 = alles gruen). Original ruft execFrom(0, &pos) mit
    int*-Ausgabeparameter -- unser bereits portiertes execFrom (TEIL 3) nimmt
    "pos" per Wert und liefert die neue Position ueber das globale
@@ -1232,7 +1232,7 @@ int runTests() {
 }
 
 /* TESTS/NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer ALTEN Arbeitsdatei retten,
-   BEVOR sie durch writeWorkfile ueberschrieben wird (Source/ebnf.cpp:920-993).
+   BEVOR sie durch writeWorkfile ueberschrieben wird (Source/parsec.cpp:920-993).
    Keine escapten Anfuehrungszeichen im Code selbst noetig -- nur die
    GELESENEN Daten (Zeilen aus einer bestehenden Datei) enthalten '"', das
    ist Laufzeittext, kein Tiny-C-String-Literal-Problem. Zwei Anpassungen:
@@ -1331,7 +1331,7 @@ void loadPreservedTests(char* path) {
 }
 
 /* ===========================================================================
-   TEIL 5: Rekursive-Abstiegs-Parsergruppe (Source/ebnf.cpp:920-1774, 1279-1330)
+   TEIL 5: Rekursive-Abstiegs-Parsergruppe (Source/parsec.cpp:920-1774, 1279-1330)
    -- literal/ident/block/repeat/option/factor/term/expression/rule rufen sich
    gegenseitig; die bare Prototypen dafuer stehen bereits oben in TEIL 2 (siehe
    Kommentar dort). Reihenfolge unten: alles, was NOCH KEINE Vorwaertsdeklaration
@@ -1399,7 +1399,7 @@ void test(int checkTS, char* msg) {
 }
 
 /* Nachbearbeitung fuer block()/repeat()/option(): siehe ausfuehrlicher
-   Original-Kommentar in Source/ebnf.cpp bei patchLocalTrue/patchLocalFalse. */
+   Original-Kommentar in Source/parsec.cpp bei patchLocalTrue/patchLocalFalse. */
 void patchLocalTrue(int fromRow, int toRowExclusive, int target) {
 	int i;
 	i = fromRow;
@@ -1758,7 +1758,7 @@ void rule() {
 }
 
 /* ===========================================================================
-   TEIL 6: Lexer (Source/ebnf.cpp:1810-2147, 1906-1970) -- lexikalischeAnalyse/
+   TEIL 6: Lexer (Source/parsec.cpp:1810-2147, 1906-1970) -- lexikalischeAnalyse/
    getAktChar sind bereits seit Projektbeginn bare-vorwaertsdeklariert
    (TEIL 2); getNext/comment/getAktLine/put/semantischeAnylyse teils ebenfalls
    (put/semantischeAnylyse ja, getNext/comment NEIN -- daher strikte
@@ -2121,8 +2121,8 @@ void lexikalischeAnalyse() {
 }
 
 /* ===========================================================================
-   TEIL 7: Programmstart (Source/ebnf.cpp:170-334, 1357-1369) -- LETZTER
-   Abschnitt des ebnf.cpp-Vollports. exitProgram/ebnfSyntax haben bereits
+   TEIL 7: Programmstart (Source/parsec.cpp:170-334, 1357-1369) -- LETZTER
+   Abschnitt des parsec.cpp-Vollports. exitProgram/ebnfSyntax haben bereits
    bare Prototypen (TEIL 2); ebnfMain ist neu und wird von main() gerufen
    (unten). Danach sollte ein voller l68-Link von ebnf.tc gegen codegen.tc
    ohne unresolved Symbole durchlaufen -- siehe [[tinyc-vollport-status]]. */

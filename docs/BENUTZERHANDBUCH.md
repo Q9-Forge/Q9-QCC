@@ -2,7 +2,7 @@
 
 ## Was das Projekt macht
 
-`ebnf` liest eine EBNF-Grammatik und erzeugt daraus Parserquelltext. Die
+`parsec` liest eine EBNF-Grammatik und erzeugt daraus Parserquelltext. Die
 Arbeitsdatei `<name>.lextab` enthält neben den generierten Tabellen auch die
 bewusst editierbaren Blöcke für Lexer, Tests und Nutzer-Code.
 
@@ -24,7 +24,7 @@ Tiny-C-Parser gebaut. Ein kleines Programm kann anschließend als IR erzeugt und
 mit der VM ausgeführt werden:
 
 ```sh
-build/ebnf Data/tinyc
+build/parsec Data/tinyc
 cc -w -o build/tinyc_p Data/tinyc_p.c
 build/tinyc_p 'int main(){ putint(2 + 3 * 4); }' > build/example.ir
 python3 tools/tinyvm.py build/example.ir

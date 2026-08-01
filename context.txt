@@ -102,7 +102,7 @@ lesen -- beide heute grundlegend erweitert/umgesetzt. ./runtests.sh: ALLE TESTS 
    `ROUTINE C <name> ... END` + `ROUTINE M68K <name> ... END` im [NUTZER-CODE]-Block
    der Arbeitsdatei. Implementiert in codegen.cpp (`actionsParseConfig()`, neu, plus
    Hooks in genParserC()/genParser68kTo() direkt vor dem Erfolgs-Return jeder Regel);
-   codegen.h um Prototyp erweitert; ebnf.cpp ruft actionsParseConfig(userCodeBuf) vor
+   codegen.h um Prototyp erweitert; parsec.cpp ruft actionsParseConfig(userCodeBuf) vor
    der Codegenerierung auf (Zeile bei lexParseConfig/cgenParseConfig).
    - C-Aufruf: `<name>(entry, p)` (start/end des erkannten Texts).
    - 68k-Aufruf: `bsr <name>` mit a0=Ende (a0 MUSS von der Routine erhalten bleiben);
@@ -162,7 +162,7 @@ umgangen). Bestaetigt: 2+3*4=14 (Praezedenz), 10-2-3=5 (linksassoziativ). Nur
 C-Backend, kein ROUTINE M68K (bewusst, siehe §9.4).
 
 Dabei einen ECHTEN, EIGENSTAENDIGEN Bug im Tabellen-Generator gefunden (nichts mit
-ACTION/Codegen zu tun, reiner execFrom()/Tabellen-Pfad): `rule()` in ebnf.cpp prueft
+ACTION/Codegen zu tun, reiner execFrom()/Tabellen-Pfad): `rule()` in parsec.cpp prueft
 am Regelende, ob die LETZTE Tabellenzeile noch eine offene Vorwaertsreferenz hat
 (trueAction/falseAction >= aktTabIndex, gesetzt von block()/repeat()/option() wenn
 "danach kommt noch was in dieser Regel" nicht mehr stimmte) -- aber NUR die letzte
@@ -270,7 +270,7 @@ Build+Gesamttest: ./runtests.sh (baut und fuehrt ALLES aus -- muss "ALLE TESTS O
    E = "committed" (endgueltig); term() verdrahtet das jetzt positionsabhaengig.
 4. Test/-Verzeichnis neu angelegt (leftrec/leftrec2/opt_leftrec + 9 Konstrukt-
    Grammatiken, alle mit TESTS-Bloecken in ihren Arbeitsdateien), runtests.sh dazu.
-5. PROJECT-Header mit Edition History oben in ebnf.cpp (Ver. 2.10, Q9-Stil).
+5. PROJECT-Header mit Edition History oben in parsec.cpp (Ver. 2.10, Q9-Stil).
 6. Data/*.lextab + Test/*.lextab im neuen Arbeitsdatei-Format regeneriert.
 7. NEU: docs/ARCHITEKTUR.md -- Architektur-Plan Richtung Codegenerierung (68k zuerst),
    siehe Abschnitt 12. Erste Codegen-Stufe begonnen, Stand siehe dort.
@@ -316,7 +316,7 @@ Vision (vom User in dieser Session so festgelegt, noch NICHT implementiert):
   sogar eine Webseite statt einer Datei -- aber das ist bewusst spaetere Ausbaustufe.
 
 ## Was SCHON umgesetzt ist (sicher, getestet, unveraendert lassen):
-- `appendQuelltext()` + globaler Puffer `quelltextBuf` (in ebnf.cpp, nahe "List Buffer"-
+- `appendQuelltext()` + globaler Puffer `quelltextBuf` (in parsec.cpp, nahe "List Buffer"-
   Abschnitt): sammelt bereits den kompletten huebschen Listing-Text waehrend rule()
   ihn ausgibt (siehe `appendQuelltext(lst)` Aufrufe am Ende von rule()). Das ist die
   Datenquelle fuer Block 1 (EBNF-QUELLTEXT) der Arbeitsdatei -- schon da, noch nicht
@@ -349,7 +349,7 @@ Vision (vom User in dieser Session so festgelegt, noch NICHT implementiert):
    Abschnitt 9 fuer die genauen .ebnf-Inhalte: leftrec.ebnf, leftrec2.ebnf,
    opt_leftrec.ebnf) + Regressionstest der Konstrukt-Tests aus Abschnitt 9/9b
    (Sequenz, Alternative, Block, Option, Wiederholung, kombiniert).
-8. Danach: PROJECT-Header mit Edition History oben in ebnf.cpp ergaenzen (User-Wunsch,
+8. Danach: PROJECT-Header mit Edition History oben in parsec.cpp ergaenzen (User-Wunsch,
    noch nicht umgesetzt) -- Format siehe C:\projects\PROJECT.md Abschnitt "Header-System".
 
 ## Wichtige Design-Entscheidungen aus der Diskussion (nicht mehr in Frage stellen):
@@ -388,7 +388,7 @@ Vision (vom User in dieser Session so festgelegt, noch NICHT implementiert):
 # Letzter Arbeitsstand
 Zuletzt bearbeitet: 2026-07-19
 Aktuell bei: Linksrekursions-Erkennung, oberon0.ebnf-Tippfehlerfix, Range-Operator "-" und
-<name>-NTS-Syntax alle in ebnf.cpp umgesetzt; Data/*.lextab + *.lexlst final neu generiert
+<name>-NTS-Syntax alle in parsec.cpp umgesetzt; Data/*.lextab + *.lexlst final neu generiert
 
 # Detaillierte Beschreibungen
 
@@ -401,7 +401,7 @@ Status: Abgeschlossen
 
 ## 3. Alter Rekursions-Bug: Ursache und Fix
 Status: Abgeschlossen (Erkennung), Stack-Maschine selbst noch offen (siehe ToDo 4)
-- Ursache: `ebnf.cpp` löste NTS-Referenzen (Regelaufrufe) nie zu einer Zieladresse auf
+- Ursache: `parsec.cpp` löste NTS-Referenzen (Regelaufrufe) nie zu einer Zieladresse auf
   (nur der Regelname wurde als Text abgelegt) und hatte keinerlei Call/Return-Mechanismus.
   Ein flaches true/false-Sprungtabellen-Schema (FSM-artig, wie bei tiny-regex.cpp) kann
   Rekursion/Verschachtelung grundsätzlich nicht abbilden -- das ist ein regulär-vs-
@@ -497,7 +497,7 @@ Status: Abgeschlossen
 - Alle "-"-Vorkommen in Data/*.ebnf (unsere eigenen, in Schritt 7 eingeführten Ranges)
   auf "~" aktualisiert; Literal-Vorkommen von "-" als Objektsprachen-Minus (z.B.
   `"+" | "-"` in Ausdrucksgrammatiken) sind gequotet und daher unberührt/unproblematisch.
-- Am Dateianfang von ebnf.cpp einen Kommentarblock ergänzt, der den unterstützten
+- Am Dateianfang von parsec.cpp einen Kommentarblock ergänzt, der den unterstützten
   Dialekt und alle bewussten Abweichungen von ISO 14977 zusammenfasst.
 - Regressionstest nach der Umbenennung: alle 5 echten Grammatiken weiterhin
   fehlerfrei, alle 3 Linksrekursions-Testfälle weiterhin korrekt erkannt, alter
@@ -505,7 +505,7 @@ Status: Abgeschlossen
 
 ## 9. Stack-Maschine implementiert -- und dabei den alten Bug wirklich gefunden
 Status: Abgeschlossen (siehe 9b für bewusst offen gelassene Grenzen)
-- `execFrom(startRow, *pos)` in ebnf.cpp: fuehrt die generierte Tabelle als echten
+- `execFrom(startRow, *pos)` in parsec.cpp: fuehrt die generierte Tabelle als echten
   Parser gegen einen Eingabestring aus. TS/RNG vergleichen direkt gegen die Eingabe;
   NTS ist ein Unterprogrammaufruf -- der native C++-Aufrufstack via Rekursion
   uebernimmt die Rolle des Call/Return-Stacks (Ruecksprungadresse + Ruecksetzposition
@@ -625,7 +625,7 @@ Status: ERSTE AUSBAUSTUFE FERTIG und komplett per Suite abgesichert (./runtests.
 - Data/oberon0.ebnf VOLLSTAENDIG gemacht (Tippfehler identList/Expression, fehlende
   SimpleExpression-Regel ergaenzt nach Wirth, Relationen "<=" VOR "<" wegen geordneter
   Auswahl) -> echter Oberon-0-Parser in C und 68k, Programme MIT Leerzeichen/Kommentar
-  laufen in beiden identisch. WICHTIG dabei gefundener Fix in ebnf.cpp: '#'-Kommentar
+  laufen in beiden identisch. WICHTIG dabei gefundener Fix in parsec.cpp: '#'-Kommentar
   zaehlt nur noch am ZEILENANFANG (vorher loeschte ein gequotetes "#" in einer Regel
   die ganze Zeile -- deshalb aenderten sich die Referenz-Fehlerzahlen: modula2 36,
   oberon07 50, siehe runtests.sh Kommentar).

@@ -129,4 +129,4 @@ Alle Vergleiche: `a, b → 0|1`.
 - `tools/tinyvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
   alle Backends.
 - `docs/SELFHOSTING_LUECKENLISTE.md` / `[[tinyc-vollport-status]]` (Memory)
-  — Kontext zum laufenden Tiny-C-Vollport von `codegen.cpp`/`ebnf.cpp`.
+  — Kontext zum laufenden Tiny-C-Vollport von `codegen.cpp`/`parsec.cpp`.

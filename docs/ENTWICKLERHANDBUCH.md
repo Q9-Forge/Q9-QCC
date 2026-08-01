@@ -4,7 +4,7 @@
 
 ```text
 EBNF-Quelle
-  → Source/ebnf.cpp (Generator)
+  → Source/parsec.cpp (Generator)
   → Data/tinyc_p.c (Parser mit Nutzer-Aktionen)
   → Stack-IR
   → tools/tinyvm.py oder Target-Backend

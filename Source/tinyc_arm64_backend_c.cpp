@@ -2,7 +2,7 @@
 // tinyc_arm64_backend_c.cpp -- reines-C-Gegenstueck zu tinyc_arm64_backend.cpp
 //
 // Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
-// Tabellen + lineare Suche, im selben Stil wie ebnf.cpp/codegen.cpp. Das
+// Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
 // Original (tinyc_arm64_backend.cpp) bleibt unveraendert als Referenz liegen;
 // siehe docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5. Um auf die C++-Version
 // zurueckzuschalten, in runtests.sh wieder tinyc_arm64_backend.cpp bauen.
