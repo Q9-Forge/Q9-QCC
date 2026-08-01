@@ -1,23 +1,23 @@
-/* ebnf.tc -- Tiny-C-Port von Source/ebnf.cpp (EBNF-Uebersetzer: Grammatik-Parser,
+/* ebnf.tc -- QCC-Port von Source/ebnf.cpp (EBNF-Uebersetzer: Grammatik-Parser,
    Tabellen-/Arbeitsdatei-Verwaltung, Stack-Maschine, Linksrekursions-Pruefung).
-   Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md / [[tinyc-vollport-status]]
-   (Memory) fuer den Kontext. Zusammen mit SourceTinyC/codegen.tc (bereits komplett
+   Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md / [[qcc-vollport-status]]
+   (Memory) fuer den Kontext. Zusammen mit SourceQCC/codegen.tc (bereits komplett
    portiert) das Gegenstueck zum echten C++-Toolchain-Paar ebnf.cpp+codegen.cpp.
 
    ARCHITEKTUR: eigene Datei, GETRENNT von codegen.tc (nicht angehaengt) --
    entspricht der echten C++-Projektstruktur (ebnf.cpp ruft codegen.cpp, nicht
-   umgekehrt) und dem bereits bewiesenen Mehrdatei-Feature (Tiny-C Mehrdatei M1/M2/M3
+   umgekehrt) und dem bereits bewiesenen Mehrdatei-Feature (QCC Mehrdatei M1/M2/M3
    in runtests.sh). Cross-Datei-Aufrufe von codegen.tc-Funktionen sind BARE
    Funktionsprototypen OHNE Rumpf (interne bsr/bl-ABI, NICHT "extern" -- das waere
    die Microware-ABI/CALLEXT fuer echte clib.l-Funktionen). Beim ECHTEN Zwei-Datei-
    Build: codegen.tc mit "-part" (kein eigenes main), ebnf.tc mit "-part -runtime"
    (traegt main() UND den gemeinsamen 68k-Core/I/O-Anker). Waehrend der Entwicklung
    zum SCHNELLEN Testen weiterhin per Konkatenation ($(cat codegen.tc)$(cat ebnf.tc)
-   plus Testmain) in EINER tinyc_p-Kompilation geprueft -- Prototyp+spaetere-echte-
+   plus Testmain) in EINER qcc_p-Kompilation geprueft -- Prototyp+spaetere-echte-
    Definition IN DERSELBEN Datei wurde verifiziert unproblematisch (kein "duplicate
-   function"), siehe [[tinyc-vollport-status]].
+   function"), siehe [[qcc-vollport-status]].
 
-   Alle in SourceTinyC/codegen.tc etablierten Tiny-C-Sprachquirks/Workarounds gelten
+   Alle in SourceQCC/codegen.tc etablierten QCC-Sprachquirks/Workarounds gelten
    unveraendert weiter (numerische ASCII-Codes statt Zeichenliterale, int/bool strikt
    unterschieden, keine partielle 2D-Array-Indizierung -> flache 1D-Arrays, keine
    escapten Anfuehrungszeichen in String-Literalen -> Byte-Helfer wie appendQuoteChar
@@ -72,7 +72,7 @@ extern void exit(int code);
      CHARBUFFER_LEN=512         QUELLTEXT_BUF_SIZE=65536
 
    TOKEN_*-Werte (im Original #define, hier als literale Zahlen belassen --
-   ein Tiny-C enum wuerde bei 0 beginnen, das Original startet bei 0x80/128,
+   ein QCC enum wuerde bei 0 beginnen, das Original startet bei 0x80/128,
    daher bewusst KEIN enum hier, um exakte Wertegleichheit mit eventuell
    gespeicherten/verglichenen Rohwerten zu vermeiden -- reine Vorsichtsmassnahme,
    nicht funktional zwingend):
@@ -171,7 +171,7 @@ int rebuildVisited[1024];		/* LEXTAB_LEN */
 /* loadWorkfileAsGrammar()s Handparser (siehe dortiger Kommentar, TEIL 4):
    aktuelle Position innerhalb der gerade geparsten Zeile. Bewusst GLOBAL statt
    int*-Ausgabeparameter -- ein einzelner Skalar-Pointer mit "*p = wert"-
-   Schreibzugriff ist in dieser Tiny-C-Version bisher NICHT erprobt (siehe
+   Schreibzugriff ist in dieser QCC-Version bisher NICHT erprobt (siehe
    execPosResult-Kommentar oben, execFrom), daher hier dasselbe Muster. */
 int wfParsePos;
 
@@ -181,7 +181,7 @@ int inputLen;
 
 /* Original schreibt die neue Position ueber einen "int* pos"-Out-Parameter
    zurueck (execFrom(int startRow, int* pos)). Ein einzelner Skalar-Pointer
-   wird in dieser Tiny-C-Version bisher nur INDIZIERT genutzt (ruleNullable[r]
+   wird in dieser QCC-Version bisher nur INDIZIERT genutzt (ruleNullable[r]
    in codegen.tc), nie ueber "*p = wert" beschrieben -- daher hier bewusst ein
    globales Ergebnisfeld statt des Pointer-Parameters (execFrom nimmt "pos"
    jetzt per Wert, siehe Prototyp in TEIL 2). */
@@ -234,8 +234,8 @@ char* readPtr;
 =========================================================================== */
 
 /* Bare Prototypen fuer die (bereits vollstaendig portierten) codegen.tc-
-   Funktionen -- interne Tiny-C-ABI ueber Dateigrenze hinweg, siehe Kommentar
-   oben. Reihenfolge/Signaturen 1:1 aus SourceTinyC/codegen.tc uebernommen. */
+   Funktionen -- interne QCC-ABI ueber Dateigrenze hinweg, siehe Kommentar
+   oben. Reihenfolge/Signaturen 1:1 aus SourceQCC/codegen.tc uebernommen. */
 void astReset();
 int astMark();
 void astPushTS(char* text);
@@ -278,7 +278,7 @@ void lexikalischeAnalyse();
 void exitProgram(int exitCode);
 
 /* Wie emitAndAnd/emitOrOr/emitQMark in codegen.tc (siehe dortiger Kommentar):
-   ein Tiny-C-String-Literal kann kein escaptes Anfuehrungszeichen enthalten
+   ein QCC-String-Literal kann kein escaptes Anfuehrungszeichen enthalten
    UND keine literale Ein-Zeichen-Zeichenkette "\"" darstellen (der Delimiter
    selbst kann nie Inhalt sein). Das Original haengt an mehreren Stellen genau
    EIN Anfuehrungszeichen an einen Laufzeitpuffer an (z.B. strcat_s(dst, ...,
@@ -425,7 +425,7 @@ void encodeTSField(char* in, char* out, int outMax) {
 /* statString[-stat] aus dem Original (ein durch negative Statuswerte
    indiziertes char[]) wird durch eine if/else-Kette ersetzt -- weder ein
    global initialisiertes "char x[] = \"...\";" noch eine char*-Variable, der
-   ein String-Literal zugewiesen wird, ist in dieser Tiny-C-Version bisher
+   ein String-Literal zugewiesen wird, ist in dieser QCC-Version bisher
    erprobt (String-Literale werden bislang nur DIREKT als Funktionsargument
    verwendet). Aus demselben Grund werden head0/head1/value0 (das Original
    haelt sie als const char* vor) als Literal an jeder Aufrufstelle wiederholt
@@ -653,7 +653,7 @@ void extractLiteralText(char* quoted, char* out, int outMax) {
    Deklaration in TEIL 1). "while (true)" statt "while (1)": ein bloser
    Integer-Literal als Bedingung ist nicht erprobt (die Sprache unterscheidet
    strikt int/bool), "true"/"false" sind dagegen echte Schluesselwoerter der
-   Tiny-C-Grammatik. */
+   QCC-Grammatik. */
 int execFrom(int startRow, int pos) {
 	int row;
 	int curPos;
@@ -778,16 +778,16 @@ int tsSymbolIndexOf(char* tsListFlat, int tsCnt, char* sym) {
    (WICHTIG: erst NACH loadPreservedTests() oeffnen, sonst ist der alte
    TESTS-Block schon weg -- siehe Source/ebnf.cpp:1007-1130).
 
-   Tiny-C-Anpassungen gegenueber dem Original:
+   QCC-Anpassungen gegenueber dem Original:
    (1) tsList/tsMode: siehe Kommentar bei tsListFlat/tsModeFlat in TEIL 1.
    (2) Jede Stelle, an der das Original ein Anfuehrungszeichen oder eine
        LITERALE Backslash-Buchstabenfolge (als TEXT, nicht als Escape --
        z.B. "\ooo" oder "\t\r\n" in einer Beispielkonfiguration) ausgibt,
-       ist umgebaut: ein Anfuehrungszeichen kann nie Teil eines Tiny-C-
+       ist umgebaut: ein Anfuehrungszeichen kann nie Teil eines QCC-
        String-Literals sein (Quirk 2, siehe TEIL-1-Kommentar oben) --
        Workaround fputc(34, fp). Eine literale Backslash-Buchstabenfolge ist
-       NOCH trickreicher: Tiny-C's eigener String-Literal-Dekoder
-       (tcDecodeStringLit, Data/tinyc.lextab) verschluckt JEDEN Backslash
+       NOCH trickreicher: QCC's eigener String-Literal-Dekoder
+       (tcDecodeStringLit, Data/qcc.lextab) verschluckt JEDEN Backslash
        zusammen mit dem Folgezeichen (wird zu einem Escape-Byte, oder --
        falls das Folgezeichen kein t/n/r/0 ist -- einfach zum blossen
        Folgezeichen OHNE den Backslash). Ein literaler Backslash entkommt
@@ -1021,7 +1021,7 @@ void rebuildFirstEdgesFromTable() {
    int* fuer die Consumed-Position via %n) in EINEM Aufruf. Das geht hier aus
    ZWEI Gruenden nicht 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (siehe
    writeWorkfile-Kommentar), neun ueberschreiten das. (2) int*-Ausgabeparameter
-   mit "*p = wert"-Schreibzugriff sind in dieser Tiny-C-Version generell
+   mit "*p = wert"-Schreibzugriff sind in dieser QCC-Version generell
    unerprobt (siehe execPosResult-Kommentar, execFrom) -- sscanf wuerde genau
    das brauchen. Stattdessen ein simpler Handparser mit der globalen
    Parse-Position wfParsePos (TEIL 1), passend zum Zeilenformat aus
@@ -1064,7 +1064,7 @@ void wfParseToken(char* line, char* out, int outMax) {
    Erfolg, 0 wenn die Datei keine Arbeitsdatei im neuen Format ist (kein
    [PARSER-TABELLE]-Block gefunden) oder nicht lesbar war. blk als einfacher
    int statt des anonymen lokalen enums im Original (0=NONE 1=QUELLTEXT
-   2=PARSERTAB 3=SONST) -- anonyme lokale enums sind in dieser Tiny-C-Version
+   2=PARSERTAB 3=SONST) -- anonyme lokale enums sind in dieser QCC-Version
    bisher nirgends erprobt, ein einfacher int mit Kommentar ist das etablierte
    Muster (siehe STAT_TRUE/STAT_FALSE/... in printLexTab). */
 int loadWorkfileAsGrammar(char* path) {
@@ -1240,7 +1240,7 @@ int runTests() {
    BEVOR sie durch writeWorkfile ueberschrieben wird (Source/ebnf.cpp:920-993).
    Keine escapten Anfuehrungszeichen im Code selbst noetig -- nur die
    GELESENEN Daten (Zeilen aus einer bestehenden Datei) enthalten '"', das
-   ist Laufzeittext, kein Tiny-C-String-Literal-Problem. Zwei Anpassungen:
+   ist Laufzeittext, kein QCC-String-Literal-Problem. Zwei Anpassungen:
    (1) char-Literal '"' -> ASCII-Code 34 (Quirk 1). (2)
    "testCases[testCaseCnt].input[n] = 0;" (arr[i].field[j] als Zuweisungsziel)
    wird wie bei loadWorkfileAsGrammar abgelehnt -- Umweg ueber einen lokalen
@@ -1422,7 +1422,7 @@ void patchLocalFalse(int fromRow, int toRowExclusive, int target) {
 	while (i < toRowExclusive) {
 		if (lexTab[i].falseAction == -2) {		/* STAT_FALSE */
 			if (target >= 0 && lexTab[i].ambigF != 0 && ambigFalseWarned == 0) {
-				/* Auf zwei printf-Aufrufe aufgeteilt: eine einzelne Tiny-C-
+				/* Auf zwei printf-Aufrufe aufgeteilt: eine einzelne QCC-
 				   String-Literal-Konstante ist auf 256 Bytes begrenzt
 				   (tcDecodeStringLit), der komplette Text ueberschreitet das. */
 				printf("WARNUNG: Regel '%s': Pflicht-Faktor nach ueberspringbarer Gruppe ([..]/{..})\n         vor einer Alternative/umschliessenden Gruppe: konsumiert die Gruppe\n", currentDefRule);
@@ -1773,7 +1773,7 @@ void rule() {
 
    initLexer(): das C++-Original initialisiert flagStartLineComment/
    startLineCommentString/... etc. per GLOBALEM Initialisierer bei
-   Programmstart (automatisch, VOR main()). Tiny-C globale Variablen haben
+   Programmstart (automatisch, VOR main()). QCC globale Variablen haben
    dafuer keine Entsprechung (GLOBAL <name> [init] deckt nur einfache
    Zahlenwerte ab, keine String-Pointer) -- deshalb hier eine explizite
    Init-Funktion, die von ebnfSyntax()/main() (naechster, letzter Schritt)
@@ -1795,7 +1795,7 @@ void initLexer() {
 
 /* Rohes Zeiger-Dereferenzieren (*index lesen UND *index = wert schreiben,
    nicht nur p[i]) wird hier zum ERSTEN Mal im Port gebraucht -- eigens per
-   Standalone-Test gegen TinyVM verifiziert (Lesen+Schreiben ueber einen
+   Standalone-Test gegen QCCVM verifiziert (Lesen+Schreiben ueber einen
    Pointer auf ein globales char-Array, Ergebnis exakt wie erwartet), bevor
    es hier grossflaechig eingesetzt wird. strcpy (ohne "_s"/Laengenlimit,
    siehe strcat/sprintf-Praezedenzfaelle) neu extern deklariert (TEIL 1). */
@@ -2073,13 +2073,13 @@ void lexikalischeAnalyse() {
    Abschnitt des ebnf.cpp-Vollports. exitProgram/ebnfSyntax haben bereits
    bare Prototypen (TEIL 2); ebnfMain ist neu und wird von main() gerufen
    (unten). Danach sollte ein voller l68-Link von ebnf.tc gegen codegen.tc
-   ohne unresolved Symbole durchlaufen -- siehe [[tinyc-vollport-status]]. */
+   ohne unresolved Symbole durchlaufen -- siehe [[qcc-vollport-status]]. */
 
 void exitProgram(int exitCode) {
 	/* fflush(stdout) im Original bewusst weggelassen: exit() flusht/schliesst
 	   laut C-Standard ohnehin alle offenen Streams automatisch beim Beenden,
 	   und ein stdout-FILE*-Handle ist ueber die Microware-ABI nicht ohne
-	   Weiteres als einfacher Tiny-C-Wert zu bekommen (keine simple
+	   Weiteres als einfacher QCC-Wert zu bekommen (keine simple
 	   "stdout"-Externvariable, siehe clib.l-_iob-Layout). */
 	if (fpIn != 0) { fclose(fpIn); }
 	if (fpOut != 0) { fclose(fpOut); }
@@ -2100,9 +2100,9 @@ void ebnfSyntax() {
 	put();
 }
 
-/* Ersatz fuer das Original-main(argc, argv): Tiny-C main() kann KEINE
+/* Ersatz fuer das Original-main(argc, argv): QCC main() kann KEINE
    Kommandozeilenargumente empfangen -- tc_start ruft main() ohne jedes
-   Argument auf (siehe emitCall()/tc_start in Source/tinyc_backend_c.cpp,
+   Argument auf (siehe emitCall()/tc_start in Source/qcc_backend_c.cpp,
    kein argc/argv-Mechanismus irgendwo in Grammatik oder Backend). Die
    komplette Original-Logik lebt deshalb hier in einer eigenen, mit dem
    Basisnamen PARAMETRISIERTEN Funktion -- main() selbst wird weiter unten
@@ -2237,12 +2237,12 @@ void ebnfMain(char* baseArg) {
 	exitProgram(0);
 }
 
-/* Tiny-C main() hat keinen argc/argv-Mechanismus (siehe ebnfMain()-Kommentar
+/* QCC main() hat keinen argc/argv-Mechanismus (siehe ebnfMain()-Kommentar
    oben) -- der Basisname ist deshalb hier eine feste Compile-Zeit-Konstante.
    BEKANNTE, BEWUSSTE GRENZE: fuer einen echten OS-9-Build mit variablem
    Dateinamen muesste das durch einen Syscall zum Lesen der OS-9-
    Kommandozeile (Process-Descriptor) ersetzt werden -- nicht implementiert,
-   siehe [[tinyc-vollport-status]] (Memory) fuer den Kontext. */
+   siehe [[qcc-vollport-status]] (Memory) fuer den Kontext. */
 void main() {
-	ebnfMain("tinyc");
+	ebnfMain("qcc");
 }

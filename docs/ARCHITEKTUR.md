@@ -479,14 +479,14 @@ bewusst umbenennt oder entfernt -- aktuell werden ACTION-Zeilen mit unbekannter
 Regel beim Parsen der Konfiguration schlicht mit Warnung ignoriert (codegen.cpp,
 `actionsParseConfig()`).
 
-## 10. Tiny-C: der erste komplette Sprach-zu-IR-zu-68k-Weg (geplant 2026-07-20)
+## 10. QCC: der erste komplette Sprach-zu-IR-zu-68k-Weg (geplant 2026-07-20)
 
 Neuer Projektfokus statt des oberon0-Handdurchlaufs (Abschnitt 7): eine kleine,
 grammatisch EINDEUTIGE C-Teilsprache komplett bis zum lauffaehigen OS-9/68k-Code
 durchziehen. Motivierender als oberon0, gleiche Komplexitaetsklasse, und sie
 zwingt uns zum eigentlichen Projektziel -- der in 9.5 vertagten IR-Schicht.
 
-### 10.1 Warum Tiny-C (Subset) und nicht "echtes C"
+### 10.1 Warum QCC (Subset) und nicht "echtes C"
 
 Echtes C ist genau dort eklig, wo es mit dem Retro-Codegen-Ziel nichts zu tun hat:
 Praeprozessor (eigene Sprache), typedef-vs-identifier ("lexer hack", echt
@@ -507,9 +507,9 @@ Parser sauber parsebar.
 - Builtin putint(e) (frueh: IR-Opcode PRINT; spaeter echtes OS-9 I$Write).
 - KEINE globalen Variablen in M1-M4 (bewusst, 10.11).
 
-### 10.3 Grammatik: Data/tinyc.ebnf (mit Rollen- und Keyword-Huellregeln)
+### 10.3 Grammatik: Data/qcc.ebnf (mit Rollen- und Keyword-Huellregeln)
 
-Vollstaendig in Data/tinyc.ebnf. Zwei Sorten trivialer Huellregeln (rein
+Vollstaendig in Data/qcc.ebnf. Zwei Sorten trivialer Huellregeln (rein
 syntaktische No-Ops, erkennen dieselbe Sprache) geben jeder SEMANTISCHEN Rolle
 bzw. Position einen eigenen, actionable Regelnamen -- die verallgemeinerte
 Erkenntnis aus 9.4d:
@@ -529,7 +529,7 @@ assignStmt vs callStmt: beide starten mit ident -> laengere Alternative zuerst,
 sonst Ruecksetzung). Keyword-vs-ident loest der [LEXER]-Wortgrenzen-Check (Abschnitt 8),
 eine KEYWORDS-Liste ist unnoetig.
 
-Zugehoeriger [LEXER]-Block (kommt in Data/tinyc.lextab, M1):
+Zugehoeriger [LEXER]-Block (kommt in Data/qcc.lextab, M1):
 WHITESPACE = " \t\r\n" / TOKEN ident / TOKEN number / COMMENT LINE = "//" /
 COMMENT BLOCK = "/*" "*/".
 
@@ -543,12 +543,12 @@ Code/IR (Spruenge + Label), statt Werte live zu berechnen. Wir realisieren damit
 endlich die in 9.5 skizzierte Architektur:
 
 ```
-  tinyc.ebnf + [LEXER] + [NUTZER-CODE]
-        |  (ebnf-Tool erzeugt Frontend-Parser tinyc_p.c)
+  qcc.ebnf + [LEXER] + [NUTZER-CODE]
+        |  (ebnf-Tool erzeugt Frontend-Parser qcc_p.c)
         v
   generierter Parser -- Aktionen emittieren --> Stack-IR (Textform)
         |                                          |
-        +--> tools/tinyvm (Interpreter, Orakel)    +--> tools/ir2m68k --> .s68 / OS-9
+        +--> tools/qccvm (Interpreter, Orakel)    +--> tools/ir2m68k --> .s68 / OS-9
 ```
 
 Entscheidung zur in 9.2/9.4 offen gelassenen IR-Frage: Stack-Maschine (nicht
@@ -564,7 +564,7 @@ Werte und Pointer sind getrennte Konzepte (ein Pointer ist intern `(Block, Offse
 kein simpler Integer). Der Satz unten ist der VOLLSTAENDIGE, aktuelle Stand
 (2026-07-25) -- gewachsen aus dem urspruenglichen M1-Startsatz von 2026-07-20
 ueber Zeiger/Array-/Char-/struct-Unterstuetzung bis zur Mehrdatei-Uebersetzung.
-Kanonische Quelle fuer die Semantik ist `tools/tinyvm.py` (Interpreter/Test-Orakel);
+Kanonische Quelle fuer die Semantik ist `tools/qccvm.py` (Interpreter/Test-Orakel);
 ausfuehrliche Beschreibung inkl. Stack-Effekt pro Opcode: `docs/IR_OPCODES.md`.
 
 ```
@@ -578,7 +578,7 @@ LABEL  <L>                    ; definiert Sprungziel L
 FUNCDECL   <name> <argc>      ; Vorwaertsdeklaration ohne Rumpf (Mehrdatei/geg. Rekursion)
 GLOBALDECL <typ> <name>       ; "extern"-Variable, keine eigene Allokation
                                ; FUNCDECL/GLOBALDECL: nur backend-/linkerrelevant,
-                               ; von TinyVM nicht interpretierbar
+                               ; von QCCVM nicht interpretierbar
 
 ; --- Werte laden/speichern (lokal L / global G; int / char / pointer) ---
 LOADL / STOREL <i>            ; lokaler int-Slot
@@ -627,7 +627,7 @@ CALL / CALLP <name> <nargs>   ; nargs Werte vom Stack (links->rechts gepusht) ->
 RET / RETP                    ; pop = Rueckgabewert; Rahmen abbauen; zum Aufrufer
 CALLEXT / CALLEXTP <name> <argc> <...>  ; Aufruf einer echten extern-Funktion ueber die
                                ; Microware-ABI (feste Parameter d0/d1, nur variadischer
-                               ; Ueberschuss auf den Stack); backend-only (68k), TinyVM kann das nicht
+                               ; Ueberschuss auf den Stack); backend-only (68k), QCCVM kann das nicht
 
 ; --- Sonstiges ---
 DROP             ; oberen Stackwert verwerfen (unbenutztes Ausdrucksergebnis)
@@ -698,12 +698,12 @@ der Log+Replay-Mechanismus (9.4b).
   Parameter/Locals ueber a6-relative Offsets, Rueckgabe in d0, unlk a6, rts;
   Aufrufer legt d0 als Ergebnis ab. putint -> OS-9 I$Write-Trap (M4/M5).
 
-### 10.8 Host-VM tools/tinyvm = Interpreter UND Test-Orakel
+### 10.8 Host-VM tools/qccvm = Interpreter UND Test-Orakel
 
 Kleiner Interpreter (Python, Stil wie tools/s68sim.py): liest IR-Text, fuehrt ihn
 auf einer Operanden-Stack-Maschine mit Aufruf-Stack (Frames) aus, LABEL vorab in
 Index-Map gescannt, startet bei main. Liefert sofort Ergebnisse ohne 68k-Toolchain
-UND dient als Referenz-Orakel: fuer jedes Testprogramm muss tinyvm dieselbe Ausgabe
+UND dient als Referenz-Orakel: fuer jedes Testprogramm muss qccvm dieselbe Ausgabe
 liefern wie der aus derselben IR erzeugte 68k-Code unter s68sim/r68 -- dasselbe
 differenzielle Muster, das die Suite heute fuer den Parser faehrt (C-Zwilling vs s68sim).
 
@@ -712,39 +712,39 @@ differenzielle Muster, das die Suite heute fuer den Parser faehrt (C-Zwilling vs
 Wichtiges Ergebnis dieses Entwurfs: Mit den Keyword-/Positions-Huellregeln (10.3/10.6)
 liefert der VORHANDENE "eine ACTION AFTER pro Regel"-Mechanismus Hooks an jeder
 noetigen Stelle, auch "vor" einem Teil. Ein ACTION-BEFORE ist damit fuer M1-M4 NICHT
-erforderlich; das ebnf-Tool (ebnf.cpp/codegen.cpp) bleibt fuer die Tiny-C-Arbeit
+erforderlich; das ebnf-Tool (ebnf.cpp/codegen.cpp) bleibt fuer die QCC-Arbeit
 unveraendert. (Ein echtes ACTION-BEFORE bliebe eine spaetere Bequemlichkeit, kein
 Blocker.) Ebenfalls unveraendert: die 68k-Aktions-Rollback-Luecke (9.4c) ist irrelevant,
-weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog calcexpr.
+weil der QCC-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog calcexpr.
 
 ### 10.10 Meilensteine + Teststrategie
 
-- M1  Ausdruecke + lokale Variablen + eine Funktion main: tinyc.lextab mit
-      IR-emittierenden ROUTINE-C-Koerpern; tools/tinyvm. Ziel: putint(2+3*4);
+- M1  Ausdruecke + lokale Variablen + eine Funktion main: qcc.lextab mit
+      IR-emittierenden ROUTINE-C-Koerpern; tools/qccvm. Ziel: putint(2+3*4);
       und Variablen rechnen ueber die IR korrekt. (Kein Tool-Change.)
 - M2  Kontrollfluss if/else + while ueber Label/Sprung-IR (10.6). Ziel: Schleifen/
-      Bedingungen laufen in tinyvm. (= 9.4d in echt.) **FERTIG, 2026-07-20:**
+      Bedingungen laufen in qccvm. (= 9.4d in echt.) **FERTIG, 2026-07-20:**
       `ifKw`/`whileKw`-Aktionen legen Kontroll-Frames mit eindeutigen Labels an;
       `ifCond`/`whileCond` emittieren `JZ`, die Abschlussaktionen `JMP`/`LABEL`.
       4 zusaetzliche End-to-End-Programme testen true/false-if, while und ein
-      verschachteltes if im while gegen tinyvm.
+      verschachteltes if im while gegen qccvm.
 - M3  Funktionen mit int-Parametern + Rueckgabe + Rekursion. Ziel: fib/fakultaet
-      laufen rekursiv in tinyvm. **FERTIG, 2026-07-20:** Der Frontend-Emitter
+      laufen rekursiv in qccvm. **FERTIG, 2026-07-20:** Der Frontend-Emitter
       verwaltet verschachtelbare Call-Frames (Name + Argumentzahl), damit ein
       Aufruf als Argument eines anderen Aufrufs korrekt bleibt. Die Frames sichern
       zudem ausstehende Add-/Mul-Operatoren, damit etwa `n * fact(n - 1)` nicht
       beim Parsen des Arguments voreilig multipliziert. Zwei neue Tests pruefen
       Mehrfachparameter/verschachtelten Aufruf und rekursive Fakultaet.
 - M4  Backend (eigenstaendiges C++, nicht Teil von `ebnf`): dieselbe IR -> .s68/OS-9,
-      differenziell gegen tinyvm geprueft. **BEGONNEN, M4a 2026-07-20:**
-      `Source/tinyc_backend.cpp` liest die Text-IR und erzeugt PIC-faehigen
+      differenziell gegen qccvm geprueft. **BEGONNEN, M4a 2026-07-20:**
+      `Source/qcc_backend.cpp` liest die Text-IR und erzeugt PIC-faehigen
       68000-Motorola-Assembler fuer Funktionsframes, Parameter, lokale Slots,
       ADD/SUB/NEG, Vergleiche, Spruenge, CALL/RET und PRINT. `runtests.sh`
       assembliert einen Mehrparameter-/CALL-Fall mit freiem vasm. MUL/DIV und I/O
-      sind noch Runtime-Stubs. **M4b 2026-07-20:** `tools/tiny68sim.py` (nur
+      sind noch Runtime-Stubs. **M4b 2026-07-20:** `tools/qcc68sim.py` (nur
       Test-Orakel, nicht Teil der Toolchain) fuehrt die M4a-Ausgabe aus und bildet
       die minimale Runtime nach; die rekursive 68k-Fakultaet liefert nach vasm-
-      Assemblercheck ebenso `120` wie tinyvm. **M4c-1 2026-07-20:** Die festen,
+      Assemblercheck ebenso `120` wie qccvm. **M4c-1 2026-07-20:** Die festen,
       PIC-faehigen 68000-Schablonen `tc_mul_i32` und `tc_div_i32` sind nun echter
       68k-Core (signed int32, nicht Runtime); der Simulator durchlaeuft sie mit
       Fakultaet, negativer Multiplikation und Division. **M4c-2 2026-07-20:**
@@ -760,10 +760,10 @@ weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog c
       erst nach der vollstaendigen globalDecl-Regel, damit Backtracking eines
       Funktionspraefixes keinen Frontend-Zustand veraendert. Echte Ziel-Runtime
       folgt. **M4c-4 2026-07-21:** Der zweite Plattform-Hook `tc_putchar`
-      ist implementiert. Tiny-C erkennt `putchar(int)`, emittiert `PRINTC` und
+      ist implementiert. QCC erkennt `putchar(int)`, emittiert `PRINTC` und
       das ARM64-Darwin-start.s schreibt das niederwertige Byte direkt nach
       stdout. Der 68k-Backend-Vertrag ist derselbe (`bsr tc_putchar`); bis zur
-      Q9-Runtime prueft tiny68sim ihn. Der native Test gibt `OK`, `120`, `-6`
+      Q9-Runtime prueft qcc68sim ihn. Der native Test gibt `OK`, `120`, `-6`
       aus.
       **T1 2026-07-21:** `int` (signed 32 Bit) und `char` (unsigned 8 Bit)
       sind nun echte Eintraege der lokalen und globalen Namensraeume. Die IR
@@ -778,7 +778,7 @@ weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog c
       **T2 unsigned int 2026-07-21:** `unsigned int` ist jetzt ein 32-Bit-
       Worttyp mit demselben Speicherlayout wie `int`. Der Frontend-Typcode ist
       `u`; Addition/Subtraktion bleiben Wortoperationen, Division und die vier
-      Ordnungsvergleiche werden jedoch unsigned (`UDIV`, `CMPU...`). TinyVM,
+      Ordnungsvergleiche werden jedoch unsigned (`UDIV`, `CMPU...`). QCCVM,
       die ARM64-Emission (`udiv`, `lo`/`hi`/`ls`/`hs`) und der 68000-Pfad
       (feste 32-Runden-`tc_udiv_u32`-Schablone, Carry-basierte Vergleiche)
       sind gegen `0xffffffff > 1` und `0xffffffff / 2` getestet. `putint`
@@ -786,7 +786,7 @@ weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog c
       Plattform-Hook.
       **T3 putuint 2026-07-22:** Dieser Hook ist nun vorhanden: `putuint(e)`
       emittiert `PRINTU` und schreibt den Wert als unsigned 32-Bit-Dezimalzahl.
-      TinyVM und tiny68sim verwenden dieselbe Darstellung; die ARM64-Darwin-
+      QCCVM und qcc68sim verwenden dieselbe Darstellung; die ARM64-Darwin-
       Runtime besitzt `_tc_putuint` ohne Vorzeichenbehandlung. Der 68000-
       Backend-Vertrag ist `tc_putuint` und wartet wie `tc_putint` nur noch auf
       die spaetere Q9-Runtime.
@@ -802,8 +802,8 @@ weil der Tiny-C-Frontend-Parser nur ROUTINE C nutzt (IR-Emission in C), analog c
       2026-07-22 implementiert. Naechster grosser Typschritt sind Structs sowie
       nichtkonstante globale Initialisierer und echte linkerfaehige Abschnitte.
 
-Integration in runtests.sh (M1): eigener Abschnitt, der tinyc_p auf eine Reihe
-Testprogramme laufen laesst und die tinyvm-Ausgabe gegen erwartete Werte prueft
+Integration in runtests.sh (M1): eigener Abschnitt, der qcc_p auf eine Reihe
+Testprogramme laufen laesst und die qccvm-Ausgabe gegen erwartete Werte prueft
 (ab M4 zusaetzlich gegen den 68k-Pfad). Neue Grammatik in die expliziten g-Listen
 (Abschnitte "codegen"/"s68sim") NUR aufnehmen, soweit sinnvoll -- der Parser selbst
 wird ohnehin ueber die Programm-Tests validiert.
@@ -846,7 +846,7 @@ festen Bytezahl den Elementtyp `c`, `i` oder `p`. Daher skaliert jedes Backend
 selbst korrekt: `char*` mit 1, `int*` mit 4 und Pointer-auf-Pointer mit der
 Pointergroesse des Ziels (68000: 4, ARM64: 8 Byte).
 
-TinyVM verwendet dafuer abstrakte Byteadressen in Speicherbloecke. Das
+QCCVM verwendet dafuer abstrakte Byteadressen in Speicherbloecke. Das
 68000-Backend nutzt 32-Bit-Adressen, ARM64 durchgehend 64-Bit-Adressen fuer
 Pointer-Slots, Argumente und Rueckgaben. Unterstuetzt sind Adressbildung und
 Dereferenzierung, indirekte Zuweisung, `p[i]`, Pointerparameter/-rueckgaben,
@@ -858,7 +858,7 @@ Subtraktion sowie die Differenz kompatibler Pointer.
   benannt, Grammatik deckt if/else bereits ab; &&/|| spaeter (brauchen eigene
   Sprung-Emission).
 - putint als echter OS-9-Trap (I$Write) statt PRINT: M4/M5.
-- typedef/Praeprozessor/Declarator-Syntax: bewusst ausserhalb Tiny-C (10.1).
+- typedef/Praeprozessor/Declarator-Syntax: bewusst ausserhalb QCC (10.1).
 
 ### 10.12 Zielmodularitaet: Architecture Backend + Target Runtime (Idee, vertagt 2026-07-20)
 
@@ -875,7 +875,7 @@ Stack-IR -> Architecture Backend -> Target Runtime -> Betriebssystem/Hardware
 - Die **Target Runtime** implementiert die sprachliche Aussenwelt, zuerst
   `tc_putint`, spaeter Ein-/Ausgabe, Dateien, Speicher und Programmende. Sie
   kapselt dabei Systemcalls, Startcode und das jeweilige Ziel-ABI.
-- `int` der Tiny-C-Sprache ist von Anfang an als signiertes 32-Bit-Wort zu
+- `int` der QCC-Sprache ist von Anfang an als signiertes 32-Bit-Wort zu
   definieren, unabhaengig von der Host-CPU. Der IR-Opcode-Satz bleibt ABI-neutral.
 
 Erwuenschte Kombinationen: `68k backend + Q9 runtime`, `i386 backend +
@@ -886,7 +886,7 @@ x86-64-Testpfad. Diese Aufteilung wird erst nach M1--M3 und vor bzw. zusammen
 mit dem ersten 68k-Backend (M4) konkretisiert.
 
 **Erster echter Hosted-Zielweg, 2026-07-21:** Auf dem ARM64-Mac existiert nun
-ARM64 backend + Darwin runtime. `Source/tinyc_arm64_backend.cpp` emittiert
+ARM64 backend + Darwin runtime. `Source/qcc_arm64_backend.cpp` emittiert
 PIC-faehigen ARM64-Programmassembler (Frames, Calls, signed int32-Arithmetik,
 Kontrollfluss und Globals); `runtime/arm64_darwin/start.s` besitzt den eigenen
 `_start`, `tc_putint` und `tc_exit` ueber direkte Darwin-Systemcalls. Es wird
@@ -922,15 +922,15 @@ M4c teilt sich deshalb bewusst in zwei Schritte:
 
 Der erste Schritt ist kein Platzhalter-Trick: Er ist die feste Vertragsschicht
 zwischen Machine Backend und Plattform. Bis Q9 sie ausfuehren kann, bleibt
-`tiny68sim.py` ausschliesslich das differenzielle Test-Orakel. Ein spaeteres
+`qcc68sim.py` ausschliesslich das differenzielle Test-Orakel. Ein spaeteres
 POSIX-, OS-9/386- oder Bare-Metal-Runtime-Paket liefert dieselben Symbole mit
 eigener Start-/Systemschicht.
 
 ### 10.14 Umsetzungsstand Meilenstein 1 (2026-07-20, FERTIG)
 
-M1 laeuft end-to-end: Data/tinyc.ebnf -> generierter Parser (Data/tinyc_p.c,
-ROUTINE-C-Aktionen im [NUTZER-CODE] von Data/tinyc.lextab) -> Stack-IR nach stdout
--> tools/tinyvm.py fuehrt sie aus. runtests.sh Abschnitt 12 prueft 9 Programme
+M1 laeuft end-to-end: Data/qcc.ebnf -> generierter Parser (Data/qcc_p.c,
+ROUTINE-C-Aktionen im [NUTZER-CODE] von Data/qcc.lextab) -> Stack-IR nach stdout
+-> tools/qccvm.py fuehrt sie aus. runtests.sh Abschnitt 12 prueft 9 Programme
 (Ausdruecke mit Praezedenz/Assoziativitaet, Klammern, unaeres Minus, C-Division,
 lokale Variablen, Kommentare, Relationen) gegen erwartete Werte. KEIN Tool-Change
 noetig (Bestaetigung von 10.9), nur Grammatik + [NUTZER-CODE] + VM.
