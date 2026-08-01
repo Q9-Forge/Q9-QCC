@@ -1089,7 +1089,7 @@ int genParserC(const char* path) {
 		/* 2026-07-25 GEFUNDEN: ACTION_LOG_MAX war 4096 -- bei Ueberschreitung wurden
 		   WEITERE Aktionen STILLSCHWEIGEND verworfen (nur "if (actionLogLen < MAX)",
 		   kein Fehler), was sich als scheinbar erfolgreicher, aber HALB LEERER Parse
-		   aeusserte (z.B. bei einem groesseren Tiny-C-Programm mit vielen Funktionen:
+		   aeusserte (z.B. bei einem groesseren QCC-Programm mit vielen Funktionen:
 		   "OK" wurde gedruckt, aber spaetere Funktionen/main fehlten in der IR-Ausgabe
 		   komplett) -- entdeckt beim Testen des -largedata-Funktionsaufruf-Schalters
 		   mit mehreren generierten Testfunktionen. Behoben nach demselben Muster wie
@@ -1106,7 +1106,7 @@ int genParserC(const char* path) {
 		fprintf(fp, "static ActionLogEntry actionLog[ACTION_LOG_MAX];\n");
 		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
 		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
-		fprintf(fp, "\t\tfprintf(stderr, \"tinyc: Aktions-Log-Grenze (%%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n\", ACTION_LOG_MAX);\n");
+		fprintf(fp, "\t\tfprintf(stderr, \"qcc: Aktions-Log-Grenze (%%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n\", ACTION_LOG_MAX);\n");
 		fprintf(fp, "\t\texit(1);\n\t}\n");
 		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
 		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");

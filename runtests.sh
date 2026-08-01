@@ -334,8 +334,8 @@ else
 	echo "warn  r68: Wine/MWOS nicht verfuegbar -- OS-9-Assembler-Check uebersprungen"
 fi
 
-# 12) Tiny-C: eigenstaendige Sprache -> Stack-IR -> tinyvm (docs/ARCHITEKTUR.md Kap.10).
-#     Grammatik Data/tinyc.ebnf + [NUTZER-CODE] emittieren Stack-IR; tools/tinyvm
+# 12) QCC: eigenstaendige Sprache -> Stack-IR -> qccvm (docs/ARCHITEKTUR.md Kap.10).
+#     Grammatik Data/qcc.ebnf + [NUTZER-CODE] emittieren Stack-IR; tools/qccvm
 #     fuehrt die IR aus (Interpreter + Referenz-Orakel). Meilenstein 1: Ausdruecke,
 #     lokale Variablen, putint. (Kein 68k-Backend hier -- kommt in M4.)
 if command -v python3 >/dev/null 2>&1; then
@@ -344,23 +344,23 @@ if command -v python3 >/dev/null 2>&1; then
 	# Ueberschreitung wird der Ueberschuss STILLSCHWEIGEND abgeschnitten (nur eine
 	# Warnzeile im stdout, die hier vorher mit ">/dev/null" verschluckt wurde).
 	# Das hat einmal drei ROUTINE-C-Bloecke (tc_ternarybegin/-middle/-end) aus
-	# Data/tinyc.lextab geloescht, ohne dass ein einziger Build-Schritt einen
+	# Data/qcc.lextab geloescht, ohne dass ein einziger Build-Schritt einen
 	# Fehler gemeldet hat -- nur ein spaeter fehlschlagender Ternary-Test hat es
 	# aufgedeckt. USER_CODE_LEN wurde deshalb grosszuegig erhoeht (128 KB -> 1 MB),
 	# UND hier wird die Ausgabe jetzt auf "WARNUNG" geprueft statt verschluckt.
-	ebnfout=$(build/parsec Data/tinyc 2>&1)
+	ebnfout=$(build/parsec Data/qcc 2>&1)
 	if echo "$ebnfout" | grep -q 'WARNUNG'; then
-		echo "FAIL  tinyc: build/parsec meldet eine Kuerzungswarnung (siehe oben) -- Data/tinyc.lextab wurde vermutlich abgeschnitten!"
+		echo "FAIL  qcc: build/parsec meldet eine Kuerzungswarnung (siehe oben) -- Data/qcc.lextab wurde vermutlich abgeschnitten!"
 		echo "$ebnfout" | grep 'WARNUNG'
 		fail=1
 	fi
-	if cc -w -o build/tinyc_p Data/tinyc_p.c 2>/dev/null; then
+	if cc -w -o build/qcc_p Data/qcc_p.c 2>/dev/null; then
 		tcfail=0
 		tc_check() {
-			got=$(build/tinyc_p "$1" 2>/dev/null | python3 tools/tinyvm.py 2>/dev/null)
+			got=$(build/qcc_p "$1" 2>/dev/null | python3 tools/qccvm.py 2>/dev/null)
 			exp=$(printf '%b' "$2")
 			if [ "$got" != "$exp" ]; then
-				echo "FAIL  tinyc: [$1]"
+				echo "FAIL  qcc: [$1]"
 				echo "        erhalten: [$got]  erwartet: [$exp]"
 				tcfail=1; fail=1
 			fi
@@ -394,10 +394,10 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'typedef struct { char a; int b; } Mixed; int main(){ putint(sizeof(struct Mixed)); }' '8'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ putint(RED); putint(GREEN); putint(BLUE); }' '0\n1\n2'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ int c = GREEN; if (c == GREEN) putint(1); else putint(0); putint(BLUE - RED); }' '1\n2'
-		if build/tinyc_p 'enum A { X, Y }; enum B { X, Z }; int main(){ putint(X); }' 2>&1 | grep -q 'duplicate enum constant'; then
-			echo "ok    tinyc: doppelte enum-Konstante wird diagnostiziert"
+		if build/qcc_p 'enum A { X, Y }; enum B { X, Z }; int main(){ putint(X); }' 2>&1 | grep -q 'duplicate enum constant'; then
+			echo "ok    qcc: doppelte enum-Konstante wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: enum-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: enum-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		tc_check 'int main(){ putint(sizeof(int)); putint(sizeof(char)); putint(sizeof(bool)); putint(sizeof(unsigned int)); }' '4\n1\n1\n4'
 		tc_check 'struct Point { int x; int y; }; int main(){ putint(sizeof(struct Point)); }' '8'
@@ -423,43 +423,43 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x=5; putint((x)); putint((x)+1); }' '5\n6'
 		tc_check 'int main(){ int a=2; int b=3; putint((a+b)*2); }' '10'
 		tc_check 'int main(){ putint((int)sizeof(char)); }' '1'
-		if build/tinyc_p 'int main(){ int x=5; int *p=&x; putint((int)p); }' 2>&1 | grep -q 'cast expects int'; then
-			echo "ok    tinyc: Cast auf Pointer wird diagnostiziert"
+		if build/qcc_p 'int main(){ int x=5; int *p=&x; putint((int)p); }' 2>&1 | grep -q 'cast expects int'; then
+			echo "ok    qcc: Cast auf Pointer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Cast-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Cast-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
 		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
-		if build/tinyc_p 'int main(){ int x; int *p=&x; putint(sizeof(p)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
-			echo "ok    tinyc: sizeof auf Pointer wird diagnostiziert"
+		if build/qcc_p 'int main(){ int x; int *p=&x; putint(sizeof(p)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
+			echo "ok    qcc: sizeof auf Pointer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: sizeof-Pointer-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: sizeof-Pointer-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ enum Nope x; }' 2>&1 | grep -q 'unknown enum'; then
-			echo "ok    tinyc: unbekannter enum-Typ wird diagnostiziert"
+		if build/qcc_p 'int main(){ enum Nope x; }' 2>&1 | grep -q 'unknown enum'; then
+			echo "ok    qcc: unbekannter enum-Typ wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: enum-Typ-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: enum-Typ-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field'; then
-			echo "ok    tinyc: unbekanntes struct-Feld wird diagnostiziert"
+		if build/qcc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.z = 1; }' 2>&1 | grep -q 'unknown struct field'; then
+			echo "ok    qcc: unbekanntes struct-Feld wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: struct-Feld-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: struct-Feld-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; putint(m.a); }' 2>&1 | grep -q 'FEHLER\|tinyc: unknown\|tinyc: struct'; then
-			echo "FAIL  tinyc: gemischte Feldtypen (int+char) werden faelschlich abgelehnt"; tcfail=1; fail=1
+		if build/qcc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; putint(m.a); }' 2>&1 | grep -q 'FEHLER\|qcc: unknown\|qcc: struct'; then
+			echo "FAIL  qcc: gemischte Feldtypen (int+char) werden faelschlich abgelehnt"; tcfail=1; fail=1
 		else
-			echo "ok    tinyc: gemischte Feldtypen (int+char) werden akzeptiert"
+			echo "ok    qcc: gemischte Feldtypen (int+char) werden akzeptiert"
 		fi
 		# Pointer-Felder sind in structField (Grammatik ohne pointerDecl) schon strukturell
 		# unmoeglich; verschachtelte structs als Feld sind es aber und werden bewusst
 		# abgelehnt (siehe SELFHOSTING_LUECKENLISTE.md: eigener Folgeschritt).
-		if build/tinyc_p 'struct Inner { int x; }; struct Outer { struct Inner i; }; int main(){ struct Outer o; }' 2>&1 | grep -q 'struct field type not supported'; then
-			echo "ok    tinyc: verschachteltes struct als Feld wird bewusst abgelehnt (eigener Folgeschritt)"
+		if build/qcc_p 'struct Inner { int x; }; struct Outer { struct Inner i; }; int main(){ struct Outer o; }' 2>&1 | grep -q 'struct field type not supported'; then
+			echo "ok    qcc: verschachteltes struct als Feld wird bewusst abgelehnt (eigener Folgeschritt)"
 		else
-			echo "FAIL  tinyc: Diagnose fuer verschachtelte struct-Felder fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer verschachtelte struct-Felder fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: Array-Felder in struct (z.B. char name[8]) -- Byte-Layout inkl.
 		# Array-Feld-Groesse (Elementgroesse * Elementzahl), Zugriff nur ueber eine
@@ -469,10 +469,10 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct Rec { char name[8]; int id; }; int main(){ putint(sizeof(struct Rec)); }' '12'
 		tc_check 'struct Rec { char name[8]; int id; }; int main(){ struct Rec r; r.id = 42; char *p = r.name; p[0] = 65; p[1] = 66; putint(r.id); putchar(p[0]); putchar(p[1]); }' '42\nAB'
 		tc_check 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' '1\n1000\n9\n12'
-		if build/tinyc_p 'struct Rec { char name[8]; }; int main(){ struct Rec r; struct Rec r2; r.name = r2.name; }' 2>&1 | grep -q 'cannot assign to array field'; then
-			echo "ok    tinyc: Zuweisung an ganzes Array-Feld wird diagnostiziert"
+		if build/qcc_p 'struct Rec { char name[8]; }; int main(){ struct Rec r; struct Rec r2; r.name = r2.name; }' 2>&1 | grep -q 'cannot assign to array field'; then
+			echo "ok    qcc: Zuweisung an ganzes Array-Feld wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Array-Feld-Zuweisungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Array-Feld-Zuweisungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: direkte p.field[i]-Indizierung von Array-Feldern -- member
 		# bekommt einen eigenen optionalen index-Anschluss (kein zweiter, ineinander
@@ -487,15 +487,15 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=5; p.a[0] += 3; putint(p.a[0]); }' '8'
 		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=10; p.a[1]=20; putint(1 + p.a[0] + p.a[1]); }' '31'
 		tc_check 'struct P{char buf[4];}; int main(){ struct P p; char* q; q = p.buf; q[0]=9; putchar(p.buf[0]); }' '\t'
-		if build/tinyc_p 'struct P{int x;}; int main(){ struct P p; putint(p.x[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
-			echo "ok    tinyc: Indizierung eines skalaren struct-Felds wird diagnostiziert"
+		if build/qcc_p 'struct P{int x;}; int main(){ struct P p; putint(p.x[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
+			echo "ok    qcc: Indizierung eines skalaren struct-Felds wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer Indizierung eines skalaren struct-Felds fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer Indizierung eines skalaren struct-Felds fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct P{char buf[4];}; int main(){ struct P p; p.buf[9]=1; }' 2>&1 | grep -q 'constant array index 9 out of range'; then
-			echo "ok    tinyc: konstanter Index-Bereichsverstoss bei p.field[i] wird diagnostiziert"
+		if build/qcc_p 'struct P{char buf[4];}; int main(){ struct P p; p.buf[9]=1; }' 2>&1 | grep -q 'constant array index 9 out of range'; then
+			echo "ok    qcc: konstanter Index-Bereichsverstoss bei p.field[i] wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: void als Rueckgabetyp (echte Semantik, return; war bereits vorher
 		# moeglich) und void* als generischer Pointer (bidirektional kompatibel zu jedem
@@ -505,40 +505,40 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'void greet(){ putint(1); } int main(){ greet(); putint(2); }' '1\n2'
 		tc_check 'int main(){ int x = 42; void *p = &x; int *q = p; putint(*q); }' '42'
 		tc_check 'int deref(void *p){ int *q = p; return *q; } int main(){ int x=7; putint(deref(&x)); }' '7'
-		if build/tinyc_p 'int main(){ void x; putint(1); }' 2>&1 | grep -q 'void is not a valid variable type'; then
-			echo "ok    tinyc: bare void als lokale Variable wird diagnostiziert"
+		if build/qcc_p 'int main(){ void x; putint(1); }' 2>&1 | grep -q 'void is not a valid variable type'; then
+			echo "ok    qcc: bare void als lokale Variable wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: bare-void-Lokale-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: bare-void-Lokale-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int f(void x){ return 0; } int main(){ putint(f(1)); }' 2>&1 | grep -q 'void is not a valid parameter type'; then
-			echo "ok    tinyc: bare void als Parameter wird diagnostiziert"
+		if build/qcc_p 'int f(void x){ return 0; } int main(){ putint(f(1)); }' 2>&1 | grep -q 'void is not a valid parameter type'; then
+			echo "ok    qcc: bare void als Parameter wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: bare-void-Parameter-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: bare-void-Parameter-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'void g; int main(){ putint(1); }' 2>&1 | grep -q 'void is not a valid variable type'; then
-			echo "ok    tinyc: bare void als globale Variable wird diagnostiziert"
+		if build/qcc_p 'void g; int main(){ putint(1); }' 2>&1 | grep -q 'void is not a valid variable type'; then
+			echo "ok    qcc: bare void als globale Variable wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: bare-void-Globale-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: bare-void-Globale-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int x=1; void *p=&x; putint(*p); }' 2>&1 | grep -q 'cannot dereference void\*'; then
-			echo "ok    tinyc: Dereferenzierung von void* wird diagnostiziert"
+		if build/qcc_p 'int main(){ int x=1; void *p=&x; putint(*p); }' 2>&1 | grep -q 'cannot dereference void\*'; then
+			echo "ok    qcc: Dereferenzierung von void* wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: void-Dereferenzierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: void-Dereferenzierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int x=1; void *p=&x; putint(p[0]); }' 2>&1 | grep -q 'cannot dereference void\*'; then
-			echo "ok    tinyc: Indizierung von void* wird diagnostiziert"
+		if build/qcc_p 'int main(){ int x=1; void *p=&x; putint(p[0]); }' 2>&1 | grep -q 'cannot dereference void\*'; then
+			echo "ok    qcc: Indizierung von void* wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: void-Indizierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: void-Indizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int x=1; void *p=&x; p = p + 1; putint(1); }' 2>&1 | grep -q 'arithmetic on void\* is not supported'; then
-			echo "ok    tinyc: Arithmetik auf void* wird diagnostiziert"
+		if build/qcc_p 'int main(){ int x=1; void *p=&x; p = p + 1; putint(1); }' 2>&1 | grep -q 'arithmetic on void\* is not supported'; then
+			echo "ok    qcc: Arithmetik auf void* wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: void-Arithmetik-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: void-Arithmetik-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'void f(){ return 5; } int main(){ f(); putint(1); }' 2>&1 | grep -q 'return expects void, got int'; then
-			echo "ok    tinyc: return mit Wert aus void-Funktion wird diagnostiziert"
+		if build/qcc_p 'void f(){ return 5; } int main(){ f(); putint(1); }' 2>&1 | grep -q 'return expects void, got int'; then
+			echo "ok    qcc: return mit Wert aus void-Funktion wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: void-Return-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: void-Return-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: zweidimensionale Arrays -- NUR bei lokalen/globalen Variablen (nicht
 		# bei struct-Feldern/Parametern). Byte-Layout = dim1*dim2 (row-major, flach im
@@ -553,25 +553,25 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int m[2][3]; putint(sizeof(m)); }' '24'
 		tc_check 'int m[2][3] = {1,2,3,4,5,6}; int main(){ putint(m[0][0]); putint(m[1][2]); }' '1\n6'
 		tc_check 'int main(){ int b[2]; b[0]=1; int a[3]; a[0]=10; a[1]=20; putint(a[b[0]]); }' '20'
-		if build/tinyc_p 'int main(){ int m[2][3]; putint(m[0]); }' 2>&1 | grep -q 'partial indexing of a 2D array is not supported'; then
-			echo "ok    tinyc: partielle Indizierung eines 2D-Arrays wird diagnostiziert"
+		if build/qcc_p 'int main(){ int m[2][3]; putint(m[0]); }' 2>&1 | grep -q 'partial indexing of a 2D array is not supported'; then
+			echo "ok    qcc: partielle Indizierung eines 2D-Arrays wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: 2D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: 2D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int a[5]; putint(a[0][1]); }' 2>&1 | grep -q 'array is not two-dimensional'; then
-			echo "ok    tinyc: 2 Indizes auf ein 1D-Array werden diagnostiziert"
+		if build/qcc_p 'int main(){ int a[5]; putint(a[0][1]); }' 2>&1 | grep -q 'array is not two-dimensional'; then
+			echo "ok    qcc: 2 Indizes auf ein 1D-Array werden diagnostiziert"
 		else
-			echo "FAIL  tinyc: 1D-Array-Doppelindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: 1D-Array-Doppelindizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct R{ int m[2][3]; }; int main(){ putint(1); }' >/dev/null 2>&1; then
-			echo "FAIL  tinyc: 2D-Array-struct-Feld wird faelschlich akzeptiert"; tcfail=1; fail=1
+		if build/qcc_p 'struct R{ int m[2][3]; }; int main(){ putint(1); }' >/dev/null 2>&1; then
+			echo "FAIL  qcc: 2D-Array-struct-Feld wird faelschlich akzeptiert"; tcfail=1; fail=1
 		else
-			echo "ok    tinyc: 2D-Array als struct-Feld bleibt Parse-Fehler (eigener Folgeschritt)"
+			echo "ok    qcc: 2D-Array als struct-Feld bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
-		if build/tinyc_p 'int f(int m[][3]){ return 0; } int main(){ putint(1); }' >/dev/null 2>&1; then
-			echo "FAIL  tinyc: 2D-Array-Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
+		if build/qcc_p 'int f(int m[][3]){ return 0; } int main(){ putint(1); }' >/dev/null 2>&1; then
+			echo "FAIL  qcc: 2D-Array-Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
 		else
-			echo "ok    tinyc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
+			echo "ok    qcc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
@@ -579,20 +579,20 @@ if command -v python3 >/dev/null 2>&1; then
 		# (__idxNd_2..__idxNd_N) zu einem flachen row-major-Index kombiniert -- fuer N=2
 		# identisch zur bisherigen Loesung (nur EIN Scratch-Feld), kein neuer Opcode,
 		# kein Backend-Change. Die beiden 2D-spezifischen Fehlermeldungen oben bleiben
-		# wortgleich (siehe tcCheckNDIndex-Kommentar in tinyc.lextab).
+		# wortgleich (siehe tcCheckNDIndex-Kommentar in qcc.lextab).
 		tc_check 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' '123\n0\n102'
 		tc_check 'int g[2][2][2]; int main(){ g[0][0][0]=1; g[0][0][1]=2; g[0][1][0]=3; g[1][1][1]=8; putint(g[1][1][1]); putint(g[0][1][0]); putint(g[0][0][1]); }' '8\n3\n2'
 		tc_check 'int m[2][2][2] = {1,2,3,4,5,6,7,8}; int main(){ putint(m[1][1][1]); putint(m[0][1][0]); }' '8\n3'
 		tc_check 'int main(){ int m[2][2][2]; m[0][0][0]=5; m[1][1][1]=10; putint(1 + m[0][0][0] + m[1][1][1]); }' '16'
-		if build/tinyc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
-			echo "ok    tinyc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
+		if build/qcc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
+			echo "ok    qcc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
-			echo "ok    tinyc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
+		if build/qcc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
+			echo "ok    qcc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: String-Literale -- erzeugen zur Uebersetzungszeit einen anonymen
 		# globalen char-Array-Konstant (GARRAY/GINIT + Nullterminator) und liefern dessen
@@ -613,24 +613,24 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char m[6] = "hallo"; putchar(m[0]); putint(m[5]); }' 'h0'
 		tc_check 'char msg[6] = "hallo"; int main(){ putchar(msg[0]); putint(msg[5]); }' 'h0'
 		tc_check 'char msg[5] = "hallo"; int main(){ putint(sizeof(msg)); putchar(msg[4]); }' '5\no'
-		if build/tinyc_p 'int main(){ char m[4] = "hallo"; }' 2>&1 | grep -q 'string literal too long for array'; then
-			echo "ok    tinyc: zu langes String-Literal als lokaler Array-Initialisierer wird diagnostiziert"
+		if build/qcc_p 'int main(){ char m[4] = "hallo"; }' 2>&1 | grep -q 'string literal too long for array'; then
+			echo "ok    qcc: zu langes String-Literal als lokaler Array-Initialisierer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer zu langes lokales String-Array-Literal fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer zu langes lokales String-Array-Literal fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'char msg[4] = "hallo"; int main(){ putint(1); }' 2>&1 | grep -q 'string literal too long for array'; then
-			echo "ok    tinyc: zu langes String-Literal als globaler Array-Initialisierer wird diagnostiziert"
+		if build/qcc_p 'char msg[4] = "hallo"; int main(){ putint(1); }' 2>&1 | grep -q 'string literal too long for array'; then
+			echo "ok    qcc: zu langes String-Literal als globaler Array-Initialisierer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer zu langes globales String-Array-Literal fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer zu langes globales String-Array-Literal fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int arr[4] = "hi"; int main(){ putint(1); }' 2>&1 | grep -q 'string literal initializer requires a char array'; then
-			echo "ok    tinyc: String-Literal-Initialisierer fuer Nicht-char-Array wird diagnostiziert"
+		if build/qcc_p 'int arr[4] = "hi"; int main(){ putint(1); }' 2>&1 | grep -q 'string literal initializer requires a char array'; then
+			echo "ok    qcc: String-Literal-Initialisierer fuer Nicht-char-Array wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer String-Literal auf int-Array fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer String-Literal auf int-Array fehlt"; tcfail=1; fail=1
 			fi
 		# 2026-07-24: direkte Indizierung ohne Zwischenvariable -- "func()[i]" und
 		# "text"[i] duerfen jetzt direkt indiziert werden (postfixIndex-Huellregel um
-		# die bestehende index-Regel, siehe Data/tinyc.ebnf). Laufzeitreihenfolge auf
+		# die bestehende index-Regel, siehe Data/qcc.ebnf). Laufzeitreihenfolge auf
 		# dem Stack ist [Pointer, Indexwert] wie bei "p + n" -- daher PADD+LOADIND statt
 		# PTRINDEX/LOADIND (das den Pointer zuerst erwartet). Bewusst NICHT Teil dieser
 		# Version: Indizierung als Zuweisungsziel (foo()[0] = 5;), verkettete Postfix-
@@ -640,64 +640,64 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int arr[3]; int* getarr(){ return arr; } int main(){ arr[0]=10; arr[1]=20; arr[2]=30; putint(getarr()[1]); }' '20'
 		tc_check 'char* mkstr(){ return "hallo"; } int main(){ int i; i = 3; putchar(mkstr()[i]); }' 'l'
 		tc_check 'char* mkstr(){ return "AB"; } int main(){ putint(1 + mkstr()[0]); }' '66'
-		if build/tinyc_p 'int f(){ return 5; } int main(){ int x = f()[0]; }' 2>&1 | grep -q 'index expects'; then
-			echo "ok    tinyc: Indizierung eines nicht-Pointer-Rueckgabewerts wird diagnostiziert"
+		if build/qcc_p 'int f(){ return 5; } int main(){ int x = f()[0]; }' 2>&1 | grep -q 'index expects'; then
+			echo "ok    qcc: Indizierung eines nicht-Pointer-Rueckgabewerts wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer Indizierung eines Nicht-Pointers fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer Indizierung eines Nicht-Pointers fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'void* mkvoid(){ return 0; } int main(){ int x = mkvoid()[0]; }' 2>&1 | grep -q 'cannot index void'; then
-			echo "ok    tinyc: Indizierung von void* wird diagnostiziert"
+		if build/qcc_p 'void* mkvoid(){ return 0; } int main(){ int x = mkvoid()[0]; }' 2>&1 | grep -q 'cannot index void'; then
+			echo "ok    qcc: Indizierung von void* wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer Indizierung von void* fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer Indizierung von void* fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int* getarr(); int main(){ getarr()[0] = 5; }' >/dev/null 2>&1; then
-			echo "FAIL  tinyc: Zuweisung auf indizierten Funktionsaufruf wird faelschlich akzeptiert"; tcfail=1; fail=1
+		if build/qcc_p 'int* getarr(); int main(){ getarr()[0] = 5; }' >/dev/null 2>&1; then
+			echo "FAIL  qcc: Zuweisung auf indizierten Funktionsaufruf wird faelschlich akzeptiert"; tcfail=1; fail=1
 		else
-			echo "ok    tinyc: Zuweisung auf foo()[0] bleibt Parse-Fehler (eigener Folgeschritt)"
+			echo "ok    qcc: Zuweisung auf foo()[0] bleibt Parse-Fehler (eigener Folgeschritt)"
 		fi
-		# 2026-07-24: extern-Deklarationen fuer NICHT in Tiny-C definierte Funktionen
+		# 2026-07-24: extern-Deklarationen fuer NICHT in QCC definierte Funktionen
 		# (z.B. echte OS-9/Microware-clib-Funktionen wie strcmp/printf/malloc). Nur
-		# Aufrufpruefung (Argumentanzahl/-typen) hier per TinyVM-Frontend testbar --
+		# Aufrufpruefung (Argumentanzahl/-typen) hier per QCCVM-Frontend testbar --
 		# die eigentliche Microware-ABI-Codeerzeugung (CALLEXT/CALLEXTP) ist 68k-
 		# spezifisch und wird weiter unten per Hand-Mock-Stub end-to-end verifiziert
-		# (TinyVM/ARM64 kennen die Aufrufkonvention bewusst nicht und lehnen CALLEXT
+		# (QCCVM/ARM64 kennen die Aufrufkonvention bewusst nicht und lehnen CALLEXT
 		# sauber ab statt es stillschweigend falsch zu behandeln).
 		tc_check 'extern int strcmp(const char *a, const char *b); int main(){ putint(1); }' '1'
 		tc_check 'extern int getval(); int main(){ putint(1); }' '1'
-		if build/tinyc_p 'extern int f(int a); extern int f(int a); int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
-			echo "ok    tinyc: doppelte extern-Deklaration wird diagnostiziert"
+		if build/qcc_p 'extern int f(int a); extern int f(int a); int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
+			echo "ok    qcc: doppelte extern-Deklaration wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: extern-Doppeldeklarations-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: extern-Doppeldeklarations-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'extern int f(int a); int f(int a){ return a; } int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
-			echo "ok    tinyc: interne Funktion kollidiert mit extern-Deklaration wird diagnostiziert"
+		if build/qcc_p 'extern int f(int a); int f(int a){ return a; } int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
+			echo "ok    qcc: interne Funktion kollidiert mit extern-Deklaration wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: extern/intern-Kollisions-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: extern/intern-Kollisions-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'extern int f(int a, int b); int main(){ putint(f(1)); }' 2>&1 | grep -q 'wrong argument count'; then
-			echo "ok    tinyc: falsche Argumentanzahl bei extern-Aufruf wird diagnostiziert"
+		if build/qcc_p 'extern int f(int a, int b); int main(){ putint(f(1)); }' 2>&1 | grep -q 'wrong argument count'; then
+			echo "ok    qcc: falsche Argumentanzahl bei extern-Aufruf wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: extern-Argumentanzahl-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: extern-Argumentanzahl-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'extern int f(...); int main(){ putint(1); }' >/dev/null 2>&1; then
-			echo "FAIL  tinyc: \"...\" ohne benannten Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
+		if build/qcc_p 'extern int f(...); int main(){ putint(1); }' >/dev/null 2>&1; then
+			echo "FAIL  qcc: \"...\" ohne benannten Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
 		else
-			echo "ok    tinyc: \"...\" ohne benannten Parameter davor bleibt Parse-Fehler (wie ISO C)"
+			echo "ok    qcc: \"...\" ohne benannten Parameter davor bleibt Parse-Fehler (wie ISO C)"
 		fi
 		# 2026-07-24: typedef struct { ... } Name; -- anonymes struct inline im typedef.
 		# Der typedef-Zielname wird bewusst als interner struct-Tag wiederverwendet (harmlose
 		# Vereinfachung); Namenskollision mit einem bereits existierenden struct wird wie eine
 		# normale doppelte struct-Deklaration abgelehnt.
-		if build/tinyc_p 'struct Dup { int x; }; typedef struct { int y; } Dup; int main(){ putint(1); }' 2>&1 | grep -q 'duplicate struct'; then
-			echo "ok    tinyc: Namenskollision bei anonymem struct-typedef wird diagnostiziert"
+		if build/qcc_p 'struct Dup { int x; }; typedef struct { int y; } Dup; int main(){ putint(1); }' 2>&1 | grep -q 'duplicate struct'; then
+			echo "ok    qcc: Namenskollision bei anonymem struct-typedef wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer anonymes-struct-typedef-Namenskollision fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer anonymes-struct-typedef-Namenskollision fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
-		   build/tinyc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
-			echo "ok    tinyc: break/continue ausserhalb Schleife werden diagnostiziert"
+		if build/qcc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
+		   build/qcc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
+			echo "ok    qcc: break/continue ausserhalb Schleife werden diagnostiziert"
 		else
-			echo "FAIL  tinyc: break/continue-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: break/continue-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		tc_check 'int add(int a, int b){ return a + b; } int twice(int x){ return add(x, x); } int main(){ putint(twice(21)); }' '42'
 		tc_check 'int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); }' '120'
@@ -722,62 +722,62 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int g[2]={7,0}; int main(){ int x=20; unsigned int high=-1; int a[2]={10,20}; x += 3; x -= 3; x *= 2; x /= 6; x %= 4; x <<= 3; x >>= 2; x |= 8; x &= 10; x ^= 3; high >>= 30; a[1] += 2; a[0] |= 4; g[0] ^= 3; putint(x); putuint(high); putint(a[0]); putint(a[1]); putint(g[0]); }' '11\n3\n14\n22\n4'
 		tc_check 'int *identity(int *p){ return p; } int main(){ int x=40; int *p=&x; *p += 2; putint(*identity(p)); }' '42'
 		tc_check 'int values[4]={10,20,30,40}; char bytes[4]={5,6,7,8}; int main(){ int *p=values; char *c=bytes; int **pp=&p; int *pa[2]; int **r=pa; pa[0]=&values[0]; pa[1]=&values[3]; putint(p[2]); *(p+1)=25; putint(*(1+p)); p+=3; putint(*p); putint(p-values); c+=2; putint(*c); putint(c-bytes); putint(p!=0); putint(p>values); putint(**pp); putint(*r[1]); }' '30\n25\n40\n3\n7\n2\n1\n1\n40\n40'
-		if build/tinyc_p 'bool id(bool b){ return b; } int main(){ int n=1; id(n); }' 2>&1 | grep -q 'argument expects bool, got int' && \
-		   build/tinyc_p 'bool bad(){ return 1; } int main(){ return 0; }' 2>&1 | grep -q 'return expects bool, got int'; then
-			echo "ok    tinyc: bool-Argumente und -Rueckgaben werden typgeprueft"
+		if build/qcc_p 'bool id(bool b){ return b; } int main(){ int n=1; id(n); }' 2>&1 | grep -q 'argument expects bool, got int' && \
+		   build/qcc_p 'bool bad(){ return 1; } int main(){ return 0; }' 2>&1 | grep -q 'return expects bool, got int'; then
+			echo "ok    qcc: bool-Argumente und -Rueckgaben werden typgeprueft"
 		else
-			echo "FAIL  tinyc: bool-Typpruefung fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: bool-Typpruefung fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ char a[2]; a[2] = 9; }' 2>&1 | grep -q 'constant array index 2 out of range (length 2)'; then
-			echo "ok    tinyc: konstante Arraygrenze wird diagnostiziert"
+		if build/qcc_p 'int main(){ char a[2]; a[2] = 9; }' 2>&1 | grep -q 'constant array index 2 out of range (length 2)'; then
+			echo "ok    qcc: konstante Arraygrenze wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
+			echo "FAIL  qcc: konstante Arraygrenze nicht diagnostiziert"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: const-Qualifizierer fuer globale/lokale Variablen und Parameter --
 		# rein frontend-seitig (kein Backend-/IR-Unterschied), verbietet Zuweisung/++/--
 		# auf die qualifizierte Variable selbst (kein Pointee-const wie in echtem C).
 		tc_check 'const int g = 7; int main(){ putint(g); }'                  '7'
 		tc_check 'int main(){ const int x = 5; putint(x + 1); }'             '6'
-		if build/tinyc_p 'const int g = 7; int main(){ g = 8; putint(g); }' 2>&1 | grep -q 'cannot assign to const variable'; then
-			echo "ok    tinyc: Zuweisung an const-Globale wird diagnostiziert"
+		if build/qcc_p 'const int g = 7; int main(){ g = 8; putint(g); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    qcc: Zuweisung an const-Globale wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Globale-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Globale-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ const int x = 5; x = 6; putint(x); }' 2>&1 | grep -q 'cannot assign to const variable'; then
-			echo "ok    tinyc: Zuweisung an const-Lokale wird diagnostiziert"
+		if build/qcc_p 'int main(){ const int x = 5; x = 6; putint(x); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    qcc: Zuweisung an const-Lokale wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Lokale-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Lokale-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int bump(const int x){ x = x + 1; return x; } int main(){ putint(bump(1)); }' 2>&1 | grep -q 'cannot assign to const variable'; then
-			echo "ok    tinyc: Zuweisung an const-Parameter wird diagnostiziert"
+		if build/qcc_p 'int bump(const int x){ x = x + 1; return x; } int main(){ putint(bump(1)); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    qcc: Zuweisung an const-Parameter wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Parameter-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Parameter-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ const int x = 5; x++; putint(x); }' 2>&1 | grep -q 'cannot assign to const variable'; then
-			echo "ok    tinyc: ++/-- auf const-Variable wird diagnostiziert"
+		if build/qcc_p 'int main(){ const int x = 5; x++; putint(x); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    qcc: ++/-- auf const-Variable wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-++/---Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-++/---Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: "static" lokale Variablen -- persistieren ueber Aufrufe hinweg (als
-		# ganz normaler GLOBAL registriert, siehe tc_staticlocal in Data/tinyc.lextab).
+		# ganz normaler GLOBAL registriert, siehe tc_staticlocal in Data/qcc.lextab).
 		# "static" bei Funktionen/globalen Variablen ist ein reines No-op (interne
 		# Verlinkung ist bei einer einzigen Uebersetzungseinheit ohne Mehrdatei-Linkage
 		# bedeutungslos). Bewusst OHNE Initialisierer (siehe staticVarDecl-Kommentar in
-		# Data/tinyc.ebnf) und OHNE struct/Array in dieser Version.
+		# Data/qcc.ebnf) und OHNE struct/Array in dieser Version.
 		tc_check 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' '1\n2\n3'
 		tc_check 'static int add(int a, int b){ return a + b; } int main(){ putint(add(2, 3)); }' '5'
 		tc_check 'static int g = 7; int main(){ putint(g); }' '7'
 		tc_check 'int f(){ static const int limit; return limit; } int main(){ putint(f()); }' '0'
 		tc_check 'int x = 42; int f(){ static int *p; p = &x; return *p; } int main(){ putint(f()); }' '42'
-		if build/tinyc_p 'int f(){ static const int limit; limit = 5; return limit; } int main(){ putint(f()); }' 2>&1 | grep -q 'cannot assign to const variable'; then
-			echo "ok    tinyc: Zuweisung an static-const-Lokale wird diagnostiziert"
+		if build/qcc_p 'int f(){ static const int limit; limit = 5; return limit; } int main(){ putint(f()); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    qcc: Zuweisung an static-const-Lokale wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: static-const-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: static-const-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct P{ int x; }; int f(){ static struct P p; return p.x; } int main(){ putint(f()); }' 2>&1 | grep -q 'static struct locals not yet supported'; then
-			echo "ok    tinyc: static struct-Lokale wird bewusst abgelehnt (eigener Folgeschritt)"
+		if build/qcc_p 'struct P{ int x; }; int f(){ static struct P p; return p.x; } int main(){ putint(f()); }' 2>&1 | grep -q 'static struct locals not yet supported'; then
+			echo "ok    qcc: static struct-Lokale wird bewusst abgelehnt (eigener Folgeschritt)"
 		else
-			echo "FAIL  tinyc: static-struct-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: static-struct-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: static-Initialisierer -- globalValue (Zahl/Negativ/bool-Literal,
 		# dieselbe seiteneffektfreie Regel wie bei globalen Variablen) bleibt der
@@ -787,10 +787,10 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int f(){ static bool b = true; return b; } int main(){ putint(f()); }' '1'
 		tc_check 'int f(){ static char c = 65; return c; } int main(){ putint(f()); }' '65'
 		tc_check 'int f(){ static int *p = 0; return p == 0; } int main(){ putint(f()); }' '1'
-		if build/tinyc_p 'int f(){ static int *p = 5; return 0; } int main(){ putint(f()); }' 2>&1 | grep -q 'static local pointer initializer must be 0'; then
-			echo "ok    tinyc: static-Pointer-Initialisierer != 0 wird diagnostiziert"
+		if build/qcc_p 'int f(){ static int *p = 5; return 0; } int main(){ putint(f()); }' 2>&1 | grep -q 'static local pointer initializer must be 0'; then
+			echo "ok    qcc: static-Pointer-Initialisierer != 0 wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: static-Pointer-Initialisierer-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: static-Pointer-Initialisierer-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: nicht-konstanter static-Initialisierer (staticRuntimeInit = expr) --
 		# staticInit ist eine geordnete Alternation (globalValue zuerst versucht, faellt bei
@@ -804,15 +804,15 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' '16\n17\n18'
 		tc_check 'int y=1; int bump(){ static int counter = y; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); }' '2\n3'
 		tc_check 'int f(int n){ static int x = n * 2; return x; } int main(){ putint(f(5)); putint(f(100)); }' '10\n10'
-		if build/tinyc_p 'int base(){ return 3; } int f(){ static const int x = base()+1; x = 5; return x; } int main(){ putint(f()); }' 2>&1 | grep -q 'cannot assign to const variable'; then
-			echo "ok    tinyc: Zuweisung an static-const-Lokale mit Laufzeit-Initialisierer wird diagnostiziert"
+		if build/qcc_p 'int base(){ return 3; } int f(){ static const int x = base()+1; x = 5; return x; } int main(){ putint(f()); }' 2>&1 | grep -q 'cannot assign to const variable'; then
+			echo "ok    qcc: Zuweisung an static-const-Lokale mit Laufzeit-Initialisierer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: static-const-Diagnose mit Laufzeit-Initialisierer fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: static-const-Diagnose mit Laufzeit-Initialisierer fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'char* mk(){ return "hi"; } int f(){ static int x = mk(); return x; } int main(){ putint(f()); }' 2>&1 | grep -q 'static initializer expects int, got char\*'; then
-			echo "ok    tinyc: Typinkompatibilitaet bei Laufzeit-static-Initialisierer wird diagnostiziert"
+		if build/qcc_p 'char* mk(){ return "hi"; } int f(){ static int x = mk(); return x; } int main(){ putint(f()); }' 2>&1 | grep -q 'static initializer expects int, got char\*'; then
+			echo "ok    qcc: Typinkompatibilitaet bei Laufzeit-static-Initialisierer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Typpruefung fuer Laufzeit-static-Initialisierer fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Typpruefung fuer Laufzeit-static-Initialisierer fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: Pointee-Constness fuer "const T*" -- TCType.pointeeConst (ein Bit,
 		# reist durch Zeigerarithmetik/Parameteruebergabe mit). Schreiben DURCH den Pointer
@@ -822,25 +822,25 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int values[3] = {1,2,3}; int main(){ const int *p = values; p += 1; putint(*p); }' '2'
 		tc_check 'int main(){ int x=42; const int *p = &x; putint(*p); putint(p[0]); }' '42\n42'
 		tc_check 'int f(const int *p){ return *p; } int main(){ int x=42; putint(f(&x)); }' '42'
-		if build/tinyc_p 'int main(){ int x=1; const int *p = &x; *p = 5; putint(x); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
-			echo "ok    tinyc: Schreiben durch const-Pointer (*p = ..) wird diagnostiziert"
+		if build/qcc_p 'int main(){ int x=1; const int *p = &x; *p = 5; putint(x); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    qcc: Schreiben durch const-Pointer (*p = ..) wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Pointer-Schreibschutz (*p) fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Pointer-Schreibschutz (*p) fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int a[3]; const int *p = a; p[0] = 5; putint(a[0]); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
-			echo "ok    tinyc: Schreiben durch const-Pointer (p[i] = ..) wird diagnostiziert"
+		if build/qcc_p 'int main(){ int a[3]; const int *p = a; p[0] = 5; putint(a[0]); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    qcc: Schreiben durch const-Pointer (p[i] = ..) wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Pointer-Schreibschutz (p[i]) fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Pointer-Schreibschutz (p[i]) fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int g[3]; const int *p; int main(){ p = g; p[0] = 5; putint(g[0]); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
-			echo "ok    tinyc: Schreiben durch globalen const-Pointer wird diagnostiziert"
+		if build/qcc_p 'int g[3]; const int *p; int main(){ p = g; p[0] = 5; putint(g[0]); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    qcc: Schreiben durch globalen const-Pointer wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Pointer-Schreibschutz (global) fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Pointer-Schreibschutz (global) fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int f(const int *p){ *p = 5; return *p; } int main(){ int x=1; putint(f(&x)); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
-			echo "ok    tinyc: Schreiben durch const-Pointer-Parameter wird diagnostiziert"
+		if build/qcc_p 'int f(const int *p){ *p = 5; return *p; } int main(){ int x=1; putint(f(&x)); }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    qcc: Schreiben durch const-Pointer-Parameter wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const-Pointer-Schreibschutz (Parameter) fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: direkte p.field[i]-Indizierung von Array-Feldern -- member
 		# bekommt einen eigenen optionalen index-Anschluss (kein zweiter, ineinander
@@ -855,15 +855,15 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=5; p.a[0] += 3; putint(p.a[0]); }' '8'
 		tc_check 'struct P{int a[3];}; int main(){ struct P p; p.a[0]=10; p.a[1]=20; putint(1 + p.a[0] + p.a[1]); }' '31'
 		tc_check 'struct P{char buf[4];}; int main(){ struct P p; char* q; q = p.buf; q[0]=9; putchar(p.buf[0]); }' '\t'
-		if build/tinyc_p 'struct P{int x;}; int main(){ struct P p; putint(p.x[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
-			echo "ok    tinyc: Indizierung eines skalaren struct-Felds wird diagnostiziert"
+		if build/qcc_p 'struct P{int x;}; int main(){ struct P p; putint(p.x[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
+			echo "ok    qcc: Indizierung eines skalaren struct-Felds wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer Indizierung eines skalaren struct-Felds fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer Indizierung eines skalaren struct-Felds fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct P{char buf[4];}; int main(){ struct P p; p.buf[9]=1; }' 2>&1 | grep -q 'constant array index 9 out of range'; then
-			echo "ok    tinyc: konstanter Index-Bereichsverstoss bei p.field[i] wird diagnostiziert"
+		if build/qcc_p 'struct P{char buf[4];}; int main(){ struct P p; p.buf[9]=1; }' 2>&1 | grep -q 'constant array index 9 out of range'; then
+			echo "ok    qcc: konstanter Index-Bereichsverstoss bei p.field[i] wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Bounds-Check fuer p.field[i] fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-25 (Selfhosting L2): Pointer-Felder in struct -- IMMER 8 Byte
 		# Groesse/Ausrichtung (siehe tcRegisterStruct-Kommentar), damit dasselbe
@@ -872,10 +872,10 @@ if command -v python3 >/dev/null 2>&1; then
 		# (p.field[i]) ist bewusst NICHT Teil dieser Version (wie zuvor bei
 		# Array-Feldern) -- Zugriff nur ueber eine Pointer-Zwischenvariable.
 		tc_check 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' 'Hi2'
-		if build/tinyc_p 'struct P{char* text;}; int main(){ struct P p; putint(p.text[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
-			echo "ok    tinyc: direkte Indizierung durch ein Pointer-Feld wird diagnostiziert (wie bei Array-Feldern zuvor)"
+		if build/qcc_p 'struct P{char* text;}; int main(){ struct P p; putint(p.text[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
+			echo "ok    qcc: direkte Indizierung durch ein Pointer-Feld wird diagnostiziert (wie bei Array-Feldern zuvor)"
 		else
-			echo "FAIL  tinyc: Diagnose fuer Indizierung eines Pointer-Felds fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer Indizierung eines Pointer-Felds fehlt"; tcfail=1; fail=1
 		fi
 		# arr[i].feld (2026-07-25): ein ARRAY von structs, per Laufzeit-Index adressiert,
 		# DANN Feldzugriff. Setzt den Allokations-Fix in tc_local/tc_localdecl voraus
@@ -891,30 +891,30 @@ if command -v python3 >/dev/null 2>&1; then
 		# Zugriff bewusst nur ueber Pointer-Zwischenvariable (wie bei p.field[i] oben,
 		# arr[i].feld[j] direkt bleibt diagnostiziert, siehe naechster Test).
 		tc_check 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' 'AXC'
-		if build/tinyc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[3]; putint(arr[0].name[0]); }' 2>&1 | grep -q 'arr\[i\].field\[j\] not supported in this version'; then
-			echo "ok    tinyc: arr[i].feld[j] (Index nach Feldzugriff) wird diagnostiziert"
+		if build/qcc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[3]; putint(arr[0].name[0]); }' 2>&1 | grep -q 'arr\[i\].field\[j\] not supported in this version'; then
+			echo "ok    qcc: arr[i].feld[j] (Index nach Feldzugriff) wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer arr[i].feld[j] fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer arr[i].feld[j] fehlt"; tcfail=1; fail=1
 		fi
 		# ptr[i].feld (2026-07-25, Milestone B): eine LOKALE Pointer-auf-struct-Variable,
 		# indiziert, dann Feldzugriff -- braucht der Selfhosting-Pilot fuer routinesC[i].name/
 		# .text (ActionRoutine*, ein malloc/realloc-gewachsenes Array, kein festes lokales
 		# Array wie arr[i].feld oben). LOADP statt PUSHADDR, sonst dieselbe IPADDN-Idee.
 		tc_check 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' '10\n20\n30\n99'
-		if build/tinyc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[2]; struct Rec* p; p = arr; putint(p[0].name[0]); }' 2>&1 | grep -q 'ptr\[i\].field\[j\] not supported in this version'; then
-			echo "ok    tinyc: ptr[i].feld[j] (Index nach Feldzugriff durch Pointer) wird diagnostiziert"
+		if build/qcc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[2]; struct Rec* p; p = arr; putint(p[0].name[0]); }' 2>&1 | grep -q 'ptr\[i\].field\[j\] not supported in this version'; then
+			echo "ok    qcc: ptr[i].feld[j] (Index nach Feldzugriff durch Pointer) wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer ptr[i].feld[j] fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer ptr[i].feld[j] fehlt"; tcfail=1; fail=1
 		fi
 		# Die Grammatik-Erweiterung fuer arr[i].feld (Sequenz statt Alternation) macht generell
 		# jede "indiziert-dann-Member"-Kombination parsebar -- nur die ZWEI oben gebauten Faelle
 		# (festes lokales struct-Array, lokale Pointer-auf-struct-Variable) haben Codegen.
 		# Alles andere (hier: Pointer auf einen NICHT-struct-Typ) muss weiterhin sauber
 		# diagnostiziert werden statt die "."-Fortsetzung stillschweigend zu ignorieren.
-		if build/tinyc_p 'int main(){ int x=1; int* p=&x; putint(p[0].a); }' 2>&1 | grep -q 'indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct'; then
-			echo "ok    tinyc: indizierter Pointer auf Nicht-struct mit Feldanhang wird weiterhin diagnostiziert"
+		if build/qcc_p 'int main(){ int x=1; int* p=&x; putint(p[0].a); }' 2>&1 | grep -q 'indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct'; then
+			echo "ok    qcc: indizierter Pointer auf Nicht-struct mit Feldanhang wird weiterhin diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer indizierten Nicht-struct-Pointer mit Feldanhang fehlt -- Risiko stiller Fehlcode!"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer indizierten Nicht-struct-Pointer mit Feldanhang fehlt -- Risiko stiller Fehlcode!"; tcfail=1; fail=1
 		fi
 		# sizeof(structArray) muss die GESAMTE Array-Groesse liefern (count * structByteSize),
 		# nicht nur die Groesse eines einzelnen Elements (das war vor dem Allokations-Fix
@@ -925,7 +925,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# nicht als Basistyp ("bad global declaration"). Jetzt: skalare globale structs,
 		# globale Arrays von structs UND globale Pointer-auf-struct-Variablen -- Codegen
 		# in tc_varref/tc_target ist strukturell identisch zum lokalen Fall (ADDRG/PUSHADDR G
-		# statt PUSHADDR L, LOADGP statt LOADP), da globals_ in tinyvm.py bei GLOBAL wie bei
+		# statt PUSHADDR L, LOADGP statt LOADP), da globals_ in qccvm.py bei GLOBAL wie bei
 		# GARRAY einheitlich eine Liste ist (ADDRG braucht keine lokale Scalar/Block-
 		# Unterscheidung wie bei Locals). Initialisierer + mehrdimensionale struct-Arrays
 		# bleiben bewusst ein sauberer Parse-Fehler (wie beim lokalen Fall).
@@ -933,15 +933,15 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; int main(){ garr[0].a=10; garr[1].a=20; garr[2].a=30; putint(garr[0].a); putint(garr[1].a); putint(garr[2].a); }' '10\n20\n30'
 		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' '100\n200\n200'
 		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec g; int main(){ putint(sizeof(garr)); putint(sizeof(g)); putint(sizeof(struct Rec)); }' '24\n8\n8'
-		if build/tinyc_p 'struct Rec { int a; }; struct Rec g = {1}; int main(){ putint(1); }' 2>&1 | grep -q 'struct global cannot have an initializer'; then
-			echo "ok    tinyc: Initialisierer bei globaler struct-Variable wird diagnostiziert"
+		if build/qcc_p 'struct Rec { int a; }; struct Rec g = {1}; int main(){ putint(1); }' 2>&1 | grep -q 'struct global cannot have an initializer'; then
+			echo "ok    qcc: Initialisierer bei globaler struct-Variable wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer struct-Global-Initialisierer fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer struct-Global-Initialisierer fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'struct Rec { int a; }; struct Rec g[2][2]; int main(){ putint(1); }' 2>&1 | grep -q 'multi-dimensional struct arrays not supported'; then
-			echo "ok    tinyc: mehrdimensionales globales struct-Array wird diagnostiziert"
+		if build/qcc_p 'struct Rec { int a; }; struct Rec g[2][2]; int main(){ putint(1); }' 2>&1 | grep -q 'multi-dimensional struct arrays not supported'; then
+			echo "ok    qcc: mehrdimensionales globales struct-Array wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: Diagnose fuer mehrdimensionales globales struct-Array fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: Diagnose fuer mehrdimensionales globales struct-Array fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
@@ -949,20 +949,20 @@ if command -v python3 >/dev/null 2>&1; then
 		# (__idxNd_2..__idxNd_N) zu einem flachen row-major-Index kombiniert -- fuer N=2
 		# identisch zur bisherigen Loesung (nur EIN Scratch-Feld), kein neuer Opcode,
 		# kein Backend-Change. Die beiden 2D-spezifischen Fehlermeldungen oben bleiben
-		# wortgleich (siehe tcCheckNDIndex-Kommentar in tinyc.lextab).
+		# wortgleich (siehe tcCheckNDIndex-Kommentar in qcc.lextab).
 		tc_check 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' '123\n0\n102'
 		tc_check 'int g[2][2][2]; int main(){ g[0][0][0]=1; g[0][0][1]=2; g[0][1][0]=3; g[1][1][1]=8; putint(g[1][1][1]); putint(g[0][1][0]); putint(g[0][0][1]); }' '8\n3\n2'
 		tc_check 'int m[2][2][2] = {1,2,3,4,5,6,7,8}; int main(){ putint(m[1][1][1]); putint(m[0][1][0]); }' '8\n3'
 		tc_check 'int main(){ int m[2][2][2]; m[0][0][0]=5; m[1][1][1]=10; putint(1 + m[0][0][0] + m[1][1][1]); }' '16'
-		if build/tinyc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
-			echo "ok    tinyc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
+		if build/qcc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
+			echo "ok    qcc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/tinyc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
-			echo "ok    tinyc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
+		if build/qcc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
+			echo "ok    qcc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
 		else
-			echo "FAIL  tinyc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: TC_MAXDIMS-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# Gefundener und behobener Bug (2026-07-25, beim Bau des Milestone-B-Piloten entdeckt):
 		# eine indizierte (oder Funktionsaufruf-)Expression als RECHTER Operand eines
@@ -974,78 +974,78 @@ if command -v python3 >/dev/null 2>&1; then
 		# Session) nie aufgefallen, da kein Test eine Indizierung/einen Aufruf als
 		# rechten Vergleichsoperanden hatte (nur links, z.B. "arr[i] != 0").
 		tc_check 'int main(){ char a[2]; char b[2]; a[0]=65; b[0]=65; if (a[0] != b[0]) { putint(0); } else { putint(1); } b[0]=66; if (a[0] != b[0]) { putint(2); } else { putint(3); } }' '1\n2'
-		[ $tcfail -eq 0 ] && echo "ok    tinyc: 150 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> tinyvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    qcc: 150 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
 	else
-		echo "FAIL  tinyc: Data/tinyc_p.c kompiliert nicht"; fail=1
+		echo "FAIL  qcc: Data/qcc_p.c kompiliert nicht"; fail=1
 	fi
 else
-	echo "warn  tinyc: python3 fehlt -- Tiny-C/tinyvm-Check uebersprungen"
+	echo "warn  qcc: python3 fehlt -- QCC/qccvm-Check uebersprungen"
 fi
 
-# 12b) Tiny-C Mehrdatei-Uebersetzung, M1 (2026-07-25): bare Funktionsprototyp
+# 12b) QCC Mehrdatei-Uebersetzung, M1 (2026-07-25): bare Funktionsprototyp
 #     ohne Rumpf ("int f(int x);" statt extern -- normale interne bsr/bl-ABI,
 #     NICHT die Microware-ABI/CALLEXT des bestehenden extern-Features) und
 #     "extern <typ> <name>;" bei globalen Variablen erlauben getrennt
-#     kompilierte Tiny-C-Dateien. tools/tinyc_merge.py simuliert dafuer einen
-#     Mini-Linker vor TinyVM (echte Linker: l68 fuers 68k/OS-9-Ziel, ld/clang
+#     kompilierte QCC-Dateien. tools/qcc_merge.py simuliert dafuer einen
+#     Mini-Linker vor QCCVM (echte Linker: l68 fuers 68k/OS-9-Ziel, ld/clang
 #     fuers ARM64-Ziel, siehe M2/M3) -- prueft Duplicate-Symbole, genau ein
 #     main, static-Sichtbarkeit UND (als Bonus, den ein echter Linker NICHT
 #     leisten koennte) Signatur-Konsistenz zwischen Deklaration und Definition.
 if command -v python3 >/dev/null 2>&1; then
-	build/tinyc_p 'int shared; int helper(int x); int main(){ shared = 10; putint(helper(shared)); }' > build/tinyc_mf_a.ir
-	build/tinyc_p 'extern int shared; int helper(int x){ return x + shared; }' > build/tinyc_mf_b.ir
-	if [ "$(python3 tools/tinyc_merge.py build/tinyc_mf_a.ir build/tinyc_mf_b.ir 2>/dev/null | python3 tools/tinyvm.py 2>/dev/null)" = "20" ]; then
-		echo "ok    tinyc Mehrdatei M1: Funktionsaufruf + globale Variable ueber Dateigrenze korrekt"
+	build/qcc_p 'int shared; int helper(int x); int main(){ shared = 10; putint(helper(shared)); }' > build/qcc_mf_a.ir
+	build/qcc_p 'extern int shared; int helper(int x){ return x + shared; }' > build/qcc_mf_b.ir
+	if [ "$(python3 tools/qcc_merge.py build/qcc_mf_a.ir build/qcc_mf_b.ir 2>/dev/null | python3 tools/qccvm.py 2>/dev/null)" = "20" ]; then
+		echo "ok    qcc Mehrdatei M1: Funktionsaufruf + globale Variable ueber Dateigrenze korrekt"
 	else
-		echo "FAIL  tinyc Mehrdatei M1: Funktionsaufruf/Global ueber Dateigrenze fehlerhaft"; fail=1
+		echo "FAIL  qcc Mehrdatei M1: Funktionsaufruf/Global ueber Dateigrenze fehlerhaft"; fail=1
 	fi
-	build/tinyc_p 'int secret(int x); int main(){ putint(secret(1)); }' > build/tinyc_mf_c.ir
-	build/tinyc_p 'static int secret(int x){ return x*2; }' > build/tinyc_mf_d.ir
-	if python3 tools/tinyc_merge.py build/tinyc_mf_c.ir build/tinyc_mf_d.ir > /dev/null 2>build/tinyc_mf.err; then
-		echo "FAIL  tinyc Mehrdatei M1: static-Funktion faelschlich ueber Dateigrenze sichtbar"; fail=1
-	elif grep -q "als static definiert" build/tinyc_mf.err; then
-		echo "ok    tinyc Mehrdatei M1: static-Funktion bleibt fuer andere Datei unsichtbar"
+	build/qcc_p 'int secret(int x); int main(){ putint(secret(1)); }' > build/qcc_mf_c.ir
+	build/qcc_p 'static int secret(int x){ return x*2; }' > build/qcc_mf_d.ir
+	if python3 tools/qcc_merge.py build/qcc_mf_c.ir build/qcc_mf_d.ir > /dev/null 2>build/qcc_mf.err; then
+		echo "FAIL  qcc Mehrdatei M1: static-Funktion faelschlich ueber Dateigrenze sichtbar"; fail=1
+	elif grep -q "als static definiert" build/qcc_mf.err; then
+		echo "ok    qcc Mehrdatei M1: static-Funktion bleibt fuer andere Datei unsichtbar"
 	else
-		echo "FAIL  tinyc Mehrdatei M1: static-Diagnose fehlt/falsch"; fail=1
+		echo "FAIL  qcc Mehrdatei M1: static-Diagnose fehlt/falsch"; fail=1
 	fi
-	build/tinyc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/tinyc_mf_e.ir
-	build/tinyc_p 'int f(){ return 2; } int main2(){ return 0; }' > build/tinyc_mf_f.ir
-	if python3 tools/tinyc_merge.py build/tinyc_mf_e.ir build/tinyc_mf_f.ir > /dev/null 2>build/tinyc_mf.err; then
-		echo "FAIL  tinyc Mehrdatei M1: doppelte nicht-static Definition nicht erkannt"; fail=1
-	elif grep -q "doppelte Definition" build/tinyc_mf.err; then
-		echo "ok    tinyc Mehrdatei M1: doppelte nicht-static Definition wird wie 'duplicate symbol' erkannt"
+	build/qcc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/qcc_mf_e.ir
+	build/qcc_p 'int f(){ return 2; } int main2(){ return 0; }' > build/qcc_mf_f.ir
+	if python3 tools/qcc_merge.py build/qcc_mf_e.ir build/qcc_mf_f.ir > /dev/null 2>build/qcc_mf.err; then
+		echo "FAIL  qcc Mehrdatei M1: doppelte nicht-static Definition nicht erkannt"; fail=1
+	elif grep -q "doppelte Definition" build/qcc_mf.err; then
+		echo "ok    qcc Mehrdatei M1: doppelte nicht-static Definition wird wie 'duplicate symbol' erkannt"
 	else
-		echo "FAIL  tinyc Mehrdatei M1: Duplicate-Diagnose fehlt/falsch"; fail=1
+		echo "FAIL  qcc Mehrdatei M1: Duplicate-Diagnose fehlt/falsch"; fail=1
 	fi
-	build/tinyc_p 'int g(int a, int b); int main(){ putint(g(1,2)); }' > build/tinyc_mf_g.ir
-	build/tinyc_p 'int g(int a){ return a; }' > build/tinyc_mf_h.ir
-	if python3 tools/tinyc_merge.py build/tinyc_mf_g.ir build/tinyc_mf_h.ir > /dev/null 2>build/tinyc_mf.err; then
-		echo "FAIL  tinyc Mehrdatei M1: Signatur-Inkonsistenz (Parameterzahl) nicht erkannt"; fail=1
-	elif grep -q "Parameter deklariert" build/tinyc_mf.err; then
-		echo "ok    tinyc Mehrdatei M1: Signatur-Inkonsistenz (Bonus-Check) wird erkannt"
+	build/qcc_p 'int g(int a, int b); int main(){ putint(g(1,2)); }' > build/qcc_mf_g.ir
+	build/qcc_p 'int g(int a){ return a; }' > build/qcc_mf_h.ir
+	if python3 tools/qcc_merge.py build/qcc_mf_g.ir build/qcc_mf_h.ir > /dev/null 2>build/qcc_mf.err; then
+		echo "FAIL  qcc Mehrdatei M1: Signatur-Inkonsistenz (Parameterzahl) nicht erkannt"; fail=1
+	elif grep -q "Parameter deklariert" build/qcc_mf.err; then
+		echo "ok    qcc Mehrdatei M1: Signatur-Inkonsistenz (Bonus-Check) wird erkannt"
 	else
-		echo "FAIL  tinyc Mehrdatei M1: Signatur-Konsistenz-Diagnose fehlt/falsch"; fail=1
+		echo "FAIL  qcc Mehrdatei M1: Signatur-Konsistenz-Diagnose fehlt/falsch"; fail=1
 	fi
-	rm -f build/tinyc_mf.err
+	rm -f build/qcc_mf.err
 else
-	echo "warn  tinyc Mehrdatei M1: python3 fehlt -- uebersprungen"
+	echo "warn  qcc Mehrdatei M1: python3 fehlt -- uebersprungen"
 fi
 
-# 13) Tiny-C M4a: eigenstaendiges Backend liest Stack-IR und erzeugt
+# 13) QCC M4a: eigenstaendiges Backend liest Stack-IR und erzeugt
 #     PIC-faehigen 68000-Assembler. Noch keine Ziel-Runtime/Ausfuehrung; vasm
 #     prueft aber Funktionsframes, Parameter, CALL/RET und alle Syntaxdetails.
-#     Gebaut wird die reine-C-Fassung (tinyc_backend_c.cpp, siehe
-#     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (tinyc_backend.cpp)
+#     Gebaut wird die reine-C-Fassung (qcc_backend_c.cpp, siehe
+#     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (qcc_backend.cpp)
 #     bleibt als Referenz liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ -x tools/vasmm68k_mot ]; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/tinyc_backend Source/tinyc_backend_c.cpp 2>/dev/null && \
-		build/tinyc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/tinyc_m4.ir && \
-		build/tinyc_backend build/tinyc_m4.ir build/tinyc_m4.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_m4.bin build/tinyc_m4.s68 2>/dev/null && \
-		grep -q '^tc_add:' build/tinyc_m4.s68 && grep -q $'bsr\ttc_add' build/tinyc_m4.s68; then
-		echo "ok    tinyc M4a: reines C, IR->PIC-68000-Assembler assembliert mit vasm"
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend Source/qcc_backend_c.cpp 2>/dev/null && \
+		build/qcc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/qcc_m4.ir && \
+		build/qcc_backend build/qcc_m4.ir build/qcc_m4.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_m4.bin build/qcc_m4.s68 2>/dev/null && \
+		grep -q '^tc_add:' build/qcc_m4.s68 && grep -q $'bsr\ttc_add' build/qcc_m4.s68; then
+		echo "ok    qcc M4a: reines C, IR->PIC-68000-Assembler assembliert mit vasm"
 	else
-		echo "FAIL  tinyc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
+		echo "FAIL  qcc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
 	fi
 
 	# 13a-ext) extern-Aufrufe (CALLEXT/CALLEXTP, 2026-07-24): die Microware-68K-
@@ -1057,32 +1057,32 @@ if [ -x tools/vasmm68k_mot ]; then
 	# gegen einen HANDGESCHRIEBENEN Mock-Stub verifiziert, der die Argumente an
 	# genau den ABI-Stellen erwartet und einen gewichteten Wert zurueckgibt --
 	# jede falsch platzierte Stelle wuerde das erwartete Ergebnis veraendern.
-	if [ -x build/tinyc_backend ]; then
+	if [ -x build/qcc_backend ]; then
 		# Fall 1: 2 Argumente, beide in Registern (a->d0, b->d1), kein Stack-Rest.
-		if build/tinyc_p 'extern int myadd(int a, int b); int main(){ putint(myadd(3,4)); }' > build/tinyc_ext2.ir && \
-			build/tinyc_backend build/tinyc_ext2.ir build/tinyc_ext2.s68; then
-			cp build/tinyc_ext2.s68 build/tinyc_ext2_test.s68
+		if build/qcc_p 'extern int myadd(int a, int b); int main(){ putint(myadd(3,4)); }' > build/qcc_ext2.ir && \
+			build/qcc_backend build/qcc_ext2.ir build/qcc_ext2.s68; then
+			cp build/qcc_ext2.s68 build/qcc_ext2_test.s68
 			{
 				echo ""
 				echo "; Mock: erwartet d0=a=3, d1=b=4 -- Ergebnis = a*16+b = 52"
 				echo "myadd:	lsl.l	#4,d0"
 				echo "	add.l	d1,d0"
 				echo "	rts"
-			} >> build/tinyc_ext2_test.s68
-			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_ext2_test.bin build/tinyc_ext2_test.s68 2>/dev/null && \
-				[ "$(python3 tools/tiny68sim.py build/tinyc_ext2_test.s68 2>/dev/null)" = "52" ]; then
-				echo "ok    tinyc extern 68000: 2 Argumente in d0/d1 korrekt platziert"
+			} >> build/qcc_ext2_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_ext2_test.bin build/qcc_ext2_test.s68 2>/dev/null && \
+				[ "$(python3 tools/qcc68sim.py build/qcc_ext2_test.s68 2>/dev/null)" = "52" ]; then
+				echo "ok    qcc extern 68000: 2 Argumente in d0/d1 korrekt platziert"
 			else
-				echo "FAIL  tinyc extern 68000: 2-Argumente-ABI fehlerhaft"; fail=1
+				echo "FAIL  qcc extern 68000: 2-Argumente-ABI fehlerhaft"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc extern 68000: IR/Backend fuer 2-Argumente-Fall fehlgeschlagen"; fail=1
+			echo "FAIL  qcc extern 68000: IR/Backend fuer 2-Argumente-Fall fehlgeschlagen"; fail=1
 		fi
 		# Fall 2: 4 Argumente -- a->d0, b->d1, c/d auf dem Stack in umgekehrter
 		# Reihenfolge (c am naechsten zur Ruecksprungadresse, d weiter weg).
-		if build/tinyc_p 'extern int foo(int a, int b, int c, int d); int main(){ putint(foo(1,2,3,4)); }' > build/tinyc_ext4.ir && \
-			build/tinyc_backend build/tinyc_ext4.ir build/tinyc_ext4.s68; then
-			cp build/tinyc_ext4.s68 build/tinyc_ext4_test.s68
+		if build/qcc_p 'extern int foo(int a, int b, int c, int d); int main(){ putint(foo(1,2,3,4)); }' > build/qcc_ext4.ir && \
+			build/qcc_backend build/qcc_ext4.ir build/qcc_ext4.s68; then
+			cp build/qcc_ext4.s68 build/qcc_ext4_test.s68
 			{
 				echo ""
 				echo "; Mock: erwartet d0=a=1, d1=b=2, 4(a7)=c=3, 8(a7)=d=4 (a7 zeigt nach jsr"
@@ -1097,15 +1097,15 @@ if [ -x tools/vasmm68k_mot ]; then
 				echo "	add.l	d2,d0"
 				echo "	add.l	d3,d0"
 				echo "	rts"
-			} >> build/tinyc_ext4_test.s68
-			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_ext4_test.bin build/tinyc_ext4_test.s68 2>/dev/null && \
-				[ "$(python3 tools/tiny68sim.py build/tinyc_ext4_test.s68 2>/dev/null)" = "17185" ]; then
-				echo "ok    tinyc extern 68000: 4 Argumente (2 Register + 2 Stack, umgekehrte Reihenfolge) korrekt platziert"
+			} >> build/qcc_ext4_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_ext4_test.bin build/qcc_ext4_test.s68 2>/dev/null && \
+				[ "$(python3 tools/qcc68sim.py build/qcc_ext4_test.s68 2>/dev/null)" = "17185" ]; then
+				echo "ok    qcc extern 68000: 4 Argumente (2 Register + 2 Stack, umgekehrte Reihenfolge) korrekt platziert"
 			else
-				echo "FAIL  tinyc extern 68000: 4-Argumente-ABI fehlerhaft"; fail=1
+				echo "FAIL  qcc extern 68000: 4-Argumente-ABI fehlerhaft"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc extern 68000: IR/Backend fuer 4-Argumente-Fall fehlgeschlagen"; fail=1
+			echo "FAIL  qcc extern 68000: IR/Backend fuer 4-Argumente-Fall fehlgeschlagen"; fail=1
 		fi
 		# Fall 3 (2026-07-26/27, KORRIGIERT nach echtem Q9-Befund UND capstone-
 		# Disassemblierung der ECHTEN clib.l-printf): die ERSTEN ZWEI ARGUMENTE
@@ -1121,9 +1121,9 @@ if [ -x tools/vasmm68k_mot ]; then
 		# printf() als ALLERERSTE Instruktion "move.l d1,d0" macht -- sie erwartet
 		# ihr erstes variadisches Argument also IMMER in d1, unabhaengig von der
 		# "..."-Deklaration. Siehe docs/FORTSCHRITT.md.
-		if build/tinyc_p 'extern int myprintf(int fmt, ...); int main(){ int x = 42; putint(myprintf(1, x, 7)); }' > build/tinyc_extv.ir && \
-			build/tinyc_backend build/tinyc_extv.ir build/tinyc_extv.s68; then
-			cp build/tinyc_extv.s68 build/tinyc_extv_test.s68
+		if build/qcc_p 'extern int myprintf(int fmt, ...); int main(){ int x = 42; putint(myprintf(1, x, 7)); }' > build/qcc_extv.ir && \
+			build/qcc_backend build/qcc_extv.ir build/qcc_extv.s68; then
+			cp build/qcc_extv.s68 build/qcc_extv_test.s68
 			{
 				echo ""
 				echo "; Mock: die ERSTEN ZWEI Argumente insgesamt (fmt, x) gehen nach d0/d1,"
@@ -1136,22 +1136,22 @@ if [ -x tools/vasmm68k_mot ]; then
 				echo "	add.l	d2,d0"
 				echo "	add.l	d3,d0"
 				echo "	rts"
-			} >> build/tinyc_extv_test.s68
-			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extv_test.bin build/tinyc_extv_test.s68 2>/dev/null && \
-				[ "$(python3 tools/tiny68sim.py build/tinyc_extv_test.s68 2>/dev/null)" = "2465" ]; then
-				echo "ok    tinyc extern 68000: variadischer Aufruf (erste zwei Argumente insgesamt in d0/d1, Rest auf dem Stack) korrekt platziert"
+			} >> build/qcc_extv_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_extv_test.bin build/qcc_extv_test.s68 2>/dev/null && \
+				[ "$(python3 tools/qcc68sim.py build/qcc_extv_test.s68 2>/dev/null)" = "2465" ]; then
+				echo "ok    qcc extern 68000: variadischer Aufruf (erste zwei Argumente insgesamt in d0/d1, Rest auf dem Stack) korrekt platziert"
 			else
-				echo "FAIL  tinyc extern 68000: variadische ABI fehlerhaft"; fail=1
+				echo "FAIL  qcc extern 68000: variadische ABI fehlerhaft"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc extern 68000: IR/Backend fuer variadischen Fall fehlgeschlagen"; fail=1
+			echo "FAIL  qcc extern 68000: IR/Backend fuer variadischen Fall fehlgeschlagen"; fail=1
 		fi
 		# Fall 4 (2026-07-24): ein char*-Argument (String-Literal) -- die Adresse des
 		# per GARRAY/GINIT angelegten String-Konstanten muss unveraendert bis d0 durch-
 		# gereicht werden; der Mock liest das erste Byte an dieser Adresse zurueck.
-		if build/tinyc_p 'extern int mockchr(const char* s); int main(){ putint(mockchr("Hi")); }' > build/tinyc_extstr.ir && \
-			build/tinyc_backend build/tinyc_extstr.ir build/tinyc_extstr.s68; then
-			cp build/tinyc_extstr.s68 build/tinyc_extstr_test.s68
+		if build/qcc_p 'extern int mockchr(const char* s); int main(){ putint(mockchr("Hi")); }' > build/qcc_extstr.ir && \
+			build/qcc_backend build/qcc_extstr.ir build/qcc_extstr.s68; then
+			cp build/qcc_extstr.s68 build/qcc_extstr_test.s68
 			{
 				echo ""
 				echo "; Mock: erwartet d0=Adresse des Strings -- liest erstes Byte zurueck ('H'=72)"
@@ -1159,15 +1159,15 @@ if [ -x tools/vasmm68k_mot ]; then
 				echo "	moveq	#0,d0"
 				echo "	move.b	(a0),d0"
 				echo "	rts"
-			} >> build/tinyc_extstr_test.s68
-			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extstr_test.bin build/tinyc_extstr_test.s68 2>/dev/null && \
-				[ "$(python3 tools/tiny68sim.py build/tinyc_extstr_test.s68 2>/dev/null)" = "72" ]; then
-				echo "ok    tinyc extern 68000: String-Literal-Adresse korrekt an char*-Parameter uebergeben"
+			} >> build/qcc_extstr_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_extstr_test.bin build/qcc_extstr_test.s68 2>/dev/null && \
+				[ "$(python3 tools/qcc68sim.py build/qcc_extstr_test.s68 2>/dev/null)" = "72" ]; then
+				echo "ok    qcc extern 68000: String-Literal-Adresse korrekt an char*-Parameter uebergeben"
 			else
-				echo "FAIL  tinyc extern 68000: String-Literal-ABI fehlerhaft"; fail=1
+				echo "FAIL  qcc extern 68000: String-Literal-ABI fehlerhaft"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc extern 68000: IR/Backend fuer String-Literal-Fall fehlgeschlagen"; fail=1
+			echo "FAIL  qcc extern 68000: IR/Backend fuer String-Literal-Fall fehlgeschlagen"; fail=1
 		fi
 		# Fall 5 (2026-07-25, Selfhosting L2 Milestone A/B): malloc/realloc/free ueber
 		# extern+CALLEXT -- Voraussetzung fuer den ActionRoutine-Piloten (siehe SELFHOSTING_
@@ -1176,14 +1176,14 @@ if [ -x tools/vasmm68k_mot ]; then
 		# (Argumentplatzierung d0/d0+d1, Rueckgabewert in d0 als echt benutzbarer Pointer,
 		# Schreiben/Lesen durch den zurueckgegebenen Pointer) -- NICHT das Kopierverhalten
 		# von realloc (alte Daten ueber die Grenze hinweg erhalten bleiben), das braucht
-		# entweder echten Q9-Zugriff oder einen deutlich aufwendigeren Mock (tiny68sim
+		# entweder echten Q9-Zugriff oder einen deutlich aufwendigeren Mock (qcc68sim
 		# modelliert nur EIN generisches Adressregister a0, kein registerindiziertes
 		# Kopieren beliebiger Laenge) -- separat schon strukturell verifiziert: derselbe
 		# IR/68k-Code wurde erfolgreich gegen die ECHTE clib.l gelinkt (echter r68+l68-Lauf,
 		# siehe FORTSCHRITT.md).
-		if build/tinyc_p 'extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); int main(){ int* p; int* q; p = malloc(16); p[0] = 111; p[1] = 222; q = realloc(p, 32); putint(p[0]); putint(p[1]); free(q); putint(1); }' > build/tinyc_extmalloc.ir && \
-			build/tinyc_backend build/tinyc_extmalloc.ir build/tinyc_extmalloc.s68; then
-			cp build/tinyc_extmalloc.s68 build/tinyc_extmalloc_test.s68
+		if build/qcc_p 'extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); int main(){ int* p; int* q; p = malloc(16); p[0] = 111; p[1] = 222; q = realloc(p, 32); putint(p[0]); putint(p[1]); free(q); putint(1); }' > build/qcc_extmalloc.ir && \
+			build/qcc_backend build/qcc_extmalloc.ir build/qcc_extmalloc.s68; then
+			cp build/qcc_extmalloc.s68 build/qcc_extmalloc_test.s68
 			{
 				echo ""
 				echo "; Mock-Stubs (Bump-Allokator) -- testet die Aufrufmechanik, nicht das"
@@ -1205,121 +1205,121 @@ if [ -x tools/vasmm68k_mot ]; then
 				echo "	move.l	d2,d0"
 				echo "	rts"
 				echo "free:	rts"
-			} >> build/tinyc_extmalloc_test.s68
-			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_extmalloc_test.bin build/tinyc_extmalloc_test.s68 2>/dev/null && \
-				[ "$(python3 tools/tiny68sim.py build/tinyc_extmalloc_test.s68 2>/dev/null)" = "$(printf '111\n222\n1')" ]; then
-				echo "ok    tinyc extern 68000: malloc/realloc/free ueber CALLEXT korrekt (Aufrufmechanik + Pointer-Nutzung)"
+			} >> build/qcc_extmalloc_test.s68
+			if tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_extmalloc_test.bin build/qcc_extmalloc_test.s68 2>/dev/null && \
+				[ "$(python3 tools/qcc68sim.py build/qcc_extmalloc_test.s68 2>/dev/null)" = "$(printf '111\n222\n1')" ]; then
+				echo "ok    qcc extern 68000: malloc/realloc/free ueber CALLEXT korrekt (Aufrufmechanik + Pointer-Nutzung)"
 			else
-				echo "FAIL  tinyc extern 68000: malloc/realloc/free-ABI fehlerhaft"; fail=1
+				echo "FAIL  qcc extern 68000: malloc/realloc/free-ABI fehlerhaft"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc extern 68000: IR/Backend fuer malloc/realloc/free-Fall fehlgeschlagen"; fail=1
+			echo "FAIL  qcc extern 68000: IR/Backend fuer malloc/realloc/free-Fall fehlgeschlagen"; fail=1
 		fi
 	else
-		echo "warn  tinyc extern 68000: Backend fehlt -- uebersprungen"
+		echo "warn  qcc extern 68000: Backend fehlt -- uebersprungen"
 	fi
 	# ARM64 kennt die Microware-ABI bewusst nicht -- CALLEXT muss dort sauber
 	# scheitern (kein "silent wrong"), nicht das Backend crashen lassen.
-	if [ -x build/tinyc_arm64_backend ] && [ -f build/tinyc_ext2.ir ]; then
-		if build/tinyc_arm64_backend build/tinyc_ext2.ir build/tinyc_ext2_arm64.s 2>&1 | grep -q 'unbekannter Opcode CALLEXT'; then
-			echo "ok    tinyc extern ARM64: CALLEXT wird sauber abgelehnt (Microware-ABI ist 68k-spezifisch)"
+	if [ -x build/qcc_arm64_backend ] && [ -f build/qcc_ext2.ir ]; then
+		if build/qcc_arm64_backend build/qcc_ext2.ir build/qcc_ext2_arm64.s 2>&1 | grep -q 'unbekannter Opcode CALLEXT'; then
+			echo "ok    qcc extern ARM64: CALLEXT wird sauber abgelehnt (Microware-ABI ist 68k-spezifisch)"
 		else
-			echo "FAIL  tinyc extern ARM64: CALLEXT wird nicht sauber abgelehnt"; fail=1
+			echo "FAIL  qcc extern ARM64: CALLEXT wird nicht sauber abgelehnt"; fail=1
 		fi
 	fi
 
 	# Selfhosting L2, Milestone B (2026-07-25): Pilot-Portierung des ACTION/ROUTINE-
 	# Ausschnitts aus codegen.cpp (ActionRoutine/pushRoutine/freeRoutines/routineTextC,
-	# Source/codegen.cpp:560-650) nach Tiny-C -- testet Pointer-struct-Felder, ptr[i].feld
+	# Source/codegen.cpp:560-650) nach QCC -- testet Pointer-struct-Felder, ptr[i].feld
 	# UND malloc/realloc/free ueber extern GLEICHZEITIG, in genau der Kombination, die der
 	# echte Generator braucht. Bewusste Vereinfachung ggue. dem C-Original: pushRoutine
 	# GIBT den (ggf. reallozierten) Array-Pointer zurueck statt ihn ueber einen ActionRoutine**-
-	# Out-Parameter zu schreiben (Tiny-C hat keine Pointer-auf-Pointer-Indizierung noetig,
+	# Out-Parameter zu schreiben (QCC hat keine Pointer-auf-Pointer-Indizierung noetig,
 	# dasselbe beobachtbare Verhalten ohne dieses Sprachmittel); kein strcpy/memcpy
-	# (Tiny-C hat keine Standardbibliothek), stattdessen manuelle Byte-Kopierschleifen.
+	# (QCC hat keine Standardbibliothek), stattdessen manuelle Byte-Kopierschleifen.
 	# Verifiziert per echtem r68+l68-Link gegen die ECHTE clib.l (malloc/realloc/free
 	# loesen echt auf) -- STRUKTURELL bestaetigt, dass der Mechanismus korrekt ist. Echte
 	# Ausfuehrung (bestaetigt, dass "one"/"two" nach dem realloc-Wachstum ueber "three"
 	# hinaus noch korrekt lesbar sind) braucht entweder echten Q9-Zugriff oder einen
-	# Kopier-faehigen Mock (tiny68sim modelliert nur ein generisches Adressregister a0,
+	# Kopier-faehigen Mock (qcc68sim modelliert nur ein generisches Adressregister a0,
 	# kein registerindiziertes Kopieren beliebiger Laenge) -- bewusst NICHT Teil dieses
 	# Schritts, siehe SELFHOSTING_LUECKENLISTE.md.
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		pilot_src='extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); struct ActionRoutine { char name[16]; char* text; }; struct ActionRoutine* pushRoutine(struct ActionRoutine* arr, int* cnt, int* cap, char* name, char* text, int textLen) { struct ActionRoutine* newArr; int newCap; int i; char* dst; if (*cnt >= *cap) { newCap = *cap > 0 ? *cap * 2 : 2; newArr = realloc(arr, newCap * sizeof(struct ActionRoutine)); arr = newArr; *cap = newCap; } dst = arr[*cnt].name; i = 0; while (name[i] != 0) { dst[i] = name[i]; i = i + 1; } dst[i] = 0; arr[*cnt].text = malloc(textLen + 1); dst = arr[*cnt].text; i = 0; while (i < textLen) { dst[i] = text[i]; i = i + 1; } dst[i] = 0; *cnt = *cnt + 1; return arr; } int routineIndexC(struct ActionRoutine* arr, int cnt, char* name) { int i; int j; bool match; char* n; char nc; for (i = 0; i < cnt; i = i + 1) { n = arr[i].name; match = true; j = 0; nc = n[j]; while (nc != 0) { if (nc != name[j]) { match = false; } j = j + 1; nc = n[j]; } if (name[j] != 0) { match = false; } if (match) { return i; } } return -1; } void freeRoutines(struct ActionRoutine* arr, int cnt) { int i; for (i = 0; i < cnt; i = i + 1) { free(arr[i].text); } } int main() { struct ActionRoutine* routines; int cnt; int cap; int idx; char* t; routines = 0; cnt = 0; cap = 0; routines = pushRoutine(routines, &cnt, &cap, "one", "TEXT-ONE", 8); routines = pushRoutine(routines, &cnt, &cap, "two", "TEXT-TWO", 8); routines = pushRoutine(routines, &cnt, &cap, "three", "TEXT-THREE", 10); putint(cnt); putint(cap); idx = routineIndexC(routines, cnt, "one"); t = routines[idx].text; putchar(t[0]); putchar(t[5]); idx = routineIndexC(routines, cnt, "three"); t = routines[idx].text; putchar(t[0]); putchar(t[9]); idx = routineIndexC(routines, cnt, "nope"); putint(idx); freeRoutines(routines, cnt); free(routines); return 0; }'
-		if build/tinyc_p "$pilot_src" > build/tinyc_pilot.ir 2>build/tinyc_pilot.err && [ ! -s build/tinyc_pilot.err ] && \
-			build/tinyc_backend build/tinyc_pilot.ir build/tinyc_pilot.s68 -os9; then
-			cp build/tinyc_pilot.s68 "$MWOS_TMP/pilot.a"
+		if build/qcc_p "$pilot_src" > build/qcc_pilot.ir 2>build/qcc_pilot.err && [ ! -s build/qcc_pilot.err ] && \
+			build/qcc_backend build/qcc_pilot.ir build/qcc_pilot.s68 -os9; then
+			cp build/qcc_pilot.s68 "$MWOS_TMP/pilot.a"
 			rm -f "$MWOS_TMP/pilot.r" "$MWOS_TMP/pilot.out" "$MWOS_TMP/pilot.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\pilot.a -o=M:\\TMP\\pilot.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/pilot.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\pilot.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\pilot.out -s=M:\\TMP\\pilot.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/pilot.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Milestone B: ActionRoutine-Pilot kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Milestone B: ActionRoutine-Pilot kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Milestone B: echter l68-Link fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Milestone B: echter l68-Link fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Milestone B: echte r68-Assemblierung fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Milestone B: echte r68-Assemblierung fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/pilot.a "$MWOS_TMP"/pilot.r "$MWOS_TMP/pilot.out" "$MWOS_TMP/pilot.sym"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Milestone B: ActionRoutine-Pilot kompiliert nicht sauber (siehe build/tinyc_pilot.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Milestone B: ActionRoutine-Pilot kompiliert nicht sauber (siehe build/qcc_pilot.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Milestone B: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Milestone B: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Globale structs (2026-07-25) machen den ECHTEN routinesC-Vollport-Fall jetzt moeglich:
 	# routinesC/routinesCCnt/routinesCCap sind im echten codegen.cpp file-scope-Globale
 	# (nicht wie im Pilot oben lokale Variablen einer Testfunktion) -- derselbe Test wie
 	# oben, aber diesmal mit echten Globalen statt main()-lokalen Variablen.
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		pilotg_src='extern void* malloc(int size); extern void* realloc(void* p, int size); extern void free(void* p); struct ActionRoutine { char name[16]; char* text; }; struct ActionRoutine* routinesC; int routinesCCnt; int routinesCCap; void pushRoutine(char* name, char* text, int textLen) { struct ActionRoutine* newArr; int newCap; int i; char* dst; if (routinesCCnt >= routinesCCap) { newCap = routinesCCap > 0 ? routinesCCap * 2 : 2; newArr = realloc(routinesC, newCap * sizeof(struct ActionRoutine)); routinesC = newArr; routinesCCap = newCap; } dst = routinesC[routinesCCnt].name; i = 0; while (name[i] != 0) { dst[i] = name[i]; i = i + 1; } dst[i] = 0; routinesC[routinesCCnt].text = malloc(textLen + 1); dst = routinesC[routinesCCnt].text; i = 0; while (i < textLen) { dst[i] = text[i]; i = i + 1; } dst[i] = 0; routinesCCnt = routinesCCnt + 1; } int main() { int idx; char* t; routinesC = 0; routinesCCnt = 0; routinesCCap = 0; pushRoutine("one", "TEXT-ONE", 8); pushRoutine("two", "TEXT-TWO", 8); pushRoutine("three", "TEXT-THREE", 10); putint(routinesCCnt); putint(routinesCCap); t = routinesC[0].text; putchar(t[0]); t = routinesC[2].text; putchar(t[0]); putchar(t[9]); free(routinesC); return 0; }'
-		if build/tinyc_p "$pilotg_src" > build/tinyc_pilotg.ir 2>build/tinyc_pilotg.err && [ ! -s build/tinyc_pilotg.err ] && \
-			build/tinyc_backend build/tinyc_pilotg.ir build/tinyc_pilotg.s68 -os9; then
-			cp build/tinyc_pilotg.s68 "$MWOS_TMP/pilotg.a"
+		if build/qcc_p "$pilotg_src" > build/qcc_pilotg.ir 2>build/qcc_pilotg.err && [ ! -s build/qcc_pilotg.err ] && \
+			build/qcc_backend build/qcc_pilotg.ir build/qcc_pilotg.s68 -os9; then
+			cp build/qcc_pilotg.s68 "$MWOS_TMP/pilotg.a"
 			rm -f "$MWOS_TMP/pilotg.r" "$MWOS_TMP/pilotg.out" "$MWOS_TMP/pilotg.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\pilotg.a -o=M:\\TMP\\pilotg.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/pilotg.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\pilotg.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\pilotg.out -s=M:\\TMP\\pilotg.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/pilotg.out" ]; then
-					echo "ok    tinyc Selfhosting L2: ActionRoutine-Pilot MIT echten globalen routinesC/-Cnt/-Cap (wie im echten codegen.cpp) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2: ActionRoutine-Pilot MIT echten globalen routinesC/-Cnt/-Cap (wie im echten codegen.cpp) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2: echter l68-Link (globale Variante) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2: echter l68-Link (globale Variante) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2: echte r68-Assemblierung (globale Variante) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2: echte r68-Assemblierung (globale Variante) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/pilotg.a "$MWOS_TMP"/pilotg.r "$MWOS_TMP/pilotg.out" "$MWOS_TMP/pilotg.sym"
 		else
-			echo "FAIL  tinyc Selfhosting L2: ActionRoutine-Pilot (globale Variante) kompiliert nicht sauber (siehe build/tinyc_pilotg.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2: ActionRoutine-Pilot (globale Variante) kompiliert nicht sauber (siehe build/qcc_pilotg.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 (globale Variante): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 (globale Variante): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25): naechster Ausschnitt von codegen.cpp nach
-	# SourceTinyC/codegen.tc portiert -- LEXER-Konfigurationsparser (lexUnquote/
+	# SourceQCC/codegen.tc portiert -- LEXER-Konfigurationsparser (lexUnquote/
 	# lexUnquoteAt/lexParseConfig/markLexicalNode/computeLexicalSet, das [LEXER]-
 	# Konfigurationsblock-Handling). Haengt an strncmp/strchr/strrchr/strstr/memcpy
-	# (CALLEXT/clib.l) -- TinyVM kennt CALLEXT NICHT (keine libc-Simulation), daher
+	# (CALLEXT/clib.l) -- QCCVM kennt CALLEXT NICHT (keine libc-Simulation), daher
 	# hier wie beim ActionRoutine-Piloten oben NUR strukturell verifiziert: kompiliert
 	# sauber, echter r68 assembliert, echter l68 linkt gegen echte clib.l. Die
 	# eigentliche ALGORITHMUS-Korrektheit (WHITESPACE-Escape-Dekodierung, mehrere
 	# COMMENT LINE/BLOCK-Marker, COMMENT BLOCK NESTED-Erkennung, TOKEN-Registrierung,
 	# UND -- am wichtigsten -- die TRANSITIVE lexikalische Markierung ueber NTS-
 	# Referenzen in markLexicalNode) wurde EINMALIG separat verifiziert: eine Kopie
-	# mit Tiny-C-eigenen String-Helfern statt extern/CALLEXT (tcStrncmp/tcStrchr/...)
-	# lieferte ueber TinyVM UND nativ per ARM64-Backend exakt dieselben 19 erwarteten
+	# mit QCC-eigenen String-Helfern statt extern/CALLEXT (tcStrncmp/tcStrchr/...)
+	# lieferte ueber QCCVM UND nativ per ARM64-Backend exakt dieselben 19 erwarteten
 	# Werte (inkl. der transitiven Markierung einer per NTS referenzierten Regel) --
 	# siehe docs/FORTSCHRITT.md fuer die Details, hier bewusst nicht dauerhaft als
 	# Skript verankert (Wartungsaufwand einer zweiten String-Bibliothek nur fuers
 	# Testen steht in keinem Verhaeltnis zum Grenzwert).
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		cgtest_main='
@@ -1351,27 +1351,27 @@ int main() {
 	r = ruleIndexByName("other"); putint(ruleIsLexical[r]);
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$cgtest_main" > build/tinyc_cgtest.ir 2>build/tinyc_cgtest.err && \
-			build/tinyc_backend build/tinyc_cgtest.ir build/tinyc_cgtest_os9.a -os9 -largedata; then
-			cp build/tinyc_cgtest_os9.a "$MWOS_TMP/cgtest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$cgtest_main" > build/qcc_cgtest.ir 2>build/qcc_cgtest.err && \
+			build/qcc_backend build/qcc_cgtest.ir build/qcc_cgtest_os9.a -os9 -largedata; then
+			cp build/qcc_cgtest_os9.a "$MWOS_TMP/cgtest.a"
 			rm -f "$MWOS_TMP/cgtest.r" "$MWOS_TMP/cgtest.out" "$MWOS_TMP/cgtest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\cgtest.a -o=M:\\TMP\\cgtest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/cgtest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\cgtest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\cgtest.out -s=M:\\TMP\\cgtest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/cgtest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: LEXER-Konfigurationsparser (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: LEXER-Konfigurationsparser (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/cgtest.a "$MWOS_TMP"/cgtest.r "$MWOS_TMP"/cgtest.out "$MWOS_TMP"/cgtest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc kompiliert nicht sauber (siehe build/tinyc_cgtest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc kompiliert nicht sauber (siehe build/qcc_cgtest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (LEXER-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (LEXER-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
@@ -1380,11 +1380,11 @@ int main() {
 	# Strukturell fast identisch zu lexParseConfig (letztes Wort einer Zeile
 	# extrahieren) -- braucht KEINE Anfuehrungszeichen im Konfigurationsformat, daher
 	# hier ohne den Backtick-Workaround aus dem LEXER-Test moeglich. Gleiche
-	# dreifache Verifikationsmethode wie beim LEXER-Konfigurationsparser (TinyVM +
-	# ARM64 mit Tiny-C-eigenen String-Helfern lieferten identische Werte -- 1/
+	# dreifache Verifikationsmethode wie beim LEXER-Konfigurationsparser (QCCVM +
+	# ARM64 mit QCC-eigenen String-Helfern lieferten identische Werte -- 1/
 	# "mySect"+Nullterminator/"myRule"+Nullterminator, siehe docs/FORTSCHRITT.md);
 	# hier nur die dauerhafte Regression (echter r68+l68 gegen echte clib.l).
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		cgentest_main='
@@ -1400,27 +1400,27 @@ int main() {
 	putint(s[6]);
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$cgentest_main" > build/tinyc_cgentest.ir 2>build/tinyc_cgentest.err && \
-			build/tinyc_backend build/tinyc_cgentest.ir build/tinyc_cgentest_os9.a -os9 -largedata; then
-			cp build/tinyc_cgentest_os9.a "$MWOS_TMP/cgentest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$cgentest_main" > build/qcc_cgentest.ir 2>build/qcc_cgentest.err && \
+			build/qcc_backend build/qcc_cgentest.ir build/qcc_cgentest_os9.a -os9 -largedata; then
+			cp build/qcc_cgentest_os9.a "$MWOS_TMP/cgentest.a"
 			rm -f "$MWOS_TMP/cgentest.r" "$MWOS_TMP/cgentest.out" "$MWOS_TMP/cgentest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\cgentest.a -o=M:\\TMP\\cgentest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/cgentest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\cgentest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\cgentest.out -s=M:\\TMP\\cgentest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/cgentest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: CODEGEN-Konfigurationsparser (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: CODEGEN-Konfigurationsparser (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/cgentest.a "$MWOS_TMP"/cgentest.r "$MWOS_TMP"/cgentest.out "$MWOS_TMP"/cgentest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (CODEGEN-Konfigurationsparser) kompiliert nicht sauber (siehe build/tinyc_cgentest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (CODEGEN-Konfigurationsparser) kompiliert nicht sauber (siehe build/qcc_cgentest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (CODEGEN-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (CODEGEN-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
@@ -1429,21 +1429,21 @@ int main() {
 	# growCollectBuf/actionsParseConfig, das [NUTZER-CODE]-Block-Handling aus
 	# Source/codegen.cpp Zeilen 580-750). pushRoutineC/pushRoutine68k sind ZWEI fast
 	# identische Funktionen statt EINER generischen mit "ActionRoutine**"-Parameter
-	# wie im C++-Original (Tiny-C hat keine Generik/Funktionszeiger, routinesC/
+	# wie im C++-Original (QCC hat keine Generik/Funktionszeiger, routinesC/
 	# routines68k sind hier wie im Original file-scope-Globale -- direktes Mutieren
 	# ist einfacher, gleiches Muster wie beim ActionRoutine-Piloten Milestone B).
 	# Verifikation NUR strukturell (wie beim Piloten): kompiliert sauber (NULL
 	# Semantikfehler), assembliert (echter r68), linkt (echter l68 gegen echte
-	# clib.l). Eine versuchte TIEFERE Logikverifikation (TinyVM/ARM64 mit
+	# clib.l). Eine versuchte TIEFERE Logikverifikation (QCCVM/ARM64 mit
 	# selbstgeschriebenen malloc/realloc-Ersatzfunktionen fuer eigenstaendige
 	# Ausfuehrbarkeit) scheiterte an Grenzen der TESTUMGEBUNG, nicht des Ports:
-	# TinyVMs Zeigermodell ist nicht byte-adressierbar und vertraegt keine
+	# QCCVMs Zeigermodell ist nicht byte-adressierbar und vertraegt keine
 	# malloc-Heap-Umdeutung auf struct-Zeiger; eine ARM64-Reproduktion mit
 	# selbstgebautem Bump-Allocator stuerzte ab (vermutlich ein Bug im
 	# Test-Stub selbst, nicht im geprueften Code -- der echte extern-Pfad
 	# gegen clib.l linkt fehlerfrei). Echte Verhaltensverifikation bleibt der
 	# Live-Q9-Ausfuehrung vorbehalten (bereits als offener Schritt vermerkt).
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		actiontest_main='
@@ -1471,27 +1471,27 @@ int main() {
 	putint(t == 0);
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$actiontest_main" > build/tinyc_actiontest.ir 2>build/tinyc_actiontest.err && \
-			build/tinyc_backend build/tinyc_actiontest.ir build/tinyc_actiontest_os9.a -os9 -largedata; then
-			cp build/tinyc_actiontest_os9.a "$MWOS_TMP/actiontest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$actiontest_main" > build/qcc_actiontest.ir 2>build/qcc_actiontest.err && \
+			build/qcc_backend build/qcc_actiontest.ir build/qcc_actiontest_os9.a -os9 -largedata; then
+			cp build/qcc_actiontest_os9.a "$MWOS_TMP/actiontest.a"
 			rm -f "$MWOS_TMP/actiontest.r" "$MWOS_TMP/actiontest.out" "$MWOS_TMP/actiontest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\actiontest.a -o=M:\\TMP\\actiontest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/actiontest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\actiontest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\actiontest.out -s=M:\\TMP\\actiontest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/actiontest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: ActionRoutine/ACTIONS-Konfigurationsparser (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: ActionRoutine/ACTIONS-Konfigurationsparser (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/actiontest.a "$MWOS_TMP"/actiontest.r "$MWOS_TMP"/actiontest.out "$MWOS_TMP"/actiontest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (ActionRoutine/ACTIONS-Konfigurationsparser) kompiliert nicht sauber (siehe build/tinyc_actiontest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (ActionRoutine/ACTIONS-Konfigurationsparser) kompiliert nicht sauber (siehe build/qcc_actiontest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (ActionRoutine/ACTIONS-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (ActionRoutine/ACTIONS-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
@@ -1501,15 +1501,15 @@ int main() {
 	# Endlosschleife im erzeugten Parser -- wird erkannt und abgelehnt (Fixpunkt-
 	# analyse ueber gegenseitig rekursive Regeln); (2) zwei Regeln, die nach der
 	# "$"->"_"-Normalisierung denselben Namen ergeben, wuerden doppelte C-Funktionen/
-	# 68k-Labels erzeugen -- wird erkannt und abgelehnt. Einmalig per TinyVM
-	# tiefenverifiziert (mit Tiny-C-eigenen Stand-ins fuer strcmp/isalpha/isalnum
+	# 68k-Labels erzeugen -- wird erkannt und abgelehnt. Einmalig per QCCVM
+	# tiefenverifiziert (mit QCC-eigenen Stand-ins fuer strcmp/isalpha/isalnum
 	# statt extern): alle 10 erwarteten Werte trafen exakt zu, inklusive beider
 	# Diagnosepfade -- siehe docs/FORTSCHRITT.md. ARM64 hier NICHT moeglich (das
 	# kumulative Gesamtkompilat enthaelt bereits "free" aus dem ActionRoutine-Chunk,
 	# CALLEXT wird von ARM64 grundsaetzlich abgelehnt, unabhaengig von Erreichbarkeit
-	# -- TinyVM meldet den Fehler dagegen nur bei tatsaechlicher Ausfuehrung, hier
+	# -- QCCVM meldet den Fehler dagegen nur bei tatsaechlicher Ausfuehrung, hier
 	# also unproblematisch). Dauerhafte Regression wie ueblich: echter r68+l68.
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		astvaltest_main='
@@ -1530,42 +1530,42 @@ int main() {
 	putint(validateAstForCodegen());
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$astvaltest_main" > build/tinyc_astvaltest.ir 2>build/tinyc_astvaltest.err && \
-			build/tinyc_backend build/tinyc_astvaltest.ir build/tinyc_astvaltest_os9.a -os9 -largedata; then
-			cp build/tinyc_astvaltest_os9.a "$MWOS_TMP/astvaltest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$astvaltest_main" > build/qcc_astvaltest.ir 2>build/qcc_astvaltest.err && \
+			build/qcc_backend build/qcc_astvaltest.ir build/qcc_astvaltest_os9.a -os9 -largedata; then
+			cp build/qcc_astvaltest_os9.a "$MWOS_TMP/astvaltest.a"
 			rm -f "$MWOS_TMP/astvaltest.r" "$MWOS_TMP/astvaltest.out" "$MWOS_TMP/astvaltest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\astvaltest.a -o=M:\\TMP\\astvaltest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/astvaltest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\astvaltest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\astvaltest.out -s=M:\\TMP\\astvaltest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/astvaltest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: AST-Validierung (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: AST-Validierung (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (AST-Validierung) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (AST-Validierung) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (AST-Validierung) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (AST-Validierung) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/astvaltest.a "$MWOS_TMP"/astvaltest.r "$MWOS_TMP"/astvaltest.out "$MWOS_TMP"/astvaltest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (AST-Validierung) kompiliert nicht sauber (siehe build/tinyc_astvaltest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (AST-Validierung) kompiliert nicht sauber (siehe build/qcc_astvaltest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (AST-Validierung): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (AST-Validierung): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
 	# -- C-Backend-Codegenerator (emitCString/emitLongerLiteralRejectC/genNodeC,
 	# Source/codegen.cpp Zeilen 858-1000). Erste Beruehrung mit ECHTER Dateiausgabe
 	# (fopen/fprintf/fputc/fclose statt nur stdout-Diagnosen wie bisher) -- FILE*
-	# wird als "void*" gefuehrt (Tiny-C hat keinen FILE-Struct-Typ, der ABI-Aufruf
+	# wird als "void*" gefuehrt (QCC hat keinen FILE-Struct-Typ, der ABI-Aufruf
 	# braucht nur einen opaken Zeiger). clib.l hat KEIN snprintf (nur sprintf,
 	# per `strings` bestaetigt) -- deshalb sprintf ohne Laengenlimit verwendet.
-	# NEUE Tiny-C-Grenze gefunden: Tiny-C kann KEINE EIGENEN variadischen
-	# Funktionen definieren (nur variadische extern-Aufrufe) -- ein Tiny-C-
-	# Stand-in fuer fprintf (fuer TinyVM/ARM64-Tiefenverifikation wie bei den
+	# NEUE QCC-Grenze gefunden: QCC kann KEINE EIGENEN variadischen
+	# Funktionen definieren (nur variadische extern-Aufrufe) -- ein QCC-
+	# Stand-in fuer fprintf (fuer QCCVM/ARM64-Tiefenverifikation wie bei den
 	# String-Funktionen zuvor) ist deshalb NICHT moeglich. Verifikation bleibt
 	# bei kompiliert sauber + echter r68/l68-Link (wie beim ActionRoutine-Chunk).
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		gennodetest_main='
@@ -1585,63 +1585,63 @@ int main() {
 	astGroupSeq(m);
 	astFinishRule("test");
 	computeLexicalSet();
-	fp = fopen("/tmp/tinyc_gennodetest_output.c", "w");
+	fp = fopen("/tmp/qcc_gennodetest_output.c", "w");
 	if (fp == 0) { putint(-1); return 1; }
 	genNodeC(fp, rules[1].root, 999, 0);
 	fclose(fp);
 	putint(1);
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$gennodetest_main" > build/tinyc_gennodetest.ir 2>build/tinyc_gennodetest.err && \
-			build/tinyc_backend build/tinyc_gennodetest.ir build/tinyc_gennodetest_os9.a -os9 -largedata; then
-			cp build/tinyc_gennodetest_os9.a "$MWOS_TMP/gennodetest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$gennodetest_main" > build/qcc_gennodetest.ir 2>build/qcc_gennodetest.err && \
+			build/qcc_backend build/qcc_gennodetest.ir build/qcc_gennodetest_os9.a -os9 -largedata; then
+			cp build/qcc_gennodetest_os9.a "$MWOS_TMP/gennodetest.a"
 			rm -f "$MWOS_TMP/gennodetest.r" "$MWOS_TMP/gennodetest.out" "$MWOS_TMP/gennodetest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\gennodetest.a -o=M:\\TMP\\gennodetest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/gennodetest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\gennodetest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\gennodetest.out -s=M:\\TMP\\gennodetest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/gennodetest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: C-Backend-Codegenerator (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: C-Backend-Codegenerator (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/gennodetest.a "$MWOS_TMP"/gennodetest.r "$MWOS_TMP"/gennodetest.out "$MWOS_TMP"/gennodetest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (C-Backend-Codegenerator) kompiliert nicht sauber (siehe build/tinyc_gennodetest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (C-Backend-Codegenerator) kompiliert nicht sauber (siehe build/qcc_gennodetest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (C-Backend-Codegenerator): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (C-Backend-Codegenerator): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
 	# -- genParserC (der Rest des C-Backends: Datei-Header, Lexer-Helfer ws()/idch(),
 	# Action-Log-Runtime-Geruest, eine p_<regel>()-Funktion pro Regel, main() --
 	# Source/codegen.cpp Zeilen 1002-1168). SECHS Stellen im C++-Original betten ein
-	# Anfuehrungszeichen DIREKT in einen fprintf-Formatstring ein -- geht in Tiny-C
-	# nicht (siehe Quirk in tinyc-vollport-status.md), per fputc(34,fp)-Aufteilung
+	# Anfuehrungszeichen DIREKT in einen fprintf-Formatstring ein -- geht in QCC
+	# nicht (siehe Quirk in qcc-vollport-status.md), per fputc(34,fp)-Aufteilung
 	# umgeschrieben. ZWEI dieser Stellen haben zusaetzlich ein "%%"-Selbstescape im
 	# Original (literales "%" ohne eigenes Substitutionsargument) -- als "%s"-Argument
 	# uebergeben statt direkt in den Formatstring geschrieben (sonst re-interpretiert
-	# Tiny-C/clib.l's fprintf das "%" als Formatzeichen).
+	# QCC/clib.l's fprintf das "%" als Formatzeichen).
 	#
 	# WICHTIGER, EIGENSTAENDIGER FUND waehrend dieses Chunks (nicht der Port selbst,
 	# sondern ZWEI echte Bugs in der Toolchain):
-	# 1. Ein bisher unbekannter Tiny-C-PARSER-Bug: ein Tiny-C-String-Literal, das die
+	# 1. Ein bisher unbekannter QCC-PARSER-Bug: ein QCC-String-Literal, das die
 	#    Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (hier: generierter C-Code
-	#    braucht selbst && / || in ws()/idch()), loeste eine falsche "tinyc: logical-
+	#    braucht selbst && / || in ws()/idch()), loeste eine falsche "qcc: logical-
 	#    frame mismatch"-Diagnose aus. NICHT die Grammatik gefixt (Risiko/Aufwand vs.
 	#    Nutzen) -- stattdessen jede betroffene Stelle per fputc(38,fp)/fputc(124,fp)
 	#    umgeschrieben (emitAndAnd/emitOrOr-Helfer), sodass "&&"/"||" nie als
-	#    zusammenhaengende Zeichenfolge in einem Tiny-C-String-Literal auftaucht.
-	# 2. Ein ECHTER SKALIERUNGSBUG im 68k-Backend selbst (Source/tinyc_backend_c.cpp):
+	#    zusammenhaengende Zeichenfolge in einem QCC-String-Literal auftaucht.
+	# 2. Ein ECHTER SKALIERUNGSBUG im 68k-Backend selbst (Source/qcc_backend_c.cpp):
 	#    das -largedata-Datenmodell lud JEDEN Tabelleneintrag bisher per EIGENEM
 	#    PC-relativem Label ("movea.l tc_ga_X(pc),reg") -- das brach, sobald der
 	#    GESAMTE Funktionscode zwischen einer fruehen Funktion (z.B. "main", die per
 	#    -largedata-Funktionsaufruf-Fix immer zuerst emittiert wird) und der Tabelle
 	#    selbst (die NACH allen Funktionsrumpf-Texten lag) mehr als 32 KB umfasste --
-	#    genau das trat beim ersten echten Skalierungstest fuer SourceTinyC/codegen.tc
+	#    genau das trat beim ersten echten Skalierungstest fuer SourceQCC/codegen.tc
 	#    auf (kumulatives Kompilat inzwischen weit ueber 32 KB Code) und liess
 	#    RUECKWIRKEND ALLE bisherigen Vollport-Regressionstests fehlschlagen (der
 	#    naechste Funktionsaufruf/Global-Zugriff konnte die Tabelle nicht mehr
@@ -1650,9 +1650,9 @@ int main() {
 	#    kombinierten Tabelle (tc_gadata, direkt nach tc_functab, vor allen
 	#    Funktionsrumpf-Texten) gesetzt; jeder Globalzugriff wird zu "move.l
 	#    <gidx*4>(a3),reg" statt einem PC-relativen Tabellen-Label-Load. tools/
-	#    tiny68sim.py (Test-Simulator) musste dafuer a3 in sein generisches
+	#    qcc68sim.py (Test-Simulator) musste dafuer a3 in sein generisches
 	#    Adressregister-Dict aufnehmen (war zuvor auf a0/a2/a4 beschraenkt).
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		genparsertest_main='
@@ -1671,31 +1671,31 @@ int main() {
 	astPushNTS("sub");
 	astGroupSeq(m);
 	astFinishRule("test");
-	ok = genParserC("/tmp/tinyc_genparserc_output.c");
+	ok = genParserC("/tmp/qcc_genparserc_output.c");
 	putint(ok);
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$genparsertest_main" > build/tinyc_genparsertest.ir 2>build/tinyc_genparsertest.err && \
-			build/tinyc_backend build/tinyc_genparsertest.ir build/tinyc_genparsertest_os9.a -os9 -largedata; then
-			cp build/tinyc_genparsertest_os9.a "$MWOS_TMP/genparsertest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$genparsertest_main" > build/qcc_genparsertest.ir 2>build/qcc_genparsertest.err && \
+			build/qcc_backend build/qcc_genparsertest.ir build/qcc_genparsertest_os9.a -os9 -largedata; then
+			cp build/qcc_genparsertest_os9.a "$MWOS_TMP/genparsertest.a"
 			rm -f "$MWOS_TMP/genparsertest.r" "$MWOS_TMP/genparsertest.out" "$MWOS_TMP/genparsertest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\genparsertest.a -o=M:\\TMP\\genparsertest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/genparsertest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparsertest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparsertest.out -s=M:\\TMP\\genparsertest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/genparsertest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: genParserC (SourceTinyC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: genParserC (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (genParserC) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (genParserC) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (genParserC) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (genParserC) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/genparsertest.a "$MWOS_TMP"/genparsertest.r "$MWOS_TMP"/genparsertest.out "$MWOS_TMP"/genparsertest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (genParserC) kompiliert nicht sauber (siehe build/tinyc_genparsertest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (genParserC) kompiliert nicht sauber (siehe build/qcc_genparsertest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (genParserC): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (genParserC): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): letzter Ausschnitt
@@ -1710,14 +1710,14 @@ int main() {
 	# DREI weitere Funde/Fixes waehrend dieses Chunks:
 	# 1. DIESELBE "?"-Variante des logical-frame-Bugs (siehe genParserC): ein
 	#    String-Literal mit "?" als Text ("Identifikator-Zeichen? d0.b...") loeste
-	#    "tinyc: conditional-frame mismatch" aus (tcTernaryDepth-Tracking).
+	#    "qcc: conditional-frame mismatch" aus (tcTernaryDepth-Tracking).
 	#    Gefixt per neuem emitQMark(fp)-Helfer (ein fputc(63,fp)), analog zu
 	#    emitAndAnd/emitOrOr.
 	# 2. Backend-eigene MAX_GLOBALS-Grenze (256, GETRENNT von der Frontend-
-	#    Grenze in Data/tinyc.lextab) blockierte den Skalierungsnachweis: JEDES
-	#    String-Literal im Tiny-C-Quelltext wird zu einem anonymen __strN-Global,
+	#    Grenze in Data/qcc.lextab) blockierte den Skalierungsnachweis: JEDES
+	#    String-Literal im QCC-Quelltext wird zu einem anonymen __strN-Global,
 	#    das kumulative Kompilat hat inzwischen weit ueber 256 davon. Erhoeht auf
-	#    1024 (Source/tinyc_backend_c.cpp).
+	#    1024 (Source/qcc_backend_c.cpp).
 	# 3. Ein WEITERER echter Skalierungsbug im 68k-Backend: tc_extcall_tmp (der
 	#    Scratch-Puffer fuer externe Aufrufe mit Stack-Argumenten) wurde bisher
 	#    IMMER per PC-relativem "lea tc_extcall_tmp(pc),a0" direkt an der
@@ -1726,7 +1726,7 @@ int main() {
 	#    a3-Muster: tc_extcall_tmp bekommt einen ZUSAETZLICHEN Eintrag in
 	#    tc_gadata (Offset globalCount*4, direkt nach allen echten Globalen);
 	#    tc_gadata wird jetzt IMMER emittiert (nicht nur bei globalCount > 0).
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
 		genparser68ktest_main='
@@ -1745,31 +1745,31 @@ int main() {
 	astPushNTS("sub");
 	astGroupSeq(m);
 	astFinishRule("test");
-	ok = genParser68kOS9("/tmp/tinyc_genparser68k_output.a", "testbase");
+	ok = genParser68kOS9("/tmp/qcc_genparser68k_output.a", "testbase");
 	putint(ok);
 	return 0;
 }'
-		if build/tinyc_p "$(cat SourceTinyC/codegen.tc)$genparser68ktest_main" > build/tinyc_genparser68ktest.ir 2>build/tinyc_genparser68ktest.err && \
-			build/tinyc_backend build/tinyc_genparser68ktest.ir build/tinyc_genparser68ktest_os9.a -os9 -largedata; then
-			cp build/tinyc_genparser68ktest_os9.a "$MWOS_TMP/genparser68ktest.a"
+		if build/qcc_p "$(cat SourceQCC/codegen.tc)$genparser68ktest_main" > build/qcc_genparser68ktest.ir 2>build/qcc_genparser68ktest.err && \
+			build/qcc_backend build/qcc_genparser68ktest.ir build/qcc_genparser68ktest_os9.a -os9 -largedata; then
+			cp build/qcc_genparser68ktest_os9.a "$MWOS_TMP/genparser68ktest.a"
 			rm -f "$MWOS_TMP/genparser68ktest.r" "$MWOS_TMP/genparser68ktest.out" "$MWOS_TMP/genparser68ktest.sym"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\genparser68ktest.a -o=M:\\TMP\\genparser68ktest.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/genparser68ktest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparser68ktest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparser68ktest.out -s=M:\\TMP\\genparser68ktest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/genparser68ktest.out" ]; then
-					echo "ok    tinyc Selfhosting L2 Vollport: 68k-Backend (SourceTinyC/codegen.tc, Vollport von codegen.cpp abgeschlossen) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: 68k-Backend (SourceQCC/codegen.tc, Vollport von codegen.cpp abgeschlossen) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
-					echo "FAIL  tinyc Selfhosting L2 Vollport: echter l68-Link (68k-Backend) fehlgeschlagen"; fail=1
+					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (68k-Backend) fehlgeschlagen"; fail=1
 				fi
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (68k-Backend) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (68k-Backend) fehlgeschlagen"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/genparser68ktest.a "$MWOS_TMP"/genparser68ktest.r "$MWOS_TMP"/genparser68ktest.out "$MWOS_TMP"/genparser68ktest.sym
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/codegen.tc (68k-Backend) kompiliert nicht sauber (siehe build/tinyc_genparser68ktest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (68k-Backend) kompiliert nicht sauber (siehe build/qcc_genparser68ktest.err)"; fail=1
 		fi
 	else
-		echo "warn  tinyc Selfhosting L2 Vollport (68k-Backend): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
+		echo "warn  qcc Selfhosting L2 Vollport (68k-Backend): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
 	fi
 
 	# -largedata (2026-07-25, "Speichermodell"-Schalter): der 68k-Backend adressiert
@@ -1779,55 +1779,55 @@ int main() {
 	# docs/FORTSCHRITT.md). -largedata schaltet auf eine Indirektionstabelle mit
 	# absoluten (vom Linker aufgeloesten) Adressen um -- getestet mit einem
 	# struct-Array, das OHNE -largedata garantiert zu gross waere (analog zum
-	# urspruenglichen AST_MAX_NODES=8192-Fund in SourceTinyC/codegen.tc).
+	# urspruenglichen AST_MAX_NODES=8192-Fund in SourceQCC/codegen.tc).
 	largedata_src='struct Big { int a; char pad[52]; }; struct Big arr[2048]; int cnt; int main(){ arr[0].a=42; arr[2047].a=99; cnt=7; putint(arr[0].a); putint(arr[2047].a); putint(cnt); }'
-	if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 		mkdir -p "$MWOS_TMP"
-		if build/tinyc_p "$largedata_src" > build/tinyc_largedata.ir && \
-			build/tinyc_backend build/tinyc_largedata.ir build/tinyc_largedata.s68 -largedata && \
-			build/tinyc_backend build/tinyc_largedata.ir build/tinyc_largedata_os9.a -os9 -largedata; then
-			cp build/tinyc_largedata_os9.a "$MWOS_TMP/largedata.a"
+		if build/qcc_p "$largedata_src" > build/qcc_largedata.ir && \
+			build/qcc_backend build/qcc_largedata.ir build/qcc_largedata.s68 -largedata && \
+			build/qcc_backend build/qcc_largedata.ir build/qcc_largedata_os9.a -os9 -largedata; then
+			cp build/qcc_largedata_os9.a "$MWOS_TMP/largedata.a"
 			rm -f "$MWOS_TMP/largedata.r"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largedata.a -o=M:\\TMP\\largedata.r -q" >/dev/null 2>&1
-			if [ -s "$MWOS_TMP/largedata.r" ] && [ "$(python3 tools/tiny68sim.py build/tinyc_largedata.s68 2>/dev/null)" = "$(printf '42\n99\n7')" ]; then
-				echo "ok    tinyc -largedata: grosses struct-Array (112 KB, weit ueber der PC-relativen Grenze) kompiliert, assembliert (echter r68) und simuliert korrekt"
+			if [ -s "$MWOS_TMP/largedata.r" ] && [ "$(python3 tools/qcc68sim.py build/qcc_largedata.s68 2>/dev/null)" = "$(printf '42\n99\n7')" ]; then
+				echo "ok    qcc -largedata: grosses struct-Array (112 KB, weit ueber der PC-relativen Grenze) kompiliert, assembliert (echter r68) und simuliert korrekt"
 			else
-				echo "FAIL  tinyc -largedata: grosses struct-Array fehlerhaft"; fail=1
+				echo "FAIL  qcc -largedata: grosses struct-Array fehlerhaft"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/largedata.a "$MWOS_TMP"/largedata.r
 		else
-			echo "FAIL  tinyc -largedata: IR/Backend fehlgeschlagen"; fail=1
+			echo "FAIL  qcc -largedata: IR/Backend fehlgeschlagen"; fail=1
 		fi
 	else
-		echo "warn  tinyc -largedata: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter r68-Test uebersprungen"
+		echo "warn  qcc -largedata: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter r68-Test uebersprungen"
 	fi
 	# Gegenprobe: OHNE -largedata muss (a) unser Backend selbst schon eine Warnung
-	# ausgeben (Groessen-Heuristik, siehe main() in tinyc_backend_c.cpp) UND (b)
+	# ausgeben (Groessen-Heuristik, siehe main() in qcc_backend_c.cpp) UND (b)
 	# der ECHTE r68 dasselbe Programm mit "value out of range" ablehnen -- damit
 	# ist die Notwendigkeit von -largedata fuer diesen Fall doppelt belegt.
-	if build/tinyc_p "$largedata_src" > build/tinyc_largedata2.ir && \
-		build/tinyc_backend build/tinyc_largedata2.ir build/tinyc_largedata2.s68 -os9 2>build/tinyc_largedata2.warn; then
-		if grep -q 'globale Daten sind mit .* Byte recht gross' build/tinyc_largedata2.warn; then
-			echo "ok    tinyc: Groessen-Heuristik warnt VOR -largedata, wenn globale Daten gross werden"
+	if build/qcc_p "$largedata_src" > build/qcc_largedata2.ir && \
+		build/qcc_backend build/qcc_largedata2.ir build/qcc_largedata2.s68 -os9 2>build/qcc_largedata2.warn; then
+		if grep -q 'globale Daten sind mit .* Byte recht gross' build/qcc_largedata2.warn; then
+			echo "ok    qcc: Groessen-Heuristik warnt VOR -largedata, wenn globale Daten gross werden"
 		else
-			echo "FAIL  tinyc: Groessen-Heuristik-Warnung fehlt"; fail=1
+			echo "FAIL  qcc: Groessen-Heuristik-Warnung fehlt"; fail=1
 		fi
 		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ]; then
-			cp build/tinyc_largedata2.s68 "$MWOS_TMP/largedata2.a"
+			cp build/qcc_largedata2.s68 "$MWOS_TMP/largedata2.a"
 			rm -f "$MWOS_TMP/largedata2.r"
 			out=$(WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largedata2.a -o=M:\\TMP\\largedata2.r -q" 2>&1)
 			if echo "$out" | grep -q 'value out of range'; then
-				echo "ok    tinyc: echter r68 lehnt dasselbe Array OHNE -largedata tatsaechlich mit 'value out of range' ab"
+				echo "ok    qcc: echter r68 lehnt dasselbe Array OHNE -largedata tatsaechlich mit 'value out of range' ab"
 			else
-				echo "FAIL  tinyc: r68 haette OHNE -largedata ablehnen muessen -- Gegenprobe ungueltig"; fail=1
+				echo "FAIL  qcc: r68 haette OHNE -largedata ablehnen muessen -- Gegenprobe ungueltig"; fail=1
 			fi
 			rm -f "$MWOS_TMP"/largedata2.a "$MWOS_TMP"/largedata2.r
 		else
-			echo "warn  tinyc -largedata-Gegenprobe (echter r68): Wine/MWOS nicht verfuegbar -- uebersprungen"
+			echo "warn  qcc -largedata-Gegenprobe (echter r68): Wine/MWOS nicht verfuegbar -- uebersprungen"
 		fi
 	else
-		echo "FAIL  tinyc: IR/Backend fuer -largedata-Gegenprobe fehlgeschlagen"; fail=1
+		echo "FAIL  qcc: IR/Backend fuer -largedata-Gegenprobe fehlgeschlagen"; fail=1
 	fi
 
 	# -largedata fuer FUNKTIONSAUFRUFE (2026-07-25): "bsr tc_<name>" ist GENAUSO
@@ -1858,104 +1858,104 @@ int main() {
 		lfi=$((lfi+1))
 	done
 	largefunc_src="$largefunc_src int main(){ putint(f0(1)); putint(f149(1)); putint(f75(5)); }"
-	if [ -x build/tinyc_backend ] && command -v python3 >/dev/null 2>&1; then
-		if build/tinyc_p "$largefunc_src" > build/tinyc_largefunc.ir && \
-			build/tinyc_backend build/tinyc_largefunc.ir build/tinyc_largefunc.s68 -largedata && \
-			[ "$(python3 tools/tiny68sim.py build/tinyc_largefunc.s68 2>/dev/null)" = "$(printf '196\n14204\n6311')" ]; then
-			echo "ok    tinyc -largedata Funktionsaufrufe: 150 Funktionen (>32 KB Code) ueber Indirektionstabelle (a4/a2) statt bsr = tinyvm"
+	if [ -x build/qcc_backend ] && command -v python3 >/dev/null 2>&1; then
+		if build/qcc_p "$largefunc_src" > build/qcc_largefunc.ir && \
+			build/qcc_backend build/qcc_largefunc.ir build/qcc_largefunc.s68 -largedata && \
+			[ "$(python3 tools/qcc68sim.py build/qcc_largefunc.s68 2>/dev/null)" = "$(printf '196\n14204\n6311')" ]; then
+			echo "ok    qcc -largedata Funktionsaufrufe: 150 Funktionen (>32 KB Code) ueber Indirektionstabelle (a4/a2) statt bsr = qccvm"
 		else
-			echo "FAIL  tinyc -largedata Funktionsaufrufe: 150-Funktionen-Testfall stimmt nicht mit tinyvm ueberein"; fail=1
+			echo "FAIL  qcc -largedata Funktionsaufrufe: 150-Funktionen-Testfall stimmt nicht mit qccvm ueberein"; fail=1
 		fi
 		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 		   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 			mkdir -p "$MWOS_TMP"
-			if build/tinyc_backend build/tinyc_largefunc.ir build/tinyc_largefunc_os9.a -os9 -largedata; then
-				cp build/tinyc_largefunc_os9.a "$MWOS_TMP/largefunc.a"
+			if build/qcc_backend build/qcc_largefunc.ir build/qcc_largefunc_os9.a -os9 -largedata; then
+				cp build/qcc_largefunc_os9.a "$MWOS_TMP/largefunc.a"
 				rm -f "$MWOS_TMP/largefunc.r" "$MWOS_TMP/largefunc.out" "$MWOS_TMP/largefunc.sym"
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largefunc.a -o=M:\\TMP\\largefunc.r -q" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/largefunc.r" ]; then
 					WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\largefunc.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\largefunc.out -s=M:\\TMP\\largefunc.sym" >/dev/null 2>&1
 					if [ -s "$MWOS_TMP/largefunc.out" ]; then
-						echo "ok    tinyc -largedata Funktionsaufrufe: 150-Funktionen-Programm (>32 KB Code) assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+						echo "ok    qcc -largedata Funktionsaufrufe: 150-Funktionen-Programm (>32 KB Code) assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 					else
-						echo "FAIL  tinyc -largedata Funktionsaufrufe: echter l68-Link fehlgeschlagen"; fail=1
+						echo "FAIL  qcc -largedata Funktionsaufrufe: echter l68-Link fehlgeschlagen"; fail=1
 					fi
 				else
-					echo "FAIL  tinyc -largedata Funktionsaufrufe: echte r68-Assemblierung fehlgeschlagen"; fail=1
+					echo "FAIL  qcc -largedata Funktionsaufrufe: echte r68-Assemblierung fehlgeschlagen"; fail=1
 				fi
 				rm -f "$MWOS_TMP"/largefunc.a "$MWOS_TMP"/largefunc.r "$MWOS_TMP"/largefunc.out "$MWOS_TMP"/largefunc.sym
 			else
-				echo "FAIL  tinyc -largedata Funktionsaufrufe: -os9-Backend-Lauf fehlgeschlagen"; fail=1
+				echo "FAIL  qcc -largedata Funktionsaufrufe: -os9-Backend-Lauf fehlgeschlagen"; fail=1
 			fi
 			# Gegenprobe: dasselbe 150-Funktionen-Programm OHNE -largedata muss der
 			# echte r68 tatsaechlich mit "branch out of range" ablehnen (bsr ueber
 			# mehr als 32 KB -- andere Fehlermeldung als "value out of range" bei
 			# lea/movea fuer Daten) -- belegt die Notwendigkeit auch fuer
 			# Funktionsaufrufe, nicht nur fuer globale Daten.
-			if build/tinyc_backend build/tinyc_largefunc.ir build/tinyc_largefunc2_os9.a -os9; then
-				cp build/tinyc_largefunc2_os9.a "$MWOS_TMP/largefunc2.a"
+			if build/qcc_backend build/qcc_largefunc.ir build/qcc_largefunc2_os9.a -os9; then
+				cp build/qcc_largefunc2_os9.a "$MWOS_TMP/largefunc2.a"
 				rm -f "$MWOS_TMP/largefunc2.r"
 				out=$(WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\largefunc2.a -o=M:\\TMP\\largefunc2.r -q" 2>&1)
 				# "branch out of range" (nicht "value out of range" wie bei lea/movea
 				# fuer Daten) ist die reale r68-Fehlermeldung fuer ein zu weit
 				# entferntes bsr-Ziel -- empirisch bestaetigt (2026-07-25).
 				if echo "$out" | grep -q 'branch out of range'; then
-					echo "ok    tinyc: echter r68 lehnt dasselbe 150-Funktionen-Programm OHNE -largedata tatsaechlich mit 'branch out of range' ab"
+					echo "ok    qcc: echter r68 lehnt dasselbe 150-Funktionen-Programm OHNE -largedata tatsaechlich mit 'branch out of range' ab"
 				else
-					echo "FAIL  tinyc: r68 haette OHNE -largedata (Funktionsaufrufe) ablehnen muessen -- Gegenprobe ungueltig"; fail=1
+					echo "FAIL  qcc: r68 haette OHNE -largedata (Funktionsaufrufe) ablehnen muessen -- Gegenprobe ungueltig"; fail=1
 				fi
 				rm -f "$MWOS_TMP"/largefunc2.a "$MWOS_TMP"/largefunc2.r
 			else
-				echo "FAIL  tinyc: -os9-Backend-Lauf (Funktionsaufruf-Gegenprobe) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc: -os9-Backend-Lauf (Funktionsaufruf-Gegenprobe) fehlgeschlagen"; fail=1
 			fi
 		else
-			echo "warn  tinyc -largedata Funktionsaufrufe: Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter r68/l68-Test uebersprungen"
+			echo "warn  qcc -largedata Funktionsaufrufe: Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter r68/l68-Test uebersprungen"
 		fi
 	else
-		echo "warn  tinyc -largedata Funktionsaufrufe: Backend oder python3 fehlt -- uebersprungen"
+		echo "warn  qcc -largedata Funktionsaufrufe: Backend oder python3 fehlt -- uebersprungen"
 	fi
 
-	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): tinyc_backend akzeptiert
+	# 13a-os9) Microware-r68-Ausgabemodus (2026-07-24): qcc_backend akzeptiert
 	# ein optionales 4. Argument "-os9" und schaltet dann auf nam/psect/ends-
 	# Rahmung, "*" statt ";" fuer volle Kommentarzeilen und "align 4"/"dc.l 0,.."
 	# statt "even"/"ds.l" um (r68 kennt even/ds.l/rmb/cnop nicht -- empirisch
 	# gegen die echte Microware-Toolchain ermittelt). Deckt DATA/BSS/Scratch-
 	# Puffer UND einen CALLEXT-Aufruf gleichzeitig ab; wird -- wie schon bei
 	# oberon0_os9.a -- gegen den ECHTEN r68.exe (via Wine/MWOS) assembliert.
-	if [ -x build/tinyc_backend ]; then
-		build/tinyc_p 'int counter; int limit = 10; char buf[4]; extern int myadd(int a, int b); int helper(int x){ return x+1; } int main(){ counter = myadd(3,4); limit = helper(counter); putint(limit); }' > build/tinyc_os9combo.ir
-		if build/tinyc_backend build/tinyc_os9combo.ir build/tinyc_os9combo.s68 -os9 && \
-			grep -q '^	nam	tinyc_os9combo_p$' build/tinyc_os9combo.s68 && \
-			grep -q '^	psect	tinyc_os9combo_p,0,0,1,0,0$' build/tinyc_os9combo.s68 && \
-			grep -q '^	ends$' build/tinyc_os9combo.s68; then
-			echo "ok    tinyc -os9: nam/psect/ends-Rahmung wird erzeugt"
+	if [ -x build/qcc_backend ]; then
+		build/qcc_p 'int counter; int limit = 10; char buf[4]; extern int myadd(int a, int b); int helper(int x){ return x+1; } int main(){ counter = myadd(3,4); limit = helper(counter); putint(limit); }' > build/qcc_os9combo.ir
+		if build/qcc_backend build/qcc_os9combo.ir build/qcc_os9combo.s68 -os9 && \
+			grep -q '^	nam	qcc_os9combo_p$' build/qcc_os9combo.s68 && \
+			grep -q '^	psect	qcc_os9combo_p,0,0,1,0,0$' build/qcc_os9combo.s68 && \
+			grep -q '^	ends$' build/qcc_os9combo.s68; then
+			echo "ok    qcc -os9: nam/psect/ends-Rahmung wird erzeugt"
 		else
-			echo "FAIL  tinyc -os9: nam/psect/ends-Rahmung fehlt oder Backend-Aufruf fehlgeschlagen"; fail=1
+			echo "FAIL  qcc -os9: nam/psect/ends-Rahmung fehlt oder Backend-Aufruf fehlgeschlagen"; fail=1
 		fi
-		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && [ -f build/tinyc_os9combo.s68 ]; then
+		if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && [ -f build/qcc_os9combo.s68 ]; then
 			mkdir -p "$MWOS_TMP"
-			cp build/tinyc_os9combo.s68 "$MWOS_TMP/tccombo.a"
+			cp build/qcc_os9combo.s68 "$MWOS_TMP/tccombo.a"
 			rm -f "$MWOS_TMP/tccombo.r"
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\tccombo.a -o=M:\\TMP\\tccombo.r -q" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/tccombo.r" ]; then
-				echo "ok    tinyc -os9: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei (Microware r68 via Wine)"
+				echo "ok    qcc -os9: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei (Microware r68 via Wine)"
 			else
-				echo "FAIL  tinyc -os9: assembliert NICHT (r68 via Wine)"; fail=1
+				echo "FAIL  qcc -os9: assembliert NICHT (r68 via Wine)"; fail=1
 			fi
 			rm -f "$MWOS_TMP/tccombo.a" "$MWOS_TMP/tccombo.r"
 		else
-			echo "warn  tinyc -os9: Wine/MWOS nicht verfuegbar -- echter r68-Check uebersprungen"
+			echo "warn  qcc -os9: Wine/MWOS nicht verfuegbar -- echter r68-Check uebersprungen"
 		fi
 	else
-		echo "warn  tinyc -os9: Backend fehlt -- uebersprungen"
+		echo "warn  qcc -os9: Backend fehlt -- uebersprungen"
 	fi
 else
-	echo "warn  tinyc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
+	echo "warn  qcc M4a: vasm fehlt -- Backend-Assembler-Check uebersprungen"
 fi
 
-# 13a-link) Tiny-C Mehrdatei-Uebersetzung, M2 (2026-07-25): ZWEI SEPARAT mit
+# 13a-link) QCC Mehrdatei-Uebersetzung, M2 (2026-07-25): ZWEI SEPARAT mit
 #     -part kompilierte Dateien (eine zusaetzlich mit -runtime fuer den
-#     gemeinsamen 68k-Core/I/O-Anker, siehe tinyc_backend_c.cpp) werden mit dem
+#     gemeinsamen 68k-Core/I/O-Anker, siehe qcc_backend_c.cpp) werden mit dem
 #     ECHTEN r68 assembliert und mit dem ECHTEN l68 (Microware-Linker) zu EINEM
 #     Modul gelinkt -- erstmals in diesem Projekt automatisiert (bisher rief
 #     runtests.sh nur r68 auf, nie l68). Deckt Funktionsaufruf UND geteilte
@@ -1967,91 +1967,91 @@ fi
 #     Testfall unten bestaetigt dafuer, dass l68 eine ECHTE Namenskollision
 #     (zwei nicht-static Definitionen desselben Symbols) zuverlaessig als
 #     "duplicate symbol" ablehnt.
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
-	build/tinyc_p 'int shared; int helper(int x); static int localHelper(int x){ return x-1; } int main(){ shared = 10; putint(helper(shared)); putint(localHelper(shared)); }' > build/tinyc_mf_link_a.ir
-	build/tinyc_p 'extern int shared; int helper(int x){ return shared + x; }' > build/tinyc_mf_link_b.ir
-	if build/tinyc_backend build/tinyc_mf_link_a.ir build/tinyc_mf_link_a.s68 -os9 -part -runtime && \
-		build/tinyc_backend build/tinyc_mf_link_b.ir build/tinyc_mf_link_b.s68 -os9 -part; then
-		cp build/tinyc_mf_link_a.s68 "$MWOS_TMP/mflinka.a"
-		cp build/tinyc_mf_link_b.s68 "$MWOS_TMP/mflinkb.a"
+	build/qcc_p 'int shared; int helper(int x); static int localHelper(int x){ return x-1; } int main(){ shared = 10; putint(helper(shared)); putint(localHelper(shared)); }' > build/qcc_mf_link_a.ir
+	build/qcc_p 'extern int shared; int helper(int x){ return shared + x; }' > build/qcc_mf_link_b.ir
+	if build/qcc_backend build/qcc_mf_link_a.ir build/qcc_mf_link_a.s68 -os9 -part -runtime && \
+		build/qcc_backend build/qcc_mf_link_b.ir build/qcc_mf_link_b.s68 -os9 -part; then
+		cp build/qcc_mf_link_a.s68 "$MWOS_TMP/mflinka.a"
+		cp build/qcc_mf_link_b.s68 "$MWOS_TMP/mflinkb.a"
 		rm -f "$MWOS_TMP/mflinka.r" "$MWOS_TMP/mflinkb.r" "$MWOS_TMP/mflink.out" "$MWOS_TMP/mflink.sym"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mflinka.a -o=M:\\TMP\\mflinka.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mflinkb.a -o=M:\\TMP\\mflinkb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/mflinka.r" ] && [ -s "$MWOS_TMP/mflinkb.r" ]; then
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\mflinka.r M:\\TMP\\mflinkb.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\mflink.out -s=M:\\TMP\\mflink.sym" >/dev/null 2>&1
-			if [ -s "$MWOS_TMP/mflink.out" ] && grep -q "tc_localHelper__tinyc_mf_link_a_p" "$MWOS_TMP/mflink.sym" && \
+			if [ -s "$MWOS_TMP/mflink.out" ] && grep -q "tc_localHelper__qcc_mf_link_a_p" "$MWOS_TMP/mflink.sym" && \
 				grep -q "tc_helper " "$MWOS_TMP/mflink.sym" && grep -q "tc_g_shared" "$MWOS_TMP/mflink.sym"; then
-				echo "ok    tinyc Mehrdatei M2: echter r68+l68-Link zweier getrennt kompilierter Dateien (Funktionsaufruf+Global ueber Dateigrenze, static-Mangling) korrekt"
+				echo "ok    qcc Mehrdatei M2: echter r68+l68-Link zweier getrennt kompilierter Dateien (Funktionsaufruf+Global ueber Dateigrenze, static-Mangling) korrekt"
 			else
-				echo "FAIL  tinyc Mehrdatei M2: echter l68-Link fehlerhaft oder Symbole fehlen"; fail=1
+				echo "FAIL  qcc Mehrdatei M2: echter l68-Link fehlerhaft oder Symbole fehlen"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc Mehrdatei M2: r68-Assemblierung einer der beiden Dateien fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Mehrdatei M2: r68-Assemblierung einer der beiden Dateien fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/mflink*.a "$MWOS_TMP"/mflink*.r "$MWOS_TMP/mflink.out" "$MWOS_TMP/mflink.sym"
 	else
-		echo "FAIL  tinyc Mehrdatei M2: -part/-runtime-Backend-Aufruf fehlgeschlagen"; fail=1
+		echo "FAIL  qcc Mehrdatei M2: -part/-runtime-Backend-Aufruf fehlgeschlagen"; fail=1
 	fi
 	# Duplicate-Symbol-Testfall: ZWEI Dateien definieren dieselbe nicht-static
 	# Funktion -- l68 muss das als "duplicate symbol" ablehnen (simuliert, was
 	# jeder echte Linker tut, siehe M0-Spike-Ergebnis in docs/STATUS.md).
-	build/tinyc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/tinyc_mf_dup_a.ir
-	build/tinyc_p 'int f(){ return 2; }' > build/tinyc_mf_dup_b.ir
-	if build/tinyc_backend build/tinyc_mf_dup_a.ir build/tinyc_mf_dup_a.s68 -os9 -part -runtime && \
-		build/tinyc_backend build/tinyc_mf_dup_b.ir build/tinyc_mf_dup_b.s68 -os9 -part; then
-		cp build/tinyc_mf_dup_a.s68 "$MWOS_TMP/mfdupa.a"
-		cp build/tinyc_mf_dup_b.s68 "$MWOS_TMP/mfdupb.a"
+	build/qcc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/qcc_mf_dup_a.ir
+	build/qcc_p 'int f(){ return 2; }' > build/qcc_mf_dup_b.ir
+	if build/qcc_backend build/qcc_mf_dup_a.ir build/qcc_mf_dup_a.s68 -os9 -part -runtime && \
+		build/qcc_backend build/qcc_mf_dup_b.ir build/qcc_mf_dup_b.s68 -os9 -part; then
+		cp build/qcc_mf_dup_a.s68 "$MWOS_TMP/mfdupa.a"
+		cp build/qcc_mf_dup_b.s68 "$MWOS_TMP/mfdupb.a"
 		rm -f "$MWOS_TMP/mfdupa.r" "$MWOS_TMP/mfdupb.r" "$MWOS_TMP/mfdup.out"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mfdupa.a -o=M:\\TMP\\mfdupa.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\mfdupb.a -o=M:\\TMP\\mfdupb.r -q" >/dev/null 2>&1
-		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\mfdupa.r M:\\TMP\\mfdupb.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\mfdup.out" >build/tinyc_mf_dup.err 2>&1
-		if [ ! -s "$MWOS_TMP/mfdup.out" ] && grep -qi "duplicate symbol" build/tinyc_mf_dup.err; then
-			echo "ok    tinyc Mehrdatei M2: echter l68 lehnt doppelte nicht-static Definition als 'duplicate symbol' ab"
+		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\mfdupa.r M:\\TMP\\mfdupb.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\mfdup.out" >build/qcc_mf_dup.err 2>&1
+		if [ ! -s "$MWOS_TMP/mfdup.out" ] && grep -qi "duplicate symbol" build/qcc_mf_dup.err; then
+			echo "ok    qcc Mehrdatei M2: echter l68 lehnt doppelte nicht-static Definition als 'duplicate symbol' ab"
 		else
-			echo "FAIL  tinyc Mehrdatei M2: l68 haette 'duplicate symbol' melden muessen"; fail=1
+			echo "FAIL  qcc Mehrdatei M2: l68 haette 'duplicate symbol' melden muessen"; fail=1
 		fi
-		rm -f "$MWOS_TMP"/mfdup*.a "$MWOS_TMP"/mfdup*.r "$MWOS_TMP/mfdup.out" build/tinyc_mf_dup.err
+		rm -f "$MWOS_TMP"/mfdup*.a "$MWOS_TMP"/mfdup*.r "$MWOS_TMP/mfdup.out" build/qcc_mf_dup.err
 	else
-		echo "FAIL  tinyc Mehrdatei M2: Backend-Aufruf fuer Duplicate-Test fehlgeschlagen"; fail=1
+		echo "FAIL  qcc Mehrdatei M2: Backend-Aufruf fuer Duplicate-Test fehlgeschlagen"; fail=1
 	fi
 else
-	echo "warn  tinyc Mehrdatei M2: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Mehrdatei-Link uebersprungen"
+	echo "warn  qcc Mehrdatei M2: Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Mehrdatei-Link uebersprungen"
 fi
 
 # 13a) "static" lokale Variablen (2026-07-24): GLOBAL/GARRAY/GINIT duerfen jetzt auch
 #      INNERHALB einer Funktion im IR-Strom stehen (frueher nur davor erlaubt) -- eine
 #      static-Lokale wird an genau der Textstelle ihrer Deklaration als GLOBAL emittiert,
-#      siehe collectGlobals()/collectFunctions() in tinyc_backend_c.cpp. Test prueft
-#      echte Persistenz ueber mehrere Aufrufe hinweg im ECHTEN 68000-Code (nicht nur TinyVM).
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' > build/tinyc_static.ir && \
-		build/tinyc_backend build/tinyc_static.ir build/tinyc_static.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_static.bin build/tinyc_static.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_static.s68 2>/dev/null)" = "$(printf '1\n2\n3')" ]; then
-		echo "ok    tinyc static 68000: lokale static-Variable persistiert ueber Aufrufe hinweg"
+#      siehe collectGlobals()/collectFunctions() in qcc_backend_c.cpp. Test prueft
+#      echte Persistenz ueber mehrere Aufrufe hinweg im ECHTEN 68000-Code (nicht nur QCCVM).
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' > build/qcc_static.ir && \
+		build/qcc_backend build/qcc_static.ir build/qcc_static.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_static.bin build/qcc_static.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_static.s68 2>/dev/null)" = "$(printf '1\n2\n3')" ]; then
+		echo "ok    qcc static 68000: lokale static-Variable persistiert ueber Aufrufe hinweg"
 	else
-		echo "FAIL  tinyc static 68000: static-Persistenz fehlerhaft"; fail=1
+		echo "FAIL  qcc static 68000: static-Persistenz fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc static 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc static 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 
 # 13a-2) nicht-konstanter static-Initialisierer (2026-07-24): Runs-once-Guard mit
 #        verstecktem bool-Flag-Global (LOADGC/JZ/STOREG.../STOREGC, dieselben Opcodes
 #        wie if/while) im ECHTEN 68000-Code.
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' > build/tinyc_staticrt.ir && \
-		build/tinyc_backend build/tinyc_staticrt.ir build/tinyc_staticrt.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_staticrt.bin build/tinyc_staticrt.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_staticrt.s68 2>/dev/null)" = "$(printf '16\n17\n18')" ]; then
-		echo "ok    tinyc static-Laufzeit-Initialisierer 68000: Runs-once-Guard korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' > build/qcc_staticrt.ir && \
+		build/qcc_backend build/qcc_staticrt.ir build/qcc_staticrt.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_staticrt.bin build/qcc_staticrt.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_staticrt.s68 2>/dev/null)" = "$(printf '16\n17\n18')" ]; then
+		echo "ok    qcc static-Laufzeit-Initialisierer 68000: Runs-once-Guard korrekt"
 	else
-		echo "FAIL  tinyc static-Laufzeit-Initialisierer 68000: Runs-once-Guard fehlerhaft"; fail=1
+		echo "FAIL  qcc static-Laufzeit-Initialisierer 68000: Runs-once-Guard fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc static-Laufzeit-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc static-Laufzeit-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 
 # 13b) struct-Felder (2026-07-24: gemischte skalare Feldtypen, echtes Byte-Layout,
@@ -2059,606 +2059,606 @@ fi
 #      STOREIND -- bereits vorhandene, architekturneutrale Opcodes, kein neuer Opcode
 #      und keine Backend-Aenderung noetig, trotzdem hier explizit durch 68000 und ARM64
 #      gegengeprueft (einheitlicher Feldtyp als Regressionsschutz plus gemischter Fall).
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/tinyc_struct.ir && \
-		build/tinyc_backend build/tinyc_struct.ir build/tinyc_struct.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct.bin build/tinyc_struct.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_struct.s68 2>/dev/null)" = "7" ]; then
-		echo "ok    tinyc struct 68000: Feldzugriff (LOADIDX/STOREIDX) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/qcc_struct.ir && \
+		build/qcc_backend build/qcc_struct.ir build/qcc_struct.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_struct.bin build/qcc_struct.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_struct.s68 2>/dev/null)" = "7" ]; then
+		echo "ok    qcc struct 68000: Feldzugriff (LOADIDX/STOREIDX) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: Feldzugriff fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: Feldzugriff fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a=1; m.b=1000; m.c=2; putint(m.b+m.a+m.c); }' > build/tinyc_struct_mixed.ir && \
-		build/tinyc_backend build/tinyc_struct_mixed.ir build/tinyc_struct_mixed.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct_mixed.bin build/tinyc_struct_mixed.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_struct_mixed.s68 2>/dev/null)" = "1003" ]; then
-		echo "ok    tinyc struct 68000: gemischte Feldtypen (char/int/char, Byte-Offset+Padding) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a=1; m.b=1000; m.c=2; putint(m.b+m.a+m.c); }' > build/qcc_struct_mixed.ir && \
+		build/qcc_backend build/qcc_struct_mixed.ir build/qcc_struct_mixed.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_struct_mixed.bin build/qcc_struct_mixed.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_struct_mixed.s68 2>/dev/null)" = "1003" ]; then
+		echo "ok    qcc struct 68000: gemischte Feldtypen (char/int/char, Byte-Offset+Padding) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: gemischte Feldtypen fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: gemischte Feldtypen fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (gemischt): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (gemischt): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a=1; m.b=1000; putint(m.b+m.a); }' > build/tinyc_struct_anon.ir && \
-		build/tinyc_backend build/tinyc_struct_anon.ir build/tinyc_struct_anon.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct_anon.bin build/tinyc_struct_anon.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_struct_anon.s68 2>/dev/null)" = "1001" ]; then
-		echo "ok    tinyc struct 68000: anonymes struct inline im typedef korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a=1; m.b=1000; putint(m.b+m.a); }' > build/qcc_struct_anon.ir && \
+		build/qcc_backend build/qcc_struct_anon.ir build/qcc_struct_anon.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_struct_anon.bin build/qcc_struct_anon.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_struct_anon.s68 2>/dev/null)" = "1001" ]; then
+		echo "ok    qcc struct 68000: anonymes struct inline im typedef korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: anonymes struct inline im typedef fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: anonymes struct inline im typedef fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (anonym im typedef): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (anonym im typedef): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/tinyc_struct_arrfield.ir && \
-		build/tinyc_backend build/tinyc_struct_arrfield.ir build/tinyc_struct_arrfield.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_struct_arrfield.bin build/tinyc_struct_arrfield.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_struct_arrfield.s68 2>/dev/null)" = "$(printf '1\n1000\n9\n12')" ]; then
-		echo "ok    tinyc struct 68000: Array-Feld (char buf[4]) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/qcc_struct_arrfield.ir && \
+		build/qcc_backend build/qcc_struct_arrfield.ir build/qcc_struct_arrfield.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_struct_arrfield.bin build/qcc_struct_arrfield.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_struct_arrfield.s68 2>/dev/null)" = "$(printf '1\n1000\n9\n12')" ]; then
+		echo "ok    qcc struct 68000: Array-Feld (char buf[4]) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: Array-Feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: Array-Feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (Array-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (Array-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct P{int x; char buf[4]; int a[3];}; int main(){ struct P p; int i; i = 1; p.x = 7; p.buf[0]=65; p.buf[1]=66; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.x); putchar(p.buf[0]); putchar(p.buf[1]); putint(p.a[i]); }' > build/tinyc_structidx.ir && \
-		build/tinyc_backend build/tinyc_structidx.ir build/tinyc_structidx.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structidx.bin build/tinyc_structidx.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_structidx.s68 2>/dev/null)" = "$(printf '7\nAB20')" ]; then
-		echo "ok    tinyc struct 68000: direkte p.field[i]-Indizierung (int- und char-Array-Feld) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct P{int x; char buf[4]; int a[3];}; int main(){ struct P p; int i; i = 1; p.x = 7; p.buf[0]=65; p.buf[1]=66; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.x); putchar(p.buf[0]); putchar(p.buf[1]); putint(p.a[i]); }' > build/qcc_structidx.ir && \
+		build/qcc_backend build/qcc_structidx.ir build/qcc_structidx.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_structidx.bin build/qcc_structidx.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_structidx.s68 2>/dev/null)" = "$(printf '7\nAB20')" ]; then
+		echo "ok    qcc struct 68000: direkte p.field[i]-Indizierung (int- und char-Array-Feld) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: direkte p.field[i]-Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: direkte p.field[i]-Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (p.field[i]): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (p.field[i]): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 # 2026-07-25 (Selfhosting L2): Pointer-Feld in struct -- 8 Byte Groesse/Ausrichtung
 # UNABHAENGIG von der Ziel-Architektur (siehe tcRegisterStruct-Kommentar), der
 # 68k-Backend nutzt davon nur die ersten 4 Byte. Zugriff nur ueber eine Pointer-
 # Zwischenvariable (kein direktes p.field[i] durch ein Pointer-Feld, wie zuvor
 # bei Array-Feldern).
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' > build/tinyc_structptr.ir && \
-		build/tinyc_backend build/tinyc_structptr.ir build/tinyc_structptr.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structptr.bin build/tinyc_structptr.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_structptr.s68 2>/dev/null)" = "$(printf 'Hi2')" ]; then
-		echo "ok    tinyc struct 68000: Pointer-Feld (8-Byte-Layout, ueber Pointer-Zwischenvariable) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' > build/qcc_structptr.ir && \
+		build/qcc_backend build/qcc_structptr.ir build/qcc_structptr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_structptr.bin build/qcc_structptr.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_structptr.s68 2>/dev/null)" = "$(printf 'Hi2')" ]; then
+		echo "ok    qcc struct 68000: Pointer-Feld (8-Byte-Layout, ueber Pointer-Zwischenvariable) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: Pointer-Feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: Pointer-Feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-# arr[i].feld (2026-07-25): siehe TinyVM-Tests oben fuer die vollstaendige Erklaerung
+# arr[i].feld (2026-07-25): siehe QCCVM-Tests oben fuer die vollstaendige Erklaerung
 # (Allokations-Fix + neuer IPADDN-Opcode). 68k-IPADDN nutzt tc_mul_i32 (bereits im
 # Runtime-Core), da lsl.l nur feste 1/4-Skalierung kann, structByteSize aber beliebig ist.
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' > build/tinyc_structarr.ir && \
-		build/tinyc_backend build/tinyc_structarr.ir build/tinyc_structarr.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structarr.bin build/tinyc_structarr.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_structarr.s68 2>/dev/null)" = "$(printf '10\n11\n20\n21\n30\n31')" ]; then
-		echo "ok    tinyc struct 68000: Array von structs, arr[i].feld (int-Felder) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' > build/qcc_structarr.ir && \
+		build/qcc_backend build/qcc_structarr.ir build/qcc_structarr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_structarr.bin build/qcc_structarr.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_structarr.s68 2>/dev/null)" = "$(printf '10\n11\n20\n21\n30\n31')" ]; then
+		echo "ok    qcc struct 68000: Array von structs, arr[i].feld (int-Felder) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: arr[i].feld (int-Felder) fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: arr[i].feld (int-Felder) fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (arr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (arr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' > build/tinyc_structarrptr.ir && \
-		build/tinyc_backend build/tinyc_structarrptr.ir build/tinyc_structarrptr.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structarrptr.bin build/tinyc_structarrptr.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_structarrptr.s68 2>/dev/null)" = "AXC" ]; then
-		echo "ok    tinyc struct 68000: Array von structs mit Pointer-Feld, arr[i].feld ueber Zwischenvariable korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' > build/qcc_structarrptr.ir && \
+		build/qcc_backend build/qcc_structarrptr.ir build/qcc_structarrptr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_structarrptr.bin build/qcc_structarrptr.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_structarrptr.s68 2>/dev/null)" = "AXC" ]; then
+		echo "ok    qcc struct 68000: Array von structs mit Pointer-Feld, arr[i].feld ueber Zwischenvariable korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: Array von structs mit Pointer-Feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: Array von structs mit Pointer-Feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (arr[i].feld, Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (arr[i].feld, Pointer-Feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 # ptr[i].feld (2026-07-25, Milestone B): lokale Pointer-auf-struct-Variable, indiziert,
 # dann Feldzugriff -- braucht routinesC[i].name/.text im Selfhosting-Piloten. LOADP statt
 # PUSHADDR, sonst dieselbe IPADDN-Idee wie arr[i].feld.
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' > build/tinyc_structptrarr.ir && \
-		build/tinyc_backend build/tinyc_structptrarr.ir build/tinyc_structptrarr.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_structptrarr.bin build/tinyc_structptrarr.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_structptrarr.s68 2>/dev/null)" = "$(printf '10\n20\n30\n99')" ]; then
-		echo "ok    tinyc struct 68000: ptr[i].feld (lokale Pointer-auf-struct-Variable) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' > build/qcc_structptrarr.ir && \
+		build/qcc_backend build/qcc_structptrarr.ir build/qcc_structptrarr.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_structptrarr.bin build/qcc_structptrarr.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_structptrarr.s68 2>/dev/null)" = "$(printf '10\n20\n30\n99')" ]; then
+		echo "ok    qcc struct 68000: ptr[i].feld (lokale Pointer-auf-struct-Variable) korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: ptr[i].feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: ptr[i].feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (ptr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (ptr[i].feld): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 # Globale structs (2026-07-25): tc_globalend erkannte "struct" bisher gar nicht als
 # Basistyp. Skalare globale structs/Arrays von structs/Pointer-auf-struct-Globale --
 # Codegen strukturell identisch zum lokalen Fall (ADDRG/PUSHADDR G/LOADGP statt
 # PUSHADDR L/LOADP).
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' > build/tinyc_gstruct.ir && \
-		build/tinyc_backend build/tinyc_gstruct.ir build/tinyc_gstruct.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_gstruct.bin build/tinyc_gstruct.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_gstruct.s68 2>/dev/null)" = "$(printf '100\n200\n200')" ]; then
-		echo "ok    tinyc struct 68000: globale struct-Variablen/-Arrays/-Pointer korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' > build/qcc_gstruct.ir && \
+		build/qcc_backend build/qcc_gstruct.ir build/qcc_gstruct.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_gstruct.bin build/qcc_gstruct.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_gstruct.s68 2>/dev/null)" = "$(printf '100\n200\n200')" ]; then
+		echo "ok    qcc struct 68000: globale struct-Variablen/-Arrays/-Pointer korrekt"
 	else
-		echo "FAIL  tinyc struct 68000: globale structs fehlerhaft"; fail=1
+		echo "FAIL  qcc struct 68000: globale structs fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct 68000 (globale structs): Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc struct 68000 (globale structs): Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void.ir && \
-		build/tinyc_backend build/tinyc_void.ir build/tinyc_void.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_void.bin build/tinyc_void.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_void.s68 2>/dev/null)" = "$(printf '9\n7')" ]; then
-		echo "ok    tinyc void 68000: void-Rueckgabe + void*-Parameter korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/qcc_void.ir && \
+		build/qcc_backend build/qcc_void.ir build/qcc_void.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_void.bin build/qcc_void.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_void.s68 2>/dev/null)" = "$(printf '9\n7')" ]; then
+		echo "ok    qcc void 68000: void-Rueckgabe + void*-Parameter korrekt"
 	else
-		echo "FAIL  tinyc void 68000: void/void* fehlerhaft"; fail=1
+		echo "FAIL  qcc void 68000: void/void* fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc void 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc void 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' > build/tinyc_2d.ir && \
-		build/tinyc_backend build/tinyc_2d.ir build/tinyc_2d.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_2d.bin build/tinyc_2d.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_2d.s68 2>/dev/null)" = "$(printf '21\n2')" ]; then
-		echo "ok    tinyc 2D-Array 68000: Zeilen/Spalten-Indizierung korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' > build/qcc_2d.ir && \
+		build/qcc_backend build/qcc_2d.ir build/qcc_2d.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_2d.bin build/qcc_2d.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_2d.s68 2>/dev/null)" = "$(printf '21\n2')" ]; then
+		echo "ok    qcc 2D-Array 68000: Zeilen/Spalten-Indizierung korrekt"
 	else
-		echo "FAIL  tinyc 2D-Array 68000: Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc 2D-Array 68000: Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc 2D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc 2D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' > build/tinyc_3d.ir && \
-		build/tinyc_backend build/tinyc_3d.ir build/tinyc_3d.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_3d.bin build/tinyc_3d.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_3d.s68 2>/dev/null)" = "$(printf '123\n0\n102')" ]; then
-		echo "ok    tinyc 3D-Array 68000: Horner-Kombination ueber drei Dimensionen korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' > build/qcc_3d.ir && \
+		build/qcc_backend build/qcc_3d.ir build/qcc_3d.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_3d.bin build/qcc_3d.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_3d.s68 2>/dev/null)" = "$(printf '123\n0\n102')" ]; then
+		echo "ok    qcc 3D-Array 68000: Horner-Kombination ueber drei Dimensionen korrekt"
 	else
-		echo "FAIL  tinyc 3D-Array 68000: Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc 3D-Array 68000: Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc 3D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc 3D-Array 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/tinyc_string.ir && \
-		build/tinyc_backend build/tinyc_string.ir build/tinyc_string.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_string.bin build/tinyc_string.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_string.s68 2>/dev/null)" = "AB0" ]; then
-		echo "ok    tinyc String-Literal 68000: GARRAY/GINIT/ADDRG-Adressierung korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/qcc_string.ir && \
+		build/qcc_backend build/qcc_string.ir build/qcc_string.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_string.bin build/qcc_string.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_string.s68 2>/dev/null)" = "AB0" ]; then
+		echo "ok    qcc String-Literal 68000: GARRAY/GINIT/ADDRG-Adressierung korrekt"
 	else
-		echo "FAIL  tinyc String-Literal 68000: Adressierung fehlerhaft"; fail=1
+		echo "FAIL  qcc String-Literal 68000: Adressierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc String-Literal 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc String-Literal 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'char gmsg[6] = "hallo"; int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putchar(gmsg[0]); putint(gmsg[5]); }' > build/tinyc_stringinit.ir && \
-		build/tinyc_backend build/tinyc_stringinit.ir build/tinyc_stringinit.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_stringinit.bin build/tinyc_stringinit.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_stringinit.s68 2>/dev/null)" = "hoh0" ]; then
-		echo "ok    tinyc String-Array-Initialisierer 68000: lokal (exakt) + global (mit Nullterminator) korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'char gmsg[6] = "hallo"; int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putchar(gmsg[0]); putint(gmsg[5]); }' > build/qcc_stringinit.ir && \
+		build/qcc_backend build/qcc_stringinit.ir build/qcc_stringinit.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_stringinit.bin build/qcc_stringinit.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_stringinit.s68 2>/dev/null)" = "hoh0" ]; then
+		echo "ok    qcc String-Array-Initialisierer 68000: lokal (exakt) + global (mit Nullterminator) korrekt"
 	else
-		echo "FAIL  tinyc String-Array-Initialisierer 68000: fehlerhaft"; fail=1
+		echo "FAIL  qcc String-Array-Initialisierer 68000: fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc String-Array-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc String-Array-Initialisierer 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'char* mkstr(){ return "hallo"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[4]); putchar("world"[0]); putint("world"[4]); }' > build/tinyc_directidx.ir && \
-		build/tinyc_backend build/tinyc_directidx.ir build/tinyc_directidx.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_directidx.bin build/tinyc_directidx.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_directidx.s68 2>/dev/null)" = "how100" ]; then
-		echo "ok    tinyc direkte Indizierung 68000: Funktionsrueckgabewert + String-Literal ohne Zwischenvariable korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'char* mkstr(){ return "hallo"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[4]); putchar("world"[0]); putint("world"[4]); }' > build/qcc_directidx.ir && \
+		build/qcc_backend build/qcc_directidx.ir build/qcc_directidx.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_directidx.bin build/qcc_directidx.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_directidx.s68 2>/dev/null)" = "how100" ]; then
+		echo "ok    qcc direkte Indizierung 68000: Funktionsrueckgabewert + String-Literal ohne Zwischenvariable korrekt"
 	else
-		echo "FAIL  tinyc direkte Indizierung 68000: Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc direkte Indizierung 68000: Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc direkte Indizierung 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc direkte Indizierung 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch.ir && \
-		build/tinyc_backend build/tinyc_switch.ir build/tinyc_switch.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_switch.bin build/tinyc_switch.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_switch.s68 2>/dev/null)" = "23" ]; then
-		echo "ok    tinyc switch 68000: gestapelte case-Label + default korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/qcc_switch.ir && \
+		build/qcc_backend build/qcc_switch.ir build/qcc_switch.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_switch.bin build/qcc_switch.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_switch.s68 2>/dev/null)" = "23" ]; then
+		echo "ok    qcc switch 68000: gestapelte case-Label + default korrekt"
 	else
-		echo "FAIL  tinyc switch 68000: switch/case fehlerhaft"; fail=1
+		echo "FAIL  qcc switch 68000: switch/case fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc switch 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc switch 68000: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
-# 14) Tiny-C M4b/M4c-1: Der Python-Simulator ist ausschliesslich ein Test-Orakel,
+# 14) QCC M4b/M4c-1: Der Python-Simulator ist ausschliesslich ein Test-Orakel,
 #     nicht Teil der auszuliefernden Toolchain. Er fuehrt die von M4a erzeugte 68k-
 #     Schablonen-Ausgabe inklusive Frame/Call/RET und der ECHTEN 68k-Core-
 #     Schablonen fuer signed int32 MUL/DIV aus. Nur PRINT bleibt ein Plattform-Hook.
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
-	if build/tinyc_p 'unsigned int high=-1; int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); putint(-7 * 6); putint(20 / 3); putint(-20 / 3); putint(high > 1); putint(high / 2); putuint(high); putint(20 % 6); putint(-20 % 6); putuint(high % 10); }' > build/tinyc_m4b.ir && \
-		build/tinyc_backend build/tinyc_m4b.ir build/tinyc_m4b.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_m4b.bin build/tinyc_m4b.s68 2>/dev/null && \
-		grep -q '^tc_mul_loop:' build/tinyc_m4b.s68 && grep -q '^tc_div_loop:' build/tinyc_m4b.s68 && grep -q '^tc_udiv_loop:' build/tinyc_m4b.s68 && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_m4b.s68 2>/dev/null)" = "$(printf '120\n-42\n6\n-6\n1\n2147483647\n4294967295\n2\n-2\n5')" ]; then
-		echo "ok    tinyc M4c-1: echte 68k int32 signed/unsigned MUL/DIV/MOD + Fakultaet = tinyvm"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ]; then
+	if build/qcc_p 'unsigned int high=-1; int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); putint(-7 * 6); putint(20 / 3); putint(-20 / 3); putint(high > 1); putint(high / 2); putuint(high); putint(20 % 6); putint(-20 % 6); putuint(high % 10); }' > build/qcc_m4b.ir && \
+		build/qcc_backend build/qcc_m4b.ir build/qcc_m4b.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_m4b.bin build/qcc_m4b.s68 2>/dev/null && \
+		grep -q '^tc_mul_loop:' build/qcc_m4b.s68 && grep -q '^tc_div_loop:' build/qcc_m4b.s68 && grep -q '^tc_udiv_loop:' build/qcc_m4b.s68 && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_m4b.s68 2>/dev/null)" = "$(printf '120\n-42\n6\n-6\n1\n2147483647\n4294967295\n2\n-2\n5')" ]; then
+		echo "ok    qcc M4c-1: echte 68k int32 signed/unsigned MUL/DIV/MOD + Fakultaet = qccvm"
 	else
-		echo "FAIL  tinyc M4c-1: 68k-Core-Lauf stimmt nicht mit tinyvm ueberein"; fail=1
+		echo "FAIL  qcc M4c-1: 68k-Core-Lauf stimmt nicht mit qccvm ueberein"; fail=1
 	fi
 else
-	echo "warn  tinyc M4c-1: python3 oder Backend fehlt -- Ausfuehrungstest uebersprungen"
+	echo "warn  qcc M4c-1: python3 oder Backend fehlt -- Ausfuehrungstest uebersprungen"
 fi
 
-# 15) Tiny-C M4c-2: Globale int32-Variablen besitzen eine eigene, dauerhafte
+# 15) QCC M4c-2: Globale int32-Variablen besitzen eine eigene, dauerhafte
 #     Namens-Tabelle im Frontend und werden im 68k-Code PC-relativ als LOADG/
 #     STOREG auf das nullinitialisierte Daten-/BSS-Aequivalent angesprochen.
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ]; then
-	if build/tinyc_p 'int limit = 10; char mark = 346; int counter; char next(char c){ return c + 1; } int bump(){ counter = counter + limit; return counter; } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); putint(bump()); putint(bump()); }' > build/tinyc_globals.ir && \
-		build/tinyc_backend build/tinyc_globals.ir build/tinyc_globals.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_globals.bin build/tinyc_globals.s68 2>/dev/null && \
-		grep -q $'tc_g_limit:\tdc.l\t10' build/tinyc_globals.s68 && grep -q $'tc_g_mark:\tdc.b\t90' build/tinyc_globals.s68 && grep -q 'andi.l' build/tinyc_globals.s68 && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_globals.s68 2>/dev/null)" = "$(printf 'ZO\n10\n20')" ]; then
-		echo "ok    tinyc M4c-4: DATA/BSS + putchar im 68k-Runtime-Vertrag = tinyvm"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ]; then
+	if build/qcc_p 'int limit = 10; char mark = 346; int counter; char next(char c){ return c + 1; } int bump(){ counter = counter + limit; return counter; } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); putint(bump()); putint(bump()); }' > build/qcc_globals.ir && \
+		build/qcc_backend build/qcc_globals.ir build/qcc_globals.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_globals.bin build/qcc_globals.s68 2>/dev/null && \
+		grep -q $'tc_g_limit:\tdc.l\t10' build/qcc_globals.s68 && grep -q $'tc_g_mark:\tdc.b\t90' build/qcc_globals.s68 && grep -q 'andi.l' build/qcc_globals.s68 && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_globals.s68 2>/dev/null)" = "$(printf 'ZO\n10\n20')" ]; then
+		echo "ok    qcc M4c-4: DATA/BSS + putchar im 68k-Runtime-Vertrag = qccvm"
 	else
-		echo "FAIL  tinyc M4c-4: globale Variablen/putchar im 68k-Pfad fehlerhaft"; fail=1
+		echo "FAIL  qcc M4c-4: globale Variablen/putchar im 68k-Pfad fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc M4c-4: python3 oder Backend fehlt -- Globals-Test uebersprungen"
+	echo "warn  qcc M4c-4: python3 oder Backend fehlt -- Globals-Test uebersprungen"
 fi
 
 # 15b) Pointer-End-to-End auf dem 68000-Pfad: echte Adressen, char/int-Skalierung,
 #      Pointerdifferenz, Pointer auf Pointer und Pointerarrays.
 pointer_program='int values[4]={10,20,30,40}; char bytes[4]={5,6,7,8}; int main(){ int *p=values; char *c=bytes; int **pp=&p; int *pa[2]; int **r=pa; pa[0]=&values[0]; pa[1]=&values[3]; putint(p[2]); *(p+1)=25; putint(*(1+p)); p+=3; putint(*p); putint(p-values); c+=2; putint(*c); putint(c-bytes); putint(p!=0); putint(p>values); putint(**pp); putint(*r[1]); }'
 pointer_expected=$(printf '30\n25\n40\n3\n7\n2\n1\n1\n40\n40')
-if command -v python3 >/dev/null 2>&1 && [ -x build/tinyc_backend ] && [ -x tools/vasmm68k_mot ]; then
-	if build/tinyc_p "$pointer_program" > build/tinyc_pointer_reg.ir && \
-		build/tinyc_backend build/tinyc_pointer_reg.ir build/tinyc_pointer_reg.s68 && \
-		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/tinyc_pointer_reg.bin build/tinyc_pointer_reg.s68 2>/dev/null && \
-		[ "$(python3 tools/tiny68sim.py build/tinyc_pointer_reg.s68 2>/dev/null)" = "$pointer_expected" ]; then
-		echo "ok    tinyc 68000 Pointer: Adressen, Skalierung, Differenz und T** korrekt"
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
+	if build/qcc_p "$pointer_program" > build/qcc_pointer_reg.ir && \
+		build/qcc_backend build/qcc_pointer_reg.ir build/qcc_pointer_reg.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_pointer_reg.bin build/qcc_pointer_reg.s68 2>/dev/null && \
+		[ "$(python3 tools/qcc68sim.py build/qcc_pointer_reg.s68 2>/dev/null)" = "$pointer_expected" ]; then
+		echo "ok    qcc 68000 Pointer: Adressen, Skalierung, Differenz und T** korrekt"
 	else
-		echo "FAIL  tinyc 68000 Pointer: Backend- oder Ausfuehrungsfehler"; fail=1
+		echo "FAIL  qcc 68000 Pointer: Backend- oder Ausfuehrungsfehler"; fail=1
 	fi
 else
-	echo "warn  tinyc 68000 Pointer: Backend, vasm oder python3 fehlt -- uebersprungen"
+	echo "warn  qcc 68000 Pointer: Backend, vasm oder python3 fehlt -- uebersprungen"
 fi
 
 # 16) ARM64/Darwin: erster echter Hosted-Zielweg. Der Backend-Treiber erzeugt
 #     Programmassembler; runtime/arm64_darwin/start.s liefert eigenen Einstieg,
 #     putint und exit. Der Linker bindet nur libSystem zum Laden des Mach-O ein,
 #     keine C-Startdateien (-nostartfiles).
-#     Gebaut wird die reine-C-Fassung (tinyc_arm64_backend_c.cpp, siehe
+#     Gebaut wird die reine-C-Fassung (qcc_arm64_backend_c.cpp, siehe
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original bleibt als Referenz
 #     liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/tinyc_arm64_backend Source/tinyc_arm64_backend_c.cpp 2>/dev/null && \
-		build/tinyc_p 'int limit = 5; int debt = -20; unsigned int high = -1; char mark = 335; int counter; char next(char c){ return c + 1; } int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); counter = fact(limit); putint(counter); putint(debt / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/tinyc_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_arm64.ir build/tinyc_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_arm64 build/tinyc_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		grep -q 'ldrb' build/tinyc_arm64.s && grep -q 'strb' build/tinyc_arm64.s && grep -q 'and.*#255' build/tinyc_arm64.s && grep -q 'udiv' build/tinyc_arm64.s && \
-		[ "$(build/tinyc_arm64)" = "$(printf 'OO\n120\n-6\n1\n2147483647\n4294967295')" ] && \
-		build/tinyc_p "$pointer_program" > build/tinyc_pointer_arm64_reg.ir && \
-		build/tinyc_arm64_backend build/tinyc_pointer_arm64_reg.ir build/tinyc_pointer_arm64_reg.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_pointer_arm64_reg build/tinyc_pointer_arm64_reg.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_pointer_arm64_reg)" = "$pointer_expected" ]; then
-		echo "ok    tinyc ARM64/Darwin: native char/unsigned und 64-Bit-Pointer korrekt"
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend Source/qcc_arm64_backend_c.cpp 2>/dev/null && \
+		build/qcc_p 'int limit = 5; int debt = -20; unsigned int high = -1; char mark = 335; int counter; char next(char c){ return c + 1; } int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); counter = fact(limit); putint(counter); putint(debt / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/qcc_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_arm64.ir build/qcc_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_arm64 build/qcc_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		grep -q 'ldrb' build/qcc_arm64.s && grep -q 'strb' build/qcc_arm64.s && grep -q 'and.*#255' build/qcc_arm64.s && grep -q 'udiv' build/qcc_arm64.s && \
+		[ "$(build/qcc_arm64)" = "$(printf 'OO\n120\n-6\n1\n2147483647\n4294967295')" ] && \
+		build/qcc_p "$pointer_program" > build/qcc_pointer_arm64_reg.ir && \
+		build/qcc_arm64_backend build/qcc_pointer_arm64_reg.ir build/qcc_pointer_arm64_reg.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_pointer_arm64_reg build/qcc_pointer_arm64_reg.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_pointer_arm64_reg)" = "$pointer_expected" ]; then
+		echo "ok    qcc ARM64/Darwin: native char/unsigned und 64-Bit-Pointer korrekt"
 	else
-		echo "FAIL  tinyc ARM64/Darwin: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
+		echo "FAIL  qcc ARM64/Darwin: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc ARM64/Darwin: nur auf arm64-macOS getestet -- uebersprungen"
+	echo "warn  qcc ARM64/Darwin: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
-# 16a) Tiny-C Mehrdatei-Uebersetzung, M3 (2026-07-25): ZWEI SEPARAT mit -part
+# 16a) QCC Mehrdatei-Uebersetzung, M3 (2026-07-25): ZWEI SEPARAT mit -part
 #     kompilierte Dateien werden mit clang zu getrennten .o-Objekten assembliert
 #     und mit demselben clang-Aufruf (der intern ld ruft) zu EINEM Programm
 #     gelinkt -- erstmals echte getrennte Objektdateien statt ein einzelner
 #     .s-Compile + Runtime-Datei in einem Rutsch. Anders als beim 68k/l68-Ziel
-#     (siehe tinyc_backend_c.cpp) braucht static HIER KEINE Namensverfremdung:
+#     (siehe qcc_backend_c.cpp) braucht static HIER KEINE Namensverfremdung:
 #     Mach-O/ld unterstuetzen ECHTE lokale Symbole (kein .globl = fuer andere
 #     Objektdateien unsichtbar) -- empirisch verifiziert (zwei .o mit je einem
 #     lokalen gleichnamigen Symbol linken ohne Konflikt). Zweiter Testfall
 #     bestaetigt trotzdem, dass eine ECHTE Namenskollision (zwei nicht-static
 #     Definitionen) von ld zuverlaessig als "duplicate symbol" abgelehnt wird.
-if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/tinyc_arm64_backend ]; then
-	build/tinyc_p 'int shared; int helper(int x); static int localHelper(int x){ return x-1; } int main(){ shared = 10; putint(helper(shared)); putint(localHelper(shared)); }' > build/tinyc_mf_arm_a.ir
-	build/tinyc_p 'extern int shared; int helper(int x){ return shared + x; }' > build/tinyc_mf_arm_b.ir
-	if build/tinyc_arm64_backend build/tinyc_mf_arm_a.ir build/tinyc_mf_arm_a.s -part && \
-		build/tinyc_arm64_backend build/tinyc_mf_arm_b.ir build/tinyc_mf_arm_b.s -part && \
-		clang -arch arm64 -c build/tinyc_mf_arm_a.s -o build/tinyc_mf_arm_a.o && \
-		clang -arch arm64 -c build/tinyc_mf_arm_b.s -o build/tinyc_mf_arm_b.o && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_mf_arm build/tinyc_mf_arm_a.o build/tinyc_mf_arm_b.o runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_mf_arm)" = "$(printf '20\n9')" ] && \
-		[ "$(nm build/tinyc_mf_arm_a.o | grep -c ' t _tc_localHelper$')" = "1" ]; then
-		echo "ok    tinyc Mehrdatei M3: echte getrennte .o-Kompilate + clang/ld-Link (Funktionsaufruf+Global ueber Dateigrenze, static bleibt echt lokal) korrekt"
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
+	build/qcc_p 'int shared; int helper(int x); static int localHelper(int x){ return x-1; } int main(){ shared = 10; putint(helper(shared)); putint(localHelper(shared)); }' > build/qcc_mf_arm_a.ir
+	build/qcc_p 'extern int shared; int helper(int x){ return shared + x; }' > build/qcc_mf_arm_b.ir
+	if build/qcc_arm64_backend build/qcc_mf_arm_a.ir build/qcc_mf_arm_a.s -part && \
+		build/qcc_arm64_backend build/qcc_mf_arm_b.ir build/qcc_mf_arm_b.s -part && \
+		clang -arch arm64 -c build/qcc_mf_arm_a.s -o build/qcc_mf_arm_a.o && \
+		clang -arch arm64 -c build/qcc_mf_arm_b.s -o build/qcc_mf_arm_b.o && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_mf_arm build/qcc_mf_arm_a.o build/qcc_mf_arm_b.o runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_mf_arm)" = "$(printf '20\n9')" ] && \
+		[ "$(nm build/qcc_mf_arm_a.o | grep -c ' t _tc_localHelper$')" = "1" ]; then
+		echo "ok    qcc Mehrdatei M3: echte getrennte .o-Kompilate + clang/ld-Link (Funktionsaufruf+Global ueber Dateigrenze, static bleibt echt lokal) korrekt"
 	else
-		echo "FAIL  tinyc Mehrdatei M3: getrennte .o-Kompilate/Link fehlerhaft"; fail=1
+		echo "FAIL  qcc Mehrdatei M3: getrennte .o-Kompilate/Link fehlerhaft"; fail=1
 	fi
 	# Duplicate-Symbol-Testfall: ZWEI Dateien definieren dieselbe nicht-static
 	# Funktion -- ld muss das als "duplicate symbol" ablehnen.
-	build/tinyc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/tinyc_mf_arm_dup_a.ir
-	build/tinyc_p 'int f(){ return 2; }' > build/tinyc_mf_arm_dup_b.ir
-	if build/tinyc_arm64_backend build/tinyc_mf_arm_dup_a.ir build/tinyc_mf_arm_dup_a.s -part && \
-		build/tinyc_arm64_backend build/tinyc_mf_arm_dup_b.ir build/tinyc_mf_arm_dup_b.s -part && \
-		clang -arch arm64 -c build/tinyc_mf_arm_dup_a.s -o build/tinyc_mf_arm_dup_a.o && \
-		clang -arch arm64 -c build/tinyc_mf_arm_dup_b.s -o build/tinyc_mf_arm_dup_b.o; then
-		if clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_mf_arm_dup build/tinyc_mf_arm_dup_a.o build/tinyc_mf_arm_dup_b.o runtime/arm64_darwin/start.s >build/tinyc_mf_arm_dup.err 2>&1; then
-			echo "FAIL  tinyc Mehrdatei M3: ld haette 'duplicate symbol' melden muessen"; fail=1
-		elif grep -qi "duplicate symbol" build/tinyc_mf_arm_dup.err; then
-			echo "ok    tinyc Mehrdatei M3: echter ld lehnt doppelte nicht-static Definition als 'duplicate symbol' ab"
+	build/qcc_p 'int f(){ return 1; } int main(){ putint(f()); }' > build/qcc_mf_arm_dup_a.ir
+	build/qcc_p 'int f(){ return 2; }' > build/qcc_mf_arm_dup_b.ir
+	if build/qcc_arm64_backend build/qcc_mf_arm_dup_a.ir build/qcc_mf_arm_dup_a.s -part && \
+		build/qcc_arm64_backend build/qcc_mf_arm_dup_b.ir build/qcc_mf_arm_dup_b.s -part && \
+		clang -arch arm64 -c build/qcc_mf_arm_dup_a.s -o build/qcc_mf_arm_dup_a.o && \
+		clang -arch arm64 -c build/qcc_mf_arm_dup_b.s -o build/qcc_mf_arm_dup_b.o; then
+		if clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_mf_arm_dup build/qcc_mf_arm_dup_a.o build/qcc_mf_arm_dup_b.o runtime/arm64_darwin/start.s >build/qcc_mf_arm_dup.err 2>&1; then
+			echo "FAIL  qcc Mehrdatei M3: ld haette 'duplicate symbol' melden muessen"; fail=1
+		elif grep -qi "duplicate symbol" build/qcc_mf_arm_dup.err; then
+			echo "ok    qcc Mehrdatei M3: echter ld lehnt doppelte nicht-static Definition als 'duplicate symbol' ab"
 		else
-			echo "FAIL  tinyc Mehrdatei M3: Link schlug NICHT wegen 'duplicate symbol' fehl"; fail=1
+			echo "FAIL  qcc Mehrdatei M3: Link schlug NICHT wegen 'duplicate symbol' fehl"; fail=1
 		fi
-		rm -f build/tinyc_mf_arm_dup.err
+		rm -f build/qcc_mf_arm_dup.err
 	else
-		echo "FAIL  tinyc Mehrdatei M3: Backend-/.o-Aufruf fuer Duplicate-Test fehlgeschlagen"; fail=1
+		echo "FAIL  qcc Mehrdatei M3: Backend-/.o-Aufruf fuer Duplicate-Test fehlgeschlagen"; fail=1
 	fi
 else
-	echo "warn  tinyc Mehrdatei M3: nur auf arm64-macOS getestet -- uebersprungen"
+	echo "warn  qcc Mehrdatei M3: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/tinyc_struct_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_struct_arm64.ir build/tinyc_struct_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_arm64 build/tinyc_struct_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_struct_arm64)" = "7" ]; then
-		echo "ok    tinyc struct ARM64: Feldzugriff korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Point { int x; int y; }; int main(){ struct Point p; p.x=3; p.y=4; putint(p.x+p.y); }' > build/qcc_struct_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_struct_arm64.ir build/qcc_struct_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_struct_arm64 build/qcc_struct_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_struct_arm64)" = "7" ]; then
+		echo "ok    qcc struct ARM64: Feldzugriff korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: Feldzugriff fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: Feldzugriff fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a=1; m.b=1000; m.c=2; putint(m.b+m.a+m.c); }' > build/tinyc_struct_mixed_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_struct_mixed_arm64.ir build/tinyc_struct_mixed_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_mixed_arm64 build/tinyc_struct_mixed_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_struct_mixed_arm64)" = "1003" ]; then
-		echo "ok    tinyc struct ARM64: gemischte Feldtypen (char/int/char, Byte-Offset+Padding) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a=1; m.b=1000; m.c=2; putint(m.b+m.a+m.c); }' > build/qcc_struct_mixed_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_struct_mixed_arm64.ir build/qcc_struct_mixed_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_struct_mixed_arm64 build/qcc_struct_mixed_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_struct_mixed_arm64)" = "1003" ]; then
+		echo "ok    qcc struct ARM64: gemischte Feldtypen (char/int/char, Byte-Offset+Padding) korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: gemischte Feldtypen fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: gemischte Feldtypen fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (gemischt): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (gemischt): Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a=1; m.b=1000; putint(m.b+m.a); }' > build/tinyc_struct_anon_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_struct_anon_arm64.ir build/tinyc_struct_anon_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_anon_arm64 build/tinyc_struct_anon_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_struct_anon_arm64)" = "1001" ]; then
-		echo "ok    tinyc struct ARM64: anonymes struct inline im typedef korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a=1; m.b=1000; putint(m.b+m.a); }' > build/qcc_struct_anon_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_struct_anon_arm64.ir build/qcc_struct_anon_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_struct_anon_arm64 build/qcc_struct_anon_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_struct_anon_arm64)" = "1001" ]; then
+		echo "ok    qcc struct ARM64: anonymes struct inline im typedef korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: anonymes struct inline im typedef fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: anonymes struct inline im typedef fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (anonym im typedef): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (anonym im typedef): Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/tinyc_struct_arrfield_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_struct_arrfield_arm64.ir build/tinyc_struct_arrfield_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_struct_arrfield_arm64 build/tinyc_struct_arrfield_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_struct_arrfield_arm64)" = "$(printf '1\n1000\n9\n12')" ]; then
-		echo "ok    tinyc struct ARM64: Array-Feld (char buf[4]) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/qcc_struct_arrfield_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_struct_arrfield_arm64.ir build/qcc_struct_arrfield_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_struct_arrfield_arm64 build/qcc_struct_arrfield_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_struct_arrfield_arm64)" = "$(printf '1\n1000\n9\n12')" ]; then
+		echo "ok    qcc struct ARM64: Array-Feld (char buf[4]) korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: Array-Feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: Array-Feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (Array-Feld): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (Array-Feld): Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct P{int x; char buf[4]; int a[3];}; int main(){ struct P p; int i; i = 1; p.x = 7; p.buf[0]=65; p.buf[1]=66; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.x); putchar(p.buf[0]); putchar(p.buf[1]); putint(p.a[i]); }' > build/tinyc_structidx_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_structidx_arm64.ir build/tinyc_structidx_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structidx_arm64 build/tinyc_structidx_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_structidx_arm64)" = "$(printf '7\nAB20')" ]; then
-		echo "ok    tinyc struct ARM64: direkte p.field[i]-Indizierung (int- und char-Array-Feld) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct P{int x; char buf[4]; int a[3];}; int main(){ struct P p; int i; i = 1; p.x = 7; p.buf[0]=65; p.buf[1]=66; p.a[0]=10; p.a[1]=20; p.a[2]=30; putint(p.x); putchar(p.buf[0]); putchar(p.buf[1]); putint(p.a[i]); }' > build/qcc_structidx_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_structidx_arm64.ir build/qcc_structidx_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_structidx_arm64 build/qcc_structidx_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_structidx_arm64)" = "$(printf '7\nAB20')" ]; then
+		echo "ok    qcc struct ARM64: direkte p.field[i]-Indizierung (int- und char-Array-Feld) korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: direkte p.field[i]-Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: direkte p.field[i]-Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (p.field[i]): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (p.field[i]): Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' > build/tinyc_structptr_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_structptr_arm64.ir build/tinyc_structptr_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structptr_arm64 build/tinyc_structptr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_structptr_arm64)" = "$(printf 'Hi2')" ]; then
-		echo "ok    tinyc struct ARM64: Pointer-Feld (8-Byte-Layout, ueber Pointer-Zwischenvariable) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' > build/qcc_structptr_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_structptr_arm64.ir build/qcc_structptr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_structptr_arm64 build/qcc_structptr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_structptr_arm64)" = "$(printf 'Hi2')" ]; then
+		echo "ok    qcc struct ARM64: Pointer-Feld (8-Byte-Layout, ueber Pointer-Zwischenvariable) korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: Pointer-Feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: Pointer-Feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (Pointer-Feld): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (Pointer-Feld): Backend fehlt -- uebersprungen"
 fi
 
-# arr[i].feld (2026-07-25): siehe TinyVM/68000-Tests oben. ARM64-IPADDN nutzt eine
+# arr[i].feld (2026-07-25): siehe QCCVM/68000-Tests oben. ARM64-IPADDN nutzt eine
 # echte 32-Bit-Multiplikation (mul) statt scaleSuffix (nur feste 1/4/8-Shifts).
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' > build/tinyc_structarr_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_structarr_arm64.ir build/tinyc_structarr_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structarr_arm64 build/tinyc_structarr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_structarr_arm64)" = "$(printf '10\n11\n20\n21\n30\n31')" ]; then
-		echo "ok    tinyc struct ARM64: Array von structs, arr[i].feld (int-Felder) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; arr[0].a=10; arr[0].b=11; arr[1].a=20; arr[1].b=21; arr[2].a=30; arr[2].b=31; putint(arr[0].a); putint(arr[0].b); putint(arr[1].a); putint(arr[1].b); putint(arr[2].a); putint(arr[2].b); }' > build/qcc_structarr_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_structarr_arm64.ir build/qcc_structarr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_structarr_arm64 build/qcc_structarr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_structarr_arm64)" = "$(printf '10\n11\n20\n21\n30\n31')" ]; then
+		echo "ok    qcc struct ARM64: Array von structs, arr[i].feld (int-Felder) korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: arr[i].feld (int-Felder) fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: arr[i].feld (int-Felder) fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (arr[i].feld): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (arr[i].feld): Backend fehlt -- uebersprungen"
 fi
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' > build/tinyc_structarrptr_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_structarrptr_arm64.ir build/tinyc_structarrptr_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structarrptr_arm64 build/tinyc_structarrptr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_structarrptr_arm64)" = "AXC" ]; then
-		echo "ok    tinyc struct ARM64: Array von structs mit Pointer-Feld, arr[i].feld ueber Zwischenvariable korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' > build/qcc_structarrptr_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_structarrptr_arm64.ir build/qcc_structarrptr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_structarrptr_arm64 build/qcc_structarrptr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_structarrptr_arm64)" = "AXC" ]; then
+		echo "ok    qcc struct ARM64: Array von structs mit Pointer-Feld, arr[i].feld ueber Zwischenvariable korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: Array von structs mit Pointer-Feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: Array von structs mit Pointer-Feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (arr[i].feld, Pointer-Feld): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (arr[i].feld, Pointer-Feld): Backend fehlt -- uebersprungen"
 fi
 
 # ptr[i].feld (2026-07-25, Milestone B): siehe 68000-Test oben fuer die Erklaerung.
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' > build/tinyc_structptrarr_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_structptrarr_arm64.ir build/tinyc_structptrarr_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_structptrarr_arm64 build/tinyc_structptrarr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_structptrarr_arm64)" = "$(printf '10\n20\n30\n99')" ]; then
-		echo "ok    tinyc struct ARM64: ptr[i].feld (lokale Pointer-auf-struct-Variable) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' > build/qcc_structptrarr_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_structptrarr_arm64.ir build/qcc_structptrarr_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_structptrarr_arm64 build/qcc_structptrarr_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_structptrarr_arm64)" = "$(printf '10\n20\n30\n99')" ]; then
+		echo "ok    qcc struct ARM64: ptr[i].feld (lokale Pointer-auf-struct-Variable) korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: ptr[i].feld fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: ptr[i].feld fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (ptr[i].feld): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (ptr[i].feld): Backend fehlt -- uebersprungen"
 fi
 
 # Globale structs (2026-07-25): siehe 68000-Test oben fuer die Erklaerung.
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' > build/tinyc_gstruct_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_gstruct_arm64.ir build/tinyc_gstruct_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_gstruct_arm64 build/tinyc_gstruct_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_gstruct_arm64)" = "$(printf '100\n200\n200')" ]; then
-		echo "ok    tinyc struct ARM64: globale struct-Variablen/-Arrays/-Pointer korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' > build/qcc_gstruct_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_gstruct_arm64.ir build/qcc_gstruct_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_gstruct_arm64 build/qcc_gstruct_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_gstruct_arm64)" = "$(printf '100\n200\n200')" ]; then
+		echo "ok    qcc struct ARM64: globale struct-Variablen/-Arrays/-Pointer korrekt"
 	else
-		echo "FAIL  tinyc struct ARM64: globale structs fehlerhaft"; fail=1
+		echo "FAIL  qcc struct ARM64: globale structs fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc struct ARM64 (globale structs): Backend fehlt -- uebersprungen"
+	echo "warn  qcc struct ARM64 (globale structs): Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/tinyc_void_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_void_arm64.ir build/tinyc_void_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_void_arm64 build/tinyc_void_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_void_arm64)" = "$(printf '9\n7')" ]; then
-		echo "ok    tinyc void ARM64: void-Rueckgabe + void*-Parameter korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'void greet(int x){ putint(x); } int deref(void *p){ int *q = p; return *q; } int main(){ greet(9); int x=7; putint(deref(&x)); }' > build/qcc_void_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_void_arm64.ir build/qcc_void_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_void_arm64 build/qcc_void_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_void_arm64)" = "$(printf '9\n7')" ]; then
+		echo "ok    qcc void ARM64: void-Rueckgabe + void*-Parameter korrekt"
 	else
-		echo "FAIL  tinyc void ARM64: void/void* fehlerhaft"; fail=1
+		echo "FAIL  qcc void ARM64: void/void* fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc void ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc void ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' > build/tinyc_2d_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_2d_arm64.ir build/tinyc_2d_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_2d_arm64 build/tinyc_2d_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_2d_arm64)" = "$(printf '21\n2')" ]; then
-		echo "ok    tinyc 2D-Array ARM64: Zeilen/Spalten-Indizierung korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'int main(){ int m[3][3]; int i; int j; for(i=0;i<3;i+=1){ for(j=0;j<3;j+=1){ m[i][j]=i*10+j; } } putint(m[2][1]); putint(m[0][2]); }' > build/qcc_2d_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_2d_arm64.ir build/qcc_2d_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_2d_arm64 build/qcc_2d_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_2d_arm64)" = "$(printf '21\n2')" ]; then
+		echo "ok    qcc 2D-Array ARM64: Zeilen/Spalten-Indizierung korrekt"
 	else
-		echo "FAIL  tinyc 2D-Array ARM64: Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc 2D-Array ARM64: Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc 2D-Array ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc 2D-Array ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' > build/tinyc_3d_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_3d_arm64.ir build/tinyc_3d_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_3d_arm64 build/tinyc_3d_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_3d_arm64)" = "$(printf '123\n0\n102')" ]; then
-		echo "ok    tinyc 3D-Array ARM64: Horner-Kombination ueber drei Dimensionen korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'int main(){ int m[2][3][4]; int i; int j; int k; for(i=0;i<2;i+=1){ for(j=0;j<3;j+=1){ for(k=0;k<4;k+=1){ m[i][j][k]=i*100+j*10+k; } } } putint(m[1][2][3]); putint(m[0][0][0]); putint(m[1][0][2]); }' > build/qcc_3d_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_3d_arm64.ir build/qcc_3d_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_3d_arm64 build/qcc_3d_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_3d_arm64)" = "$(printf '123\n0\n102')" ]; then
+		echo "ok    qcc 3D-Array ARM64: Horner-Kombination ueber drei Dimensionen korrekt"
 	else
-		echo "FAIL  tinyc 3D-Array ARM64: Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc 3D-Array ARM64: Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc 3D-Array ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc 3D-Array ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/tinyc_string_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_string_arm64.ir build/tinyc_string_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_string_arm64 build/tinyc_string_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_string_arm64)" = "AB0" ]; then
-		echo "ok    tinyc String-Literal ARM64: GARRAY/GINIT/ADDRG-Adressierung korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'int main(){ char* s = "AB"; putchar(s[0]); putchar(s[1]); putint(s[2]); }' > build/qcc_string_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_string_arm64.ir build/qcc_string_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_string_arm64 build/qcc_string_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_string_arm64)" = "AB0" ]; then
+		echo "ok    qcc String-Literal ARM64: GARRAY/GINIT/ADDRG-Adressierung korrekt"
 	else
-		echo "FAIL  tinyc String-Literal ARM64: Adressierung fehlerhaft"; fail=1
+		echo "FAIL  qcc String-Literal ARM64: Adressierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc String-Literal ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc String-Literal ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'char gmsg[6] = "hallo"; int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putchar(gmsg[0]); putint(gmsg[5]); }' > build/tinyc_stringinit_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_stringinit_arm64.ir build/tinyc_stringinit_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_stringinit_arm64 build/tinyc_stringinit_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_stringinit_arm64)" = "hoh0" ]; then
-		echo "ok    tinyc String-Array-Initialisierer ARM64: lokal (exakt) + global (mit Nullterminator) korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'char gmsg[6] = "hallo"; int main(){ char m[5] = "hallo"; putchar(m[0]); putchar(m[4]); putchar(gmsg[0]); putint(gmsg[5]); }' > build/qcc_stringinit_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_stringinit_arm64.ir build/qcc_stringinit_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_stringinit_arm64 build/qcc_stringinit_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_stringinit_arm64)" = "hoh0" ]; then
+		echo "ok    qcc String-Array-Initialisierer ARM64: lokal (exakt) + global (mit Nullterminator) korrekt"
 	else
-		echo "FAIL  tinyc String-Array-Initialisierer ARM64: fehlerhaft"; fail=1
+		echo "FAIL  qcc String-Array-Initialisierer ARM64: fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc String-Array-Initialisierer ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc String-Array-Initialisierer ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'char* mkstr(){ return "hallo"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[4]); putchar("world"[0]); putint("world"[4]); }' > build/tinyc_directidx_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_directidx_arm64.ir build/tinyc_directidx_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_directidx_arm64 build/tinyc_directidx_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_directidx_arm64)" = "how100" ]; then
-		echo "ok    tinyc direkte Indizierung ARM64: Funktionsrueckgabewert + String-Literal ohne Zwischenvariable korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'char* mkstr(){ return "hallo"; } int main(){ putchar(mkstr()[0]); putchar(mkstr()[4]); putchar("world"[0]); putint("world"[4]); }' > build/qcc_directidx_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_directidx_arm64.ir build/qcc_directidx_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_directidx_arm64 build/qcc_directidx_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_directidx_arm64)" = "how100" ]; then
+		echo "ok    qcc direkte Indizierung ARM64: Funktionsrueckgabewert + String-Literal ohne Zwischenvariable korrekt"
 	else
-		echo "FAIL  tinyc direkte Indizierung ARM64: Indizierung fehlerhaft"; fail=1
+		echo "FAIL  qcc direkte Indizierung ARM64: Indizierung fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc direkte Indizierung ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc direkte Indizierung ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/tinyc_switch_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_switch_arm64.ir build/tinyc_switch_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_switch_arm64 build/tinyc_switch_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_switch_arm64)" = "23" ]; then
-		echo "ok    tinyc switch ARM64: gestapelte case-Label + default korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'int main(){ int x=2; int r=0; switch(x){ case 1: r=11; break; case 2: case 3: r=23; break; default: r=99; } putint(r); }' > build/qcc_switch_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_switch_arm64.ir build/qcc_switch_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_switch_arm64 build/qcc_switch_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_switch_arm64)" = "23" ]; then
+		echo "ok    qcc switch ARM64: gestapelte case-Label + default korrekt"
 	else
-		echo "FAIL  tinyc switch ARM64: switch/case fehlerhaft"; fail=1
+		echo "FAIL  qcc switch ARM64: switch/case fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc switch ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc switch ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' > build/tinyc_static_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_static_arm64.ir build/tinyc_static_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_static_arm64 build/tinyc_static_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_static_arm64)" = "$(printf '1\n2\n3')" ]; then
-		echo "ok    tinyc static ARM64: lokale static-Variable persistiert ueber Aufrufe hinweg"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' > build/qcc_static_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_static_arm64.ir build/qcc_static_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_static_arm64 build/qcc_static_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_static_arm64)" = "$(printf '1\n2\n3')" ]; then
+		echo "ok    qcc static ARM64: lokale static-Variable persistiert ueber Aufrufe hinweg"
 	else
-		echo "FAIL  tinyc static ARM64: static-Persistenz fehlerhaft"; fail=1
+		echo "FAIL  qcc static ARM64: static-Persistenz fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc static ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc static ARM64: Backend fehlt -- uebersprungen"
 fi
 
-if [ -x build/tinyc_arm64_backend ]; then
-	if build/tinyc_p 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' > build/tinyc_staticrt_arm64.ir && \
-		build/tinyc_arm64_backend build/tinyc_staticrt_arm64.ir build/tinyc_staticrt_arm64.s && \
-		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/tinyc_staticrt_arm64 build/tinyc_staticrt_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/tinyc_staticrt_arm64)" = "$(printf '16\n17\n18')" ]; then
-		echo "ok    tinyc static-Laufzeit-Initialisierer ARM64: Runs-once-Guard korrekt"
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'int base(){ return 10; } int f(){ static int x = base() + 5; x += 1; return x; } int main(){ putint(f()); putint(f()); putint(f()); }' > build/qcc_staticrt_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_staticrt_arm64.ir build/qcc_staticrt_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_staticrt_arm64 build/qcc_staticrt_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_staticrt_arm64)" = "$(printf '16\n17\n18')" ]; then
+		echo "ok    qcc static-Laufzeit-Initialisierer ARM64: Runs-once-Guard korrekt"
 	else
-		echo "FAIL  tinyc static-Laufzeit-Initialisierer ARM64: Runs-once-Guard fehlerhaft"; fail=1
+		echo "FAIL  qcc static-Laufzeit-Initialisierer ARM64: Runs-once-Guard fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  tinyc static-Laufzeit-Initialisierer ARM64: Backend fehlt -- uebersprungen"
+	echo "warn  qcc static-Laufzeit-Initialisierer ARM64: Backend fehlt -- uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26): parsec.cpp-Vollport, naechster Ausschnitt
-# nach SourceTinyC/ebnf.tc -- writeWorkfile (Source/parsec.cpp:1007-1130, die
+# nach SourceQCC/ebnf.tc -- writeWorkfile (Source/parsec.cpp:1007-1130, die
 # komplette Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/
 # NTS-SYMBOLTABELLE/PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke).
-# ZWEI neue, live gefundene und gefixte Backend-Bugs (Source/tinyc_backend_c.cpp)
+# ZWEI neue, live gefundene und gefixte Backend-Bugs (Source/qcc_backend_c.cpp)
 # waren Voraussetzung: (1) LABEL/JMP/JZ/JNZ ("tc_L<n>") und emitCompare()s interne
 # Sprungmarken ("tc_cmp_yes_<n>"/"tc_cmp_done_<n>") hingen nur von einem PRO-DATEI
 # neu bei 0 startenden Zaehler ab -- kollidierten beim Mehrdatei-Link, sobald
@@ -2670,18 +2670,18 @@ fi
 # ebnf.tc UND codegen.tc als ZWEI GETRENNT kompilierte Dateien real linkt
 # (bisherige ebnf.tc-Chunks wurden nur ALLEIN kompiliert/assembliert, nie
 # gegen codegen.tc gelinkt -- Konkatenation beider Dateien in EINER
-# tinyc_p-Kompilation, wie im Kopfkommentar von ebnf.tc als "schneller Test"
+# qcc_p-Kompilation, wie im Kopfkommentar von ebnf.tc als "schneller Test"
 # beschrieben, verletzt Quirk 8 (Deklarationen-vor-Funktionen GESAMT), siehe
 # docs/FORTSCHRITT.md -- ebnf.tc muss daher ALLEIN kompiliert werden, seine
 # eigenen Bare-Prototypen fuer codegen.tc-Funktionen reichen dem Frontend).
 # Ein VOLLER l68-Link ist fuer diesen Test bewusst NICHT das Kriterium: die
 # rekursive-Abstiegs-Parsergruppe (rule/expression/term/factor/.../
 # ebnfSyntax/lexikalischeAnalyse/exitProgram) hat noch KEINEN echten Rumpf
-# (siehe [[tinyc-vollport-status]]) -- ein l68-Lauf schlaegt deshalb ERWARTET
+# (siehe [[qcc-vollport-status]]) -- ein l68-Lauf schlaegt deshalb ERWARTET
 # mit "unresolved symbol" fuer genau diese (hier nicht aufgerufenen) Funktionen
 # fehl. Verifiziert wird daher wie bei den bisherigen ebnf.tc-Chunks: kompiliert
 # sauber (Frontend) + assembliert fehlerfrei (echter r68) fuer BEIDE Dateien.
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	wwtest_main='
@@ -2725,39 +2725,39 @@ int wwtestFn() {
 
 	appendQuelltext("rule1 = ident ;");
 
-	fp = fopen("/tmp/tinyc_workfile_test.txt", "w");
+	fp = fopen("/tmp/qcc_workfile_test.txt", "w");
 	writeWorkfile(fp);
 	fclose(fp);
 
 	putint(1);
 }'
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$wwtest_main" > build/tinyc_wwtest_a.ir 2>build/tinyc_wwtest_a.err && \
-		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_wwtest_b.ir 2>build/tinyc_wwtest_b.err && \
-		build/tinyc_backend build/tinyc_wwtest_a.ir build/tinyc_wwtest_a.s68 -os9 -largedata -part && \
-		build/tinyc_backend build/tinyc_wwtest_b.ir build/tinyc_wwtest_b.s68 -os9 -largedata -part; then
-		cp build/tinyc_wwtest_a.s68 "$MWOS_TMP/wwtesta.a"
-		cp build/tinyc_wwtest_b.s68 "$MWOS_TMP/wwtestb.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$wwtest_main" > build/qcc_wwtest_a.ir 2>build/qcc_wwtest_a.err && \
+		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_wwtest_b.ir 2>build/qcc_wwtest_b.err && \
+		build/qcc_backend build/qcc_wwtest_a.ir build/qcc_wwtest_a.s68 -os9 -largedata -part && \
+		build/qcc_backend build/qcc_wwtest_b.ir build/qcc_wwtest_b.s68 -os9 -largedata -part; then
+		cp build/qcc_wwtest_a.s68 "$MWOS_TMP/wwtesta.a"
+		cp build/qcc_wwtest_b.s68 "$MWOS_TMP/wwtestb.a"
 		rm -f "$MWOS_TMP/wwtesta.r" "$MWOS_TMP/wwtestb.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtesta.a -o=M:\\TMP\\wwtesta.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtestb.a -o=M:\\TMP\\wwtestb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/wwtesta.r" ] && [ -s "$MWOS_TMP/wwtestb.r" ]; then
-			echo "ok    tinyc Selfhosting L2 Vollport: writeWorkfile (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: writeWorkfile (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (writeWorkfile) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (writeWorkfile) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/wwtesta.a "$MWOS_TMP"/wwtestb.a "$MWOS_TMP"/wwtesta.r "$MWOS_TMP"/wwtestb.r
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (writeWorkfile) kompiliert nicht sauber (siehe build/tinyc_wwtest_a.err/build/tinyc_wwtest_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (writeWorkfile) kompiliert nicht sauber (siehe build/qcc_wwtest_a.err/build/qcc_wwtest_b.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (writeWorkfile): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (writeWorkfile): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
-# nach SourceTinyC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/parsec.cpp:1132-1156,
+# nach SourceQCC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/parsec.cpp:1132-1156,
 # Fall B: Linksrekursions-Kanten aus einer GELADENEN Arbeitsdatei rekonstruieren,
 # statt sie waehrend des normalen Parsens ueber das firstPos-Flag zu sammeln).
-# Haengt wie fast alles in ebnf.tc an extern strcmp/strlen (CALLEXT) -- TinyVM
+# Haengt wie fast alles in ebnf.tc an extern strcmp/strlen (CALLEXT) -- QCCVM
 # kennt CALLEXT nicht, daher wie bei den bisherigen ebnf.tc-Chunks NUR strukturell
 # verifiziert (kompiliert sauber, echter r68 assembliert, ebnf.tc+codegen.tc
 # getrennt). ZUSAETZLICH die reine ALGORITHMUS-Logik einmalig gegen eine
@@ -2767,7 +2767,7 @@ fi
 # Original-Algorithmus erwartet. Nicht dauerhaft als Skript verankert (gleiche
 # Abwaegung wie beim LEXER-Konfigurationsparser-Chunk: Wartungsaufwand einer
 # zweiten Testumgebung nur fuers Testen steht in keinem Verhaeltnis zum Nutzen).
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	rebuildtest_main='
@@ -2800,35 +2800,35 @@ int rebuildtestFn() {
 	putint(ruleNameListCnt);
 	putint(1);
 }'
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rebuildtest_main" > build/tinyc_rebuildtest_a.ir 2>build/tinyc_rebuildtest_a.err && \
-		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rebuildtest_b.ir 2>build/tinyc_rebuildtest_b.err && \
-		build/tinyc_backend build/tinyc_rebuildtest_a.ir build/tinyc_rebuildtest_a.s68 -os9 -largedata -part && \
-		build/tinyc_backend build/tinyc_rebuildtest_b.ir build/tinyc_rebuildtest_b.s68 -os9 -largedata -part; then
-		cp build/tinyc_rebuildtest_a.s68 "$MWOS_TMP/rebuilda.a"
-		cp build/tinyc_rebuildtest_b.s68 "$MWOS_TMP/rebuildb.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$rebuildtest_main" > build/qcc_rebuildtest_a.ir 2>build/qcc_rebuildtest_a.err && \
+		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_rebuildtest_b.ir 2>build/qcc_rebuildtest_b.err && \
+		build/qcc_backend build/qcc_rebuildtest_a.ir build/qcc_rebuildtest_a.s68 -os9 -largedata -part && \
+		build/qcc_backend build/qcc_rebuildtest_b.ir build/qcc_rebuildtest_b.s68 -os9 -largedata -part; then
+		cp build/qcc_rebuildtest_a.s68 "$MWOS_TMP/rebuilda.a"
+		cp build/qcc_rebuildtest_b.s68 "$MWOS_TMP/rebuildb.a"
 		rm -f "$MWOS_TMP/rebuilda.r" "$MWOS_TMP/rebuildb.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuilda.a -o=M:\\TMP\\rebuilda.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuildb.a -o=M:\\TMP\\rebuildb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/rebuilda.r" ] && [ -s "$MWOS_TMP/rebuildb.r" ]; then
-			echo "ok    tinyc Selfhosting L2 Vollport: rebuildFirstEdgesFromTable (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: rebuildFirstEdgesFromTable (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (rebuildFirstEdgesFromTable) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (rebuildFirstEdgesFromTable) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/rebuilda.a "$MWOS_TMP"/rebuildb.a "$MWOS_TMP"/rebuilda.r "$MWOS_TMP"/rebuildb.r
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (rebuildFirstEdgesFromTable) kompiliert nicht sauber (siehe build/tinyc_rebuildtest_a.err/build/tinyc_rebuildtest_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (rebuildFirstEdgesFromTable) kompiliert nicht sauber (siehe build/qcc_rebuildtest_a.err/build/qcc_rebuildtest_b.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (rebuildFirstEdgesFromTable): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (rebuildFirstEdgesFromTable): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
-# nach SourceTinyC/ebnf.tc -- loadWorkfileAsGrammar (Source/parsec.cpp:1162-1231,
+# nach SourceQCC/ebnf.tc -- loadWorkfileAsGrammar (Source/parsec.cpp:1162-1231,
 # Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus einer Arbeitsdatei laden, ohne
 # .ebnf). Das Original nutzt EIN grosses sscanf(...) mit NEUN Ausgabeparametern --
 # geht hier NICHT 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (neun
 # ueberschreiten das), (2) int*-Ausgabeparameter mit "*p = wert"-Schreibzugriff
-# sind in dieser Tiny-C-Version generell unerprobt (siehe execPosResult/execFrom).
+# sind in dieser QCC-Version generell unerprobt (siehe execPosResult/execFrom).
 # Stattdessen ein Handparser (wfParseInt/wfParseToken, globale Parse-Position
 # wfParsePos statt int*-Out-Parameter) passend zum writeWorkfile-Zeilenformat.
 # ZWEI neue Grenzfaelle live gefunden: "lexTab[aktTabIndex].ident[0] = 0;"
@@ -2843,7 +2843,7 @@ fi
 # C-Uebersetzung BEIDER Funktionen gegengeprueft: alle Werte (Modi, Ident-/
 # TS-Text, true/falseAction, rangeLo/rangeHi, Quelltextlaenge) kommen exakt wie
 # geschrieben zurueck.
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	lwtest_main='
@@ -2882,7 +2882,7 @@ int lwtestFn() {
 
 	appendQuelltext("rule1 = ident | digit ;");
 
-	fp = fopen("/tmp/tinyc_roundtrip_test.txt", "w");
+	fp = fopen("/tmp/qcc_roundtrip_test.txt", "w");
 	writeWorkfile(fp);
 	fclose(fp);
 
@@ -2891,7 +2891,7 @@ int lwtestFn() {
 	aktTabIndex = 0;
 	quelltextLen = 0;
 
-	if (loadWorkfileAsGrammar("/tmp/tinyc_roundtrip_test.txt") == 0) {
+	if (loadWorkfileAsGrammar("/tmp/qcc_roundtrip_test.txt") == 0) {
 		putint(-1);
 		return;
 	}
@@ -2912,30 +2912,30 @@ int lwtestFn() {
 	putint(quelltextLen);
 	putint(1);
 }'
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lwtest_main" > build/tinyc_lwtest_a.ir 2>build/tinyc_lwtest_a.err && \
-		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_lwtest_b.ir 2>build/tinyc_lwtest_b.err && \
-		build/tinyc_backend build/tinyc_lwtest_a.ir build/tinyc_lwtest_a.s68 -os9 -largedata -part && \
-		build/tinyc_backend build/tinyc_lwtest_b.ir build/tinyc_lwtest_b.s68 -os9 -largedata -part; then
-		cp build/tinyc_lwtest_a.s68 "$MWOS_TMP/lwtesta.a"
-		cp build/tinyc_lwtest_b.s68 "$MWOS_TMP/lwtestb.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$lwtest_main" > build/qcc_lwtest_a.ir 2>build/qcc_lwtest_a.err && \
+		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_lwtest_b.ir 2>build/qcc_lwtest_b.err && \
+		build/qcc_backend build/qcc_lwtest_a.ir build/qcc_lwtest_a.s68 -os9 -largedata -part && \
+		build/qcc_backend build/qcc_lwtest_b.ir build/qcc_lwtest_b.s68 -os9 -largedata -part; then
+		cp build/qcc_lwtest_a.s68 "$MWOS_TMP/lwtesta.a"
+		cp build/qcc_lwtest_b.s68 "$MWOS_TMP/lwtestb.a"
 		rm -f "$MWOS_TMP/lwtesta.r" "$MWOS_TMP/lwtestb.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtesta.a -o=M:\\TMP\\lwtesta.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtestb.a -o=M:\\TMP\\lwtestb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/lwtesta.r" ] && [ -s "$MWOS_TMP/lwtestb.r" ]; then
-			echo "ok    tinyc Selfhosting L2 Vollport: loadWorkfileAsGrammar (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: loadWorkfileAsGrammar (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (loadWorkfileAsGrammar) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (loadWorkfileAsGrammar) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/lwtesta.a "$MWOS_TMP"/lwtestb.a "$MWOS_TMP"/lwtesta.r "$MWOS_TMP"/lwtestb.r
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (loadWorkfileAsGrammar) kompiliert nicht sauber (siehe build/tinyc_lwtest_a.err/build/tinyc_lwtest_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (loadWorkfileAsGrammar) kompiliert nicht sauber (siehe build/qcc_lwtest_a.err/build/qcc_lwtest_b.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (loadWorkfileAsGrammar): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (loadWorkfileAsGrammar): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechste zwei
-# Ausschnitte nach SourceTinyC/ebnf.tc -- runTests (Source/parsec.cpp:1233-1268,
+# Ausschnitte nach SourceQCC/ebnf.tc -- runTests (Source/parsec.cpp:1233-1268,
 # alle TEST-Zeilen durch execFrom jagen und mit dem erwarteten Ergebnis
 # vergleichen) UND loadPreservedTests (Source/parsec.cpp:920-993, TESTS/
 # NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei retten, bevor
@@ -2954,7 +2954,7 @@ fi
 # eine native C-Uebersetzung aller vier beteiligten Funktionen gegengeprueft:
 # beide liefern aktTabIndex=1/testCaseCnt=3/mismatches=0 (alle drei Testfaelle
 # PASS).
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	rtlp_main='
@@ -2962,7 +2962,7 @@ int rtlpFn() {
 	void* fp;
 	int mismatches;
 
-	fp = fopen("/tmp/tinyc_rtlp_test.txt", "w");
+	fp = fopen("/tmp/qcc_rtlp_test.txt", "w");
 	fprintf(fp, "[PARSER-TABELLE]\n");
 	fprintf(fp, "0     -1    -2    -1    48    57    -                RNG  digit\n");
 	fprintf(fp, "[ENDE]\n\n");
@@ -2984,11 +2984,11 @@ int rtlpFn() {
 	fprintf(fp, " FAIL\n");
 	fclose(fp);
 
-	if (loadWorkfileAsGrammar("/tmp/tinyc_rtlp_test.txt") == 0) {
+	if (loadWorkfileAsGrammar("/tmp/qcc_rtlp_test.txt") == 0) {
 		putint(-1);
 		return;
 	}
-	loadPreservedTests("/tmp/tinyc_rtlp_test.txt");
+	loadPreservedTests("/tmp/qcc_rtlp_test.txt");
 
 	putint(aktTabIndex);
 	putint(testCaseCnt);
@@ -2997,30 +2997,30 @@ int rtlpFn() {
 	putint(mismatches);
 	putint(1);
 }'
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$rtlp_main" > build/tinyc_rtlp_a.ir 2>build/tinyc_rtlp_a.err && \
-		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_rtlp_b.ir 2>build/tinyc_rtlp_b.err && \
-		build/tinyc_backend build/tinyc_rtlp_a.ir build/tinyc_rtlp_a.s68 -os9 -largedata -part && \
-		build/tinyc_backend build/tinyc_rtlp_b.ir build/tinyc_rtlp_b.s68 -os9 -largedata -part; then
-		cp build/tinyc_rtlp_a.s68 "$MWOS_TMP/rtlpa.a"
-		cp build/tinyc_rtlp_b.s68 "$MWOS_TMP/rtlpb.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$rtlp_main" > build/qcc_rtlp_a.ir 2>build/qcc_rtlp_a.err && \
+		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_rtlp_b.ir 2>build/qcc_rtlp_b.err && \
+		build/qcc_backend build/qcc_rtlp_a.ir build/qcc_rtlp_a.s68 -os9 -largedata -part && \
+		build/qcc_backend build/qcc_rtlp_b.ir build/qcc_rtlp_b.s68 -os9 -largedata -part; then
+		cp build/qcc_rtlp_a.s68 "$MWOS_TMP/rtlpa.a"
+		cp build/qcc_rtlp_b.s68 "$MWOS_TMP/rtlpb.a"
 		rm -f "$MWOS_TMP/rtlpa.r" "$MWOS_TMP/rtlpb.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpa.a -o=M:\\TMP\\rtlpa.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpb.a -o=M:\\TMP\\rtlpb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/rtlpa.r" ] && [ -s "$MWOS_TMP/rtlpb.r" ]; then
-			echo "ok    tinyc Selfhosting L2 Vollport: runTests + loadPreservedTests (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: runTests + loadPreservedTests (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (runTests/loadPreservedTests) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (runTests/loadPreservedTests) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/rtlpa.a "$MWOS_TMP"/rtlpb.a "$MWOS_TMP"/rtlpa.r "$MWOS_TMP"/rtlpb.r
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (runTests/loadPreservedTests) kompiliert nicht sauber (siehe build/tinyc_rtlp_a.err/build/tinyc_rtlp_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (runTests/loadPreservedTests) kompiliert nicht sauber (siehe build/qcc_rtlp_a.err/build/qcc_rtlp_b.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (runTests/loadPreservedTests): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (runTests/loadPreservedTests): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): die rekursive-
-# Abstiegs-Parsergruppe nach SourceTinyC/ebnf.tc -- literal/ident/block/repeat/
+# Abstiegs-Parsergruppe nach SourceQCC/ebnf.tc -- literal/ident/block/repeat/
 # option/factor/term/expression/rule (Source/parsec.cpp:1371-1774) PLUS die bisher
 # fehlenden Helfer push/pop/restart/errorMsg/test/addIdentList/patchLocalTrue/
 # patchLocalFalse (920-1330). Alle neun Kernfunktionen hatten bereits seit
@@ -3034,50 +3034,50 @@ fi
 # (getAktChar/getAktLine/put/ebnfSyntax/semantischeAnylyse/
 # lexikalischeAnalyse/exitProgram) -- die Parsergruppe selbst ist vollstaendig
 # und korrekt verdrahtet, keine ueberraschenden fehlenden Symbole.
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)" > build/tinyc_parser1.ir 2>build/tinyc_parser1.err && \
-		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_parser1b.ir 2>build/tinyc_parser1b.err && \
-		build/tinyc_backend build/tinyc_parser1.ir build/tinyc_parser1.s68 -os9 -largedata -part && \
-		build/tinyc_backend build/tinyc_parser1b.ir build/tinyc_parser1b.s68 -os9 -largedata -part; then
-		cp build/tinyc_parser1.s68 "$MWOS_TMP/parser1a.a"
-		cp build/tinyc_parser1b.s68 "$MWOS_TMP/parser1b.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)" > build/qcc_parser1.ir 2>build/qcc_parser1.err && \
+		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_parser1b.ir 2>build/qcc_parser1b.err && \
+		build/qcc_backend build/qcc_parser1.ir build/qcc_parser1.s68 -os9 -largedata -part && \
+		build/qcc_backend build/qcc_parser1b.ir build/qcc_parser1b.s68 -os9 -largedata -part; then
+		cp build/qcc_parser1.s68 "$MWOS_TMP/parser1a.a"
+		cp build/qcc_parser1b.s68 "$MWOS_TMP/parser1b.a"
 		rm -f "$MWOS_TMP/parser1a.r" "$MWOS_TMP/parser1b.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1a.a -o=M:\\TMP\\parser1a.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1b.a -o=M:\\TMP\\parser1b.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/parser1a.r" ] && [ -s "$MWOS_TMP/parser1b.r" ]; then
-			echo "ok    tinyc Selfhosting L2 Vollport: rekursive-Abstiegs-Parsergruppe (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: rekursive-Abstiegs-Parsergruppe (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (Parsergruppe) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (Parsergruppe) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/parser1a.a "$MWOS_TMP"/parser1b.a "$MWOS_TMP"/parser1a.r "$MWOS_TMP"/parser1b.r
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (Parsergruppe) kompiliert nicht sauber (siehe build/tinyc_parser1.err/build/tinyc_parser1b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (Parsergruppe) kompiliert nicht sauber (siehe build/qcc_parser1.err/build/qcc_parser1b.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (Parsergruppe): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (Parsergruppe): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): der Lexer nach
-# SourceTinyC/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
+# SourceQCC/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
 # getAktLine/put/semantischeAnylyse (Source/parsec.cpp:1810-2147, 1906-1970).
 # lexikalischeAnalyse/getAktChar/put/semantischeAnylyse hatten bereits bare
 # Prototypen; getNext/comment sind neu UND werden ihrerseits von getAktChar
 # bzw. getAktLine gerufen -- strikte Definitions-Reihenfolge eingehalten.
 # NEU dabei: initLexer() (das C++-Original initialisiert die Lexer-Config-
 # Globalen wie startLineCommentString etc. per automatischem C++-Globalen-
-# Initialisierer VOR main() -- Tiny-C GLOBAL-Deklarationen koennen das nicht
+# Initialisierer VOR main() -- QCC GLOBAL-Deklarationen koennen das nicht
 # fuer String-Pointer, daher eine explizite Init-Funktion, die main()/
 # ebnfSyntax() [naechster, letzter Schritt] einmal zu Programmbeginn rufen
 # muss). WICHTIGSTER neuer Grenzfall: rohes Zeiger-Dereferenzieren (*p lesen
 # UND *p = wert schreiben, nicht nur p[i]) wird hier zum ERSTEN Mal im ganzen
-# Port gebraucht (getNext/comment) -- vorab per Standalone-Test gegen TinyVM
+# Port gebraucht (getNext/comment) -- vorab per Standalone-Test gegen QCCVM
 # verifiziert (Lesen+Schreiben ueber einen Pointer auf ein globales
 # char-Array liefert exakt die erwarteten Werte), danach bedenkenlos wie im
 # Original eingesetzt. Ebenfalls verifiziert: ein nicht verwendeter
 # Rueckgabewert (comment() als blosse Anweisung) kompiliert und laeuft
-# korrekt (TinyVM-Test) -- die vorsichtshalber-Variable aus dem vorigen
+# korrekt (QCCVM-Test) -- die vorsichtshalber-Variable aus dem vorigen
 # Chunk (expression()s poppedLine) war also nicht zwingend noetig, bleibt
 # aber unveraendert stehen.
 #
@@ -3089,7 +3089,7 @@ fi
 # ebnf.tc+codegen.tc zeigt nach diesem Chunk nur noch GENAU 2 unresolved
 # Symbole (ebnfSyntax/exitProgram) -- der komplette Rest der Datei ist
 # vollstaendig und korrekt verdrahtet.
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
 	lextest_main='
@@ -3098,7 +3098,7 @@ int lextestFn() {
 	int tokens[16];
 	int tokenCnt;
 
-	fp = fopen("/tmp/tinyc_lextest_in.ebnf", "w");
+	fp = fopen("/tmp/qcc_lextest_in.ebnf", "w");
 	fprintf(fp, "rule1 = ");
 	fputc(34, fp);
 	fprintf(fp, "a");
@@ -3107,7 +3107,7 @@ int lextestFn() {
 	fclose(fp);
 
 	initLexer();
-	fpIn = fopen("/tmp/tinyc_lextest_in.ebnf", "r");
+	fpIn = fopen("/tmp/qcc_lextest_in.ebnf", "r");
 	tokenCnt = 0;
 
 	getAktChar();
@@ -3127,31 +3127,31 @@ int lextestFn() {
 	putint(strcmp(aktName, "rule1"));
 	putint(1);
 }'
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)$lextest_main" > build/tinyc_lextest_a.ir 2>build/tinyc_lextest_a.err && \
-		build/tinyc_backend build/tinyc_lextest_a.ir build/tinyc_lextest_a.s68 -os9 -largedata -part; then
-		cp build/tinyc_lextest_a.s68 "$MWOS_TMP/lextesta.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$lextest_main" > build/qcc_lextest_a.ir 2>build/qcc_lextest_a.err && \
+		build/qcc_backend build/qcc_lextest_a.ir build/qcc_lextest_a.s68 -os9 -largedata -part; then
+		cp build/qcc_lextest_a.s68 "$MWOS_TMP/lextesta.a"
 		rm -f "$MWOS_TMP/lextesta.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lextesta.a -o=M:\\TMP\\lextesta.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/lextesta.r" ]; then
-			echo "ok    tinyc Selfhosting L2 Vollport: Lexer (SourceTinyC/ebnf.tc) kompiliert und assembliert (echter r68) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: Lexer (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68) korrekt"
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (Lexer) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (Lexer) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/lextesta.a "$MWOS_TMP"/lextesta.r
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (Lexer) kompiliert nicht sauber (siehe build/tinyc_lextest_a.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (Lexer) kompiliert nicht sauber (siehe build/qcc_lextest_a.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (Lexer): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (Lexer): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): ebnfMain/
 # ebnfSyntax/exitProgram (Source/parsec.cpp:170-334, 1357-1369, 322-334) --
-# LETZTER Abschnitt des parsec.cpp-Vollports. Tiny-C main() kann keine
+# LETZTER Abschnitt des parsec.cpp-Vollports. QCC main() kann keine
 # argc/argv empfangen (kein Mechanismus dafuer in Grammatik/Backend) -- die
 # komplette Original-main()-Logik lebt deshalb in ebnfMain(char* baseArg),
 # main() selbst ist ein duenner Wrapper mit fest einprogrammiertem
-# Basisnamen ("tinyc"). Bewusst entfallen: die argc<2-Usage-Meldung und der
+# Basisnamen ("qcc"). Bewusst entfallen: die argc<2-Usage-Meldung und der
 # optionale <teststring>-Testlauf (runTests() deckt das bereits ab).
 #
 # WICHTIGSTER Unterschied zu allen bisherigen ebnf.tc-Chunks: ebnf.tc hat ab
@@ -3164,39 +3164,39 @@ fi
 #
 # DAS HIER IST DER MEILENSTEIN-TEST: zum ERSTEN Mal ein VOLLER l68-Link von
 # ebnf.tc (mit seiner echten main()) GEGEN codegen.tc, ohne jedes unresolved
-# Symbol -- der komplette Tiny-C-Vollport von Source/parsec.cpp (Schritt 2 aus
-# dem urspruenglichen 3-Schritt-Plan, siehe [[tinyc-vollport-status]]) ist
+# Symbol -- der komplette QCC-Vollport von Source/parsec.cpp (Schritt 2 aus
+# dem urspruenglichen 3-Schritt-Plan, siehe [[qcc-vollport-status]]) ist
 # damit strukturell/kompilatorisch VOLLSTAENDIG. (Was das noch NICHT
 # abdeckt: echte Ausfuehrung/Verhalten auf dem Q9-Emulator -- Schritt 3 des
 # Plans, separat vermerkt.)
-if [ -x build/tinyc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
+if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
-	if build/tinyc_p "$(cat SourceTinyC/ebnf.tc)" > build/tinyc_final1.ir 2>build/tinyc_final1.err && \
-		build/tinyc_p "$(cat SourceTinyC/codegen.tc)" > build/tinyc_final1b.ir 2>build/tinyc_final1b.err && \
-		build/tinyc_backend build/tinyc_final1.ir build/tinyc_final1.s68 -os9 -largedata -part -runtime && \
-		build/tinyc_backend build/tinyc_final1b.ir build/tinyc_final1b.s68 -os9 -largedata -part; then
-		cp build/tinyc_final1.s68 "$MWOS_TMP/final1a.a"
-		cp build/tinyc_final1b.s68 "$MWOS_TMP/final1b.a"
+	if build/qcc_p "$(cat SourceQCC/ebnf.tc)" > build/qcc_final1.ir 2>build/qcc_final1.err && \
+		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_final1b.ir 2>build/qcc_final1b.err && \
+		build/qcc_backend build/qcc_final1.ir build/qcc_final1.s68 -os9 -largedata -part -runtime && \
+		build/qcc_backend build/qcc_final1b.ir build/qcc_final1b.s68 -os9 -largedata -part; then
+		cp build/qcc_final1.s68 "$MWOS_TMP/final1a.a"
+		cp build/qcc_final1b.s68 "$MWOS_TMP/final1b.a"
 		rm -f "$MWOS_TMP/final1a.r" "$MWOS_TMP/final1b.r" "$MWOS_TMP/final1.out"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\final1a.a -o=M:\\TMP\\final1a.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\final1b.a -o=M:\\TMP\\final1b.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/final1a.r" ] && [ -s "$MWOS_TMP/final1b.r" ]; then
 			WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\final1a.r M:\\TMP\\final1b.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\final1.out" >/dev/null 2>&1
 			if [ -s "$MWOS_TMP/final1.out" ]; then
-				echo "ok    tinyc Selfhosting L2 Vollport: KOMPLETT -- ebnf.tc (mit echter main()) + codegen.tc kompilieren, assemblieren UND linken (echter r68+l68 gegen echte clib.l) vollstaendig OHNE unresolved Symbole"
+				echo "ok    qcc Selfhosting L2 Vollport: KOMPLETT -- ebnf.tc (mit echter main()) + codegen.tc kompilieren, assemblieren UND linken (echter r68+l68 gegen echte clib.l) vollstaendig OHNE unresolved Symbole"
 			else
-				echo "FAIL  tinyc Selfhosting L2 Vollport: voller l68-Link (ebnf.tc+codegen.tc) fehlgeschlagen"; fail=1
+				echo "FAIL  qcc Selfhosting L2 Vollport: voller l68-Link (ebnf.tc+codegen.tc) fehlgeschlagen"; fail=1
 			fi
 		else
-			echo "FAIL  tinyc Selfhosting L2 Vollport: echte r68-Assemblierung (ebnfMain/main) fehlgeschlagen"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (ebnfMain/main) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/final1a.a "$MWOS_TMP"/final1b.a "$MWOS_TMP"/final1a.r "$MWOS_TMP"/final1b.r "$MWOS_TMP"/final1.out
 	else
-		echo "FAIL  tinyc Selfhosting L2 Vollport: SourceTinyC/ebnf.tc (ebnfMain/main) kompiliert nicht sauber (siehe build/tinyc_final1.err/build/tinyc_final1b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (ebnfMain/main) kompiliert nicht sauber (siehe build/qcc_final1.err/build/qcc_final1b.err)"; fail=1
 	fi
 else
-	echo "warn  tinyc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
+	echo "warn  qcc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

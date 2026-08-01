@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Tiny-C Stack-IR Interpreter + Test-Orakel (siehe docs/ARCHITEKTUR.md Kapitel 10).
+# QCC Stack-IR Interpreter + Test-Orakel (siehe docs/ARCHITEKTUR.md Kapitel 10).
 # Liest IR-Text (stdin oder Dateiargument), fuehrt ihn auf einer Operanden-Stack-
 # Maschine mit Aufruf-Stack aus, startet bei Funktion 'main'. Ausgabe: PRINT-Werte.
 import sys
@@ -50,7 +50,7 @@ def type_size(tag):
 
 def pointer(value, what="pointer operation"):
     if not isinstance(value, Pointer):
-        raise RuntimeError("tinyvm: %s requires a pointer" % what)
+        raise RuntimeError("qccvm: %s requires a pointer" % what)
     return value
 
 
@@ -58,10 +58,10 @@ def pointer_index(value, tag):
     p = pointer(value, "dereference")
     size = type_size(tag)
     if p.offset % size:
-        raise RuntimeError("tinyvm: unaligned pointer")
+        raise RuntimeError("qccvm: unaligned pointer")
     index = p.offset // size
     if index < 0 or index >= len(p.block):
-        raise RuntimeError("tinyvm: pointer outside object")
+        raise RuntimeError("qccvm: pointer outside object")
     return p.block, index
 
 
@@ -88,7 +88,7 @@ def run(prog):
         elif op == "LABEL":
             label_at[args[0]] = i
     if "main" not in func_start:
-        sys.stderr.write("tinyvm: keine Funktion 'main'\n")
+        sys.stderr.write("qccvm: keine Funktion 'main'\n")
         return 1
 
     opstack = []
@@ -98,7 +98,7 @@ def run(prog):
     while True:
         steps += 1
         if steps > 20000000:
-            sys.stderr.write("tinyvm: Schrittlimit (Endlosschleife?)\n")
+            sys.stderr.write("qccvm: Schrittlimit (Endlosschleife?)\n")
             return 2
         op, args = prog[ip]
         if op == "PUSH":
@@ -144,14 +144,14 @@ def run(prog):
             index = opstack.pop()
             values = frames[-1][2][int(args[1])] if args[0] == "L" else frames[-1][1][int(args[1])] if args[0] == "P" else globals_[args[1]]
             if index < 0 or index >= len(values):
-                sys.stderr.write("tinyvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
+                sys.stderr.write("qccvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
             value = values[index]
             opstack.append(value & 0xff if args[2] in ("c", "b") else value); ip += 1
         elif op == "STOREIDX":
             value = opstack.pop(); index = opstack.pop()
             values = frames[-1][2][int(args[1])] if args[0] == "L" else frames[-1][1][int(args[1])] if args[0] == "P" else globals_[args[1]]
             if index < 0 or index >= len(values):
-                sys.stderr.write("tinyvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
+                sys.stderr.write("qccvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
             values[index] = value & 0xff if args[2] in ("c", "b") else value; ip += 1
         elif op == "PTRINDEX":
             p = pointer(opstack.pop(), "indexing"); index = opstack.pop()
@@ -178,7 +178,7 @@ def run(prog):
             opstack.append(p.shifted(-count, type_size(args[0]))); ip += 1
         elif op == "PDIFF":
             b = pointer(opstack.pop(), "subtraction"); a = pointer(opstack.pop(), "subtraction")
-            if a.block is not b.block: raise RuntimeError("tinyvm: subtraction of unrelated pointers")
+            if a.block is not b.block: raise RuntimeError("qccvm: subtraction of unrelated pointers")
             opstack.append(cdiv(a.offset - b.offset, type_size(args[0]))); ip += 1
         elif op == "ADD":
             b = opstack.pop(); a = opstack.pop(); opstack.append(a + b); ip += 1
@@ -244,7 +244,7 @@ def run(prog):
             elif op == "PCMPNE": result = not pointer_equal(a, b)
             else:
                 a = pointer(a, "comparison"); b = pointer(b, "comparison")
-                if a.block is not b.block: raise RuntimeError("tinyvm: comparison of unrelated pointers")
+                if a.block is not b.block: raise RuntimeError("qccvm: comparison of unrelated pointers")
                 result = a.offset < b.offset if op == "PCMPLT" else a.offset <= b.offset if op == "PCMPLE" else a.offset > b.offset if op == "PCMPGT" else a.offset >= b.offset
             opstack.append(1 if result else 0); ip += 1
         elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
@@ -277,7 +277,7 @@ def run(prog):
         elif op == "PRINTC":
             sys.stdout.write(chr(opstack.pop() & 0xff)); ip += 1
         else:
-            sys.stderr.write("tinyvm: unbekannter Opcode %r\n" % op)
+            sys.stderr.write("qccvm: unbekannter Opcode %r\n" % op)
             return 3
 
 
@@ -289,7 +289,7 @@ def main():
         text = sys.stdin.read()
     prog = parse_ir(text)
     if not any(op == "FUNC" for op, _ in prog):
-        sys.stderr.write("tinyvm: keine IR (Parse fehlgeschlagen?)\n")
+        sys.stderr.write("qccvm: keine IR (Parse fehlgeschlagen?)\n")
         return 1
     return run(prog)
 

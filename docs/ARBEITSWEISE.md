@@ -18,7 +18,7 @@
 ## Während einer Änderung
 
 Eine Aufgabe soll möglichst ein Thema und ein überprüfbares Ergebnis haben, zum
-Beispiel „Pointervergleich im TinyVM und in beiden Backends ergänzen“. Erst wird
+Beispiel „Pointervergleich im QCCVM und in beiden Backends ergänzen“. Erst wird
 die Semantik festgelegt, dann implementiert und anschließend getestet. Nach
 jedem substanziellen Schritt wird kurz festgehalten, was geändert wurde und was
 noch offen ist.

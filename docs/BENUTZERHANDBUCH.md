@@ -2,7 +2,7 @@
 
 ## Was das Projekt macht
 
-`parsec` liest eine EBNF-Grammatik und erzeugt daraus Parserquelltext. Die
+`ebnf` liest eine EBNF-Grammatik und erzeugt daraus Parserquelltext. Die
 Arbeitsdatei `<name>.lextab` enthält neben den generierten Tabellen auch die
 bewusst editierbaren Blöcke für Lexer, Tests und Nutzer-Code.
 
@@ -14,23 +14,23 @@ Auf macOS/Linux:
 ./runtests.sh
 ```
 
-Der Lauf baut die benötigten Programme und prüft TinyVM, 68000-Simulator und
+Der Lauf baut die benötigten Programme und prüft QCCVM, 68000-Simulator und
 ARM64/Darwin. Erfolgreich ist der Lauf nur bei `=== ALLE TESTS OK ===`.
 
-## Tiny-C verwenden
+## QCC verwenden
 
-Die Referenzgrammatik liegt in `Data/tinyc.ebnf`. Nach ihrer Generierung wird der
-Tiny-C-Parser gebaut. Ein kleines Programm kann anschließend als IR erzeugt und
+Die Referenzgrammatik liegt in `Data/qcc.ebnf`. Nach ihrer Generierung wird der
+QCC-Parser gebaut. Ein kleines Programm kann anschließend als IR erzeugt und
 mit der VM ausgeführt werden:
 
 ```sh
-build/parsec Data/tinyc
-cc -w -o build/tinyc_p Data/tinyc_p.c
-build/tinyc_p 'int main(){ putint(2 + 3 * 4); }' > build/example.ir
-python3 tools/tinyvm.py build/example.ir
+build/parsec Data/qcc
+cc -w -o build/qcc_p Data/qcc_p.c
+build/qcc_p 'int main(){ putint(2 + 3 * 4); }' > build/example.ir
+python3 tools/qccvm.py build/example.ir
 ```
 
-## Unterstützte Tiny-C-Funktionen
+## Unterstützte QCC-Funktionen
 
 Verfügbar sind Variablen, eindimensionale Arrays, Funktionen mit Parametern und
 Rekursion, `if/else`, `while`, `return`, `putint`, `putuint`, `putchar`,
@@ -51,25 +51,8 @@ int main() {
 
 ## Wichtige Dateien
 
-- `Data/tinyc.ebnf`: Sprachgrammatik
-- `Data/tinyc.lextab`: generierte Tabellen plus Nutzer-Aktionen
-- `tools/tinyvm.py`: IR-Interpreter
+- `Data/qcc.ebnf`: Sprachgrammatik
+- `Data/qcc.lextab`: generierte Tabellen plus Nutzer-Aktionen
+- `tools/qccvm.py`: IR-Interpreter
 - `runtests.sh`: verbindliche Regressionstests
 - `docs/STATUS.md`: aktueller Stand
-
-## OS-9/Q9-Workflow
-
-Der Tiny-C-Compiler kann auf dem Q9/OS-9-Emulator bereits die einzelnen
-Übersetzungsschritte ausführen. Eine vollständige Übersicht mit den nötigen
-Microware-Komponenten steht in [`OS9_BOOTSTRAP.md`](OS9_BOOTSTRAP.md).
-
-Kurzform:
-
-```text
-tinyc_p @quelle.tc >quelle.ir
-tinyc_backend quelle.ir quelle.s68 -os9
-r68 -o=quelle.r quelle.s68
-```
-
-Danach wird `quelle.r` mit `cstart.r`, `clib.l`, `os_lib.l` und `sys.l` zu
-einem ausführbaren OS-9-Modul gelinkt.

@@ -1,7 +1,7 @@
-/* codegen.tc -- Tiny-C-Port von Source/codegen.cpp (AST-Aufbau + Codegenerierung).
+/* codegen.tc -- QCC-Port von Source/codegen.cpp (AST-Aufbau + Codegenerierung).
    Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md fuer den Kontext.
 
-   WICHTIGE GRAMMATIK-EINSCHRAENKUNG (2026-07-25 entdeckt): Tiny-C erlaubt laut
+   WICHTIGE GRAMMATIK-EINSCHRAENKUNG (2026-07-25 entdeckt): QCC erlaubt laut
    Grammatik ("program = { globalDecl|structDecl|typedefDecl|enumDecl|externDecl }
    { funcdef } .") KEINE Verschachtelung von Deklarationen und Funktionen -- ALLE
    globalen Deklarationen (structs/globals/enums/externs) muessen VOR ALLEN
@@ -11,7 +11,7 @@
    haelt sich deshalb STRIKT an "erst alle Deklarationen, dann alle Funktionen",
    anders als das C++-Original (das Globals/Helfer thematisch gruppiert).
 
-   Original-Konstanten (siehe Source/codegen.cpp) -- Tiny-C hat keinen Praeprozessor,
+   Original-Konstanten (siehe Source/codegen.cpp) -- QCC hat keinen Praeprozessor,
    deshalb ueberall als LITERALE Zahl eingesetzt (Array-Groessen brauchen ein
    Zahlenliteral, sizeof() nur auf einer nackten Variable, keine allgemeinen
    Ausdruecke wie "sizeof(nodes[id].text)"):
@@ -39,7 +39,7 @@ extern int isalnum(int c);
 extern int isprint(int c);
 extern int printf(char* fmt, ...);
 /* C-Backend (genNodeC/genParserC) braucht echte Dateiausgabe. FILE* wird als
-   "void*" gefuehrt -- Tiny-C hat keinen FILE-Struct-Typ, aber der ABI-Aufruf
+   "void*" gefuehrt -- QCC hat keinen FILE-Struct-Typ, aber der ABI-Aufruf
    braucht nur einen opaken Zeiger, den clib.l selbst interpretiert. clib.l
    hat KEIN snprintf (nur sprintf, aeltere Microware-Bibliothek, per `strings`
    bestaetigt) -- deshalb sprintf ohne Laengenlimit (unschaedlich hier: alle
@@ -74,11 +74,11 @@ struct ActionRoutine {
 
 /* AST_MAX_NODES auf die ORIGINALE Kapazitaet 8192 zurueckgesetzt (2026-07-25):
    war zwischenzeitlich wegen einer echten 68000-PC-relative-Adressierungsgrenze
-   (siehe emitLeaGlobal()-Kommentar in Source/tinyc_backend_c.cpp) auf 64
+   (siehe emitLeaGlobal()-Kommentar in Source/qcc_backend_c.cpp) auf 64
    verkleinert -- jetzt durch den neuen "-largedata"-Compiler-Schalter geloest
    (Indirektionstabelle mit absoluten, vom Linker aufgeloesten Adressen statt
    direkter PC-relativer Adressierung). Diese Datei MUSS deshalb mit
-   "tinyc_backend -os9 -largedata" (statt ohne -largedata) uebersetzt werden,
+   "qcc_backend -os9 -largedata" (statt ohne -largedata) uebersetzt werden,
    sobald sie 68k-Code erzeugen soll -- siehe docs/FORTSCHRITT.md. */
 struct AstNode nodes[8192];		/* AST_MAX_NODES */
 int nodeCnt;
@@ -94,12 +94,12 @@ int labelCnt;
    Original-Konstanten als Literale: LEX_MAX_ROOTS=32 LEX_WS_MAX=32
    LEX_LC_MAX=8 LEX_MARKERS_MAX=4.
 
-   DREI Tiny-C-bedingte Abweichungen vom C++-Original (alle rein mechanisch,
+   DREI QCC-bedingte Abweichungen vom C++-Original (alle rein mechanisch,
    keine Verhaltensaenderung):
-   1. Tiny-C hat KEINE Zeichenliterale ("'x'") -- ueberall numerische ASCII-
+   1. QCC hat KEINE Zeichenliterale ("'x'") -- ueberall numerische ASCII-
       Codes: 34='"' 92='\' 116='t' 114='r' 110='n' 35='#' 32=' ' 9='\t' 61='='
       10='\n' 13='\r'.
-   2. Tiny-C lehnt PARTIELLE Indizierung eines mehrdimensionalen Arrays ab
+   2. QCC lehnt PARTIELLE Indizierung eines mehrdimensionalen Arrays ab
       (nur EIN von zwei Indizes waere sonst noetig, um z.B. "lexRoots[i]" als
       char* zu nutzen) -- deshalb hier FLACHE 1D-Arrays (lexRootsFlat[32*41]
       statt lexRoots[32][41]) mit manueller Offset-Berechnung "&flat[i*41]"
@@ -109,9 +109,9 @@ int labelCnt;
       (gleiches Vereinfachungsmuster wie beim ActionRoutine-Piloten, siehe
       SELFHOSTING_LUECKENLISTE.md: Mehrfach-Rueckgabe ueber Zeiger-auf-Zeiger
       vermeiden).
-   4. NEU ENTDECKTER GRENZFALL (2026-07-25): Tiny-C-String-Literale
+   4. NEU ENTDECKTER GRENZFALL (2026-07-25): QCC-String-Literale
       unterstuetzen KEIN escaptes Anfuehrungszeichen ("\"..." bricht das
-      Parsen -- die "character"-Regel in Data/tinyc.ebnf schliesst das
+      Parsen -- die "character"-Regel in Data/qcc.ebnf schliesst das
       Anfuehrungszeichen selbst grundsaetzlich aus, auch direkt nach einem
       Backslash; tcDecodeStringLit haette die Escape-DEKODIERUNG zwar schon
       generisch, die GRAMMATIK kommt aber nie so weit). Diagnosetexte deshalb
@@ -182,7 +182,7 @@ int astMark() {
 
 /* strncpy_s(dst, dstSize, src, maxlen) im Original: kopiert bis zu maxlen Zeichen
    aus src, NULL-terminiert IMMER (anders als rohes strncpy). Nachgebaut als
-   Bytekopierschleife -- Tiny-C hat kein strncpy_s und sizeof() geht nur auf
+   Bytekopierschleife -- QCC hat kein strncpy_s und sizeof() geht nur auf
    nackten Variablen, nicht auf einem Strukturfeld wie "nodes[id].text". */
 void tcCopyBounded(char* dst, char* src, int maxlen) {
 	int i;
@@ -529,7 +529,7 @@ int lexParseConfig(char* buf) {
    NTS-Referenzen im AST. Nimmt (anders als das C++-Original) eine Knoten-ID
    statt eines "AstNode*"-Zeigers entgegen -- ein unindizierter Pointer auf
    ein struct-Array-Element mit anschliessendem Feldzugriff (n->kind) ist in
-   dieser Tiny-C-Version nicht unterstuetzt, siehe FORTSCHRITT.md. */
+   dieser QCC-Version nicht unterstuetzt, siehe FORTSCHRITT.md. */
 void markLexicalNode(int id) {
 	int idx;
 	int child;
@@ -650,7 +650,7 @@ void freeRoutines(struct ActionRoutine* arr, int cnt) {
 /* pushRoutineC/pushRoutine68k: haengt (name, text[0..textLen)) als neue Routine
    an routinesC/routines68k an, verdoppelt bei Bedarf. ZWEI fast identische
    Funktionen statt EINER generischen (wie im C++-Original, das ein
-   "ActionRoutine** arr, int* cnt, int* cap"-Tripel entgegennimmt) -- Tiny-C
+   "ActionRoutine** arr, int* cnt, int* cap"-Tripel entgegennimmt) -- QCC
    hat keine Generik/Funktionszeiger, und routinesC/routines68k sind hier
    (wie im echten codegen.cpp) file-scope-Globale, kein lokal weitergereichtes
    Tripel; direktes Mutieren der jeweiligen globalen Trias ist daher einfacher
@@ -864,7 +864,7 @@ int isWordLiteral(char* s) {
    Wiederholung wird per Regel-Fixpunktanalyse in validateAstForCodegen
    erkannt). Nimmt (wie schon markLexicalNode) eine Knoten-ID statt eines
    "AstNode*"-Zeigers entgegen (kein unindizierter Pointer-Feldzugriff in
-   dieser Tiny-C-Version, siehe FORTSCHRITT.md). */
+   dieser QCC-Version, siehe FORTSCHRITT.md). */
 int nodeNullable(int id, int* ruleNullable) {
 	int child;
 	int r;
@@ -1029,14 +1029,14 @@ void emitLongerLiteralRejectC(void* fp, char* text, int failLabel) {
 	}
 }
 
-/* NEU ENTDECKTER TINY-C-PARSER-BUG (2026-07-25): ein Tiny-C-String-Literal,
+/* NEU ENTDECKTER QCC-PARSER-BUG (2026-07-25): ein QCC-String-Literal,
    das die Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (z.B. weil
    generierter C-Code selbst && / || braucht, wie in genParserC's ws()/
-   idch()-Emission), loest eine falsche "tinyc: logical-frame mismatch"-
+   idch()-Emission), loest eine falsche "qcc: logical-frame mismatch"-
    Diagnose aus (tcLogicDepth-Tracking wird offenbar auch INNERHALB von
    String-Literalen faelschlich angestossen). NICHT die Grammatik gefixt
    (Risiko/Aufwand vs. Nutzen), sondern jede betroffene Stelle so umgeschrieben,
-   dass "&&"/"||" nie als zusammenhaengende Zeichenfolge in EINEM Tiny-C-
+   dass "&&"/"||" nie als zusammenhaengende Zeichenfolge in EINEM QCC-
    String-Literal auftaucht -- stattdessen per fputc() Zeichen fuer Zeichen
    geschrieben (identischer Ausgabeninhalt, nur anders emittiert). */
 void emitAndAnd(void* fp) {
@@ -1148,12 +1148,12 @@ void genNodeC(void* fp, int id, int failLabel, int lexical) {
 /* genParserC: erzeugt den C-Zwilling (Datei <path>). SECHS Stellen im
    C++-Original betten ein Anfuehrungszeichen DIREKT in einen fprintf-
    Formatstring ein (z.B. "...fprintf(stderr, \"usage: ...\");...") -- das
-   geht in Tiny-C nicht (siehe Quirk 2 in tinyc-vollport-status.md), deshalb
+   geht in QCC nicht (siehe Quirk 2 in qcc-vollport-status.md), deshalb
    an genau diesen Stellen per fputc(34, fp) aufgeteilt: Text-vor-dem-Quote /
    fputc(34,fp) / Text-in-den-Quotes / fputc(34,fp) / Text-nach-dem-Quote.
    ZUSAETZLICH enthalten ZWEI dieser Stellen ein "%%"-Selbstescape im
    Original (ein literales "%" OHNE eigenes Substitutions-Argument fuer DEN
-   AEUSSEREN fprintf-Aufruf) -- da Tiny-C/clib.l's fprintf ein "%" IMMER als
+   AEUSSEREN fprintf-Aufruf) -- da QCC/clib.l's fprintf ein "%" IMMER als
    Formatzeichen interpretiert, wird der betroffene Text stattdessen als
    "%s"-ARGUMENT uebergeben (dessen Inhalt NICHT re-interpretiert wird),
    statt es direkt in den Formatstring zu schreiben. */
@@ -1280,7 +1280,7 @@ int genParserC(char* path) {
 		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
 		fprintf(fp, "\t\tfprintf(stderr, ");
 		fputc(34, fp);
-		fprintf(fp, "%s", "tinyc: Aktions-Log-Grenze (%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n");
+		fprintf(fp, "%s", "qcc: Aktions-Log-Grenze (%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n");
 		fputc(34, fp);
 		fprintf(fp, ", ACTION_LOG_MAX);\n");
 		fprintf(fp, "\t\texit(1);\n\t}\n");
@@ -1402,9 +1402,9 @@ void charComment(char c, char* out, int outMax) {
 	}
 }
 
-/* Wie emitAndAnd/emitOrOr (siehe genParserC-Kommentar): ein Tiny-C-String-
+/* Wie emitAndAnd/emitOrOr (siehe genParserC-Kommentar): ein QCC-String-
    Literal mit "?" als reinem TEXT loeste ebenfalls einen falschen
-   Semantikfehler aus ("tinyc: conditional-frame mismatch", tcTernaryDepth-
+   Semantikfehler aus ("qcc: conditional-frame mismatch", tcTernaryDepth-
    Tracking fuer den Ternary-Operator "? :" wird offenbar auch INNERHALB von
    String-Literalen faelschlich angestossen -- gleiche Bugklasse, andere
    interne Zaehlvariable). */
@@ -1575,7 +1575,7 @@ void genNode68k(void* fp, int id, int failLabel, int lexical) {
    und, falls konfiguriert, Kommentare; zerstoert d1) und idch (prueft d1:
    Identifikator-Zeichen? d0.b = 1 ja / 0 nein). lexLineComment/lexBlockOn/
    lexBlockOff sind hier FLACHE 1D-Arrays (lexLineCommentFlat[j*9+i] statt
-   lexLineComment[j][i], siehe Kommentar bei TEIL 1 -- Tiny-C erlaubt keine
+   lexLineComment[j][i], siehe Kommentar bei TEIL 1 -- QCC erlaubt keine
    partielle Indizierung eines 2D-Arrays). */
 void emitLexHelpers68k(void* fp, char* cs) {
 	int lTop;
