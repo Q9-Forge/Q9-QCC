@@ -2,7 +2,7 @@
  * tinyc_backend_c.cpp -- reines-C-Gegenstueck zu tinyc_backend.cpp
  *
  * Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
- * Tabellen + lineare Suche, im selben Stil wie ebnf.cpp/codegen.cpp. Das
+ * Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
  * Original (tinyc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
  * docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
  * C++-Version zurueckzuschalten, in runtests.sh wieder tinyc_backend.cpp bauen.

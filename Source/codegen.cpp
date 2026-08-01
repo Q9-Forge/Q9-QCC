@@ -2,7 +2,7 @@
 // File:   codegen.cpp                                                                    Ver. 1.50
 // Owner:  AF
 // Desc.:  AST-Aufbau + Codegenerierung fuer den EBNF-Uebersetzer (docs/ARCHITEKTUR.md).
-//         Der AST wird waehrend des normalen Parsens in ebnf.cpp mit aufgebaut (additiv,
+//         Der AST wird waehrend des normalen Parsens in parsec.cpp mit aufgebaut (additiv,
 //         die Tabellen-Erzeugung bleibt unangetastet). Aus dem AST entstehen zwei
 //         strukturgleiche Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl):
 //           - <basis>_p.c   C-Zwilling, auf dem Host kompilier- und testbar (Validierung)
@@ -792,7 +792,7 @@ static int nodeNullable(int id, const int* ruleNullable) {
 		for (child = 0; child < ruleCnt; child++) {
 			if (strcmp(rules[child].name, n->text) == 0) return ruleNullable[child];
 		}
-		return 0; // undefinierte Regeln werden bereits von ebnf.cpp gemeldet
+		return 0; // undefinierte Regeln werden bereits von parsec.cpp gemeldet
 	}
 	return 0;
 }
@@ -1018,7 +1018,7 @@ int genParserC(const char* path) {
 	}
 	labelCnt = 0;
 
-	fprintf(fp, "/* Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n");
+	fprintf(fp, "/* Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n");
 	fprintf(fp, " * Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl).\n");
 	fprintf(fp, " * Aufruf: %s \"<eingabe>\"  -> druckt OK/FAIL, exit 0/1.\n", "parser");
 	if (lexActive) {
@@ -1093,7 +1093,7 @@ int genParserC(const char* path) {
 		   "OK" wurde gedruckt, aber spaetere Funktionen/main fehlten in der IR-Ausgabe
 		   komplett) -- entdeckt beim Testen des -largedata-Funktionsaufruf-Schalters
 		   mit mehreren generierten Testfunktionen. Behoben nach demselben Muster wie
-		   die anderen heute gefundenen stillen Puffer-Grenzen (ebnf.cpp USER_CODE_LEN,
+		   die anderen heute gefundenen stillen Puffer-Grenzen (parsec.cpp USER_CODE_LEN,
 		   68k-Backend MAX_ARRAY_LEN): Grenze grosszuegig erhoeht UND ein lauter Fehler
 		   statt stillem Verwerfen. */
 		/* Host-side generated parsers need room for the full Tiny-C source;
@@ -1524,7 +1524,7 @@ static int genParser68kTo(const char* path, int os9, const char* baseName) {
 	}
 
 	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
-	fprintf(fp, "%s Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n", cs);
+	fprintf(fp, "%s Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n", cs);
 	fprintf(fp, "%s Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl), 68k/Motorola.\n", cs);
 	fprintf(fp, "%s\n", cs);
 	fprintf(fp, "%s Aufruf:  a0 = ^Eingabe (NUL-terminiert)\n", cs);

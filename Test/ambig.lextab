@@ -1,5 +1,5 @@
 #================================================================================
-# EBNF-ARBEITSDATEI -- automatisch erzeugt von ebnf
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von parsec
 # Nur der [TESTS]-Block ist zum Editieren gedacht, er bleibt beim Neu-Erzeugen
 # erhalten. Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
 # kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).

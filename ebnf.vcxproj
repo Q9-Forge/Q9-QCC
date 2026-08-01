@@ -22,7 +22,8 @@
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{796d7afc-3947-49b4-a99e-f34422b1b3ed}</ProjectGuid>
-    <RootNamespace>ebnf</RootNamespace>
+    <RootNamespace>parsec</RootNamespace>
+    <TargetName>parsec</TargetName>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -139,7 +140,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Source\ebnf.cpp" />
+    <ClCompile Include="Source\parsec.cpp" />
     <ClCompile Include="Source\codegen.cpp" />
     <ClCompile Include="Source\tiny-regex.cpp" />
   </ItemGroup>
