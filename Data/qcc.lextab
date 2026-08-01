@@ -1457,7 +1457,7 @@ static char tcCtrlKind[64];               /* 'i'=if, 'w'=while, 'f'=for, 'd'=do-
 static int  tcCtrlDepth = 0;
 /* switch/case: gestapelte Case-Label (case A: case B: body) unterstuetzt, aber KEIN
    Fallthrough MIT Code zwischen verschiedenen Bodies (jeder Body endet implizit wie mit
-   break) -- deckt genau das reale Nutzungsmuster in ebnf.cpp/codegen.cpp ab. */
+   break) -- deckt genau das reale Nutzungsmuster in parsec.cpp/codegen.cpp ab. */
 #define MAX_SWITCH 16
 static int  tcSwitchBodyLabel[MAX_SWITCH], tcSwitchNextLabel[MAX_SWITCH], tcSwitchEndLabel[MAX_SWITCH];
 static int  tcSwitchGroupOpen[MAX_SWITCH], tcSwitchHadDefault[MAX_SWITCH];

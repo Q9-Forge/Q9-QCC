@@ -2,7 +2,7 @@
 // File:   codegen.cpp                                                                    Ver. 1.50
 // Owner:  AF
 // Desc.:  AST-Aufbau + Codegenerierung fuer den EBNF-Uebersetzer (docs/ARCHITEKTUR.md).
-//         Der AST wird waehrend des normalen Parsens in ebnf.cpp mit aufgebaut (additiv,
+//         Der AST wird waehrend des normalen Parsens in parsec.cpp mit aufgebaut (additiv,
 //         die Tabellen-Erzeugung bleibt unangetastet). Aus dem AST entstehen zwei
 //         strukturgleiche Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl):
 //           - <basis>_p.c   C-Zwilling, auf dem Host kompilier- und testbar (Validierung)
@@ -792,7 +792,7 @@ static int nodeNullable(int id, const int* ruleNullable) {
 		for (child = 0; child < ruleCnt; child++) {
 			if (strcmp(rules[child].name, n->text) == 0) return ruleNullable[child];
 		}
-		return 0; // undefinierte Regeln werden bereits von ebnf.cpp gemeldet
+		return 0; // undefinierte Regeln werden bereits von parsec.cpp gemeldet
 	}
 	return 0;
 }
@@ -1018,7 +1018,7 @@ int genParserC(const char* path) {
 	}
 	labelCnt = 0;
 
-	fprintf(fp, "/* Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n");
+	fprintf(fp, "/* Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n");
 	fprintf(fp, " * Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl).\n");
 	fprintf(fp, " * Aufruf: %s \"<eingabe>\"  -> druckt OK/FAIL, exit 0/1.\n", "parser");
 	if (lexActive) {
@@ -1093,9 +1093,12 @@ int genParserC(const char* path) {
 		   "OK" wurde gedruckt, aber spaetere Funktionen/main fehlten in der IR-Ausgabe
 		   komplett) -- entdeckt beim Testen des -largedata-Funktionsaufruf-Schalters
 		   mit mehreren generierten Testfunktionen. Behoben nach demselben Muster wie
-		   die anderen heute gefundenen stillen Puffer-Grenzen (ebnf.cpp USER_CODE_LEN,
+		   die anderen heute gefundenen stillen Puffer-Grenzen (parsec.cpp USER_CODE_LEN,
 		   68k-Backend MAX_ARRAY_LEN): Grenze grosszuegig erhoeht UND ein lauter Fehler
 		   statt stillem Verwerfen. */
+		/* Host-side generated parsers need room for the full Tiny-C source;
+		   the compact OS-9 selfhost variant uses a smaller limit in
+		   SourceTinyC/codegen.tc. */
 		fprintf(fp, "#define ACTION_LOG_MAX 1048576\n");
 		fprintf(fp, "extern void exit(int);\n");
 		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
@@ -1127,6 +1130,7 @@ int genParserC(const char* path) {
 		fprintf(fp, "/* %s%s */\n", rules[r].name, ruleIsLexical[r] ? " (lexikalisch)" : "");
 		fprintf(fp, "static int p_%s(void) {\n", cName);
 		fprintf(fp, "\tconst char* sv[64]; int svLog[64]; int sp;\n");
+		fprintf(fp, "\tconst char* entry; int entryLog;\n");
 		if (lexActive && !ruleIsLexical[r]) {
 			// entry MUSS erst NACH einem eventuellen fuehrenden ws() erfasst werden --
 			// sonst landet Whitespace/Kommentar vor dem eigentlichen Regelinhalt im
@@ -1135,8 +1139,7 @@ int genParserC(const char* path) {
 			// ein No-Op, korrigiert aber start/end fuer alle ACTION-Aufrufe).
 			fprintf(fp, "\tws();\n");
 		}
-		fprintf(fp, "\tsp = 0;\n\tconst char* entry = p;\n");
-		fprintf(fp, "\tint entryLog = actionLogLen;\n");
+		fprintf(fp, "\tsp = 0; entry = p; entryLog = actionLogLen;\n");
 		fprintf(fp, "\t(void)sv; (void)svLog; (void)sp; (void)entryLog;\n");
 		genNodeC(fp, rules[r].root, fail, ruleIsLexical[r]);
 		if (ruleActionCall[r][0] != '\0' && routineTextC(ruleActionCall[r]) != NULL) {
@@ -1148,9 +1151,25 @@ int genParserC(const char* path) {
 		fprintf(fp, "\treturn 0;\n}\n\n");
 	}
 	sanitizeName(rules[0].name, cName);
+	fprintf(fp, "#define INPUT_FILE_MAX 262144\n");
+	fprintf(fp, "static char inputFileBuf[INPUT_FILE_MAX];\n\n");
 	fprintf(fp, "int main(int argc, char* argv[]) {\n");
+	fprintf(fp, "\tFILE* inputFile; size_t inputLen;\n");
 	fprintf(fp, "\tif (argc < 2) { fprintf(stderr, \"usage: %%s <eingabe>\\n\", argv[0]); return 2; }\n");
-	fprintf(fp, "\tp = argv[1];\n");
+	fprintf(fp, "\tif (argv[1][0] == '@') {\n");
+	fprintf(fp, "\t\tinputFile = fopen(argv[1] + 1, ");
+	fputc(34, fp);
+	fprintf(fp, "r");
+	fputc(34, fp);
+	fprintf(fp, ");\n");
+	fprintf(fp, "\t\tif (!inputFile) { fprintf(stderr, ");
+	fputc(34, fp);
+	fprintf(fp, "can't open %%s\\n");
+	fputc(34, fp);
+	fprintf(fp, ", argv[1] + 1); return 2; }\n");
+	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
+	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
+	fprintf(fp, "\t} else p = argv[1];\n");
 	// actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input erkannt) --
 	// nur dann steht fest, dass keine der protokollierten Aktionen zu einem inzwischen
 	// verworfenen Backtracking-Pfad gehoert (siehe Kommentar bei actionLogPush oben).
@@ -1505,7 +1524,7 @@ static int genParser68kTo(const char* path, int os9, const char* baseName) {
 	}
 
 	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
-	fprintf(fp, "%s Automatisch erzeugt von ebnf -- NICHT von Hand aendern.\n", cs);
+	fprintf(fp, "%s Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n", cs);
 	fprintf(fp, "%s Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl), 68k/Motorola.\n", cs);
 	fprintf(fp, "%s\n", cs);
 	fprintf(fp, "%s Aufruf:  a0 = ^Eingabe (NUL-terminiert)\n", cs);

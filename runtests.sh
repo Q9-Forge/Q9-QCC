@@ -5,13 +5,13 @@
 #================================================================================
 cd "$(dirname "$0")" || exit 1
 mkdir -p build
-clang++ -std=c++17 -Wall -Wno-format-security -o build/ebnf Source/ebnf.cpp Source/codegen.cpp || exit 1
+clang++ -std=c++17 -Wall -Wno-format-security -o build/parsec Source/parsec.cpp Source/codegen.cpp || exit 1
 
 fail=0
 
 # 1) Test-Grammatiken mit TESTS-Bloecken (Stack-Maschine gegen Erwartung)
 for g in seqtest alttest blocktest opttest reptest numtest rangetest optalt multalt actiontest calcexpr actionrollback; do
-	out=$(build/ebnf "Test/$g" 2>&1)
+	out=$(build/parsec "Test/$g" 2>&1)
 	mm=$(echo "$out" | grep -c MISMATCH)
 	pass=$(echo "$out" | grep "PASS ===")
 	if [ "$mm" -ne 0 ]; then echo "FAIL  $g:"; echo "$out" | grep MISMATCH; fail=1
@@ -20,7 +20,7 @@ done
 
 # 2) Linksrekursions-Erkennung (muss anschlagen)
 for g in leftrec leftrec2 opt_leftrec; do
-	if build/ebnf "Test/$g" 2>&1 | grep -q LINKSREKURSION; then echo "ok    $g: Linksrekursion erkannt"
+	if build/parsec "Test/$g" 2>&1 | grep -q LINKSREKURSION; then echo "ok    $g: Linksrekursion erkannt"
 	else echo "FAIL  $g: Linksrekursion NICHT erkannt"; fail=1; fi
 done
 
@@ -33,7 +33,7 @@ done
 #    referenziert IN/IS inzwischen gequotet als TS-Literale statt als undefinierte Regeln).
 for gc in ebnf:28 java:33 modula2:36 oberon0:0 oberon07:0; do
 	g=${gc%:*}; expect=${gc#*:}
-	out=$(build/ebnf "Data/$g" 2>&1)
+	out=$(build/parsec "Data/$g" 2>&1)
 	errs=$(echo "$out" | grep -c FEHLER)
 	lr=$(echo "$out" | grep -c LINKSREKURSION)
 	if [ "$lr" -ne 0 ]; then echo "FAIL  $g: falsche Linksrekursions-Meldung"; fail=1
@@ -118,7 +118,7 @@ fi
 # 6) Schutz gegen eine Endlosschleife im generierten Parser: Der Rumpf einer
 # Wiederholung darf nicht ohne Eingabe erfolgreich sein. Der Generator muss die
 # Ausgabe bewusst verweigern statt einen haengenden C-/68k-Parser zu erzeugen.
-out=$(build/ebnf "Test/nullable_repeat" 2>&1)
+out=$(build/parsec "Test/nullable_repeat" 2>&1)
 if echo "$out" | grep -q "Wiederholung hat einen leeren Rumpf"; then
 	echo "ok    codegen nullable_repeat: leere Wiederholung abgelehnt"
 else
@@ -127,7 +127,7 @@ fi
 
 # 7) Nutzertext fuer spaetere semantische Aktionen ist Teil der Arbeitsdatei und
 # darf beim Neu-Erzeugen nicht verloren gehen oder vom EBNF-Parser interpretiert werden.
-build/ebnf "Test/usercode" >/dev/null 2>&1
+build/parsec "Test/usercode" >/dev/null 2>&1
 if grep -Fq 'ACTION C after s { frontend_emit_literal("a"); }' "Test/usercode.lextab" \
 	&& grep -Fq 'ACTION M68K after s { bsr frontend_emit_literal_a }' "Test/usercode.lextab"; then
 	echo "ok    arbeitsdatei usercode: NUTZER-CODE unveraendert erhalten"
@@ -158,7 +158,7 @@ fi
 #     Praezedenz (2+3*4=14) UND Linksassoziativitaet (10-2-3=5, nicht 11). Deckte dabei einen
 #     eigenstaendigen, vorbestehenden Bug im TABELLEN-Generator auf (rule()-Regelabschluss
 #     prüfte nur die letzte Tabellenzeile auf offene Vorwaertsreferenzen statt die ganze
-#     Regel -- siehe ebnf.cpp rule(), gefixt).
+#     Regel -- siehe parsec.cpp rule(), gefixt).
 if cc -w -o build/calcexpr_p Test/calcexpr_p.c 2>/dev/null; then
 	cefail=0
 	[ "$(build/calcexpr_p '2+3*4')" = "$(printf 'RESULT: 14\nOK')" ] || { echo "FAIL  action calcexpr: 2+3*4 sollte 14 ergeben"; cefail=1; }
@@ -339,8 +339,8 @@ fi
 #     fuehrt die IR aus (Interpreter + Referenz-Orakel). Meilenstein 1: Ausdruecke,
 #     lokale Variablen, putint. (Kein 68k-Backend hier -- kommt in M4.)
 if command -v python3 >/dev/null 2>&1; then
-	# WICHTIGER FUND (2026-07-25): build/ebnf hat ein festes internes Puffer-Limit
-	# fuer den [NUTZER-CODE]-Block (USER_CODE_LEN in Source/ebnf.cpp) -- bei
+	# WICHTIGER FUND (2026-07-25): build/parsec hat ein festes internes Puffer-Limit
+	# fuer den [NUTZER-CODE]-Block (USER_CODE_LEN in Source/parsec.cpp) -- bei
 	# Ueberschreitung wird der Ueberschuss STILLSCHWEIGEND abgeschnitten (nur eine
 	# Warnzeile im stdout, die hier vorher mit ">/dev/null" verschluckt wurde).
 	# Das hat einmal drei ROUTINE-C-Bloecke (tc_ternarybegin/-middle/-end) aus
@@ -348,9 +348,9 @@ if command -v python3 >/dev/null 2>&1; then
 	# Fehler gemeldet hat -- nur ein spaeter fehlschlagender Ternary-Test hat es
 	# aufgedeckt. USER_CODE_LEN wurde deshalb grosszuegig erhoeht (128 KB -> 1 MB),
 	# UND hier wird die Ausgabe jetzt auf "WARNUNG" geprueft statt verschluckt.
-	ebnfout=$(build/ebnf Data/qcc 2>&1)
+	ebnfout=$(build/parsec Data/qcc 2>&1)
 	if echo "$ebnfout" | grep -q 'WARNUNG'; then
-		echo "FAIL  qcc: build/ebnf meldet eine Kuerzungswarnung (siehe oben) -- Data/qcc.lextab wurde vermutlich abgeschnitten!"
+		echo "FAIL  qcc: build/parsec meldet eine Kuerzungswarnung (siehe oben) -- Data/qcc.lextab wurde vermutlich abgeschnitten!"
 		echo "$ebnfout" | grep 'WARNUNG'
 		fail=1
 	fi
@@ -2654,8 +2654,8 @@ else
 	echo "warn  qcc static-Laufzeit-Initialisierer ARM64: Backend fehlt -- uebersprungen"
 fi
 
-# Selfhosting L2 Vollport (2026-07-26): ebnf.cpp-Vollport, naechster Ausschnitt
-# nach SourceQCC/ebnf.tc -- writeWorkfile (Source/ebnf.cpp:1007-1130, die
+# Selfhosting L2 Vollport (2026-07-26): parsec.cpp-Vollport, naechster Ausschnitt
+# nach SourceQCC/ebnf.tc -- writeWorkfile (Source/parsec.cpp:1007-1130, die
 # komplette Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/
 # NTS-SYMBOLTABELLE/PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke).
 # ZWEI neue, live gefundene und gefixte Backend-Bugs (Source/qcc_backend_c.cpp)
@@ -2754,7 +2754,7 @@ else
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
-# nach SourceQCC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/ebnf.cpp:1132-1156,
+# nach SourceQCC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/parsec.cpp:1132-1156,
 # Fall B: Linksrekursions-Kanten aus einer GELADENEN Arbeitsdatei rekonstruieren,
 # statt sie waehrend des normalen Parsens ueber das firstPos-Flag zu sammeln).
 # Haengt wie fast alles in ebnf.tc an extern strcmp/strlen (CALLEXT) -- QCCVM
@@ -2823,7 +2823,7 @@ else
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
-# nach SourceQCC/ebnf.tc -- loadWorkfileAsGrammar (Source/ebnf.cpp:1162-1231,
+# nach SourceQCC/ebnf.tc -- loadWorkfileAsGrammar (Source/parsec.cpp:1162-1231,
 # Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus einer Arbeitsdatei laden, ohne
 # .ebnf). Das Original nutzt EIN grosses sscanf(...) mit NEUN Ausgabeparametern --
 # geht hier NICHT 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (neun
@@ -2935,9 +2935,9 @@ else
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechste zwei
-# Ausschnitte nach SourceQCC/ebnf.tc -- runTests (Source/ebnf.cpp:1233-1268,
+# Ausschnitte nach SourceQCC/ebnf.tc -- runTests (Source/parsec.cpp:1233-1268,
 # alle TEST-Zeilen durch execFrom jagen und mit dem erwarteten Ergebnis
-# vergleichen) UND loadPreservedTests (Source/ebnf.cpp:920-993, TESTS/
+# vergleichen) UND loadPreservedTests (Source/parsec.cpp:920-993, TESTS/
 # NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei retten, bevor
 # sie ueberschrieben wird). ZWEI weitere Grenzfaelle gefunden: (1) dieselbe
 # arr[i].field[j]-Zuweisungsziel-Ablehnung wie bei loadWorkfileAsGrammar,
@@ -3021,7 +3021,7 @@ fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): die rekursive-
 # Abstiegs-Parsergruppe nach SourceQCC/ebnf.tc -- literal/ident/block/repeat/
-# option/factor/term/expression/rule (Source/ebnf.cpp:1371-1774) PLUS die bisher
+# option/factor/term/expression/rule (Source/parsec.cpp:1371-1774) PLUS die bisher
 # fehlenden Helfer push/pop/restart/errorMsg/test/addIdentList/patchLocalTrue/
 # patchLocalFalse (920-1330). Alle neun Kernfunktionen hatten bereits seit
 # Projektbeginn bare Prototypen in ebnf.tc (gegenseitige Rekursion) -- der
@@ -3061,7 +3061,7 @@ fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): der Lexer nach
 # SourceQCC/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
-# getAktLine/put/semantischeAnylyse (Source/ebnf.cpp:1810-2147, 1906-1970).
+# getAktLine/put/semantischeAnylyse (Source/parsec.cpp:1810-2147, 1906-1970).
 # lexikalischeAnalyse/getAktChar/put/semantischeAnylyse hatten bereits bare
 # Prototypen; getNext/comment sind neu UND werden ihrerseits von getAktChar
 # bzw. getAktLine gerufen -- strikte Definitions-Reihenfolge eingehalten.
@@ -3146,8 +3146,8 @@ else
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): ebnfMain/
-# ebnfSyntax/exitProgram (Source/ebnf.cpp:170-334, 1357-1369, 322-334) --
-# LETZTER Abschnitt des ebnf.cpp-Vollports. QCC main() kann keine
+# ebnfSyntax/exitProgram (Source/parsec.cpp:170-334, 1357-1369, 322-334) --
+# LETZTER Abschnitt des parsec.cpp-Vollports. QCC main() kann keine
 # argc/argv empfangen (kein Mechanismus dafuer in Grammatik/Backend) -- die
 # komplette Original-main()-Logik lebt deshalb in ebnfMain(char* baseArg),
 # main() selbst ist ein duenner Wrapper mit fest einprogrammiertem
@@ -3164,7 +3164,7 @@ fi
 #
 # DAS HIER IST DER MEILENSTEIN-TEST: zum ERSTEN Mal ein VOLLER l68-Link von
 # ebnf.tc (mit seiner echten main()) GEGEN codegen.tc, ohne jedes unresolved
-# Symbol -- der komplette QCC-Vollport von Source/ebnf.cpp (Schritt 2 aus
+# Symbol -- der komplette QCC-Vollport von Source/parsec.cpp (Schritt 2 aus
 # dem urspruenglichen 3-Schritt-Plan, siehe [[qcc-vollport-status]]) ist
 # damit strukturell/kompilatorisch VOLLSTAENDIG. (Was das noch NICHT
 # abdeckt: echte Ausfuehrung/Verhalten auf dem Q9-Emulator -- Schritt 3 des
