@@ -1,5 +1,8 @@
 # Q9-QCC
 
+Der gemeinsame projektübergreifende Kontext und die verbindlichen Namen
+stehen in [Q9Forge/AI_CONTEXT.md](../Q9Forge/AI_CONTEXT.md).
+
 QCC-Toolchain für Q9 (C-Sprachkern, IR, 68000-/ARM64-Backends).
 Extrahiert aus dem ehemaligen `ebnf`-Repo (2026-07-31, volle Historie
 erhalten), das jetzt als [Q9-Parsec](https://github.com/Q9-Forge/Q9-Parsec)
@@ -11,7 +14,7 @@ Der QCC-Parser (`Data/qcc_p.c`, nicht eingecheckt, generiert) wird vom
 EBNF-Generator aus Q9-Parsec erzeugt:
 
 ```
-Data/qcc.ebnf + Data/qcc.lextab  --[ebnf-Tool aus Q9-Parsec]-->  Data/qcc_p.c
+Data/qcc.ebnf + Data/qcc.lextab  --[parsec aus Q9-Parsec]-->  Data/qcc_p.c
 ```
 
 `Data/qcc.ebnf`/`qcc.lextab` (die QCC-Sprachdefinition) liegen deshalb
@@ -19,8 +22,8 @@ hier als Kopie — Q9-Parsec zum Bauen des `ebnf`-Tools zusätzlich auschecken:
 
 ```sh
 git clone git@github.com:Q9-Forge/Q9-Parsec.git ../Q9-Parsec
-(cd ../Q9-Parsec && clang++ -std=c++17 -o build/ebnf Source/ebnf.cpp Source/codegen.cpp)
-../Q9-Parsec/build/ebnf Data/qcc
+(cd ../Q9-Parsec && clang++ -std=c++17 -o build/parsec Source/parsec.cpp Source/codegen.cpp)
+../Q9-Parsec/build/parsec Data/qcc
 ```
 
 ## Struktur

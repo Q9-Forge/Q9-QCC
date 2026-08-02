@@ -129,4 +129,4 @@ Alle Vergleiche: `a, b → 0|1`.
 - `tools/qccvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
   alle Backends.
 - `docs/SELFHOSTING_LUECKENLISTE.md` / `[[qcc-vollport-status]]` (Memory)
-  — Kontext zum laufenden QCC-Vollport von `codegen.cpp`/`ebnf.cpp`.
+  — Kontext zum laufenden QCC-Vollport von `codegen.cpp`/`parsec.cpp`.
