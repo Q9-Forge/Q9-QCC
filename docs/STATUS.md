@@ -30,7 +30,7 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
 - Ein triviales, mit der echten Microware-`xcc`-Toolchain kompiliertes
   C-Programm läuft nachweislich auf Q9 (ToolShed-Transfer, Modul-Format,
   Ausführung -- alles bestätigt funktionsfähig).
-- Der **komplette EBNF-Generator** (`ebnf.cpp`+`codegen.cpp`) kompiliert und
+- Der **komplette EBNF-Generator** (`parsec.cpp`+`codegen.cpp`) kompiliert und
   linkt inzwischen ebenfalls erfolgreich mit `xcc` zu einem validen OS-9-
   Modul. Voraussetzung dafür (dauerhaft im Repo, PR #11): alle C++-Templates
   aus `Source/msvc_compat.h` entfernt (waren der einzige Ort im ganzen
@@ -46,7 +46,7 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
   lässt sich für eine beliebige Grammatik sinnvoll im Voraus festlegen --
   gelöst über `malloc`/`realloc`-Verdopplung (klein anfangen, bei Bedarf
   wachsen) statt fester Arrays. Host-Datensegment damit von ~34,6 MB auf
-  ~1 MB gesunken (`size build/ebnf`), passt jetzt auch für ein 8-MB-System.
+  ~1 MB gesunken (`size build/parsec`), passt jetzt auch für ein 8-MB-System.
   Bestätigt: die Microware-`stdlib.h` stellt `malloc`/`realloc`/`free` bereit,
   betrifft also nur QCC als Sprache fürs spätere Selfhosting, nicht die
   OS-9-Zielplattform (siehe `docs/SELFHOSTING_LUECKENLISTE.md`, neue Zeile
@@ -67,9 +67,9 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
 Diese Untersuchung ist inhaltlich unabhängig von der QCC-Sprachfeature-
 Arbeit unten und betrifft ausschließlich den Generator selbst, nicht QCC.
 
-### Selfhosting L2 Vollport: `ebnf.cpp` nach QCC ABGESCHLOSSEN (2026-07-26)
+### Selfhosting L2 Vollport: `parsec.cpp` nach QCC ABGESCHLOSSEN (2026-07-26)
 
-**Der komplette Vollport von `Source/ebnf.cpp` (2149 Zeilen) nach
+**Der komplette Vollport von `Source/parsec.cpp` (2149 Zeilen) nach
 `SourceQCC/ebnf.tc` ist fertig** -- zusammen mit dem bereits am 2026-07-25
 abgeschlossenen `codegen.cpp`-Vollport (`SourceQCC/codegen.tc`) sind damit
 BEIDE Kerndateien des EBNF-Generators als QCC-Quelltext vorhanden. Ein
@@ -80,7 +80,7 @@ echter `l68`-Link von `ebnf.tc` (inkl. seiner eigenen `main()`) gegen
 
 Chronologischer Fortschritt, alle gefundenen QCC-Sprachquirks und die
 Details jedes einzelnen Portierungsschritts stehen in `docs/FORTSCHRITT.md`
-(Abschnitt "Selfhosting L2 Vollport: `ebnf.cpp`") und der Memory-Datei
+(Abschnitt "Selfhosting L2 Vollport: `parsec.cpp`") und der Memory-Datei
 `[[qcc-vollport-status]]` -- hier nur die Kurzfassung:
 
 - Alle neun Kernfunktionen der rekursiven-Abstiegs-Parsergruppe
