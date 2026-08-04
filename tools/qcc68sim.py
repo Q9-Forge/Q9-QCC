@@ -172,6 +172,33 @@ def run(instructions, labels, global_initials=None):
             return memory.get(areg[reg] + int(match.group(1)), 0)
         raise SimError("unbekannter Operand: " + text)
 
+    def read_byte_operand(text):
+        # move.b N(a6)/N(a7): dieser Simulator modelliert den Stack als EINEN
+        # Dict-Eintrag pro "push" (voller 32-Bit-Wert an der niedrigsten
+        # Adresse der Zelle), nicht byte-genau. Ein per Parameter-Slot per
+        # "move.b OFFSET(a6),d0" gelesenes char-Argument (OFFSET = Zellenbasis
+        # des Aufrufer-Pushes + 3, siehe slotAddress()/byteAccess in
+        # Source/qcc_backend_c.cpp -- Big-Endian: das echte Wertbyte liegt im
+        # LETZTEN Byte der vom Aufrufer per "move.l #wert,-(a7)" gepushten
+        # Zelle) triftt deshalb nie exakt auf einen geschriebenen Dict-Key.
+        # Fallback: existiert 3 Byte VOR der angefragten Adresse eine volle
+        # Zelle (der Normalfall bei einem Parameter-Zugriff), wird deren
+        # niederwertigstes Byte geliefert -- entspricht exakt dem, was echte
+        # 68k-Hardware an dieser Adresse laesen wuerde. Lokale char-Variablen
+        # sind davon unberuehrt: STOREC/LOADC lesen/schreiben dort dieselbe,
+        # direkt (nicht ueber eine Zelle) belegte Adresse, der exakte
+        # Dict-Key-Treffer weiter oben greift dafuer bereits.
+        match = re.match(r"(-?\d+)\((a[67])\)$", text)
+        if match:
+            base = a6 if match.group(2) == "a6" else a7
+            addr = base + int(match.group(1))
+            if addr in memory:
+                return memory[addr] & 0xff
+            if (addr - 3) in memory:
+                return memory[addr - 3] & 0xff
+            return 0
+        return read_operand(text) & 0xff
+
     def write_operand(text, value):
         nonlocal a6, a7
         value = u32(value)
@@ -333,7 +360,7 @@ def run(instructions, labels, global_initials=None):
             continue
         match = re.match(r"move\.b (.+),(d[0-7])$", ins)
         if match:
-            write_operand(match.group(2), read_operand(match.group(1)) & 0xff)
+            write_operand(match.group(2), read_byte_operand(match.group(1)))
             continue
         match = re.match(r"move\.l \(a7\)\+,(.+)$", ins)
         if match:

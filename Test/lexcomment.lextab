@@ -27,6 +27,7 @@
 
 [PARSER-TABELLE]
 # zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
 0     1     -2    2     0     0     num              NTS  digit
 1     1     -1    2     0     0     -                NTS  digit
 2     -1    -2    -1    48    57    digit            RNG  "0"~"9"
@@ -40,6 +41,12 @@
 WHITESPACE = " \t\r\n"
 TOKEN digit
 COMMENT LINE = "//"
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
 [ENDE]
 
 [NUTZER-CODE]
