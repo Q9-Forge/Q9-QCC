@@ -69,6 +69,7 @@ done
 # 5) Semantik-Vorteil des Codegen-Pfads: die Tabelle akzeptiert bei
 #    s = [ "-" ] "a" | "b" .  die Eingabe "-b" faelschlich (gewarnte Grenze) --
 #    der ERZEUGTE Parser muss sie ablehnen (echtes Backtracking pro Alternative).
+build/parsec "Test/ambig" >/dev/null 2>&1
 if cc -w -o build/ambig_p Test/ambig_p.c 2>/dev/null; then
 	if [ "$(build/ambig_p -b)" = "FAIL" ] && [ "$(build/ambig_p -a)" = "OK" ]; then
 		echo "ok    codegen ambig: '-b' korrekt abgelehnt, '-a' erkannt"
@@ -82,6 +83,7 @@ fi
 # 5b) LEXER-Modus: WHITESPACE + COMMENT LINE muessen im erzeugten C-Parser UND im
 #     simulierten 68k-Code gleich funktionieren (Test/lexcomment: num = digit {digit}
 #     mit TOKEN digit, Kommentar "//").
+build/parsec "Test/lexcomment" >/dev/null 2>&1
 if cc -w -o build/lexcomment_p Test/lexcomment_p.c 2>/dev/null; then
 	lcfail=0
 	for r in "build/lexcomment_p" "python3 tools/s68sim.py Test/lexcomment.s68"; do
@@ -99,6 +101,7 @@ fi
 #     Nutzerwunsch): Test/multicomment konfiguriert "#" UND "//" als Zeilenkommentar
 #     sowie "/* */" UND "(* *)" als Blockkommentar gleichzeitig -- alle vier muessen
 #     in C UND im simulierten 68k-Code funktionieren, unquotiertes "x" bleibt ein Fehler.
+build/parsec "Test/multicomment" >/dev/null 2>&1
 if cc -w -o build/multicomment_p Test/multicomment_p.c 2>/dev/null; then
 	mcfail=0
 	for r in "build/multicomment_p" "python3 tools/s68sim.py Test/multicomment.s68"; do
@@ -192,6 +195,7 @@ fi
 #     nochmal in der gewinnenden zweiten. NUR der erzeugte Parser wird hier geprueft (die
 #     TABELLE ist fuer dieses gemeinsame Praefix "PEG-committed" und lehnt "(x)B" bereits
 #     aus einem bekannten, unabhaengigen Grund ab, siehe Test/actionrollback2.lextab).
+build/parsec "Test/actionrollback2" >/dev/null 2>&1
 if cc -w -o build/actionrollback2_p Test/actionrollback2_p.c 2>/dev/null; then
 	got=$(build/actionrollback2_p "(x)B")
 	if [ "$got" = "$(printf 'LEAF#1\nOK')" ]; then
@@ -217,6 +221,7 @@ fi
 #     ws()"-Bug auf (siehe ARCHITEKTUR.md §9.4c) -- ohne dessen Fix waeren start/end einer
 #     ACTION um das fuehrende Leerzeichen verschoben gewesen (nur bei aktivem [LEXER]-Block
 #     sichtbar, calcexpr/actiontest hatten keinen).
+build/parsec "Test/miniOberon" >/dev/null 2>&1
 if cc -w -o build/miniOberon_p Test/miniOberon_p.c 2>/dev/null; then
 	got=$(build/miniOberon_p 'VAR x; y; z; BEGIN x := 2 + 3 * 4; y := x - 1; z := x * y END')
 	exp=$(printf 'x = 14\ny = 13\nz = 182\n--- final state ---\nx = 14\ny = 13\nz = 182\nOK')

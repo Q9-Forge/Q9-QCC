@@ -652,10 +652,21 @@ static int arrayOffset(const Function* fn, int wanted, int* isChar, int line) {
 	return 0;
 }
 
-static void slotAddress(char* out, int slotN, const Function* fn, int line) {
+/* byteAccess=1 fuer LOADC/STOREC: ein Parameter-Slot ist IMMER eine volle,
+   vom Aufrufer per "move.l #wert,-(a7)" gepushte 4-Byte-Zelle (Stack-IR
+   kennt keine byte-genaue Argumentuebergabe) -- auf Big-Endian-68k liegt der
+   eigentliche char-Wert deshalb im LETZTEN (hoechstadressierten) Byte dieser
+   Zelle, nicht im ersten. Ohne die +3-Korrektur liest "move.b OFFSET(a6),d0"
+   fuer einen char-Parameter das stets-Null-Fuellbyte statt des echten Werts
+   (live gefunden beim Endvergleich xcc- vs. selbstgehosteter ebnf_gen:
+   astPushRNG(char,char) erhielt ueber die Dateigrenze hinweg immer 0/0).
+   Lokale char-Variablen sind davon NICHT betroffen: STOREC/LOADC schreiben/
+   lesen dort dieselbe, vom Compiler selbst vergebene Byteadresse konsistent
+   hin und zurueck, ohne je eine vom Aufrufer gefuellte 4-Byte-Zelle zu kreuzen. */
+static void slotAddress(char* out, int slotN, const Function* fn, int line, int byteAccess) {
 	char msg[200];
 	if (slotN < fn->nargs) {
-		sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN), framePtr());
+		sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN) + (byteAccess ? 3 : 0), framePtr());
 		return;
 	}
 	if (slotN >= fn->nargs + fn->locals) {
@@ -1081,25 +1092,25 @@ static void emitIR(FILE* out) {
 			if (strcmp(op, "PUSH") == 0 && insP->argc == 1) {
 				fprintf(out, "\tmove.l\t#%s,-(a7)\n", insP->args[0]);
 			} else if (strcmp(op, "LOADL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
 				fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "STOREL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
 				fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
 			} else if (strcmp(op, "LOADC") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 1);
 				fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s,d0\n\tmove.l\td0,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "STOREC") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 1);
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.b\td0,%s\n", addrBuf);
 			} else if (strcmp(op, "LOADP") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
 				fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "STOREP") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
 				fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
 			} else if (strcmp(op, "ADDRL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
 				fprintf(out, "\tlea\t%s,a0\n\tmove.l\ta0,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "ADDRG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]);
@@ -1114,7 +1125,7 @@ static void emitIR(FILE* out) {
 					int off = arrayOffset(fn, number(insP->args[1], insP->line), &ignored, insP->line);
 					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
 				} else if (strcmp(insP->args[0], "P") == 0) {
-					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
+					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line, 0);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
 				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
 					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
@@ -1132,7 +1143,7 @@ static void emitIR(FILE* out) {
 					int off = arrayOffset(fn, number(insP->args[1], insP->line), &isChar, insP->line);
 					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
 				} else if (strcmp(insP->args[0], "P") == 0) {
-					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
+					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line, 0);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
 				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
 					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
