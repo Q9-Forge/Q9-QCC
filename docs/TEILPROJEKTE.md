@@ -4,6 +4,39 @@ Der Weg zu einem ISO-C-System wird in getrennte Teilprojekte aufgeteilt. So
 bleibt der Sprachkern überschaubar und Präprozessor, Bibliothek, Optimierung und
 Zielsysteme können unabhängig wachsen.
 
+## Beschlossene Compiler-Aufteilung
+
+Die bisher in Q9-QCC zusammengefasste Toolchain wird künftig entlang ihrer
+stabilen Dateiformate und Verantwortlichkeiten aufgeteilt:
+
+```text
+C-Quelltext
+  -> Q9-cpp     Präprozessor
+  -> Q9-c0      Frontend (Lexer, Parser, Semantik) und IR-Erzeugung
+  -> Stack-IR   gemeinsames, textuelles Zwischenformat
+  -> Q9-il68k   Stack-IR nach 68000-Assembler im Microware-OS-9/r68-Format
+  -> r68        Assembler, erzeugt eine .r-Objektdatei
+  -> l68        Linker, erzeugt ein ausführbares OS-9-Modul
+```
+
+- **Q9-cpp** ist ein neues, eigenständiges Präprozessor-Projekt. Es kennt
+  weder Parser, Stack-IR noch Backends.
+- **Q9-c0** ist das C-Frontend. Sein ausführbares Programm enthält den von
+  Q9-Parsec erzeugten Lexer und Parser sowie die QCC-spezifischen Aktionen für
+  Typprüfung und Stack-IR-Erzeugung. Q9-Parsec selbst bleibt der generische
+  Parser-/Grammatikgenerator.
+- **Stack-IR** ist die derzeitige Arbeitsbezeichnung des zeilenbasierten,
+  stackorientierten Zwischenformats. Ein klangvollerer, verbindlicher Name
+  wird später separat entschieden; bis dahin wird keine neue Kurzbezeichnung
+  eingeführt.
+- **Q9-il68k** ist der 68000-Zielgenerator. Er erzeugt Assemblerquelltext,
+  kein Objektformat und kein ausführbares Modul.
+- **r68** und **l68** bleiben zunächst die verwendeten Microware-Werkzeuge.
+  Eigene Assembler- und Linker-Programme sind spätere, getrennte Projekte.
+
+Die vorhandenen ARM64-Backend- und VM-Komponenten bleiben vorerst
+Test-/Referenzwerkzeuge und gehören nicht zu diesem ersten OS-9-Produktpfad.
+
 ## Hauptprojekt: C-Sprachkern
 
 Dieses Projekt enthält Grammatik, semantisches Typmodell, IR, QCCVM und die
@@ -84,4 +117,3 @@ Semantikänderungen gehören nicht in den Optimierer.
 Neue CPU-Backends, Objektformate, Linker-Anbindung und Ziel-Runtimes werden von
 der Sprachsemantik getrennt geplant. 68000 und ARM64 bleiben zunächst
 Test-Backends; Q9, x86-64 oder weitere Architekturen erhalten eigene Pakete.
-
