@@ -1,0 +1,1075 @@
+ <program>                        = { <globalDecl> 
+                                  | <structDecl> 
+                                  | <typedefDecl> 
+                                  | <enumDecl> 
+                                  | <externDecl> } { <funcdef> } .
+
+ <externDecl>                     = "extern" <type> <pointerDecl> <externName> "(" <externParamList> ")" ";" .
+
+ <externName>                     = <ident> .
+
+ <externParamList>                = [ <externParam> { "," <externParam> } [ "," <ellipsisTok> ] ] .
+
+ <externParam>                    = [ <constKw> ] <type> <pointerDecl> [ <ident> ] .
+
+ <ellipsisTok>                    = "..." .
+
+ <enumDecl>                       = "enum" <ident> "{" <ident> { "," <ident> } "}" ";" .
+
+ <structDecl>                     = "struct" <structName> "{" <structField> { <structField> } "}" ";" .
+
+ <structName>                     = <ident> .
+
+ <structField>                    = <type> <pointerDecl> <fieldName> [ <arraySize> ] ";" .
+
+ <fieldName>                      = <ident> .
+
+ <typedefDecl>                    = "typedef" <typedefType> <typedefTargetName> ";" .
+
+ <typedefType>                    = <anonStructType> 
+                                  | <type> <pointerDecl> .
+
+ <anonStructType>                 = "struct" <anonStructOpen> <structField> { <structField> } "}" .
+
+ <anonStructOpen>                 = "{" .
+
+ <typedefTargetName>              = <ident> .
+
+ <globalDecl>                     = <externGlobalDecl> 
+                                  | <plainGlobalDecl> .
+
+ <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
+
+ <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] ";" .
+
+ <constKw>                        = "const" .
+
+ <staticKw>                       = "static" .
+
+ <globalInit>                     = <globalValue> 
+                                  | <initList> 
+                                  | <globalStringInit> .
+
+ <globalStringInit>               = "\042" { <character> } "\042" .
+
+ <arraySize>                      = "[" <globalNumber> "]" .
+
+ <arraySizeN>                     = "[" <globalNumber> "]" .
+
+ <globalValue>                    = <globalNumber> 
+                                  | <globalNeg> 
+                                  | <globalBool> .
+
+ <globalBool>                     = "true" 
+                                  | "false" .
+
+ <globalNeg>                      = "-" <globalNumber> .
+
+ <globalNumber>                   = <digit> { <digit> } .
+
+ <funcdef>                        = <funcHead> ( <funcBody> 
+                                  | <protoEnd> ) .
+
+ <funcBody>                       = <funcBodyOpen> { <statement> } "}" .
+
+ <funcBodyOpen>                   = "{" .
+
+ <protoEnd>                       = ";" .
+
+ <funcHead>                       = [ <staticKw> ] <type> <pointerDecl> <defName> "(" <paramList> ")" .
+
+ <paramList>                      = [ <param> { "," <param> } ] .
+
+ <param>                          = [ <constKw> ] <type> <pointerDecl> <paramDecl> .
+
+ <paramDecl>                      = <paramName> [ <paramArray> ] .
+
+ <paramArray>                     = "[" "]" .
+
+ <block>                          = "{" { <statement> } "}" .
+
+ <statement>                      = <ifStmt> 
+                                  | <whileStmt> 
+                                  | <forStmt> 
+                                  | <doStmt> 
+                                  | <switchStmt> 
+                                  | <breakStmt> 
+                                  | <continueStmt> 
+                                  | <returnStmt> 
+                                  | <block> 
+                                  | <callStmt> 
+                                  | <incDecStmt> 
+                                  | <assignStmt> 
+                                  | <staticVarDecl> 
+                                  | <varDecl> .
+
+ <staticVarDecl>                  = <staticKw> [ <constKw> ] <type> <pointerDecl> <staticLocalName> [ "=" <staticInit> ] ";" .
+
+ <staticLocalName>                = <ident> .
+
+ <staticInit>                     = <globalValue> 
+                                  | <staticRuntimeInit> .
+
+ <staticRuntimeInit>              = <expr> .
+
+ <switchStmt>                     = <switchKw> "(" <switchCond> ")" "{" { <caseGroup> } [ <defaultGroup> ] <switchClose> .
+
+ <switchKw>                       = "switch" .
+
+ <switchCond>                     = <expr> .
+
+ <switchClose>                    = "}" .
+
+ <caseGroup>                      = <caseLabelRun> <caseBody> .
+
+ <caseLabelRun>                   = <caseLabel> { <caseLabel> } .
+
+ <caseLabel>                      = "case" <caseValue> ":" .
+
+ <caseValue>                      = <ident> 
+                                  | <caseNeg> 
+                                  | <caseNumber> .
+
+ <caseNeg>                        = "-" <caseNumber> .
+
+ <caseNumber>                     = <digit> { <digit> } .
+
+ <caseBody>                       = { <statement> } .
+
+ <defaultGroup>                   = <defaultLabel> <caseBody> .
+
+ <defaultLabel>                   = "default" ":" .
+
+ <varDecl>                        = [ <constKw> ] <type> <pointerDecl> <localDecl> [ "=" <varInit> ] ";" .
+
+ <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
+
+ <varInit>                        = <arrayStringInit> 
+                                  | <expr> 
+                                  | <initList> .
+
+ <arrayStringInit>                = <stringLit> .
+
+ <initList>                       = "{" [ <initValue> { "," <initValue> } ] "}" .
+
+ <initValue>                      = <initNumber> 
+                                  | <initNeg> 
+                                  | <initBool> .
+
+ <initBool>                       = "true" 
+                                  | "false" .
+
+ <initNeg>                        = "-" <initNumber> .
+
+ <initNumber>                     = <digit> { <digit> } .
+
+ <assignStmt>                     = <target> <assignop> <expr> ";" .
+
+ <assignop>                       = "=" 
+                                  | "+=" 
+                                  | "-=" 
+                                  | "*=" 
+                                  | "/=" 
+                                  | "%=" 
+                                  | "<<=" 
+                                  | ">>=" 
+                                  | "&=" 
+                                  | "^=" 
+                                  | "|=" .
+
+ <callStmt>                       = <call> ";" .
+
+ <returnStmt>                     = "return" [ <retVal> ] ";" .
+
+ <retVal>                         = <expr> .
+
+ <ifStmt>                         = <ifKw> "(" <ifCond> ")" <thenPart> [ <elseKw> <elsePart> ] .
+
+ <ifKw>                           = "if" .
+
+ <elseKw>                         = "else" .
+
+ <ifCond>                         = <expr> .
+
+ <thenPart>                       = <statement> .
+
+ <elsePart>                       = <statement> .
+
+ <whileStmt>                      = <whileKw> "(" <whileCond> ")" <whileBody> .
+
+ <whileKw>                        = "while" .
+
+ <whileCond>                      = <expr> .
+
+ <whileBody>                      = <statement> .
+
+ <forStmt>                        = <forKw> "(" [ <forInit> ] <forSep1> [ <forCond> ] <forSep2> [ <forStep> ] <forClose> <forBody> .
+
+ <forKw>                          = "for" .
+
+ <forSep1>                        = ";" .
+
+ <forSep2>                        = ";" .
+
+ <forClose>                       = ")" .
+
+ <forInit>                        = <target> <assignop> <expr> .
+
+ <forCond>                        = <expr> .
+
+ <forStep>                        = <target> <assignop> <expr> 
+                                  | <postIncDec> 
+                                  | <preIncDec> .
+
+ <forBody>                        = <statement> .
+
+ <doStmt>                         = <doKw> <doBody> <doWhileTok> "(" <doCond> ")" <doClose> .
+
+ <doKw>                           = "do" .
+
+ <doWhileTok>                     = "while" .
+
+ <doCond>                         = <expr> .
+
+ <doClose>                        = ";" .
+
+ <doBody>                         = <statement> .
+
+ <breakStmt>                      = "break" ";" .
+
+ <continueStmt>                   = "continue" ";" .
+
+ <expr>                           = <conditionalExpr> .
+
+ <conditionalExpr>                = <orExpr> [ <qmark> <conditionalTrue> <colon> <conditionalFalse> ] .
+
+ <qmark>                          = "?" .
+
+ <conditionalTrue>                = <expr> .
+
+ <colon>                          = ":" .
+
+ <conditionalFalse>               = <conditionalExpr> .
+
+ <orExpr>                         = <andExpr> [ <orop> <orExpr> ] .
+
+ <orop>                           = "||" .
+
+ <andExpr>                        = <bitOrExpr> [ <andop> <andExpr> ] .
+
+ <andop>                          = "&&" .
+
+ <bitOrExpr>                      = <bitXorExpr> [ <bitorop> <bitOrExpr> ] .
+
+ <bitorop>                        = "|" .
+
+ <bitXorExpr>                     = <bitAndExpr> [ <bitxorop> <bitXorExpr> ] .
+
+ <bitxorop>                       = "^" .
+
+ <bitAndExpr>                     = <comparison> [ <bitandop> <bitAndExpr> ] .
+
+ <bitandop>                       = "&" .
+
+ <comparison>                     = <shiftExpr> [ <relop> <shiftExpr> ] .
+
+ <shiftExpr>                      = <addExpr> { <shiftop> <shiftRhs> } .
+
+ <shiftRhs>                       = <addExpr> .
+
+ <shiftop>                        = "<<" 
+                                  | ">>" .
+
+ <relop>                          = "<=" 
+                                  | ">=" 
+                                  | "==" 
+                                  | "!=" 
+                                  | "<" 
+                                  | ">" .
+
+ <addExpr>                        = <term> { <addop> <term> } .
+
+ <addop>                          = "+" 
+                                  | "-" .
+
+ <term>                           = <factor> { <mulop> <factor> } .
+
+ <mulop>                          = "*" 
+                                  | "/" 
+                                  | "%" .
+
+ <factor>                         = <sizeofExpr> 
+                                  | <castExpr> 
+                                  | <preIncDec> 
+                                  | <postIncDec> 
+                                  | "(" <expr> ")" 
+                                  | <call> [ <postfixIndex> ] 
+                                  | <boolLit> 
+                                  | <addressRef> 
+                                  | <derefRef> 
+                                  | <varRef> 
+                                  | <number> 
+                                  | <stringLit> [ <postfixIndex> ] 
+                                  | <negFactor> .
+
+ <postfixIndex>                   = <index> .
+
+ <stringLit>                      = "\042" { <character> } "\042" .
+
+ <character>                      = " "~"!" 
+                                  | "#"~"~" .
+
+ <negFactor>                      = ( "-" 
+                                  | "!" 
+                                  | "~" ) <factor> .
+
+ <addressRef>                     = "&" <ident> [ <index> ] .
+
+ <sizeofExpr>                     = "sizeof" "(" <sizeofArg> ")" .
+
+ <sizeofArg>                      = <sizeofType> 
+                                  | <sizeofVarName> .
+
+ <sizeofType>                     = "unsigned" <unsignedInt> 
+                                  | "int" 
+                                  | "char" 
+                                  | "bool" 
+                                  | "struct" <structTypeRef> .
+
+ <sizeofVarName>                  = <ident> .
+
+ <castExpr>                       = "(" <castType> ")" <castOperand> .
+
+ <castType>                       = "unsigned" <unsignedInt> 
+                                  | "int" 
+                                  | "char" 
+                                  | "bool" .
+
+ <castOperand>                    = <factor> .
+
+ <preIncDec>                      = <incdecOp> <ident> .
+
+ <postIncDec>                     = <ident> <incdecOp> .
+
+ <incdecOp>                       = "++" 
+                                  | "--" .
+
+ <incDecStmt>                     = <preIncDec> ";" 
+                                  | <postIncDec> ";" .
+
+ <derefRef>                       = "*" <factor> .
+
+ <call>                           = <funcName> "(" <argList> ")" .
+
+ <argList>                        = [ <arg> { "," <arg> } ] .
+
+ <arg>                            = <expr> .
+
+ <target>                         = <directTarget> 
+                                  | <indirectTarget> .
+
+ <directTarget>                   = <ident> [ <index> { <index> } ] [ <member> [ <index> ] ] .
+
+ <indirectTarget>                 = "*" <factor> .
+
+ <varRef>                         = <ident> [ <index> { <index> } ] [ <member> [ <index> ] ] .
+
+ <index>                          = <indexOpen> <expr> "]" .
+
+ <indexOpen>                      = "[" .
+
+ <member>                         = "." <fieldName> .
+
+ <defName>                        = <ident> .
+
+ <paramName>                      = <ident> .
+
+ <localName>                      = <ident> .
+
+ <globalName>                     = <ident> .
+
+ <funcName>                       = <ident> .
+
+ <type>                           = "unsigned" <unsignedInt> 
+                                  | "int" 
+                                  | "char" 
+                                  | "bool" 
+                                  | "struct" <structTypeRef> 
+                                  | "enum" <enumTypeRef> 
+                                  | "void" 
+                                  | <typedefRef> .
+
+ <structTypeRef>                  = <ident> .
+
+ <enumTypeRef>                    = <ident> .
+
+ <typedefRef>                     = <ident> .
+
+ <pointerDecl>                    = { <pointerStar> } .
+
+ <pointerStar>                    = "*" .
+
+ <unsignedInt>                    = "int" .
+
+ <boolLit>                        = "true" 
+                                  | "false" .
+
+ <ident>                          = <letter> { <letter> 
+                                  | <digit> } .
+
+ <number>                         = <digit> { <digit> } .
+
+ <letter>                         = "a"~"z" 
+                                  | "A"~"Z" 
+                                  | "_" .
+
+ <digit>                          = "0"~"9" .
+
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| Nr  | Rule                            | Mode| NTS/TS                          | Addr | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 0   | <program>                       | NTS | <globalDecl>                    | 61   | 0  | 1  |
+| 1   |                                 | NTS | <structDecl>                    | 33   | 0  | 2  |
+| 2   |                                 | NTS | <typedefDecl>                   | 47   | 0  | 3  |
+| 3   |                                 | NTS | <enumDecl>                      | 25   | 0  | 4  |
+| 4   |                                 | NTS | <externDecl>                    | 6    | 0  | 5  |
+| 5   |                                 | NTS | <funcdef>                       | 101  | 5  | T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 6   | <externDecl>                    | TS  | "extern"                        | -    | 7  | F  |
+| 7   |                                 | NTS | <type>                          | 449  | 8  | E  |
+| 8   |                                 | NTS | <pointerDecl>                   | 463  | 9  | E  |
+| 9   |                                 | NTS | <externName>                    | 14   | 10 | E  |
+| 10  |                                 | TS  | "("                             | -    | 11 | E  |
+| 11  |                                 | NTS | <externParamList>               | 15   | 12 | E  |
+| 12  |                                 | TS  | ")"                             | -    | 13 | E  |
+| 13  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 14  | <externName>                    | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 15  | <externParamList>               | NTS | <externParam>                   | 20   | 16 | T  |
+| 16  |                                 | TS  | ","                             | -    | 17 | 18 |
+| 17  |                                 | NTS | <externParam>                   | 20   | 16 | E  |
+| 18  |                                 | TS  | ","                             | -    | 19 | T  |
+| 19  |                                 | NTS | <ellipsisTok>                   | 24   | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 20  | <externParam>                   | NTS | <constKw>                       | 78   | 21 | 21 |
+| 21  |                                 | NTS | <type>                          | 449  | 22 | F  |
+| 22  |                                 | NTS | <pointerDecl>                   | 463  | 23 | E  |
+| 23  |                                 | NTS | <ident>                         | 468  | T  | T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 24  | <ellipsisTok>                   | TS  | "..."                           | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 25  | <enumDecl>                      | TS  | "enum"                          | -    | 26 | F  |
+| 26  |                                 | NTS | <ident>                         | 468  | 27 | E  |
+| 27  |                                 | TS  | "{"                             | -    | 28 | E  |
+| 28  |                                 | NTS | <ident>                         | 468  | 29 | E  |
+| 29  |                                 | TS  | ","                             | -    | 30 | 31 |
+| 30  |                                 | NTS | <ident>                         | 468  | 29 | E  |
+| 31  |                                 | TS  | "}"                             | -    | 32 | E  |
+| 32  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 33  | <structDecl>                    | TS  | "struct"                        | -    | 34 | F  |
+| 34  |                                 | NTS | <structName>                    | 40   | 35 | E  |
+| 35  |                                 | TS  | "{"                             | -    | 36 | E  |
+| 36  |                                 | NTS | <structField>                   | 41   | 37 | E  |
+| 37  |                                 | NTS | <structField>                   | 41   | 37 | 38 |
+| 38  |                                 | TS  | "}"                             | -    | 39 | E  |
+| 39  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 40  | <structName>                    | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 41  | <structField>                   | NTS | <type>                          | 449  | 42 | F  |
+| 42  |                                 | NTS | <pointerDecl>                   | 463  | 43 | E  |
+| 43  |                                 | NTS | <fieldName>                     | 46   | 44 | E  |
+| 44  |                                 | NTS | <arraySize>                     | 86   | 45 | 45 |
+| 45  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 46  | <fieldName>                     | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 47  | <typedefDecl>                   | TS  | "typedef"                       | -    | 48 | F  |
+| 48  |                                 | NTS | <typedefType>                   | 51   | 49 | E  |
+| 49  |                                 | NTS | <typedefTargetName>             | 60   | 50 | E  |
+| 50  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 51  | <typedefType>                   | NTS | <anonStructType>                | 54   | T  | 52 |
+| 52  |                                 | NTS | <type>                          | 449  | 53 | F  |
+| 53  |                                 | NTS | <pointerDecl>                   | 463  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 54  | <anonStructType>                | TS  | "struct"                        | -    | 55 | F  |
+| 55  |                                 | NTS | <anonStructOpen>                | 59   | 56 | E  |
+| 56  |                                 | NTS | <structField>                   | 41   | 57 | E  |
+| 57  |                                 | NTS | <structField>                   | 41   | 57 | 58 |
+| 58  |                                 | TS  | "}"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 59  | <anonStructOpen>                | TS  | "{"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 60  | <typedefTargetName>             | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 61  | <globalDecl>                    | NTS | <externGlobalDecl>              | 63   | T  | 62 |
+| 62  |                                 | NTS | <plainGlobalDecl>               | 68   | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 63  | <externGlobalDecl>              | TS  | "extern"                        | -    | 64 | F  |
+| 64  |                                 | NTS | <type>                          | 449  | 65 | E  |
+| 65  |                                 | NTS | <pointerDecl>                   | 463  | 66 | E  |
+| 66  |                                 | NTS | <globalName>                    | 447  | 67 | E  |
+| 67  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 68  | <plainGlobalDecl>               | NTS | <staticKw>                      | 79   | 69 | 69 |
+| 69  |                                 | NTS | <constKw>                       | 78   | 70 | 70 |
+| 70  |                                 | NTS | <type>                          | 449  | 71 | F  |
+| 71  |                                 | NTS | <pointerDecl>                   | 463  | 72 | E  |
+| 72  |                                 | NTS | <globalName>                    | 447  | 73 | E  |
+| 73  |                                 | NTS | <arraySize>                     | 86   | 74 | 75 |
+| 74  |                                 | NTS | <arraySizeN>                    | 89   | 74 | 75 |
+| 75  |                                 | TS  | "="                             | -    | 76 | 77 |
+| 76  |                                 | NTS | <globalInit>                    | 80   | 77 | E  |
+| 77  |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 78  | <constKw>                       | TS  | "const"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 79  | <staticKw>                      | TS  | "static"                        | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 80  | <globalInit>                    | NTS | <globalValue>                   | 92   | T  | 81 |
+| 81  |                                 | NTS | <initList>                      | 200  | T  | 82 |
+| 82  |                                 | NTS | <globalStringInit>              | 83   | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 83  | <globalStringInit>              | TS  | """                             | -    | 84 | F  |
+| 84  |                                 | NTS | <character>                     | 371  | 84 | 85 |
+| 85  |                                 | TS  | """                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 86  | <arraySize>                     | TS  | "["                             | -    | 87 | F  |
+| 87  |                                 | NTS | <globalNumber>                  | 99   | 88 | E  |
+| 88  |                                 | TS  | "]"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 89  | <arraySizeN>                    | TS  | "["                             | -    | 90 | F  |
+| 90  |                                 | NTS | <globalNumber>                  | 99   | 91 | E  |
+| 91  |                                 | TS  | "]"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 92  | <globalValue>                   | NTS | <globalNumber>                  | 99   | T  | 93 |
+| 93  |                                 | NTS | <globalNeg>                     | 97   | T  | 94 |
+| 94  |                                 | NTS | <globalBool>                    | 95   | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 95  | <globalBool>                    | TS  | "true"                          | -    | T  | 96 |
+| 96  |                                 | TS  | "false"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 97  | <globalNeg>                     | TS  | "-"                             | -    | 98 | F  |
+| 98  |                                 | NTS | <globalNumber>                  | 99   | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 99  | <globalNumber>                  | NTS | <digit>                         | 476  | 100| F  |
+| 100 |                                 | NTS | <digit>                         | 476  | 100| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 101 | <funcdef>                       | NTS | <funcHead>                      | 109  | 102| F  |
+| 102 |                                 | NTS | <funcBody>                      | 104  | T  | 103|
+| 103 |                                 | NTS | <protoEnd>                      | 108  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 104 | <funcBody>                      | NTS | <funcBodyOpen>                  | 107  | 105| F  |
+| 105 |                                 | NTS | <statement>                     | 130  | 105| 106|
+| 106 |                                 | TS  | "}"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 107 | <funcBodyOpen>                  | TS  | "{"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 108 | <protoEnd>                      | TS  | ";"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 109 | <funcHead>                      | NTS | <staticKw>                      | 79   | 110| 110|
+| 110 |                                 | NTS | <type>                          | 449  | 111| F  |
+| 111 |                                 | NTS | <pointerDecl>                   | 463  | 112| E  |
+| 112 |                                 | NTS | <defName>                       | 444  | 113| E  |
+| 113 |                                 | TS  | "("                             | -    | 114| E  |
+| 114 |                                 | NTS | <paramList>                     | 116  | 115| E  |
+| 115 |                                 | TS  | ")"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 116 | <paramList>                     | NTS | <param>                         | 119  | 117| T  |
+| 117 |                                 | TS  | ","                             | -    | 118| T  |
+| 118 |                                 | NTS | <param>                         | 119  | 117| E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 119 | <param>                         | NTS | <constKw>                       | 78   | 120| 120|
+| 120 |                                 | NTS | <type>                          | 449  | 121| F  |
+| 121 |                                 | NTS | <pointerDecl>                   | 463  | 122| E  |
+| 122 |                                 | NTS | <paramDecl>                     | 123  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 123 | <paramDecl>                     | NTS | <paramName>                     | 445  | 124| F  |
+| 124 |                                 | NTS | <paramArray>                    | 125  | T  | T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 125 | <paramArray>                    | TS  | "["                             | -    | 126| F  |
+| 126 |                                 | TS  | "]"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 127 | <block>                         | TS  | "{"                             | -    | 128| F  |
+| 128 |                                 | NTS | <statement>                     | 130  | 128| 129|
+| 129 |                                 | TS  | "}"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 130 | <statement>                     | NTS | <ifStmt>                        | 235  | T  | 131|
+| 131 |                                 | NTS | <whileStmt>                     | 247  | T  | 132|
+| 132 |                                 | NTS | <forStmt>                       | 255  | T  | 133|
+| 133 |                                 | NTS | <doStmt>                        | 278  | T  | 134|
+| 134 |                                 | NTS | <switchStmt>                    | 156  | T  | 135|
+| 135 |                                 | NTS | <breakStmt>                     | 290  | T  | 136|
+| 136 |                                 | NTS | <continueStmt>                  | 292  | T  | 137|
+| 137 |                                 | NTS | <returnStmt>                    | 231  | T  | 138|
+| 138 |                                 | NTS | <block>                         | 127  | T  | 139|
+| 139 |                                 | NTS | <callStmt>                      | 229  | T  | 140|
+| 140 |                                 | NTS | <incDecStmt>                    | 410  | T  | 141|
+| 141 |                                 | NTS | <assignStmt>                    | 214  | T  | 142|
+| 142 |                                 | NTS | <staticVarDecl>                 | 144  | T  | 143|
+| 143 |                                 | NTS | <varDecl>                       | 186  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 144 | <staticVarDecl>                 | NTS | <staticKw>                      | 79   | 145| F  |
+| 145 |                                 | NTS | <constKw>                       | 78   | 146| 146|
+| 146 |                                 | NTS | <type>                          | 449  | 147| E  |
+| 147 |                                 | NTS | <pointerDecl>                   | 463  | 148| E  |
+| 148 |                                 | NTS | <staticLocalName>               | 152  | 149| E  |
+| 149 |                                 | TS  | "="                             | -    | 150| 151|
+| 150 |                                 | NTS | <staticInit>                    | 153  | 151| E  |
+| 151 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 152 | <staticLocalName>               | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 153 | <staticInit>                    | NTS | <globalValue>                   | 92   | T  | 154|
+| 154 |                                 | NTS | <staticRuntimeInit>             | 155  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 155 | <staticRuntimeInit>             | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 156 | <switchStmt>                    | NTS | <switchKw>                      | 164  | 157| F  |
+| 157 |                                 | TS  | "("                             | -    | 158| E  |
+| 158 |                                 | NTS | <switchCond>                    | 165  | 159| E  |
+| 159 |                                 | TS  | ")"                             | -    | 160| E  |
+| 160 |                                 | TS  | "{"                             | -    | 161| E  |
+| 161 |                                 | NTS | <caseGroup>                     | 167  | 161| 162|
+| 162 |                                 | NTS | <defaultGroup>                  | 182  | 163| 163|
+| 163 |                                 | NTS | <switchClose>                   | 166  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 164 | <switchKw>                      | TS  | "switch"                        | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 165 | <switchCond>                    | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 166 | <switchClose>                   | TS  | "}"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 167 | <caseGroup>                     | NTS | <caseLabelRun>                  | 169  | 168| F  |
+| 168 |                                 | NTS | <caseBody>                      | 181  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 169 | <caseLabelRun>                  | NTS | <caseLabel>                     | 171  | 170| F  |
+| 170 |                                 | NTS | <caseLabel>                     | 171  | 170| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 171 | <caseLabel>                     | TS  | "case"                          | -    | 172| F  |
+| 172 |                                 | NTS | <caseValue>                     | 174  | 173| E  |
+| 173 |                                 | TS  | ":"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 174 | <caseValue>                     | NTS | <ident>                         | 468  | T  | 175|
+| 175 |                                 | NTS | <caseNeg>                       | 177  | T  | 176|
+| 176 |                                 | NTS | <caseNumber>                    | 179  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 177 | <caseNeg>                       | TS  | "-"                             | -    | 178| F  |
+| 178 |                                 | NTS | <caseNumber>                    | 179  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 179 | <caseNumber>                    | NTS | <digit>                         | 476  | 180| F  |
+| 180 |                                 | NTS | <digit>                         | 476  | 180| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 181 | <caseBody>                      | NTS | <statement>                     | 130  | 181| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 182 | <defaultGroup>                  | NTS | <defaultLabel>                  | 184  | 183| F  |
+| 183 |                                 | NTS | <caseBody>                      | 181  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 184 | <defaultLabel>                  | TS  | "default"                       | -    | 185| F  |
+| 185 |                                 | TS  | ":"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 186 | <varDecl>                       | NTS | <constKw>                       | 78   | 187| 187|
+| 187 |                                 | NTS | <type>                          | 449  | 188| F  |
+| 188 |                                 | NTS | <pointerDecl>                   | 463  | 189| E  |
+| 189 |                                 | NTS | <localDecl>                     | 193  | 190| E  |
+| 190 |                                 | TS  | "="                             | -    | 191| 192|
+| 191 |                                 | NTS | <varInit>                       | 196  | 192| E  |
+| 192 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 193 | <localDecl>                     | NTS | <localName>                     | 446  | 194| F  |
+| 194 |                                 | NTS | <arraySize>                     | 86   | 195| T  |
+| 195 |                                 | NTS | <arraySizeN>                    | 89   | 195| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 196 | <varInit>                       | NTS | <arrayStringInit>               | 199  | T  | 197|
+| 197 |                                 | NTS | <expr>                          | 294  | T  | 198|
+| 198 |                                 | NTS | <initList>                      | 200  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 199 | <arrayStringInit>               | NTS | <stringLit>                     | 368  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 200 | <initList>                      | TS  | "{"                             | -    | 201| F  |
+| 201 |                                 | NTS | <initValue>                     | 205  | 202| 204|
+| 202 |                                 | TS  | ","                             | -    | 203| 204|
+| 203 |                                 | NTS | <initValue>                     | 205  | 202| E  |
+| 204 |                                 | TS  | "}"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 205 | <initValue>                     | NTS | <initNumber>                    | 212  | T  | 206|
+| 206 |                                 | NTS | <initNeg>                       | 210  | T  | 207|
+| 207 |                                 | NTS | <initBool>                      | 208  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 208 | <initBool>                      | TS  | "true"                          | -    | T  | 209|
+| 209 |                                 | TS  | "false"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 210 | <initNeg>                       | TS  | "-"                             | -    | 211| F  |
+| 211 |                                 | NTS | <initNumber>                    | 212  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 212 | <initNumber>                    | NTS | <digit>                         | 476  | 213| F  |
+| 213 |                                 | NTS | <digit>                         | 476  | 213| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 214 | <assignStmt>                    | NTS | <target>                        | 424  | 215| F  |
+| 215 |                                 | NTS | <assignop>                      | 218  | 216| E  |
+| 216 |                                 | NTS | <expr>                          | 294  | 217| E  |
+| 217 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 218 | <assignop>                      | TS  | "="                             | -    | T  | 219|
+| 219 |                                 | TS  | "+="                            | -    | T  | 220|
+| 220 |                                 | TS  | "-="                            | -    | T  | 221|
+| 221 |                                 | TS  | "*="                            | -    | T  | 222|
+| 222 |                                 | TS  | "/="                            | -    | T  | 223|
+| 223 |                                 | TS  | "%="                            | -    | T  | 224|
+| 224 |                                 | TS  | "<<="                           | -    | T  | 225|
+| 225 |                                 | TS  | ">>="                           | -    | T  | 226|
+| 226 |                                 | TS  | "&="                            | -    | T  | 227|
+| 227 |                                 | TS  | "^="                            | -    | T  | 228|
+| 228 |                                 | TS  | "|="                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 229 | <callStmt>                      | NTS | <call>                          | 416  | 230| F  |
+| 230 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 231 | <returnStmt>                    | TS  | "return"                        | -    | 232| F  |
+| 232 |                                 | NTS | <retVal>                        | 234  | 233| 233|
+| 233 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 234 | <retVal>                        | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 235 | <ifStmt>                        | NTS | <ifKw>                          | 242  | 236| F  |
+| 236 |                                 | TS  | "("                             | -    | 237| E  |
+| 237 |                                 | NTS | <ifCond>                        | 244  | 238| E  |
+| 238 |                                 | TS  | ")"                             | -    | 239| E  |
+| 239 |                                 | NTS | <thenPart>                      | 245  | 240| E  |
+| 240 |                                 | NTS | <elseKw>                        | 243  | 241| T  |
+| 241 |                                 | NTS | <elsePart>                      | 246  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 242 | <ifKw>                          | TS  | "if"                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 243 | <elseKw>                        | TS  | "else"                          | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 244 | <ifCond>                        | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 245 | <thenPart>                      | NTS | <statement>                     | 130  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 246 | <elsePart>                      | NTS | <statement>                     | 130  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 247 | <whileStmt>                     | NTS | <whileKw>                       | 252  | 248| F  |
+| 248 |                                 | TS  | "("                             | -    | 249| E  |
+| 249 |                                 | NTS | <whileCond>                     | 253  | 250| E  |
+| 250 |                                 | TS  | ")"                             | -    | 251| E  |
+| 251 |                                 | NTS | <whileBody>                     | 254  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 252 | <whileKw>                       | TS  | "while"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 253 | <whileCond>                     | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 254 | <whileBody>                     | NTS | <statement>                     | 130  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 255 | <forStmt>                       | NTS | <forKw>                         | 264  | 256| F  |
+| 256 |                                 | TS  | "("                             | -    | 257| E  |
+| 257 |                                 | NTS | <forInit>                       | 268  | 258| 258|
+| 258 |                                 | NTS | <forSep1>                       | 265  | 259| E  |
+| 259 |                                 | NTS | <forCond>                       | 271  | 260| 260|
+| 260 |                                 | NTS | <forSep2>                       | 266  | 261| E  |
+| 261 |                                 | NTS | <forStep>                       | 272  | 262| 262|
+| 262 |                                 | NTS | <forClose>                      | 267  | 263| E  |
+| 263 |                                 | NTS | <forBody>                       | 277  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 264 | <forKw>                         | TS  | "for"                           | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 265 | <forSep1>                       | TS  | ";"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 266 | <forSep2>                       | TS  | ";"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 267 | <forClose>                      | TS  | ")"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 268 | <forInit>                       | NTS | <target>                        | 424  | 269| F  |
+| 269 |                                 | NTS | <assignop>                      | 218  | 270| E  |
+| 270 |                                 | NTS | <expr>                          | 294  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 271 | <forCond>                       | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 272 | <forStep>                       | NTS | <target>                        | 424  | 273| 275|
+| 273 |                                 | NTS | <assignop>                      | 218  | 274| E  |
+| 274 |                                 | NTS | <expr>                          | 294  | T  | E  |
+| 275 |                                 | NTS | <postIncDec>                    | 406  | T  | 276|
+| 276 |                                 | NTS | <preIncDec>                     | 404  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 277 | <forBody>                       | NTS | <statement>                     | 130  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 278 | <doStmt>                        | NTS | <doKw>                          | 285  | 279| F  |
+| 279 |                                 | NTS | <doBody>                        | 289  | 280| E  |
+| 280 |                                 | NTS | <doWhileTok>                    | 286  | 281| E  |
+| 281 |                                 | TS  | "("                             | -    | 282| E  |
+| 282 |                                 | NTS | <doCond>                        | 287  | 283| E  |
+| 283 |                                 | TS  | ")"                             | -    | 284| E  |
+| 284 |                                 | NTS | <doClose>                       | 288  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 285 | <doKw>                          | TS  | "do"                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 286 | <doWhileTok>                    | TS  | "while"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 287 | <doCond>                        | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 288 | <doClose>                       | TS  | ";"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 289 | <doBody>                        | NTS | <statement>                     | 130  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 290 | <breakStmt>                     | TS  | "break"                         | -    | 291| F  |
+| 291 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 292 | <continueStmt>                  | TS  | "continue"                      | -    | 293| F  |
+| 293 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 294 | <expr>                          | NTS | <conditionalExpr>               | 295  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 295 | <conditionalExpr>               | NTS | <orExpr>                        | 304  | 296| F  |
+| 296 |                                 | NTS | <qmark>                         | 300  | 297| T  |
+| 297 |                                 | NTS | <conditionalTrue>               | 301  | 298| E  |
+| 298 |                                 | NTS | <colon>                         | 302  | 299| E  |
+| 299 |                                 | NTS | <conditionalFalse>              | 303  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 300 | <qmark>                         | TS  | "?"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 301 | <conditionalTrue>               | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 302 | <colon>                         | TS  | ":"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 303 | <conditionalFalse>              | NTS | <conditionalExpr>               | 295  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 304 | <orExpr>                        | NTS | <andExpr>                       | 308  | 305| F  |
+| 305 |                                 | NTS | <orop>                          | 307  | 306| T  |
+| 306 |                                 | NTS | <orExpr>                        | 304  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 307 | <orop>                          | TS  | "||"                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 308 | <andExpr>                       | NTS | <bitOrExpr>                     | 312  | 309| F  |
+| 309 |                                 | NTS | <andop>                         | 311  | 310| T  |
+| 310 |                                 | NTS | <andExpr>                       | 308  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 311 | <andop>                         | TS  | "&&"                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 312 | <bitOrExpr>                     | NTS | <bitXorExpr>                    | 316  | 313| F  |
+| 313 |                                 | NTS | <bitorop>                       | 315  | 314| T  |
+| 314 |                                 | NTS | <bitOrExpr>                     | 312  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 315 | <bitorop>                       | TS  | "|"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 316 | <bitXorExpr>                    | NTS | <bitAndExpr>                    | 320  | 317| F  |
+| 317 |                                 | NTS | <bitxorop>                      | 319  | 318| T  |
+| 318 |                                 | NTS | <bitXorExpr>                    | 316  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 319 | <bitxorop>                      | TS  | "^"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 320 | <bitAndExpr>                    | NTS | <comparison>                    | 324  | 321| F  |
+| 321 |                                 | NTS | <bitandop>                      | 323  | 322| T  |
+| 322 |                                 | NTS | <bitAndExpr>                    | 320  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 323 | <bitandop>                      | TS  | "&"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 324 | <comparison>                    | NTS | <shiftExpr>                     | 327  | 325| F  |
+| 325 |                                 | NTS | <relop>                         | 333  | 326| T  |
+| 326 |                                 | NTS | <shiftExpr>                     | 327  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 327 | <shiftExpr>                     | NTS | <addExpr>                       | 339  | 328| F  |
+| 328 |                                 | NTS | <shiftop>                       | 331  | 329| T  |
+| 329 |                                 | NTS | <shiftRhs>                      | 330  | 328| E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 330 | <shiftRhs>                      | NTS | <addExpr>                       | 339  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 331 | <shiftop>                       | TS  | "<<"                            | -    | T  | 332|
+| 332 |                                 | TS  | ">>"                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 333 | <relop>                         | TS  | "<="                            | -    | T  | 334|
+| 334 |                                 | TS  | ">="                            | -    | T  | 335|
+| 335 |                                 | TS  | "=="                            | -    | T  | 336|
+| 336 |                                 | TS  | "!="                            | -    | T  | 337|
+| 337 |                                 | TS  | "<"                             | -    | T  | 338|
+| 338 |                                 | TS  | ">"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 339 | <addExpr>                       | NTS | <term>                          | 344  | 340| F  |
+| 340 |                                 | NTS | <addop>                         | 342  | 341| T  |
+| 341 |                                 | NTS | <term>                          | 344  | 340| E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 342 | <addop>                         | TS  | "+"                             | -    | T  | 343|
+| 343 |                                 | TS  | "-"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 344 | <term>                          | NTS | <factor>                        | 350  | 345| F  |
+| 345 |                                 | NTS | <mulop>                         | 347  | 346| T  |
+| 346 |                                 | NTS | <factor>                        | 350  | 345| E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 347 | <mulop>                         | TS  | "*"                             | -    | T  | 348|
+| 348 |                                 | TS  | "/"                             | -    | T  | 349|
+| 349 |                                 | TS  | "%"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 350 | <factor>                        | NTS | <sizeofExpr>                    | 380  | T  | 351|
+| 351 |                                 | NTS | <castExpr>                      | 394  | T  | 352|
+| 352 |                                 | NTS | <preIncDec>                     | 404  | T  | 353|
+| 353 |                                 | NTS | <postIncDec>                    | 406  | T  | 354|
+| 354 |                                 | TS  | "("                             | -    | 355| 357|
+| 355 |                                 | NTS | <expr>                          | 294  | 356| E  |
+| 356 |                                 | TS  | ")"                             | -    | T  | E  |
+| 357 |                                 | NTS | <call>                          | 416  | 358| 359|
+| 358 |                                 | NTS | <postfixIndex>                  | 367  | T  | 359|
+| 359 |                                 | NTS | <boolLit>                       | 466  | T  | 360|
+| 360 |                                 | NTS | <addressRef>                    | 377  | T  | 361|
+| 361 |                                 | NTS | <derefRef>                      | 414  | T  | 362|
+| 362 |                                 | NTS | <varRef>                        | 433  | T  | 363|
+| 363 |                                 | NTS | <number>                        | 471  | T  | 364|
+| 364 |                                 | NTS | <stringLit>                     | 368  | 365| 366|
+| 365 |                                 | NTS | <postfixIndex>                  | 367  | T  | 366|
+| 366 |                                 | NTS | <negFactor>                     | 373  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 367 | <postfixIndex>                  | NTS | <index>                         | 438  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 368 | <stringLit>                     | TS  | """                             | -    | 369| F  |
+| 369 |                                 | NTS | <character>                     | 371  | 369| 370|
+| 370 |                                 | TS  | """                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 371 | <character>                     | RNG | " "~"!"                         | -    | T  | 372|
+| 372 |                                 | RNG | "#"~"~"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 373 | <negFactor>                     | TS  | "-"                             | -    | 376| 374|
+| 374 |                                 | TS  | "!"                             | -    | 376| 375|
+| 375 |                                 | TS  | "~"                             | -    | 376| F  |
+| 376 |                                 | NTS | <factor>                        | 350  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 377 | <addressRef>                    | TS  | "&"                             | -    | 378| F  |
+| 378 |                                 | NTS | <ident>                         | 468  | 379| E  |
+| 379 |                                 | NTS | <index>                         | 438  | T  | T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 380 | <sizeofExpr>                    | TS  | "sizeof"                        | -    | 381| F  |
+| 381 |                                 | TS  | "("                             | -    | 382| E  |
+| 382 |                                 | NTS | <sizeofArg>                     | 384  | 383| E  |
+| 383 |                                 | TS  | ")"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 384 | <sizeofArg>                     | NTS | <sizeofType>                    | 386  | T  | 385|
+| 385 |                                 | NTS | <sizeofVarName>                 | 393  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 386 | <sizeofType>                    | TS  | "unsigned"                      | -    | 387| 388|
+| 387 |                                 | NTS | <unsignedInt>                   | 465  | T  | E  |
+| 388 |                                 | TS  | "int"                           | -    | T  | 389|
+| 389 |                                 | TS  | "char"                          | -    | T  | 390|
+| 390 |                                 | TS  | "bool"                          | -    | T  | 391|
+| 391 |                                 | TS  | "struct"                        | -    | 392| F  |
+| 392 |                                 | NTS | <structTypeRef>                 | 460  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 393 | <sizeofVarName>                 | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 394 | <castExpr>                      | TS  | "("                             | -    | 395| F  |
+| 395 |                                 | NTS | <castType>                      | 398  | 396| E  |
+| 396 |                                 | TS  | ")"                             | -    | 397| E  |
+| 397 |                                 | NTS | <castOperand>                   | 403  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 398 | <castType>                      | TS  | "unsigned"                      | -    | 399| 400|
+| 399 |                                 | NTS | <unsignedInt>                   | 465  | T  | E  |
+| 400 |                                 | TS  | "int"                           | -    | T  | 401|
+| 401 |                                 | TS  | "char"                          | -    | T  | 402|
+| 402 |                                 | TS  | "bool"                          | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 403 | <castOperand>                   | NTS | <factor>                        | 350  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 404 | <preIncDec>                     | NTS | <incdecOp>                      | 408  | 405| F  |
+| 405 |                                 | NTS | <ident>                         | 468  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 406 | <postIncDec>                    | NTS | <ident>                         | 468  | 407| F  |
+| 407 |                                 | NTS | <incdecOp>                      | 408  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 408 | <incdecOp>                      | TS  | "++"                            | -    | T  | 409|
+| 409 |                                 | TS  | "--"                            | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 410 | <incDecStmt>                    | NTS | <preIncDec>                     | 404  | 411| 412|
+| 411 |                                 | TS  | ";"                             | -    | T  | E  |
+| 412 |                                 | NTS | <postIncDec>                    | 406  | 413| F  |
+| 413 |                                 | TS  | ";"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 414 | <derefRef>                      | TS  | "*"                             | -    | 415| F  |
+| 415 |                                 | NTS | <factor>                        | 350  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 416 | <call>                          | NTS | <funcName>                      | 448  | 417| F  |
+| 417 |                                 | TS  | "("                             | -    | 418| E  |
+| 418 |                                 | NTS | <argList>                       | 420  | 419| E  |
+| 419 |                                 | TS  | ")"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 420 | <argList>                       | NTS | <arg>                           | 423  | 421| T  |
+| 421 |                                 | TS  | ","                             | -    | 422| T  |
+| 422 |                                 | NTS | <arg>                           | 423  | 421| E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 423 | <arg>                           | NTS | <expr>                          | 294  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 424 | <target>                        | NTS | <directTarget>                  | 426  | T  | 425|
+| 425 |                                 | NTS | <indirectTarget>                | 431  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 426 | <directTarget>                  | NTS | <ident>                         | 468  | 427| F  |
+| 427 |                                 | NTS | <index>                         | 438  | 428| 429|
+| 428 |                                 | NTS | <index>                         | 438  | 428| 429|
+| 429 |                                 | NTS | <member>                        | 442  | 430| T  |
+| 430 |                                 | NTS | <index>                         | 438  | T  | T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 431 | <indirectTarget>                | TS  | "*"                             | -    | 432| F  |
+| 432 |                                 | NTS | <factor>                        | 350  | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 433 | <varRef>                        | NTS | <ident>                         | 468  | 434| F  |
+| 434 |                                 | NTS | <index>                         | 438  | 435| 436|
+| 435 |                                 | NTS | <index>                         | 438  | 435| 436|
+| 436 |                                 | NTS | <member>                        | 442  | 437| T  |
+| 437 |                                 | NTS | <index>                         | 438  | T  | T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 438 | <index>                         | NTS | <indexOpen>                     | 441  | 439| F  |
+| 439 |                                 | NTS | <expr>                          | 294  | 440| E  |
+| 440 |                                 | TS  | "]"                             | -    | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 441 | <indexOpen>                     | TS  | "["                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 442 | <member>                        | TS  | "."                             | -    | 443| F  |
+| 443 |                                 | NTS | <fieldName>                     | 46   | T  | E  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 444 | <defName>                       | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 445 | <paramName>                     | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 446 | <localName>                     | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 447 | <globalName>                    | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 448 | <funcName>                      | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 449 | <type>                          | TS  | "unsigned"                      | -    | 450| 451|
+| 450 |                                 | NTS | <unsignedInt>                   | 465  | T  | E  |
+| 451 |                                 | TS  | "int"                           | -    | T  | 452|
+| 452 |                                 | TS  | "char"                          | -    | T  | 453|
+| 453 |                                 | TS  | "bool"                          | -    | T  | 454|
+| 454 |                                 | TS  | "struct"                        | -    | 455| 456|
+| 455 |                                 | NTS | <structTypeRef>                 | 460  | T  | E  |
+| 456 |                                 | TS  | "enum"                          | -    | 457| 458|
+| 457 |                                 | NTS | <enumTypeRef>                   | 461  | T  | E  |
+| 458 |                                 | TS  | "void"                          | -    | T  | 459|
+| 459 |                                 | NTS | <typedefRef>                    | 462  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 460 | <structTypeRef>                 | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 461 | <enumTypeRef>                   | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 462 | <typedefRef>                    | NTS | <ident>                         | 468  | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 463 | <pointerDecl>                   | NTS | <pointerStar>                   | 464  | 463| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 464 | <pointerStar>                   | TS  | "*"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 465 | <unsignedInt>                   | TS  | "int"                           | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 466 | <boolLit>                       | TS  | "true"                          | -    | T  | 467|
+| 467 |                                 | TS  | "false"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 468 | <ident>                         | NTS | <letter>                        | 473  | 469| F  |
+| 469 |                                 | NTS | <letter>                        | 473  | 469| 470|
+| 470 |                                 | NTS | <digit>                         | 476  | 469| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 471 | <number>                        | NTS | <digit>                         | 476  | 472| F  |
+| 472 |                                 | NTS | <digit>                         | 476  | 472| T  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 473 | <letter>                        | RNG | "a"~"z"                         | -    | T  | 474|
+| 474 |                                 | RNG | "A"~"Z"                         | -    | T  | 475|
+| 475 |                                 | TS  | "_"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 476 | <digit>                         | RNG | "0"~"9"                         | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
