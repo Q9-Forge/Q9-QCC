@@ -1,0 +1,358 @@
+program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl } { funcdef } .
+
+/* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
+   OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
+   Signatur. Parameter brauchen keinen Namen (nur Typen fuer die Aufrufpruefung).
+   "..." markiert eine variadische Funktion (wie printf) -- siehe tc_call/
+   CALLEXT in docs/FORTSCHRITT.md fuer die Aufrufkonvention (Microware-ABI:
+   1./2. Argument in d0/d1, Rest auf dem Stack; bei variadisch ALLES auf dem
+   Stack). Erfordert mindestens einen benannten Parameter vor "...", wie in
+   echtem ISO C. */
+externDecl      = "extern" type pointerDecl externName "(" externParamList ")" ";" .
+externName      = ident .
+externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
+/* optionaler Parametername wird NUR geparst und verworfen (rein dokumentarisch,
+   wie in echten C-Prototypen "int strcmp(const char *a, const char *b);") --
+   fuer die Aufrufpruefung zaehlen nur die Typen. "const" ebenso rein
+   dokumentarisch: eine extern-Deklaration hat keinen QCC-Rumpf, in dem eine
+   Schreibpruefung greifen koennte. */
+externParam     = [ constKw ] type pointerDecl [ ident ] .
+ellipsisTok     = "..." .
+
+enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
+
+structDecl  = "struct" structName "{" structField { structField } "}" ";" .
+structName  = ident .
+/* Pointer-Felder in struct (2026-07-25, Selfhosting L2): reine Skalar-Pointer
+   (z.B. "char* text;"), noch NICHT Pointer-Arrays oder struct-Pointer-Felder
+   (letztere waeren ohnehin durch das generelle struct-in-struct-Verbot
+   ausgeschlossen). Layout siehe tcRegisterStruct: Pointer-Felder werden
+   IMMER mit 8 Byte Groesse/Ausrichtung reserviert (nicht 4 wie beim 68k-
+   Backend selbst), damit dasselbe frontend-berechnete Byte-Layout fuer
+   BEIDE Architekturen gueltig bleibt (68k-Pointer sind 4 Byte, ARM64-Pointer
+   8 Byte -- ein einzelnes IR-Offset muesste sonst je nach Ziel-Architektur
+   unterschiedlich sein). Der 68k-Backend nutzt von diesem 8-Byte-Slot nur
+   die ersten 4 Byte (identisch zum Layout einer lokalen Pointer-Variable). */
+structField = type pointerDecl fieldName [ arraySize ] ";" .
+fieldName   = ident .
+
+typedefDecl = "typedef" typedefType typedefTargetName ";" .
+typedefType = anonStructType | type pointerDecl .
+anonStructType = "struct" anonStructOpen structField { structField } "}" .
+anonStructOpen = "{" .
+typedefTargetName = ident .
+
+/* beliebig viele weitere Dimensionen (2026-07-24) NUR bei globalDecl/localDecl
+   (nicht bei structField/paramArray -- siehe Kommentar bei localDecl weiter
+   unten fuer den Umfang dieser Version). arraySizeN wiederholt sich beliebig
+   oft (TC_MAXDIMS in qcc.lextab begrenzt die tatsaechlich unterstuetzte
+   Anzahl zur Uebersetzungszeit, kein Grammatik-Limit). */
+/* Mehrdatei-Uebersetzung (2026-07-25): externGlobalDecl deklariert eine
+   globale Variable OHNE Speicherallokation ("definiert in einer anderen
+   QCC-Datei") -- kein Konflikt mit dem bestehenden extern bei FUNKTIONEN
+   (das bleibt Microware-ABI/clib.l-spezifisch, siehe externDecl oben): bei
+   globalen Variablen gab es bisher UEBERHAUPT keine extern-Bedeutung. Kein
+   Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
+globalDecl       = externGlobalDecl | plainGlobalDecl .
+externGlobalDecl = "extern" type pointerDecl globalName ";" .
+plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] ";" .
+constKw   = "const" .
+staticKw  = "static" .
+/* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
+   (char msg[6] = "hallo";). Duplizierte, AKTIONSLOSE Kopie von stringLit
+   OHNE eigene ACTION -- ein direkter Verweis auf stringLit wuerde dessen
+   ACTION (tc_string: anonyme GARRAY-Konstante + Typ-Stack-Push) unwiderruflich
+   mitausloesen, was fuer den globalen Kontext (tc_globalend liest die GANZE
+   Deklaration ohnehin als Rohtext, wie bei Zahlen/Bools) nur unbenutzten Muell
+   erzeugen wuerde. tc_globalend erkennt/dekodiert das Literal selbst per
+   Rohtext-Scan (siehe dort), genau wie bei globalNumber/globalBool. */
+globalInit = globalValue | initList | globalStringInit .
+globalStringInit = "\042" { character } "\042" .
+arraySize  = "[" globalNumber "]" .
+arraySizeN = "[" globalNumber "]" .
+globalValue = globalNumber | globalNeg | globalBool .
+globalBool  = "true" | "false" .
+globalNeg   = "-" globalNumber .
+globalNumber = digit { digit } .
+
+/* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
+   IMMER vorhandenen Rumpfs entweder einen echten Rumpf (funcBody) ODER eine
+   reine Prototyp-Deklaration ohne Rumpf (protoEnd) = "definiert in einer
+   anderen QCC-Datei", normale interne bsr/bl-Aufrufkonvention. Bewusst
+   NICHT das bestehende extern-Schluesselwort dafuer verwendet -- das ist fest
+   mit der Microware-ABI/CALLEXT-Semantik verdrahtet (siehe externDecl oben).
+   Kein Backtracking noetig: nach funcHead folgt entweder disjunkt "{" oder
+   ";" -- klassische LL(1)-Alternation. */
+funcdef       = funcHead ( funcBody | protoEnd ) .
+funcBody      = funcBodyOpen { statement } "}" .
+funcBodyOpen  = "{" .
+protoEnd      = ";" .
+funcHead  = [ staticKw ] type pointerDecl defName "(" paramList ")" .
+paramList = [ param { "," param } ] .
+param     = [ constKw ] type pointerDecl paramDecl .
+paramDecl = paramName [ paramArray ] .
+paramArray = "[" "]" .
+
+block     = "{" { statement } "}" .
+
+statement = ifStmt
+          | whileStmt
+          | forStmt
+          | doStmt
+          | switchStmt
+          | breakStmt
+          | continueStmt
+          | returnStmt
+          | block
+          | callStmt
+          | incDecStmt
+          | assignStmt
+          | staticVarDecl
+          | varDecl .
+
+/* "static" lokale Variablen: konstanter Initialisierer (globalValue, dieselbe
+   seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch die
+   normale expr-Grammatik, also auch keine Laufzeit-Emission dafuer, siehe
+   tc_staticlocal) ODER seit 2026-07-24 ein beliebiger Laufzeitausdruck
+   (staticRuntimeInit = expr). staticInit ist eine GEORDNETE Alternation: "static
+   int x = 5;" matched globalValue vollstaendig (Fastpath, unveraendert seit
+   jeher) UND wird von der Grammatik direkt als Ganzes akzeptiert (danach folgt
+   ";"); erst wenn dieser Versuch scheitert (z.B. "static int x = 5+3;" -- 5
+   allein passt, aber danach kommt "+" statt ";"), backtracked der Generator auf
+   staticRuntimeInit (dasselbe Backtracking-Prinzip wie "call vor varRef" in
+   factor). Der Laufzeitausdruck wird bei JEDEM Funktionsaufruf neu ausgewertet
+   (bewusste Vereinfachung -- bei einem Initialisierer mit Seiteneffekten, z.B.
+   einem Funktionsaufruf, weicht das von echtem ISO C ab, das den Ausdruck nur
+   EINMAL auswertet), aber nur beim ERSTEN Aufruf tatsaechlich in die
+   static-Variable geschrieben (Runs-once-Guard mit einem versteckten
+   bool-Flag-Global, siehe tc_staticruntimeinit/tc_staticlocal) -- dadurch bleibt
+   der einmal gesetzte Wert ueber alle nachfolgenden Aufrufe hinweg erhalten,
+   entspricht also dem BEOBACHTBAREN Verhalten (Persistenz), solange der
+   Ausdruck selbst keine Seiteneffekte hat. */
+staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName [ "=" staticInit ] ";" .
+staticLocalName = ident .
+staticInit      = globalValue | staticRuntimeInit .
+staticRuntimeInit = expr .
+
+switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
+switchKw     = "switch" .
+switchCond   = expr .
+switchClose  = "}" .
+caseGroup    = caseLabelRun caseBody .
+caseLabelRun = caseLabel { caseLabel } .
+caseLabel    = "case" caseValue ":" .
+caseValue    = ident | caseNeg | caseNumber .
+caseNeg      = "-" caseNumber .
+caseNumber   = digit { digit } .
+caseBody     = { statement } .
+defaultGroup = defaultLabel caseBody .
+defaultLabel = "default" ":" .
+
+varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
+/* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
+   2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
+   struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
+   mehrdimensionales struct-Feld ist damit ein sauberer Parse-Fehler statt eines
+   still falsch geschnittenen Feldes, siehe tc_structfield) und NICHT bei Parametern
+   (paramArray bleibt "[" "]"). Layout: Groesse = dim1*dim2*...*dimN (zeilenweise/
+   "row-major" wie in echtem C), dim2..dimN werden fuers Indizieren gebraucht
+   (siehe tc_localdecl/tc_globalend/tc_varref/tc_target, TC_MAXDIMS begrenzt N
+   zur Uebersetzungszeit) -- KEIN Initialisierer mit verschachtelten Klammern in
+   dieser Version (flache Initialisierer `{1,2,3,4,5,6}` funktionieren weiterhin
+   mit, siehe docs/FORTSCHRITT.md). */
+localDecl = localName [ arraySize { arraySizeN } ] .
+/* arrayStringInit (2026-07-24, String-Literale als Array-Initialisierer,
+   char msg[6] = "hallo";): MUSS vor expr probiert werden, sonst wuerde expr
+   (via factor/stringLit) das Literal zuerst konsumieren. Referenziert
+   stringLit bewusst DIREKT (anders als globalStringInit) -- dessen ACTION
+   tc_string (anonyme GARRAY-Konstante + char*-Adresse auf den Stack) wird
+   fuer den SKALAREN Fall (char* p = "..";) ohnehin gebraucht; tc_arrayinitstring
+   verwirft die Adresse per DROP nur, wenn das Ziel tatsaechlich ein Array ist. */
+varInit   = arrayStringInit | expr | initList .
+arrayStringInit = stringLit .
+initList  = "{" [ initValue { "," initValue } ] "}" .
+initValue = initNumber | initNeg | initBool .
+initBool  = "true" | "false" .
+initNeg   = "-" initNumber .
+initNumber = digit { digit } .
+assignStmt = target assignop expr ";" .
+assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+           | "<<=" | ">>=" | "&=" | "^=" | "|=" .
+callStmt  = call ";" .
+returnStmt = "return" [ retVal ] ";" .
+retVal    = expr .
+
+ifStmt    = ifKw "(" ifCond ")" thenPart [ elseKw elsePart ] .
+ifKw      = "if" .
+elseKw    = "else" .
+ifCond    = expr .
+thenPart  = statement .
+elsePart  = statement .
+
+whileStmt = whileKw "(" whileCond ")" whileBody .
+whileKw   = "while" .
+whileCond = expr .
+whileBody = statement .
+
+forStmt   = forKw "(" [ forInit ] forSep1 [ forCond ] forSep2 [ forStep ] forClose forBody .
+forKw     = "for" .
+forSep1   = ";" .
+forSep2   = ";" .
+forClose  = ")" .
+forInit   = target assignop expr .
+forCond   = expr .
+forStep   = target assignop expr | postIncDec | preIncDec .
+forBody   = statement .
+
+doStmt    = doKw doBody doWhileTok "(" doCond ")" doClose .
+doKw      = "do" .
+doWhileTok = "while" .
+doCond    = expr .
+doClose   = ";" .
+doBody    = statement .
+
+breakStmt    = "break" ";" .
+continueStmt = "continue" ";" .
+
+expr       = conditionalExpr .
+conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
+qmark      = "?" .
+conditionalTrue = expr .
+colon      = ":" .
+conditionalFalse = conditionalExpr .
+orExpr     = andExpr [ orop orExpr ] .
+orop       = "||" .
+andExpr    = bitOrExpr [ andop andExpr ] .
+andop      = "&&" .
+bitOrExpr  = bitXorExpr [ bitorop bitOrExpr ] .
+bitorop    = "|" .
+bitXorExpr = bitAndExpr [ bitxorop bitXorExpr ] .
+bitxorop   = "^" .
+bitAndExpr = comparison [ bitandop bitAndExpr ] .
+bitandop   = "&" .
+comparison = shiftExpr [ relop shiftExpr ] .
+shiftExpr  = addExpr { shiftop shiftRhs } .
+shiftRhs   = addExpr .
+shiftop    = "<<" | ">>" .
+relop     = "<=" | ">=" | "==" | "!=" | "<" | ">" .
+addExpr   = term { addop term } .
+addop     = "+" | "-" .
+term      = factor { mulop factor } .
+mulop     = "*" | "/" | "%" .
+factor    = sizeofExpr
+          | castExpr
+          | preIncDec
+          | postIncDec
+          | "(" expr ")"
+          | call [ postfixIndex ]
+          | boolLit
+          | addressRef
+          | derefRef
+          | varRef
+          | number
+          | stringLit [ postfixIndex ]
+          | negFactor .
+
+/* Direkte Indizierung ohne Zwischenvariable (2026-07-24): "func()[i]" und
+   "hallo"[i]" duerfen jetzt DIREKT indiziert werden, ohne den Rueckgabewert
+   erst in eine Pointer-Variable zu schreiben. postfixIndex ist bewusst
+   NUR eine Huellregel um die bereits bestehende index-Regel (KEINE eigene
+   Klammersyntax, KEIN neues Bracket-Handling) -- dadurch feuern indexOpen/
+   tc_callname (rettet/setzt tcPendingAdd/tcPendingMul zurueck) und die
+   bestehende ACTION AFTER index CALL tc_arg (prueft den Indextyp, stellt
+   tcPendingAdd/tcPendingMul wieder her) GENAUSO wie bei "arr[i]", nur die
+   neue ACTION AFTER postfixIndex CALL tc_postfixindex kommt hinzu. Bewusst
+   NICHT Teil dieser Version: verkettete Postfix-Indizierung (mehr als ein
+   Klammernpaar direkt hintereinander, z.B. "f()[0][1]"), Indizierung als
+   Zuweisungsziel (foo()[0] = 5;), Indizierung auf "(" expr ")". */
+postfixIndex = index .
+
+/* String-Literal (2026-07-24): erzeugt zur Uebersetzungszeit einen anonymen globalen
+   char-Array-Konstant (GARRAY/GINIT, siehe tc_string) und liefert dessen Adresse als
+   Wert vom Typ char* -- exakt dieselben IR-Opcodes wie ein initialisiertes globales
+   char-Array, kein neuer Opcode und keine Backend-Aenderung noetig (analog 2D-Arrays).
+   Vorbild fuer die Grammatik: Data/oberon07.ebnf ("\042" ist der Oktal-Escape des
+   EBNF-Tools fuer ein woertliches Anfuehrungszeichen, siehe Source/parsec.cpp). character
+   deckt den druckbaren ASCII-Bereich OHNE das Anfuehrungszeichen selbst ab (0x20-0x21,
+   0x23-0x7E) -- Escapesequenzen wie \n werden ueber das ebenfalls im Bereich enthaltene
+   "\" erkannt und in tc_string dekodiert, nicht in der Grammatik. Bewusst NICHT
+   Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
+   und String-Verkettung/-Vergleich als eigene Operatoren. */
+stringLit = "\042" { character } "\042" .
+character = " "~"!" | "#"~"~" .
+negFactor = ( "-" | "!" | "~" ) factor .
+addressRef = "&" ident [ index ] .
+
+sizeofExpr = "sizeof" "(" sizeofArg ")" .
+sizeofArg  = sizeofType | sizeofVarName .
+sizeofType = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef .
+sizeofVarName = ident .
+
+castExpr   = "(" castType ")" castOperand .
+castType   = "unsigned" unsignedInt | "int" | "char" | "bool" .
+castOperand = factor .
+
+preIncDec  = incdecOp ident .
+postIncDec = ident incdecOp .
+incdecOp   = "++" | "--" .
+incDecStmt = preIncDec ";" | postIncDec ";" .
+derefRef  = "*" factor .
+call      = funcName "(" argList ")" .
+argList   = [ arg { "," arg } ] .
+arg       = expr .
+
+target    = directTarget | indirectTarget .
+/* wiederholter index-Verweis auf dieselbe Regel deckt "arr[i][j][k]..." ab
+   (beliebig viele AUFEINANDERFOLGENDE, nicht verschachtelte Klammerpaare) --
+   kein Grammatik-/Aktions-Zusatz noetig, ACTION AFTER index feuert einfach
+   einmal pro Klammerpaar (die tcIndexDepth-Buchfuehrung ist bereits
+   stapelbasiert, siehe tc_callname/tc_arg). Die eigentliche Zusammenfuehrung
+   zu einem flachen Index passiert in tc_target/tc_varref (per Rohtext-
+   Zaehlung der Top-Level-"["-Vorkommen, TC_MAXDIMS begrenzt N).
+   direkte p.field[i]-Indizierung von Array-Feldern (2026-07-24): member
+   bekommt einen eigenen optionalen index-Anschluss (KEIN zweiter, ineinander
+   verschachtelter -- Array-Felder in struct sind wie arraySize bewusst
+   einstufig, siehe structField). Die ACTION AFTER index CALL tc_arg feuert
+   fuer diesen Index GENAUSO wie bei "arr[i]" (rettet/restauriert
+   tcPendingAdd/tcPendingMul, prueft den Indextyp) -- tc_varref/tc_target
+   erkennen per Rohtext-Scan (erstes Zeichen nach dem Feldnamen == '[') ob
+   ein Index folgt und haengen dann ein zweites IPADD+LOADIND (lesend) bzw.
+   IPADD (schreibend) an das bereits vorhandene Feldadress-IPADD an -- der
+   Stack traegt an dieser Stelle bereits [Indexwert, Feldadresse] (Feldadresse
+   zuletzt gepusht, da tc_varref/tc_target erst am ENDE der ganzen Regel
+   feuern), exakt dieselbe Reihenfolge wie beim bestehenden IPADD-Aufruf fuer
+   die Feldadresse selbst -- kein neuer Opcode, kein Backend-Change. */
+/* arr[i].feld (2026-07-25, Selfhosting L2): ein ARRAY von structs, per
+   Laufzeit-Index adressiert, DANN Feldzugriff -- braucht die Index-Kette
+   UND den Member-Anschluss NACHEINANDER (nicht nur alternativ wie bisher).
+   Verkettete Indizierung NACH dem Feld (arr[i].feld[j]) bleibt bewusst
+   ausgeschlossen (wie bei p.field[i], siehe member oben) -- tc_varref/
+   tc_target diagnostizieren das explizit. Neuer IR-Opcode IPADDN (siehe
+   Backends/qccvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
+   (hier: tcStructByteSize des Element-Structs), waehrend das bestehende
+   IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
+   struct-Arrays ist aber beliebig. */
+directTarget = ident [ index { index } ] [ member [ index ] ] .
+indirectTarget = "*" factor .
+varRef    = ident [ index { index } ] [ member [ index ] ] .
+index     = indexOpen expr "]" .
+indexOpen = "[" .
+member    = "." fieldName .
+defName   = ident .
+paramName = ident .
+localName = ident .
+globalName = ident .
+funcName  = ident .
+type      = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+structTypeRef = ident .
+enumTypeRef = ident .
+typedefRef = ident .
+pointerDecl = { pointerStar } .
+pointerStar = "*" .
+unsignedInt = "int" .
+boolLit   = "true" | "false" .
+
+ident     = letter { letter | digit } .
+number    = digit { digit } .
+letter    = "a"~"z" | "A"~"Z" | "_" .
+digit     = "0"~"9" .

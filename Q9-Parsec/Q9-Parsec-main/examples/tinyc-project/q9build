@@ -1,0 +1,78 @@
+#!/dd/CMDS/bash
+
+# Tiny-C-Mehrdatei-Build direkt auf OS-9.
+# Nutzung: q9build quelle1.tc quelle2.tc ... [-o modulname]
+
+set -e
+
+if [ "$#" -lt 1 ]; then
+    echo "Usage: q9build source.tc [source.tc ...] [-o modulname]"
+    exit 2
+fi
+
+output=""
+sources=""
+first=""
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "-o" ]; then
+        shift
+        [ "$#" -gt 0 ] || { echo "q9build: -o braucht einen Namen"; exit 2; }
+        output="$1"
+    else
+        [ -n "$first" ] || first="$1"
+        sources="$sources $1"
+    fi
+    shift
+done
+
+[ -n "$sources" ] || { echo "q9build: keine Quelldatei"; exit 2; }
+
+base="$first"
+case "$base" in
+    */*) base="${base##*/}" ;;
+esac
+base="${base%.tc}"
+
+if [ -z "$output" ]; then
+    output="$base"
+    n=0
+    while [ -e "$output.out" ]; do
+        n=$((n + 1))
+        output="$base.$n"
+    done
+fi
+
+echo "Q9BUILD: output $output.out"
+
+irs=""
+for source in $sources; do
+    stem="$source"
+    case "$stem" in
+        */*) stem="${stem##*/}" ;;
+    esac
+    stem="${stem%.tc}"
+    echo "Q9BUILD: tinyc_p $source"
+    tinyc_p "@$source" > "$stem.ir"
+    irs="$irs $stem.ir"
+done
+
+merged="$output.merge.ir"
+echo "Q9BUILD: merge -> $merged"
+merge -o="$merged" $irs
+
+echo "Q9BUILD: backend -> $output.a"
+tinyc_backend "$merged" "$output.a" -os9
+
+echo "Q9BUILD: r68 -> q9_write_compat.r"
+r68 q9_write_compat.a -o=q9_write_compat.r -q
+
+echo "Q9BUILD: r68 -> $output.r"
+r68 "$output.a" -o="$output.r" -q
+
+echo "Q9BUILD: l68 -> $output.out"
+libdir="/dd/LIB"
+l68 -a "$libdir/cstart.r" q9_write_compat.r "$output.r" \
+    -l="$libdir/clib.l" -l="$libdir/sys.l" \
+    -o="$output.out"
+
+echo "Q9BUILD: fertig: $output.out"
