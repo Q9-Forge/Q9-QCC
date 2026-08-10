@@ -1,5 +1,27 @@
 # Fortschritt und Roadmap
 
+## Vorwaertsdeklaration von static-Funktionen erlaubt (2026-08-10)
+
+QCC lehnte `static int f(int);` ohne Rumpf ab ("static function declaration
+without body is meaningless") -- 177 der 559 semantischen Fehler in
+`Data/qcc_p.c`. Die Annahme dahinter war, ein rumpfloser Prototyp bedeute
+"in einer ANDEREN Datei definiert", was mit `static` unvereinbar waere. In C
+ist die Vorwaertsdeklaration in DERSELBEN Datei aber der uebliche Weg fuer
+gegenseitige Rekursion; die Ablehnung war schlicht falsch.
+
+Unbedenklich fuer den Codegen: `collectFunctions()` im Backend sammelt in
+einem ERSTEN Durchlauf alle echten `FUNC`-Ruempfe und erst danach die
+`FUNCDECL`s -- eine Vorwaertsdeklaration wird also nur uebernommen, wenn kein
+echter Rumpf existiert, die Reihenfolge im Quelltext spielt keine Rolle.
+Live auf Q9 mit zwei gegenseitig rekursiven static-Funktionen verifiziert
+(`g4=1 u4=0`).
+
+Bewusst aufgegeben: ein static-Prototyp, dem NIE eine Definition folgt, wird
+nicht mehr im Frontend gemeldet -- er faellt erst beim Linken als
+unaufgeloestes Symbol auf.
+
+**Semantische Fehler damit von 559 auf 382.**
+
 ## MEILENSTEIN: `Data/qcc_p.c` parst am Stueck (2026-08-10)
 
 Mit vier durch Ruempfe ersetzten Funktionen laeuft die GANZE Datei durch das
