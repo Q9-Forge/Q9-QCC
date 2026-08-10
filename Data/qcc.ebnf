@@ -47,7 +47,13 @@ structName  = ident .
    Namen rueckwaerts in seiner Spanne und nimmt den Typ aus tcCurrentType --
    beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
    umfasst statt der ganzen Zeile. */
-structField = type pointerDecl structDeclarator { "," structDeclarator } ";" .
+/* fieldConstKw ist eine AKTIONSLOSE Kopie von constKw (wie retConstKw bei
+   funcHead): ein "const" am Feldtyp wird geparst und verworfen. Ein Verweis
+   auf constKw selbst wuerde tc_const ausloesen, dessen tcPendingConst erst
+   beim naechsten Parameter oder Lokalen konsumiert wird und dort
+   faelschlich Konstantheit erzwaenge. */
+structField = [ fieldConstKw ] type pointerDecl structDeclarator { "," structDeclarator } ";" .
+fieldConstKw = "const" .
 /* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
    dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
    siehe tcStructFieldRowLen. Echte 2D-Zugriffe "x.args[i][j]" sind bewusst
@@ -73,7 +79,14 @@ fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" "(" extern
 fnPtrOpen    = "(" .
 fnPtrName    = ident .
 typedefType = anonStructType | type pointerDecl .
-anonStructType = "struct" anonStructOpen structField { structField } "}" .
+/* Optionaler Struct-Tag im typedef ("typedef struct TCType { ... } TCType;").
+   structTagName ist AKTIONSLOS: der Tag wird geparst und verworfen, als
+   interner Tag dient wie bisher der typedef-Zielname (siehe
+   tc_anonstructbegin/tc_typedefend). Damit ist "struct TCType" NICHT als
+   eigenstaendiger Typname nutzbar -- im Bootstrap-Ziel wird ohnehin
+   ausschliesslich der typedef-Name verwendet. */
+anonStructType = "struct" [ structTagName ] anonStructOpen structField { structField } "}" .
+structTagName = ident .
 anonStructOpen = "{" .
 typedefTargetName = ident .
 
@@ -90,7 +103,10 @@ typedefTargetName = ident .
    Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
 globalDecl       = externGlobalDecl | plainGlobalDecl .
 externGlobalDecl = "extern" type pointerDecl globalName ";" .
-plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] ";" .
+/* Mehrere Deklaratoren pro Zeile ("static TCType a[512], b[512][64];").
+   Die Aufteilung macht tc_globalend selbst am Rohtext -- siehe dort. */
+plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalDeclarator { "," globalDeclarator } ";" .
+globalDeclarator = globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
 constKw   = "const" .
 staticKw  = "static" .
 /* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer

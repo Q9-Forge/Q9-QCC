@@ -1,5 +1,30 @@
 # Fortschritt und Roadmap
 
+## Methodischer Fund: die funktionsweise Messung hatte einen blinden Fleck
+
+Die Messung erkannte Funktionen nur, wenn die Signaturzeile mit `{` endet --
+**136 EINZEILIGE Funktionsdefinitionen in `Data/qcc_p.c` wurden dadurch nie
+geprueft** (`static int tcIsBool(TCType t) { return ...; }`). Genauso
+unsichtbar blieb alles ZWISCHEN den Funktionen. Das erklaert die Luecke
+zwischen "fast alle Funktionen uebersetzen" und "die Datei scheitert am
+Stueck". Seither wird zusaetzlich die Gesamtdatei durchgeschoben (fehlende
+Funktionen durch Ruempfe ersetzt) und der erste Blocker per Bisektion
+gesucht -- das hat sofort mehrere Luecken zutage gefoerdert:
+
+- **`const` als struct-Feldtyp** (`const char* start;`) -- aktionslose Kopie
+  `fieldConstKw`, damit kein `const`-Zustand in den naechsten Parameter
+  durchsickert (wie bei `retConstKw`).
+- **Benannter Struct im typedef** (`typedef struct TCType { ... } TCType;`).
+  Der Tag wird geparst und verworfen; als interner Tag dient wie bisher der
+  typedef-Name. `struct TCType` ist damit nicht als eigenstaendiger Typname
+  nutzbar -- im Bootstrap-Ziel kommt das genau einmal vor und stoert nicht.
+- **Mehrere Deklaratoren pro globaler Deklaration**
+  (`static TCType a[512], b[512][64];`, 31 Fundstellen). `tcGlobalOne` parst
+  weiterhin eine VOLLSTAENDIGE Deklaration aus dem Rohtext; der neue Wrapper
+  `tc_globalend` teilt an den Kommas der obersten Ebene und setzt fuer jeden
+  weiteren Deklarator den Typ-Praefix davor. Kommas in `[...]` oder `{...}`
+  zaehlen dabei nicht.
+
 ## Weitere Luecken: offene Arraygroesse und Hex-/Oktal-Escapes (2026-08-10)
 
 `static const char wsSet[] = " \\x09\\x0d\\x0a";` -- gleich drei Dinge auf
