@@ -1,12 +1,106 @@
 # Projektstatus
 
-Stand: **2026-07-26 spät abends (Nachtrag: Schritt 3 [Live-Q9-Verifikation]
-läuft -- fünf echte `-largedata`/`-os9`-Backend-Bugs live auf Q9 gefunden
-und gefixt, main sauber (PR #48+#49). Ein sechster, neuer Laufzeitfehler
-ist beim ersten vollständigen End-zu-Ende-Testlauf aufgetaucht und wird
-gerade untersucht -- Details in der Claude-Memory-Datei
-`qcc-vollport-status.md`, die für diesen Strang aktueller ist als dieser
-Abschnitt hier.)**
+Stand: **2026-08-10 -- SCHRITT 3 (Live-Q9-Verifikation) ABGESCHLOSSEN.
+Der von QCC selbst übersetzte EBNF-Generator läuft auf dem echten Q9 und
+erzeugt eine mit der `xcc`-gebauten Referenz BITGLEICHE Parserausgabe.
+Siehe Abschnitt "Selfhosting-Kreis geschlossen" direkt unten.**
+
+<details>
+<summary>Vorheriger Stand (2026-07-26 spät abends) -- teilweise überholt</summary>
+
+Schritt 3 [Live-Q9-Verifikation] läuft -- fünf echte `-largedata`/`-os9`-
+Backend-Bugs live auf Q9 gefunden und gefixt, main sauber (PR #48+#49). Ein
+sechster, neuer Laufzeitfehler ist beim ersten vollständigen End-zu-Ende-
+Testlauf aufgetaucht und wird gerade untersucht -- Details in der
+Claude-Memory-Datei `qcc-vollport-status.md`.
+
+**Überholt:** Der sechste Bug wurde am 2026-07-27 mit Commit `79024ea`
+gefixt (variadische extern-ABI legte falschen Wert in d1, "Volle Suite
+grün") -- dieser Abschnitt wurde damals nur nicht nachgezogen. Ebenfalls
+korrigiert: die ABI-Regel lautet laut jenem Commit "die ersten ZWEI
+Argumente insgesamt (fest + variadisch) gehen nach d0/d1", nicht die
+weiter unten in diesem Dokument beschriebene Fassung von 2026-07-24.
+
+</details>
+
+## Selfhosting-Kreis geschlossen (2026-08-10)
+
+**Der von QCC selbst übersetzte EBNF-Generator läuft auf dem echten Q9 und
+liefert dieselbe Ausgabe wie die `xcc`-gebaute Referenz.**
+
+Ablauf (vollständig reproduzierbar, alles gegen echte Werkzeuge):
+
+1. `SourceQCC/ebnf.tc` + `SourceQCC/codegen.tc` mit `build/qcc_p` nach
+   Stack-IR, dann mit `qcc_backend -os9 -largedata` (codegen zusätzlich
+   `-part`) nach 68k-Assembler.
+2. Echter `r68` assembliert, echter `l68` linkt gegen echte
+   `clib.l`/`os_lib.l`/`sys.l` (`cstart.r` MUSS zuerst stehen) --
+   Ergebnis: gültiges 2,08-MB-OS-9-Modul, Datensegment nur 4826 Byte.
+3. Modul per ToolShed nach `PROJECTS/ebnf_gen_tc/` der isolierten
+   Arbeitskopie `OS9SYS.claude-work.hda`, Ausführung über
+   `test/expect/test_qcc_selfhost_run.exp` (in Q9-Flux).
+4. Ausgabe `qcc_p.c` gegen die `xcc`-Referenz `oberon0_p.c` (identische
+   Eingabegrammatik) verglichen.
+
+**Ergebnis:** `qcc_p.c` ist BITGLEICH (md5 `20a990d7ed2b8e816c95163c546b667c`).
+Die ebenfalls erzeugte `qcc.s68` unterscheidet sich in genau EINER Zeile --
+einem Kommentartext (`^Eingabe` vs. `Eingabezeiger`), der so schon im
+Quelltext abweicht (`Source/codegen.cpp:1530` gegen
+`SourceQCC/codegen.tc:1795`), also kein Übersetzungsunterschied.
+
+### Dafür gefundener und behobener Backend-Bug: char-Parameter auf Big-Endian
+
+Der erste Vergleich zeigte genau 8 abweichende Zeilen -- alle vier
+Zeichenbereiche der Grammatik kamen als `0x00`/`0x00` statt `0x30`/`0x39`
+usw. heraus:
+
+| Grammatikregel | erwartet | vorher |
+|---|---|---|
+| `digit = "0"~"9"` | `0x30`-`0x39` | `0x00`-`0x00` |
+| `hexDigit ... "A"~"F"` | `0x41`-`0x46` | `0x00`-`0x00` |
+| `lowerLetter = "a"~"z"` | `0x61`-`0x7A` | `0x00`-`0x00` |
+| `upperLetter = "A"~"Z"` | `0x41`-`0x5A` | `0x00`-`0x00` |
+
+**Ursache:** Der Aufrufer legt jedes Argument als volles 32-Bit-Langwort ab
+(`move.l #wert,-(a7)`). Ein `char`-Parameter steht damit im
+NIEDERWERTIGSTEN Byte des Slots, auf dem Big-Endian-68k also bei Slot+3.
+`LOADC`/`STOREC`/`ADDRL` adressierten aber die Slot-BASIS -- bei LOKALEN
+Slots ist das korrekt und in sich konsistent (dort benutzen Speichern und
+Laden dieselbe Adresse), bei PARAMETERN traf es das höchstwertige Byte,
+also für jeden ASCII-Wert konstant 0. Betroffen war u.a.
+`astPushRNG(char lo, char hi)`, das beide Bereichsgrenzen als 0 bekam.
+
+**Warum bisher unentdeckt:** ARM64 ist Little-Endian (dort liegt das
+niederwertige Byte zufällig an der Slot-Basis, der Code war also
+versehentlich richtig), und QCCVM hält typisierte Slots statt roher
+Stack-Langworte. Beide Referenzpfade konnten den Fehler prinzipiell nicht
+zeigen -- nur echtes 68k-Big-Endian ist betroffen.
+
+**Fix** (`Source/qcc_backend_c.cpp`, Prolog-Emission): Für jeden Parameter,
+der im Rumpf tatsächlich byteweise benutzt wird (`LOADC`/`STOREC` auf
+seinem Slot -- der eindeutige Beleg, dass es ein `char`-Parameter ist),
+wird einmalig im Prolog das niederwertige Byte an die Slot-Basis kopiert:
+
+```
+	move.b	15(a5),12(a5)
+```
+
+Danach stimmen alle bestehenden Byte-Zugriffspfade (`LOADC`, `STOREC` sowie
+`ADDRL`+`LOADIND`/`STOREIND`) unverändert überein, genau wie bei lokalen
+`char`-Slots -- kein Eingriff an den Opcodes nötig. Die Änderung ist rein
+additiv: im gesamten Generator entstehen dadurch genau 3 zusätzliche
+Assemblerzeilen (`tc_astPushRNG` zweimal, `tc_charComment` einmal), keine
+einzige bestehende Zeile ändert sich. Verifiziert wurde das durch einen
+Kontrolllauf, der mit dem UNVERÄNDERTEN Backend die eingecheckte
+`build/selfhost-20260801/codegen.s68` bitgenau reproduziert.
+
+**Bewusst offene Restlücke:** Ein `char`-Parameter, dessen Adresse per
+`ADDRL` genommen wird, OHNE dass er irgendwo per `LOADC`/`STOREC`
+angefasst wird (`void f(char c){ char* p; p=&c; ... }`), wird nicht
+erkannt. Die IR (`FUNC <name> <nargs>`, s. `docs/IR_OPCODES.md`) trägt
+keine Parametertypen, und `ADDRL` allein ist kein Beleg für `char` -- bei
+einem `int`-Parameter wäre die Verengung sogar falsch. Im echten Generator
+kommt dieser Fall nicht vor.
 
 ## Wichtig für eine neue Sitzung (auch mit anderer KI)
 
