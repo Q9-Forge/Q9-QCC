@@ -154,6 +154,48 @@ Das heißt: **Layer 1 ist NICHT einfach eine Untermenge von Layer 2** --
 `goto` und Funktionszeiger sind für den generierten Parser zwingend, obwohl
 der Generator selbst sie an keiner Stelle in eigener Logik braucht.
 
+### Messung am realen `Data/qcc_p.c` (2026-08-10)
+
+Nachgezählt statt geschätzt, plus je ein Kompilierversuch mit dem echten
+`build/qcc_p`:
+
+| Sprachmittel | Vorkommen in `Data/qcc_p.c` | QCC kann es heute |
+|---|---|---|
+| `goto` | 786 | **nein** (Testprogramm liefert `FAIL`) |
+| Sprungmarken `L<n>:` | 465 | **nein** |
+| `#define` | 13 | **nein** (Präprozessor fehlt komplett) |
+| `#include` | 2 | **nein** |
+| Funktionszeiger-Aufruf | 1 | **nein** (Testprogramm liefert `FAIL`) |
+
+Der Aufwand ist damit sehr ungleich verteilt: Funktionszeiger kommen nur
+**einmal** vor (vermutlich umgehbar), der Präprozessorbedarf ist mit 13
+`#define`/2 `#include` klein bis vorverarbeitbar -- der eigentliche Brocken
+ist `goto`. Dafür ist die Lage aber mechanisch klar: die IR hat mit
+`LABEL <L>` und den Sprung-Opcodes bereits alles Nötige (siehe
+`docs/IR_OPCODES.md`), es fehlt nur die Grammatik- und Frontend-Seite.
+
+### Was "Bootstrap" genau hieße (Begriffsklärung, 2026-08-10)
+
+Wichtig, weil leicht zu verwechseln -- der 2026-08-10 geschlossene
+Selfhosting-Kreis (siehe `docs/STATUS.md`) ist **kein** Compiler-Bootstrap:
+
+- **Stufe 0** (erledigt, Bj. 2026-07): `xcc` -- der Microware-K&R-/Ultra-C-
+  Compiler -- baut QCC für OS-9. Deshalb liegen `qcc_p` und `qcc_backend`
+  als lauffähige OS-9-Module auf dem Q9 (siehe `OS9_BOOTSTRAP.md` in
+  Q9-Parsec, das ihre Existenz voraussetzt, aber keinen Build-Weg nennt).
+- **Zwischenschritt** (erledigt 2026-08-10): QCC übersetzt ein großes,
+  echtes Fremdprogramm -- den EBNF-Generator -- korrekt. Das ist ein
+  Reifenachweis für den Compiler, kein Bootstrap.
+- **Stufe 1** (offen): QCC übersetzt QCCs EIGENEN Quelltext
+  (`Data/qcc_p.c` + `Source/qcc_backend_c.cpp`). Blockiert durch die drei
+  Lücken in der Tabelle oben.
+- **Stufe 2** (offen): das in Stufe 1 entstandene Kompilat übersetzt den
+  Quelltext erneut. Als bewiesen gilt ein Bootstrap erst, wenn Stufe 1 und
+  Stufe 2 bitgleiche Ausgaben liefern (Fixpunkt).
+
+Auf Andreas' Entscheidung (2026-08-10) bleibt das ein Fernziel und wird
+vorerst nicht angegangen.
+
 ## 5. L3 -- die beiden C++/STL-Backends (andersartiger Umbau)
 
 `Source/qcc_backend.cpp` und `Source/qcc_arm64_backend.cpp` sind die
