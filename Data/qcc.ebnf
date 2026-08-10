@@ -1,4 +1,12 @@
-program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl } { funcdef } .
+/* Beliebige Reihenfolge von Deklarationen und Funktionen (C-Regel). Vorher
+   waren es ZWEI getrennte Wiederholungen -- erst alle Deklarationen, dann
+   alle Funktionen -- wodurch eine Vorwaertsdeklaration ZWISCHEN globalen
+   Variablen ("static void fatal(const char* msg);" mitten im
+   Deklarationsblock, so in Source/qcc_backend_c.cpp) unparsbar war.
+   funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
+   plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
+   faellt korrekt hierher zurueck. */
+program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl | funcdef } .
 
 /* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
@@ -33,7 +41,14 @@ structName  = ident .
    8 Byte -- ein einzelnes IR-Offset muesste sonst je nach Ziel-Architektur
    unterschiedlich sein). Der 68k-Backend nutzt von diesem 8-Byte-Slot nur
    die ersten 4 Byte (identisch zum Layout einer lokalen Pointer-Variable). */
-structField = type pointerDecl fieldName [ arraySize ] ";" .
+/* Mehrere Felder gleichen Typs in einer Zeile ("int nargs, first, last;").
+   Die Aktion haengt an structDeclarator, NICHT an structField: sie muss
+   einmal PRO Feld feuern, nicht einmal pro Zeile. tc_structfield sucht den
+   Namen rueckwaerts in seiner Spanne und nimmt den Typ aus tcCurrentType --
+   beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
+   umfasst statt der ganzen Zeile. */
+structField = type pointerDecl structDeclarator { "," structDeclarator } ";" .
+structDeclarator = fieldName [ arraySize ] .
 fieldName   = ident .
 
 typedefDecl = "typedef" typedefType typedefTargetName ";"
