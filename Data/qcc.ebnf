@@ -262,7 +262,13 @@ initValue = initNumber | initNeg | initBool .
 initBool  = "true" | "false" .
 initNeg   = "-" initNumber .
 initNumber = digit { digit } .
-assignStmt = target assignop expr ";" .
+/* Kettenzuweisung "a = b = 0;". Steht als ERSTE Alternative; bei einer
+   einfachen Zuweisung scheitert sie am zweiten target und die geordnete
+   Auswahl faellt zurueck. Das ist gefahrlos, weil Aktionen nicht sofort
+   ausgefuehrt, sondern protokolliert und beim Zurueckrollen verworfen
+   werden (actionLog, siehe Data/qcc_p.c). */
+assignStmt = chainAssign | target assignop expr ";" .
+chainAssign = target assignop target assignop expr ";" .
 assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
            | "<<=" | ">>=" | "&=" | "^=" | "|=" .
 callStmt  = call ";" | indirectCall ";" .
@@ -428,8 +434,13 @@ castOperand = factor .
 /* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
    Operand hier kein blosser Bezeichner ist. Die Aktionen erkennen die Form
    am fuehrenden "(" ihrer Spanne. */
-preIncDec  = incdecOp derefIncTarget | incdecOp ident .
-postIncDec = derefIncTarget incdecOp | ident incdecOp .
+/* "a[i]++" -- Inkrement eines Arrayelements. Der Indexausdruck darf nur
+   EINMAL ausgewertet werden (Seiteneffekte!), sein Wert liegt beim Feuern
+   der Aktion bereits auf dem Stack und wird dort per DUP/SWAP
+   weiterverwendet statt neu berechnet. */
+preIncDec  = incdecOp derefIncTarget | incdecOp indexIncTarget | incdecOp ident .
+postIncDec = derefIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
+indexIncTarget = ident index .
 derefIncTarget = "(" "*" ident ")" .
 incdecOp   = "++" | "--" .
 incDecStmt = preIncDec ";" | postIncDec ";" .
