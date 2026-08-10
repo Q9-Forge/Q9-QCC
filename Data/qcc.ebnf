@@ -107,7 +107,9 @@ globalStringInit = "\042" { character } "\042" .
    ueblich und im Bootstrap-Ziel 16-mal verwendet. Ausgewertet wird der
    Ausdruck von tcConstArrayLen aus dem Rohtext (die Deklarations-Aktionen
    lesen die Groesse ohnehin dort ab, nicht ueber den Wertestapel). */
-arraySize  = "[" constSize "]" .
+/* Groessenangabe optional: "char wsSet[] = \"...\";" leitet die Laenge aus
+   dem Initialisierer ab (Stringlaenge + Nullbyte). */
+arraySize  = "[" [ constSize ] "]" .
 arraySizeN = "[" constSize "]" .
 constSize  = globalNumber { constSizeOp globalNumber } .
 constSizeOp = "+" | "-" | "*" .

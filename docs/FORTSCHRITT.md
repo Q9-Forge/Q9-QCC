@@ -1,5 +1,24 @@
 # Fortschritt und Roadmap
 
+## Weitere Luecken: offene Arraygroesse und Hex-/Oktal-Escapes (2026-08-10)
+
+`static const char wsSet[] = " \\x09\\x0d\\x0a";` -- gleich drei Dinge auf
+einmal, und weil die Zeile im DEKLARATIONSteil steht, blockierte sie das
+Parsen der ganzen Datei am Stueck (eine einzelne Funktion konnte man
+dagegen sehr wohl uebersetzen; deshalb war die Zeile in der
+funktionsweisen Messung unsichtbar).
+
+- **Arraygroesse aus dem Initialisierer** (`char x[] = "abc";`): Die
+  Groessenangabe ist jetzt optional, die Laenge wird aus dem Literal
+  abgeleitet (Zeichen + Nullbyte). Dabei war ein zweiter Guard noetig: der
+  ganze Initialisierer-Block hing an `if (arrayLen)`, was bei offener
+  Groesse nie zutraf -- jetzt merkt sich `hadBrackets`, DASS Klammern
+  dastanden, unabhaengig von der noch unbekannten Laenge.
+- **Hex- und Oktal-Escapes** (`\\x09`, `\\011`) in `tcDecodeStringLit`.
+  Vorher zaehlten die Ziffern als einzelne Zeichen, was bei fester
+  Arraygroesse als "string literal too long" scheiterte -- und bei offener
+  Groesse eine falsche Laenge ergeben haette.
+
 ## ECHTER KORREKTHEITSFEHLER gefunden und behoben: Klammern bei `*` (2026-08-10)
 
 **`x * (a + b)` rechnete `(x * a) + b`.** Live auf Q9 nachgewiesen: statt 14
