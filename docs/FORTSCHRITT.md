@@ -1,5 +1,60 @@
 # Fortschritt und Roadmap
 
+## `goto` + Sprungmarken implementiert (2026-08-10)
+
+Der größte der drei Bootstrap-Blocker (786 `goto`/465 Marken in
+`Data/qcc_p.c`) ist beseitigt. Neu in der Grammatik:
+
+```
+gotoStmt  = "goto" ident ";" .
+labelStmt = ident ":" .
+```
+
+Beide Aktionen (`tc_goto`/`tc_label`) hängen bewusst an der
+VOLLSTÄNDIGEN Regel statt an einer Namens-Unterregel: `labelStmt` beginnt
+mit einem `ident` und wird deshalb bei jedem ident-Statement (`foo();`,
+`x = 1;`) zuerst probiert und danach zurückgerollt -- eine Aktion an einer
+Unterregel würde dort spekulativ feuern und ein `LABEL` emittieren, das
+gar nicht hingehört. Den Bezeichner holt sich die Aktion selbst aus dem
+erkannten Textbereich (`tcIdentFromSpan`). Verifiziert: ein Programm aus
+`foo(); x = x + 1;` erzeugt 0 `LABEL`/`JMP`-Zeilen.
+
+Sprungmarken sind funktionslokal (Reset in `tc_defname`, wie
+`tcLocalCount`); Name→IR-Labelnummer über `tcGotoNames`/`tcGotoLabel`.
+Vorwärtssprünge funktionieren dadurch ohne Sonderbehandlung -- die Nummer
+wird beim ersten Auftreten vergeben, egal ob Sprung oder Marke zuerst kam.
+`tc_funcend` meldet angesprungene, aber nie definierte Marken;
+`tc_label` meldet doppelte.
+
+**Dabei gefundene und behobene Regression:** `caseBody = { statement }` --
+beim `default:` eines `switch` probiert der Parser erst `statement`, und
+`labelStmt = ident ":"` passt darauf. Das `default:` wurde also als
+Sprungmarke verschluckt, `defaultGroup` kam nie zum Zug (aufgefallen an
+1034 abweichenden IR-Zeilen in `SourceQCC/ebnf.tc`). Da der EBNF-Dialekt
+keinen Except-/Negationsoperator hat (ISO 14977's `-` ist bewusst nicht
+implementiert), ist "ident außer Schlüsselwort" nicht direkt ausdrückbar --
+Lösung: `statement = labelStmt | unlabeledStmt`, und `caseBody` benutzt
+`{ unlabeledStmt }`. **Dokumentierte Grenze:** eine Marke direkt auf der
+Ebene eines case-/default-Rumpfes ist damit nicht möglich, in einem
+geschachtelten Block darin schon (`block` benutzt wieder `statement`). Im
+Bootstrap-Ziel `Data/qcc_p.c` kommt der Fall nicht vor (nachgezählt: 0).
+
+**Regressionsnachweis:** `SourceQCC/ebnf.tc` (12317 Zeilen IR) und
+`codegen.tc` (15968 Zeilen IR) erzeugen mit dem neuen Parser BITGLEICH
+dieselbe IR wie vorher -- beide enthalten kein `goto`, dürfen sich also
+nicht ändern. Ebenso das Beispielprojekt.
+
+**Live auf Q9 verifiziert:** ein `goto`-Schleifenprogramm (Summe 1..10)
+durch die volle Kette (`qcc_p` → `qcc_backend -os9 -largedata` → echter
+`r68` → echter `l68` gegen echte `clib.l`) gab auf dem Emulator korrekt
+`55` aus.
+
+Damit verbleiben für den echten Bootstrap: Funktionszeiger (1 Fundstelle)
+und der Präprozessor -- letzterer ist erledigt, sobald die 2 `#include`
+durch `extern`-Deklarationen ersetzt werden (etabliertes Projektmuster,
+siehe `SourceQCC/ebnf.tc`) oder `xcc -pp` vorgeschaltet wird, das die 13
+`#define`/2 `#include` restlos auflöst (getestet, +317 Zeilen).
+
 ## Schritt 3 ABGESCHLOSSEN: selbstgehosteter Generator läuft live auf Q9 (2026-08-10)
 
 Der von QCC selbst übersetzte EBNF-Generator (`SourceQCC/ebnf.tc` +
