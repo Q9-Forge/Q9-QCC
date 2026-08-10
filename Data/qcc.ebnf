@@ -48,7 +48,12 @@ structName  = ident .
    beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
    umfasst statt der ganzen Zeile. */
 structField = type pointerDecl structDeclarator { "," structDeclarator } ";" .
-structDeclarator = fieldName [ arraySize ] .
+/* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
+   dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
+   siehe tcStructFieldRowLen. Echte 2D-Zugriffe "x.args[i][j]" sind bewusst
+   NICHT umgesetzt (kommen im Bootstrap-Ziel nicht vor) und werden
+   diagnostiziert statt still falsch gerechnet. */
+structDeclarator = fieldName [ arraySize [ arraySizeN ] ] .
 fieldName   = ident .
 
 typedefDecl = "typedef" typedefType typedefTargetName ";"
