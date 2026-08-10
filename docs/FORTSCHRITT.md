@@ -7,7 +7,19 @@ durch `extern`-Prototypen ersetzt, danach per `xcc -pp` makrofrei) durch
 QCC selbst. Gemessen wird pro Top-Level-Funktion, wie viele von 338 der
 Parser annimmt.
 
-**Fortschritt: 309 -> 112 -> 64 -> 53 fehlerhafte Funktionen.**
+**Fortschritt: 309 -> 112 -> 64 -> 53 -> 11 fehlerhafte Funktionen**
+(327 von 338 uebersetzen).
+
+Dritte Runde: die leere Anweisung ";" und -- entscheidend -- `charLit` als
+LEXER-TOKEN. Zeichenliterale waren als reine Grammatikregel formuliert,
+wodurch der Lexer das Leerzeichen in `' '` als Whitespace wegfrass, bevor
+die Grammatik es sehen konnte; `stringLit` entgeht dem seit jeher genau
+deshalb, weil es in `[LEXER]` als `TOKEN` deklariert ist. Dazu das
+escapte Anfuehrungszeichen im String-Literal (`"a\"b"`) -- `character`
+schloss `"` komplett aus, `strEscape` konsumiert Backslash und
+Folgezeichen jetzt als Einheit; dekodieren konnte `tcDecodeStringLit` das
+laengst. Die leere Anweisung war der zweite grosse Hebel: der generierte
+Parser schreibt hinter JEDE Sprungmarke ein `L19: ;`.
 
 Zweite Runde (ebenfalls 2026-08-10): globale Variablen mit Typedef-Typ,
 `unsigned char`/`long` als globaler Typ sowie `++`/`--` auf Zeigern.
