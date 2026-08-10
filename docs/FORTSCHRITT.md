@@ -10,6 +10,29 @@ Parser annimmt.
 **Fortschritt: 309 -> 112 -> 64 -> 53 -> 11 -> 8 fehlerhafte Funktionen**
 (330 von 338 uebersetzen).
 
+**Erste Messung von `Source/qcc_backend_c.cpp` (2026-08-10):** Die Datei ist
+praktisch reines C -- keine Templates, Klassen, `new`/`delete`. Zwei
+Blocker verhinderten aber, dass ueberhaupt IRGENDETWAS davon uebersetzbar
+war, weil beide in der Deklarations-Praeambel stehen und damit jede
+Funktion mitreissen:
+
+1. **Mehrere Felder gleichen Typs in einer struct-Zeile**
+   (`int nargs, first, last, locals, frameBytes;`) -- behoben, die Aktion
+   haengt jetzt an `structDeclarator` statt an `structField`, damit sie
+   einmal pro FELD feuert statt einmal pro Zeile.
+2. **Vorwaertsdeklaration zwischen globalen Variablen**
+   (`static void fatal(const char* msg);` mitten im Deklarationsblock).
+   `program` bestand aus ZWEI getrennten Wiederholungen -- erst alle
+   Deklarationen, dann alle Funktionen -- was die C-uebliche freie
+   Reihenfolge ausschloss. Jetzt eine gemeinsame Wiederholung mit
+   `funcdef` zuletzt in der geordneten Auswahl.
+
+Danach parst die Praeambel, und nur noch 12 der erkannten Funktionen
+scheitern. **Einziger verbleibender Praeambel-Blocker: ein
+ZWEIDIMENSIONALES struct-Feld** (`char args[6][64];`, genau ein
+Vorkommen) -- `structField` erlaubt nur eine Dimension. Solange das steht,
+ist die gesamte Datei blockiert.
+
 Vierte Runde: Hexzahlen ("0x20"). `number` ist ein LEXER-TOKEN, die Regel
 bestimmt also auch, wie weit der Lexer liest -- die hex-Form muss deshalb
 VOR der dezimalen stehen, sonst schluckt diese die fuehrende "0" allein
