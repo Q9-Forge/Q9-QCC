@@ -95,13 +95,29 @@ paramArray = "[" "]" .
 
 block     = "{" { statement } "}" .
 
-statement = ifStmt
+statement = labelStmt
+          | unlabeledStmt .
+
+/* Alles AUSSER labelStmt. Grund: caseBody ist "{ unlabeledStmt }", darf also
+   keine Sprungmarke erkennen -- sonst wuerde die Wiederholung das "default:"
+   des switch als Marke verschlucken ("labelStmt = ident ':'" passt darauf)
+   und defaultGroup kaeme nie zum Zug. Der EBNF-Dialekt hat keinen Except-/
+   Negationsoperator (ISO 14977's "-" ist bewusst nicht implementiert, siehe
+   Kopfkommentar in Q9-Parsec/Source/parsec.cpp), "ident ausser Schluesselwort"
+   ist also nicht direkt ausdrueckbar -- deshalb diese Aufteilung.
+   BEWUSSTE, DOKUMENTIERTE GRENZE: eine Sprungmarke direkt auf der Ebene eines
+   case-/default-Rumpfes ist damit nicht moeglich. In einem geschachtelten
+   Block innerhalb des Rumpfes schon ("{ weiter: ... }"), denn block benutzt
+   wieder statement. Im Bootstrap-Ziel Data/qcc_p.c kommt der Fall nicht vor
+   (nachgezaehlt: 0 Marken innerhalb von switch-Ruempfen). */
+unlabeledStmt = ifStmt
           | whileStmt
           | forStmt
           | doStmt
           | switchStmt
           | breakStmt
           | continueStmt
+          | gotoStmt
           | returnStmt
           | block
           | callStmt
@@ -144,7 +160,7 @@ caseLabel    = "case" caseValue ":" .
 caseValue    = ident | caseNeg | caseNumber .
 caseNeg      = "-" caseNumber .
 caseNumber   = digit { digit } .
-caseBody     = { statement } .
+caseBody     = { unlabeledStmt } .
 defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
 
@@ -213,6 +229,19 @@ doBody    = statement .
 
 breakStmt    = "break" ";" .
 continueStmt = "continue" ";" .
+
+/* goto + Sprungmarken. Beide Aktionen haengen bewusst an der VOLLSTAENDIGEN
+   Regel, nicht an einer Unterregel fuer den blossen Namen: labelStmt beginnt
+   mit einem ident und wird deshalb bei JEDEM ident-Statement ("foo();",
+   "x = 1;") zuerst probiert und danach zurueckgerollt. Eine Aktion an einer
+   Namens-Unterregel wuerde in genau diesen Faellen spekulativ feuern; an der
+   Gesamtregel feuert sie erst, wenn das Statement vollstaendig erkannt ist.
+   Den Bezeichner holt sich die Aktion selbst aus dem erkannten Textbereich
+   (tcIdentFromSpan). Deshalb steht labelStmt in der Alternation auch VOR
+   callStmt/assignStmt -- die geordnete Auswahl probiert es zuerst, das
+   Backtracking faengt die Fehlversuche ab. */
+gotoStmt  = "goto" ident ";" .
+labelStmt = ident ":" .
 
 expr       = conditionalExpr .
 conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .

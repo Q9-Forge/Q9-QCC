@@ -161,18 +161,32 @@ Nachgezählt statt geschätzt, plus je ein Kompilierversuch mit dem echten
 
 | Sprachmittel | Vorkommen in `Data/qcc_p.c` | QCC kann es heute |
 |---|---|---|
-| `goto` | 786 | **nein** (Testprogramm liefert `FAIL`) |
-| Sprungmarken `L<n>:` | 465 | **nein** |
-| `#define` | 13 | **nein** (Präprozessor fehlt komplett) |
-| `#include` | 2 | **nein** |
+| `goto` | 786 | **ja** (implementiert 2026-08-10) |
+| Sprungmarken `L<n>:` | 465 | **ja** (implementiert 2026-08-10) |
+| `#define` | 13 | nein -- aber durch `xcc -pp` vorverarbeitbar (getestet) |
+| `#include` | 2 | nein -- durch `extern`-Deklarationen ersetzbar (Projektmuster) |
 | Funktionszeiger-Aufruf | 1 | **nein** (Testprogramm liefert `FAIL`) |
 
-Der Aufwand ist damit sehr ungleich verteilt: Funktionszeiger kommen nur
-**einmal** vor (vermutlich umgehbar), der Präprozessorbedarf ist mit 13
-`#define`/2 `#include` klein bis vorverarbeitbar -- der eigentliche Brocken
-ist `goto`. Dafür ist die Lage aber mechanisch klar: die IR hat mit
-`LABEL <L>` und den Sprung-Opcodes bereits alles Nötige (siehe
-`docs/IR_OPCODES.md`), es fehlt nur die Grammatik- und Frontend-Seite.
+Der Aufwand war sehr ungleich verteilt: Funktionszeiger kommen nur
+**einmal** vor, der Präprozessorbedarf ist mit 13 `#define`/2 `#include`
+klein -- der eigentliche Brocken war `goto`.
+
+**`goto` + Sprungmarken sind seit 2026-08-10 implementiert** (Details,
+inkl. der dabei gefundenen `switch`/`default:`-Regression und der bewusst
+dokumentierten Grenze, in `docs/FORTSCHRITT.md`); live auf Q9 verifiziert.
+
+**Präprozessor: kein Eigenbau nötig.** Getestet mit der vorhandenen
+OS-9-Toolchain: `xcc -pp` löst `#define` UND `#include` in `Data/qcc_p.c`
+restlos auf (0 Reste) und kostet nur +317 Zeilen, weil die
+Microware-Header schlank sind und kein `union` enthalten. Nur `unsigned
+char` (in `size_t`/`struct FILE`) kennt QCC nicht -- deshalb ist der
+sauberere Weg, die 2 `#include` wie im Projekt üblich durch
+`extern`-Deklarationen zu ersetzen (`Data/qcc_p.c` braucht aus den Headern
+ohnehin nur Funktionen: `printf`, `fprintf`, `strncmp`, `strlen`,
+`sprintf`, `exit`, `fputc`, `malloc`, `realloc`, `fopen`, `fclose`).
+
+Damit ist als einziger echter Sprachblocker der **Funktionszeiger**
+übrig (1 Fundstelle).
 
 ### Was "Bootstrap" genau hieße (Begriffsklärung, 2026-08-10)
 
