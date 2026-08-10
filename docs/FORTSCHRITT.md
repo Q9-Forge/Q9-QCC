@@ -9,6 +9,28 @@ Parser annimmt.
 
 **Fortschritt: 309 -> 112 -> 64 -> 53 fehlerhafte Funktionen.**
 
+Zweite Runde (ebenfalls 2026-08-10): globale Variablen mit Typedef-Typ,
+`unsigned char`/`long` als globaler Typ sowie `++`/`--` auf Zeigern.
+Die Funktionszahl blieb dabei bei 53 -- diese Funktionen haben mehrere
+Blocker gleichzeitig, die einzelnen Konstrukte sind aber nachweislich
+repariert (`while (...) p++;`, `d[n++] = x`, `*p++` uebersetzen jetzt).
+
+`tc_globalend` erkannte Typen per Rohtext-Scan und kannte weder
+Typedef-Namen noch `long`; ausserdem uebersprang der `unsigned`-Zweig
+pauschal 12 Zeichen, was bei `unsigned char` (13) mitten in den
+Bezeichner lief. Damit scheiterte JEDE globale Variable eines typedef'ten
+Typs mit "bad global declaration" -- obwohl dieselbe Deklaration als
+LOKALE laengst funktionierte. Nach dem Fix parst die komplette
+Deklarations-Praeambel von `Data/qcc_p.c` (u.a. viele `static TCType ...`)
+ohne eine einzige Meldung.
+
+`++`/`--` auf Zeigern rechnet in ELEMENTEN: `IPADD` mit dem Tag des
+Zieltyps statt eines schlichten `ADD`. Da `IPADD` den Zaehler UNTEN und
+den Zeiger OBEN erwartet, wird der Zeiger beim Postfix zweimal geladen
+statt per `DUP` vervielfaeltigt -- ein `DUP` laege an der falschen Stelle
+relativ zum Zaehler. Live auf Q9 verifiziert (Summe ueber einen
+durchlaufenen Puffer plus `p--` am Ende: `n=198 last=67`).
+
 Geschlossene Luecken:
 
 | Konstrukt | Vorkommen | Umsetzung |
