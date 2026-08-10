@@ -1,5 +1,33 @@
 # Fortschritt und Roadmap
 
+## MEILENSTEIN: `Data/qcc_p.c` parst am Stueck (2026-08-10)
+
+Mit vier durch Ruempfe ersetzten Funktionen laeuft die GANZE Datei durch das
+Frontend: **41082 IR-Zeilen**. Dafuer kam zuletzt das Inkrement auf
+Struct-Feldern dazu (`x.feld++`, `p->feld++`, jeweils Prae- und Postfix) --
+Feldadresse wie in `tc_varref`, danach dieselbe Stapelchoreografie wie beim
+Arrayelement (Postfix schiebt den alten Wert per `SWAP` unter die Adresse,
+Praefix dupliziert sie und laedt den neuen Wert am Ende neu). Live auf Q9
+verifiziert: `a=10 v.p=11 b=21 rp=21`.
+
+**Der Weg dahinter ist aber noch nicht frei.** Das Backend kam danach an
+zwei eigene Grenzen, beide behoben:
+
+- *Globale zwischen zwei Funktionen* wurden abgelehnt. Das war eine
+  Folgewirkung der freien `program`-Reihenfolge: seit Deklarationen und
+  Funktionen gemischt werden duerfen, entstehen solche IR-Folgen regulaer.
+  `collectGlobals` sammelt sie ohnehin positionsunabhaengig ein.
+- `MAX_FUNCS` stand auf 256; `Data/qcc_p.c` bringt 354 Funktionen mit.
+
+**Aktueller Stand des Gesamtlaufs:** Das Backend bricht jetzt bei
+"IR Zeile 4265: negativer lokaler Slot" ab -- naechster Untersuchungspunkt.
+Ausserdem meldet das Frontend 559 semantische Fehler, die die reine
+Parse-Messung nicht sichtbar machte; die groessten Gruppen sind
+`'->' requires a pointer to struct` (233 -- die Pfeil-Umsetzung deckt noch
+nicht alle Basisformen ab), `static function declaration without body is
+meaningless` (177) und `partial indexing of a 2D array` (38). Parsen ist
+eben nicht Uebersetzen.
+
 ## Methodischer Fund: die funktionsweise Messung hatte einen blinden Fleck
 
 Die Messung erkannte Funktionen nur, wenn die Signaturzeile mit `{` endet --

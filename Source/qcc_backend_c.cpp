@@ -22,7 +22,9 @@
    Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
 #define MAX_IR_LINES    65536
-#define MAX_FUNCS       256
+/* 2026-08-10 von 256 auf 1024 erhoeht: Data/qcc_p.c allein bringt 354
+   Funktionen mit -- der Selbstuebersetzungsversuch lief hier in die Grenze. */
+#define MAX_FUNCS       1024
 /* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceQCC/
    codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
    Nachweis: JEDES String-Literal im QCC-Quelltext wird zu einem
@@ -512,10 +514,15 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
 		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0) {
-			/* vor der ersten Funktion (echte globale Variablen) ODER innerhalb einer
-			   offenen Funktion (static lokale Variable, siehe collectGlobals) erlaubt --
-			   NICHT zwischen zwei Funktionen (ausserhalb jeder FUNC-Spanne). */
-			if ((!open && seenFunction) || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4)) {
+			/* Erlaubt vor der ersten Funktion (echte globale Variablen), innerhalb
+			   einer offenen Funktion (static lokale Variable, siehe collectGlobals)
+			   UND seit 2026-08-10 auch ZWISCHEN zwei Funktionen: C laesst
+			   Deklarationen und Funktionen beliebig mischen, und seit die
+			   program-Regel das abbildet (noetig fuer eine Vorwaertsdeklaration
+			   mitten im Deklarationsblock, siehe docs/FORTSCHRITT.md) entstehen
+			   solche IR-Folgen regulaer. collectGlobals sammelt sie ohnehin
+			   positionsunabhaengig ein. */
+			if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4) {
 				sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 				fatal(msg);
 			}

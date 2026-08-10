@@ -463,8 +463,10 @@ castOperand = factor .
    EINMAL ausgewertet werden (Seiteneffekte!), sein Wert liegt beim Feuern
    der Aktion bereits auf dem Stack und wird dort per DUP/SWAP
    weiterverwendet statt neu berechnet. */
-preIncDec  = incdecOp derefIncTarget | incdecOp indexIncTarget | incdecOp ident .
-postIncDec = derefIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
+/* "x.feld++" und "p->feld++". member deckt beide Schreibweisen ab. */
+preIncDec  = incdecOp derefIncTarget | incdecOp memberIncTarget | incdecOp indexIncTarget | incdecOp ident .
+postIncDec = derefIncTarget incdecOp | memberIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
+memberIncTarget = ident member .
 indexIncTarget = ident index .
 derefIncTarget = "(" "*" ident ")" .
 incdecOp   = "++" | "--" .
