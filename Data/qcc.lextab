@@ -31,7 +31,9 @@
 
  <structName>                     = <ident> .
 
- <structField>                    = <type> <pointerDecl> <structDeclarator> { "," <structDeclarator> } ";" .
+ <structField>                    = [ <fieldConstKw> ] <type> <pointerDecl> <structDeclarator> { "," <structDeclarator> } ";" .
+
+ <fieldConstKw>                   = "const" .
 
  <structDeclarator>               = <fieldName> [ <arraySize> [ <arraySizeN> ] ] .
 
@@ -49,7 +51,9 @@
  <typedefType>                    = <anonStructType> 
                                   | <type> <pointerDecl> .
 
- <anonStructType>                 = "struct" <anonStructOpen> <structField> { <structField> } "}" .
+ <anonStructType>                 = "struct" [ <structTagName> ] <anonStructOpen> <structField> { <structField> } "}" .
+
+ <structTagName>                  = <ident> .
 
  <anonStructOpen>                 = "{" .
 
@@ -60,7 +64,9 @@
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
 
- <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] ";" .
+ <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalDeclarator> { "," <globalDeclarator> } ";" .
+
+ <globalDeclarator>               = <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] .
 
  <constKw>                        = "const" .
 
@@ -553,10 +559,10 @@
 7    TS   "{"
 8    TS   "}"
 9    TS   "struct"
-10   TS   "typedef"
-11   TS   "*"
-12   TS   "="
-13   TS   "const"
+10   TS   "const"
+11   TS   "typedef"
+12   TS   "*"
+13   TS   "="
 14   TS   "static"
 15   TS   """
 16   TS   "["
@@ -651,235 +657,238 @@
 7    33          structDecl
 8    40          structName
 9    41          structField
-10   47          structDeclarator
-11   50          fieldName
-12   51          typedefDecl
-13   56          fnPtrTypedef
-14   67          fnPtrOpen
-15   68          fnPtrName
-16   69          typedefType
-17   72          anonStructType
-18   77          anonStructOpen
-19   78          typedefTargetName
-20   79          globalDecl
-21   81          externGlobalDecl
-22   86          plainGlobalDecl
-23   96          constKw
-24   97          staticKw
-25   98          globalInit
-26   101         globalStringInit
-27   104         arraySize
-28   107         arraySizeN
-29   110         constSize
-30   113         constSizeOp
-31   116         globalValue
-32   119         globalBool
-33   121         globalNeg
-34   123         globalNumber
-35   125         funcdef
-36   128         funcBody
-37   131         funcBodyOpen
-38   132         protoEnd
-39   133         funcHead
-40   139         retConstKw
-41   140         funcParams
-42   142         voidParams
-43   145         normalParams
-44   148         paramList
-45   151         param
-46   155         paramDecl
-47   157         paramArray
-48   159         block
-49   162         statement
-50   164         unlabeledStmt
-51   181         staticVarDecl
-52   189         staticLocalName
-53   190         staticInit
-54   192         staticRuntimeInit
-55   193         switchStmt
-56   201         switchKw
-57   202         switchCond
-58   203         switchClose
-59   204         caseGroup
-60   206         caseLabelRun
-61   208         caseLabel
-62   211         caseValue
-63   214         caseNeg
-64   216         caseNumber
-65   218         caseBody
-66   219         defaultGroup
-67   221         defaultLabel
-68   223         varDecl
-69   230         varDeclarator
-70   233         localDecl
-71   236         varInit
-72   239         arrayStringInit
-73   240         initList
-74   245         initValue
-75   248         initBool
-76   250         initNeg
-77   252         initNumber
-78   254         assignStmt
-79   259         chainAssign
-80   265         assignop
-81   276         callStmt
-82   280         emptyStmt
-83   281         voidCastStmt
-84   284         voidCastOpen
-85   287         returnStmt
-86   290         retVal
-87   291         ifStmt
-88   298         ifKw
-89   299         elseKw
-90   300         ifCond
-91   301         thenPart
-92   302         elsePart
-93   303         whileStmt
-94   308         whileKw
-95   309         whileCond
-96   310         whileBody
-97   311         forStmt
-98   320         forKw
-99   321         forSep1
-100  322         forSep2
-101  323         forClose
-102  324         forInit
-103  327         forCond
-104  328         forStep
-105  333         forBody
-106  334         doStmt
-107  341         doKw
-108  342         doWhileTok
-109  343         doCond
-110  344         doClose
-111  345         doBody
-112  346         breakStmt
-113  348         continueStmt
-114  350         gotoStmt
-115  353         labelStmt
-116  355         expr
-117  356         conditionalExpr
-118  361         parenOpen
-119  362         parenClose
-120  363         qmark
-121  364         conditionalTrue
-122  365         colon
-123  366         conditionalFalse
-124  367         orExpr
-125  370         orop
-126  371         andExpr
-127  374         andop
-128  375         bitOrExpr
-129  378         bitorop
-130  379         bitXorExpr
-131  382         bitxorop
-132  383         bitAndExpr
-133  386         bitandop
-134  387         comparison
-135  390         shiftExpr
-136  393         shiftRhs
-137  394         shiftop
-138  396         relop
-139  402         addExpr
-140  405         addop
-141  407         term
-142  410         mulop
-143  413         factor
-144  432         postfixIndex
-145  433         stringLit
-146  436         charLit
-147  439         charLitBody
-148  441         charLitEscape
-149  443         charLitEscChar
-150  448         charLitPlain
-151  451         character
-152  454         strEscape
-153  456         strEscChar
-154  457         negFactor
-155  461         addressRef
-156  464         sizeofExpr
-157  468         sizeofArg
-158  470         sizeofType
-159  477         sizeofVarName
-160  478         castExpr
-161  482         castType
-162  488         castOperand
-163  489         preIncDec
-164  495         postIncDec
-165  501         indexIncTarget
-166  503         derefIncTarget
-167  507         incdecOp
-168  509         incDecStmt
-169  513         derefRef
-170  515         call
-171  519         indirectCall
-172  523         indCallOpen
-173  524         argList
-174  527         arg
-175  528         target
-176  530         directTarget
-177  535         indirectTarget
-178  537         varRef
-179  542         index
-180  545         indexOpen
-181  546         member
-182  550         defName
-183  551         paramName
-184  552         localName
-185  553         globalName
-186  554         funcName
-187  555         type
-188  567         structTypeRef
-189  568         enumTypeRef
-190  569         typedefRef
-191  570         pointerDecl
-192  571         pointerStar
-193  572         unsignedInt
-194  575         boolLit
-195  577         ident
-196  580         number
-197  582         hexNumber
-198  586         hexMark
-199  588         hexDigit
-200  591         decNumber
-201  593         letter
-202  596         digit
+10   48          fieldConstKw
+11   49          structDeclarator
+12   52          fieldName
+13   53          typedefDecl
+14   58          fnPtrTypedef
+15   69          fnPtrOpen
+16   70          fnPtrName
+17   71          typedefType
+18   74          anonStructType
+19   80          structTagName
+20   81          anonStructOpen
+21   82          typedefTargetName
+22   83          globalDecl
+23   85          externGlobalDecl
+24   90          plainGlobalDecl
+25   98          globalDeclarator
+26   103         constKw
+27   104         staticKw
+28   105         globalInit
+29   108         globalStringInit
+30   111         arraySize
+31   114         arraySizeN
+32   117         constSize
+33   120         constSizeOp
+34   123         globalValue
+35   126         globalBool
+36   128         globalNeg
+37   130         globalNumber
+38   132         funcdef
+39   135         funcBody
+40   138         funcBodyOpen
+41   139         protoEnd
+42   140         funcHead
+43   146         retConstKw
+44   147         funcParams
+45   149         voidParams
+46   152         normalParams
+47   155         paramList
+48   158         param
+49   162         paramDecl
+50   164         paramArray
+51   166         block
+52   169         statement
+53   171         unlabeledStmt
+54   188         staticVarDecl
+55   196         staticLocalName
+56   197         staticInit
+57   199         staticRuntimeInit
+58   200         switchStmt
+59   208         switchKw
+60   209         switchCond
+61   210         switchClose
+62   211         caseGroup
+63   213         caseLabelRun
+64   215         caseLabel
+65   218         caseValue
+66   221         caseNeg
+67   223         caseNumber
+68   225         caseBody
+69   226         defaultGroup
+70   228         defaultLabel
+71   230         varDecl
+72   237         varDeclarator
+73   240         localDecl
+74   243         varInit
+75   246         arrayStringInit
+76   247         initList
+77   252         initValue
+78   255         initBool
+79   257         initNeg
+80   259         initNumber
+81   261         assignStmt
+82   266         chainAssign
+83   272         assignop
+84   283         callStmt
+85   287         emptyStmt
+86   288         voidCastStmt
+87   291         voidCastOpen
+88   294         returnStmt
+89   297         retVal
+90   298         ifStmt
+91   305         ifKw
+92   306         elseKw
+93   307         ifCond
+94   308         thenPart
+95   309         elsePart
+96   310         whileStmt
+97   315         whileKw
+98   316         whileCond
+99   317         whileBody
+100  318         forStmt
+101  327         forKw
+102  328         forSep1
+103  329         forSep2
+104  330         forClose
+105  331         forInit
+106  334         forCond
+107  335         forStep
+108  340         forBody
+109  341         doStmt
+110  348         doKw
+111  349         doWhileTok
+112  350         doCond
+113  351         doClose
+114  352         doBody
+115  353         breakStmt
+116  355         continueStmt
+117  357         gotoStmt
+118  360         labelStmt
+119  362         expr
+120  363         conditionalExpr
+121  368         parenOpen
+122  369         parenClose
+123  370         qmark
+124  371         conditionalTrue
+125  372         colon
+126  373         conditionalFalse
+127  374         orExpr
+128  377         orop
+129  378         andExpr
+130  381         andop
+131  382         bitOrExpr
+132  385         bitorop
+133  386         bitXorExpr
+134  389         bitxorop
+135  390         bitAndExpr
+136  393         bitandop
+137  394         comparison
+138  397         shiftExpr
+139  400         shiftRhs
+140  401         shiftop
+141  403         relop
+142  409         addExpr
+143  412         addop
+144  414         term
+145  417         mulop
+146  420         factor
+147  439         postfixIndex
+148  440         stringLit
+149  443         charLit
+150  446         charLitBody
+151  448         charLitEscape
+152  450         charLitEscChar
+153  455         charLitPlain
+154  458         character
+155  461         strEscape
+156  463         strEscChar
+157  464         negFactor
+158  468         addressRef
+159  471         sizeofExpr
+160  475         sizeofArg
+161  477         sizeofType
+162  484         sizeofVarName
+163  485         castExpr
+164  489         castType
+165  495         castOperand
+166  496         preIncDec
+167  502         postIncDec
+168  508         indexIncTarget
+169  510         derefIncTarget
+170  514         incdecOp
+171  516         incDecStmt
+172  520         derefRef
+173  522         call
+174  526         indirectCall
+175  530         indCallOpen
+176  531         argList
+177  534         arg
+178  535         target
+179  537         directTarget
+180  542         indirectTarget
+181  544         varRef
+182  549         index
+183  552         indexOpen
+184  553         member
+185  557         defName
+186  558         paramName
+187  559         localName
+188  560         globalName
+189  561         funcName
+190  562         type
+191  574         structTypeRef
+192  575         enumTypeRef
+193  576         typedefRef
+194  577         pointerDecl
+195  578         pointerStar
+196  579         unsignedInt
+197  582         boolLit
+198  584         ident
+199  587         number
+200  589         hexNumber
+201  593         hexMark
+202  595         hexDigit
+203  598         decNumber
+204  600         letter
+205  603         digit
 [ENDE]
 
 [PARSER-TABELLE]
 # zeile true false addr rngLo rngHi regel modus symbol
 # (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
-0     0     1     79    0     0     program          NTS  globalDecl
+0     0     1     83    0     0     program          NTS  globalDecl
 1     0     2     33    0     0     -                NTS  structDecl
-2     0     3     51    0     0     -                NTS  typedefDecl
+2     0     3     53    0     0     -                NTS  typedefDecl
 3     0     4     25    0     0     -                NTS  enumDecl
 4     0     5     6     0     0     -                NTS  externDecl
-5     0     -1    125   0     0     -                NTS  funcdef
+5     0     -1    132   0     0     -                NTS  funcdef
 6     7     -2    -1    0     0     externDecl       TS   "extern"
-7     8     -3    555   0     0     -                NTS  type
-8     9     -3    570   0     0     -                NTS  pointerDecl
+7     8     -3    562   0     0     -                NTS  type
+8     9     -3    577   0     0     -                NTS  pointerDecl
 9     10    -3    14    0     0     -                NTS  externName
 10    11    -3    -1    0     0     -                TS   "("
 11    12    -3    15    0     0     -                NTS  externParamList
 12    13    -3    -1    0     0     -                TS   ")"
 13    -1    -3    -1    0     0     -                TS   ";"
-14    -1    -2    577   0     0     externName       NTS  ident
+14    -1    -2    584   0     0     externName       NTS  ident
 15    16    -1    20    0     0     externParamList  NTS  externParam
 16    17    18    -1    0     0     -                TS   ","
 17    16    -3    20    0     0     -                NTS  externParam
 18    19    -1    -1    0     0     -                TS   ","
 19    -1    -3    24    0     0     -                NTS  ellipsisTok
-20    21    21    96    0     0     externParam      NTS  constKw
-21    22    -2    555   0     0     -                NTS  type
-22    23    -3    570   0     0     -                NTS  pointerDecl
-23    -1    -1    577   0     0     -                NTS  ident
+20    21    21    103   0     0     externParam      NTS  constKw
+21    22    -2    562   0     0     -                NTS  type
+22    23    -3    577   0     0     -                NTS  pointerDecl
+23    -1    -1    584   0     0     -                NTS  ident
 24    -1    -2    -1    0     0     ellipsisTok      TS   "..."
 25    26    -2    -1    0     0     enumDecl         TS   "enum"
-26    27    -3    577   0     0     -                NTS  ident
+26    27    -3    584   0     0     -                NTS  ident
 27    28    -3    -1    0     0     -                TS   "{"
-28    29    -3    577   0     0     -                NTS  ident
+28    29    -3    584   0     0     -                NTS  ident
 29    30    31    -1    0     0     -                TS   ","
-30    29    -3    577   0     0     -                NTS  ident
+30    29    -3    584   0     0     -                NTS  ident
 31    32    -3    -1    0     0     -                TS   "}"
 32    -1    -3    -1    0     0     -                TS   ";"
 33    34    -2    -1    0     0     structDecl       TS   "struct"
@@ -889,563 +898,570 @@
 37    37    38    41    0     0     -                NTS  structField
 38    39    -3    -1    0     0     -                TS   "}"
 39    -1    -3    -1    0     0     -                TS   ";"
-40    -1    -2    577   0     0     structName       NTS  ident
-41    42    -2    555   0     0     structField      NTS  type
-42    43    -3    570   0     0     -                NTS  pointerDecl
-43    44    -3    47    0     0     -                NTS  structDeclarator
-44    45    46    -1    0     0     -                TS   ","
-45    44    -3    47    0     0     -                NTS  structDeclarator
-46    -1    -3    -1    0     0     -                TS   ";"
-47    48    -2    50    0     0     structDeclarator NTS  fieldName
-48    49    -1    104   0     0     -                NTS  arraySize
-49    -1    -1    107   0     0     -                NTS  arraySizeN
-50    -1    -2    577   0     0     fieldName        NTS  ident
-51    52    55    -1    0     0     typedefDecl      TS   "typedef"
-52    53    -3    69    0     0     -                NTS  typedefType
-53    54    -3    78    0     0     -                NTS  typedefTargetName
-54    -1    -3    -1    0     0     -                TS   ";"
-55    -1    -2    56    0     0     -                NTS  fnPtrTypedef
-56    57    -2    -1    0     0     fnPtrTypedef     TS   "typedef"
-57    58    -3    555   0     0     -                NTS  type
-58    59    -3    570   0     0     -                NTS  pointerDecl
-59    60    -3    67    0     0     -                NTS  fnPtrOpen
-60    61    -3    -1    0     0     -                TS   "*"
-61    62    -3    68    0     0     -                NTS  fnPtrName
-62    63    -3    -1    0     0     -                TS   ")"
-63    64    -3    -1    0     0     -                TS   "("
-64    65    -3    15    0     0     -                NTS  externParamList
-65    66    -3    -1    0     0     -                TS   ")"
-66    -1    -3    -1    0     0     -                TS   ";"
-67    -1    -2    -1    0     0     fnPtrOpen        TS   "("
-68    -1    -2    577   0     0     fnPtrName        NTS  ident
-69    -1    70    72    0     0     typedefType      NTS  anonStructType
-70    71    -2    555   0     0     -                NTS  type
-71    -1    -3    570   0     0     -                NTS  pointerDecl
-72    73    -2    -1    0     0     anonStructType   TS   "struct"
-73    74    -3    77    0     0     -                NTS  anonStructOpen
-74    75    -3    41    0     0     -                NTS  structField
-75    75    76    41    0     0     -                NTS  structField
-76    -1    -3    -1    0     0     -                TS   "}"
-77    -1    -2    -1    0     0     anonStructOpen   TS   "{"
-78    -1    -2    577   0     0     typedefTargetName NTS  ident
-79    -1    80    81    0     0     globalDecl       NTS  externGlobalDecl
-80    -1    -2    86    0     0     -                NTS  plainGlobalDecl
-81    82    -2    -1    0     0     externGlobalDecl TS   "extern"
-82    83    -3    555   0     0     -                NTS  type
-83    84    -3    570   0     0     -                NTS  pointerDecl
-84    85    -3    553   0     0     -                NTS  globalName
-85    -1    -3    -1    0     0     -                TS   ";"
-86    87    87    97    0     0     plainGlobalDecl  NTS  staticKw
-87    88    88    96    0     0     -                NTS  constKw
-88    89    -2    555   0     0     -                NTS  type
-89    90    -3    570   0     0     -                NTS  pointerDecl
-90    91    -3    553   0     0     -                NTS  globalName
-91    92    93    104   0     0     -                NTS  arraySize
-92    92    93    107   0     0     -                NTS  arraySizeN
-93    94    95    -1    0     0     -                TS   "="
-94    95    -3    98    0     0     -                NTS  globalInit
-95    -1    -3    -1    0     0     -                TS   ";"
-96    -1    -2    -1    0     0     constKw          TS   "const"
-97    -1    -2    -1    0     0     staticKw         TS   "static"
-98    -1    99    116   0     0     globalInit       NTS  globalValue
-99    -1    100   240   0     0     -                NTS  initList
-100   -1    -2    101   0     0     -                NTS  globalStringInit
-101   102   -2    -1    0     0     globalStringInit TS   """
-102   102   103   451   0     0     -                NTS  character
-103   -1    -3    -1    0     0     -                TS   """
-104   105   -2    -1    0     0     arraySize        TS   "["
-105   106   106   110   0     0     -                NTS  constSize
-106   -1    -3    -1    0     0     -                TS   "]"
-107   108   -2    -1    0     0     arraySizeN       TS   "["
-108   109   -3    110   0     0     -                NTS  constSize
-109   -1    -3    -1    0     0     -                TS   "]"
-110   111   -2    123   0     0     constSize        NTS  globalNumber
-111   112   -1    113   0     0     -                NTS  constSizeOp
-112   111   -3    123   0     0     -                NTS  globalNumber
-113   -1    114   -1    0     0     constSizeOp      TS   "+"
-114   -1    115   -1    0     0     -                TS   "-"
-115   -1    -2    -1    0     0     -                TS   "*"
-116   -1    117   123   0     0     globalValue      NTS  globalNumber
-117   -1    118   121   0     0     -                NTS  globalNeg
-118   -1    -2    119   0     0     -                NTS  globalBool
-119   -1    120   -1    0     0     globalBool       TS   "true"
-120   -1    -2    -1    0     0     -                TS   "false"
-121   122   -2    -1    0     0     globalNeg        TS   "-"
-122   -1    -3    123   0     0     -                NTS  globalNumber
-123   124   -2    596   0     0     globalNumber     NTS  digit
-124   124   -1    596   0     0     -                NTS  digit
-125   126   -2    133   0     0     funcdef          NTS  funcHead
-126   -1    127   128   0     0     -                NTS  funcBody
-127   -1    -3    132   0     0     -                NTS  protoEnd
-128   129   -2    131   0     0     funcBody         NTS  funcBodyOpen
-129   129   130   162   0     0     -                NTS  statement
-130   -1    -3    -1    0     0     -                TS   "}"
-131   -1    -2    -1    0     0     funcBodyOpen     TS   "{"
-132   -1    -2    -1    0     0     protoEnd         TS   ";"
-133   134   134   97    0     0     funcHead         NTS  staticKw
-134   135   135   139   0     0     -                NTS  retConstKw
-135   136   -2    555   0     0     -                NTS  type
-136   137   -3    570   0     0     -                NTS  pointerDecl
-137   138   -3    550   0     0     -                NTS  defName
-138   -1    -3    140   0     0     -                NTS  funcParams
-139   -1    -2    -1    0     0     retConstKw       TS   "const"
-140   -1    141   142   0     0     funcParams       NTS  voidParams
-141   -1    -2    145   0     0     -                NTS  normalParams
-142   143   -2    -1    0     0     voidParams       TS   "("
-143   144   -3    -1    0     0     -                TS   "void"
-144   -1    -3    -1    0     0     -                TS   ")"
-145   146   -2    -1    0     0     normalParams     TS   "("
-146   147   -3    148   0     0     -                NTS  paramList
-147   -1    -3    -1    0     0     -                TS   ")"
-148   149   -1    151   0     0     paramList        NTS  param
-149   150   -1    -1    0     0     -                TS   ","
-150   149   -3    151   0     0     -                NTS  param
-151   152   152   96    0     0     param            NTS  constKw
-152   153   -2    555   0     0     -                NTS  type
-153   154   -3    570   0     0     -                NTS  pointerDecl
-154   -1    -3    155   0     0     -                NTS  paramDecl
-155   156   -2    551   0     0     paramDecl        NTS  paramName
-156   -1    -1    157   0     0     -                NTS  paramArray
-157   158   -2    -1    0     0     paramArray       TS   "["
-158   -1    -3    -1    0     0     -                TS   "]"
-159   160   -2    -1    0     0     block            TS   "{"
-160   160   161   162   0     0     -                NTS  statement
-161   -1    -3    -1    0     0     -                TS   "}"
-162   -1    163   353   0     0     statement        NTS  labelStmt
-163   -1    -2    164   0     0     -                NTS  unlabeledStmt
-164   -1    165   291   0     0     unlabeledStmt    NTS  ifStmt
-165   -1    166   303   0     0     -                NTS  whileStmt
-166   -1    167   311   0     0     -                NTS  forStmt
-167   -1    168   334   0     0     -                NTS  doStmt
-168   -1    169   193   0     0     -                NTS  switchStmt
-169   -1    170   346   0     0     -                NTS  breakStmt
-170   -1    171   348   0     0     -                NTS  continueStmt
-171   -1    172   350   0     0     -                NTS  gotoStmt
-172   -1    173   287   0     0     -                NTS  returnStmt
-173   -1    174   159   0     0     -                NTS  block
-174   -1    175   280   0     0     -                NTS  emptyStmt
-175   -1    176   281   0     0     -                NTS  voidCastStmt
-176   -1    177   276   0     0     -                NTS  callStmt
-177   -1    178   509   0     0     -                NTS  incDecStmt
-178   -1    179   254   0     0     -                NTS  assignStmt
-179   -1    180   181   0     0     -                NTS  staticVarDecl
-180   -1    -2    223   0     0     -                NTS  varDecl
-181   182   -2    97    0     0     staticVarDecl    NTS  staticKw
-182   183   183   96    0     0     -                NTS  constKw
-183   184   -3    555   0     0     -                NTS  type
-184   185   -3    570   0     0     -                NTS  pointerDecl
-185   186   -3    189   0     0     -                NTS  staticLocalName
-186   187   188   -1    0     0     -                TS   "="
-187   188   -3    190   0     0     -                NTS  staticInit
-188   -1    -3    -1    0     0     -                TS   ";"
-189   -1    -2    577   0     0     staticLocalName  NTS  ident
-190   -1    191   116   0     0     staticInit       NTS  globalValue
-191   -1    -2    192   0     0     -                NTS  staticRuntimeInit
-192   -1    -2    355   0     0     staticRuntimeInit NTS  expr
-193   194   -2    201   0     0     switchStmt       NTS  switchKw
-194   195   -3    -1    0     0     -                TS   "("
-195   196   -3    202   0     0     -                NTS  switchCond
-196   197   -3    -1    0     0     -                TS   ")"
-197   198   -3    -1    0     0     -                TS   "{"
-198   198   199   204   0     0     -                NTS  caseGroup
-199   200   200   219   0     0     -                NTS  defaultGroup
-200   -1    -3    203   0     0     -                NTS  switchClose
-201   -1    -2    -1    0     0     switchKw         TS   "switch"
-202   -1    -2    355   0     0     switchCond       NTS  expr
-203   -1    -2    -1    0     0     switchClose      TS   "}"
-204   205   -2    206   0     0     caseGroup        NTS  caseLabelRun
-205   -1    -3    218   0     0     -                NTS  caseBody
-206   207   -2    208   0     0     caseLabelRun     NTS  caseLabel
-207   207   -1    208   0     0     -                NTS  caseLabel
-208   209   -2    -1    0     0     caseLabel        TS   "case"
-209   210   -3    211   0     0     -                NTS  caseValue
-210   -1    -3    -1    0     0     -                TS   ":"
-211   -1    212   577   0     0     caseValue        NTS  ident
-212   -1    213   214   0     0     -                NTS  caseNeg
-213   -1    -2    216   0     0     -                NTS  caseNumber
-214   215   -2    -1    0     0     caseNeg          TS   "-"
-215   -1    -3    216   0     0     -                NTS  caseNumber
-216   217   -2    596   0     0     caseNumber       NTS  digit
-217   217   -1    596   0     0     -                NTS  digit
-218   218   -1    164   0     0     caseBody         NTS  unlabeledStmt
-219   220   -2    221   0     0     defaultGroup     NTS  defaultLabel
-220   -1    -3    218   0     0     -                NTS  caseBody
-221   222   -2    -1    0     0     defaultLabel     TS   "default"
-222   -1    -3    -1    0     0     -                TS   ":"
-223   224   224   96    0     0     varDecl          NTS  constKw
-224   225   -2    555   0     0     -                NTS  type
-225   226   -3    570   0     0     -                NTS  pointerDecl
-226   227   -3    230   0     0     -                NTS  varDeclarator
-227   228   229   -1    0     0     -                TS   ","
-228   227   -3    230   0     0     -                NTS  varDeclarator
-229   -1    -3    -1    0     0     -                TS   ";"
-230   231   -2    233   0     0     varDeclarator    NTS  localDecl
-231   232   -1    -1    0     0     -                TS   "="
-232   -1    -3    236   0     0     -                NTS  varInit
-233   234   -2    552   0     0     localDecl        NTS  localName
-234   235   -1    104   0     0     -                NTS  arraySize
-235   235   -1    107   0     0     -                NTS  arraySizeN
-236   -1    237   239   0     0     varInit          NTS  arrayStringInit
-237   -1    238   355   0     0     -                NTS  expr
-238   -1    -2    240   0     0     -                NTS  initList
-239   -1    -2    433   0     0     arrayStringInit  NTS  stringLit
-240   241   -2    -1    0     0     initList         TS   "{"
-241   242   244   245   0     0     -                NTS  initValue
-242   243   244   -1    0     0     -                TS   ","
-243   242   -3    245   0     0     -                NTS  initValue
-244   -1    -3    -1    0     0     -                TS   "}"
-245   -1    246   252   0     0     initValue        NTS  initNumber
-246   -1    247   250   0     0     -                NTS  initNeg
-247   -1    -2    248   0     0     -                NTS  initBool
-248   -1    249   -1    0     0     initBool         TS   "true"
-249   -1    -2    -1    0     0     -                TS   "false"
-250   251   -2    -1    0     0     initNeg          TS   "-"
-251   -1    -3    252   0     0     -                NTS  initNumber
-252   253   -2    596   0     0     initNumber       NTS  digit
-253   253   -1    596   0     0     -                NTS  digit
-254   -1    255   259   0     0     assignStmt       NTS  chainAssign
-255   256   -2    528   0     0     -                NTS  target
-256   257   -3    265   0     0     -                NTS  assignop
-257   258   -3    355   0     0     -                NTS  expr
-258   -1    -3    -1    0     0     -                TS   ";"
-259   260   -2    528   0     0     chainAssign      NTS  target
-260   261   -3    265   0     0     -                NTS  assignop
-261   262   -3    528   0     0     -                NTS  target
-262   263   -3    265   0     0     -                NTS  assignop
-263   264   -3    355   0     0     -                NTS  expr
-264   -1    -3    -1    0     0     -                TS   ";"
-265   -1    266   -1    0     0     assignop         TS   "="
-266   -1    267   -1    0     0     -                TS   "+="
-267   -1    268   -1    0     0     -                TS   "-="
-268   -1    269   -1    0     0     -                TS   "*="
-269   -1    270   -1    0     0     -                TS   "/="
-270   -1    271   -1    0     0     -                TS   "%="
-271   -1    272   -1    0     0     -                TS   "<<="
-272   -1    273   -1    0     0     -                TS   ">>="
-273   -1    274   -1    0     0     -                TS   "&="
-274   -1    275   -1    0     0     -                TS   "^="
-275   -1    -2    -1    0     0     -                TS   "|="
-276   277   278   515   0     0     callStmt         NTS  call
-277   -1    -3    -1    0     0     -                TS   ";"
-278   279   -2    519   0     0     -                NTS  indirectCall
-279   -1    -3    -1    0     0     -                TS   ";"
-280   -1    -2    -1    0     0     emptyStmt        TS   ";"
-281   282   -2    284   0     0     voidCastStmt     NTS  voidCastOpen
-282   283   -3    355   0     0     -                NTS  expr
-283   -1    -3    -1    0     0     -                TS   ";"
-284   285   -2    -1    0     0     voidCastOpen     TS   "("
-285   286   -3    -1    0     0     -                TS   "void"
-286   -1    -3    -1    0     0     -                TS   ")"
-287   288   -2    -1    0     0     returnStmt       TS   "return"
-288   289   289   290   0     0     -                NTS  retVal
-289   -1    -3    -1    0     0     -                TS   ";"
-290   -1    -2    355   0     0     retVal           NTS  expr
-291   292   -2    298   0     0     ifStmt           NTS  ifKw
-292   293   -3    -1    0     0     -                TS   "("
-293   294   -3    300   0     0     -                NTS  ifCond
-294   295   -3    -1    0     0     -                TS   ")"
-295   296   -3    301   0     0     -                NTS  thenPart
-296   297   -1    299   0     0     -                NTS  elseKw
-297   -1    -3    302   0     0     -                NTS  elsePart
-298   -1    -2    -1    0     0     ifKw             TS   "if"
-299   -1    -2    -1    0     0     elseKw           TS   "else"
-300   -1    -2    355   0     0     ifCond           NTS  expr
-301   -1    -2    162   0     0     thenPart         NTS  statement
-302   -1    -2    162   0     0     elsePart         NTS  statement
-303   304   -2    308   0     0     whileStmt        NTS  whileKw
-304   305   -3    -1    0     0     -                TS   "("
-305   306   -3    309   0     0     -                NTS  whileCond
-306   307   -3    -1    0     0     -                TS   ")"
-307   -1    -3    310   0     0     -                NTS  whileBody
-308   -1    -2    -1    0     0     whileKw          TS   "while"
-309   -1    -2    355   0     0     whileCond        NTS  expr
-310   -1    -2    162   0     0     whileBody        NTS  statement
-311   312   -2    320   0     0     forStmt          NTS  forKw
-312   313   -3    -1    0     0     -                TS   "("
-313   314   314   324   0     0     -                NTS  forInit
-314   315   -3    321   0     0     -                NTS  forSep1
-315   316   316   327   0     0     -                NTS  forCond
-316   317   -3    322   0     0     -                NTS  forSep2
-317   318   318   328   0     0     -                NTS  forStep
-318   319   -3    323   0     0     -                NTS  forClose
-319   -1    -3    333   0     0     -                NTS  forBody
-320   -1    -2    -1    0     0     forKw            TS   "for"
-321   -1    -2    -1    0     0     forSep1          TS   ";"
-322   -1    -2    -1    0     0     forSep2          TS   ";"
-323   -1    -2    -1    0     0     forClose         TS   ")"
-324   325   -2    528   0     0     forInit          NTS  target
-325   326   -3    265   0     0     -                NTS  assignop
-326   -1    -3    355   0     0     -                NTS  expr
-327   -1    -2    355   0     0     forCond          NTS  expr
-328   329   331   528   0     0     forStep          NTS  target
-329   330   -3    265   0     0     -                NTS  assignop
-330   -1    -3    355   0     0     -                NTS  expr
-331   -1    332   495   0     0     -                NTS  postIncDec
-332   -1    -2    489   0     0     -                NTS  preIncDec
-333   -1    -2    162   0     0     forBody          NTS  statement
-334   335   -2    341   0     0     doStmt           NTS  doKw
-335   336   -3    345   0     0     -                NTS  doBody
-336   337   -3    342   0     0     -                NTS  doWhileTok
-337   338   -3    -1    0     0     -                TS   "("
-338   339   -3    343   0     0     -                NTS  doCond
-339   340   -3    -1    0     0     -                TS   ")"
-340   -1    -3    344   0     0     -                NTS  doClose
-341   -1    -2    -1    0     0     doKw             TS   "do"
-342   -1    -2    -1    0     0     doWhileTok       TS   "while"
-343   -1    -2    355   0     0     doCond           NTS  expr
-344   -1    -2    -1    0     0     doClose          TS   ";"
-345   -1    -2    162   0     0     doBody           NTS  statement
-346   347   -2    -1    0     0     breakStmt        TS   "break"
-347   -1    -3    -1    0     0     -                TS   ";"
-348   349   -2    -1    0     0     continueStmt     TS   "continue"
-349   -1    -3    -1    0     0     -                TS   ";"
-350   351   -2    -1    0     0     gotoStmt         TS   "goto"
-351   352   -3    577   0     0     -                NTS  ident
-352   -1    -3    -1    0     0     -                TS   ";"
-353   354   -2    577   0     0     labelStmt        NTS  ident
-354   -1    -3    -1    0     0     -                TS   ":"
-355   -1    -2    356   0     0     expr             NTS  conditionalExpr
-356   357   -2    367   0     0     conditionalExpr  NTS  orExpr
-357   358   -1    363   0     0     -                NTS  qmark
-358   359   -3    364   0     0     -                NTS  conditionalTrue
-359   360   -3    365   0     0     -                NTS  colon
-360   -1    -3    366   0     0     -                NTS  conditionalFalse
-361   -1    -2    -1    0     0     parenOpen        TS   "("
-362   -1    -2    -1    0     0     parenClose       TS   ")"
-363   -1    -2    -1    0     0     qmark            TS   "?"
-364   -1    -2    355   0     0     conditionalTrue  NTS  expr
-365   -1    -2    -1    0     0     colon            TS   ":"
-366   -1    -2    356   0     0     conditionalFalse NTS  conditionalExpr
-367   368   -2    371   0     0     orExpr           NTS  andExpr
-368   369   -1    370   0     0     -                NTS  orop
-369   -1    -3    367   0     0     -                NTS  orExpr
-370   -1    -2    -1    0     0     orop             TS   "||"
-371   372   -2    375   0     0     andExpr          NTS  bitOrExpr
-372   373   -1    374   0     0     -                NTS  andop
-373   -1    -3    371   0     0     -                NTS  andExpr
-374   -1    -2    -1    0     0     andop            TS   "&&"
-375   376   -2    379   0     0     bitOrExpr        NTS  bitXorExpr
-376   377   -1    378   0     0     -                NTS  bitorop
-377   -1    -3    375   0     0     -                NTS  bitOrExpr
-378   -1    -2    -1    0     0     bitorop          TS   "|"
-379   380   -2    383   0     0     bitXorExpr       NTS  bitAndExpr
-380   381   -1    382   0     0     -                NTS  bitxorop
-381   -1    -3    379   0     0     -                NTS  bitXorExpr
-382   -1    -2    -1    0     0     bitxorop         TS   "^"
-383   384   -2    387   0     0     bitAndExpr       NTS  comparison
-384   385   -1    386   0     0     -                NTS  bitandop
-385   -1    -3    383   0     0     -                NTS  bitAndExpr
-386   -1    -2    -1    0     0     bitandop         TS   "&"
-387   388   -2    390   0     0     comparison       NTS  shiftExpr
-388   389   -1    396   0     0     -                NTS  relop
-389   -1    -3    390   0     0     -                NTS  shiftExpr
-390   391   -2    402   0     0     shiftExpr        NTS  addExpr
-391   392   -1    394   0     0     -                NTS  shiftop
-392   391   -3    393   0     0     -                NTS  shiftRhs
-393   -1    -2    402   0     0     shiftRhs         NTS  addExpr
-394   -1    395   -1    0     0     shiftop          TS   "<<"
-395   -1    -2    -1    0     0     -                TS   ">>"
-396   -1    397   -1    0     0     relop            TS   "<="
-397   -1    398   -1    0     0     -                TS   ">="
-398   -1    399   -1    0     0     -                TS   "=="
-399   -1    400   -1    0     0     -                TS   "!="
-400   -1    401   -1    0     0     -                TS   "<"
-401   -1    -2    -1    0     0     -                TS   ">"
-402   403   -2    407   0     0     addExpr          NTS  term
-403   404   -1    405   0     0     -                NTS  addop
-404   403   -3    407   0     0     -                NTS  term
-405   -1    406   -1    0     0     addop            TS   "+"
-406   -1    -2    -1    0     0     -                TS   "-"
-407   408   -2    413   0     0     term             NTS  factor
-408   409   -1    410   0     0     -                NTS  mulop
-409   408   -3    413   0     0     -                NTS  factor
-410   -1    411   -1    0     0     mulop            TS   "*"
-411   -1    412   -1    0     0     -                TS   "/"
-412   -1    -2    -1    0     0     -                TS   "%"
-413   -1    414   464   0     0     factor           NTS  sizeofExpr
-414   -1    415   478   0     0     -                NTS  castExpr
-415   -1    416   489   0     0     -                NTS  preIncDec
-416   -1    417   495   0     0     -                NTS  postIncDec
-417   418   420   361   0     0     -                NTS  parenOpen
-418   419   -3    355   0     0     -                NTS  expr
-419   -1    -3    362   0     0     -                NTS  parenClose
-420   421   422   515   0     0     -                NTS  call
-421   -1    422   432   0     0     -                NTS  postfixIndex
-422   -1    423   519   0     0     -                NTS  indirectCall
-423   -1    424   575   0     0     -                NTS  boolLit
-424   -1    425   461   0     0     -                NTS  addressRef
-425   -1    426   513   0     0     -                NTS  derefRef
-426   -1    427   537   0     0     -                NTS  varRef
-427   -1    428   436   0     0     -                NTS  charLit
-428   -1    429   580   0     0     -                NTS  number
-429   430   431   433   0     0     -                NTS  stringLit
-430   -1    431   432   0     0     -                NTS  postfixIndex
-431   -1    -2    457   0     0     -                NTS  negFactor
-432   -1    -2    542   0     0     postfixIndex     NTS  index
-433   434   -2    -1    0     0     stringLit        TS   """
-434   434   435   451   0     0     -                NTS  character
-435   -1    -3    -1    0     0     -                TS   """
-436   437   -2    -1    0     0     charLit          TS   "'"
-437   438   -3    439   0     0     -                NTS  charLitBody
-438   -1    -3    -1    0     0     -                TS   "'"
-439   -1    440   441   0     0     charLitBody      NTS  charLitEscape
-440   -1    -2    448   0     0     -                NTS  charLitPlain
-441   442   -2    -1    0     0     charLitEscape    TS   "\134"
-442   -1    -3    443   0     0     -                NTS  charLitEscChar
-443   -1    444   -1    0     0     charLitEscChar   TS   "n"
-444   -1    445   -1    0     0     -                TS   "t"
-445   -1    446   -1    0     0     -                TS   "r"
-446   -1    447   -1    0     0     -                TS   "0"
-447   -1    -2    -1    0     0     -                TS   "\134"
-448   -1    449   -1    32    38    charLitPlain     RNG  " "~"&"
-449   -1    450   -1    40    91    -                RNG  "("~"["
-450   -1    -2    -1    93    126   -                RNG  "]"~"~"
-451   -1    452   454   0     0     character        NTS  strEscape
-452   -1    453   -1    32    33    -                RNG  " "~"!"
-453   -1    -2    -1    35    126   -                RNG  "#"~"~"
-454   455   -2    -1    0     0     strEscape        TS   "\134"
-455   -1    -3    456   0     0     -                NTS  strEscChar
-456   -1    -2    -1    32    126   strEscChar       RNG  " "~"~"
-457   460   458   -1    0     0     negFactor        TS   "-"
-458   460   459   -1    0     0     -                TS   "!"
-459   460   -2    -1    0     0     -                TS   "~"
-460   -1    -3    413   0     0     -                NTS  factor
-461   462   -2    -1    0     0     addressRef       TS   "&"
-462   463   -3    577   0     0     -                NTS  ident
-463   -1    -1    542   0     0     -                NTS  index
-464   465   -2    -1    0     0     sizeofExpr       TS   "sizeof"
-465   466   -3    -1    0     0     -                TS   "("
-466   467   -3    468   0     0     -                NTS  sizeofArg
-467   -1    -3    -1    0     0     -                TS   ")"
-468   -1    469   470   0     0     sizeofArg        NTS  sizeofType
-469   -1    -2    477   0     0     -                NTS  sizeofVarName
-470   471   472   -1    0     0     sizeofType       TS   "unsigned"
-471   -1    -3    572   0     0     -                NTS  unsignedInt
-472   -1    473   -1    0     0     -                TS   "int"
-473   -1    474   -1    0     0     -                TS   "char"
-474   -1    475   -1    0     0     -                TS   "bool"
-475   476   -2    -1    0     0     -                TS   "struct"
-476   -1    -3    567   0     0     -                NTS  structTypeRef
-477   -1    -2    577   0     0     sizeofVarName    NTS  ident
-478   479   -2    -1    0     0     castExpr         TS   "("
-479   480   -3    482   0     0     -                NTS  castType
-480   481   -3    -1    0     0     -                TS   ")"
-481   -1    -3    488   0     0     -                NTS  castOperand
-482   483   484   -1    0     0     castType         TS   "unsigned"
-483   -1    -3    572   0     0     -                NTS  unsignedInt
-484   -1    485   -1    0     0     -                TS   "int"
-485   -1    486   -1    0     0     -                TS   "long"
-486   -1    487   -1    0     0     -                TS   "char"
-487   -1    -2    -1    0     0     -                TS   "bool"
-488   -1    -2    413   0     0     castOperand      NTS  factor
-489   490   491   507   0     0     preIncDec        NTS  incdecOp
-490   -1    -3    503   0     0     -                NTS  derefIncTarget
-491   492   493   507   0     0     -                NTS  incdecOp
-492   -1    -3    501   0     0     -                NTS  indexIncTarget
-493   494   -2    507   0     0     -                NTS  incdecOp
-494   -1    -3    577   0     0     -                NTS  ident
-495   496   497   503   0     0     postIncDec       NTS  derefIncTarget
-496   -1    -3    507   0     0     -                NTS  incdecOp
-497   498   499   501   0     0     -                NTS  indexIncTarget
-498   -1    -3    507   0     0     -                NTS  incdecOp
-499   500   -2    577   0     0     -                NTS  ident
-500   -1    -3    507   0     0     -                NTS  incdecOp
-501   502   -2    577   0     0     indexIncTarget   NTS  ident
-502   -1    -3    542   0     0     -                NTS  index
-503   504   -2    -1    0     0     derefIncTarget   TS   "("
-504   505   -3    -1    0     0     -                TS   "*"
-505   506   -3    577   0     0     -                NTS  ident
-506   -1    -3    -1    0     0     -                TS   ")"
-507   -1    508   -1    0     0     incdecOp         TS   "++"
-508   -1    -2    -1    0     0     -                TS   "--"
-509   510   511   489   0     0     incDecStmt       NTS  preIncDec
-510   -1    -3    -1    0     0     -                TS   ";"
-511   512   -2    495   0     0     -                NTS  postIncDec
-512   -1    -3    -1    0     0     -                TS   ";"
-513   514   -2    -1    0     0     derefRef         TS   "*"
-514   -1    -3    413   0     0     -                NTS  factor
-515   516   -2    554   0     0     call             NTS  funcName
-516   517   -3    -1    0     0     -                TS   "("
-517   518   -3    524   0     0     -                NTS  argList
-518   -1    -3    -1    0     0     -                TS   ")"
-519   520   -2    537   0     0     indirectCall     NTS  varRef
-520   521   -3    523   0     0     -                NTS  indCallOpen
-521   522   -3    524   0     0     -                NTS  argList
-522   -1    -3    -1    0     0     -                TS   ")"
-523   -1    -2    -1    0     0     indCallOpen      TS   "("
-524   525   -1    527   0     0     argList          NTS  arg
-525   526   -1    -1    0     0     -                TS   ","
-526   525   -3    527   0     0     -                NTS  arg
-527   -1    -2    355   0     0     arg              NTS  expr
-528   -1    529   530   0     0     target           NTS  directTarget
-529   -1    -2    535   0     0     -                NTS  indirectTarget
-530   531   -2    577   0     0     directTarget     NTS  ident
-531   532   533   542   0     0     -                NTS  index
-532   532   533   542   0     0     -                NTS  index
-533   534   -1    546   0     0     -                NTS  member
-534   -1    -1    542   0     0     -                NTS  index
-535   536   -2    -1    0     0     indirectTarget   TS   "*"
-536   -1    -3    413   0     0     -                NTS  factor
-537   538   -2    577   0     0     varRef           NTS  ident
-538   539   540   542   0     0     -                NTS  index
-539   539   540   542   0     0     -                NTS  index
-540   541   -1    546   0     0     -                NTS  member
-541   -1    -1    542   0     0     -                NTS  index
-542   543   -2    545   0     0     index            NTS  indexOpen
-543   544   -3    355   0     0     -                NTS  expr
-544   -1    -3    -1    0     0     -                TS   "]"
-545   -1    -2    -1    0     0     indexOpen        TS   "["
-546   547   548   -1    0     0     member           TS   "."
-547   -1    -3    50    0     0     -                NTS  fieldName
-548   549   -2    -1    0     0     -                TS   "->"
-549   -1    -3    50    0     0     -                NTS  fieldName
-550   -1    -2    577   0     0     defName          NTS  ident
-551   -1    -2    577   0     0     paramName        NTS  ident
-552   -1    -2    577   0     0     localName        NTS  ident
-553   -1    -2    577   0     0     globalName       NTS  ident
-554   -1    -2    577   0     0     funcName         NTS  ident
-555   556   557   -1    0     0     type             TS   "unsigned"
-556   -1    -3    572   0     0     -                NTS  unsignedInt
-557   -1    558   -1    0     0     -                TS   "int"
-558   -1    559   -1    0     0     -                TS   "long"
-559   -1    560   -1    0     0     -                TS   "char"
-560   -1    561   -1    0     0     -                TS   "bool"
-561   562   563   -1    0     0     -                TS   "struct"
-562   -1    -3    567   0     0     -                NTS  structTypeRef
-563   564   565   -1    0     0     -                TS   "enum"
-564   -1    -3    568   0     0     -                NTS  enumTypeRef
-565   -1    566   -1    0     0     -                TS   "void"
-566   -1    -2    569   0     0     -                NTS  typedefRef
-567   -1    -2    577   0     0     structTypeRef    NTS  ident
-568   -1    -2    577   0     0     enumTypeRef      NTS  ident
-569   -1    -2    577   0     0     typedefRef       NTS  ident
-570   570   -1    571   0     0     pointerDecl      NTS  pointerStar
-571   -1    -2    -1    0     0     pointerStar      TS   "*"
-572   -1    573   -1    0     0     unsignedInt      TS   "int"
-573   -1    574   -1    0     0     -                TS   "char"
-574   -1    -2    -1    0     0     -                TS   "long"
-575   -1    576   -1    0     0     boolLit          TS   "true"
-576   -1    -2    -1    0     0     -                TS   "false"
-577   578   -2    593   0     0     ident            NTS  letter
-578   578   579   593   0     0     -                NTS  letter
-579   578   -1    596   0     0     -                NTS  digit
-580   -1    581   582   0     0     number           NTS  hexNumber
-581   -1    -2    591   0     0     -                NTS  decNumber
-582   583   -2    -1    0     0     hexNumber        TS   "0"
-583   584   -3    586   0     0     -                NTS  hexMark
-584   585   -3    588   0     0     -                NTS  hexDigit
-585   585   -1    588   0     0     -                NTS  hexDigit
-586   -1    587   -1    0     0     hexMark          TS   "x"
-587   -1    -2    -1    0     0     -                TS   "X"
-588   -1    589   596   0     0     hexDigit         NTS  digit
-589   -1    590   -1    97    102   -                RNG  "a"~"f"
-590   -1    -2    -1    65    70    -                RNG  "A"~"F"
-591   592   -2    596   0     0     decNumber        NTS  digit
-592   592   -1    596   0     0     -                NTS  digit
-593   -1    594   -1    97    122   letter           RNG  "a"~"z"
-594   -1    595   -1    65    90    -                RNG  "A"~"Z"
-595   -1    -2    -1    0     0     -                TS   "_"
-596   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+40    -1    -2    584   0     0     structName       NTS  ident
+41    42    42    48    0     0     structField      NTS  fieldConstKw
+42    43    -2    562   0     0     -                NTS  type
+43    44    -3    577   0     0     -                NTS  pointerDecl
+44    45    -3    49    0     0     -                NTS  structDeclarator
+45    46    47    -1    0     0     -                TS   ","
+46    45    -3    49    0     0     -                NTS  structDeclarator
+47    -1    -3    -1    0     0     -                TS   ";"
+48    -1    -2    -1    0     0     fieldConstKw     TS   "const"
+49    50    -2    52    0     0     structDeclarator NTS  fieldName
+50    51    -1    111   0     0     -                NTS  arraySize
+51    -1    -1    114   0     0     -                NTS  arraySizeN
+52    -1    -2    584   0     0     fieldName        NTS  ident
+53    54    57    -1    0     0     typedefDecl      TS   "typedef"
+54    55    -3    71    0     0     -                NTS  typedefType
+55    56    -3    82    0     0     -                NTS  typedefTargetName
+56    -1    -3    -1    0     0     -                TS   ";"
+57    -1    -2    58    0     0     -                NTS  fnPtrTypedef
+58    59    -2    -1    0     0     fnPtrTypedef     TS   "typedef"
+59    60    -3    562   0     0     -                NTS  type
+60    61    -3    577   0     0     -                NTS  pointerDecl
+61    62    -3    69    0     0     -                NTS  fnPtrOpen
+62    63    -3    -1    0     0     -                TS   "*"
+63    64    -3    70    0     0     -                NTS  fnPtrName
+64    65    -3    -1    0     0     -                TS   ")"
+65    66    -3    -1    0     0     -                TS   "("
+66    67    -3    15    0     0     -                NTS  externParamList
+67    68    -3    -1    0     0     -                TS   ")"
+68    -1    -3    -1    0     0     -                TS   ";"
+69    -1    -2    -1    0     0     fnPtrOpen        TS   "("
+70    -1    -2    584   0     0     fnPtrName        NTS  ident
+71    -1    72    74    0     0     typedefType      NTS  anonStructType
+72    73    -2    562   0     0     -                NTS  type
+73    -1    -3    577   0     0     -                NTS  pointerDecl
+74    75    -2    -1    0     0     anonStructType   TS   "struct"
+75    76    76    80    0     0     -                NTS  structTagName
+76    77    -3    81    0     0     -                NTS  anonStructOpen
+77    78    -3    41    0     0     -                NTS  structField
+78    78    79    41    0     0     -                NTS  structField
+79    -1    -3    -1    0     0     -                TS   "}"
+80    -1    -2    584   0     0     structTagName    NTS  ident
+81    -1    -2    -1    0     0     anonStructOpen   TS   "{"
+82    -1    -2    584   0     0     typedefTargetName NTS  ident
+83    -1    84    85    0     0     globalDecl       NTS  externGlobalDecl
+84    -1    -2    90    0     0     -                NTS  plainGlobalDecl
+85    86    -2    -1    0     0     externGlobalDecl TS   "extern"
+86    87    -3    562   0     0     -                NTS  type
+87    88    -3    577   0     0     -                NTS  pointerDecl
+88    89    -3    560   0     0     -                NTS  globalName
+89    -1    -3    -1    0     0     -                TS   ";"
+90    91    91    104   0     0     plainGlobalDecl  NTS  staticKw
+91    92    92    103   0     0     -                NTS  constKw
+92    93    -2    562   0     0     -                NTS  type
+93    94    -3    577   0     0     -                NTS  pointerDecl
+94    95    -3    98    0     0     -                NTS  globalDeclarator
+95    96    97    -1    0     0     -                TS   ","
+96    95    -3    98    0     0     -                NTS  globalDeclarator
+97    -1    -3    -1    0     0     -                TS   ";"
+98    99    -2    560   0     0     globalDeclarator NTS  globalName
+99    100   101   111   0     0     -                NTS  arraySize
+100   100   101   114   0     0     -                NTS  arraySizeN
+101   102   -1    -1    0     0     -                TS   "="
+102   -1    -3    105   0     0     -                NTS  globalInit
+103   -1    -2    -1    0     0     constKw          TS   "const"
+104   -1    -2    -1    0     0     staticKw         TS   "static"
+105   -1    106   123   0     0     globalInit       NTS  globalValue
+106   -1    107   247   0     0     -                NTS  initList
+107   -1    -2    108   0     0     -                NTS  globalStringInit
+108   109   -2    -1    0     0     globalStringInit TS   """
+109   109   110   458   0     0     -                NTS  character
+110   -1    -3    -1    0     0     -                TS   """
+111   112   -2    -1    0     0     arraySize        TS   "["
+112   113   113   117   0     0     -                NTS  constSize
+113   -1    -3    -1    0     0     -                TS   "]"
+114   115   -2    -1    0     0     arraySizeN       TS   "["
+115   116   -3    117   0     0     -                NTS  constSize
+116   -1    -3    -1    0     0     -                TS   "]"
+117   118   -2    130   0     0     constSize        NTS  globalNumber
+118   119   -1    120   0     0     -                NTS  constSizeOp
+119   118   -3    130   0     0     -                NTS  globalNumber
+120   -1    121   -1    0     0     constSizeOp      TS   "+"
+121   -1    122   -1    0     0     -                TS   "-"
+122   -1    -2    -1    0     0     -                TS   "*"
+123   -1    124   130   0     0     globalValue      NTS  globalNumber
+124   -1    125   128   0     0     -                NTS  globalNeg
+125   -1    -2    126   0     0     -                NTS  globalBool
+126   -1    127   -1    0     0     globalBool       TS   "true"
+127   -1    -2    -1    0     0     -                TS   "false"
+128   129   -2    -1    0     0     globalNeg        TS   "-"
+129   -1    -3    130   0     0     -                NTS  globalNumber
+130   131   -2    603   0     0     globalNumber     NTS  digit
+131   131   -1    603   0     0     -                NTS  digit
+132   133   -2    140   0     0     funcdef          NTS  funcHead
+133   -1    134   135   0     0     -                NTS  funcBody
+134   -1    -3    139   0     0     -                NTS  protoEnd
+135   136   -2    138   0     0     funcBody         NTS  funcBodyOpen
+136   136   137   169   0     0     -                NTS  statement
+137   -1    -3    -1    0     0     -                TS   "}"
+138   -1    -2    -1    0     0     funcBodyOpen     TS   "{"
+139   -1    -2    -1    0     0     protoEnd         TS   ";"
+140   141   141   104   0     0     funcHead         NTS  staticKw
+141   142   142   146   0     0     -                NTS  retConstKw
+142   143   -2    562   0     0     -                NTS  type
+143   144   -3    577   0     0     -                NTS  pointerDecl
+144   145   -3    557   0     0     -                NTS  defName
+145   -1    -3    147   0     0     -                NTS  funcParams
+146   -1    -2    -1    0     0     retConstKw       TS   "const"
+147   -1    148   149   0     0     funcParams       NTS  voidParams
+148   -1    -2    152   0     0     -                NTS  normalParams
+149   150   -2    -1    0     0     voidParams       TS   "("
+150   151   -3    -1    0     0     -                TS   "void"
+151   -1    -3    -1    0     0     -                TS   ")"
+152   153   -2    -1    0     0     normalParams     TS   "("
+153   154   -3    155   0     0     -                NTS  paramList
+154   -1    -3    -1    0     0     -                TS   ")"
+155   156   -1    158   0     0     paramList        NTS  param
+156   157   -1    -1    0     0     -                TS   ","
+157   156   -3    158   0     0     -                NTS  param
+158   159   159   103   0     0     param            NTS  constKw
+159   160   -2    562   0     0     -                NTS  type
+160   161   -3    577   0     0     -                NTS  pointerDecl
+161   -1    -3    162   0     0     -                NTS  paramDecl
+162   163   -2    558   0     0     paramDecl        NTS  paramName
+163   -1    -1    164   0     0     -                NTS  paramArray
+164   165   -2    -1    0     0     paramArray       TS   "["
+165   -1    -3    -1    0     0     -                TS   "]"
+166   167   -2    -1    0     0     block            TS   "{"
+167   167   168   169   0     0     -                NTS  statement
+168   -1    -3    -1    0     0     -                TS   "}"
+169   -1    170   360   0     0     statement        NTS  labelStmt
+170   -1    -2    171   0     0     -                NTS  unlabeledStmt
+171   -1    172   298   0     0     unlabeledStmt    NTS  ifStmt
+172   -1    173   310   0     0     -                NTS  whileStmt
+173   -1    174   318   0     0     -                NTS  forStmt
+174   -1    175   341   0     0     -                NTS  doStmt
+175   -1    176   200   0     0     -                NTS  switchStmt
+176   -1    177   353   0     0     -                NTS  breakStmt
+177   -1    178   355   0     0     -                NTS  continueStmt
+178   -1    179   357   0     0     -                NTS  gotoStmt
+179   -1    180   294   0     0     -                NTS  returnStmt
+180   -1    181   166   0     0     -                NTS  block
+181   -1    182   287   0     0     -                NTS  emptyStmt
+182   -1    183   288   0     0     -                NTS  voidCastStmt
+183   -1    184   283   0     0     -                NTS  callStmt
+184   -1    185   516   0     0     -                NTS  incDecStmt
+185   -1    186   261   0     0     -                NTS  assignStmt
+186   -1    187   188   0     0     -                NTS  staticVarDecl
+187   -1    -2    230   0     0     -                NTS  varDecl
+188   189   -2    104   0     0     staticVarDecl    NTS  staticKw
+189   190   190   103   0     0     -                NTS  constKw
+190   191   -3    562   0     0     -                NTS  type
+191   192   -3    577   0     0     -                NTS  pointerDecl
+192   193   -3    196   0     0     -                NTS  staticLocalName
+193   194   195   -1    0     0     -                TS   "="
+194   195   -3    197   0     0     -                NTS  staticInit
+195   -1    -3    -1    0     0     -                TS   ";"
+196   -1    -2    584   0     0     staticLocalName  NTS  ident
+197   -1    198   123   0     0     staticInit       NTS  globalValue
+198   -1    -2    199   0     0     -                NTS  staticRuntimeInit
+199   -1    -2    362   0     0     staticRuntimeInit NTS  expr
+200   201   -2    208   0     0     switchStmt       NTS  switchKw
+201   202   -3    -1    0     0     -                TS   "("
+202   203   -3    209   0     0     -                NTS  switchCond
+203   204   -3    -1    0     0     -                TS   ")"
+204   205   -3    -1    0     0     -                TS   "{"
+205   205   206   211   0     0     -                NTS  caseGroup
+206   207   207   226   0     0     -                NTS  defaultGroup
+207   -1    -3    210   0     0     -                NTS  switchClose
+208   -1    -2    -1    0     0     switchKw         TS   "switch"
+209   -1    -2    362   0     0     switchCond       NTS  expr
+210   -1    -2    -1    0     0     switchClose      TS   "}"
+211   212   -2    213   0     0     caseGroup        NTS  caseLabelRun
+212   -1    -3    225   0     0     -                NTS  caseBody
+213   214   -2    215   0     0     caseLabelRun     NTS  caseLabel
+214   214   -1    215   0     0     -                NTS  caseLabel
+215   216   -2    -1    0     0     caseLabel        TS   "case"
+216   217   -3    218   0     0     -                NTS  caseValue
+217   -1    -3    -1    0     0     -                TS   ":"
+218   -1    219   584   0     0     caseValue        NTS  ident
+219   -1    220   221   0     0     -                NTS  caseNeg
+220   -1    -2    223   0     0     -                NTS  caseNumber
+221   222   -2    -1    0     0     caseNeg          TS   "-"
+222   -1    -3    223   0     0     -                NTS  caseNumber
+223   224   -2    603   0     0     caseNumber       NTS  digit
+224   224   -1    603   0     0     -                NTS  digit
+225   225   -1    171   0     0     caseBody         NTS  unlabeledStmt
+226   227   -2    228   0     0     defaultGroup     NTS  defaultLabel
+227   -1    -3    225   0     0     -                NTS  caseBody
+228   229   -2    -1    0     0     defaultLabel     TS   "default"
+229   -1    -3    -1    0     0     -                TS   ":"
+230   231   231   103   0     0     varDecl          NTS  constKw
+231   232   -2    562   0     0     -                NTS  type
+232   233   -3    577   0     0     -                NTS  pointerDecl
+233   234   -3    237   0     0     -                NTS  varDeclarator
+234   235   236   -1    0     0     -                TS   ","
+235   234   -3    237   0     0     -                NTS  varDeclarator
+236   -1    -3    -1    0     0     -                TS   ";"
+237   238   -2    240   0     0     varDeclarator    NTS  localDecl
+238   239   -1    -1    0     0     -                TS   "="
+239   -1    -3    243   0     0     -                NTS  varInit
+240   241   -2    559   0     0     localDecl        NTS  localName
+241   242   -1    111   0     0     -                NTS  arraySize
+242   242   -1    114   0     0     -                NTS  arraySizeN
+243   -1    244   246   0     0     varInit          NTS  arrayStringInit
+244   -1    245   362   0     0     -                NTS  expr
+245   -1    -2    247   0     0     -                NTS  initList
+246   -1    -2    440   0     0     arrayStringInit  NTS  stringLit
+247   248   -2    -1    0     0     initList         TS   "{"
+248   249   251   252   0     0     -                NTS  initValue
+249   250   251   -1    0     0     -                TS   ","
+250   249   -3    252   0     0     -                NTS  initValue
+251   -1    -3    -1    0     0     -                TS   "}"
+252   -1    253   259   0     0     initValue        NTS  initNumber
+253   -1    254   257   0     0     -                NTS  initNeg
+254   -1    -2    255   0     0     -                NTS  initBool
+255   -1    256   -1    0     0     initBool         TS   "true"
+256   -1    -2    -1    0     0     -                TS   "false"
+257   258   -2    -1    0     0     initNeg          TS   "-"
+258   -1    -3    259   0     0     -                NTS  initNumber
+259   260   -2    603   0     0     initNumber       NTS  digit
+260   260   -1    603   0     0     -                NTS  digit
+261   -1    262   266   0     0     assignStmt       NTS  chainAssign
+262   263   -2    535   0     0     -                NTS  target
+263   264   -3    272   0     0     -                NTS  assignop
+264   265   -3    362   0     0     -                NTS  expr
+265   -1    -3    -1    0     0     -                TS   ";"
+266   267   -2    535   0     0     chainAssign      NTS  target
+267   268   -3    272   0     0     -                NTS  assignop
+268   269   -3    535   0     0     -                NTS  target
+269   270   -3    272   0     0     -                NTS  assignop
+270   271   -3    362   0     0     -                NTS  expr
+271   -1    -3    -1    0     0     -                TS   ";"
+272   -1    273   -1    0     0     assignop         TS   "="
+273   -1    274   -1    0     0     -                TS   "+="
+274   -1    275   -1    0     0     -                TS   "-="
+275   -1    276   -1    0     0     -                TS   "*="
+276   -1    277   -1    0     0     -                TS   "/="
+277   -1    278   -1    0     0     -                TS   "%="
+278   -1    279   -1    0     0     -                TS   "<<="
+279   -1    280   -1    0     0     -                TS   ">>="
+280   -1    281   -1    0     0     -                TS   "&="
+281   -1    282   -1    0     0     -                TS   "^="
+282   -1    -2    -1    0     0     -                TS   "|="
+283   284   285   522   0     0     callStmt         NTS  call
+284   -1    -3    -1    0     0     -                TS   ";"
+285   286   -2    526   0     0     -                NTS  indirectCall
+286   -1    -3    -1    0     0     -                TS   ";"
+287   -1    -2    -1    0     0     emptyStmt        TS   ";"
+288   289   -2    291   0     0     voidCastStmt     NTS  voidCastOpen
+289   290   -3    362   0     0     -                NTS  expr
+290   -1    -3    -1    0     0     -                TS   ";"
+291   292   -2    -1    0     0     voidCastOpen     TS   "("
+292   293   -3    -1    0     0     -                TS   "void"
+293   -1    -3    -1    0     0     -                TS   ")"
+294   295   -2    -1    0     0     returnStmt       TS   "return"
+295   296   296   297   0     0     -                NTS  retVal
+296   -1    -3    -1    0     0     -                TS   ";"
+297   -1    -2    362   0     0     retVal           NTS  expr
+298   299   -2    305   0     0     ifStmt           NTS  ifKw
+299   300   -3    -1    0     0     -                TS   "("
+300   301   -3    307   0     0     -                NTS  ifCond
+301   302   -3    -1    0     0     -                TS   ")"
+302   303   -3    308   0     0     -                NTS  thenPart
+303   304   -1    306   0     0     -                NTS  elseKw
+304   -1    -3    309   0     0     -                NTS  elsePart
+305   -1    -2    -1    0     0     ifKw             TS   "if"
+306   -1    -2    -1    0     0     elseKw           TS   "else"
+307   -1    -2    362   0     0     ifCond           NTS  expr
+308   -1    -2    169   0     0     thenPart         NTS  statement
+309   -1    -2    169   0     0     elsePart         NTS  statement
+310   311   -2    315   0     0     whileStmt        NTS  whileKw
+311   312   -3    -1    0     0     -                TS   "("
+312   313   -3    316   0     0     -                NTS  whileCond
+313   314   -3    -1    0     0     -                TS   ")"
+314   -1    -3    317   0     0     -                NTS  whileBody
+315   -1    -2    -1    0     0     whileKw          TS   "while"
+316   -1    -2    362   0     0     whileCond        NTS  expr
+317   -1    -2    169   0     0     whileBody        NTS  statement
+318   319   -2    327   0     0     forStmt          NTS  forKw
+319   320   -3    -1    0     0     -                TS   "("
+320   321   321   331   0     0     -                NTS  forInit
+321   322   -3    328   0     0     -                NTS  forSep1
+322   323   323   334   0     0     -                NTS  forCond
+323   324   -3    329   0     0     -                NTS  forSep2
+324   325   325   335   0     0     -                NTS  forStep
+325   326   -3    330   0     0     -                NTS  forClose
+326   -1    -3    340   0     0     -                NTS  forBody
+327   -1    -2    -1    0     0     forKw            TS   "for"
+328   -1    -2    -1    0     0     forSep1          TS   ";"
+329   -1    -2    -1    0     0     forSep2          TS   ";"
+330   -1    -2    -1    0     0     forClose         TS   ")"
+331   332   -2    535   0     0     forInit          NTS  target
+332   333   -3    272   0     0     -                NTS  assignop
+333   -1    -3    362   0     0     -                NTS  expr
+334   -1    -2    362   0     0     forCond          NTS  expr
+335   336   338   535   0     0     forStep          NTS  target
+336   337   -3    272   0     0     -                NTS  assignop
+337   -1    -3    362   0     0     -                NTS  expr
+338   -1    339   502   0     0     -                NTS  postIncDec
+339   -1    -2    496   0     0     -                NTS  preIncDec
+340   -1    -2    169   0     0     forBody          NTS  statement
+341   342   -2    348   0     0     doStmt           NTS  doKw
+342   343   -3    352   0     0     -                NTS  doBody
+343   344   -3    349   0     0     -                NTS  doWhileTok
+344   345   -3    -1    0     0     -                TS   "("
+345   346   -3    350   0     0     -                NTS  doCond
+346   347   -3    -1    0     0     -                TS   ")"
+347   -1    -3    351   0     0     -                NTS  doClose
+348   -1    -2    -1    0     0     doKw             TS   "do"
+349   -1    -2    -1    0     0     doWhileTok       TS   "while"
+350   -1    -2    362   0     0     doCond           NTS  expr
+351   -1    -2    -1    0     0     doClose          TS   ";"
+352   -1    -2    169   0     0     doBody           NTS  statement
+353   354   -2    -1    0     0     breakStmt        TS   "break"
+354   -1    -3    -1    0     0     -                TS   ";"
+355   356   -2    -1    0     0     continueStmt     TS   "continue"
+356   -1    -3    -1    0     0     -                TS   ";"
+357   358   -2    -1    0     0     gotoStmt         TS   "goto"
+358   359   -3    584   0     0     -                NTS  ident
+359   -1    -3    -1    0     0     -                TS   ";"
+360   361   -2    584   0     0     labelStmt        NTS  ident
+361   -1    -3    -1    0     0     -                TS   ":"
+362   -1    -2    363   0     0     expr             NTS  conditionalExpr
+363   364   -2    374   0     0     conditionalExpr  NTS  orExpr
+364   365   -1    370   0     0     -                NTS  qmark
+365   366   -3    371   0     0     -                NTS  conditionalTrue
+366   367   -3    372   0     0     -                NTS  colon
+367   -1    -3    373   0     0     -                NTS  conditionalFalse
+368   -1    -2    -1    0     0     parenOpen        TS   "("
+369   -1    -2    -1    0     0     parenClose       TS   ")"
+370   -1    -2    -1    0     0     qmark            TS   "?"
+371   -1    -2    362   0     0     conditionalTrue  NTS  expr
+372   -1    -2    -1    0     0     colon            TS   ":"
+373   -1    -2    363   0     0     conditionalFalse NTS  conditionalExpr
+374   375   -2    378   0     0     orExpr           NTS  andExpr
+375   376   -1    377   0     0     -                NTS  orop
+376   -1    -3    374   0     0     -                NTS  orExpr
+377   -1    -2    -1    0     0     orop             TS   "||"
+378   379   -2    382   0     0     andExpr          NTS  bitOrExpr
+379   380   -1    381   0     0     -                NTS  andop
+380   -1    -3    378   0     0     -                NTS  andExpr
+381   -1    -2    -1    0     0     andop            TS   "&&"
+382   383   -2    386   0     0     bitOrExpr        NTS  bitXorExpr
+383   384   -1    385   0     0     -                NTS  bitorop
+384   -1    -3    382   0     0     -                NTS  bitOrExpr
+385   -1    -2    -1    0     0     bitorop          TS   "|"
+386   387   -2    390   0     0     bitXorExpr       NTS  bitAndExpr
+387   388   -1    389   0     0     -                NTS  bitxorop
+388   -1    -3    386   0     0     -                NTS  bitXorExpr
+389   -1    -2    -1    0     0     bitxorop         TS   "^"
+390   391   -2    394   0     0     bitAndExpr       NTS  comparison
+391   392   -1    393   0     0     -                NTS  bitandop
+392   -1    -3    390   0     0     -                NTS  bitAndExpr
+393   -1    -2    -1    0     0     bitandop         TS   "&"
+394   395   -2    397   0     0     comparison       NTS  shiftExpr
+395   396   -1    403   0     0     -                NTS  relop
+396   -1    -3    397   0     0     -                NTS  shiftExpr
+397   398   -2    409   0     0     shiftExpr        NTS  addExpr
+398   399   -1    401   0     0     -                NTS  shiftop
+399   398   -3    400   0     0     -                NTS  shiftRhs
+400   -1    -2    409   0     0     shiftRhs         NTS  addExpr
+401   -1    402   -1    0     0     shiftop          TS   "<<"
+402   -1    -2    -1    0     0     -                TS   ">>"
+403   -1    404   -1    0     0     relop            TS   "<="
+404   -1    405   -1    0     0     -                TS   ">="
+405   -1    406   -1    0     0     -                TS   "=="
+406   -1    407   -1    0     0     -                TS   "!="
+407   -1    408   -1    0     0     -                TS   "<"
+408   -1    -2    -1    0     0     -                TS   ">"
+409   410   -2    414   0     0     addExpr          NTS  term
+410   411   -1    412   0     0     -                NTS  addop
+411   410   -3    414   0     0     -                NTS  term
+412   -1    413   -1    0     0     addop            TS   "+"
+413   -1    -2    -1    0     0     -                TS   "-"
+414   415   -2    420   0     0     term             NTS  factor
+415   416   -1    417   0     0     -                NTS  mulop
+416   415   -3    420   0     0     -                NTS  factor
+417   -1    418   -1    0     0     mulop            TS   "*"
+418   -1    419   -1    0     0     -                TS   "/"
+419   -1    -2    -1    0     0     -                TS   "%"
+420   -1    421   471   0     0     factor           NTS  sizeofExpr
+421   -1    422   485   0     0     -                NTS  castExpr
+422   -1    423   496   0     0     -                NTS  preIncDec
+423   -1    424   502   0     0     -                NTS  postIncDec
+424   425   427   368   0     0     -                NTS  parenOpen
+425   426   -3    362   0     0     -                NTS  expr
+426   -1    -3    369   0     0     -                NTS  parenClose
+427   428   429   522   0     0     -                NTS  call
+428   -1    429   439   0     0     -                NTS  postfixIndex
+429   -1    430   526   0     0     -                NTS  indirectCall
+430   -1    431   582   0     0     -                NTS  boolLit
+431   -1    432   468   0     0     -                NTS  addressRef
+432   -1    433   520   0     0     -                NTS  derefRef
+433   -1    434   544   0     0     -                NTS  varRef
+434   -1    435   443   0     0     -                NTS  charLit
+435   -1    436   587   0     0     -                NTS  number
+436   437   438   440   0     0     -                NTS  stringLit
+437   -1    438   439   0     0     -                NTS  postfixIndex
+438   -1    -2    464   0     0     -                NTS  negFactor
+439   -1    -2    549   0     0     postfixIndex     NTS  index
+440   441   -2    -1    0     0     stringLit        TS   """
+441   441   442   458   0     0     -                NTS  character
+442   -1    -3    -1    0     0     -                TS   """
+443   444   -2    -1    0     0     charLit          TS   "'"
+444   445   -3    446   0     0     -                NTS  charLitBody
+445   -1    -3    -1    0     0     -                TS   "'"
+446   -1    447   448   0     0     charLitBody      NTS  charLitEscape
+447   -1    -2    455   0     0     -                NTS  charLitPlain
+448   449   -2    -1    0     0     charLitEscape    TS   "\134"
+449   -1    -3    450   0     0     -                NTS  charLitEscChar
+450   -1    451   -1    0     0     charLitEscChar   TS   "n"
+451   -1    452   -1    0     0     -                TS   "t"
+452   -1    453   -1    0     0     -                TS   "r"
+453   -1    454   -1    0     0     -                TS   "0"
+454   -1    -2    -1    0     0     -                TS   "\134"
+455   -1    456   -1    32    38    charLitPlain     RNG  " "~"&"
+456   -1    457   -1    40    91    -                RNG  "("~"["
+457   -1    -2    -1    93    126   -                RNG  "]"~"~"
+458   -1    459   461   0     0     character        NTS  strEscape
+459   -1    460   -1    32    33    -                RNG  " "~"!"
+460   -1    -2    -1    35    126   -                RNG  "#"~"~"
+461   462   -2    -1    0     0     strEscape        TS   "\134"
+462   -1    -3    463   0     0     -                NTS  strEscChar
+463   -1    -2    -1    32    126   strEscChar       RNG  " "~"~"
+464   467   465   -1    0     0     negFactor        TS   "-"
+465   467   466   -1    0     0     -                TS   "!"
+466   467   -2    -1    0     0     -                TS   "~"
+467   -1    -3    420   0     0     -                NTS  factor
+468   469   -2    -1    0     0     addressRef       TS   "&"
+469   470   -3    584   0     0     -                NTS  ident
+470   -1    -1    549   0     0     -                NTS  index
+471   472   -2    -1    0     0     sizeofExpr       TS   "sizeof"
+472   473   -3    -1    0     0     -                TS   "("
+473   474   -3    475   0     0     -                NTS  sizeofArg
+474   -1    -3    -1    0     0     -                TS   ")"
+475   -1    476   477   0     0     sizeofArg        NTS  sizeofType
+476   -1    -2    484   0     0     -                NTS  sizeofVarName
+477   478   479   -1    0     0     sizeofType       TS   "unsigned"
+478   -1    -3    579   0     0     -                NTS  unsignedInt
+479   -1    480   -1    0     0     -                TS   "int"
+480   -1    481   -1    0     0     -                TS   "char"
+481   -1    482   -1    0     0     -                TS   "bool"
+482   483   -2    -1    0     0     -                TS   "struct"
+483   -1    -3    574   0     0     -                NTS  structTypeRef
+484   -1    -2    584   0     0     sizeofVarName    NTS  ident
+485   486   -2    -1    0     0     castExpr         TS   "("
+486   487   -3    489   0     0     -                NTS  castType
+487   488   -3    -1    0     0     -                TS   ")"
+488   -1    -3    495   0     0     -                NTS  castOperand
+489   490   491   -1    0     0     castType         TS   "unsigned"
+490   -1    -3    579   0     0     -                NTS  unsignedInt
+491   -1    492   -1    0     0     -                TS   "int"
+492   -1    493   -1    0     0     -                TS   "long"
+493   -1    494   -1    0     0     -                TS   "char"
+494   -1    -2    -1    0     0     -                TS   "bool"
+495   -1    -2    420   0     0     castOperand      NTS  factor
+496   497   498   514   0     0     preIncDec        NTS  incdecOp
+497   -1    -3    510   0     0     -                NTS  derefIncTarget
+498   499   500   514   0     0     -                NTS  incdecOp
+499   -1    -3    508   0     0     -                NTS  indexIncTarget
+500   501   -2    514   0     0     -                NTS  incdecOp
+501   -1    -3    584   0     0     -                NTS  ident
+502   503   504   510   0     0     postIncDec       NTS  derefIncTarget
+503   -1    -3    514   0     0     -                NTS  incdecOp
+504   505   506   508   0     0     -                NTS  indexIncTarget
+505   -1    -3    514   0     0     -                NTS  incdecOp
+506   507   -2    584   0     0     -                NTS  ident
+507   -1    -3    514   0     0     -                NTS  incdecOp
+508   509   -2    584   0     0     indexIncTarget   NTS  ident
+509   -1    -3    549   0     0     -                NTS  index
+510   511   -2    -1    0     0     derefIncTarget   TS   "("
+511   512   -3    -1    0     0     -                TS   "*"
+512   513   -3    584   0     0     -                NTS  ident
+513   -1    -3    -1    0     0     -                TS   ")"
+514   -1    515   -1    0     0     incdecOp         TS   "++"
+515   -1    -2    -1    0     0     -                TS   "--"
+516   517   518   496   0     0     incDecStmt       NTS  preIncDec
+517   -1    -3    -1    0     0     -                TS   ";"
+518   519   -2    502   0     0     -                NTS  postIncDec
+519   -1    -3    -1    0     0     -                TS   ";"
+520   521   -2    -1    0     0     derefRef         TS   "*"
+521   -1    -3    420   0     0     -                NTS  factor
+522   523   -2    561   0     0     call             NTS  funcName
+523   524   -3    -1    0     0     -                TS   "("
+524   525   -3    531   0     0     -                NTS  argList
+525   -1    -3    -1    0     0     -                TS   ")"
+526   527   -2    544   0     0     indirectCall     NTS  varRef
+527   528   -3    530   0     0     -                NTS  indCallOpen
+528   529   -3    531   0     0     -                NTS  argList
+529   -1    -3    -1    0     0     -                TS   ")"
+530   -1    -2    -1    0     0     indCallOpen      TS   "("
+531   532   -1    534   0     0     argList          NTS  arg
+532   533   -1    -1    0     0     -                TS   ","
+533   532   -3    534   0     0     -                NTS  arg
+534   -1    -2    362   0     0     arg              NTS  expr
+535   -1    536   537   0     0     target           NTS  directTarget
+536   -1    -2    542   0     0     -                NTS  indirectTarget
+537   538   -2    584   0     0     directTarget     NTS  ident
+538   539   540   549   0     0     -                NTS  index
+539   539   540   549   0     0     -                NTS  index
+540   541   -1    553   0     0     -                NTS  member
+541   -1    -1    549   0     0     -                NTS  index
+542   543   -2    -1    0     0     indirectTarget   TS   "*"
+543   -1    -3    420   0     0     -                NTS  factor
+544   545   -2    584   0     0     varRef           NTS  ident
+545   546   547   549   0     0     -                NTS  index
+546   546   547   549   0     0     -                NTS  index
+547   548   -1    553   0     0     -                NTS  member
+548   -1    -1    549   0     0     -                NTS  index
+549   550   -2    552   0     0     index            NTS  indexOpen
+550   551   -3    362   0     0     -                NTS  expr
+551   -1    -3    -1    0     0     -                TS   "]"
+552   -1    -2    -1    0     0     indexOpen        TS   "["
+553   554   555   -1    0     0     member           TS   "."
+554   -1    -3    52    0     0     -                NTS  fieldName
+555   556   -2    -1    0     0     -                TS   "->"
+556   -1    -3    52    0     0     -                NTS  fieldName
+557   -1    -2    584   0     0     defName          NTS  ident
+558   -1    -2    584   0     0     paramName        NTS  ident
+559   -1    -2    584   0     0     localName        NTS  ident
+560   -1    -2    584   0     0     globalName       NTS  ident
+561   -1    -2    584   0     0     funcName         NTS  ident
+562   563   564   -1    0     0     type             TS   "unsigned"
+563   -1    -3    579   0     0     -                NTS  unsignedInt
+564   -1    565   -1    0     0     -                TS   "int"
+565   -1    566   -1    0     0     -                TS   "long"
+566   -1    567   -1    0     0     -                TS   "char"
+567   -1    568   -1    0     0     -                TS   "bool"
+568   569   570   -1    0     0     -                TS   "struct"
+569   -1    -3    574   0     0     -                NTS  structTypeRef
+570   571   572   -1    0     0     -                TS   "enum"
+571   -1    -3    575   0     0     -                NTS  enumTypeRef
+572   -1    573   -1    0     0     -                TS   "void"
+573   -1    -2    576   0     0     -                NTS  typedefRef
+574   -1    -2    584   0     0     structTypeRef    NTS  ident
+575   -1    -2    584   0     0     enumTypeRef      NTS  ident
+576   -1    -2    584   0     0     typedefRef       NTS  ident
+577   577   -1    578   0     0     pointerDecl      NTS  pointerStar
+578   -1    -2    -1    0     0     pointerStar      TS   "*"
+579   -1    580   -1    0     0     unsignedInt      TS   "int"
+580   -1    581   -1    0     0     -                TS   "char"
+581   -1    -2    -1    0     0     -                TS   "long"
+582   -1    583   -1    0     0     boolLit          TS   "true"
+583   -1    -2    -1    0     0     -                TS   "false"
+584   585   -2    600   0     0     ident            NTS  letter
+585   585   586   600   0     0     -                NTS  letter
+586   585   -1    603   0     0     -                NTS  digit
+587   -1    588   589   0     0     number           NTS  hexNumber
+588   -1    -2    598   0     0     -                NTS  decNumber
+589   590   -2    -1    0     0     hexNumber        TS   "0"
+590   591   -3    593   0     0     -                NTS  hexMark
+591   592   -3    595   0     0     -                NTS  hexDigit
+592   592   -1    595   0     0     -                NTS  hexDigit
+593   -1    594   -1    0     0     hexMark          TS   "x"
+594   -1    -2    -1    0     0     -                TS   "X"
+595   -1    596   603   0     0     hexDigit         NTS  digit
+596   -1    597   -1    97    102   -                RNG  "a"~"f"
+597   -1    -2    -1    65    70    -                RNG  "A"~"F"
+598   599   -2    603   0     0     decNumber        NTS  digit
+599   599   -1    603   0     0     -                NTS  digit
+600   -1    601   -1    97    122   letter           RNG  "a"~"z"
+601   -1    602   -1    65    90    -                RNG  "A"~"Z"
+602   -1    -2    -1    0     0     -                TS   "_"
+603   -1    -2    -1    48    57    digit            RNG  "0"~"9"
 [ENDE]
 
 [TESTS]
@@ -2833,7 +2849,70 @@ void tc_staticlocal(const char* start, const char* end) {
 }
 END
 ROUTINE C tc_globalend
+/* Mehrere Deklaratoren in einer globalen Deklaration
+   ("static TCType a[512], b[512][64];", 31 Fundstellen in den beiden
+   Bootstrap-Zieldateien). tcGlobalOne parst eine VOLLSTAENDIGE Deklaration aus
+   dem Rohtext (Typ + EIN Deklarator), deshalb wird hier an den Kommas der
+   OBERSTEN Ebene geteilt und fuer jeden weiteren Deklarator der Typ-Praefix
+   davorgesetzt. Kommas innerhalb von "[...]" oder "{...}" (Initialisiererlisten)
+   zaehlen dabei nicht. */
+static void tc_globalend(const char* start, const char* end);
+static void tcGlobalOne(const char* start, const char* end);
 void tc_globalend(const char* start, const char* end) {
+	const char* p = start;
+	const char* declStart;
+	const char* seg;
+	char buf[1024];
+	int depth = 0, n, i;
+	/* Ende des Typ-Praefix suchen: erster Bezeichner, der von "[", "=", ","
+	   oder ";" gefolgt wird -- also der erste Deklaratorname. */
+	while (p < end && (*p == ' ' || *p == '\t')) p++;
+	declStart = p;
+	{
+		const char* q = p; const char* lastWord = p;
+		while (q < end && *q != '[' && *q != '=' && *q != ',' && *q != ';') {
+			if (*q == ' ' || *q == '\t' || *q == '*') { q++; lastWord = q; }
+			else q++;
+		}
+		declStart = lastWord;
+	}
+	/* Gibt es ueberhaupt ein Komma auf oberster Ebene? */
+	depth = 0; seg = 0;
+	for (p = declStart; p < end; p++) {
+		if (*p == '[' || *p == '{') depth++;
+		else if (*p == ']' || *p == '}') depth--;
+		else if (*p == ',' && depth == 0) { seg = p; break; }
+	}
+	if (!seg) { tcGlobalOne(start, end); return; }
+	/* erster Deklarator: Originaltext bis zum Komma, mit ";" abgeschlossen */
+	n = (int)(seg - start);
+	if (n > 1000) { fprintf(stderr, "qcc: declaration too long\n"); tcSemanticErrors++; return; }
+	for (i = 0; i < n; i++) buf[i] = start[i];
+	buf[n] = ';'; buf[n + 1] = 0;
+	tcGlobalOne(buf, buf + n + 1);
+	/* weitere Deklaratoren: Typ-Praefix + Segment */
+	p = seg + 1;
+	for (;;) {
+		const char* stop = 0;
+		int pre = (int)(declStart - start);
+		depth = 0;
+		for (seg = p; seg < end; seg++) {
+			if (*seg == '[' || *seg == '{') depth++;
+			else if (*seg == ']' || *seg == '}') depth--;
+			else if ((*seg == ',' || *seg == ';') && depth == 0) { stop = seg; break; }
+		}
+		if (!stop) stop = end;
+		n = 0;
+		for (i = 0; i < pre; i++) buf[n++] = start[i];
+		while (p < stop && (*p == ' ' || *p == '\t')) p++;
+		while (p < stop) buf[n++] = *p++;
+		buf[n++] = ';'; buf[n] = 0;
+		tcGlobalOne(buf, buf + n);
+		if (stop >= end || *stop == ';') break;
+		p = stop + 1;
+	}
+}
+static void tcGlobalOne(const char* start, const char* end) {
 const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 0, neg = 0, arrayLen = 0, arrayNDims = 1, initCount = -1; int hadBrackets = 0; long value = 0, initValues[256]; int i; int arrayDims[TC_MAXDIMS - 1];
 	int isConst = tcPendingConst; int isStatic = 0; tcPendingConst = 0;
 	tcPendingStatic = 0;
