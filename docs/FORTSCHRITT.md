@@ -1,5 +1,27 @@
 # Fortschritt und Roadmap
 
+## Selbst eingebauten Fehler gefunden: "x--" galt als Member-Zugriff (2026-08-10)
+
+Die Messung meldete 280-mal `'->' requires a pointer to struct` in einer
+Datei, die **null** Pfeil-Operatoren enthaelt. Ursache war eine eigene
+Regression aus dem Struct-Feld-Inkrement: die Weiche nach `tcMemberIncDec`
+pruefte nur, ob hinter dem Bezeichner ein `.` ODER ein `-` steht -- bei
+`x--` endet das Wort aber ebenfalls vor einem `-`, und das ist der
+Dekrement-Operator, kein Member-Zugriff. Jetzt wird auf ein echtes `->`
+geprueft (`-` gefolgt von `>`).
+
+Zusaetzlich melden die beiden Pfeil-Zweige in `tc_varref`/`tc_target` bei
+unpassender Basis keinen Fehler mehr, sondern fallen zu den regulaeren
+Zweigen durch: der Zweig wird allein am Rohtext erkannt, ein Fehlalarm darf
+deshalb keine falsche Diagnose erzeugen.
+
+**Semantische Fehler damit von 450 auf 170.**
+
+**Ebenfalls korrigiert: die Messung selbst.** Sie lief bis dahin gegen eine
+Kopie des URSPRUENGLICHEN `Data/qcc_p.c`. Das eigentliche Bootstrap-Ziel ist
+aber der AKTUELLE Parser -- er waechst mit jeder Grammatikaenderung (6747 ->
+8056 Zeilen). Seither wird das Messfile aus dem aktuellen Stand erzeugt.
+
 ## Vorwaertsdeklaration von static-Funktionen erlaubt (2026-08-10)
 
 QCC lehnte `static int f(int);` ohne Rumpf ab ("static function declaration
