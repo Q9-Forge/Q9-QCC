@@ -1,5 +1,50 @@
 # Fortschritt und Roadmap
 
+## Bootstrap Stufe 1 begonnen: acht Sprachluecken geschlossen (2026-08-10)
+
+Erster echter Selbstuebersetzungsversuch: `Data/qcc_p.c` (2 `#include`
+durch `extern`-Prototypen ersetzt, danach per `xcc -pp` makrofrei) durch
+QCC selbst. Gemessen wird pro Top-Level-Funktion, wie viele von 338 der
+Parser annimmt.
+
+**Fortschritt: 309 -> 112 -> 64 -> 53 fehlerhafte Funktionen.**
+
+Geschlossene Luecken:
+
+| Konstrukt | Vorkommen | Umsetzung |
+|---|---:|---|
+| `f(void)` Parameterliste | 364 | `funcParams = voidParams \| normalParams` |
+| Zeichenliteral `'x'` | 603 | `charLit`, Typ int wie in C, Escapes `\n \t \r \0 \\` |
+| `(void)ausdruck;` | 223 | `voidCastStmt`, emittiert `DROP` |
+| `unsigned char` | 72 | auf QCCs char abgebildet (dort ohnehin nullerweitert) |
+| `long` | 14 | auf int abgebildet (68k: beide 32 Bit) |
+| `int a, b;` + Init je Deklarator | 11 + 9 | `varDeclarator` in der Wiederholung |
+| `const` als Rueckgabetyp | 3 | aktionslose Kopie `retConstKw` |
+
+**Wichtige Designaenderung: int/bool-Strenge auf C-Semantik gelockert.**
+QCC verlangte in Bedingungen bisher einen echten `bool` und lehnte
+`if (x)` mit int ab, ebenso `int x = (a == b);` und `return (a && b);`.
+Das ist STRENGER als ISO C und erzwang in jedem Port Umschreibungen
+(dokumentiert als Quirk 3/10 weiter unten). Da `docs/ISO_C_LUECKENLISTE.md`
+ISO-C-Konformitaet als Ziel fuehrt und maschinell erzeugter C-Code wie
+`Data/qcc_p.c` sonst unuebersetzbar bleibt, akzeptieren Bedingungen jetzt
+jeden skalaren Typ (`tcIsTruthy`) und `bool` gilt als Ganzzahltyp. Die
+Aenderung ist rein additiv -- was vorher zulaessig war, bleibt es -- und
+codegen-seitig folgenlos, weil ein bool ohnehin als 0/1 im selben 32-Bit-
+Slot liegt und `JZ`/`JNZ` den Wert typunabhaengig testen.
+
+**Dabei gefundene Grammatik-Falle** (wichtig fuer kuenftige Erweiterungen):
+Eine Alternation, deren zweiter Zweig mit einer OPTIONALEN Gruppe beginnt,
+backtrackt an dieser Stelle NICHT. Der erste Versuch
+`paramList = voidParamList | [ param {...} ]` schluckte bei `f(void* p)`
+das `void` und der Parser kam nicht zurueck -- `SourceQCC/ebnf.tc` parste
+danach gar nicht mehr. Funktioniert hat erst die Form mit zwei ECHTEN
+NTS-Alternativen, welche die Klammern mit einschliessen (dasselbe Muster
+wie `call`/`varRef` in `factor`), sodass die erste als GANZES scheitert.
+
+**Regression:** `SourceQCC/ebnf.tc` (12317 IR-Zeilen) und `codegen.tc`
+(15968) erzeugen nach allen Aenderungen bitgleich dieselbe IR wie vorher.
+
 ## Funktionszeiger implementiert (2026-08-10)
 
 Der letzte Sprachblocker fuer den echten Compiler-Bootstrap ist beseitigt.

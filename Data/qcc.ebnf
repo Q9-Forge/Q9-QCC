@@ -102,7 +102,26 @@ funcdef       = funcHead ( funcBody | protoEnd ) .
 funcBody      = funcBodyOpen { statement } "}" .
 funcBodyOpen  = "{" .
 protoEnd      = ";" .
-funcHead  = [ staticKw ] type pointerDecl defName "(" paramList ")" .
+/* "f(void)" ist in C die ausdrueckliche LEERE Parameterliste. Die Klammern
+   gehoeren bewusst IN die beiden Alternativen: stuende dort nur "void" gegen
+   die Parameterliste, wuerde die erste Alternative bei "f(void* p)" das
+   "void" schlucken und der Parser kaeme nicht mehr zurueck -- die optionale
+   Gruppe im zweiten Zweig verhindert das Backtracking an dieser Stelle. So
+   ist es dagegen dasselbe Muster wie call/varRef in factor: zwei echte
+   NTS-Alternativen, von denen die erste als GANZES scheitert (an ")") und
+   sauber verworfen wird. Keine Aktion noetig -- keine Parameter heisst
+   schlicht: tc_param feuert nie. */
+/* retConstKw ist eine AKTIONSLOSE Kopie von constKw: ein "const" am
+   Rueckgabetyp ("static const char* f(...)") wird geparst und verworfen.
+   Ein Verweis auf constKw selbst wuerde dessen Aktion tc_const ausloesen,
+   die tcPendingConst setzt -- das Flag wird erst beim naechsten Parameter
+   oder Lokalen konsumiert und wuerde dort faelschlich Konstantheit
+   erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
+funcHead  = [ staticKw ] [ retConstKw ] type pointerDecl defName funcParams .
+retConstKw = "const" .
+funcParams = voidParams | normalParams .
+voidParams = "(" "void" ")" .
+normalParams = "(" paramList ")" .
 paramList = [ param { "," param } ] .
 param     = [ constKw ] type pointerDecl paramDecl .
 paramDecl = paramName [ paramArray ] .
@@ -135,6 +154,7 @@ unlabeledStmt = ifStmt
           | gotoStmt
           | returnStmt
           | block
+          | voidCastStmt
           | callStmt
           | incDecStmt
           | assignStmt
@@ -179,7 +199,16 @@ caseBody     = { unlabeledStmt } .
 defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
 
-varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
+/* Mehrere Deklaratoren in einer Anweisung ("int i, k;"). Ein etwaiger
+   Initialisierer gehoert wie in C zum LETZTEN Deklarator ("int slot,
+   global = -1;") -- genau das ergibt sich hier automatisch, weil varInit
+   dem zuletzt angelegten lokalen Slot zugewiesen wird. */
+/* Jeder Deklarator darf einen EIGENEN Initialisierer haben ("int round = 0,
+   square = 0;") -- das ist die C-Regel; die vorherige Fassung erlaubte ihn
+   nur beim letzten. varDeclarator buendelt Name und Initialisierer, damit
+   die Wiederholung beide zusammen erfasst. */
+varDecl   = [ constKw ] type pointerDecl varDeclarator { "," varDeclarator } ";" .
+varDeclarator = localDecl [ "=" varInit ] .
 /* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
    2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
    struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
@@ -210,6 +239,13 @@ assignStmt = target assignop expr ";" .
 assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
            | "<<=" | ">>=" | "&=" | "^=" | "|=" .
 callStmt  = call ";" | indirectCall ";" .
+
+/* "(void)ausdruck;" -- wertet aus und verwirft. In C das uebliche Mittel,
+   einen absichtlich unbenutzten Parameter stillzulegen; qcc_p.c benutzt es
+   genau dafuer ("(void)start; (void)end;"). Kein anderes Statement beginnt
+   mit "(", die Einordnung in der Alternation ist also unkritisch. */
+voidCastStmt = voidCastOpen expr ";" .
+voidCastOpen = "(" "void" ")" .
 returnStmt = "return" [ retVal ] ";" .
 retVal    = expr .
 
@@ -294,6 +330,7 @@ factor    = sizeofExpr
           | addressRef
           | derefRef
           | varRef
+          | charLit
           | number
           | stringLit [ postfixIndex ]
           | negFactor .
@@ -324,6 +361,20 @@ postfixIndex = index .
    Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
    und String-Verkettung/-Vergleich als eigene Operatoren. */
 stringLit = "\042" { character } "\042" .
+
+/* Zeichenliteral 'x'. Wie in echtem C hat es den Typ int (nicht char) --
+   dadurch funktionieren Vergleiche mit int-Variablen ohne Konvertierung,
+   genau das Muster in Data/qcc_p.c ("c >= '0' && c <= '9'" mit int c).
+   Die Zeichenklassen sind ausgeschriebene Bereiche, weil der EBNF-Dialekt
+   keinen Ausschluss-Operator hat: 0x20-0x26, 0x28-0x5B und 0x5D-0x7E lassen
+   genau das Hochkomma (0x27) und den Backslash (0x5C) aus, die beide nur
+   ueber die Escape-Form vorkommen duerfen. Unterstuetzte Escapes sind die
+   in der Praxis benutzten -- \n \t \r \0 und der Backslash selbst. */
+charLit       = "\047" charLitBody "\047" .
+charLitBody   = charLitEscape | charLitPlain .
+charLitEscape = "\134" charLitEscChar .
+charLitEscChar = "n" | "t" | "r" | "0" | "\134" .
+charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
 character = " "~"!" | "#"~"~" .
 negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
@@ -395,13 +446,19 @@ paramName = ident .
 localName = ident .
 globalName = ident .
 funcName  = ident .
-type      = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+/* "long" ist auf dem 68k-Ziel wortgleich mit "int" (beide 32 Bit) und wird
+   in tc_type auch so abgebildet -- eigener Typ waere ohne 64-Bit-Arithmetik
+   bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt. */
+type      = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
 structTypeRef = ident .
 enumTypeRef = ident .
 typedefRef = ident .
 pointerDecl = { pointerStar } .
 pointerStar = "*" .
-unsignedInt = "int" .
+/* "unsigned char" wird auf QCCs char abgebildet: der 68k-Codegen laedt ein
+   char ohnehin nullerweitert ("moveq #0,d0 / move.b"), QCCs char verhaelt
+   sich also bereits vorzeichenlos. "unsigned long" analog zu unsigned int. */
+unsignedInt = "int" | "char" | "long" .
 boolLit   = "true" | "false" .
 
 ident     = letter { letter | digit } .
