@@ -154,6 +154,7 @@ unlabeledStmt = ifStmt
           | gotoStmt
           | returnStmt
           | block
+          | emptyStmt
           | voidCastStmt
           | callStmt
           | incDecStmt
@@ -244,6 +245,10 @@ callStmt  = call ";" | indirectCall ";" .
    einen absichtlich unbenutzten Parameter stillzulegen; qcc_p.c benutzt es
    genau dafuer ("(void)start; (void)end;"). Kein anderes Statement beginnt
    mit "(", die Einordnung in der Alternation ist also unkritisch. */
+/* Leere Anweisung. In C muss auf eine Sprungmarke eine Anweisung folgen;
+   der generierte Parser Data/qcc_p.c schreibt deshalb ueberall "L19: ;". */
+emptyStmt = ";" .
+
 voidCastStmt = voidCastOpen expr ";" .
 voidCastOpen = "(" "void" ")" .
 returnStmt = "return" [ retVal ] ";" .
@@ -375,7 +380,13 @@ charLitBody   = charLitEscape | charLitPlain .
 charLitEscape = "\134" charLitEscChar .
 charLitEscChar = "n" | "t" | "r" | "0" | "\134" .
 charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
-character = " "~"!" | "#"~"~" .
+/* strEscape steht VORNE, damit ein Backslash mitsamt dem Folgezeichen als
+   EINHEIT konsumiert wird -- sonst beendet das "\\\"" das Literal vorzeitig.
+   Die Dekodierung selbst kann tcDecodeStringLit laengst, nur die Grammatik
+   kam bisher nie so weit. */
+character = strEscape | " "~"!" | "#"~"~" .
+strEscape = "\134" strEscChar .
+strEscChar = " "~"~" .
 negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
 
