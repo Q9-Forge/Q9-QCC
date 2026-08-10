@@ -39,8 +39,21 @@ ein `STOREIND` macht). Ein Array-Feld liefert wie ueberall dessen ADRESSE
 statt eines Wertes, `p->feld[i]` haengt ein zweites `IPADD` an. Live auf
 Q9 verifiziert (Lesen und Schreiben ueber `->`, Ausgabe `summe=42`).
 
-Danach parst die Praeambel, und nur noch 7 der erkannten Funktionen
-scheitern. **Einziger verbleibender Praeambel-Blocker: ein
+**Zweidimensionale struct-Felder** (`char args[6][64];`) ergaenzt -- der
+letzte Praeambel-Blocker des Backends. `arrayLen` haelt jetzt die
+GESAMTelementzahl, das neue `tcStructFieldRowLen` die Zeilenlaenge. Der
+heikle Teil ist der ZUGRIFF: `x->args[i]` adressiert ZEILE i und liefert
+einen ZEIGER auf deren erstes Element (`IPADDN` mit der Zeilengroesse in
+Bytes), NICHT ein einzelnes Element. Wer das uebersieht, rechnet
+`base + i*1` -- das kompiliert sauber, laeuft und liefert Muell. Deshalb
+diagnostizieren alle uebrigen indizierten Zweige einen 2D-Feldzugriff
+ausdruecklich, statt still mit falscher Schrittweite zu rechnen (echte
+`x[i][j]`-Zugriffe kommen im Bootstrap-Ziel nicht vor). Live auf Q9
+verifiziert: zwei Zeilenzeiger liegen exakt 16 Byte auseinander
+(`diff=16`), Inhalte korrekt.
+
+Damit parst die Backend-Praeambel OHNE Behelfsaenderung, und nur noch 7
+der erkannten Funktionen scheitern. **Einziger verbleibender Praeambel-Blocker: ein
 ZWEIDIMENSIONALES struct-Feld** (`char args[6][64];`, genau ein
 Vorkommen) -- `structField` erlaubt nur eine Dimension. Solange das steht,
 ist die gesamte Datei blockiert.
