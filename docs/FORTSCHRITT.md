@@ -74,7 +74,20 @@ und nicht ueber den Wertestapel, deshalb genuegte ein gemeinsamer
 Auswerter an den zwei Scanner-Stellen statt einer Aenderung am
 Ausdrucks-Codegen.
 
-Stand: `qcc_p.c` 7 von 338, `qcc_backend_c.cpp` 2 von 24 fehlerhaft. **Einziger verbleibender Praeambel-Blocker: ein
+**`a[i]++` und die Kettenzuweisung `a = b = 0;`.** Beim Arrayelement darf
+der Index nur EINMAL ausgewertet werden (Seiteneffekte), sein Wert liegt
+beim Feuern der Aktion bereits auf dem Stack -- Postfix bekommt den alten
+Wert per `SWAP` unter den Index, Praefix kommt mit zweimaligem `DUP` aus
+und laedt den neuen Wert am Ende neu. Damit ist `SWAP` auch praktisch
+belegt. Die Kettenzuweisung steht als erste Alternative in `assignStmt`;
+das ist gefahrlos, weil Aktionen nicht sofort ausgefuehrt, sondern
+protokolliert und beim Zurueckrollen verworfen werden (`actionLog`).
+Wichtige Falle dabei: passt die innere Alternative, feuert ANSCHLIESSEND
+auch die Aktion der umschliessenden Regel -- ohne Sperrflag entstand ein
+ueberzaehliger Store. Beides live auf Q9 verifiziert (`a=10 b=12 t=12`
+bzw. `a=7 b=7 g1=5 g2=5 c=3`).
+
+Stand: `qcc_p.c` 4 von 338, `qcc_backend_c.cpp` 2 von 24 fehlerhaft. **Einziger verbleibender Praeambel-Blocker: ein
 ZWEIDIMENSIONALES struct-Feld** (`char args[6][64];`, genau ein
 Vorkommen) -- `structField` erlaubt nur eine Dimension. Solange das steht,
 ist die gesamte Datei blockiert.
