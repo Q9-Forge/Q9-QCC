@@ -1298,6 +1298,13 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\t%s.l\td1,d0\n\tmove.l\td0,-(a7)\n", mnem);
 			} else if (strcmp(op, "NARROWC") == 0) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#255,d0\n\tmove.l\td0,(a7)\n", out);
+			} else if (strcmp(op, "SWAP") == 0) {
+				/* Vertauscht die obersten zwei Stackelemente. Gebraucht ueberall dort,
+				   wo ein Ergebniswert UNTER einer Adresse liegen bleiben muss --
+				   "(*p)++", "a[i]++" und die Kettenzuweisung scheiterten allesamt
+				   daran, dass sich der Stack bisher nicht umordnen liess (es gab nur
+				   DUP). */
+				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "DUP") == 0 || strcmp(op, "DUPP") == 0) {
 				fputs("\tmove.l\t(a7),-(a7)\n", out);
 			} else if (strcmp(op, "MUL") == 0 || strcmp(op, "DIV") == 0 || strcmp(op, "UDIV") == 0 || strcmp(op, "MOD") == 0 || strcmp(op, "UMOD") == 0) {

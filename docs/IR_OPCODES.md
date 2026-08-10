@@ -89,6 +89,7 @@ Lokal (`L`) und global (`G`), je getrennt nach int/char/pointer:
 | `USHR` | `a, n → r` | Shift rechts, unsigned/logisch |
 | `NARROWC` | `a → r` | auf ein Byte einschränken (char-Zuweisung/-Cast) |
 | `DUP` | `a → a, a` | oberstes Stackelement duplizieren (Wert) |
+| `SWAP` | `a, b → b, a` | oberste zwei Stackelemente vertauschen |
 | `DUPP` | `p → p, p` | wie `DUP`, für Pointer (semantisch identisch, eigener Opcode zur Klarheit im Backend) |
 
 ## Vergleiche

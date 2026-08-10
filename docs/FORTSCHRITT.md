@@ -52,8 +52,21 @@ ausdruecklich, statt still mit falscher Schrittweite zu rechnen (echte
 verifiziert: zwei Zeilenzeiger liegen exakt 16 Byte auseinander
 (`diff=16`), Inhalte korrekt.
 
-Damit parst die Backend-Praeambel OHNE Behelfsaenderung, und nur noch 7
-der erkannten Funktionen scheitern. **Einziger verbleibender Praeambel-Blocker: ein
+Damit parst die Backend-Praeambel ohne jede Behelfsaenderung.
+
+**Neuer IR-Opcode `SWAP`** (`a, b -> b, a`) sowie `(*p)++` / `++(*p)`.
+Mehrere Restkonstrukte scheiterten an derselben Wurzel: der Stack liess
+sich nicht umordnen, es gab nur `DUP`. Der 68k-Codegen dafuer ist trivial
+(zwei Pops, zwei Pushes). `(*p)++` selbst braucht ihn am Ende gar nicht --
+Adresse und Wert werden schlicht mehrfach geladen, was seiteneffektfrei
+ist, weil der Zeiger in einer Variablen steht; Postfix laesst den ALTEN
+Wert ganz unten liegen, Praefix laedt den neuen nach dem Speichern neu.
+`SWAP` bleibt aber die Voraussetzung fuer `a[i]++`, wo der Index nur EINMAL
+ausgewertet werden darf und deshalb nicht nachgeladen werden kann. Live auf
+Q9 verifiziert: `a=10 b=12 z=12` (Postfix liefert den alten, Praefix den
+neuen Wert).
+
+Stand: `qcc_p.c` 8 von 338, `qcc_backend_c.cpp` 5 von 24 fehlerhaft. **Einziger verbleibender Praeambel-Blocker: ein
 ZWEIDIMENSIONALES struct-Feld** (`char args[6][64];`, genau ein
 Vorkommen) -- `structField` erlaubt nur eine Dimension. Solange das steht,
 ist die gesamte Datei blockiert.
