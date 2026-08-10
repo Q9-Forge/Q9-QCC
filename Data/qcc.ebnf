@@ -466,7 +466,10 @@ indirectTarget = "*" factor .
 varRef    = ident [ index { index } ] [ member [ index ] ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
-member    = "." fieldName .
+/* "->" ist in C nur Kurzschreibweise: "p->f" == "(*p).f". Die Aktionen
+   unterscheiden die beiden Formen selbst am Rohtext (tcNameEnd haelt jetzt
+   auch am "-" an), die Grammatik muss sie nur zulassen. */
+member    = "." fieldName | "->" fieldName .
 defName   = ident .
 paramName = ident .
 localName = ident .
