@@ -493,7 +493,19 @@
  <ident>                          = <letter> { <letter> 
                                   | <digit> } .
 
- <number>                         = <digit> { <digit> } .
+ <number>                         = <hexNumber> 
+                                  | <decNumber> .
+
+ <hexNumber>                      = "0" <hexMark> <hexDigit> { <hexDigit> } .
+
+ <hexMark>                        = "x" 
+                                  | "X" .
+
+ <hexDigit>                       = <digit> 
+                                  | "a"~"f" 
+                                  | "A"~"F" .
+
+ <decNumber>                      = <digit> { <digit> } .
 
  <letter>                         = "a"~"z" 
                                   | "A"~"Z" 
@@ -590,10 +602,14 @@
 82   TS   "--"
 83   TS   "."
 84   TS   "long"
-85   RNG  "a"~"z"
-86   RNG  "A"~"Z"
-87   TS   "_"
-88   RNG  "0"~"9"
+85   TS   "x"
+86   TS   "X"
+87   RNG  "a"~"f"
+88   RNG  "A"~"F"
+89   RNG  "a"~"z"
+90   RNG  "A"~"Z"
+91   TS   "_"
+92   RNG  "0"~"9"
 [ENDE]
 
 [NTS-SYMBOLTABELLE]
@@ -787,8 +803,12 @@
 186  539         boolLit
 187  541         ident
 188  544         number
-189  546         letter
-190  549         digit
+189  546         hexNumber
+190  550         hexMark
+191  552         hexDigit
+192  555         decNumber
+193  557         letter
+194  560         digit
 [ENDE]
 
 [PARSER-TABELLE]
@@ -907,8 +927,8 @@
 110   -1    -2    -1    0     0     -                TS   "false"
 111   112   -2    -1    0     0     globalNeg        TS   "-"
 112   -1    -3    113   0     0     -                NTS  globalNumber
-113   114   -2    549   0     0     globalNumber     NTS  digit
-114   114   -1    549   0     0     -                NTS  digit
+113   114   -2    560   0     0     globalNumber     NTS  digit
+114   114   -1    560   0     0     -                NTS  digit
 115   116   -2    123   0     0     funcdef          NTS  funcHead
 116   -1    117   118   0     0     -                NTS  funcBody
 117   -1    -3    122   0     0     -                NTS  protoEnd
@@ -1000,8 +1020,8 @@
 203   -1    -2    206   0     0     -                NTS  caseNumber
 204   205   -2    -1    0     0     caseNeg          TS   "-"
 205   -1    -3    206   0     0     -                NTS  caseNumber
-206   207   -2    549   0     0     caseNumber       NTS  digit
-207   207   -1    549   0     0     -                NTS  digit
+206   207   -2    560   0     0     caseNumber       NTS  digit
+207   207   -1    560   0     0     -                NTS  digit
 208   208   -1    154   0     0     caseBody         NTS  unlabeledStmt
 209   210   -2    211   0     0     defaultGroup     NTS  defaultLabel
 210   -1    -3    208   0     0     -                NTS  caseBody
@@ -1036,8 +1056,8 @@
 239   -1    -2    -1    0     0     -                TS   "false"
 240   241   -2    -1    0     0     initNeg          TS   "-"
 241   -1    -3    242   0     0     -                NTS  initNumber
-242   243   -2    549   0     0     initNumber       NTS  digit
-243   243   -1    549   0     0     -                NTS  digit
+242   243   -2    560   0     0     initNumber       NTS  digit
+243   243   -1    560   0     0     -                NTS  digit
 244   245   -2    494   0     0     assignStmt       NTS  target
 245   246   -3    248   0     0     -                NTS  assignop
 246   247   -3    338   0     0     -                NTS  expr
@@ -1335,15 +1355,26 @@
 538   -1    -2    -1    0     0     -                TS   "long"
 539   -1    540   -1    0     0     boolLit          TS   "true"
 540   -1    -2    -1    0     0     -                TS   "false"
-541   542   -2    546   0     0     ident            NTS  letter
-542   542   543   546   0     0     -                NTS  letter
-543   542   -1    549   0     0     -                NTS  digit
-544   545   -2    549   0     0     number           NTS  digit
-545   545   -1    549   0     0     -                NTS  digit
-546   -1    547   -1    97    122   letter           RNG  "a"~"z"
-547   -1    548   -1    65    90    -                RNG  "A"~"Z"
-548   -1    -2    -1    0     0     -                TS   "_"
-549   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+541   542   -2    557   0     0     ident            NTS  letter
+542   542   543   557   0     0     -                NTS  letter
+543   542   -1    560   0     0     -                NTS  digit
+544   -1    545   546   0     0     number           NTS  hexNumber
+545   -1    -2    555   0     0     -                NTS  decNumber
+546   547   -2    -1    0     0     hexNumber        TS   "0"
+547   548   -3    550   0     0     -                NTS  hexMark
+548   549   -3    552   0     0     -                NTS  hexDigit
+549   549   -1    552   0     0     -                NTS  hexDigit
+550   -1    551   -1    0     0     hexMark          TS   "x"
+551   -1    -2    -1    0     0     -                TS   "X"
+552   -1    553   560   0     0     hexDigit         NTS  digit
+553   -1    554   -1    97    102   -                RNG  "a"~"f"
+554   -1    -2    -1    65    70    -                RNG  "A"~"F"
+555   556   -2    560   0     0     decNumber        NTS  digit
+556   556   -1    560   0     0     -                NTS  digit
+557   -1    558   -1    97    122   letter           RNG  "a"~"z"
+558   -1    559   -1    65    90    -                RNG  "A"~"Z"
+559   -1    -2    -1    0     0     -                TS   "_"
+560   -1    -2    -1    48    57    digit            RNG  "0"~"9"
 [ENDE]
 
 [TESTS]
@@ -2081,6 +2112,18 @@ static void tcCompoundAssign(void) {
 }
 static long tcNum(const char* s, const char* e) {
 	long v = 0; const char* q;
+	/* Hexform "0x.."/"0X.." (siehe hexNumber in der Grammatik). */
+	if (e - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		for (q = s + 2; q < e; q++) {
+			int d;
+			if (*q >= '0' && *q <= '9') d = *q - '0';
+			else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
+			else if (*q >= 'A' && *q <= 'F') d = *q - 'A' + 10;
+			else break;
+			v = v * 16 + d;
+		}
+		return v;
+	}
 	for (q = s; q < e; q++) v = v * 10 + (*q - '0');
 	return v;
 }

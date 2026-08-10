@@ -645,6 +645,18 @@ static void tcCompoundAssign(void) {
 }
 static long tcNum(const char* s, const char* e) {
 	long v = 0; const char* q;
+	/* Hexform "0x.."/"0X.." (siehe hexNumber in der Grammatik). */
+	if (e - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		for (q = s + 2; q < e; q++) {
+			int d;
+			if (*q >= '0' && *q <= '9') d = *q - '0';
+			else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
+			else if (*q >= 'A' && *q <= 'F') d = *q - 'A' + 10;
+			else break;
+			v = v * 16 + d;
+		}
+		return v;
+	}
 	for (q = s; q < e; q++) v = v * 10 + (*q - '0');
 	return v;
 }
@@ -3040,6 +3052,10 @@ static int p_unsignedInt(void);
 static int p_boolLit(void);
 static int p_ident(void);
 static int p_number(void);
+static int p_hexNumber(void);
+static int p_hexMark(void);
+static int p_hexDigit(void);
+static int p_decNumber(void);
 static int p_letter(void);
 static int p_digit(void);
 
@@ -7115,14 +7131,97 @@ static int p_number(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_digit()) goto L519;
-L520:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L521;
-	sp--; goto L520;
-L521:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_hexNumber()) goto L521;
+	goto L520;
+L521:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_decNumber()) goto L522;
+	goto L520;
+L522:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L519;
+L520:	sp--;
 	actionLogPush(tc_number, entry, p);	/* ACTION AFTER number */
 	return 1;
 L519:	p = entry; actionLogLen = entryLog;
+	return 0;
+}
+
+/* hexNumber (lexikalisch) */
+static int p_hexNumber(void) {
+	const char* sv[64]; int svLog[64]; int sp;
+	const char* entry; int entryLog;
+	sp = 0; entry = p; entryLog = actionLogLen;
+	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	if (strncmp(p, "0", 1) != 0) goto L523;
+	p += 1;
+	if (!p_hexMark()) goto L523;
+	if (!p_hexDigit()) goto L523;
+L524:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_hexDigit()) goto L525;
+	sp--; goto L524;
+L525:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	return 1;
+L523:	p = entry; actionLogLen = entryLog;
+	return 0;
+}
+
+/* hexMark (lexikalisch) */
+static int p_hexMark(void) {
+	const char* sv[64]; int svLog[64]; int sp;
+	const char* entry; int entryLog;
+	sp = 0; entry = p; entryLog = actionLogLen;
+	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (strncmp(p, "x", 1) != 0) goto L528;
+	p += 1;
+	goto L527;
+L528:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "X", 1) != 0) goto L529;
+	p += 1;
+	goto L527;
+L529:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L526;
+L527:	sp--;
+	return 1;
+L526:	p = entry; actionLogLen = entryLog;
+	return 0;
+}
+
+/* hexDigit (lexikalisch) */
+static int p_hexDigit(void) {
+	const char* sv[64]; int svLog[64]; int sp;
+	const char* entry; int entryLog;
+	sp = 0; entry = p; entryLog = actionLogLen;
+	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L532;
+	goto L531;
+L532:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x66) goto L533;
+	p++;
+	goto L531;
+L533:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x46) goto L534;
+	p++;
+	goto L531;
+L534:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L530;
+L531:	sp--;
+	return 1;
+L530:	p = entry; actionLogLen = entryLog;
+	return 0;
+}
+
+/* decNumber (lexikalisch) */
+static int p_decNumber(void) {
+	const char* sv[64]; int svLog[64]; int sp;
+	const char* entry; int entryLog;
+	sp = 0; entry = p; entryLog = actionLogLen;
+	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	if (!p_digit()) goto L535;
+L536:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L537;
+	sp--; goto L536;
+L537:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	return 1;
+L535:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -7133,21 +7232,21 @@ static int p_letter(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x7A) goto L524;
+	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x7A) goto L540;
 	p++;
-	goto L523;
-L524:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x5A) goto L525;
+	goto L539;
+L540:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x5A) goto L541;
 	p++;
-	goto L523;
-L525:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "_", 1) != 0) goto L526;
+	goto L539;
+L541:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "_", 1) != 0) goto L542;
 	p += 1;
-	goto L523;
-L526:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L522;
-L523:	sp--;
+	goto L539;
+L542:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L538;
+L539:	sp--;
 	return 1;
-L522:	p = entry; actionLogLen = entryLog;
+L538:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -7157,10 +7256,10 @@ static int p_digit(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if ((unsigned char)*p < 0x30 || (unsigned char)*p > 0x39) goto L527;
+	if ((unsigned char)*p < 0x30 || (unsigned char)*p > 0x39) goto L543;
 	p++;
 	return 1;
-L527:	p = entry; actionLogLen = entryLog;
+L543:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 

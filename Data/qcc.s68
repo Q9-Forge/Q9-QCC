@@ -5605,20 +5605,130 @@ L566:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: number (lexikalisch)
 p_number:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_digit
-	tst.b	d0
-	beq	L572
-L573:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_digit
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_hexNumber
 	tst.b	d0
 	beq	L574
-	addq.l	#4,a7
 	bra	L573
-L574:	move.l	(a7)+,a0	; Wiederholung beendet
+L574:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_decNumber
+	tst.b	d0
+	beq	L575
+	bra	L573
+L575:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L572
+L573:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
 L572:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: hexNumber (lexikalisch)
+p_hexNumber:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	cmpi.b	#$30,(a0)	; '0'
+	bne	L576
+	addq.l	#1,a0
+	bsr	p_hexMark
+	tst.b	d0
+	beq	L576
+	bsr	p_hexDigit
+	tst.b	d0
+	beq	L576
+L577:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_hexDigit
+	tst.b	d0
+	beq	L578
+	addq.l	#4,a7
+	bra	L577
+L578:	move.l	(a7)+,a0	; Wiederholung beendet
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L576:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: hexMark (lexikalisch)
+p_hexMark:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	cmpi.b	#$78,(a0)	; 'x'
+	bne	L581
+	addq.l	#1,a0
+	bra	L580
+L581:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$58,(a0)	; 'X'
+	bne	L582
+	addq.l	#1,a0
+	bra	L580
+L582:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L579
+L580:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L579:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: hexDigit (lexikalisch)
+p_hexDigit:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_digit
+	tst.b	d0
+	beq	L585
+	bra	L584
+L585:	move.l	(a7),a0	; naechste Alternative
+	move.b	(a0),d1
+	cmpi.b	#$61,d1	; 'a'
+	blo	L586
+	cmpi.b	#$66,d1	; 'f'
+	bhi	L586
+	addq.l	#1,a0
+	bra	L584
+L586:	move.l	(a7),a0	; naechste Alternative
+	move.b	(a0),d1
+	cmpi.b	#$41,d1	; 'A'
+	blo	L587
+	cmpi.b	#$46,d1	; 'F'
+	bhi	L587
+	addq.l	#1,a0
+	bra	L584
+L587:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L583
+L584:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L583:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: decNumber (lexikalisch)
+p_decNumber:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_digit
+	tst.b	d0
+	beq	L588
+L589:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_digit
+	tst.b	d0
+	beq	L590
+	addq.l	#4,a7
+	bra	L589
+L590:	move.l	(a7)+,a0	; Wiederholung beendet
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L588:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5629,31 +5739,31 @@ p_letter:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	move.b	(a0),d1
 	cmpi.b	#$61,d1	; 'a'
-	blo	L577
+	blo	L593
 	cmpi.b	#$7A,d1	; 'z'
-	bhi	L577
+	bhi	L593
 	addq.l	#1,a0
-	bra	L576
-L577:	move.l	(a7),a0	; naechste Alternative
+	bra	L592
+L593:	move.l	(a7),a0	; naechste Alternative
 	move.b	(a0),d1
 	cmpi.b	#$41,d1	; 'A'
-	blo	L578
+	blo	L594
 	cmpi.b	#$5A,d1	; 'Z'
-	bhi	L578
+	bhi	L594
 	addq.l	#1,a0
-	bra	L576
-L578:	move.l	(a7),a0	; naechste Alternative
+	bra	L592
+L594:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$5F,(a0)	; '_'
-	bne	L579
+	bne	L595
 	addq.l	#1,a0
-	bra	L576
-L579:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L575
-L576:	addq.l	#4,a7
+	bra	L592
+L595:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L591
+L592:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L575:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L591:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5663,14 +5773,14 @@ p_digit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.b	(a0),d1
 	cmpi.b	#$30,d1	; '0'
-	blo	L580
+	blo	L596
 	cmpi.b	#$39,d1	; '9'
-	bhi	L580
+	bhi	L596
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L580:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L596:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
