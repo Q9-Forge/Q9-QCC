@@ -165,7 +165,7 @@ Nachgezählt statt geschätzt, plus je ein Kompilierversuch mit dem echten
 | Sprungmarken `L<n>:` | 465 | **ja** (implementiert 2026-08-10) |
 | `#define` | 13 | nein -- aber durch `xcc -pp` vorverarbeitbar (getestet) |
 | `#include` | 2 | nein -- durch `extern`-Deklarationen ersetzbar (Projektmuster) |
-| Funktionszeiger-Aufruf | 1 | **nein** (Testprogramm liefert `FAIL`) |
+| Funktionszeiger-Aufruf | 1 | **ja** (implementiert 2026-08-10) |
 
 Der Aufwand war sehr ungleich verteilt: Funktionszeiger kommen nur
 **einmal** vor, der Präprozessorbedarf ist mit 13 `#define`/2 `#include`
@@ -185,8 +185,19 @@ sauberere Weg, die 2 `#include` wie im Projekt üblich durch
 ohnehin nur Funktionen: `printf`, `fprintf`, `strncmp`, `strlen`,
 `sprintf`, `exit`, `fputc`, `malloc`, `realloc`, `fopen`, `fclose`).
 
-Damit ist als einziger echter Sprachblocker der **Funktionszeiger**
-übrig (1 Fundstelle).
+**Funktionszeiger sind seit 2026-08-10 implementiert** (typedef,
+Struct-Feld, Parameter, Funktionsname als Wert, Zuweisung, indirekter
+Aufruf; Details und die zwei bewussten Grenzen in `docs/FORTSCHRITT.md`),
+live auf Q9 verifiziert.
+
+**Damit sind alle gemessenen Sprachluecken der Tabelle geschlossen.** Der
+naechste Schritt ist kein Sprachmittel mehr, sondern der eigentliche
+Versuch: `Data/qcc_p.c` (mit `extern`-Deklarationen statt der 2
+`#include`) und `Source/qcc_backend_c.cpp` durch QCC selbst uebersetzen --
+Stufe 1 des Bootstraps. Dabei ist mit weiteren, bisher nicht gemessenen
+Luecken zu rechnen (die Tabelle erfasst nur die fuenf urspruenglich
+gezaehlten Konstrukte, nicht den gesamten Sprachumfang der beiden
+Dateien).
 
 ### Was "Bootstrap" genau hieße (Begriffsklärung, 2026-08-10)
 

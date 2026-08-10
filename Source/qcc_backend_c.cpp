@@ -1368,20 +1368,25 @@ static void emitIR(FILE* out) {
 				}
 			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
 				/* Indirekter Aufruf ueber einen Funktionszeiger. Stapelbelegung beim
-				   Eintritt (von unten): arg1..argN, dann ZUOBERST der Zeiger -- der
-				   wird zuerst heruntergenommen, danach liegen die Argumente genau so
-				   wie bei einem direkten CALL. a3/a4 muessen nach dem jsr aufgefrischt
+				   Eintritt (von UNTEN nach oben): zuerst der Zeiger, darueber
+				   arg1..argN. Diese Reihenfolge ergibt sich zwangslaeufig aus dem
+				   Parsen: bei "ausdruck(args)" wird der Callee-Ausdruck VOR den
+				   Argumenten ausgewertet und legt seinen Wert deshalb zuerst ab
+				   (anders als beim direkten CALL, wo der Name gar keinen Code
+				   erzeugt). Der Zeiger wird folglich NICHT gepoppt, sondern in der
+				   Tiefe nargs*4 gelesen; am Ende werden Argumente UND Zeiger
+				   gemeinsam abgeraeumt. a3/a4 muessen nach dem jsr aufgefrischt
 				   werden (gleiche Begruendung wie in emitCall(): der Aufgerufene hat
 				   seine EIGENEN Tabellenzeiger gesetzt). */
 				int nargsI = number(insP->args[0], insP->line);
-				fputs("\tmove.l\t(a7)+,a2\n\tjsr\t(a2)\n", out);
+				fprintf(out, "\tmove.l\t%d(a7),a2\n\tjsr\t(a2)\n", nargsI * 4);
 				if (largeDataMode) {
 					int id = serial++;
 					fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
 					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a4\n\tadda.l\t#(tc_functab__%s-tc_callret_%d__%s),a4\n", id, psectName, psectName, id, psectName);
 					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-tc_callret_%d__%s),a3\n", id, psectName, psectName, id, psectName);
 				}
-				if (nargsI) fprintf(out, "\tlea\t%d(a7),a7\n", nargsI * 4);
+				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
 				/* Aufruf einer NICHT in dieser IR definierten (externen) Funktion, z.B.
