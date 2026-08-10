@@ -419,8 +419,12 @@ castExpr   = "(" castType ")" castOperand .
 castType   = "unsigned" unsignedInt | "int" | "char" | "bool" .
 castOperand = factor .
 
-preIncDec  = incdecOp ident .
-postIncDec = ident incdecOp .
+/* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
+   Operand hier kein blosser Bezeichner ist. Die Aktionen erkennen die Form
+   am fuehrenden "(" ihrer Spanne. */
+preIncDec  = incdecOp derefIncTarget | incdecOp ident .
+postIncDec = derefIncTarget incdecOp | ident incdecOp .
+derefIncTarget = "(" "*" ident ")" .
 incdecOp   = "++" | "--" .
 incDecStmt = preIncDec ";" | postIncDec ";" .
 derefRef  = "*" factor .
