@@ -66,7 +66,15 @@ ausgewertet werden darf und deshalb nicht nachgeladen werden kann. Live auf
 Q9 verifiziert: `a=10 b=12 z=12` (Postfix liefert den alten, Praefix den
 neuen Wert).
 
-Stand: `qcc_p.c` 8 von 338, `qcc_backend_c.cpp` 5 von 24 fehlerhaft. **Einziger verbleibender Praeambel-Blocker: ein
+**Arraygroesse als konstanter Ausdruck** (`char buf[64 + 40];`, 16
+Vorkommen im Backend) und der `(long)`-Cast. Der neue Helfer
+`tcConstArrayLen` wertet Zahlen mit `+ - *` linksassoziativ aus dem
+Rohtext aus -- die Deklarations-Aktionen lesen die Groesse ohnehin dort ab
+und nicht ueber den Wertestapel, deshalb genuegte ein gemeinsamer
+Auswerter an den zwei Scanner-Stellen statt einer Aenderung am
+Ausdrucks-Codegen.
+
+Stand: `qcc_p.c` 7 von 338, `qcc_backend_c.cpp` 2 von 24 fehlerhaft. **Einziger verbleibender Praeambel-Blocker: ein
 ZWEIDIMENSIONALES struct-Feld** (`char args[6][64];`, genau ein
 Vorkommen) -- `structField` erlaubt nur eine Dimension. Solange das steht,
 ist die gesamte Datei blockiert.

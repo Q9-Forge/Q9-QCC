@@ -103,8 +103,14 @@ staticKw  = "static" .
    Rohtext-Scan (siehe dort), genau wie bei globalNumber/globalBool. */
 globalInit = globalValue | initList | globalStringInit .
 globalStringInit = "\042" { character } "\042" .
-arraySize  = "[" globalNumber "]" .
-arraySizeN = "[" globalNumber "]" .
+/* Arraygroesse als konstanter Ausdruck ("char buf[64 + 40];") -- in C
+   ueblich und im Bootstrap-Ziel 16-mal verwendet. Ausgewertet wird der
+   Ausdruck von tcConstArrayLen aus dem Rohtext (die Deklarations-Aktionen
+   lesen die Groesse ohnehin dort ab, nicht ueber den Wertestapel). */
+arraySize  = "[" constSize "]" .
+arraySizeN = "[" constSize "]" .
+constSize  = globalNumber { constSizeOp globalNumber } .
+constSizeOp = "+" | "-" | "*" .
 globalValue = globalNumber | globalNeg | globalBool .
 globalBool  = "true" | "false" .
 globalNeg   = "-" globalNumber .
@@ -416,7 +422,7 @@ sizeofType = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structT
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
-castType   = "unsigned" unsignedInt | "int" | "char" | "bool" .
+castType   = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" .
 castOperand = factor .
 
 /* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
