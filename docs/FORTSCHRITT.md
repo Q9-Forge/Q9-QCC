@@ -7,8 +7,20 @@ durch `extern`-Prototypen ersetzt, danach per `xcc -pp` makrofrei) durch
 QCC selbst. Gemessen wird pro Top-Level-Funktion, wie viele von 338 der
 Parser annimmt.
 
-**Fortschritt: 309 -> 112 -> 64 -> 53 -> 11 fehlerhafte Funktionen**
-(327 von 338 uebersetzen).
+**Fortschritt: 309 -> 112 -> 64 -> 53 -> 11 -> 8 fehlerhafte Funktionen**
+(330 von 338 uebersetzen).
+
+Vierte Runde: Hexzahlen ("0x20"). `number` ist ein LEXER-TOKEN, die Regel
+bestimmt also auch, wie weit der Lexer liest -- die hex-Form muss deshalb
+VOR der dezimalen stehen, sonst schluckt diese die fuehrende "0" allein
+und laesst das "x" haengen.
+
+Als Rest bleiben nur noch vier verschiedene Konstrukte: Kettenzuweisung
+("a = b = 0;"), der Komma-Operator in "return p == e ? (*value = v, 1) : 0;",
+"++" auf einem Arrayelement ("tcCallArgCount[tcCallDepth - 1]++;", die
+Grammatik erlaubt bei preIncDec/postIncDec bisher nur einen blossen
+Bezeichner) sowie drei Funktionen, deren Blocker erst am Funktionsende
+sichtbar wird und noch nicht eingegrenzt ist.
 
 Dritte Runde: die leere Anweisung ";" und -- entscheidend -- `charLit` als
 LEXER-TOKEN. Zeichenliterale waren als reine Grammatikregel formuliert,

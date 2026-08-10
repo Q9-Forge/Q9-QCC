@@ -473,6 +473,14 @@ unsignedInt = "int" | "char" | "long" .
 boolLit   = "true" | "false" .
 
 ident     = letter { letter | digit } .
-number    = digit { digit } .
+/* Hexzahlen ("0x20"). Die hex-Form steht VORNE, sonst wuerde die dezimale
+   Alternative die fuehrende "0" allein schlucken und das "x" haengen lassen.
+   number ist ein LEXER-TOKEN, die Regel bestimmt also auch, wie weit der
+   Lexer liest. */
+number    = hexNumber | decNumber .
+hexNumber = "0" hexMark hexDigit { hexDigit } .
+hexMark   = "x" | "X" .
+hexDigit  = digit | "a"~"f" | "A"~"F" .
+decNumber = digit { digit } .
 letter    = "a"~"z" | "A"~"Z" | "_" .
 digit     = "0"~"9" .
