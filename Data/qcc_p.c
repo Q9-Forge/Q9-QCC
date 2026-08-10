@@ -1815,9 +1815,12 @@ void tc_varref(const char* start, const char* end) {
 		TCType pt = slot >= 0 ? tcLocalTypes[slot] : (global >= 0 ? tcGlobalType(global) : tcBadType());
 		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int sid, fi;
-		if ((slot < 0 && global < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') {
-			fprintf(stderr, "qcc: '->' requires a pointer to struct\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return;
-		}
+		/* Kein Fehler, wenn die Basis nicht passt: der Zweig wird allein am
+		   Rohtext ("-" gefolgt von ">") erkannt, und ein Fehlalarm darf keine
+		   falsche Meldung erzeugen -- dann uebernehmen die regulaeren Zweige.
+		   Ein echtes "p->f" mit falscher Basis faellt weiter unten ohnehin als
+		   "unknown variable" bzw. Typfehler auf. */
+		if ((slot < 0 && global < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') goto tcArrowSkip;
 		sid = tcPointee(pt).structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
@@ -1852,6 +1855,7 @@ void tc_varref(const char* start, const char* end) {
 		printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 		tcTypePush(tcStructFieldTypes[sid][fi]); return;
 	}
+	tcArrowSkip: ;
 	if (slot >= 0 && indexed && *nameEnd == '.' && tcLocalTypes[slot].base == 's') {
 		int sid = tcLocalTypes[slot].structId - 1;
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -2223,9 +2227,8 @@ void tc_target(const char* start, const char* end) {
 		TCType pt = tcTargetSlot >= 0 ? tcTargetType : (gslot >= 0 ? tcGlobalType(gslot) : tcBadType());
 		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int sid, fi;
-		if ((tcTargetSlot < 0 && gslot < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') {
-			fprintf(stderr, "qcc: '->' requires a pointer to struct\n"); tcSemanticErrors++; return;
-		}
+		/* siehe tc_varref: bei nicht passender Basis nicht melden, durchfallen. */
+		if ((tcTargetSlot < 0 && gslot < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') goto tcArrowSkipT;
 		sid = tcPointee(pt).structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
@@ -2245,6 +2248,7 @@ void tc_target(const char* start, const char* end) {
 		tcTargetIndirect = 1;
 		return;
 	}
+	tcArrowSkipT: ;
 	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') {
 		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
@@ -3094,7 +3098,9 @@ void tc_preincdec(const char* start, const char* end) {
 	/* "++(*p)": Klammerform, siehe tcDerefIncDec */
 	if (p < end && *p == '(') { tcDerefIncDec(p, end, isDec, 1); return; }
 	if (tcWordEnd(p, end) < end && *tcWordEnd(p, end) == '[') { tcIndexIncDec(p, end, isDec, 1); return; }
-	if (tcWordEnd(p, end) < end && (*tcWordEnd(p, end) == '.' || *tcWordEnd(p, end) == '-')) { tcMemberIncDec(p, end, isDec, 1); return; }
+	/* siehe tc_postincdec: "--x" darf nicht als Member-Zugriff gelten. */
+	{ const char* we = tcWordEnd(p, end);
+	  if (we < end && (*we == '.' || (*we == '-' && we + 1 < end && we[1] == '>'))) { tcMemberIncDec(p, end, isDec, 1); return; } }
 	nameStart = p; nameEnd = tcWordEnd(p, end);
 	slot = tcLookupLocal(nameStart, nameEnd);
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
@@ -3115,7 +3121,12 @@ void tc_postincdec(const char* start, const char* end) {
 	int isDec = (end[-1] == '-');
 	if (start < end && *start == '(') { tcDerefIncDec(start, end, isDec, 0); return; }
 	if (tcWordEnd(start, end) < end && *tcWordEnd(start, end) == '[') { tcIndexIncDec(start, end, isDec, 0); return; }
-	if (tcWordEnd(start, end) < end && (*tcWordEnd(start, end) == '.' || *tcWordEnd(start, end) == '-')) { tcMemberIncDec(start, end, isDec, 0); return; }
+	/* NUR bei "." oder einem echten "->": bei "x--" endet das Wort ebenfalls
+	   vor einem "-", das ist aber der Dekrement-Operator und kein Member-
+	   Zugriff. Ohne die ">"-Pruefung meldete jedes "x--" faelschlich
+	   "'->' requires a pointer to struct". */
+	{ const char* we = tcWordEnd(start, end);
+	  if (we < end && (*we == '.' || (*we == '-' && we + 1 < end && we[1] == '>'))) { tcMemberIncDec(start, end, isDec, 0); return; } }
 	nameEnd = tcWordEnd(start, end);
 	int slot = tcLookupLocal(nameStart, nameEnd), global = -1; TCType t;
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
