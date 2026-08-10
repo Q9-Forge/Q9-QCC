@@ -2702,10 +2702,19 @@ ROUTINE C tc_funcdeclend
 void tc_funcdeclend(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (tcCurrentFuncIndex < 0) return;
-	if (tcFunctionIsStatic[tcCurrentFuncIndex]) {
-		fprintf(stderr, "qcc: static function declaration without body is meaningless\n");
-		tcSemanticErrors++;
-	}
+	/* GELOCKERT 2026-08-10: ein rumpfloser Prototyp bedeutet NICHT
+	   zwangslaeufig "in einer anderen Datei definiert". In C ist
+	   "static int f(int);" mit spaeterer Definition in DERSELBEN Datei der
+	   voellig uebliche Weg fuer Vorwaertsdeklarationen und gegenseitige
+	   Rekursion -- Data/qcc_p.c macht davon 177-mal Gebrauch. Die fruehere
+	   Ablehnung war deshalb schlicht falsch.
+	   Unbedenklich fuer den Codegen: collectFunctions() im Backend sammelt in
+	   einem ERSTEN Durchlauf alle echten FUNC-RueMpfe und erst danach die
+	   FUNCDECLs, uebernimmt eine Vorwaertsdeklaration also nur dann, wenn kein
+	   echter Rumpf existiert -- die Reihenfolge im Quelltext spielt keine Rolle.
+	   BEWUSST AUFGEGEBEN: ein static-Prototyp, dem NIE eine Definition folgt,
+	   wird jetzt nicht mehr hier gemeldet; er faellt erst beim Linken als
+	   unaufgeloestes Symbol auf. */
 	tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 1;
 	printf("FUNCDECL %s %d\n", tcFuncName, tcFunctionNargs[tcCurrentFuncIndex]);
 }
