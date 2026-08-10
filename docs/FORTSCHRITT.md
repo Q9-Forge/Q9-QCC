@@ -1,5 +1,26 @@
 # Fortschritt und Roadmap
 
+## Schritt 3 ABGESCHLOSSEN: selbstgehosteter Generator läuft live auf Q9 (2026-08-10)
+
+Der von QCC selbst übersetzte EBNF-Generator (`SourceQCC/ebnf.tc` +
+`codegen.tc`) läuft auf dem echten Q9-Emulator und erzeugt eine mit der
+`xcc`-gebauten Referenz **bitgleiche** Parserausgabe (`qcc_p.c`, md5
+`20a990d7ed2b8e816c95163c546b667c`). Damit ist die seit 2026-07-25 als
+"nächster Schritt" offene Live-Q9-Verifikation erledigt und der
+Selfhosting-Kreis geschlossen.
+
+Dafür wurde ein bis dahin unsichtbarer 68k-Backend-Bug gefunden und
+behoben: **`char`-Parameter wurden auf Big-Endian am falschen Byte des
+32-Bit-Slots gelesen** (Slot-Basis statt Slot+3), wodurch
+`astPushRNG(char lo, char hi)` beide Zeichenbereichsgrenzen als 0 bekam --
+jeder Bereich der Grammatik (`"0"~"9"`, `"A"~"F"`, `"a"~"z"`, `"A"~"Z"`)
+landete als `0x00`/`0x00` im erzeugten Parser. ARM64 (Little-Endian) und
+QCCVM (typisierte Slots) konnten den Fehler prinzipiell nicht zeigen.
+
+Vollständige Beschreibung inkl. Fix, Reproduktionsweg und bewusst offener
+Restlücke: `docs/STATUS.md`, Abschnitt "Selfhosting-Kreis geschlossen".
+Testskript: `test/expect/test_qcc_selfhost_run.exp` (im Q9-Flux-Repo).
+
 ## Selfhosting L2 Vollport: `codegen.cpp` ABGESCHLOSSEN (2026-07-25)
 
 **Stand 2026-07-25 abends: der komplette Vollport von `Source/codegen.cpp`

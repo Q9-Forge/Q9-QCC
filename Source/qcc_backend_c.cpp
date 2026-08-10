@@ -1074,6 +1074,61 @@ static void emitIR(FILE* out) {
 			fprintf(out, "\tlea\t%s(pc),a4\n\tadda.l\t#(tc_functab__%s-%s),a4\n", asmName, psectName, asmName);
 			fprintf(out, "\tlea\t%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-%s),a3\n", asmName, psectName, asmName);
 		}
+		/* BIG-ENDIAN-KORREKTUR FUER char-PARAMETER (2026-08-10, live am
+		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
+		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
+		   PUSH/emitCall) -- der Bytewert eines char-Parameters steht damit im
+		   NIEDERWERTIGSTEN Byte des Slots, auf dem Big-Endian-68k also bei
+		   Slot+3. LOADC/STOREC/ADDRL adressieren aber die Slot-BASIS (bei
+		   LOKALEN Slots ist das korrekt und in sich konsistent, weil dort
+		   STOREC und LOADC dieselbe Adresse benutzen) und lasen deshalb das
+		   HOECHSTWERTIGE Byte -- fuer jeden ASCII-Wert konstant 0.
+		   SYMPTOM: der von QCC uebersetzte Generator erzeugte fuer JEDEN
+		   Zeichenbereich der Grammatik ("0"~"9", "A"~"F", "a"~"z", "A"~"Z")
+		   die Grenzen 0x00/0x00 statt 0x30/0x39 usw. -- astPushRNG(char lo,
+		   char hi) bekam beide Grenzen als 0. Sonst war die Ausgabe mit der
+		   xcc-gebauten Referenz bitgleich.
+		   WARUM BISHER UNENTDECKT: ARM64 ist Little-Endian (dort liegt das
+		   niederwertige Byte ZUFAELLIG an der Slot-Basis, der Code war also
+		   versehentlich richtig) und QCCVM haelt typisierte Slots statt roher
+		   Stack-Langworte -- beide Referenzpfade konnten den Fehler prinzipiell
+		   nicht zeigen. Nur echtes 68k-Big-Endian ist betroffen.
+		   FIX: einmalig im Prolog das niederwertige Byte an die Slot-Basis
+		   kopieren. Danach stimmen ALLE bestehenden Byte-Zugriffspfade
+		   (LOADC, STOREC sowie ADDRL+LOADIND/STOREIND) unveraendert ueberein --
+		   exakt wie bei lokalen char-Slots, kein Eingriff an den Opcodes noetig.
+		   Betroffen sind nur Parameter, die im Rumpf TATSAECHLICH byteweise
+		   benutzt werden (LOADC/STOREC auf ihrem Slot) -- das ist der
+		   eindeutige Beleg, dass es ein char-Parameter ist; int- und
+		   Pointer-Parameter bleiben unangetastet.
+		   BEWUSST OFFENE RESTLUECKE: ein char-Parameter, dessen Adresse per
+		   ADDRL genommen wird, OHNE dass er irgendwo per LOADC/STOREC
+		   angefasst wird ("void f(char c){char* p; p=&c; ...}"), wird hier
+		   nicht erkannt -- die IR ("FUNC <name> <nargs>", s. docs/IR_OPCODES.md)
+		   traegt keine Parametertypen, und ADDRL allein ist kein Beleg fuer
+		   char (bei einem int-Parameter waere die Verengung sogar falsch).
+		   Im echten Generator kommt dieser Fall nicht vor. */
+		{
+			int pslot;
+			int pk;
+			for (pslot = 0; pslot < fn->nargs; pslot++) {
+				int usedAsChar = 0;
+				int off;
+				for (pk = fn->first; pk < fn->last; pk++) {
+					Instr* px = &ir[pk];
+					if (px->argc == 1 &&
+						(strcmp(px->op, "LOADC") == 0 || strcmp(px->op, "STOREC") == 0) &&
+						number(px->args[0], px->line) == pslot) {
+						usedAsChar = 1;
+						break;
+					}
+				}
+				if (usedAsChar) {
+					off = 8 + 4 * (fn->nargs - 1 - pslot);
+					fprintf(out, "\tmove.b\t%d(%s),%d(%s)\n", off + 3, framePtr(), off, framePtr());
+				}
+			}
+		}
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
