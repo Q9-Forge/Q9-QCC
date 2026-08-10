@@ -333,6 +333,13 @@ labelStmt = ident ":" .
 
 expr       = conditionalExpr .
 conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
+/* Eigene Regeln fuer die Klammern eines geklammerten Ausdrucks, damit die
+   VERZOEGERTEN Operatoren darum herum gerettet werden koennen (siehe
+   tc_parenbegin). Ohne das wendet der erste INNERE Faktor ein noch
+   ausstehendes "*" des UMSCHLIESSENDEN Ausdrucks an -- "x * (a + b)"
+   rechnete dadurch (x*a)+b. */
+parenOpen  = "(" .
+parenClose = ")" .
 qmark      = "?" .
 conditionalTrue = expr .
 colon      = ":" .
@@ -360,7 +367,7 @@ factor    = sizeofExpr
           | castExpr
           | preIncDec
           | postIncDec
-          | "(" expr ")"
+          | parenOpen expr parenClose
           | call [ postfixIndex ]
           | indirectCall
           | boolLit

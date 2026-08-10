@@ -1,5 +1,40 @@
 # Fortschritt und Roadmap
 
+## ECHTER KORREKTHEITSFEHLER gefunden und behoben: Klammern bei `*` (2026-08-10)
+
+**`x * (a + b)` rechnete `(x * a) + b`.** Live auf Q9 nachgewiesen: statt 14
+kam 10 heraus. Kein Parsefehler, keine Meldung -- stiller Falschcode. Der
+Fehler ist VORBESTEHEND und aelter als die Bootstrap-Arbeit; er ist nur
+aufgefallen, weil verschachtelte Ternaere ihn in einer Form ausloesten, die
+sofort auffiel.
+
+**Ursache:** QCC emittiert `*`/`+` und Vergleiche nicht sofort, sondern
+gemerkt (`tcPendingMul`/`tcPendingAdd`/`tcRel0`/`tcRel1`), und wendet sie in
+`tc_factor` NACH JEDEM Faktor an -- also auch nach dem ersten Faktor
+INNERHALB einer Klammer. Der geklammerte Ausdruck sah dadurch das noch
+ausstehende `*` des UMSCHLIESSENDEN Ausdrucks. Betroffen war nur der Fall
+"Klammer als RECHTER Operand": `(a + b) * x` und `x + (a * b)` waren
+zufaellig korrekt.
+
+**Fix:** eigene Regeln `parenOpen`/`parenClose` mit demselben
+Rette-und-nulle-Muster, das Aufrufe (`tc_callname`) und Indizes (`tc_arg`)
+laengst verwenden. Verifiziert auf Q9: alle drei Formen liefern jetzt 14.
+
+**Folge fuer die Regression:** `SourceQCC/ebnf.tc` aendert sich dadurch an
+zwei Stellen (`v = v * 8 + (s[r] - 48);` und die 10er-Variante) -- vorher
+wurde `(v*8 + s[r]) - 48` gerechnet. Das war dort ZUFAELLIG gleichwertig,
+weil nur Addition und Subtraktion beteiligt sind; bei einer Multiplikation
+waere es falsch gewesen. Die Referenz wurde entsprechend neu gesetzt: die
+Aenderung ist eine Korrektur, keine Regression.
+
+**Gleichzeitig behoben: verschachtelte Ternaere** (`a ? 1 : (b ? 2 : 3)`,
+6 Fundstellen). `tc_ternaryend` prueft jetzt mit `tcHasTopChar` statt
+`tcHasChar`, ob das `?` auf DIESER Ebene steht -- bei einem verschachtelten
+Ternaer enthaelt die aeussere, selbst ternaerfreie `conditionalExpr` das `?`
+des geklammerten inneren Ausdrucks und feuerte ein zusaetzliches
+`tcTernaryEnd` ("conditional-frame mismatch").
+
+
 ## Bootstrap Stufe 1 begonnen: acht Sprachluecken geschlossen (2026-08-10)
 
 Erster echter Selbstuebersetzungsversuch: `Data/qcc_p.c` (2 `#include`
