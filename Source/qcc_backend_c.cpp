@@ -1346,6 +1346,43 @@ static void emitIR(FILE* out) {
 				emitCall(out, asmName, callee * 4, &serial, psectName);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
+			} else if (strcmp(op, "PUSHFN") == 0 && insP->argc == 1) {
+				/* Adresse einer QCC-Funktion als Wert auf den Stack (Funktionszeiger).
+				   Im -largedata-Modus liegt sie NICHT als Symbol vor, sondern als
+				   Link-Zeit-Offset in der Funktionsindirektionstabelle: die echte
+				   Laufzeitadresse ist a4 + *(a4 + index*4) -- exakt dieselbe Rechnung,
+				   die emitCall() fuer den direkten Aufruf macht (siehe dort). */
+				int fnIdx = findFunction(insP->args[0]);
+				char asmName[NAME_LEN + 40];
+				if (fnIdx < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
+				if (largeDataMode) {
+					/* "add.l a4,d0", NICHT "adda.l": ADDA verlangt ein ADRESSregister
+					   als Ziel (emitCall() rechnet deshalb in a2). Hier ist das Ziel
+					   ein Datenregister, also das normale ADD -- "ADD.L An,Dn" ist
+					   zulaessig. Der echte r68 weist "adda.l a4,d0" korrekt ab
+					   ("incomplete line: code not generated"). */
+					fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+				} else {
+					mangledName(asmName, "tc_", insP->args[0], funcs[fnIdx].isStatic);
+					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
+				}
+			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
+				/* Indirekter Aufruf ueber einen Funktionszeiger. Stapelbelegung beim
+				   Eintritt (von unten): arg1..argN, dann ZUOBERST der Zeiger -- der
+				   wird zuerst heruntergenommen, danach liegen die Argumente genau so
+				   wie bei einem direkten CALL. a3/a4 muessen nach dem jsr aufgefrischt
+				   werden (gleiche Begruendung wie in emitCall(): der Aufgerufene hat
+				   seine EIGENEN Tabellenzeiger gesetzt). */
+				int nargsI = number(insP->args[0], insP->line);
+				fputs("\tmove.l\t(a7)+,a2\n\tjsr\t(a2)\n", out);
+				if (largeDataMode) {
+					int id = serial++;
+					fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
+					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a4\n\tadda.l\t#(tc_functab__%s-tc_callret_%d__%s),a4\n", id, psectName, psectName, id, psectName);
+					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-tc_callret_%d__%s),a3\n", id, psectName, psectName, id, psectName);
+				}
+				if (nargsI) fprintf(out, "\tlea\t%d(a7),a7\n", nargsI * 4);
+				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
 				/* Aufruf einer NICHT in dieser IR definierten (externen) Funktion, z.B.
 				   einer echten OS-9/Microware-clib-Funktion (strcmp, printf, malloc, ...).

@@ -110,6 +110,8 @@ Alle Vergleiche: `a, b → 0|1`.
 | `JNZ <L>` | `a →` | Sprung wenn `a != 0` |
 | `CALL <name> <nargs>` | `a1..aN → r` | Argumente links→rechts gepusht, Ergebnis auf Stack |
 | `CALLP <name> <nargs>` | `a1..aN → p` | wie `CALL`, Ergebnis ist ein Pointer (reine Kennzeichnung fürs Backend) |
+| `PUSHFN <name>` | `→ p` | Adresse einer QCC-Funktion als Wert (Funktionszeiger); im `-largedata`-Modus über die Funktionsindirektionstabelle berechnet, sonst PC-relativ |
+| `CALLIND <nargs>` / `CALLINDP <nargs>` | `a1..aN, f → r`/`p` | indirekter Aufruf; der Funktionszeiger liegt ZUOBERST (über den Argumenten), darunter wie bei `CALL` die Argumente links→rechts |
 | `RET` / `RETP` | `r →` | Rückgabewert vom Stack, Rahmen abbauen, zurück zum Aufrufer |
 | `CALLEXT <name> <argc> <...>` / `CALLEXTP ...` | `a1..aN → r`/`p` | Aufruf einer echten `extern`-Funktion über die Microware-ABI (feste Parameter in `d0`/`d1`, nur der variadische `"..."`-Überschuss auf dem Stack); backend-only (68k) |
 
