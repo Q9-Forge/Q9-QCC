@@ -1,5 +1,65 @@
 # Fortschritt und Roadmap
 
+## Funktionszeiger implementiert (2026-08-10)
+
+Der letzte Sprachblocker fuer den echten Compiler-Bootstrap ist beseitigt.
+Umgesetzt ist genau der Satz, den `Data/qcc_p.c` fuer sein Aktions-Log
+braucht: typedef, Struct-Feld, Parameter, Funktionsname als Wert,
+Zuweisung und indirekter Aufruf.
+
+**Typmodell:** neuer Basistyp `'F'` mit `pointers=1` (er IST ein Zeiger,
+`tcIsPointer` liefert also korrekt 1 -- wichtig, weil Backend und IR
+zwischen Zeiger- und Zahlwerten unterscheiden). `structId` traegt 1-basiert
+die Signatur-Id, genau wie bei `'s'` der Struct-Index; `tcSameType`
+vergleicht sie fuer `'F'` mit, zwei Funktionszeiger sind also nur bei
+gleicher Signatur derselbe Typ.
+
+**Grammatik:**
+```
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" "(" externParamList ")" ";" .
+indirectCall = varRef indCallOpen argList ")" .
+```
+`externParamList` wird bewusst wiederverwendet statt nachgebaut -- die Regel
+parst bereits Typen mit optionalem `const` und optionalem Parameternamen,
+und ihre Aktion sammelt die Typen im gemeinsamen Puffer. `indirectCall`
+steht in `factor` NACH `call`: ein blosser Name wird von `call` abgefangen,
+`actionLog[i].fn(` scheitert dort schon am `[` und faellt korrekt hierher.
+
+**Funktionsname als Wert:** ein Name, der weder lokale/globale Variable
+noch Enum-Konstante ist, aber eine bekannte Funktion benennt, wird zu
+`PUSHFN` (implizites `&` wie in echtem C). Die Signatur wird bei Bedarf
+angelegt, damit das auch ohne passendes typedef funktioniert und zwei
+Funktionen gleicher Signatur zuweisungskompatibel sind.
+
+**IR/Backend:** `PUSHFN <name>` und `CALLIND/CALLINDP <nargs>` (siehe
+`docs/IR_OPCODES.md`). Der Funktionszeiger liegt UNTER den Argumenten --
+das ergibt sich zwangslaeufig aus dem Parsen, weil bei `ausdruck(args)` der
+Callee-Ausdruck vor den Argumenten ausgewertet wird und seinen Wert zuerst
+ablegt (anders als beim direkten `CALL`, wo der Name gar keinen Code
+erzeugt). Er wird deshalb in der Tiefe `nargs*4` gelesen statt gepoppt.
+
+**Dabei gefundener Assemblerfehler:** `adda.l a4,d0` ist ungueltig -- ADDA
+verlangt ein ADRESSregister als Ziel. Bei einem Datenregister muss es das
+normale `add.l` sein; der echte `r68` weist die falsche Form korrekt ab.
+
+**Bewusste Grenzen** (beide im Bootstrap-Ziel nicht relevant): (1) Beim
+indirekten Aufruf wird nur die ARGUMENTANZAHL geprueft, nicht die
+Argumenttypen -- `tc_arg` nimmt die Typen generisch vom Stapel und kann sie
+mangels Funktionsnamen keiner Signatur zuordnen; der Rueckgabetyp ist
+dagegen korrekt. (2) Ein Aufruf ueber eine Funktionszeiger-VARIABLE mit
+blossem Namen (`f(1,2)`) geht nicht -- den faengt die vorangehende
+`call`-Regel ab und meldet "unknown function". Der Weg ueber ein
+Struct-Feld oder ein Array (`log[i].fn(...)`, das reale Muster) funktioniert.
+
+**Live auf Q9 verifiziert:** zwei Testprogramme durch die volle Kette bis
+zum echten `l68`-Modul. Erstes: typedef + Struct-Feld + Zuweisung +
+indirekter Aufruf -> `42`. Zweites: das komplette Aktions-Log-Muster --
+zwei VERSCHIEDENE Funktionen als Parameter uebergeben, gespeichert und
+spaeter ueber dasselbe Zeigerfeld verteilt -> `41`.
+
+**Regression:** `SourceQCC/ebnf.tc` (12317 IR-Zeilen) und `codegen.tc`
+(15968) erzeugen bitgleich dieselbe IR wie vorher.
+
 ## `goto` + Sprungmarken implementiert (2026-08-10)
 
 Der größte der drei Bootstrap-Blocker (786 `goto`/465 Marken in

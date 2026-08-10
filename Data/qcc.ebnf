@@ -36,7 +36,22 @@ structName  = ident .
 structField = type pointerDecl fieldName [ arraySize ] ";" .
 fieldName   = ident .
 
-typedefDecl = "typedef" typedefType typedefTargetName ";" .
+typedefDecl = "typedef" typedefType typedefTargetName ";"
+            | fnPtrTypedef .
+
+/* Funktionszeiger-typedef: "typedef void (*ActionFn)(const char*, const char*);"
+   Steht als ZWEITE Alternative, damit der bisherige Fall unveraendert der
+   schnelle Weg bleibt -- bei einem Funktionszeiger scheitert er an
+   typedefTargetName (dort steht "(" statt eines Bezeichners) und die
+   geordnete Auswahl faellt hierher zurueck.
+   externParamList wird bewusst WIEDERVERWENDET statt nachgebaut: die Regel
+   parst bereits genau das Gebrauchte (Typen mit optionalem "const" und
+   optionalem Parameternamen), und ihre Aktion tc_externparam sammelt die
+   Typen im gemeinsamen Puffer, den tc_fnptrbegin vorher zuruecksetzt
+   (Deklarationen schachteln nicht). */
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" "(" externParamList ")" ";" .
+fnPtrOpen    = "(" .
+fnPtrName    = ident .
 typedefType = anonStructType | type pointerDecl .
 anonStructType = "struct" anonStructOpen structField { structField } "}" .
 anonStructOpen = "{" .
@@ -194,7 +209,7 @@ initNumber = digit { digit } .
 assignStmt = target assignop expr ";" .
 assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
            | "<<=" | ">>=" | "&=" | "^=" | "|=" .
-callStmt  = call ";" .
+callStmt  = call ";" | indirectCall ";" .
 returnStmt = "return" [ retVal ] ";" .
 retVal    = expr .
 
@@ -274,6 +289,7 @@ factor    = sizeofExpr
           | postIncDec
           | "(" expr ")"
           | call [ postfixIndex ]
+          | indirectCall
           | boolLit
           | addressRef
           | derefRef
@@ -327,6 +343,13 @@ incdecOp   = "++" | "--" .
 incDecStmt = preIncDec ";" | postIncDec ";" .
 derefRef  = "*" factor .
 call      = funcName "(" argList ")" .
+/* Aufruf ueber einen Funktionszeiger-Ausdruck, z.B. "actionLog[i].fn(a, b)".
+   varRef deckt "ident [index...] [.member]" bereits ab und legt den Zeiger als
+   Wert auf den Stack; indCallOpen uebernimmt ihn dann als Callee (siehe
+   tc_indcallbegin). Ein blosser Name faellt NICHT hierher -- den faengt die
+   vorangehende call-Regel ab. */
+indirectCall = varRef indCallOpen argList ")" .
+indCallOpen  = "(" .
 argList   = [ arg { "," arg } ] .
 arg       = expr .
 
