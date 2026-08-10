@@ -27,7 +27,19 @@ Funktion mitreissen:
    Reihenfolge ausschloss. Jetzt eine gemeinsame Wiederholung mit
    `funcdef` zuletzt in der geordneten Auswahl.
 
-Danach parst die Praeambel, und nur noch 12 der erkannten Funktionen
+**Pfeil-Operator `->` implementiert (207 Vorkommen im Backend, 0 in
+`qcc_p.c` -- deshalb war er nie aufgefallen).** `p->f` ist in C nur
+Kurzschreibweise fuer `(*p).f` und braucht deshalb KEINEN Index: die
+Feldadresse ist schlicht Zeigerwert + Feldoffset. `IPADD` poppt den Zeiger
+zuerst, also wird `PUSH <offset>` VOR dem Laden des Zeigers emittiert.
+`tcNameEnd` haelt jetzt auch am `-` an (ein Minus im Index steht hinter
+`[`, wo ohnehin abgebrochen wird); je ein Zweig in `tc_varref` (lesend)
+und `tc_target` (schreibend, setzt `tcTargetIndirect`, woraus `tc_assign`
+ein `STOREIND` macht). Ein Array-Feld liefert wie ueberall dessen ADRESSE
+statt eines Wertes, `p->feld[i]` haengt ein zweites `IPADD` an. Live auf
+Q9 verifiziert (Lesen und Schreiben ueber `->`, Ausgabe `summe=42`).
+
+Danach parst die Praeambel, und nur noch 7 der erkannten Funktionen
 scheitern. **Einziger verbleibender Praeambel-Blocker: ein
 ZWEIDIMENSIONALES struct-Feld** (`char args[6][64];`, genau ein
 Vorkommen) -- `structField` erlaubt nur eine Dimension. Solange das steht,
