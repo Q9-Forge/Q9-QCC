@@ -1870,6 +1870,29 @@ static TCType tcTypePop(void) { return tcValueDepth > 0 ? tcValueTypes[--tcValue
    bei normalen Zuweisungen -- kein extra NARROWC noetig. */
 static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 	char tag = tcTypeTag(t);
+	if (tcIsPointer(t)) {
+		/* Zeiger-Inkrement rechnet in ELEMENTEN, nicht in Bytes -- deshalb IPADD
+		   mit dem Tag des ZIELtyps statt eines schlichten ADD. IPADD erwartet den
+		   Zaehler UNTEN und den Zeiger OBEN (siehe docs/IR_OPCODES.md), weshalb
+		   der Zeiger beim Postfix zweimal geladen statt per DUP vervielfaeltigt
+		   wird: ein DUP laege an der falschen Stelle relativ zum Zaehler. */
+		const char* ld = slot >= 0 ? "LOADP" : "LOADGP";
+		const char* st = slot >= 0 ? "STOREP" : "STOREGP";
+		char ptag = tcTypeTag(tcPointee(t));
+		if (isPre) {
+			printf("PUSH %d\n", isDec ? -1 : 1);
+			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+			printf("IPADD %c\nDUP\n", ptag);
+		} else {
+			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+			printf("PUSH %d\n", isDec ? -1 : 1);
+			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+			printf("IPADD %c\n", ptag);
+		}
+		if (slot >= 0) printf("%s %d\n", st, slot); else printf("%s %s\n", st, tcGlobalNames[global]);
+		tcTypePush(t);
+		return;
+	}
 	const char* loadOp = slot >= 0 ? (tag == 'i' ? "LOADL" : "LOADC") : (tag == 'i' ? "LOADG" : "LOADGC");
 	const char* storeOp = slot >= 0 ? (tag == 'i' ? "STOREL" : "STOREC") : (tag == 'i' ? "STOREG" : "STOREGC");
 	if (slot >= 0) printf("%s %d\n", loadOp, slot); else printf("%s %s\n", loadOp, tcGlobalNames[global]);
@@ -1879,7 +1902,11 @@ static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 	tcTypePush(t);
 }
 static int tcIncDecCheck(int slot, int global, TCType t) {
-	if (tcIsPointer(t) || t.base == 's' || t.base == 'b') return 0;
+	/* Zeiger sind seit 2026-08-10 erlaubt ("p++" ist ein C-Kernidiom und kommt
+	   in Data/qcc_p.c ueberall vor) -- tcIncDecEmit rechnet dafuer ueber IPADD
+	   mit der Groesse des Zieltyps statt +-1. Arrays bleiben ausgeschlossen
+	   (ein Arrayname ist kein veraenderbarer Lvalue), ebenso struct und bool. */
+	if (t.base == 's' || t.base == 'b') return 0;
 	if (slot >= 0 && tcLocalArrayLen[slot]) return 0;
 	if (slot < 0 && global >= 0 && tcGlobalArrayLen[global]) return 0;
 	return 1;
@@ -2574,12 +2601,37 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		type = tcMakeType('s', 0); type.structId = (unsigned char)(sid + 1);
 		p = ne;
 	}
-	else if (end - p >= 12 && p[0] == 'u') { p += 12; type.base = 'u'; }
+	/* "unsigned" wird jetzt WORTWEISE ausgewertet statt pauschal 12 Zeichen zu
+	   ueberspringen -- das traf nur "unsigned int" und lief bei "unsigned char"
+	   (13 Zeichen) mitten in den Bezeichner hinein. */
+	else if (end - p >= 8 && p[0] == 'u' && p[1] == 'n' && p[2] == 's' && p[3] == 'i'
+	         && p[4] == 'g' && p[5] == 'n' && p[6] == 'e' && p[7] == 'd') {
+		const char* q; const char* qe;
+		p += 8;
+		while (p < end && (*p == ' ' || *p == '\t')) p++;
+		q = p; qe = tcWordEnd(q, end);
+		if (tcEqSpan(q, qe, "char")) { type.base = 'c'; p = qe; }
+		else if (tcEqSpan(q, qe, "int") || tcEqSpan(q, qe, "long")) { type.base = 'u'; p = qe; }
+		else type.base = 'u';                 /* blosses "unsigned" */
+	}
 	else if (end - p >= 3 && p[0] == 'i' && p[1] == 'n' && p[2] == 't') p += 3;
+	/* long ist auf dem 68k-Ziel wortgleich mit int (32 Bit), type.base bleibt 'i'. */
+	else if (end - p >= 4 && p[0] == 'l' && p[1] == 'o' && p[2] == 'n' && p[3] == 'g') p += 4;
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
-	else { fprintf(stderr, "qcc: bad global declaration\n"); return; }
+	else {
+		/* Typedef-Name als Basistyp ("TCType x;") -- dieselbe Aufloesung wie in
+		   tc_type. Steht ZULETZT, damit die eingebauten Schluesselwoerter nicht
+		   als Typedefname missdeutet werden. Ohne diesen Zweig scheiterte JEDE
+		   globale Variable eines typedef'ten Typs mit "bad global declaration",
+		   obwohl dieselbe Deklaration als LOKALE laengst funktionierte. */
+		const char* ne = tcWordEnd(p, end);
+		int td = tcLookupTypedef(p, ne);
+		if (td < 0) { fprintf(stderr, "qcc: bad global declaration\n"); return; }
+		type = tcTypedefTypes[td];
+		p = ne;
+	}
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	while (p < end && *p == '*') { type = tcPointerTo(type); p++; while (p < end && (*p == ' ' || *p == '\t')) p++; }
 	if (!tcIsPointer(type) && type.base == 'v') {
