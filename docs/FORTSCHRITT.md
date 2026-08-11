@@ -1,5 +1,71 @@
 # Fortschritt und Roadmap
 
+## Bootstrap: Speicher ist der eigentliche Blocker (2026-08-11)
+
+Vor dieser Sitzung war der Compiler auf dem Q9 (16 MB RAM) **grundsaetzlich
+nicht lauffaehig** -- unabhaengig von jeder Sprachluecke. Gemessen am
+Host-Build:
+
+| | statisch vorher | nachher |
+|---|---|---|
+| `Source/qcc_backend_c.cpp` | 42,2 MB | **6,4 MB** |
+| `Data/qcc_p.c` | 25,7 MB | noch offen |
+
+Zwei Posten trugen im Backend fast alles: `Instr ir[65536]` mit festen
+Argument-Textfeldern (`char args[6][64]` = 384 der 416 Byte) und
+`Global globals[1024]` mit `int init[4096]` = 16 KB je Eintrag. Beide sind
+jetzt Zeiger in gemeinsame Pools, deren Groesse an ECHTEN Daten bemessen ist
+statt geraten (Argumenttext ~9 Byte je IR-Zeile; Initialisierer 20,5 KB fuer
+ebnf.tc, 34,9 KB fuer codegen.tc). Ausgabe in 8 von 8 Backend-Modi bitgleich.
+
+**Noch offen im Frontend:** `actionLog[ACTION_LOG_MAX]` mit 1048576 Eintraegen
+= 12 MB auf dem 68k. Gemessener Spitzenbedarf realer Eingaben: **28234
+(ebnf.tc) / 31666 (codegen.tc)** -- die Kapazitaet ist 33-fach ueberdimen-
+sioniert. 262144 Eintraege (3 MB) waeren immer noch das Achtfache des
+gemessenen Maximums. Achtung: die Konstante wird von `codegen.cpp` erzeugt,
+eine Aenderung muss deshalb in `Source/codegen.cpp` UND dessen QCC-Zwilling
+`SourceQCC/codegen.tc` erfolgen, danach `Data/qcc_p.c` neu generieren.
+
+**Zweiter offener Punkt:** `inputFileBuf[262144]` fasst 256 KB, `Data/qcc_p.c`
+ist 302 KB gross -- **der Parser kann seinen eigenen Quelltext nicht
+einlesen**. Vorverarbeitet (Kommentare entfernt) sind es 244 KB, es passt
+also derzeit knapp; die Datei waechst aber mit jeder Grammatikerweiterung
+(gestern 6747 -> 8056 Zeilen).
+
+## Bootstrap: Luecken-Erhebung mit reproduzierbarem Werkzeug (2026-08-11)
+
+Bisher liefen die Messungen ad hoc in der jeweiligen Sitzung. Neu:
+`tools/bootstrap_survey.py` zerlegt eine Datei in Top-Level-Einheiten,
+schiebt sie kumulativ durch das Frontend und listet ALLE scheiternden auf,
+statt beim ersten Fehler abzubrechen.
+
+| Ziel | Einheiten | scheitern |
+|---|---:|---:|
+| `Data/qcc_p.c` | 742 | 5 |
+| `Source/qcc_backend_c.cpp` | 43 | 2 |
+
+Dahinter stecken fuenf Sprachluecken:
+
+1. **Komma-Operator** -- `(*value = v, 1)` in `tcConstIndex`
+2. **Feldzugriff auf einen Funktionsrueckgabewert** -- `tcPointee(bt).base`;
+   Ursache aller vier restlichen Frontend-Ausfaelle
+3. **2D-Arrayfeld ueber Zeiger** -- `insP->args[insP->argc]` in `readIR`
+4. **static-lokales Array mit Initialisierer** -- `static const char*
+   helperNames[8] = {...}` in `helperTableOffset`
+5. **Funktionszeiger** -- kein Randfall: `typedef void (*ActionFn)(...)`
+   traegt das gesamte Aktions-Log des Parsers
+
+Einordnung: gemessen wird, ob das FRONTEND die Einheit annimmt. Die
+semantische Pruefung und die Uebersetzbarkeit durch das Backend sind eigene,
+spaetere Stufen -- Parsen ist nicht Uebersetzen.
+
+**Nebenbefund `(unsigned)`:** die Grammatik verlangt nach `unsigned` zwingend
+ein `int`/`char`/`long` (`castType`/`unsignedInt` in `Data/qcc.ebnf`), in C
+ist `(unsigned)` allein aber gueltig. Aufgefallen, weil eine in dieser
+Sitzung neu geschriebene Backend-Funktion dadurch selbst nicht
+QCC-uebersetzbar war -- was ins Backend geschrieben wird, muss im
+QCC-Sprachumfang liegen.
+
 ## Selbst eingebauten Fehler gefunden: "x--" galt als Member-Zugriff (2026-08-10)
 
 Die Messung meldete 280-mal `'->' requires a pointer to struct` in einer
