@@ -568,10 +568,29 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: 1D-Array-Doppelindizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/qcc_p 'struct R{ int m[2][3]; }; int main(){ putint(1); }' >/dev/null 2>&1; then
-			echo "FAIL  qcc: 2D-Array-struct-Feld wird faelschlich akzeptiert"; tcfail=1; fail=1
+		# 2026-08-11: Bis Q9-QCC-Commit ae61e0a ("struct-Mehrfachfelder und freie
+		# Reihenfolge im Programm") war ein zweidimensionales struct-FELD ein
+		# Parse-Fehler -- eine BEWUSSTE Entscheidung (siehe docs/FORTSCHRITT.md:
+		# "bewusst NICHT bei structField ... sauberer Parse-Fehler statt eines
+		# still falsch geschnittenen Feldes"). Mit ae61e0a erlaubt
+		# `structDeclarator = fieldName [ arraySize [ arraySizeN ] ]` die zweite
+		# Dimension nun auch dort. Der Zustand ist geprueft und HALB fertig:
+		#   - Deklaration wird angenommen, das Feld wird FLACH und mit korrekter
+		#     Groesse belegt (tcStructFieldArrayLen haelt das Produkt aller
+		#     Dimensionen). Nachgemessen: sizeof(struct{int m[2][3];int x;}) = 28
+		#     wie beim flachen int m[6], Folgefelder liegen an den richtigen
+		#     Offsets. Die oben befuerchtete stille Fehlschneidung tritt NICHT ein.
+		#   - Der ZUGRIFF r.m[i][j] ist dagegen nicht implementiert und scheitert
+		#     als Parse-Fehler, also laut statt still.
+		# Der Test pinnt deshalb genau diese beiden Haelften, damit weder die
+		# gewonnene Deklaration wieder verschwindet noch der fehlende Zugriff
+		# unbemerkt "irgendwie" durchgeht.
+		if build/qcc_p 'struct R{ int m[2][3]; int x; }; int main(){ struct R r; r.x=99; putint(sizeof(struct R)); putint(r.x); }' 2>/dev/null \
+			| grep -q 'GLOBAL\|FUNC' \
+			&& ! build/qcc_p 'struct R{ int m[2][3]; }; int main(){ struct R r; r.m[0][0]=7; putint(r.m[0][0]); }' >/dev/null 2>&1; then
+			echo "ok    qcc: 2D-struct-Feld wird flach korrekt belegt, der Zugriff r.m[i][j] bleibt diagnostiziert (eigener Folgeschritt)"
 		else
-			echo "ok    qcc: 2D-Array als struct-Feld bleibt Parse-Fehler (eigener Folgeschritt)"
+			echo "FAIL  qcc: 2D-struct-Feld -- Deklaration oder Zugriffsdiagnose verhaelt sich anders als erwartet"; tcfail=1; fail=1
 		fi
 		if build/qcc_p 'int f(int m[][3]){ return 0; } int main(){ putint(1); }' >/dev/null 2>&1; then
 			echo "FAIL  qcc: 2D-Array-Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
@@ -3225,6 +3244,43 @@ if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
+fi
+
+# ---------------------------------------------------------------------------
+# Abgleich mit Q9-QCC (2026-08-11)
+#
+# Sieben Dateien existieren in BEIDEN Repos, weil diese Suite QCC mittestet,
+# die QCC-Sprachdefinition und das Backend aber in Q9-QCC gepflegt werden
+# (siehe README beider Repos). Bis zum 2026-08-11 waren sie unbemerkt in fuenf
+# Faellen auseinandergelaufen -- unter anderem mit ZWEI konkurrierenden
+# Behebungen desselben char-Parameter-/Big-Endian-Fehlers, von denen die hier
+# vormals verwendete den Fall "&c" nicht abdeckte. Genau das soll dieser Test
+# kuenftig sofort sichtbar machen.
+#
+# Der Test ist bewusst nur ein "warn", wenn das Nachbar-Auscheckverzeichnis
+# fehlt (normal in CI oder bei einem Einzelklon), aber ein echter FAIL, wenn es
+# da ist und abweicht.
+# ---------------------------------------------------------------------------
+QCC_SIBLING=${QCC_SIBLING:-../Q9-QCC}
+if [ -d "$QCC_SIBLING/Data" ]; then
+	divergent=""
+	for f in Data/qcc.ebnf Data/qcc.lextab \
+	         Source/qcc_backend_c.cpp Source/qcc_arm64_backend_c.cpp \
+	         SourceQCC/ebnf.tc SourceQCC/codegen.tc \
+	         tools/qcc68sim.py; do
+		if [ ! -f "$QCC_SIBLING/$f" ]; then
+			divergent="$divergent $f(fehlt-dort)"
+		elif ! cmp -s "$f" "$QCC_SIBLING/$f"; then
+			divergent="$divergent $f"
+		fi
+	done
+	if [ -z "$divergent" ]; then
+		echo "ok    Abgleich Q9-QCC: alle 7 geteilten Dateien inhaltsgleich"
+	else
+		echo "FAIL  Abgleich Q9-QCC: geteilte Datei(en) abweichend:$divergent"; fail=1
+	fi
+else
+	echo "warn  Abgleich Q9-QCC: $QCC_SIBLING nicht ausgecheckt -- uebersprungen"
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

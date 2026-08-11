@@ -1,4 +1,12 @@
-program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl } { funcdef } .
+/* Beliebige Reihenfolge von Deklarationen und Funktionen (C-Regel). Vorher
+   waren es ZWEI getrennte Wiederholungen -- erst alle Deklarationen, dann
+   alle Funktionen -- wodurch eine Vorwaertsdeklaration ZWISCHEN globalen
+   Variablen ("static void fatal(const char* msg);" mitten im
+   Deklarationsblock, so in Source/qcc_backend_c.cpp) unparsbar war.
+   funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
+   plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
+   faellt korrekt hierher zurueck. */
+program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl | funcdef } .
 
 /* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
@@ -33,12 +41,52 @@ structName  = ident .
    8 Byte -- ein einzelnes IR-Offset muesste sonst je nach Ziel-Architektur
    unterschiedlich sein). Der 68k-Backend nutzt von diesem 8-Byte-Slot nur
    die ersten 4 Byte (identisch zum Layout einer lokalen Pointer-Variable). */
-structField = type pointerDecl fieldName [ arraySize ] ";" .
+/* Mehrere Felder gleichen Typs in einer Zeile ("int nargs, first, last;").
+   Die Aktion haengt an structDeclarator, NICHT an structField: sie muss
+   einmal PRO Feld feuern, nicht einmal pro Zeile. tc_structfield sucht den
+   Namen rueckwaerts in seiner Spanne und nimmt den Typ aus tcCurrentType --
+   beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
+   umfasst statt der ganzen Zeile. */
+/* fieldConstKw ist eine AKTIONSLOSE Kopie von constKw (wie retConstKw bei
+   funcHead): ein "const" am Feldtyp wird geparst und verworfen. Ein Verweis
+   auf constKw selbst wuerde tc_const ausloesen, dessen tcPendingConst erst
+   beim naechsten Parameter oder Lokalen konsumiert wird und dort
+   faelschlich Konstantheit erzwaenge. */
+structField = [ fieldConstKw ] type pointerDecl structDeclarator { "," structDeclarator } ";" .
+fieldConstKw = "const" .
+/* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
+   dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
+   siehe tcStructFieldRowLen. Echte 2D-Zugriffe "x.args[i][j]" sind bewusst
+   NICHT umgesetzt (kommen im Bootstrap-Ziel nicht vor) und werden
+   diagnostiziert statt still falsch gerechnet. */
+structDeclarator = fieldName [ arraySize [ arraySizeN ] ] .
 fieldName   = ident .
 
-typedefDecl = "typedef" typedefType typedefTargetName ";" .
+typedefDecl = "typedef" typedefType typedefTargetName ";"
+            | fnPtrTypedef .
+
+/* Funktionszeiger-typedef: "typedef void (*ActionFn)(const char*, const char*);"
+   Steht als ZWEITE Alternative, damit der bisherige Fall unveraendert der
+   schnelle Weg bleibt -- bei einem Funktionszeiger scheitert er an
+   typedefTargetName (dort steht "(" statt eines Bezeichners) und die
+   geordnete Auswahl faellt hierher zurueck.
+   externParamList wird bewusst WIEDERVERWENDET statt nachgebaut: die Regel
+   parst bereits genau das Gebrauchte (Typen mit optionalem "const" und
+   optionalem Parameternamen), und ihre Aktion tc_externparam sammelt die
+   Typen im gemeinsamen Puffer, den tc_fnptrbegin vorher zuruecksetzt
+   (Deklarationen schachteln nicht). */
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" "(" externParamList ")" ";" .
+fnPtrOpen    = "(" .
+fnPtrName    = ident .
 typedefType = anonStructType | type pointerDecl .
-anonStructType = "struct" anonStructOpen structField { structField } "}" .
+/* Optionaler Struct-Tag im typedef ("typedef struct TCType { ... } TCType;").
+   structTagName ist AKTIONSLOS: der Tag wird geparst und verworfen, als
+   interner Tag dient wie bisher der typedef-Zielname (siehe
+   tc_anonstructbegin/tc_typedefend). Damit ist "struct TCType" NICHT als
+   eigenstaendiger Typname nutzbar -- im Bootstrap-Ziel wird ohnehin
+   ausschliesslich der typedef-Name verwendet. */
+anonStructType = "struct" [ structTagName ] anonStructOpen structField { structField } "}" .
+structTagName = ident .
 anonStructOpen = "{" .
 typedefTargetName = ident .
 
@@ -55,7 +103,10 @@ typedefTargetName = ident .
    Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
 globalDecl       = externGlobalDecl | plainGlobalDecl .
 externGlobalDecl = "extern" type pointerDecl globalName ";" .
-plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] ";" .
+/* Mehrere Deklaratoren pro Zeile ("static TCType a[512], b[512][64];").
+   Die Aufteilung macht tc_globalend selbst am Rohtext -- siehe dort. */
+plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalDeclarator { "," globalDeclarator } ";" .
+globalDeclarator = globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
 constKw   = "const" .
 staticKw  = "static" .
 /* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
@@ -68,8 +119,16 @@ staticKw  = "static" .
    Rohtext-Scan (siehe dort), genau wie bei globalNumber/globalBool. */
 globalInit = globalValue | initList | globalStringInit .
 globalStringInit = "\042" { character } "\042" .
-arraySize  = "[" globalNumber "]" .
-arraySizeN = "[" globalNumber "]" .
+/* Arraygroesse als konstanter Ausdruck ("char buf[64 + 40];") -- in C
+   ueblich und im Bootstrap-Ziel 16-mal verwendet. Ausgewertet wird der
+   Ausdruck von tcConstArrayLen aus dem Rohtext (die Deklarations-Aktionen
+   lesen die Groesse ohnehin dort ab, nicht ueber den Wertestapel). */
+/* Groessenangabe optional: "char wsSet[] = \"...\";" leitet die Laenge aus
+   dem Initialisierer ab (Stringlaenge + Nullbyte). */
+arraySize  = "[" [ constSize ] "]" .
+arraySizeN = "[" constSize "]" .
+constSize  = globalNumber { constSizeOp globalNumber } .
+constSizeOp = "+" | "-" | "*" .
 globalValue = globalNumber | globalNeg | globalBool .
 globalBool  = "true" | "false" .
 globalNeg   = "-" globalNumber .
@@ -87,7 +146,26 @@ funcdef       = funcHead ( funcBody | protoEnd ) .
 funcBody      = funcBodyOpen { statement } "}" .
 funcBodyOpen  = "{" .
 protoEnd      = ";" .
-funcHead  = [ staticKw ] type pointerDecl defName "(" paramList ")" .
+/* "f(void)" ist in C die ausdrueckliche LEERE Parameterliste. Die Klammern
+   gehoeren bewusst IN die beiden Alternativen: stuende dort nur "void" gegen
+   die Parameterliste, wuerde die erste Alternative bei "f(void* p)" das
+   "void" schlucken und der Parser kaeme nicht mehr zurueck -- die optionale
+   Gruppe im zweiten Zweig verhindert das Backtracking an dieser Stelle. So
+   ist es dagegen dasselbe Muster wie call/varRef in factor: zwei echte
+   NTS-Alternativen, von denen die erste als GANZES scheitert (an ")") und
+   sauber verworfen wird. Keine Aktion noetig -- keine Parameter heisst
+   schlicht: tc_param feuert nie. */
+/* retConstKw ist eine AKTIONSLOSE Kopie von constKw: ein "const" am
+   Rueckgabetyp ("static const char* f(...)") wird geparst und verworfen.
+   Ein Verweis auf constKw selbst wuerde dessen Aktion tc_const ausloesen,
+   die tcPendingConst setzt -- das Flag wird erst beim naechsten Parameter
+   oder Lokalen konsumiert und wuerde dort faelschlich Konstantheit
+   erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
+funcHead  = [ staticKw ] [ retConstKw ] type pointerDecl defName funcParams .
+retConstKw = "const" .
+funcParams = voidParams | normalParams .
+voidParams = "(" "void" ")" .
+normalParams = "(" paramList ")" .
 paramList = [ param { "," param } ] .
 param     = [ constKw ] type pointerDecl paramDecl .
 paramDecl = paramName [ paramArray ] .
@@ -95,15 +173,33 @@ paramArray = "[" "]" .
 
 block     = "{" { statement } "}" .
 
-statement = ifStmt
+statement = labelStmt
+          | unlabeledStmt .
+
+/* Alles AUSSER labelStmt. Grund: caseBody ist "{ unlabeledStmt }", darf also
+   keine Sprungmarke erkennen -- sonst wuerde die Wiederholung das "default:"
+   des switch als Marke verschlucken ("labelStmt = ident ':'" passt darauf)
+   und defaultGroup kaeme nie zum Zug. Der EBNF-Dialekt hat keinen Except-/
+   Negationsoperator (ISO 14977's "-" ist bewusst nicht implementiert, siehe
+   Kopfkommentar in Q9-Parsec/Source/parsec.cpp), "ident ausser Schluesselwort"
+   ist also nicht direkt ausdrueckbar -- deshalb diese Aufteilung.
+   BEWUSSTE, DOKUMENTIERTE GRENZE: eine Sprungmarke direkt auf der Ebene eines
+   case-/default-Rumpfes ist damit nicht moeglich. In einem geschachtelten
+   Block innerhalb des Rumpfes schon ("{ weiter: ... }"), denn block benutzt
+   wieder statement. Im Bootstrap-Ziel Data/qcc_p.c kommt der Fall nicht vor
+   (nachgezaehlt: 0 Marken innerhalb von switch-Ruempfen). */
+unlabeledStmt = ifStmt
           | whileStmt
           | forStmt
           | doStmt
           | switchStmt
           | breakStmt
           | continueStmt
+          | gotoStmt
           | returnStmt
           | block
+          | emptyStmt
+          | voidCastStmt
           | callStmt
           | incDecStmt
           | assignStmt
@@ -144,11 +240,20 @@ caseLabel    = "case" caseValue ":" .
 caseValue    = ident | caseNeg | caseNumber .
 caseNeg      = "-" caseNumber .
 caseNumber   = digit { digit } .
-caseBody     = { statement } .
+caseBody     = { unlabeledStmt } .
 defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
 
-varDecl   = [ constKw ] type pointerDecl localDecl [ "=" varInit ] ";" .
+/* Mehrere Deklaratoren in einer Anweisung ("int i, k;"). Ein etwaiger
+   Initialisierer gehoert wie in C zum LETZTEN Deklarator ("int slot,
+   global = -1;") -- genau das ergibt sich hier automatisch, weil varInit
+   dem zuletzt angelegten lokalen Slot zugewiesen wird. */
+/* Jeder Deklarator darf einen EIGENEN Initialisierer haben ("int round = 0,
+   square = 0;") -- das ist die C-Regel; die vorherige Fassung erlaubte ihn
+   nur beim letzten. varDeclarator buendelt Name und Initialisierer, damit
+   die Wiederholung beide zusammen erfasst. */
+varDecl   = [ constKw ] type pointerDecl varDeclarator { "," varDeclarator } ";" .
+varDeclarator = localDecl [ "=" varInit ] .
 /* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
    2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
    struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
@@ -175,10 +280,27 @@ initValue = initNumber | initNeg | initBool .
 initBool  = "true" | "false" .
 initNeg   = "-" initNumber .
 initNumber = digit { digit } .
-assignStmt = target assignop expr ";" .
+/* Kettenzuweisung "a = b = 0;". Steht als ERSTE Alternative; bei einer
+   einfachen Zuweisung scheitert sie am zweiten target und die geordnete
+   Auswahl faellt zurueck. Das ist gefahrlos, weil Aktionen nicht sofort
+   ausgefuehrt, sondern protokolliert und beim Zurueckrollen verworfen
+   werden (actionLog, siehe Data/qcc_p.c). */
+assignStmt = chainAssign | target assignop expr ";" .
+chainAssign = target assignop target assignop expr ";" .
 assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
            | "<<=" | ">>=" | "&=" | "^=" | "|=" .
-callStmt  = call ";" .
+callStmt  = call ";" | indirectCall ";" .
+
+/* "(void)ausdruck;" -- wertet aus und verwirft. In C das uebliche Mittel,
+   einen absichtlich unbenutzten Parameter stillzulegen; qcc_p.c benutzt es
+   genau dafuer ("(void)start; (void)end;"). Kein anderes Statement beginnt
+   mit "(", die Einordnung in der Alternation ist also unkritisch. */
+/* Leere Anweisung. In C muss auf eine Sprungmarke eine Anweisung folgen;
+   der generierte Parser Data/qcc_p.c schreibt deshalb ueberall "L19: ;". */
+emptyStmt = ";" .
+
+voidCastStmt = voidCastOpen expr ";" .
+voidCastOpen = "(" "void" ")" .
 returnStmt = "return" [ retVal ] ";" .
 retVal    = expr .
 
@@ -214,8 +336,28 @@ doBody    = statement .
 breakStmt    = "break" ";" .
 continueStmt = "continue" ";" .
 
+/* goto + Sprungmarken. Beide Aktionen haengen bewusst an der VOLLSTAENDIGEN
+   Regel, nicht an einer Unterregel fuer den blossen Namen: labelStmt beginnt
+   mit einem ident und wird deshalb bei JEDEM ident-Statement ("foo();",
+   "x = 1;") zuerst probiert und danach zurueckgerollt. Eine Aktion an einer
+   Namens-Unterregel wuerde in genau diesen Faellen spekulativ feuern; an der
+   Gesamtregel feuert sie erst, wenn das Statement vollstaendig erkannt ist.
+   Den Bezeichner holt sich die Aktion selbst aus dem erkannten Textbereich
+   (tcIdentFromSpan). Deshalb steht labelStmt in der Alternation auch VOR
+   callStmt/assignStmt -- die geordnete Auswahl probiert es zuerst, das
+   Backtracking faengt die Fehlversuche ab. */
+gotoStmt  = "goto" ident ";" .
+labelStmt = ident ":" .
+
 expr       = conditionalExpr .
 conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
+/* Eigene Regeln fuer die Klammern eines geklammerten Ausdrucks, damit die
+   VERZOEGERTEN Operatoren darum herum gerettet werden koennen (siehe
+   tc_parenbegin). Ohne das wendet der erste INNERE Faktor ein noch
+   ausstehendes "*" des UMSCHLIESSENDEN Ausdrucks an -- "x * (a + b)"
+   rechnete dadurch (x*a)+b. */
+parenOpen  = "(" .
+parenClose = ")" .
 qmark      = "?" .
 conditionalTrue = expr .
 colon      = ":" .
@@ -243,12 +385,14 @@ factor    = sizeofExpr
           | castExpr
           | preIncDec
           | postIncDec
-          | "(" expr ")"
+          | parenOpen expr parenClose
           | call [ postfixIndex ]
+          | indirectCall
           | boolLit
           | addressRef
           | derefRef
           | varRef
+          | charLit
           | number
           | stringLit [ postfixIndex ]
           | negFactor .
@@ -279,7 +423,27 @@ postfixIndex = index .
    Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
    und String-Verkettung/-Vergleich als eigene Operatoren. */
 stringLit = "\042" { character } "\042" .
-character = " "~"!" | "#"~"~" .
+
+/* Zeichenliteral 'x'. Wie in echtem C hat es den Typ int (nicht char) --
+   dadurch funktionieren Vergleiche mit int-Variablen ohne Konvertierung,
+   genau das Muster in Data/qcc_p.c ("c >= '0' && c <= '9'" mit int c).
+   Die Zeichenklassen sind ausgeschriebene Bereiche, weil der EBNF-Dialekt
+   keinen Ausschluss-Operator hat: 0x20-0x26, 0x28-0x5B und 0x5D-0x7E lassen
+   genau das Hochkomma (0x27) und den Backslash (0x5C) aus, die beide nur
+   ueber die Escape-Form vorkommen duerfen. Unterstuetzte Escapes sind die
+   in der Praxis benutzten -- \n \t \r \0 und der Backslash selbst. */
+charLit       = "\047" charLitBody "\047" .
+charLitBody   = charLitEscape | charLitPlain .
+charLitEscape = "\134" charLitEscChar .
+charLitEscChar = "n" | "t" | "r" | "0" | "\134" .
+charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
+/* strEscape steht VORNE, damit ein Backslash mitsamt dem Folgezeichen als
+   EINHEIT konsumiert wird -- sonst beendet das "\\\"" das Literal vorzeitig.
+   Die Dekodierung selbst kann tcDecodeStringLit laengst, nur die Grammatik
+   kam bisher nie so weit. */
+character = strEscape | " "~"!" | "#"~"~" .
+strEscape = "\134" strEscChar .
+strEscChar = " "~"~" .
 negFactor = ( "-" | "!" | "~" ) factor .
 addressRef = "&" ident [ index ] .
 
@@ -289,15 +453,33 @@ sizeofType = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structT
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
-castType   = "unsigned" unsignedInt | "int" | "char" | "bool" .
+castType   = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" .
 castOperand = factor .
 
-preIncDec  = incdecOp ident .
-postIncDec = ident incdecOp .
+/* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
+   Operand hier kein blosser Bezeichner ist. Die Aktionen erkennen die Form
+   am fuehrenden "(" ihrer Spanne. */
+/* "a[i]++" -- Inkrement eines Arrayelements. Der Indexausdruck darf nur
+   EINMAL ausgewertet werden (Seiteneffekte!), sein Wert liegt beim Feuern
+   der Aktion bereits auf dem Stack und wird dort per DUP/SWAP
+   weiterverwendet statt neu berechnet. */
+/* "x.feld++" und "p->feld++". member deckt beide Schreibweisen ab. */
+preIncDec  = incdecOp derefIncTarget | incdecOp memberIncTarget | incdecOp indexIncTarget | incdecOp ident .
+postIncDec = derefIncTarget incdecOp | memberIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
+memberIncTarget = ident member .
+indexIncTarget = ident index .
+derefIncTarget = "(" "*" ident ")" .
 incdecOp   = "++" | "--" .
 incDecStmt = preIncDec ";" | postIncDec ";" .
 derefRef  = "*" factor .
 call      = funcName "(" argList ")" .
+/* Aufruf ueber einen Funktionszeiger-Ausdruck, z.B. "actionLog[i].fn(a, b)".
+   varRef deckt "ident [index...] [.member]" bereits ab und legt den Zeiger als
+   Wert auf den Stack; indCallOpen uebernimmt ihn dann als Callee (siehe
+   tc_indcallbegin). Ein blosser Name faellt NICHT hierher -- den faengt die
+   vorangehende call-Regel ab. */
+indirectCall = varRef indCallOpen argList ")" .
+indCallOpen  = "(" .
 argList   = [ arg { "," arg } ] .
 arg       = expr .
 
@@ -337,22 +519,39 @@ indirectTarget = "*" factor .
 varRef    = ident [ index { index } ] [ member [ index ] ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
-member    = "." fieldName .
+/* "->" ist in C nur Kurzschreibweise: "p->f" == "(*p).f". Die Aktionen
+   unterscheiden die beiden Formen selbst am Rohtext (tcNameEnd haelt jetzt
+   auch am "-" an), die Grammatik muss sie nur zulassen. */
+member    = "." fieldName | "->" fieldName .
 defName   = ident .
 paramName = ident .
 localName = ident .
 globalName = ident .
 funcName  = ident .
-type      = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+/* "long" ist auf dem 68k-Ziel wortgleich mit "int" (beide 32 Bit) und wird
+   in tc_type auch so abgebildet -- eigener Typ waere ohne 64-Bit-Arithmetik
+   bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt. */
+type      = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
 structTypeRef = ident .
 enumTypeRef = ident .
 typedefRef = ident .
 pointerDecl = { pointerStar } .
 pointerStar = "*" .
-unsignedInt = "int" .
+/* "unsigned char" wird auf QCCs char abgebildet: der 68k-Codegen laedt ein
+   char ohnehin nullerweitert ("moveq #0,d0 / move.b"), QCCs char verhaelt
+   sich also bereits vorzeichenlos. "unsigned long" analog zu unsigned int. */
+unsignedInt = "int" | "char" | "long" .
 boolLit   = "true" | "false" .
 
 ident     = letter { letter | digit } .
-number    = digit { digit } .
+/* Hexzahlen ("0x20"). Die hex-Form steht VORNE, sonst wuerde die dezimale
+   Alternative die fuehrende "0" allein schlucken und das "x" haengen lassen.
+   number ist ein LEXER-TOKEN, die Regel bestimmt also auch, wie weit der
+   Lexer liest. */
+number    = hexNumber | decNumber .
+hexNumber = "0" hexMark hexDigit { hexDigit } .
+hexMark   = "x" | "X" .
+hexDigit  = digit | "a"~"f" | "A"~"F" .
+decNumber = digit { digit } .
 letter    = "a"~"z" | "A"~"Z" | "_" .
 digit     = "0"~"9" .

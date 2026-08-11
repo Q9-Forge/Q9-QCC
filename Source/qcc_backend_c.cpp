@@ -22,7 +22,9 @@
    Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
 #define MAX_IR_LINES    65536
-#define MAX_FUNCS       256
+/* 2026-08-10 von 256 auf 1024 erhoeht: Data/qcc_p.c allein bringt 354
+   Funktionen mit -- der Selbstuebersetzungsversuch lief hier in die Grenze. */
+#define MAX_FUNCS       1024
 /* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceQCC/
    codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
    Nachweis: JEDES String-Literal im QCC-Quelltext wird zu einem
@@ -38,13 +40,14 @@
    statisches Feld von 26 MB. Auf dem Q9 (16 MB RAM) ist der Compiler damit
    grundsaetzlich nicht lauffaehig, unabhaengig von jeder Sprachluecke.
    Jetzt zeigen die Eintraege in einen gemeinsamen Textpool (s. argPool):
-   Instr schrumpft auf 24 + 6*sizeof(char*) + 8 Byte -- auf dem 68k mit
-   4-Byte-Zeigern also 56 Byte, das Feld auf 3,5 MB.
+   Instr schrumpft damit auf 24 + 6*sizeof(char*) + 8 Byte -- auf dem 68k mit
+   4-Byte-Zeigern also 56 Byte, das Feld auf 3,7 MB.
 
-   Bewusst als ZEIGER-Array (nicht als Offset-Index): dadurch bleiben alle
-   Lesestellen (`insP->args[i]` als `const char*`) unveraendert gueltig, nur
-   die eine Schreibstelle in readIR() musste angepasst werden. Nicht belegte
-   Argumente zeigen auf einen leeren String -- genau das Verhalten des vormals
+   Bewusst als ZEIGER-Array (nicht als Offset-Index): dadurch bleibt jede der
+   101 Lesestellen (`insP->args[i]` als `const char*`) unveraendert gueltig,
+   nur die eine Schreibstelle in readIR() musste angepasst werden. Nicht
+   belegte Argumente zeigen auf einen leeren String, damit Leser sich weiter
+   auf "" statt NULL verlassen koennen -- genau das Verhalten des vormals
    nullinitialisierten Arrays. */
 typedef struct {
 	char op[OP_LEN];
@@ -89,16 +92,18 @@ typedef struct {
 static Instr ir[MAX_IR_LINES];
 
 /* Textpool fuer die Argumente aller IR-Zeilen (s. Kommentar an Instr).
-   Groesse an echten Daten bemessen: SourceQCC/ebnf.tc (12220 IR-Zeilen)
-   braucht 109 KB Argumenttext, codegen.tc (16469 Zeilen) 162 KB -- rund
-   9 Byte pro Zeile. Auf MAX_IR_LINES=65536 hochgerechnet ~0,6 MB; 1 MB
-   laesst ueber 60% Luft. Erschoepfung wird wie die uebrigen
-   Kapazitaetsgrenzen laut per fatal() gemeldet, nicht still abgeschnitten. */
+   Groesse an echten Daten bemessen, nicht geraten: SourceQCC/ebnf.tc (12220
+   IR-Zeilen) braucht 109 KB Argumenttext, codegen.tc (16469 Zeilen) 162 KB --
+   also rund 9 Byte pro Zeile. Auf MAX_IR_LINES=65536 hochgerechnet sind das
+   ~0,6 MB; 1 MB laesst damit ueber 60% Luft. Erschoepfung wird wie die
+   uebrigen Kapazitaetsgrenzen dieses Backends laut per fatal() gemeldet,
+   nicht still abgeschnitten. */
 #define ARG_POOL_BYTES  1048576
 static char argPool[ARG_POOL_BYTES];
 static int  argPoolUsed;
 /* Ziel fuer nicht belegte Argumentplaetze -- s. Instr-Kommentar. */
 static char argEmpty[1];
+
 static int irCount = 0;
 
 static Function funcs[MAX_FUNCS];
@@ -475,7 +480,8 @@ static void readIR(const char* path) {
 		insP->line = line;
 		insP->argc = 0;
 		/* Alle Plaetze zuerst auf den leeren String zeigen lassen -- vormals
-		   waren nicht belegte Argumente "" (nullinitialisiertes Array). */
+		   waren nicht belegte Argumente "" (nullinitialisiertes Array), darauf
+		   duerfen Leser sich weiterhin verlassen. */
 		for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
 		while ((tok = strtok(NULL, " \t\r\n")) != NULL) {
 			if (insP->argc < MAX_ARGS) {
@@ -602,10 +608,15 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
 		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0) {
-			/* vor der ersten Funktion (echte globale Variablen) ODER innerhalb einer
-			   offenen Funktion (static lokale Variable, siehe collectGlobals) erlaubt --
-			   NICHT zwischen zwei Funktionen (ausserhalb jeder FUNC-Spanne). */
-			if ((!open && seenFunction) || (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4)) {
+			/* Erlaubt vor der ersten Funktion (echte globale Variablen), innerhalb
+			   einer offenen Funktion (static lokale Variable, siehe collectGlobals)
+			   UND seit 2026-08-10 auch ZWISCHEN zwei Funktionen: C laesst
+			   Deklarationen und Funktionen beliebig mischen, und seit die
+			   program-Regel das abbildet (noetig fuer eine Vorwaertsdeklaration
+			   mitten im Deklarationsblock, siehe docs/FORTSCHRITT.md) entstehen
+			   solche IR-Folgen regulaer. collectGlobals sammelt sie ohnehin
+			   positionsunabhaengig ein. */
+			if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4) {
 				sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 				fatal(msg);
 			}
@@ -742,21 +753,10 @@ static int arrayOffset(const Function* fn, int wanted, int* isChar, int line) {
 	return 0;
 }
 
-/* byteAccess=1 fuer LOADC/STOREC: ein Parameter-Slot ist IMMER eine volle,
-   vom Aufrufer per "move.l #wert,-(a7)" gepushte 4-Byte-Zelle (Stack-IR
-   kennt keine byte-genaue Argumentuebergabe) -- auf Big-Endian-68k liegt der
-   eigentliche char-Wert deshalb im LETZTEN (hoechstadressierten) Byte dieser
-   Zelle, nicht im ersten. Ohne die +3-Korrektur liest "move.b OFFSET(a6),d0"
-   fuer einen char-Parameter das stets-Null-Fuellbyte statt des echten Werts
-   (live gefunden beim Endvergleich xcc- vs. selbstgehosteter ebnf_gen:
-   astPushRNG(char,char) erhielt ueber die Dateigrenze hinweg immer 0/0).
-   Lokale char-Variablen sind davon NICHT betroffen: STOREC/LOADC schreiben/
-   lesen dort dieselbe, vom Compiler selbst vergebene Byteadresse konsistent
-   hin und zurueck, ohne je eine vom Aufrufer gefuellte 4-Byte-Zelle zu kreuzen. */
-static void slotAddress(char* out, int slotN, const Function* fn, int line, int byteAccess) {
+static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 	char msg[200];
 	if (slotN < fn->nargs) {
-		sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN) + (byteAccess ? 3 : 0), framePtr());
+		sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN), framePtr());
 		return;
 	}
 	if (slotN >= fn->nargs + fn->locals) {
@@ -1175,6 +1175,61 @@ static void emitIR(FILE* out) {
 			fprintf(out, "\tlea\t%s(pc),a4\n\tadda.l\t#(tc_functab__%s-%s),a4\n", asmName, psectName, asmName);
 			fprintf(out, "\tlea\t%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-%s),a3\n", asmName, psectName, asmName);
 		}
+		/* BIG-ENDIAN-KORREKTUR FUER char-PARAMETER (2026-08-10, live am
+		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
+		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
+		   PUSH/emitCall) -- der Bytewert eines char-Parameters steht damit im
+		   NIEDERWERTIGSTEN Byte des Slots, auf dem Big-Endian-68k also bei
+		   Slot+3. LOADC/STOREC/ADDRL adressieren aber die Slot-BASIS (bei
+		   LOKALEN Slots ist das korrekt und in sich konsistent, weil dort
+		   STOREC und LOADC dieselbe Adresse benutzen) und lasen deshalb das
+		   HOECHSTWERTIGE Byte -- fuer jeden ASCII-Wert konstant 0.
+		   SYMPTOM: der von QCC uebersetzte Generator erzeugte fuer JEDEN
+		   Zeichenbereich der Grammatik ("0"~"9", "A"~"F", "a"~"z", "A"~"Z")
+		   die Grenzen 0x00/0x00 statt 0x30/0x39 usw. -- astPushRNG(char lo,
+		   char hi) bekam beide Grenzen als 0. Sonst war die Ausgabe mit der
+		   xcc-gebauten Referenz bitgleich.
+		   WARUM BISHER UNENTDECKT: ARM64 ist Little-Endian (dort liegt das
+		   niederwertige Byte ZUFAELLIG an der Slot-Basis, der Code war also
+		   versehentlich richtig) und QCCVM haelt typisierte Slots statt roher
+		   Stack-Langworte -- beide Referenzpfade konnten den Fehler prinzipiell
+		   nicht zeigen. Nur echtes 68k-Big-Endian ist betroffen.
+		   FIX: einmalig im Prolog das niederwertige Byte an die Slot-Basis
+		   kopieren. Danach stimmen ALLE bestehenden Byte-Zugriffspfade
+		   (LOADC, STOREC sowie ADDRL+LOADIND/STOREIND) unveraendert ueberein --
+		   exakt wie bei lokalen char-Slots, kein Eingriff an den Opcodes noetig.
+		   Betroffen sind nur Parameter, die im Rumpf TATSAECHLICH byteweise
+		   benutzt werden (LOADC/STOREC auf ihrem Slot) -- das ist der
+		   eindeutige Beleg, dass es ein char-Parameter ist; int- und
+		   Pointer-Parameter bleiben unangetastet.
+		   BEWUSST OFFENE RESTLUECKE: ein char-Parameter, dessen Adresse per
+		   ADDRL genommen wird, OHNE dass er irgendwo per LOADC/STOREC
+		   angefasst wird ("void f(char c){char* p; p=&c; ...}"), wird hier
+		   nicht erkannt -- die IR ("FUNC <name> <nargs>", s. docs/IR_OPCODES.md)
+		   traegt keine Parametertypen, und ADDRL allein ist kein Beleg fuer
+		   char (bei einem int-Parameter waere die Verengung sogar falsch).
+		   Im echten Generator kommt dieser Fall nicht vor. */
+		{
+			int pslot;
+			int pk;
+			for (pslot = 0; pslot < fn->nargs; pslot++) {
+				int usedAsChar = 0;
+				int off;
+				for (pk = fn->first; pk < fn->last; pk++) {
+					Instr* px = &ir[pk];
+					if (px->argc == 1 &&
+						(strcmp(px->op, "LOADC") == 0 || strcmp(px->op, "STOREC") == 0) &&
+						number(px->args[0], px->line) == pslot) {
+						usedAsChar = 1;
+						break;
+					}
+				}
+				if (usedAsChar) {
+					off = 8 + 4 * (fn->nargs - 1 - pslot);
+					fprintf(out, "\tmove.b\t%d(%s),%d(%s)\n", off + 3, framePtr(), off, framePtr());
+				}
+			}
+		}
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
@@ -1182,25 +1237,25 @@ static void emitIR(FILE* out) {
 			if (strcmp(op, "PUSH") == 0 && insP->argc == 1) {
 				fprintf(out, "\tmove.l\t#%s,-(a7)\n", insP->args[0]);
 			} else if (strcmp(op, "LOADL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "STOREL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
 			} else if (strcmp(op, "LOADC") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 1);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s,d0\n\tmove.l\td0,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "STOREC") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 1);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.b\td0,%s\n", addrBuf);
 			} else if (strcmp(op, "LOADP") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "STOREP") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
 			} else if (strcmp(op, "ADDRL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line, 0);
+				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
 				fprintf(out, "\tlea\t%s,a0\n\tmove.l\ta0,-(a7)\n", addrBuf);
 			} else if (strcmp(op, "ADDRG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]);
@@ -1215,7 +1270,7 @@ static void emitIR(FILE* out) {
 					int off = arrayOffset(fn, number(insP->args[1], insP->line), &ignored, insP->line);
 					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
 				} else if (strcmp(insP->args[0], "P") == 0) {
-					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line, 0);
+					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
 				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
 					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
@@ -1233,7 +1288,7 @@ static void emitIR(FILE* out) {
 					int off = arrayOffset(fn, number(insP->args[1], insP->line), &isChar, insP->line);
 					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
 				} else if (strcmp(insP->args[0], "P") == 0) {
-					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line, 0);
+					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
 				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
 					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
@@ -1344,6 +1399,13 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\t%s.l\td1,d0\n\tmove.l\td0,-(a7)\n", mnem);
 			} else if (strcmp(op, "NARROWC") == 0) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#255,d0\n\tmove.l\td0,(a7)\n", out);
+			} else if (strcmp(op, "SWAP") == 0) {
+				/* Vertauscht die obersten zwei Stackelemente. Gebraucht ueberall dort,
+				   wo ein Ergebniswert UNTER einer Adresse liegen bleiben muss --
+				   "(*p)++", "a[i]++" und die Kettenzuweisung scheiterten allesamt
+				   daran, dass sich der Stack bisher nicht umordnen liess (es gab nur
+				   DUP). */
+				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "DUP") == 0 || strcmp(op, "DUPP") == 0) {
 				fputs("\tmove.l\t(a7),-(a7)\n", out);
 			} else if (strcmp(op, "MUL") == 0 || strcmp(op, "DIV") == 0 || strcmp(op, "UDIV") == 0 || strcmp(op, "MOD") == 0 || strcmp(op, "UMOD") == 0) {
@@ -1391,6 +1453,48 @@ static void emitIR(FILE* out) {
 				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
 				emitCall(out, asmName, callee * 4, &serial, psectName);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
+				fputs("\tmove.l\td0,-(a7)\n", out);
+			} else if (strcmp(op, "PUSHFN") == 0 && insP->argc == 1) {
+				/* Adresse einer QCC-Funktion als Wert auf den Stack (Funktionszeiger).
+				   Im -largedata-Modus liegt sie NICHT als Symbol vor, sondern als
+				   Link-Zeit-Offset in der Funktionsindirektionstabelle: die echte
+				   Laufzeitadresse ist a4 + *(a4 + index*4) -- exakt dieselbe Rechnung,
+				   die emitCall() fuer den direkten Aufruf macht (siehe dort). */
+				int fnIdx = findFunction(insP->args[0]);
+				char asmName[NAME_LEN + 40];
+				if (fnIdx < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
+				if (largeDataMode) {
+					/* "add.l a4,d0", NICHT "adda.l": ADDA verlangt ein ADRESSregister
+					   als Ziel (emitCall() rechnet deshalb in a2). Hier ist das Ziel
+					   ein Datenregister, also das normale ADD -- "ADD.L An,Dn" ist
+					   zulaessig. Der echte r68 weist "adda.l a4,d0" korrekt ab
+					   ("incomplete line: code not generated"). */
+					fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+				} else {
+					mangledName(asmName, "tc_", insP->args[0], funcs[fnIdx].isStatic);
+					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
+				}
+			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
+				/* Indirekter Aufruf ueber einen Funktionszeiger. Stapelbelegung beim
+				   Eintritt (von UNTEN nach oben): zuerst der Zeiger, darueber
+				   arg1..argN. Diese Reihenfolge ergibt sich zwangslaeufig aus dem
+				   Parsen: bei "ausdruck(args)" wird der Callee-Ausdruck VOR den
+				   Argumenten ausgewertet und legt seinen Wert deshalb zuerst ab
+				   (anders als beim direkten CALL, wo der Name gar keinen Code
+				   erzeugt). Der Zeiger wird folglich NICHT gepoppt, sondern in der
+				   Tiefe nargs*4 gelesen; am Ende werden Argumente UND Zeiger
+				   gemeinsam abgeraeumt. a3/a4 muessen nach dem jsr aufgefrischt
+				   werden (gleiche Begruendung wie in emitCall(): der Aufgerufene hat
+				   seine EIGENEN Tabellenzeiger gesetzt). */
+				int nargsI = number(insP->args[0], insP->line);
+				fprintf(out, "\tmove.l\t%d(a7),a2\n\tjsr\t(a2)\n", nargsI * 4);
+				if (largeDataMode) {
+					int id = serial++;
+					fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
+					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a4\n\tadda.l\t#(tc_functab__%s-tc_callret_%d__%s),a4\n", id, psectName, psectName, id, psectName);
+					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-tc_callret_%d__%s),a3\n", id, psectName, psectName, id, psectName);
+				}
+				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
 				/* Aufruf einer NICHT in dieser IR definierten (externen) Funktion, z.B.

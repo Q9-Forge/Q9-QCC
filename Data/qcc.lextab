@@ -12,7 +12,8 @@
                                   | <structDecl> 
                                   | <typedefDecl> 
                                   | <enumDecl> 
-                                  | <externDecl> } { <funcdef> } .
+                                  | <externDecl> 
+                                  | <funcdef> } .
 
  <externDecl>                     = "extern" <type> <pointerDecl> <externName> "(" <externParamList> ")" ";" .
 
@@ -30,16 +31,29 @@
 
  <structName>                     = <ident> .
 
- <structField>                    = <type> <pointerDecl> <fieldName> [ <arraySize> ] ";" .
+ <structField>                    = [ <fieldConstKw> ] <type> <pointerDecl> <structDeclarator> { "," <structDeclarator> } ";" .
+
+ <fieldConstKw>                   = "const" .
+
+ <structDeclarator>               = <fieldName> [ <arraySize> [ <arraySizeN> ] ] .
 
  <fieldName>                      = <ident> .
 
- <typedefDecl>                    = "typedef" <typedefType> <typedefTargetName> ";" .
+ <typedefDecl>                    = "typedef" <typedefType> <typedefTargetName> ";" 
+                                  | <fnPtrTypedef> .
+
+ <fnPtrTypedef>                   = "typedef" <type> <pointerDecl> <fnPtrOpen> "*" <fnPtrName> ")" "(" <externParamList> ")" ";" .
+
+ <fnPtrOpen>                      = "(" .
+
+ <fnPtrName>                      = <ident> .
 
  <typedefType>                    = <anonStructType> 
                                   | <type> <pointerDecl> .
 
- <anonStructType>                 = "struct" <anonStructOpen> <structField> { <structField> } "}" .
+ <anonStructType>                 = "struct" [ <structTagName> ] <anonStructOpen> <structField> { <structField> } "}" .
+
+ <structTagName>                  = <ident> .
 
  <anonStructOpen>                 = "{" .
 
@@ -50,7 +64,9 @@
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
 
- <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] ";" .
+ <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalDeclarator> { "," <globalDeclarator> } ";" .
+
+ <globalDeclarator>               = <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] .
 
  <constKw>                        = "const" .
 
@@ -62,9 +78,15 @@
 
  <globalStringInit>               = "\042" { <character> } "\042" .
 
- <arraySize>                      = "[" <globalNumber> "]" .
+ <arraySize>                      = "[" [ <constSize> ] "]" .
 
- <arraySizeN>                     = "[" <globalNumber> "]" .
+ <arraySizeN>                     = "[" <constSize> "]" .
+
+ <constSize>                      = <globalNumber> { <constSizeOp> <globalNumber> } .
+
+ <constSizeOp>                    = "+" 
+                                  | "-" 
+                                  | "*" .
 
  <globalValue>                    = <globalNumber> 
                                   | <globalNeg> 
@@ -86,7 +108,16 @@
 
  <protoEnd>                       = ";" .
 
- <funcHead>                       = [ <staticKw> ] <type> <pointerDecl> <defName> "(" <paramList> ")" .
+ <funcHead>                       = [ <staticKw> ] [ <retConstKw> ] <type> <pointerDecl> <defName> <funcParams> .
+
+ <retConstKw>                     = "const" .
+
+ <funcParams>                     = <voidParams> 
+                                  | <normalParams> .
+
+ <voidParams>                     = "(" "void" ")" .
+
+ <normalParams>                   = "(" <paramList> ")" .
 
  <paramList>                      = [ <param> { "," <param> } ] .
 
@@ -98,15 +129,21 @@
 
  <block>                          = "{" { <statement> } "}" .
 
- <statement>                      = <ifStmt> 
+ <statement>                      = <labelStmt> 
+                                  | <unlabeledStmt> .
+
+ <unlabeledStmt>                  = <ifStmt> 
                                   | <whileStmt> 
                                   | <forStmt> 
                                   | <doStmt> 
                                   | <switchStmt> 
                                   | <breakStmt> 
                                   | <continueStmt> 
+                                  | <gotoStmt> 
                                   | <returnStmt> 
                                   | <block> 
+                                  | <emptyStmt> 
+                                  | <voidCastStmt> 
                                   | <callStmt> 
                                   | <incDecStmt> 
                                   | <assignStmt> 
@@ -144,13 +181,15 @@
 
  <caseNumber>                     = <digit> { <digit> } .
 
- <caseBody>                       = { <statement> } .
+ <caseBody>                       = { <unlabeledStmt> } .
 
  <defaultGroup>                   = <defaultLabel> <caseBody> .
 
  <defaultLabel>                   = "default" ":" .
 
- <varDecl>                        = [ <constKw> ] <type> <pointerDecl> <localDecl> [ "=" <varInit> ] ";" .
+ <varDecl>                        = [ <constKw> ] <type> <pointerDecl> <varDeclarator> { "," <varDeclarator> } ";" .
+
+ <varDeclarator>                  = <localDecl> [ "=" <varInit> ] .
 
  <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
@@ -173,7 +212,10 @@
 
  <initNumber>                     = <digit> { <digit> } .
 
- <assignStmt>                     = <target> <assignop> <expr> ";" .
+ <assignStmt>                     = <chainAssign> 
+                                  | <target> <assignop> <expr> ";" .
+
+ <chainAssign>                    = <target> <assignop> <target> <assignop> <expr> ";" .
 
  <assignop>                       = "=" 
                                   | "+=" 
@@ -187,7 +229,14 @@
                                   | "^=" 
                                   | "|=" .
 
- <callStmt>                       = <call> ";" .
+ <callStmt>                       = <call> ";" 
+                                  | <indirectCall> ";" .
+
+ <emptyStmt>                      = ";" .
+
+ <voidCastStmt>                   = <voidCastOpen> <expr> ";" .
+
+ <voidCastOpen>                   = "(" "void" ")" .
 
  <returnStmt>                     = "return" [ <retVal> ] ";" .
 
@@ -249,9 +298,17 @@
 
  <continueStmt>                   = "continue" ";" .
 
+ <gotoStmt>                       = "goto" <ident> ";" .
+
+ <labelStmt>                      = <ident> ":" .
+
  <expr>                           = <conditionalExpr> .
 
  <conditionalExpr>                = <orExpr> [ <qmark> <conditionalTrue> <colon> <conditionalFalse> ] .
+
+ <parenOpen>                      = "(" .
+
+ <parenClose>                     = ")" .
 
  <qmark>                          = "?" .
 
@@ -312,12 +369,14 @@
                                   | <castExpr> 
                                   | <preIncDec> 
                                   | <postIncDec> 
-                                  | "(" <expr> ")" 
+                                  | <parenOpen> <expr> <parenClose> 
                                   | <call> [ <postfixIndex> ] 
+                                  | <indirectCall> 
                                   | <boolLit> 
                                   | <addressRef> 
                                   | <derefRef> 
                                   | <varRef> 
+                                  | <charLit> 
                                   | <number> 
                                   | <stringLit> [ <postfixIndex> ] 
                                   | <negFactor> .
@@ -326,8 +385,30 @@
 
  <stringLit>                      = "\042" { <character> } "\042" .
 
- <character>                      = " "~"!" 
+ <charLit>                        = "\047" <charLitBody> "\047" .
+
+ <charLitBody>                    = <charLitEscape> 
+                                  | <charLitPlain> .
+
+ <charLitEscape>                  = "\134" <charLitEscChar> .
+
+ <charLitEscChar>                 = "n" 
+                                  | "t" 
+                                  | "r" 
+                                  | "0" 
+                                  | "\134" .
+
+ <charLitPlain>                   = " "~"&" 
+                                  | "("~"[" 
+                                  | "]"~"~" .
+
+ <character>                      = <strEscape> 
+                                  | " "~"!" 
                                   | "#"~"~" .
+
+ <strEscape>                      = "\134" <strEscChar> .
+
+ <strEscChar>                     = " "~"~" .
 
  <negFactor>                      = ( "-" 
                                   | "!" 
@@ -352,14 +433,27 @@
 
  <castType>                       = "unsigned" <unsignedInt> 
                                   | "int" 
+                                  | "long" 
                                   | "char" 
                                   | "bool" .
 
  <castOperand>                    = <factor> .
 
- <preIncDec>                      = <incdecOp> <ident> .
+ <preIncDec>                      = <incdecOp> <derefIncTarget> 
+                                  | <incdecOp> <memberIncTarget> 
+                                  | <incdecOp> <indexIncTarget> 
+                                  | <incdecOp> <ident> .
 
- <postIncDec>                     = <ident> <incdecOp> .
+ <postIncDec>                     = <derefIncTarget> <incdecOp> 
+                                  | <memberIncTarget> <incdecOp> 
+                                  | <indexIncTarget> <incdecOp> 
+                                  | <ident> <incdecOp> .
+
+ <memberIncTarget>                = <ident> <member> .
+
+ <indexIncTarget>                 = <ident> <index> .
+
+ <derefIncTarget>                 = "(" "*" <ident> ")" .
 
  <incdecOp>                       = "++" 
                                   | "--" .
@@ -370,6 +464,10 @@
  <derefRef>                       = "*" <factor> .
 
  <call>                           = <funcName> "(" <argList> ")" .
+
+ <indirectCall>                   = <varRef> <indCallOpen> <argList> ")" .
+
+ <indCallOpen>                    = "(" .
 
  <argList>                        = [ <arg> { "," <arg> } ] .
 
@@ -388,7 +486,8 @@
 
  <indexOpen>                      = "[" .
 
- <member>                         = "." <fieldName> .
+ <member>                         = "." <fieldName> 
+                                  | "->" <fieldName> .
 
  <defName>                        = <ident> .
 
@@ -402,6 +501,7 @@
 
  <type>                           = "unsigned" <unsignedInt> 
                                   | "int" 
+                                  | "long" 
                                   | "char" 
                                   | "bool" 
                                   | "struct" <structTypeRef> 
@@ -419,7 +519,9 @@
 
  <pointerStar>                    = "*" .
 
- <unsignedInt>                    = "int" .
+ <unsignedInt>                    = "int" 
+                                  | "char" 
+                                  | "long" .
 
  <boolLit>                        = "true" 
                                   | "false" .
@@ -427,7 +529,19 @@
  <ident>                          = <letter> { <letter> 
                                   | <digit> } .
 
- <number>                         = <digit> { <digit> } .
+ <number>                         = <hexNumber> 
+                                  | <decNumber> .
+
+ <hexNumber>                      = "0" <hexMark> <hexDigit> { <hexDigit> } .
+
+ <hexMark>                        = "x" 
+                                  | "X" .
+
+ <hexDigit>                       = <digit> 
+                                  | "a"~"f" 
+                                  | "A"~"F" .
+
+ <decNumber>                      = <digit> { <digit> } .
 
  <letter>                         = "a"~"z" 
                                   | "A"~"Z" 
@@ -449,73 +563,90 @@
 7    TS   "{"
 8    TS   "}"
 9    TS   "struct"
-10   TS   "typedef"
-11   TS   "="
-12   TS   "const"
-13   TS   "static"
-14   TS   """
-15   TS   "["
-16   TS   "]"
-17   TS   "true"
-18   TS   "false"
+10   TS   "const"
+11   TS   "typedef"
+12   TS   "*"
+13   TS   "="
+14   TS   "static"
+15   TS   """
+16   TS   "["
+17   TS   "]"
+18   TS   "+"
 19   TS   "-"
-20   TS   "switch"
-21   TS   "case"
-22   TS   ":"
-23   TS   "default"
-24   TS   "+="
-25   TS   "-="
-26   TS   "*="
-27   TS   "/="
-28   TS   "%="
-29   TS   "<<="
-30   TS   ">>="
-31   TS   "&="
-32   TS   "^="
-33   TS   "|="
-34   TS   "return"
-35   TS   "if"
-36   TS   "else"
-37   TS   "while"
-38   TS   "for"
-39   TS   "do"
-40   TS   "break"
-41   TS   "continue"
-42   TS   "?"
-43   TS   "||"
-44   TS   "&&"
-45   TS   "|"
-46   TS   "^"
-47   TS   "&"
-48   TS   "<<"
-49   TS   ">>"
-50   TS   "<="
-51   TS   ">="
-52   TS   "=="
-53   TS   "!="
-54   TS   "<"
-55   TS   ">"
-56   TS   "+"
-57   TS   "*"
-58   TS   "/"
-59   TS   "%"
-60   RNG  " "~"!"
-61   RNG  "#"~"~"
-62   TS   "!"
-63   TS   "~"
-64   TS   "sizeof"
-65   TS   "unsigned"
-66   TS   "int"
-67   TS   "char"
-68   TS   "bool"
-69   TS   "++"
-70   TS   "--"
-71   TS   "."
-72   TS   "void"
-73   RNG  "a"~"z"
-74   RNG  "A"~"Z"
-75   TS   "_"
-76   RNG  "0"~"9"
+20   TS   "true"
+21   TS   "false"
+22   TS   "void"
+23   TS   "switch"
+24   TS   "case"
+25   TS   ":"
+26   TS   "default"
+27   TS   "+="
+28   TS   "-="
+29   TS   "*="
+30   TS   "/="
+31   TS   "%="
+32   TS   "<<="
+33   TS   ">>="
+34   TS   "&="
+35   TS   "^="
+36   TS   "|="
+37   TS   "return"
+38   TS   "if"
+39   TS   "else"
+40   TS   "while"
+41   TS   "for"
+42   TS   "do"
+43   TS   "break"
+44   TS   "continue"
+45   TS   "goto"
+46   TS   "?"
+47   TS   "||"
+48   TS   "&&"
+49   TS   "|"
+50   TS   "^"
+51   TS   "&"
+52   TS   "<<"
+53   TS   ">>"
+54   TS   "<="
+55   TS   ">="
+56   TS   "=="
+57   TS   "!="
+58   TS   "<"
+59   TS   ">"
+60   TS   "/"
+61   TS   "%"
+62   TS   "'"
+63   TS   "\134"
+64   TS   "n"
+65   TS   "t"
+66   TS   "r"
+67   TS   "0"
+68   RNG  " "~"&"
+69   RNG  "("~"["
+70   RNG  "]"~"~"
+71   RNG  " "~"!"
+72   RNG  "#"~"~"
+73   RNG  " "~"~"
+74   TS   "!"
+75   TS   "~"
+76   TS   "sizeof"
+77   TS   "unsigned"
+78   TS   "int"
+79   TS   "char"
+80   TS   "bool"
+81   TS   "long"
+82   TS   "++"
+83   TS   "--"
+84   TS   "."
+85   TS   "->"
+86   TS   "x"
+87   TS   "X"
+88   RNG  "a"~"f"
+89   RNG  "A"~"F"
+90   RNG  "a"~"z"
+91   RNG  "A"~"Z"
+92   TS   "_"
+93   RNG  "0"~"9"
 [ENDE]
 
 [NTS-SYMBOLTABELLE]
@@ -530,200 +661,239 @@
 7    33          structDecl
 8    40          structName
 9    41          structField
-10   46          fieldName
-11   47          typedefDecl
-12   51          typedefType
-13   54          anonStructType
-14   59          anonStructOpen
-15   60          typedefTargetName
-16   61          globalDecl
-17   63          externGlobalDecl
-18   68          plainGlobalDecl
-19   78          constKw
-20   79          staticKw
-21   80          globalInit
-22   83          globalStringInit
-23   86          arraySize
-24   89          arraySizeN
-25   92          globalValue
-26   95          globalBool
-27   97          globalNeg
-28   99          globalNumber
-29   101         funcdef
-30   104         funcBody
-31   107         funcBodyOpen
-32   108         protoEnd
-33   109         funcHead
-34   116         paramList
-35   119         param
-36   123         paramDecl
-37   125         paramArray
-38   127         block
-39   130         statement
-40   144         staticVarDecl
-41   152         staticLocalName
-42   153         staticInit
-43   155         staticRuntimeInit
-44   156         switchStmt
-45   164         switchKw
-46   165         switchCond
-47   166         switchClose
-48   167         caseGroup
-49   169         caseLabelRun
-50   171         caseLabel
-51   174         caseValue
-52   177         caseNeg
-53   179         caseNumber
-54   181         caseBody
-55   182         defaultGroup
-56   184         defaultLabel
-57   186         varDecl
-58   193         localDecl
-59   196         varInit
-60   199         arrayStringInit
-61   200         initList
-62   205         initValue
-63   208         initBool
-64   210         initNeg
-65   212         initNumber
-66   214         assignStmt
-67   218         assignop
-68   229         callStmt
-69   231         returnStmt
-70   234         retVal
-71   235         ifStmt
-72   242         ifKw
-73   243         elseKw
-74   244         ifCond
-75   245         thenPart
-76   246         elsePart
-77   247         whileStmt
-78   252         whileKw
-79   253         whileCond
-80   254         whileBody
-81   255         forStmt
-82   264         forKw
-83   265         forSep1
-84   266         forSep2
-85   267         forClose
-86   268         forInit
-87   271         forCond
-88   272         forStep
-89   277         forBody
-90   278         doStmt
-91   285         doKw
-92   286         doWhileTok
-93   287         doCond
-94   288         doClose
-95   289         doBody
-96   290         breakStmt
-97   292         continueStmt
-98   294         expr
-99   295         conditionalExpr
-100  300         qmark
-101  301         conditionalTrue
-102  302         colon
-103  303         conditionalFalse
-104  304         orExpr
-105  307         orop
-106  308         andExpr
-107  311         andop
-108  312         bitOrExpr
-109  315         bitorop
-110  316         bitXorExpr
-111  319         bitxorop
-112  320         bitAndExpr
-113  323         bitandop
-114  324         comparison
-115  327         shiftExpr
-116  330         shiftRhs
-117  331         shiftop
-118  333         relop
-119  339         addExpr
-120  342         addop
-121  344         term
-122  347         mulop
-123  350         factor
-124  367         postfixIndex
-125  368         stringLit
-126  371         character
-127  373         negFactor
-128  377         addressRef
-129  380         sizeofExpr
-130  384         sizeofArg
-131  386         sizeofType
-132  393         sizeofVarName
-133  394         castExpr
-134  398         castType
-135  403         castOperand
-136  404         preIncDec
-137  406         postIncDec
-138  408         incdecOp
-139  410         incDecStmt
-140  414         derefRef
-141  416         call
-142  420         argList
-143  423         arg
-144  424         target
-145  426         directTarget
-146  431         indirectTarget
-147  433         varRef
-148  438         index
-149  441         indexOpen
-150  442         member
-151  444         defName
-152  445         paramName
-153  446         localName
-154  447         globalName
-155  448         funcName
-156  449         type
-157  460         structTypeRef
-158  461         enumTypeRef
-159  462         typedefRef
-160  463         pointerDecl
-161  464         pointerStar
-162  465         unsignedInt
-163  466         boolLit
-164  468         ident
-165  471         number
-166  473         letter
-167  476         digit
+10   48          fieldConstKw
+11   49          structDeclarator
+12   52          fieldName
+13   53          typedefDecl
+14   58          fnPtrTypedef
+15   69          fnPtrOpen
+16   70          fnPtrName
+17   71          typedefType
+18   74          anonStructType
+19   80          structTagName
+20   81          anonStructOpen
+21   82          typedefTargetName
+22   83          globalDecl
+23   85          externGlobalDecl
+24   90          plainGlobalDecl
+25   98          globalDeclarator
+26   103         constKw
+27   104         staticKw
+28   105         globalInit
+29   108         globalStringInit
+30   111         arraySize
+31   114         arraySizeN
+32   117         constSize
+33   120         constSizeOp
+34   123         globalValue
+35   126         globalBool
+36   128         globalNeg
+37   130         globalNumber
+38   132         funcdef
+39   135         funcBody
+40   138         funcBodyOpen
+41   139         protoEnd
+42   140         funcHead
+43   146         retConstKw
+44   147         funcParams
+45   149         voidParams
+46   152         normalParams
+47   155         paramList
+48   158         param
+49   162         paramDecl
+50   164         paramArray
+51   166         block
+52   169         statement
+53   171         unlabeledStmt
+54   188         staticVarDecl
+55   196         staticLocalName
+56   197         staticInit
+57   199         staticRuntimeInit
+58   200         switchStmt
+59   208         switchKw
+60   209         switchCond
+61   210         switchClose
+62   211         caseGroup
+63   213         caseLabelRun
+64   215         caseLabel
+65   218         caseValue
+66   221         caseNeg
+67   223         caseNumber
+68   225         caseBody
+69   226         defaultGroup
+70   228         defaultLabel
+71   230         varDecl
+72   237         varDeclarator
+73   240         localDecl
+74   243         varInit
+75   246         arrayStringInit
+76   247         initList
+77   252         initValue
+78   255         initBool
+79   257         initNeg
+80   259         initNumber
+81   261         assignStmt
+82   266         chainAssign
+83   272         assignop
+84   283         callStmt
+85   287         emptyStmt
+86   288         voidCastStmt
+87   291         voidCastOpen
+88   294         returnStmt
+89   297         retVal
+90   298         ifStmt
+91   305         ifKw
+92   306         elseKw
+93   307         ifCond
+94   308         thenPart
+95   309         elsePart
+96   310         whileStmt
+97   315         whileKw
+98   316         whileCond
+99   317         whileBody
+100  318         forStmt
+101  327         forKw
+102  328         forSep1
+103  329         forSep2
+104  330         forClose
+105  331         forInit
+106  334         forCond
+107  335         forStep
+108  340         forBody
+109  341         doStmt
+110  348         doKw
+111  349         doWhileTok
+112  350         doCond
+113  351         doClose
+114  352         doBody
+115  353         breakStmt
+116  355         continueStmt
+117  357         gotoStmt
+118  360         labelStmt
+119  362         expr
+120  363         conditionalExpr
+121  368         parenOpen
+122  369         parenClose
+123  370         qmark
+124  371         conditionalTrue
+125  372         colon
+126  373         conditionalFalse
+127  374         orExpr
+128  377         orop
+129  378         andExpr
+130  381         andop
+131  382         bitOrExpr
+132  385         bitorop
+133  386         bitXorExpr
+134  389         bitxorop
+135  390         bitAndExpr
+136  393         bitandop
+137  394         comparison
+138  397         shiftExpr
+139  400         shiftRhs
+140  401         shiftop
+141  403         relop
+142  409         addExpr
+143  412         addop
+144  414         term
+145  417         mulop
+146  420         factor
+147  439         postfixIndex
+148  440         stringLit
+149  443         charLit
+150  446         charLitBody
+151  448         charLitEscape
+152  450         charLitEscChar
+153  455         charLitPlain
+154  458         character
+155  461         strEscape
+156  463         strEscChar
+157  464         negFactor
+158  468         addressRef
+159  471         sizeofExpr
+160  475         sizeofArg
+161  477         sizeofType
+162  484         sizeofVarName
+163  485         castExpr
+164  489         castType
+165  495         castOperand
+166  496         preIncDec
+167  504         postIncDec
+168  512         memberIncTarget
+169  514         indexIncTarget
+170  516         derefIncTarget
+171  520         incdecOp
+172  522         incDecStmt
+173  526         derefRef
+174  528         call
+175  532         indirectCall
+176  536         indCallOpen
+177  537         argList
+178  540         arg
+179  541         target
+180  543         directTarget
+181  548         indirectTarget
+182  550         varRef
+183  555         index
+184  558         indexOpen
+185  559         member
+186  563         defName
+187  564         paramName
+188  565         localName
+189  566         globalName
+190  567         funcName
+191  568         type
+192  580         structTypeRef
+193  581         enumTypeRef
+194  582         typedefRef
+195  583         pointerDecl
+196  584         pointerStar
+197  585         unsignedInt
+198  588         boolLit
+199  590         ident
+200  593         number
+201  595         hexNumber
+202  599         hexMark
+203  601         hexDigit
+204  604         decNumber
+205  606         letter
+206  609         digit
 [ENDE]
 
 [PARSER-TABELLE]
 # zeile true false addr rngLo rngHi regel modus symbol
 # (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
-0     0     1     61    0     0     program          NTS  globalDecl
+0     0     1     83    0     0     program          NTS  globalDecl
 1     0     2     33    0     0     -                NTS  structDecl
-2     0     3     47    0     0     -                NTS  typedefDecl
+2     0     3     53    0     0     -                NTS  typedefDecl
 3     0     4     25    0     0     -                NTS  enumDecl
 4     0     5     6     0     0     -                NTS  externDecl
-5     5     -1    101   0     0     -                NTS  funcdef
+5     0     -1    132   0     0     -                NTS  funcdef
 6     7     -2    -1    0     0     externDecl       TS   "extern"
-7     8     -3    449   0     0     -                NTS  type
-8     9     -3    463   0     0     -                NTS  pointerDecl
+7     8     -3    568   0     0     -                NTS  type
+8     9     -3    583   0     0     -                NTS  pointerDecl
 9     10    -3    14    0     0     -                NTS  externName
 10    11    -3    -1    0     0     -                TS   "("
 11    12    -3    15    0     0     -                NTS  externParamList
 12    13    -3    -1    0     0     -                TS   ")"
 13    -1    -3    -1    0     0     -                TS   ";"
-14    -1    -2    468   0     0     externName       NTS  ident
+14    -1    -2    590   0     0     externName       NTS  ident
 15    16    -1    20    0     0     externParamList  NTS  externParam
 16    17    18    -1    0     0     -                TS   ","
 17    16    -3    20    0     0     -                NTS  externParam
 18    19    -1    -1    0     0     -                TS   ","
 19    -1    -3    24    0     0     -                NTS  ellipsisTok
-20    21    21    78    0     0     externParam      NTS  constKw
-21    22    -2    449   0     0     -                NTS  type
-22    23    -3    463   0     0     -                NTS  pointerDecl
-23    -1    -1    468   0     0     -                NTS  ident
+20    21    21    103   0     0     externParam      NTS  constKw
+21    22    -2    568   0     0     -                NTS  type
+22    23    -3    583   0     0     -                NTS  pointerDecl
+23    -1    -1    590   0     0     -                NTS  ident
 24    -1    -2    -1    0     0     ellipsisTok      TS   "..."
 25    26    -2    -1    0     0     enumDecl         TS   "enum"
-26    27    -3    468   0     0     -                NTS  ident
+26    27    -3    590   0     0     -                NTS  ident
 27    28    -3    -1    0     0     -                TS   "{"
-28    29    -3    468   0     0     -                NTS  ident
+28    29    -3    590   0     0     -                NTS  ident
 29    30    31    -1    0     0     -                TS   ","
-30    29    -3    468   0     0     -                NTS  ident
+30    29    -3    590   0     0     -                NTS  ident
 31    32    -3    -1    0     0     -                TS   "}"
 32    -1    -3    -1    0     0     -                TS   ";"
 33    34    -2    -1    0     0     structDecl       TS   "struct"
@@ -733,443 +903,576 @@
 37    37    38    41    0     0     -                NTS  structField
 38    39    -3    -1    0     0     -                TS   "}"
 39    -1    -3    -1    0     0     -                TS   ";"
-40    -1    -2    468   0     0     structName       NTS  ident
-41    42    -2    449   0     0     structField      NTS  type
-42    43    -3    463   0     0     -                NTS  pointerDecl
-43    44    -3    46    0     0     -                NTS  fieldName
-44    45    45    86    0     0     -                NTS  arraySize
-45    -1    -3    -1    0     0     -                TS   ";"
-46    -1    -2    468   0     0     fieldName        NTS  ident
-47    48    -2    -1    0     0     typedefDecl      TS   "typedef"
-48    49    -3    51    0     0     -                NTS  typedefType
-49    50    -3    60    0     0     -                NTS  typedefTargetName
-50    -1    -3    -1    0     0     -                TS   ";"
-51    -1    52    54    0     0     typedefType      NTS  anonStructType
-52    53    -2    449   0     0     -                NTS  type
-53    -1    -3    463   0     0     -                NTS  pointerDecl
-54    55    -2    -1    0     0     anonStructType   TS   "struct"
-55    56    -3    59    0     0     -                NTS  anonStructOpen
-56    57    -3    41    0     0     -                NTS  structField
-57    57    58    41    0     0     -                NTS  structField
-58    -1    -3    -1    0     0     -                TS   "}"
-59    -1    -2    -1    0     0     anonStructOpen   TS   "{"
-60    -1    -2    468   0     0     typedefTargetName NTS  ident
-61    -1    62    63    0     0     globalDecl       NTS  externGlobalDecl
-62    -1    -2    68    0     0     -                NTS  plainGlobalDecl
-63    64    -2    -1    0     0     externGlobalDecl TS   "extern"
-64    65    -3    449   0     0     -                NTS  type
-65    66    -3    463   0     0     -                NTS  pointerDecl
-66    67    -3    447   0     0     -                NTS  globalName
-67    -1    -3    -1    0     0     -                TS   ";"
-68    69    69    79    0     0     plainGlobalDecl  NTS  staticKw
-69    70    70    78    0     0     -                NTS  constKw
-70    71    -2    449   0     0     -                NTS  type
-71    72    -3    463   0     0     -                NTS  pointerDecl
-72    73    -3    447   0     0     -                NTS  globalName
-73    74    75    86    0     0     -                NTS  arraySize
-74    74    75    89    0     0     -                NTS  arraySizeN
-75    76    77    -1    0     0     -                TS   "="
-76    77    -3    80    0     0     -                NTS  globalInit
-77    -1    -3    -1    0     0     -                TS   ";"
-78    -1    -2    -1    0     0     constKw          TS   "const"
-79    -1    -2    -1    0     0     staticKw         TS   "static"
-80    -1    81    92    0     0     globalInit       NTS  globalValue
-81    -1    82    200   0     0     -                NTS  initList
-82    -1    -2    83    0     0     -                NTS  globalStringInit
-83    84    -2    -1    0     0     globalStringInit TS   """
-84    84    85    371   0     0     -                NTS  character
-85    -1    -3    -1    0     0     -                TS   """
-86    87    -2    -1    0     0     arraySize        TS   "["
-87    88    -3    99    0     0     -                NTS  globalNumber
-88    -1    -3    -1    0     0     -                TS   "]"
-89    90    -2    -1    0     0     arraySizeN       TS   "["
-90    91    -3    99    0     0     -                NTS  globalNumber
-91    -1    -3    -1    0     0     -                TS   "]"
-92    -1    93    99    0     0     globalValue      NTS  globalNumber
-93    -1    94    97    0     0     -                NTS  globalNeg
-94    -1    -2    95    0     0     -                NTS  globalBool
-95    -1    96    -1    0     0     globalBool       TS   "true"
-96    -1    -2    -1    0     0     -                TS   "false"
-97    98    -2    -1    0     0     globalNeg        TS   "-"
-98    -1    -3    99    0     0     -                NTS  globalNumber
-99    100   -2    476   0     0     globalNumber     NTS  digit
-100   100   -1    476   0     0     -                NTS  digit
-101   102   -2    109   0     0     funcdef          NTS  funcHead
-102   -1    103   104   0     0     -                NTS  funcBody
-103   -1    -3    108   0     0     -                NTS  protoEnd
-104   105   -2    107   0     0     funcBody         NTS  funcBodyOpen
-105   105   106   130   0     0     -                NTS  statement
-106   -1    -3    -1    0     0     -                TS   "}"
-107   -1    -2    -1    0     0     funcBodyOpen     TS   "{"
-108   -1    -2    -1    0     0     protoEnd         TS   ";"
-109   110   110   79    0     0     funcHead         NTS  staticKw
-110   111   -2    449   0     0     -                NTS  type
-111   112   -3    463   0     0     -                NTS  pointerDecl
-112   113   -3    444   0     0     -                NTS  defName
-113   114   -3    -1    0     0     -                TS   "("
-114   115   -3    116   0     0     -                NTS  paramList
-115   -1    -3    -1    0     0     -                TS   ")"
-116   117   -1    119   0     0     paramList        NTS  param
-117   118   -1    -1    0     0     -                TS   ","
-118   117   -3    119   0     0     -                NTS  param
-119   120   120   78    0     0     param            NTS  constKw
-120   121   -2    449   0     0     -                NTS  type
-121   122   -3    463   0     0     -                NTS  pointerDecl
-122   -1    -3    123   0     0     -                NTS  paramDecl
-123   124   -2    445   0     0     paramDecl        NTS  paramName
-124   -1    -1    125   0     0     -                NTS  paramArray
-125   126   -2    -1    0     0     paramArray       TS   "["
-126   -1    -3    -1    0     0     -                TS   "]"
-127   128   -2    -1    0     0     block            TS   "{"
-128   128   129   130   0     0     -                NTS  statement
-129   -1    -3    -1    0     0     -                TS   "}"
-130   -1    131   235   0     0     statement        NTS  ifStmt
-131   -1    132   247   0     0     -                NTS  whileStmt
-132   -1    133   255   0     0     -                NTS  forStmt
-133   -1    134   278   0     0     -                NTS  doStmt
-134   -1    135   156   0     0     -                NTS  switchStmt
-135   -1    136   290   0     0     -                NTS  breakStmt
-136   -1    137   292   0     0     -                NTS  continueStmt
-137   -1    138   231   0     0     -                NTS  returnStmt
-138   -1    139   127   0     0     -                NTS  block
-139   -1    140   229   0     0     -                NTS  callStmt
-140   -1    141   410   0     0     -                NTS  incDecStmt
-141   -1    142   214   0     0     -                NTS  assignStmt
-142   -1    143   144   0     0     -                NTS  staticVarDecl
-143   -1    -2    186   0     0     -                NTS  varDecl
-144   145   -2    79    0     0     staticVarDecl    NTS  staticKw
-145   146   146   78    0     0     -                NTS  constKw
-146   147   -3    449   0     0     -                NTS  type
-147   148   -3    463   0     0     -                NTS  pointerDecl
-148   149   -3    152   0     0     -                NTS  staticLocalName
-149   150   151   -1    0     0     -                TS   "="
-150   151   -3    153   0     0     -                NTS  staticInit
-151   -1    -3    -1    0     0     -                TS   ";"
-152   -1    -2    468   0     0     staticLocalName  NTS  ident
-153   -1    154   92    0     0     staticInit       NTS  globalValue
-154   -1    -2    155   0     0     -                NTS  staticRuntimeInit
-155   -1    -2    294   0     0     staticRuntimeInit NTS  expr
-156   157   -2    164   0     0     switchStmt       NTS  switchKw
-157   158   -3    -1    0     0     -                TS   "("
-158   159   -3    165   0     0     -                NTS  switchCond
-159   160   -3    -1    0     0     -                TS   ")"
-160   161   -3    -1    0     0     -                TS   "{"
-161   161   162   167   0     0     -                NTS  caseGroup
-162   163   163   182   0     0     -                NTS  defaultGroup
-163   -1    -3    166   0     0     -                NTS  switchClose
-164   -1    -2    -1    0     0     switchKw         TS   "switch"
-165   -1    -2    294   0     0     switchCond       NTS  expr
-166   -1    -2    -1    0     0     switchClose      TS   "}"
-167   168   -2    169   0     0     caseGroup        NTS  caseLabelRun
-168   -1    -3    181   0     0     -                NTS  caseBody
-169   170   -2    171   0     0     caseLabelRun     NTS  caseLabel
-170   170   -1    171   0     0     -                NTS  caseLabel
-171   172   -2    -1    0     0     caseLabel        TS   "case"
-172   173   -3    174   0     0     -                NTS  caseValue
-173   -1    -3    -1    0     0     -                TS   ":"
-174   -1    175   468   0     0     caseValue        NTS  ident
-175   -1    176   177   0     0     -                NTS  caseNeg
-176   -1    -2    179   0     0     -                NTS  caseNumber
-177   178   -2    -1    0     0     caseNeg          TS   "-"
-178   -1    -3    179   0     0     -                NTS  caseNumber
-179   180   -2    476   0     0     caseNumber       NTS  digit
-180   180   -1    476   0     0     -                NTS  digit
-181   181   -1    130   0     0     caseBody         NTS  statement
-182   183   -2    184   0     0     defaultGroup     NTS  defaultLabel
-183   -1    -3    181   0     0     -                NTS  caseBody
-184   185   -2    -1    0     0     defaultLabel     TS   "default"
-185   -1    -3    -1    0     0     -                TS   ":"
-186   187   187   78    0     0     varDecl          NTS  constKw
-187   188   -2    449   0     0     -                NTS  type
-188   189   -3    463   0     0     -                NTS  pointerDecl
-189   190   -3    193   0     0     -                NTS  localDecl
-190   191   192   -1    0     0     -                TS   "="
-191   192   -3    196   0     0     -                NTS  varInit
-192   -1    -3    -1    0     0     -                TS   ";"
-193   194   -2    446   0     0     localDecl        NTS  localName
-194   195   -1    86    0     0     -                NTS  arraySize
-195   195   -1    89    0     0     -                NTS  arraySizeN
-196   -1    197   199   0     0     varInit          NTS  arrayStringInit
-197   -1    198   294   0     0     -                NTS  expr
-198   -1    -2    200   0     0     -                NTS  initList
-199   -1    -2    368   0     0     arrayStringInit  NTS  stringLit
-200   201   -2    -1    0     0     initList         TS   "{"
-201   202   204   205   0     0     -                NTS  initValue
-202   203   204   -1    0     0     -                TS   ","
-203   202   -3    205   0     0     -                NTS  initValue
-204   -1    -3    -1    0     0     -                TS   "}"
-205   -1    206   212   0     0     initValue        NTS  initNumber
-206   -1    207   210   0     0     -                NTS  initNeg
-207   -1    -2    208   0     0     -                NTS  initBool
-208   -1    209   -1    0     0     initBool         TS   "true"
-209   -1    -2    -1    0     0     -                TS   "false"
-210   211   -2    -1    0     0     initNeg          TS   "-"
-211   -1    -3    212   0     0     -                NTS  initNumber
-212   213   -2    476   0     0     initNumber       NTS  digit
-213   213   -1    476   0     0     -                NTS  digit
-214   215   -2    424   0     0     assignStmt       NTS  target
-215   216   -3    218   0     0     -                NTS  assignop
-216   217   -3    294   0     0     -                NTS  expr
-217   -1    -3    -1    0     0     -                TS   ";"
-218   -1    219   -1    0     0     assignop         TS   "="
-219   -1    220   -1    0     0     -                TS   "+="
-220   -1    221   -1    0     0     -                TS   "-="
-221   -1    222   -1    0     0     -                TS   "*="
-222   -1    223   -1    0     0     -                TS   "/="
-223   -1    224   -1    0     0     -                TS   "%="
-224   -1    225   -1    0     0     -                TS   "<<="
-225   -1    226   -1    0     0     -                TS   ">>="
-226   -1    227   -1    0     0     -                TS   "&="
-227   -1    228   -1    0     0     -                TS   "^="
-228   -1    -2    -1    0     0     -                TS   "|="
-229   230   -2    416   0     0     callStmt         NTS  call
-230   -1    -3    -1    0     0     -                TS   ";"
-231   232   -2    -1    0     0     returnStmt       TS   "return"
-232   233   233   234   0     0     -                NTS  retVal
-233   -1    -3    -1    0     0     -                TS   ";"
-234   -1    -2    294   0     0     retVal           NTS  expr
-235   236   -2    242   0     0     ifStmt           NTS  ifKw
-236   237   -3    -1    0     0     -                TS   "("
-237   238   -3    244   0     0     -                NTS  ifCond
-238   239   -3    -1    0     0     -                TS   ")"
-239   240   -3    245   0     0     -                NTS  thenPart
-240   241   -1    243   0     0     -                NTS  elseKw
-241   -1    -3    246   0     0     -                NTS  elsePart
-242   -1    -2    -1    0     0     ifKw             TS   "if"
-243   -1    -2    -1    0     0     elseKw           TS   "else"
-244   -1    -2    294   0     0     ifCond           NTS  expr
-245   -1    -2    130   0     0     thenPart         NTS  statement
-246   -1    -2    130   0     0     elsePart         NTS  statement
-247   248   -2    252   0     0     whileStmt        NTS  whileKw
-248   249   -3    -1    0     0     -                TS   "("
-249   250   -3    253   0     0     -                NTS  whileCond
-250   251   -3    -1    0     0     -                TS   ")"
-251   -1    -3    254   0     0     -                NTS  whileBody
-252   -1    -2    -1    0     0     whileKw          TS   "while"
-253   -1    -2    294   0     0     whileCond        NTS  expr
-254   -1    -2    130   0     0     whileBody        NTS  statement
-255   256   -2    264   0     0     forStmt          NTS  forKw
-256   257   -3    -1    0     0     -                TS   "("
-257   258   258   268   0     0     -                NTS  forInit
-258   259   -3    265   0     0     -                NTS  forSep1
-259   260   260   271   0     0     -                NTS  forCond
-260   261   -3    266   0     0     -                NTS  forSep2
-261   262   262   272   0     0     -                NTS  forStep
-262   263   -3    267   0     0     -                NTS  forClose
-263   -1    -3    277   0     0     -                NTS  forBody
-264   -1    -2    -1    0     0     forKw            TS   "for"
-265   -1    -2    -1    0     0     forSep1          TS   ";"
-266   -1    -2    -1    0     0     forSep2          TS   ";"
-267   -1    -2    -1    0     0     forClose         TS   ")"
-268   269   -2    424   0     0     forInit          NTS  target
-269   270   -3    218   0     0     -                NTS  assignop
-270   -1    -3    294   0     0     -                NTS  expr
-271   -1    -2    294   0     0     forCond          NTS  expr
-272   273   275   424   0     0     forStep          NTS  target
-273   274   -3    218   0     0     -                NTS  assignop
-274   -1    -3    294   0     0     -                NTS  expr
-275   -1    276   406   0     0     -                NTS  postIncDec
-276   -1    -2    404   0     0     -                NTS  preIncDec
-277   -1    -2    130   0     0     forBody          NTS  statement
-278   279   -2    285   0     0     doStmt           NTS  doKw
-279   280   -3    289   0     0     -                NTS  doBody
-280   281   -3    286   0     0     -                NTS  doWhileTok
-281   282   -3    -1    0     0     -                TS   "("
-282   283   -3    287   0     0     -                NTS  doCond
-283   284   -3    -1    0     0     -                TS   ")"
-284   -1    -3    288   0     0     -                NTS  doClose
-285   -1    -2    -1    0     0     doKw             TS   "do"
-286   -1    -2    -1    0     0     doWhileTok       TS   "while"
-287   -1    -2    294   0     0     doCond           NTS  expr
-288   -1    -2    -1    0     0     doClose          TS   ";"
-289   -1    -2    130   0     0     doBody           NTS  statement
-290   291   -2    -1    0     0     breakStmt        TS   "break"
-291   -1    -3    -1    0     0     -                TS   ";"
-292   293   -2    -1    0     0     continueStmt     TS   "continue"
-293   -1    -3    -1    0     0     -                TS   ";"
-294   -1    -2    295   0     0     expr             NTS  conditionalExpr
-295   296   -2    304   0     0     conditionalExpr  NTS  orExpr
-296   297   -1    300   0     0     -                NTS  qmark
-297   298   -3    301   0     0     -                NTS  conditionalTrue
-298   299   -3    302   0     0     -                NTS  colon
-299   -1    -3    303   0     0     -                NTS  conditionalFalse
-300   -1    -2    -1    0     0     qmark            TS   "?"
-301   -1    -2    294   0     0     conditionalTrue  NTS  expr
-302   -1    -2    -1    0     0     colon            TS   ":"
-303   -1    -2    295   0     0     conditionalFalse NTS  conditionalExpr
-304   305   -2    308   0     0     orExpr           NTS  andExpr
-305   306   -1    307   0     0     -                NTS  orop
-306   -1    -3    304   0     0     -                NTS  orExpr
-307   -1    -2    -1    0     0     orop             TS   "||"
-308   309   -2    312   0     0     andExpr          NTS  bitOrExpr
-309   310   -1    311   0     0     -                NTS  andop
-310   -1    -3    308   0     0     -                NTS  andExpr
-311   -1    -2    -1    0     0     andop            TS   "&&"
-312   313   -2    316   0     0     bitOrExpr        NTS  bitXorExpr
-313   314   -1    315   0     0     -                NTS  bitorop
-314   -1    -3    312   0     0     -                NTS  bitOrExpr
-315   -1    -2    -1    0     0     bitorop          TS   "|"
-316   317   -2    320   0     0     bitXorExpr       NTS  bitAndExpr
-317   318   -1    319   0     0     -                NTS  bitxorop
-318   -1    -3    316   0     0     -                NTS  bitXorExpr
-319   -1    -2    -1    0     0     bitxorop         TS   "^"
-320   321   -2    324   0     0     bitAndExpr       NTS  comparison
-321   322   -1    323   0     0     -                NTS  bitandop
-322   -1    -3    320   0     0     -                NTS  bitAndExpr
-323   -1    -2    -1    0     0     bitandop         TS   "&"
-324   325   -2    327   0     0     comparison       NTS  shiftExpr
-325   326   -1    333   0     0     -                NTS  relop
-326   -1    -3    327   0     0     -                NTS  shiftExpr
-327   328   -2    339   0     0     shiftExpr        NTS  addExpr
-328   329   -1    331   0     0     -                NTS  shiftop
-329   328   -3    330   0     0     -                NTS  shiftRhs
-330   -1    -2    339   0     0     shiftRhs         NTS  addExpr
-331   -1    332   -1    0     0     shiftop          TS   "<<"
-332   -1    -2    -1    0     0     -                TS   ">>"
-333   -1    334   -1    0     0     relop            TS   "<="
-334   -1    335   -1    0     0     -                TS   ">="
-335   -1    336   -1    0     0     -                TS   "=="
-336   -1    337   -1    0     0     -                TS   "!="
-337   -1    338   -1    0     0     -                TS   "<"
-338   -1    -2    -1    0     0     -                TS   ">"
-339   340   -2    344   0     0     addExpr          NTS  term
-340   341   -1    342   0     0     -                NTS  addop
-341   340   -3    344   0     0     -                NTS  term
-342   -1    343   -1    0     0     addop            TS   "+"
-343   -1    -2    -1    0     0     -                TS   "-"
-344   345   -2    350   0     0     term             NTS  factor
-345   346   -1    347   0     0     -                NTS  mulop
-346   345   -3    350   0     0     -                NTS  factor
-347   -1    348   -1    0     0     mulop            TS   "*"
-348   -1    349   -1    0     0     -                TS   "/"
-349   -1    -2    -1    0     0     -                TS   "%"
-350   -1    351   380   0     0     factor           NTS  sizeofExpr
-351   -1    352   394   0     0     -                NTS  castExpr
-352   -1    353   404   0     0     -                NTS  preIncDec
-353   -1    354   406   0     0     -                NTS  postIncDec
-354   355   357   -1    0     0     -                TS   "("
-355   356   -3    294   0     0     -                NTS  expr
-356   -1    -3    -1    0     0     -                TS   ")"
-357   358   359   416   0     0     -                NTS  call
-358   -1    359   367   0     0     -                NTS  postfixIndex
-359   -1    360   466   0     0     -                NTS  boolLit
-360   -1    361   377   0     0     -                NTS  addressRef
-361   -1    362   414   0     0     -                NTS  derefRef
-362   -1    363   433   0     0     -                NTS  varRef
-363   -1    364   471   0     0     -                NTS  number
-364   365   366   368   0     0     -                NTS  stringLit
-365   -1    366   367   0     0     -                NTS  postfixIndex
-366   -1    -2    373   0     0     -                NTS  negFactor
-367   -1    -2    438   0     0     postfixIndex     NTS  index
-368   369   -2    -1    0     0     stringLit        TS   """
-369   369   370   371   0     0     -                NTS  character
-370   -1    -3    -1    0     0     -                TS   """
-371   -1    372   -1    32    33    character        RNG  " "~"!"
-372   -1    -2    -1    35    126   -                RNG  "#"~"~"
-373   376   374   -1    0     0     negFactor        TS   "-"
-374   376   375   -1    0     0     -                TS   "!"
-375   376   -2    -1    0     0     -                TS   "~"
-376   -1    -3    350   0     0     -                NTS  factor
-377   378   -2    -1    0     0     addressRef       TS   "&"
-378   379   -3    468   0     0     -                NTS  ident
-379   -1    -1    438   0     0     -                NTS  index
-380   381   -2    -1    0     0     sizeofExpr       TS   "sizeof"
-381   382   -3    -1    0     0     -                TS   "("
-382   383   -3    384   0     0     -                NTS  sizeofArg
-383   -1    -3    -1    0     0     -                TS   ")"
-384   -1    385   386   0     0     sizeofArg        NTS  sizeofType
-385   -1    -2    393   0     0     -                NTS  sizeofVarName
-386   387   388   -1    0     0     sizeofType       TS   "unsigned"
-387   -1    -3    465   0     0     -                NTS  unsignedInt
-388   -1    389   -1    0     0     -                TS   "int"
-389   -1    390   -1    0     0     -                TS   "char"
-390   -1    391   -1    0     0     -                TS   "bool"
-391   392   -2    -1    0     0     -                TS   "struct"
-392   -1    -3    460   0     0     -                NTS  structTypeRef
-393   -1    -2    468   0     0     sizeofVarName    NTS  ident
-394   395   -2    -1    0     0     castExpr         TS   "("
-395   396   -3    398   0     0     -                NTS  castType
-396   397   -3    -1    0     0     -                TS   ")"
-397   -1    -3    403   0     0     -                NTS  castOperand
-398   399   400   -1    0     0     castType         TS   "unsigned"
-399   -1    -3    465   0     0     -                NTS  unsignedInt
-400   -1    401   -1    0     0     -                TS   "int"
-401   -1    402   -1    0     0     -                TS   "char"
-402   -1    -2    -1    0     0     -                TS   "bool"
-403   -1    -2    350   0     0     castOperand      NTS  factor
-404   405   -2    408   0     0     preIncDec        NTS  incdecOp
-405   -1    -3    468   0     0     -                NTS  ident
-406   407   -2    468   0     0     postIncDec       NTS  ident
-407   -1    -3    408   0     0     -                NTS  incdecOp
-408   -1    409   -1    0     0     incdecOp         TS   "++"
-409   -1    -2    -1    0     0     -                TS   "--"
-410   411   412   404   0     0     incDecStmt       NTS  preIncDec
-411   -1    -3    -1    0     0     -                TS   ";"
-412   413   -2    406   0     0     -                NTS  postIncDec
-413   -1    -3    -1    0     0     -                TS   ";"
-414   415   -2    -1    0     0     derefRef         TS   "*"
-415   -1    -3    350   0     0     -                NTS  factor
-416   417   -2    448   0     0     call             NTS  funcName
-417   418   -3    -1    0     0     -                TS   "("
-418   419   -3    420   0     0     -                NTS  argList
-419   -1    -3    -1    0     0     -                TS   ")"
-420   421   -1    423   0     0     argList          NTS  arg
-421   422   -1    -1    0     0     -                TS   ","
-422   421   -3    423   0     0     -                NTS  arg
-423   -1    -2    294   0     0     arg              NTS  expr
-424   -1    425   426   0     0     target           NTS  directTarget
-425   -1    -2    431   0     0     -                NTS  indirectTarget
-426   427   -2    468   0     0     directTarget     NTS  ident
-427   428   429   438   0     0     -                NTS  index
-428   428   429   438   0     0     -                NTS  index
-429   430   -1    442   0     0     -                NTS  member
-430   -1    -1    438   0     0     -                NTS  index
-431   432   -2    -1    0     0     indirectTarget   TS   "*"
-432   -1    -3    350   0     0     -                NTS  factor
-433   434   -2    468   0     0     varRef           NTS  ident
-434   435   436   438   0     0     -                NTS  index
-435   435   436   438   0     0     -                NTS  index
-436   437   -1    442   0     0     -                NTS  member
-437   -1    -1    438   0     0     -                NTS  index
-438   439   -2    441   0     0     index            NTS  indexOpen
-439   440   -3    294   0     0     -                NTS  expr
-440   -1    -3    -1    0     0     -                TS   "]"
-441   -1    -2    -1    0     0     indexOpen        TS   "["
-442   443   -2    -1    0     0     member           TS   "."
-443   -1    -3    46    0     0     -                NTS  fieldName
-444   -1    -2    468   0     0     defName          NTS  ident
-445   -1    -2    468   0     0     paramName        NTS  ident
-446   -1    -2    468   0     0     localName        NTS  ident
-447   -1    -2    468   0     0     globalName       NTS  ident
-448   -1    -2    468   0     0     funcName         NTS  ident
-449   450   451   -1    0     0     type             TS   "unsigned"
-450   -1    -3    465   0     0     -                NTS  unsignedInt
-451   -1    452   -1    0     0     -                TS   "int"
-452   -1    453   -1    0     0     -                TS   "char"
-453   -1    454   -1    0     0     -                TS   "bool"
-454   455   456   -1    0     0     -                TS   "struct"
-455   -1    -3    460   0     0     -                NTS  structTypeRef
-456   457   458   -1    0     0     -                TS   "enum"
-457   -1    -3    461   0     0     -                NTS  enumTypeRef
-458   -1    459   -1    0     0     -                TS   "void"
-459   -1    -2    462   0     0     -                NTS  typedefRef
-460   -1    -2    468   0     0     structTypeRef    NTS  ident
-461   -1    -2    468   0     0     enumTypeRef      NTS  ident
-462   -1    -2    468   0     0     typedefRef       NTS  ident
-463   463   -1    464   0     0     pointerDecl      NTS  pointerStar
-464   -1    -2    -1    0     0     pointerStar      TS   "*"
-465   -1    -2    -1    0     0     unsignedInt      TS   "int"
-466   -1    467   -1    0     0     boolLit          TS   "true"
-467   -1    -2    -1    0     0     -                TS   "false"
-468   469   -2    473   0     0     ident            NTS  letter
-469   469   470   473   0     0     -                NTS  letter
-470   469   -1    476   0     0     -                NTS  digit
-471   472   -2    476   0     0     number           NTS  digit
-472   472   -1    476   0     0     -                NTS  digit
-473   -1    474   -1    97    122   letter           RNG  "a"~"z"
-474   -1    475   -1    65    90    -                RNG  "A"~"Z"
-475   -1    -2    -1    0     0     -                TS   "_"
-476   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+40    -1    -2    590   0     0     structName       NTS  ident
+41    42    42    48    0     0     structField      NTS  fieldConstKw
+42    43    -2    568   0     0     -                NTS  type
+43    44    -3    583   0     0     -                NTS  pointerDecl
+44    45    -3    49    0     0     -                NTS  structDeclarator
+45    46    47    -1    0     0     -                TS   ","
+46    45    -3    49    0     0     -                NTS  structDeclarator
+47    -1    -3    -1    0     0     -                TS   ";"
+48    -1    -2    -1    0     0     fieldConstKw     TS   "const"
+49    50    -2    52    0     0     structDeclarator NTS  fieldName
+50    51    -1    111   0     0     -                NTS  arraySize
+51    -1    -1    114   0     0     -                NTS  arraySizeN
+52    -1    -2    590   0     0     fieldName        NTS  ident
+53    54    57    -1    0     0     typedefDecl      TS   "typedef"
+54    55    -3    71    0     0     -                NTS  typedefType
+55    56    -3    82    0     0     -                NTS  typedefTargetName
+56    -1    -3    -1    0     0     -                TS   ";"
+57    -1    -2    58    0     0     -                NTS  fnPtrTypedef
+58    59    -2    -1    0     0     fnPtrTypedef     TS   "typedef"
+59    60    -3    568   0     0     -                NTS  type
+60    61    -3    583   0     0     -                NTS  pointerDecl
+61    62    -3    69    0     0     -                NTS  fnPtrOpen
+62    63    -3    -1    0     0     -                TS   "*"
+63    64    -3    70    0     0     -                NTS  fnPtrName
+64    65    -3    -1    0     0     -                TS   ")"
+65    66    -3    -1    0     0     -                TS   "("
+66    67    -3    15    0     0     -                NTS  externParamList
+67    68    -3    -1    0     0     -                TS   ")"
+68    -1    -3    -1    0     0     -                TS   ";"
+69    -1    -2    -1    0     0     fnPtrOpen        TS   "("
+70    -1    -2    590   0     0     fnPtrName        NTS  ident
+71    -1    72    74    0     0     typedefType      NTS  anonStructType
+72    73    -2    568   0     0     -                NTS  type
+73    -1    -3    583   0     0     -                NTS  pointerDecl
+74    75    -2    -1    0     0     anonStructType   TS   "struct"
+75    76    76    80    0     0     -                NTS  structTagName
+76    77    -3    81    0     0     -                NTS  anonStructOpen
+77    78    -3    41    0     0     -                NTS  structField
+78    78    79    41    0     0     -                NTS  structField
+79    -1    -3    -1    0     0     -                TS   "}"
+80    -1    -2    590   0     0     structTagName    NTS  ident
+81    -1    -2    -1    0     0     anonStructOpen   TS   "{"
+82    -1    -2    590   0     0     typedefTargetName NTS  ident
+83    -1    84    85    0     0     globalDecl       NTS  externGlobalDecl
+84    -1    -2    90    0     0     -                NTS  plainGlobalDecl
+85    86    -2    -1    0     0     externGlobalDecl TS   "extern"
+86    87    -3    568   0     0     -                NTS  type
+87    88    -3    583   0     0     -                NTS  pointerDecl
+88    89    -3    566   0     0     -                NTS  globalName
+89    -1    -3    -1    0     0     -                TS   ";"
+90    91    91    104   0     0     plainGlobalDecl  NTS  staticKw
+91    92    92    103   0     0     -                NTS  constKw
+92    93    -2    568   0     0     -                NTS  type
+93    94    -3    583   0     0     -                NTS  pointerDecl
+94    95    -3    98    0     0     -                NTS  globalDeclarator
+95    96    97    -1    0     0     -                TS   ","
+96    95    -3    98    0     0     -                NTS  globalDeclarator
+97    -1    -3    -1    0     0     -                TS   ";"
+98    99    -2    566   0     0     globalDeclarator NTS  globalName
+99    100   101   111   0     0     -                NTS  arraySize
+100   100   101   114   0     0     -                NTS  arraySizeN
+101   102   -1    -1    0     0     -                TS   "="
+102   -1    -3    105   0     0     -                NTS  globalInit
+103   -1    -2    -1    0     0     constKw          TS   "const"
+104   -1    -2    -1    0     0     staticKw         TS   "static"
+105   -1    106   123   0     0     globalInit       NTS  globalValue
+106   -1    107   247   0     0     -                NTS  initList
+107   -1    -2    108   0     0     -                NTS  globalStringInit
+108   109   -2    -1    0     0     globalStringInit TS   """
+109   109   110   458   0     0     -                NTS  character
+110   -1    -3    -1    0     0     -                TS   """
+111   112   -2    -1    0     0     arraySize        TS   "["
+112   113   113   117   0     0     -                NTS  constSize
+113   -1    -3    -1    0     0     -                TS   "]"
+114   115   -2    -1    0     0     arraySizeN       TS   "["
+115   116   -3    117   0     0     -                NTS  constSize
+116   -1    -3    -1    0     0     -                TS   "]"
+117   118   -2    130   0     0     constSize        NTS  globalNumber
+118   119   -1    120   0     0     -                NTS  constSizeOp
+119   118   -3    130   0     0     -                NTS  globalNumber
+120   -1    121   -1    0     0     constSizeOp      TS   "+"
+121   -1    122   -1    0     0     -                TS   "-"
+122   -1    -2    -1    0     0     -                TS   "*"
+123   -1    124   130   0     0     globalValue      NTS  globalNumber
+124   -1    125   128   0     0     -                NTS  globalNeg
+125   -1    -2    126   0     0     -                NTS  globalBool
+126   -1    127   -1    0     0     globalBool       TS   "true"
+127   -1    -2    -1    0     0     -                TS   "false"
+128   129   -2    -1    0     0     globalNeg        TS   "-"
+129   -1    -3    130   0     0     -                NTS  globalNumber
+130   131   -2    609   0     0     globalNumber     NTS  digit
+131   131   -1    609   0     0     -                NTS  digit
+132   133   -2    140   0     0     funcdef          NTS  funcHead
+133   -1    134   135   0     0     -                NTS  funcBody
+134   -1    -3    139   0     0     -                NTS  protoEnd
+135   136   -2    138   0     0     funcBody         NTS  funcBodyOpen
+136   136   137   169   0     0     -                NTS  statement
+137   -1    -3    -1    0     0     -                TS   "}"
+138   -1    -2    -1    0     0     funcBodyOpen     TS   "{"
+139   -1    -2    -1    0     0     protoEnd         TS   ";"
+140   141   141   104   0     0     funcHead         NTS  staticKw
+141   142   142   146   0     0     -                NTS  retConstKw
+142   143   -2    568   0     0     -                NTS  type
+143   144   -3    583   0     0     -                NTS  pointerDecl
+144   145   -3    563   0     0     -                NTS  defName
+145   -1    -3    147   0     0     -                NTS  funcParams
+146   -1    -2    -1    0     0     retConstKw       TS   "const"
+147   -1    148   149   0     0     funcParams       NTS  voidParams
+148   -1    -2    152   0     0     -                NTS  normalParams
+149   150   -2    -1    0     0     voidParams       TS   "("
+150   151   -3    -1    0     0     -                TS   "void"
+151   -1    -3    -1    0     0     -                TS   ")"
+152   153   -2    -1    0     0     normalParams     TS   "("
+153   154   -3    155   0     0     -                NTS  paramList
+154   -1    -3    -1    0     0     -                TS   ")"
+155   156   -1    158   0     0     paramList        NTS  param
+156   157   -1    -1    0     0     -                TS   ","
+157   156   -3    158   0     0     -                NTS  param
+158   159   159   103   0     0     param            NTS  constKw
+159   160   -2    568   0     0     -                NTS  type
+160   161   -3    583   0     0     -                NTS  pointerDecl
+161   -1    -3    162   0     0     -                NTS  paramDecl
+162   163   -2    564   0     0     paramDecl        NTS  paramName
+163   -1    -1    164   0     0     -                NTS  paramArray
+164   165   -2    -1    0     0     paramArray       TS   "["
+165   -1    -3    -1    0     0     -                TS   "]"
+166   167   -2    -1    0     0     block            TS   "{"
+167   167   168   169   0     0     -                NTS  statement
+168   -1    -3    -1    0     0     -                TS   "}"
+169   -1    170   360   0     0     statement        NTS  labelStmt
+170   -1    -2    171   0     0     -                NTS  unlabeledStmt
+171   -1    172   298   0     0     unlabeledStmt    NTS  ifStmt
+172   -1    173   310   0     0     -                NTS  whileStmt
+173   -1    174   318   0     0     -                NTS  forStmt
+174   -1    175   341   0     0     -                NTS  doStmt
+175   -1    176   200   0     0     -                NTS  switchStmt
+176   -1    177   353   0     0     -                NTS  breakStmt
+177   -1    178   355   0     0     -                NTS  continueStmt
+178   -1    179   357   0     0     -                NTS  gotoStmt
+179   -1    180   294   0     0     -                NTS  returnStmt
+180   -1    181   166   0     0     -                NTS  block
+181   -1    182   287   0     0     -                NTS  emptyStmt
+182   -1    183   288   0     0     -                NTS  voidCastStmt
+183   -1    184   283   0     0     -                NTS  callStmt
+184   -1    185   522   0     0     -                NTS  incDecStmt
+185   -1    186   261   0     0     -                NTS  assignStmt
+186   -1    187   188   0     0     -                NTS  staticVarDecl
+187   -1    -2    230   0     0     -                NTS  varDecl
+188   189   -2    104   0     0     staticVarDecl    NTS  staticKw
+189   190   190   103   0     0     -                NTS  constKw
+190   191   -3    568   0     0     -                NTS  type
+191   192   -3    583   0     0     -                NTS  pointerDecl
+192   193   -3    196   0     0     -                NTS  staticLocalName
+193   194   195   -1    0     0     -                TS   "="
+194   195   -3    197   0     0     -                NTS  staticInit
+195   -1    -3    -1    0     0     -                TS   ";"
+196   -1    -2    590   0     0     staticLocalName  NTS  ident
+197   -1    198   123   0     0     staticInit       NTS  globalValue
+198   -1    -2    199   0     0     -                NTS  staticRuntimeInit
+199   -1    -2    362   0     0     staticRuntimeInit NTS  expr
+200   201   -2    208   0     0     switchStmt       NTS  switchKw
+201   202   -3    -1    0     0     -                TS   "("
+202   203   -3    209   0     0     -                NTS  switchCond
+203   204   -3    -1    0     0     -                TS   ")"
+204   205   -3    -1    0     0     -                TS   "{"
+205   205   206   211   0     0     -                NTS  caseGroup
+206   207   207   226   0     0     -                NTS  defaultGroup
+207   -1    -3    210   0     0     -                NTS  switchClose
+208   -1    -2    -1    0     0     switchKw         TS   "switch"
+209   -1    -2    362   0     0     switchCond       NTS  expr
+210   -1    -2    -1    0     0     switchClose      TS   "}"
+211   212   -2    213   0     0     caseGroup        NTS  caseLabelRun
+212   -1    -3    225   0     0     -                NTS  caseBody
+213   214   -2    215   0     0     caseLabelRun     NTS  caseLabel
+214   214   -1    215   0     0     -                NTS  caseLabel
+215   216   -2    -1    0     0     caseLabel        TS   "case"
+216   217   -3    218   0     0     -                NTS  caseValue
+217   -1    -3    -1    0     0     -                TS   ":"
+218   -1    219   590   0     0     caseValue        NTS  ident
+219   -1    220   221   0     0     -                NTS  caseNeg
+220   -1    -2    223   0     0     -                NTS  caseNumber
+221   222   -2    -1    0     0     caseNeg          TS   "-"
+222   -1    -3    223   0     0     -                NTS  caseNumber
+223   224   -2    609   0     0     caseNumber       NTS  digit
+224   224   -1    609   0     0     -                NTS  digit
+225   225   -1    171   0     0     caseBody         NTS  unlabeledStmt
+226   227   -2    228   0     0     defaultGroup     NTS  defaultLabel
+227   -1    -3    225   0     0     -                NTS  caseBody
+228   229   -2    -1    0     0     defaultLabel     TS   "default"
+229   -1    -3    -1    0     0     -                TS   ":"
+230   231   231   103   0     0     varDecl          NTS  constKw
+231   232   -2    568   0     0     -                NTS  type
+232   233   -3    583   0     0     -                NTS  pointerDecl
+233   234   -3    237   0     0     -                NTS  varDeclarator
+234   235   236   -1    0     0     -                TS   ","
+235   234   -3    237   0     0     -                NTS  varDeclarator
+236   -1    -3    -1    0     0     -                TS   ";"
+237   238   -2    240   0     0     varDeclarator    NTS  localDecl
+238   239   -1    -1    0     0     -                TS   "="
+239   -1    -3    243   0     0     -                NTS  varInit
+240   241   -2    565   0     0     localDecl        NTS  localName
+241   242   -1    111   0     0     -                NTS  arraySize
+242   242   -1    114   0     0     -                NTS  arraySizeN
+243   -1    244   246   0     0     varInit          NTS  arrayStringInit
+244   -1    245   362   0     0     -                NTS  expr
+245   -1    -2    247   0     0     -                NTS  initList
+246   -1    -2    440   0     0     arrayStringInit  NTS  stringLit
+247   248   -2    -1    0     0     initList         TS   "{"
+248   249   251   252   0     0     -                NTS  initValue
+249   250   251   -1    0     0     -                TS   ","
+250   249   -3    252   0     0     -                NTS  initValue
+251   -1    -3    -1    0     0     -                TS   "}"
+252   -1    253   259   0     0     initValue        NTS  initNumber
+253   -1    254   257   0     0     -                NTS  initNeg
+254   -1    -2    255   0     0     -                NTS  initBool
+255   -1    256   -1    0     0     initBool         TS   "true"
+256   -1    -2    -1    0     0     -                TS   "false"
+257   258   -2    -1    0     0     initNeg          TS   "-"
+258   -1    -3    259   0     0     -                NTS  initNumber
+259   260   -2    609   0     0     initNumber       NTS  digit
+260   260   -1    609   0     0     -                NTS  digit
+261   -1    262   266   0     0     assignStmt       NTS  chainAssign
+262   263   -2    541   0     0     -                NTS  target
+263   264   -3    272   0     0     -                NTS  assignop
+264   265   -3    362   0     0     -                NTS  expr
+265   -1    -3    -1    0     0     -                TS   ";"
+266   267   -2    541   0     0     chainAssign      NTS  target
+267   268   -3    272   0     0     -                NTS  assignop
+268   269   -3    541   0     0     -                NTS  target
+269   270   -3    272   0     0     -                NTS  assignop
+270   271   -3    362   0     0     -                NTS  expr
+271   -1    -3    -1    0     0     -                TS   ";"
+272   -1    273   -1    0     0     assignop         TS   "="
+273   -1    274   -1    0     0     -                TS   "+="
+274   -1    275   -1    0     0     -                TS   "-="
+275   -1    276   -1    0     0     -                TS   "*="
+276   -1    277   -1    0     0     -                TS   "/="
+277   -1    278   -1    0     0     -                TS   "%="
+278   -1    279   -1    0     0     -                TS   "<<="
+279   -1    280   -1    0     0     -                TS   ">>="
+280   -1    281   -1    0     0     -                TS   "&="
+281   -1    282   -1    0     0     -                TS   "^="
+282   -1    -2    -1    0     0     -                TS   "|="
+283   284   285   528   0     0     callStmt         NTS  call
+284   -1    -3    -1    0     0     -                TS   ";"
+285   286   -2    532   0     0     -                NTS  indirectCall
+286   -1    -3    -1    0     0     -                TS   ";"
+287   -1    -2    -1    0     0     emptyStmt        TS   ";"
+288   289   -2    291   0     0     voidCastStmt     NTS  voidCastOpen
+289   290   -3    362   0     0     -                NTS  expr
+290   -1    -3    -1    0     0     -                TS   ";"
+291   292   -2    -1    0     0     voidCastOpen     TS   "("
+292   293   -3    -1    0     0     -                TS   "void"
+293   -1    -3    -1    0     0     -                TS   ")"
+294   295   -2    -1    0     0     returnStmt       TS   "return"
+295   296   296   297   0     0     -                NTS  retVal
+296   -1    -3    -1    0     0     -                TS   ";"
+297   -1    -2    362   0     0     retVal           NTS  expr
+298   299   -2    305   0     0     ifStmt           NTS  ifKw
+299   300   -3    -1    0     0     -                TS   "("
+300   301   -3    307   0     0     -                NTS  ifCond
+301   302   -3    -1    0     0     -                TS   ")"
+302   303   -3    308   0     0     -                NTS  thenPart
+303   304   -1    306   0     0     -                NTS  elseKw
+304   -1    -3    309   0     0     -                NTS  elsePart
+305   -1    -2    -1    0     0     ifKw             TS   "if"
+306   -1    -2    -1    0     0     elseKw           TS   "else"
+307   -1    -2    362   0     0     ifCond           NTS  expr
+308   -1    -2    169   0     0     thenPart         NTS  statement
+309   -1    -2    169   0     0     elsePart         NTS  statement
+310   311   -2    315   0     0     whileStmt        NTS  whileKw
+311   312   -3    -1    0     0     -                TS   "("
+312   313   -3    316   0     0     -                NTS  whileCond
+313   314   -3    -1    0     0     -                TS   ")"
+314   -1    -3    317   0     0     -                NTS  whileBody
+315   -1    -2    -1    0     0     whileKw          TS   "while"
+316   -1    -2    362   0     0     whileCond        NTS  expr
+317   -1    -2    169   0     0     whileBody        NTS  statement
+318   319   -2    327   0     0     forStmt          NTS  forKw
+319   320   -3    -1    0     0     -                TS   "("
+320   321   321   331   0     0     -                NTS  forInit
+321   322   -3    328   0     0     -                NTS  forSep1
+322   323   323   334   0     0     -                NTS  forCond
+323   324   -3    329   0     0     -                NTS  forSep2
+324   325   325   335   0     0     -                NTS  forStep
+325   326   -3    330   0     0     -                NTS  forClose
+326   -1    -3    340   0     0     -                NTS  forBody
+327   -1    -2    -1    0     0     forKw            TS   "for"
+328   -1    -2    -1    0     0     forSep1          TS   ";"
+329   -1    -2    -1    0     0     forSep2          TS   ";"
+330   -1    -2    -1    0     0     forClose         TS   ")"
+331   332   -2    541   0     0     forInit          NTS  target
+332   333   -3    272   0     0     -                NTS  assignop
+333   -1    -3    362   0     0     -                NTS  expr
+334   -1    -2    362   0     0     forCond          NTS  expr
+335   336   338   541   0     0     forStep          NTS  target
+336   337   -3    272   0     0     -                NTS  assignop
+337   -1    -3    362   0     0     -                NTS  expr
+338   -1    339   504   0     0     -                NTS  postIncDec
+339   -1    -2    496   0     0     -                NTS  preIncDec
+340   -1    -2    169   0     0     forBody          NTS  statement
+341   342   -2    348   0     0     doStmt           NTS  doKw
+342   343   -3    352   0     0     -                NTS  doBody
+343   344   -3    349   0     0     -                NTS  doWhileTok
+344   345   -3    -1    0     0     -                TS   "("
+345   346   -3    350   0     0     -                NTS  doCond
+346   347   -3    -1    0     0     -                TS   ")"
+347   -1    -3    351   0     0     -                NTS  doClose
+348   -1    -2    -1    0     0     doKw             TS   "do"
+349   -1    -2    -1    0     0     doWhileTok       TS   "while"
+350   -1    -2    362   0     0     doCond           NTS  expr
+351   -1    -2    -1    0     0     doClose          TS   ";"
+352   -1    -2    169   0     0     doBody           NTS  statement
+353   354   -2    -1    0     0     breakStmt        TS   "break"
+354   -1    -3    -1    0     0     -                TS   ";"
+355   356   -2    -1    0     0     continueStmt     TS   "continue"
+356   -1    -3    -1    0     0     -                TS   ";"
+357   358   -2    -1    0     0     gotoStmt         TS   "goto"
+358   359   -3    590   0     0     -                NTS  ident
+359   -1    -3    -1    0     0     -                TS   ";"
+360   361   -2    590   0     0     labelStmt        NTS  ident
+361   -1    -3    -1    0     0     -                TS   ":"
+362   -1    -2    363   0     0     expr             NTS  conditionalExpr
+363   364   -2    374   0     0     conditionalExpr  NTS  orExpr
+364   365   -1    370   0     0     -                NTS  qmark
+365   366   -3    371   0     0     -                NTS  conditionalTrue
+366   367   -3    372   0     0     -                NTS  colon
+367   -1    -3    373   0     0     -                NTS  conditionalFalse
+368   -1    -2    -1    0     0     parenOpen        TS   "("
+369   -1    -2    -1    0     0     parenClose       TS   ")"
+370   -1    -2    -1    0     0     qmark            TS   "?"
+371   -1    -2    362   0     0     conditionalTrue  NTS  expr
+372   -1    -2    -1    0     0     colon            TS   ":"
+373   -1    -2    363   0     0     conditionalFalse NTS  conditionalExpr
+374   375   -2    378   0     0     orExpr           NTS  andExpr
+375   376   -1    377   0     0     -                NTS  orop
+376   -1    -3    374   0     0     -                NTS  orExpr
+377   -1    -2    -1    0     0     orop             TS   "||"
+378   379   -2    382   0     0     andExpr          NTS  bitOrExpr
+379   380   -1    381   0     0     -                NTS  andop
+380   -1    -3    378   0     0     -                NTS  andExpr
+381   -1    -2    -1    0     0     andop            TS   "&&"
+382   383   -2    386   0     0     bitOrExpr        NTS  bitXorExpr
+383   384   -1    385   0     0     -                NTS  bitorop
+384   -1    -3    382   0     0     -                NTS  bitOrExpr
+385   -1    -2    -1    0     0     bitorop          TS   "|"
+386   387   -2    390   0     0     bitXorExpr       NTS  bitAndExpr
+387   388   -1    389   0     0     -                NTS  bitxorop
+388   -1    -3    386   0     0     -                NTS  bitXorExpr
+389   -1    -2    -1    0     0     bitxorop         TS   "^"
+390   391   -2    394   0     0     bitAndExpr       NTS  comparison
+391   392   -1    393   0     0     -                NTS  bitandop
+392   -1    -3    390   0     0     -                NTS  bitAndExpr
+393   -1    -2    -1    0     0     bitandop         TS   "&"
+394   395   -2    397   0     0     comparison       NTS  shiftExpr
+395   396   -1    403   0     0     -                NTS  relop
+396   -1    -3    397   0     0     -                NTS  shiftExpr
+397   398   -2    409   0     0     shiftExpr        NTS  addExpr
+398   399   -1    401   0     0     -                NTS  shiftop
+399   398   -3    400   0     0     -                NTS  shiftRhs
+400   -1    -2    409   0     0     shiftRhs         NTS  addExpr
+401   -1    402   -1    0     0     shiftop          TS   "<<"
+402   -1    -2    -1    0     0     -                TS   ">>"
+403   -1    404   -1    0     0     relop            TS   "<="
+404   -1    405   -1    0     0     -                TS   ">="
+405   -1    406   -1    0     0     -                TS   "=="
+406   -1    407   -1    0     0     -                TS   "!="
+407   -1    408   -1    0     0     -                TS   "<"
+408   -1    -2    -1    0     0     -                TS   ">"
+409   410   -2    414   0     0     addExpr          NTS  term
+410   411   -1    412   0     0     -                NTS  addop
+411   410   -3    414   0     0     -                NTS  term
+412   -1    413   -1    0     0     addop            TS   "+"
+413   -1    -2    -1    0     0     -                TS   "-"
+414   415   -2    420   0     0     term             NTS  factor
+415   416   -1    417   0     0     -                NTS  mulop
+416   415   -3    420   0     0     -                NTS  factor
+417   -1    418   -1    0     0     mulop            TS   "*"
+418   -1    419   -1    0     0     -                TS   "/"
+419   -1    -2    -1    0     0     -                TS   "%"
+420   -1    421   471   0     0     factor           NTS  sizeofExpr
+421   -1    422   485   0     0     -                NTS  castExpr
+422   -1    423   496   0     0     -                NTS  preIncDec
+423   -1    424   504   0     0     -                NTS  postIncDec
+424   425   427   368   0     0     -                NTS  parenOpen
+425   426   -3    362   0     0     -                NTS  expr
+426   -1    -3    369   0     0     -                NTS  parenClose
+427   428   429   528   0     0     -                NTS  call
+428   -1    429   439   0     0     -                NTS  postfixIndex
+429   -1    430   532   0     0     -                NTS  indirectCall
+430   -1    431   588   0     0     -                NTS  boolLit
+431   -1    432   468   0     0     -                NTS  addressRef
+432   -1    433   526   0     0     -                NTS  derefRef
+433   -1    434   550   0     0     -                NTS  varRef
+434   -1    435   443   0     0     -                NTS  charLit
+435   -1    436   593   0     0     -                NTS  number
+436   437   438   440   0     0     -                NTS  stringLit
+437   -1    438   439   0     0     -                NTS  postfixIndex
+438   -1    -2    464   0     0     -                NTS  negFactor
+439   -1    -2    555   0     0     postfixIndex     NTS  index
+440   441   -2    -1    0     0     stringLit        TS   """
+441   441   442   458   0     0     -                NTS  character
+442   -1    -3    -1    0     0     -                TS   """
+443   444   -2    -1    0     0     charLit          TS   "'"
+444   445   -3    446   0     0     -                NTS  charLitBody
+445   -1    -3    -1    0     0     -                TS   "'"
+446   -1    447   448   0     0     charLitBody      NTS  charLitEscape
+447   -1    -2    455   0     0     -                NTS  charLitPlain
+448   449   -2    -1    0     0     charLitEscape    TS   "\134"
+449   -1    -3    450   0     0     -                NTS  charLitEscChar
+450   -1    451   -1    0     0     charLitEscChar   TS   "n"
+451   -1    452   -1    0     0     -                TS   "t"
+452   -1    453   -1    0     0     -                TS   "r"
+453   -1    454   -1    0     0     -                TS   "0"
+454   -1    -2    -1    0     0     -                TS   "\134"
+455   -1    456   -1    32    38    charLitPlain     RNG  " "~"&"
+456   -1    457   -1    40    91    -                RNG  "("~"["
+457   -1    -2    -1    93    126   -                RNG  "]"~"~"
+458   -1    459   461   0     0     character        NTS  strEscape
+459   -1    460   -1    32    33    -                RNG  " "~"!"
+460   -1    -2    -1    35    126   -                RNG  "#"~"~"
+461   462   -2    -1    0     0     strEscape        TS   "\134"
+462   -1    -3    463   0     0     -                NTS  strEscChar
+463   -1    -2    -1    32    126   strEscChar       RNG  " "~"~"
+464   467   465   -1    0     0     negFactor        TS   "-"
+465   467   466   -1    0     0     -                TS   "!"
+466   467   -2    -1    0     0     -                TS   "~"
+467   -1    -3    420   0     0     -                NTS  factor
+468   469   -2    -1    0     0     addressRef       TS   "&"
+469   470   -3    590   0     0     -                NTS  ident
+470   -1    -1    555   0     0     -                NTS  index
+471   472   -2    -1    0     0     sizeofExpr       TS   "sizeof"
+472   473   -3    -1    0     0     -                TS   "("
+473   474   -3    475   0     0     -                NTS  sizeofArg
+474   -1    -3    -1    0     0     -                TS   ")"
+475   -1    476   477   0     0     sizeofArg        NTS  sizeofType
+476   -1    -2    484   0     0     -                NTS  sizeofVarName
+477   478   479   -1    0     0     sizeofType       TS   "unsigned"
+478   -1    -3    585   0     0     -                NTS  unsignedInt
+479   -1    480   -1    0     0     -                TS   "int"
+480   -1    481   -1    0     0     -                TS   "char"
+481   -1    482   -1    0     0     -                TS   "bool"
+482   483   -2    -1    0     0     -                TS   "struct"
+483   -1    -3    580   0     0     -                NTS  structTypeRef
+484   -1    -2    590   0     0     sizeofVarName    NTS  ident
+485   486   -2    -1    0     0     castExpr         TS   "("
+486   487   -3    489   0     0     -                NTS  castType
+487   488   -3    -1    0     0     -                TS   ")"
+488   -1    -3    495   0     0     -                NTS  castOperand
+489   490   491   -1    0     0     castType         TS   "unsigned"
+490   -1    -3    585   0     0     -                NTS  unsignedInt
+491   -1    492   -1    0     0     -                TS   "int"
+492   -1    493   -1    0     0     -                TS   "long"
+493   -1    494   -1    0     0     -                TS   "char"
+494   -1    -2    -1    0     0     -                TS   "bool"
+495   -1    -2    420   0     0     castOperand      NTS  factor
+496   497   498   520   0     0     preIncDec        NTS  incdecOp
+497   -1    -3    516   0     0     -                NTS  derefIncTarget
+498   499   500   520   0     0     -                NTS  incdecOp
+499   -1    -3    512   0     0     -                NTS  memberIncTarget
+500   501   502   520   0     0     -                NTS  incdecOp
+501   -1    -3    514   0     0     -                NTS  indexIncTarget
+502   503   -2    520   0     0     -                NTS  incdecOp
+503   -1    -3    590   0     0     -                NTS  ident
+504   505   506   516   0     0     postIncDec       NTS  derefIncTarget
+505   -1    -3    520   0     0     -                NTS  incdecOp
+506   507   508   512   0     0     -                NTS  memberIncTarget
+507   -1    -3    520   0     0     -                NTS  incdecOp
+508   509   510   514   0     0     -                NTS  indexIncTarget
+509   -1    -3    520   0     0     -                NTS  incdecOp
+510   511   -2    590   0     0     -                NTS  ident
+511   -1    -3    520   0     0     -                NTS  incdecOp
+512   513   -2    590   0     0     memberIncTarget  NTS  ident
+513   -1    -3    559   0     0     -                NTS  member
+514   515   -2    590   0     0     indexIncTarget   NTS  ident
+515   -1    -3    555   0     0     -                NTS  index
+516   517   -2    -1    0     0     derefIncTarget   TS   "("
+517   518   -3    -1    0     0     -                TS   "*"
+518   519   -3    590   0     0     -                NTS  ident
+519   -1    -3    -1    0     0     -                TS   ")"
+520   -1    521   -1    0     0     incdecOp         TS   "++"
+521   -1    -2    -1    0     0     -                TS   "--"
+522   523   524   496   0     0     incDecStmt       NTS  preIncDec
+523   -1    -3    -1    0     0     -                TS   ";"
+524   525   -2    504   0     0     -                NTS  postIncDec
+525   -1    -3    -1    0     0     -                TS   ";"
+526   527   -2    -1    0     0     derefRef         TS   "*"
+527   -1    -3    420   0     0     -                NTS  factor
+528   529   -2    567   0     0     call             NTS  funcName
+529   530   -3    -1    0     0     -                TS   "("
+530   531   -3    537   0     0     -                NTS  argList
+531   -1    -3    -1    0     0     -                TS   ")"
+532   533   -2    550   0     0     indirectCall     NTS  varRef
+533   534   -3    536   0     0     -                NTS  indCallOpen
+534   535   -3    537   0     0     -                NTS  argList
+535   -1    -3    -1    0     0     -                TS   ")"
+536   -1    -2    -1    0     0     indCallOpen      TS   "("
+537   538   -1    540   0     0     argList          NTS  arg
+538   539   -1    -1    0     0     -                TS   ","
+539   538   -3    540   0     0     -                NTS  arg
+540   -1    -2    362   0     0     arg              NTS  expr
+541   -1    542   543   0     0     target           NTS  directTarget
+542   -1    -2    548   0     0     -                NTS  indirectTarget
+543   544   -2    590   0     0     directTarget     NTS  ident
+544   545   546   555   0     0     -                NTS  index
+545   545   546   555   0     0     -                NTS  index
+546   547   -1    559   0     0     -                NTS  member
+547   -1    -1    555   0     0     -                NTS  index
+548   549   -2    -1    0     0     indirectTarget   TS   "*"
+549   -1    -3    420   0     0     -                NTS  factor
+550   551   -2    590   0     0     varRef           NTS  ident
+551   552   553   555   0     0     -                NTS  index
+552   552   553   555   0     0     -                NTS  index
+553   554   -1    559   0     0     -                NTS  member
+554   -1    -1    555   0     0     -                NTS  index
+555   556   -2    558   0     0     index            NTS  indexOpen
+556   557   -3    362   0     0     -                NTS  expr
+557   -1    -3    -1    0     0     -                TS   "]"
+558   -1    -2    -1    0     0     indexOpen        TS   "["
+559   560   561   -1    0     0     member           TS   "."
+560   -1    -3    52    0     0     -                NTS  fieldName
+561   562   -2    -1    0     0     -                TS   "->"
+562   -1    -3    52    0     0     -                NTS  fieldName
+563   -1    -2    590   0     0     defName          NTS  ident
+564   -1    -2    590   0     0     paramName        NTS  ident
+565   -1    -2    590   0     0     localName        NTS  ident
+566   -1    -2    590   0     0     globalName       NTS  ident
+567   -1    -2    590   0     0     funcName         NTS  ident
+568   569   570   -1    0     0     type             TS   "unsigned"
+569   -1    -3    585   0     0     -                NTS  unsignedInt
+570   -1    571   -1    0     0     -                TS   "int"
+571   -1    572   -1    0     0     -                TS   "long"
+572   -1    573   -1    0     0     -                TS   "char"
+573   -1    574   -1    0     0     -                TS   "bool"
+574   575   576   -1    0     0     -                TS   "struct"
+575   -1    -3    580   0     0     -                NTS  structTypeRef
+576   577   578   -1    0     0     -                TS   "enum"
+577   -1    -3    581   0     0     -                NTS  enumTypeRef
+578   -1    579   -1    0     0     -                TS   "void"
+579   -1    -2    582   0     0     -                NTS  typedefRef
+580   -1    -2    590   0     0     structTypeRef    NTS  ident
+581   -1    -2    590   0     0     enumTypeRef      NTS  ident
+582   -1    -2    590   0     0     typedefRef       NTS  ident
+583   583   -1    584   0     0     pointerDecl      NTS  pointerStar
+584   -1    -2    -1    0     0     pointerStar      TS   "*"
+585   -1    586   -1    0     0     unsignedInt      TS   "int"
+586   -1    587   -1    0     0     -                TS   "char"
+587   -1    -2    -1    0     0     -                TS   "long"
+588   -1    589   -1    0     0     boolLit          TS   "true"
+589   -1    -2    -1    0     0     -                TS   "false"
+590   591   -2    606   0     0     ident            NTS  letter
+591   591   592   606   0     0     -                NTS  letter
+592   591   -1    609   0     0     -                NTS  digit
+593   -1    594   595   0     0     number           NTS  hexNumber
+594   -1    -2    604   0     0     -                NTS  decNumber
+595   596   -2    -1    0     0     hexNumber        TS   "0"
+596   597   -3    599   0     0     -                NTS  hexMark
+597   598   -3    601   0     0     -                NTS  hexDigit
+598   598   -1    601   0     0     -                NTS  hexDigit
+599   -1    600   -1    0     0     hexMark          TS   "x"
+600   -1    -2    -1    0     0     -                TS   "X"
+601   -1    602   609   0     0     hexDigit         NTS  digit
+602   -1    603   -1    97    102   -                RNG  "a"~"f"
+603   -1    -2    -1    65    70    -                RNG  "A"~"F"
+604   605   -2    609   0     0     decNumber        NTS  digit
+605   605   -1    609   0     0     -                NTS  digit
+606   -1    607   -1    97    122   letter           RNG  "a"~"z"
+607   -1    608   -1    65    90    -                RNG  "A"~"Z"
+608   -1    -2    -1    0     0     -                TS   "_"
+609   -1    -2    -1    48    57    digit            RNG  "0"~"9"
 [ENDE]
 
 [TESTS]
@@ -1181,6 +1484,7 @@ WHITESPACE = " \t\r\n"
 TOKEN ident
 TOKEN number
 TOKEN stringLit
+TOKEN charLit
 COMMENT LINE = "//"
 COMMENT BLOCK = "/*" "*/"
 [ENDE]
@@ -1230,6 +1534,8 @@ ACTION AFTER negFactor CALL tc_neg
 ACTION AFTER addop CALL tc_addop
 ACTION AFTER term CALL tc_term
 ACTION AFTER mulop CALL tc_mulop
+ACTION AFTER parenOpen CALL tc_parenbegin
+ACTION AFTER parenClose CALL tc_parenend
 ACTION AFTER factor CALL tc_factor
 ACTION AFTER relop CALL tc_relop
 ACTION AFTER comparison CALL tc_expr
@@ -1252,6 +1558,7 @@ ACTION AFTER assignop CALL tc_assignop
 ACTION AFTER directTarget CALL tc_target
 ACTION AFTER indirectTarget CALL tc_indirecttarget
 ACTION AFTER assignStmt CALL tc_assign
+ACTION AFTER chainAssign CALL tc_chainassign
 ACTION AFTER funcName CALL tc_callname
 ACTION AFTER arg CALL tc_arg
 ACTION AFTER call CALL tc_call
@@ -1279,9 +1586,17 @@ ACTION AFTER doCond CALL tc_docond
 ACTION AFTER doStmt CALL tc_doend
 ACTION AFTER breakStmt CALL tc_break
 ACTION AFTER continueStmt CALL tc_continue
+ACTION AFTER gotoStmt CALL tc_goto
+ACTION AFTER labelStmt CALL tc_label
+ACTION AFTER fnPtrOpen CALL tc_fnptrbegin
+ACTION AFTER fnPtrTypedef CALL tc_fnptrtypedef
+ACTION AFTER indCallOpen CALL tc_indcallbegin
+ACTION AFTER voidCastStmt CALL tc_voidcast
+ACTION AFTER charLit CALL tc_charlit
+ACTION AFTER indirectCall CALL tc_indcall
 ACTION AFTER structName CALL tc_structbegin
 ACTION AFTER anonStructOpen CALL tc_anonstructbegin
-ACTION AFTER structField CALL tc_structfield
+ACTION AFTER structDeclarator CALL tc_structfield
 ACTION AFTER structDecl CALL tc_structend
 ACTION AFTER typedefDecl CALL tc_typedefend
 ACTION AFTER enumDecl CALL tc_enumdecl
@@ -1331,7 +1646,10 @@ static int  tcStructFieldCount[MAX_STRUCTS];
 static char tcStructFieldNames[MAX_STRUCTS][MAX_STRUCT_FIELDS][32];
 static TCType tcStructFieldTypes[MAX_STRUCTS][MAX_STRUCT_FIELDS];
 static int  tcStructFieldOffset[MAX_STRUCTS][MAX_STRUCT_FIELDS];
-static int  tcStructFieldArrayLen[MAX_STRUCTS][MAX_STRUCT_FIELDS]; /* 0=Skalar, sonst Elementzahl */
+static int  tcStructFieldArrayLen[MAX_STRUCTS][MAX_STRUCT_FIELDS]; /* 0=Skalar, sonst Elementzahl (bei 2D: GESAMT) */
+/* Nur bei zweidimensionalen Feldern != 0: Laenge EINER Zeile. "x.feld[i]"
+   liefert dann base + i*Zeilenlaenge als ZEIGER statt eines Elementwerts. */
+static int  tcStructFieldRowLen[MAX_STRUCTS][MAX_STRUCT_FIELDS];
 static int  tcStructByteSize[MAX_STRUCTS];
 static int  tcStructCount = 0;
 static char tcStructBuildName[32];
@@ -1339,6 +1657,7 @@ static int  tcStructBuildFieldCount = 0;
 static char tcStructBuildFieldNames[MAX_STRUCT_FIELDS][32];
 static TCType tcStructBuildFieldTypes[MAX_STRUCT_FIELDS];
 static int  tcStructBuildFieldArrayLen[MAX_STRUCT_FIELDS];
+static int  tcStructBuildFieldRowLen[MAX_STRUCT_FIELDS];
 /* anonymes struct inline im typedef (2026-07-24, siehe tc_anonstructbegin/tc_typedefend):
    der Zielname ("Name" in typedef struct {...} Name;) kommt in der Grammatik erst NACH
    dem Feld-Body -- die Felder werden wie gewohnt gesammelt, die Registrierung (mit dem
@@ -1348,6 +1667,19 @@ static int  tcAnonStructPending = 0;
 static char tcTypedefNames[MAX_TYPEDEFS][32];
 static TCType tcTypedefTypes[MAX_TYPEDEFS];
 static int  tcTypedefCount = 0;
+/* ---- Funktionszeiger ---------------------------------------------------
+   Ein Funktionszeigertyp ist base='F', pointers=1 (er IST ein Zeiger, also
+   liefert tcIsPointer korrekt 1 -- wichtig, weil Backend/IR danach zwischen
+   Zeiger- und Zahlwerten unterscheiden). structId traegt 1-basiert die
+   Signatur-Id, genau wie bei base='s' der Struct-Index; tcSameType
+   vergleicht sie deshalb fuer 'F' mit. */
+#define MAX_FNSIGS 16
+#define MAX_FNSIG_PARAMS 8
+static TCType tcFnSigRet[MAX_FNSIGS];
+static int    tcFnSigNargs[MAX_FNSIGS];
+static TCType tcFnSigParams[MAX_FNSIGS][MAX_FNSIG_PARAMS];
+static int    tcFnSigCount = 0;
+static TCType tcFnPtrRetPending;     /* Rueckgabetyp, gemerkt beim "(" der Zeigerklammer */
 /* enum: Konstanten UND (seit 2026-07-23) der Enum-NAME selbst sind bekannt, damit
    "enum Name var;" als Deklaration moeglich ist -- im Speicher/Typsystem bleibt
    ein enum-Wert einfach 'i' (int), keine eigene Typidentitaet/-pruefung noetig
@@ -1428,11 +1760,15 @@ static int tcExternBuildParamCount = 0;
 static int tcExternIsVariadic = 0;
 static char tcCallName[64][32];     /* verschachtelbare Aufruf-Frames */
 static int  tcCallArgCount[64];
+static int  tcCallFnSig[64];        /* >=0: indirekter Aufruf ueber diese Signatur; -1: normaler Aufruf */
 static char tcCallSavedAdd[64], tcCallSavedMul[64];
 static char tcCallSavedRel0[64], tcCallSavedRel1[64];
 static int  tcCallDepth = 0;
 static char tcPendingAdd = 0;       /* '+' oder '-' */
 static char tcPendingMul = 0;       /* '*' oder '/' */
+static char tcParenSavedAdd[64], tcParenSavedMul[64];
+static char tcParenSavedRel0[64], tcParenSavedRel1[64];
+static int  tcParenDepth = 0;
 static char tcIndexSavedAdd[64], tcIndexSavedMul[64];
 static char tcIndexSavedRel0[64], tcIndexSavedRel1[64];
 static int  tcIndexDepth = 0;
@@ -1443,6 +1779,18 @@ static int  tcTargetIsGlobal = 0;
 static TCType tcTargetType;
 static int  tcTargetIsArray = 0;
 static int  tcTargetIndirect = 0;
+/* Vorheriges Ziel -- tc_target sichert seinen bisherigen Zustand beim
+   Betreten dorthin, damit die Kettenzuweisung BEIDE Ziele kennt. */
+static int  tcPrevTargetSlot = -1;
+static char tcPrevTargetGlobal[32];
+static int  tcPrevTargetIsGlobal = 0;
+static TCType tcPrevTargetType;
+static int  tcPrevTargetIsArray = 0;
+static int  tcPrevTargetIndirect = 0;
+/* chainAssign ist eine ALTERNATIVE INNERHALB von assignStmt -- passt sie,
+   feuert anschliessend auch noch die Aktion der umschliessenden Regel.
+   Dieses Flag sagt tc_assign, dass die Zuweisung bereits erledigt ist. */
+static int  tcChainHandled = 0;
 static char tcAssignOp[3];
 static int  tcSemanticErrors = 0;
 static TCType tcValueTypes[256];
@@ -1452,6 +1800,20 @@ static int  tcArgCount = 0;
 static int  tcRetHasVal = 0;
 static int  tcLastWasPrint = 0;
 static int  tcNextLabel = 0;
+/* ---- goto/Sprungmarken -------------------------------------------------
+   Quellsprachliche Sprungmarken sind NAMEN, die IR kennt aber nur
+   nummerierte Label ("LABEL L<n>"/"JMP L<n>", siehe docs/IR_OPCODES.md).
+   Diese Tabelle bildet Name -> Nummer ab, PRO FUNKTION (Reset in
+   tc_defname, wie tcLocalCount). Vorwaertsspruenge ("goto weiter;" vor
+   "weiter:") sind dadurch problemlos: die Nummer wird beim ERSTEN
+   Auftreten vergeben, egal ob das der Sprung oder die Marke war -- die
+   Aufloesung zur echten Adresse macht ohnehin erst der Assembler. */
+#define MAX_GOTO_LABELS 512
+static char tcGotoNames[MAX_GOTO_LABELS][32];
+static int  tcGotoLabel[MAX_GOTO_LABELS];    /* zugeordnete IR-Labelnummer */
+static char tcGotoDefined[MAX_GOTO_LABELS];  /* Marke "name:" gesehen */
+static char tcGotoUsed[MAX_GOTO_LABELS];     /* "goto name;" gesehen */
+static int  tcGotoCount = 0;
 static int  tcCtrlTop[64], tcCtrlEnd[64], tcCtrlCont[64], tcCtrlExtra[64];
 static char tcCtrlKind[64];               /* 'i'=if, 'w'=while, 'f'=for, 'd'=do-while, 's'=switch */
 static int  tcCtrlDepth = 0;
@@ -1474,6 +1836,15 @@ static char tcBitKind[64];
 static int  tcBitDepth = 0;
 static char tcPendingShift0 = 0, tcPendingShift1 = 0;
 static int tcTernaryFalse[64], tcTernaryDone[64], tcTernaryDepth = 0;
+/* Wie bei Aufrufen (tc_callname) und Indizes (tc_arg) muessen die VERZOEGERTEN
+   Operatoren um einen Ternaer herum gerettet werden: QCC emittiert "*"/"+"
+   und Vergleiche nicht sofort, sondern gemerkt ueber tcPendingMul/tcPendingAdd/
+   tcRel0/tcRel1. Ohne das Retten feuert ein umschliessendes "*" MITTEN in die
+   Ternaer-Zweige hinein -- "(a?10:20) * (b?1:4)" multiplizierte mit dem blossen
+   b statt mit dem Ergebnis des zweiten Ternaers: stiller Falschcode, keine
+   Fehlermeldung. Latent vorhanden, sichtbar erst mit verschachtelten Ternaeren. */
+static char tcTernSavedAdd[64], tcTernSavedMul[64];
+static char tcTernSavedRel0[64], tcTernSavedRel1[64];
 static TCType tcTernaryTrueType[64];
 static void tcPushCtrl(char kind, int top, int cont, int end, int extra) {
 	if (tcCtrlDepth >= 64) { fprintf(stderr, "qcc: control nesting too deep\\n"); return; }
@@ -1514,6 +1885,43 @@ static void tcCopy(char* dst, const char* s, const char* e) {
 static int tcEq(const char* a, const char* b) {
 	while (*a && *b) { if (*a != *b) return 0; a++; b++; }
 	return *a == *b;
+}
+/* Holt den Bezeichner aus dem erkannten Textbereich einer VOLLSTAENDIGEN
+   Regel -- noetig, weil die goto/label-Aktionen bewusst an der Gesamtregel
+   haengen und nicht an einer Namens-Unterregel (siehe Kommentar in
+   Data/qcc.ebnf bei gotoStmt). skipKw ueberspringt ein fuehrendes
+   Schluesselwort ("goto"), danach Leerraum, dann wird bis zum ersten
+   Nicht-Bezeichnerzeichen kopiert (":" bzw. ";" beenden also sauber). */
+static void tcIdentFromSpan(char* dst, const char* s, const char* e, const char* skipKw) {
+	const char* p = s;
+	int n = 0;
+	while (p < e && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
+	if (skipKw) {
+		const char* k = skipKw;
+		while (p < e && *k && *p == *k) { p++; k++; }
+		while (p < e && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
+	}
+	while (p < e && n < 31 &&
+	       ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+	        (*p >= '0' && *p <= '9') || *p == '_')) {
+		dst[n++] = *p++;
+	}
+	dst[n] = 0;
+}
+/* Sucht die Sprungmarke, legt sie beim ersten Auftreten an. Rueckgabe:
+   Index in die tcGoto*-Tabellen, oder -1 bei Ueberlauf. */
+static int tcGotoFind(const char* name) {
+	int i;
+	for (i = 0; i < tcGotoCount; i++)
+		if (tcEq(tcGotoNames[i], name)) return i;
+	if (tcGotoCount >= MAX_GOTO_LABELS) {
+		fprintf(stderr, "qcc: too many goto labels\n"); tcSemanticErrors++; return -1;
+	}
+	tcCopy(tcGotoNames[tcGotoCount], name, name + strlen(name));
+	tcGotoLabel[tcGotoCount] = tcNextLabel++;
+	tcGotoDefined[tcGotoCount] = 0;
+	tcGotoUsed[tcGotoCount] = 0;
+	return tcGotoCount++;
 }
 static int tcLookupLocal(const char* s, const char* e) {
 	char name[32]; int i; tcCopy(name, s, e);
@@ -1568,10 +1976,30 @@ static TCType tcMakeType(char base, int pointers) { TCType t; t.base = base; t.p
    Literale als Array-Initialisierer gebraucht. */
 static int tcDecodeStringLit(const char* start, const char* end, unsigned char* bytes, int cap);
 static TCType tcBadType(void) { return tcMakeType('?', 0); }
-static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers && (a.base != 's' || a.structId == b.structId); }
+/* base=='F' (Funktionszeiger) traegt wie 's' eine Id in structId -- zwei
+   Funktionszeiger sind nur bei GLEICHER Signatur derselbe Typ. */
+static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers && ((a.base != 's' && a.base != 'F') || a.structId == b.structId); }
 static int tcIsPointer(TCType t) { return t.pointers != 0; }
+static int tcIsFnPtr(TCType t) { return t.base == 'F' && t.pointers == 1; }
+static TCType tcMakeFnPtr(int sigId) {
+	TCType t = tcMakeType('F', 1);
+	t.structId = (unsigned char)(sigId + 1);
+	return t;
+}
 static int tcIsInteger(TCType t) { return !t.pointers && (t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'z'); }
 static int tcIsBool(TCType t) { return !t.pointers && t.base == 'b'; }
+/* ISO C kennt keinen eigenen Wahrheitswert-Typ in Bedingungen: "if (x)" ist
+   fuer JEDEN skalaren Typ definiert (Ganzzahl, Zeichen, Zeiger) und bedeutet
+   "ungleich 0". QCC war hier bisher strenger als C und verlangte ueberall
+   einen echten bool -- das erzwang in jedem Port Umschreibungen ("!= 0",
+   aufgeloeste if/else statt "x = (a == b);", siehe Quirk 3/10 in
+   docs/FORTSCHRITT.md) und machte maschinell erzeugten, normalen C-Code wie
+   Data/qcc_p.c uneuebersetzbar. Da docs/ISO_C_LUECKENLISTE.md ISO-C-Konformitaet
+   als Ziel fuehrt, wird die Regel hier auf die C-Bedeutung GELOCKERT.
+   Rein additiv: was vorher zulaessig war, bleibt es. Codegen-seitig aendert
+   sich nichts -- ein bool liegt ohnehin als 0/1 im selben 32-Bit-Slot wie ein
+   int, und JZ/JNZ testen den Wert unabhaengig vom Typ. */
+static int tcIsTruthy(TCType t) { return t.pointers != 0 || t.base == 'b' || t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'z'; }
 static TCType tcPointerTo(TCType t) { if (t.pointers < 255) t.pointers++; else tcSemanticErrors++; return t; }
 static TCType tcPointee(TCType t) { if (t.pointers) t.pointers--; else tcSemanticErrors++; return t; }
 static char tcTypeTag(TCType t) { return t.pointers ? 'p' : (t.base == 'c' || t.base == 'b') ? t.base : 'i'; }
@@ -1579,14 +2007,175 @@ static TCType tcPromoteInteger(TCType a, TCType b) { return tcMakeType(a.base ==
 static TCType tcLocalType(int slot) { return slot >= 0 && slot < tcLocalCount ? tcLocalTypes[slot] : tcMakeType('i', 0); }
 static TCType tcGlobalType(int slot) { return slot >= 0 && slot < tcGlobalCount ? tcGlobalTypes[slot] : tcMakeType('i', 0); }
 static int tcLookupFunction(const char* name) { int i; for (i = 0; i < tcFunctionCount; i++) if (tcEq(tcFunctionNames[i], name)) return i; return -1; }
+/* Wie tcLookupFunction, aber auf einem Textbereich statt einem C-String --
+   tc_varref hat nur start/end. */
+static int tcLookupFunction2(const char* s, const char* e) {
+	char name[32];
+	tcCopy(name, s, e);
+	return tcLookupFunction(name);
+}
+/* Liefert die Signatur-Id zur Signatur einer bereits bekannten Funktion und
+   legt sie an, falls es sie noch nicht gibt. Dadurch ist "zeiger = funktion;"
+   auch ohne passendes typedef moeglich -- und zwei Funktionen mit gleicher
+   Signatur bekommen DIESELBE Id, sind also zuweisungskompatibel. */
+static int tcFnSigForFunction(int fnIdx) {
+	int i, k;
+	if (tcFunctionNargs[fnIdx] > MAX_FNSIG_PARAMS) {
+		fprintf(stderr, "qcc: function has too many parameters for a function pointer\n");
+		tcSemanticErrors++; return -1;
+	}
+	for (i = 0; i < tcFnSigCount; i++) {
+		if (tcFnSigNargs[i] != tcFunctionNargs[fnIdx]) continue;
+		if (!tcSameType(tcFnSigRet[i], tcFunctionReturnTypes[fnIdx])) continue;
+		for (k = 0; k < tcFnSigNargs[i]; k++)
+			if (!tcSameType(tcFnSigParams[i][k], tcFunctionParamTypes[fnIdx][k])) break;
+		if (k == tcFnSigNargs[i]) return i;
+	}
+	if (tcFnSigCount >= MAX_FNSIGS) {
+		fprintf(stderr, "qcc: too many function pointer signatures\n");
+		tcSemanticErrors++; return -1;
+	}
+	tcFnSigRet[tcFnSigCount] = tcFunctionReturnTypes[fnIdx];
+	tcFnSigNargs[tcFnSigCount] = tcFunctionNargs[fnIdx];
+	for (k = 0; k < tcFunctionNargs[fnIdx]; k++)
+		tcFnSigParams[tcFnSigCount][k] = tcFunctionParamTypes[fnIdx][k];
+	return tcFnSigCount++;
+}
 static void tcTypePush(TCType type) { if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = type; else tcSemanticErrors++; }
 static TCType tcTypePop(void) { return tcValueDepth > 0 ? tcValueTypes[--tcValueDepth] : tcBadType(); }
 /* Prae-/Postinkrement/-dekrement, nur einfache int/unsigned/char-Skalare (lokal/global) --
    Praefix: LOAD;PUSH 1;ADD-oder-SUB;DUP;STORE (laesst NEUEN Wert); Postfix: LOAD;DUP;PUSH 1;
    ADD-oder-SUB;STORE (laesst ALTEN Wert). STOREC/STOREGC uebernehmen die Byte-Kuerzung wie
    bei normalen Zuweisungen -- kein extra NARROWC noetig. */
+/* (*p)++ / ++(*p): Inkrement durch einen Zeiger. Braucht KEINEN SWAP --
+   Adresse und Wert werden schlicht mehrfach geladen (der Zeiger steht in
+   einer Variablen, das erneute Laden ist also seiteneffektfrei).
+   Postfix laesst den ALTEN Wert ganz unten liegen, Praefix laedt den neuen
+   nach dem Speichern einfach neu. */
+static void tcDerefIncDec(const char* start, const char* end, int isDec, int isPre) {
+	const char* p = start;
+	const char* ns; const char* ne;
+	int slot, global = -1; TCType pt, vt; char tag; const char* ld;
+	while (p < end && (*p == '(' || *p == '*' || *p == ' ' || *p == '\t')) p++;
+	ns = p; ne = tcWordEnd(ns, end);
+	slot = tcLookupLocal(ns, ne);
+	if (slot < 0) global = tcLookupGlobal(ns, ne);
+	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	pt = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
+	if (!tcIsPointer(pt)) { fprintf(stderr, "qcc: '*' requires a pointer\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	vt = tcPointee(pt);
+	if (tcIsPointer(vt) || vt.base == 's' || vt.base == 'b') {
+		fprintf(stderr, "qcc: ++/-- through a pointer is only supported for int/unsigned/char in this version\n");
+		tcSemanticErrors++; tcTypePush(tcBadType()); return;
+	}
+	tag = tcTypeTag(vt);
+	ld = slot >= 0 ? "LOADP" : "LOADGP";
+	if (!isPre) {
+		/* alter Wert zuerst -- er bleibt als Ergebnis unter allem liegen */
+		if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+		printf("LOADIND %c\n", tag);
+	}
+	if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+	if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+	printf("LOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, isDec ? "SUB" : "ADD", tag);
+	if (isPre) {
+		if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+		printf("LOADIND %c\n", tag);
+	}
+	tcTypePush(vt);
+}
+/* a[i]++ / ++a[i]: der Indexwert liegt beim Aufruf bereits auf dem Stack
+   (die index-Regel hat ihn emittiert) und darf NICHT neu berechnet werden.
+   Postfix braucht SWAP, um den alten Wert unter den Index zu bekommen;
+   Praefix kommt mit zweimaligem DUP aus und laedt den neuen Wert am Ende neu. */
+static void tcIndexIncDec(const char* start, const char* end, int isDec, int isPre) {
+	const char* ne = tcWordEnd(start, end);
+	int slot = tcLookupLocal(start, ne), global = -1;
+	TCType et; char tag; char buf[64];
+	if (slot < 0) global = tcLookupGlobal(start, ne);
+	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	et = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
+	if (tcIsPointer(et) || et.base == 's' || et.base == 'b') {
+		fprintf(stderr, "qcc: ++/-- on an indexed element is only supported for int/unsigned/char in this version\n");
+		tcSemanticErrors++; tcTypePush(tcBadType()); return;
+	}
+	tag = tcTypeTag(et);
+	if (slot >= 0) sprintf(buf, "L %d %c", slot, tag); else sprintf(buf, "G %s %c", tcGlobalNames[global], tag);
+	if (isPre) {
+		printf("DUP\nDUP\nLOADIDX %s\nPUSH 1\n%s\nSTOREIDX %s\nLOADIDX %s\n",
+		       buf, isDec ? "SUB" : "ADD", buf, buf);
+	} else {
+		printf("DUP\nLOADIDX %s\nSWAP\nDUP\nLOADIDX %s\nPUSH 1\n%s\nSTOREIDX %s\n",
+		       buf, buf, isDec ? "SUB" : "ADD", buf);
+	}
+	tcTypePush(et);
+}
+/* x.feld++ / p->feld++ (und die Praefixformen). Die Feldadresse wird wie in
+   tc_varref berechnet (Basis + Offset, IPADD erwartet den Zeiger OBEN, deshalb
+   PUSH offset zuerst). Danach dieselbe Stapelchoreografie wie beim
+   Arrayelement: Postfix schiebt den alten Wert per SWAP unter die Adresse,
+   Praefix dupliziert die Adresse und laedt den neuen Wert am Ende neu. */
+static void tcMemberIncDec(const char* start, const char* end, int isDec, int isPre) {
+	const char* ne = tcWordEnd(start, end);
+	const char* fs; const char* fe;
+	int slot, global = -1, viaPtr, sid, fi;
+	TCType bt, ft; char tag;
+	if (ne >= end) { fprintf(stderr, "qcc: bad member increment\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	viaPtr = (*ne == '-');
+	fs = ne + (viaPtr ? 2 : 1);
+	fe = tcWordEnd(fs, end);
+	slot = tcLookupLocal(start, ne);
+	if (slot < 0) global = tcLookupGlobal(start, ne);
+	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	bt = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
+	if (viaPtr) {
+		if (!tcIsPointer(bt) || tcPointee(bt).base != 's') { fprintf(stderr, "qcc: '->' requires a pointer to struct\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+		sid = tcPointee(bt).structId - 1;
+	} else {
+		if (tcIsPointer(bt) || bt.base != 's') { fprintf(stderr, "qcc: '.' requires a struct\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+		sid = bt.structId - 1;
+	}
+	fi = tcLookupStructField(sid, fs, fe);
+	if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+	ft = tcStructFieldTypes[sid][fi];
+	if (tcIsPointer(ft) || ft.base == 's' || ft.base == 'b' || tcStructFieldArrayLen[sid][fi] > 0) {
+		fprintf(stderr, "qcc: ++/-- on a struct field is only supported for int/unsigned/char in this version\n");
+		tcSemanticErrors++; tcTypePush(tcBadType()); return;
+	}
+	tag = tcTypeTag(ft);
+	printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+	if (viaPtr) { if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]); }
+	else        { if (slot >= 0) printf("PUSHADDR L %d\n", slot); else printf("PUSHADDR G %s\n", tcGlobalNames[global]); }
+	printf("IPADD c\n");
+	if (isPre) printf("DUP\nDUP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\nLOADIND %c\n", tag, isDec ? "SUB" : "ADD", tag, tag);
+	else       printf("DUP\nLOADIND %c\nSWAP\nDUP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, tag, isDec ? "SUB" : "ADD", tag);
+	tcTypePush(ft);
+}
 static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 	char tag = tcTypeTag(t);
+	if (tcIsPointer(t)) {
+		/* Zeiger-Inkrement rechnet in ELEMENTEN, nicht in Bytes -- deshalb IPADD
+		   mit dem Tag des ZIELtyps statt eines schlichten ADD. IPADD erwartet den
+		   Zaehler UNTEN und den Zeiger OBEN (siehe docs/IR_OPCODES.md), weshalb
+		   der Zeiger beim Postfix zweimal geladen statt per DUP vervielfaeltigt
+		   wird: ein DUP laege an der falschen Stelle relativ zum Zaehler. */
+		const char* ld = slot >= 0 ? "LOADP" : "LOADGP";
+		const char* st = slot >= 0 ? "STOREP" : "STOREGP";
+		char ptag = tcTypeTag(tcPointee(t));
+		if (isPre) {
+			printf("PUSH %d\n", isDec ? -1 : 1);
+			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+			printf("IPADD %c\nDUP\n", ptag);
+		} else {
+			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+			printf("PUSH %d\n", isDec ? -1 : 1);
+			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+			printf("IPADD %c\n", ptag);
+		}
+		if (slot >= 0) printf("%s %d\n", st, slot); else printf("%s %s\n", st, tcGlobalNames[global]);
+		tcTypePush(t);
+		return;
+	}
 	const char* loadOp = slot >= 0 ? (tag == 'i' ? "LOADL" : "LOADC") : (tag == 'i' ? "LOADG" : "LOADGC");
 	const char* storeOp = slot >= 0 ? (tag == 'i' ? "STOREL" : "STOREC") : (tag == 'i' ? "STOREG" : "STOREGC");
 	if (slot >= 0) printf("%s %d\n", loadOp, slot); else printf("%s %s\n", loadOp, tcGlobalNames[global]);
@@ -1596,7 +2185,11 @@ static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 	tcTypePush(t);
 }
 static int tcIncDecCheck(int slot, int global, TCType t) {
-	if (tcIsPointer(t) || t.base == 's' || t.base == 'b') return 0;
+	/* Zeiger sind seit 2026-08-10 erlaubt ("p++" ist ein C-Kernidiom und kommt
+	   in Data/qcc_p.c ueberall vor) -- tcIncDecEmit rechnet dafuer ueber IPADD
+	   mit der Groesse des Zieltyps statt +-1. Arrays bleiben ausgeschlossen
+	   (ein Arrayname ist kein veraenderbarer Lvalue), ebenso struct und bool. */
+	if (t.base == 's' || t.base == 'b') return 0;
 	if (slot >= 0 && tcLocalArrayLen[slot]) return 0;
 	if (slot < 0 && global >= 0 && tcGlobalArrayLen[global]) return 0;
 	return 1;
@@ -1608,6 +2201,9 @@ static int tcCompatible(TCType wanted, TCType got) {
 	   z.B. void** faelschlich mit T* (unterschiedliche Zeigertiefe) kompatibel wird. */
 	if (tcIsPointer(wanted) && tcIsPointer(got) && wanted.pointers == got.pointers && (wanted.base == 'v' || got.base == 'v')) return 1;
 	if (tcIsPointer(wanted)) return !tcIsPointer(got) && got.base == 'z';
+	/* bool ist in C ein Ganzzahltyp (Wert 0/1) -- "int x = (a == b);" und
+	   "return (a && b);" aus einer int-Funktion sind legal. */
+	if (tcIsInteger(wanted) && tcIsBool(got)) return 1;
 	return tcIsInteger(wanted) && tcIsInteger(got);
 }
 static void tcPrintType(FILE* out, TCType t) {
@@ -1620,7 +2216,7 @@ static void tcTypeError(const char* what, TCType wanted, TCType got) {
 }
 static void tcLogicBegin(char kind) {
 	TCType left = tcTypePop(); int branch, end;
-	if (!tcIsBool(left)) tcTypeError("logical operator", tcMakeType('b', 0), left);
+	if (!tcIsTruthy(left)) tcTypeError("logical operator", tcMakeType('b', 0), left);
 	if (tcLogicDepth >= 64) { fprintf(stderr, "qcc: logical nesting too deep\n"); tcSemanticErrors++; return; }
 	branch = tcNextLabel++; end = tcNextLabel++;
 	tcLogicKind[tcLogicDepth] = kind; tcLogicBranch[tcLogicDepth] = branch; tcLogicDone[tcLogicDepth] = end; tcLogicDepth++;
@@ -1659,7 +2255,7 @@ static int tcHasTopChar(const char* s, const char* e, char c) {
 static void tcLogicEnd(char kind) {
 	TCType right; int frame;
 	if (tcLogicDepth <= 0 || tcLogicKind[tcLogicDepth - 1] != kind) { fprintf(stderr, "qcc: logical-frame mismatch\n"); tcSemanticErrors++; return; }
-	right = tcTypePop(); if (!tcIsBool(right)) tcTypeError("logical operator", tcMakeType('b', 0), right);
+	right = tcTypePop(); if (!tcIsTruthy(right)) tcTypeError("logical operator", tcMakeType('b', 0), right);
 	frame = --tcLogicDepth;
 	printf("%s L%d\nPUSH %d\nJMP L%d\nLABEL L%d\nPUSH %d\nLABEL L%d\n",
 		kind == '&' ? "JZ" : "JNZ", tcLogicBranch[frame], kind == '&' ? 1 : 0,
@@ -1690,11 +2286,16 @@ static void tcShiftEnd(void) {
 }
 static void tcTernaryBegin(void) {
 	TCType condition = tcTypePop(); int falseLabel, endLabel;
-	if (!tcIsBool(condition)) tcTypeError("conditional condition", tcMakeType('b', 0), condition);
+	if (!tcIsTruthy(condition)) tcTypeError("conditional condition", tcMakeType('b', 0), condition);
 	if (tcTernaryDepth >= 64) { fprintf(stderr, "qcc: conditional nesting too deep\n"); tcSemanticErrors++; return; }
 	falseLabel = tcNextLabel++; endLabel = tcNextLabel++;
 	tcTernaryFalse[tcTernaryDepth] = falseLabel;
 	tcTernaryDone[tcTernaryDepth] = endLabel;
+	tcTernSavedAdd[tcTernaryDepth] = tcPendingAdd;
+	tcTernSavedMul[tcTernaryDepth] = tcPendingMul;
+	tcTernSavedRel0[tcTernaryDepth] = tcRel0;
+	tcTernSavedRel1[tcTernaryDepth] = tcRel1;
+	tcPendingAdd = 0; tcPendingMul = 0; tcRel0 = 0; tcRel1 = 0;
 	tcTernaryDepth++;
 	printf("JZ L%d\n", falseLabel);
 }
@@ -1716,6 +2317,10 @@ static void tcTernaryEnd(void) {
 	tcTypePush(result);
 	printf("LABEL L%d\n", tcTernaryDone[tcTernaryDepth - 1]);
 	tcTernaryDepth--;
+	tcPendingAdd = tcTernSavedAdd[tcTernaryDepth];
+	tcPendingMul = tcTernSavedMul[tcTernaryDepth];
+	tcRel0 = tcTernSavedRel0[tcTernaryDepth];
+	tcRel1 = tcTernSavedRel1[tcTernaryDepth];
 }
 static void tcLoadTarget(void) {
 	char tag = tcTypeTag(tcTargetType);
@@ -1747,14 +2352,53 @@ static void tcCompoundAssign(void) {
 	else if (tcAssignOp[0] == '>') printf("%s", left.base == 'u' ? "USHR\n" : "SHR\n");
 	tcTypePush(tcTargetType);
 }
+/* Wertet eine Arraygroesse aus dem Rohtext aus: Zahlen, verknuepft mit
+   + - * (linksassoziativ, ohne Vorrang -- fuer Groessenangaben wie
+   "64 + 40" oder "8 * 4" voellig ausreichend). Liefert den Wert und setzt
+   *pp hinter den Ausdruck. */
+static int tcConstArrayLen(const char** pp, const char* end) {
+	const char* p = *pp;
+	int v = 0, digits = 0;
+	while (p < end && (*p == ' ' || *p == '\t')) p++;
+	while (p < end && *p >= '0' && *p <= '9') { v = v * 10 + (*p++ - '0'); digits = 1; }
+	if (!digits) { *pp = p; return 0; }
+	for (;;) {
+		const char* q = p;
+		int rhs = 0, rdig = 0; char op;
+		while (q < end && (*q == ' ' || *q == '\t')) q++;
+		if (q >= end || (*q != '+' && *q != '-' && *q != '*')) break;
+		op = *q++;
+		while (q < end && (*q == ' ' || *q == '\t')) q++;
+		while (q < end && *q >= '0' && *q <= '9') { rhs = rhs * 10 + (*q++ - '0'); rdig = 1; }
+		if (!rdig) break;
+		if (op == '+') v += rhs; else if (op == '-') v -= rhs; else v *= rhs;
+		p = q;
+	}
+	*pp = p;
+	return v;
+}
 static long tcNum(const char* s, const char* e) {
 	long v = 0; const char* q;
+	/* Hexform "0x.."/"0X.." (siehe hexNumber in der Grammatik). */
+	if (e - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		for (q = s + 2; q < e; q++) {
+			int d;
+			if (*q >= '0' && *q <= '9') d = *q - '0';
+			else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
+			else if (*q >= 'A' && *q <= 'F') d = *q - 'A' + 10;
+			else break;
+			v = v * 16 + d;
+		}
+		return v;
+	}
 	for (q = s; q < e; q++) v = v * 10 + (*q - '0');
 	return v;
 }
 static const char* tcNameEnd(const char* s, const char* e) {
 	const char* p = s;
-	while (p < e && *p != '[' && *p != '.') p++;
+	/* auch am "-" anhalten: "p->f" (das "-" kann hier nur der Pfeil sein --
+	   ein Minus innerhalb eines Index steht hinter "[", wo schon abgebrochen wird). */
+	while (p < e && *p != '[' && *p != '.' && *p != '-') p++;
 	return p;
 }
 static int tcConstIndex(const char* s, const char* e, int* value) {
@@ -1865,6 +2509,7 @@ static int tcInitList(const char* start, const char* end, long* values, int cap)
 }
 void tc_defname(const char* start, const char* end) {
 	tcLocalCount = 0;
+	tcGotoCount = 0;          /* Sprungmarken sind funktionslokal (wie in echtem C) */
 	tcFuncType = tcCurrentType;
 	tcCopy(tcFuncName, start, end);
 	/* "static" vor einer Funktion: Schnappschuss VOR dem Reset retten (tc_funcbegin
@@ -1937,8 +2582,20 @@ END
 ROUTINE C tc_type
 void tc_type(const char* start, const char* end) {
 	const char* we = tcWordEnd(start, end);
-	if (tcEqSpan(start, we, "unsigned")) tcCurrentType = tcMakeType('u', 0);
+	if (tcEqSpan(start, we, "unsigned")) {
+		/* "unsigned char" -> QCCs char (der 68k-Codegen laedt char nullerweitert,
+		   verhaelt sich also schon vorzeichenlos); "unsigned int"/"unsigned long"
+		   -> 'u'. Dafuer muss das ZWEITE Wort geprueft werden, tcWordEnd liefert
+		   nur das erste. */
+		const char* q = we; const char* qe;
+		while (q < end && (*q == ' ' || *q == '\t')) q++;
+		qe = tcWordEnd(q, end);
+		if (tcEqSpan(q, qe, "char")) tcCurrentType = tcMakeType('c', 0);
+		else tcCurrentType = tcMakeType('u', 0);
+	}
 	else if (tcEqSpan(start, we, "int")) tcCurrentType = tcMakeType('i', 0);
+	/* long ist auf dem 68k-Ziel wortgleich mit int (32 Bit) -- siehe Grammatik. */
+	else if (tcEqSpan(start, we, "long")) tcCurrentType = tcMakeType('i', 0);
 	else if (tcEqSpan(start, we, "char")) tcCurrentType = tcMakeType('c', 0);
 	else if (tcEqSpan(start, we, "bool")) tcCurrentType = tcMakeType('b', 0);
 	else if (tcEqSpan(start, we, "void")) tcCurrentType = tcMakeType('v', 0);
@@ -1994,7 +2651,23 @@ void tc_funcbegin(const char* start, const char* end) {
 	int i, f; (void)start; (void)end;
 	tcCurrentFuncIndex = -1;
 	f = tcLookupFunction(tcFuncName);
-	if (f >= 0) { fprintf(stderr, "qcc: duplicate function\n"); return; }
+	if (f >= 0) {
+		/* Eine bare Vorwaertsdeklaration darf spaeter in derselben Datei
+		   durch den echten Funktionsrumpf aufgeloest werden. */
+		if (!tcFunctionIsDeclOnly[f] || tcFunctionIsExternal[f] ||
+			tcFunctionNargs[f] != tcLocalCount ||
+			!tcSameType(tcFunctionReturnTypes[f], tcFuncType)) {
+			fprintf(stderr, "qcc: duplicate function\n"); return;
+		}
+		for (i = 0; i < tcLocalCount; i++) {
+			if (!tcSameType(tcFunctionParamTypes[f][i], tcLocalTypes[i])) {
+				fprintf(stderr, "qcc: function prototype mismatch\n");
+				tcSemanticErrors++; return;
+			}
+		}
+		tcCurrentFuncIndex = f;
+		return;
+	}
 	if (tcFunctionCount >= MAX_FUNCTIONS) { fprintf(stderr, "qcc: too many functions\n"); tcSemanticErrors++; return; }
 	f = tcFunctionCount++;
 	tcCopy(tcFunctionNames[f], tcFuncName, tcFuncName + strlen(tcFuncName));
@@ -2015,6 +2688,7 @@ ROUTINE C tc_funcbodybegin
 /* Feuert bei "{" (Beginn eines echten Funktionsrumpfs) -- siehe tc_funcbegin. */
 void tc_funcbodybegin(const char* start, const char* end) {
 	(void)start; (void)end;
+	if (tcCurrentFuncIndex >= 0) tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 0;
 	printf("FUNC %s %d %d\n", tcFuncName, tcLocalCount, tcCurrentFuncIndex >= 0 ? tcFunctionIsStatic[tcCurrentFuncIndex] : 0);
 }
 END
@@ -2028,17 +2702,37 @@ ROUTINE C tc_funcdeclend
 void tc_funcdeclend(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (tcCurrentFuncIndex < 0) return;
-	if (tcFunctionIsStatic[tcCurrentFuncIndex]) {
-		fprintf(stderr, "qcc: static function declaration without body is meaningless\n");
-		tcSemanticErrors++;
-	}
+	/* GELOCKERT 2026-08-10: ein rumpfloser Prototyp bedeutet NICHT
+	   zwangslaeufig "in einer anderen Datei definiert". In C ist
+	   "static int f(int);" mit spaeterer Definition in DERSELBEN Datei der
+	   voellig uebliche Weg fuer Vorwaertsdeklarationen und gegenseitige
+	   Rekursion -- Data/qcc_p.c macht davon 177-mal Gebrauch. Die fruehere
+	   Ablehnung war deshalb schlicht falsch.
+	   Unbedenklich fuer den Codegen: collectFunctions() im Backend sammelt in
+	   einem ERSTEN Durchlauf alle echten FUNC-RueMpfe und erst danach die
+	   FUNCDECLs, uebernimmt eine Vorwaertsdeklaration also nur dann, wenn kein
+	   echter Rumpf existiert -- die Reihenfolge im Quelltext spielt keine Rolle.
+	   BEWUSST AUFGEGEBEN: ein static-Prototyp, dem NIE eine Definition folgt,
+	   wird jetzt nicht mehr hier gemeldet; er faellt erst beim Linken als
+	   unaufgeloestes Symbol auf. */
 	tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 1;
 	printf("FUNCDECL %s %d\n", tcFuncName, tcFunctionNargs[tcCurrentFuncIndex]);
 }
 END
 ROUTINE C tc_funcend
 void tc_funcend(const char* start, const char* end) {
+	int gi;
 	(void)start; (void)end;
+	/* Sprungmarken sind funktionslokal -- ein "goto" auf eine nie definierte
+	   Marke faellt deshalb genau hier auf, nicht erst im Backend (das wuerde
+	   sonst ein "JMP L<n>" ohne zugehoeriges "LABEL L<n>" erzeugen und der
+	   Assembler meldete einen unaufloesbaren Bezug). */
+	for (gi = 0; gi < tcGotoCount; gi++) {
+		if (tcGotoUsed[gi] && !tcGotoDefined[gi]) {
+			fprintf(stderr, "qcc: undefined label '%s'\n", tcGotoNames[gi]);
+			tcSemanticErrors++;
+		}
+	}
 	if (tcCurrentFuncIndex >= 0 && tcFunctionIsDeclOnly[tcCurrentFuncIndex]) return;
 	/* Fallthrough-Rueckgabe 0 absichern; ein explizites return davor ist harmlos */
 	printf("PUSH 0\n%s\nENDFUNC\n", tcIsPointer(tcFuncType) ? "RETP" : "RET");
@@ -2087,9 +2781,9 @@ void tc_localdecl(const char* start, const char* end) {
 		return;
 	}
 	while (p < end && *p == '[') {
-		int len = 0;
+		int len;
 		p++;
-		while (p < end && *p >= '0' && *p <= '9') len = len * 10 + (*p++ - '0');
+		len = tcConstArrayLen(&p, end);
 		if (len <= 0) { fprintf(stderr, "qcc: array size must be positive\n"); return; }
 		if (p >= end || *p != ']') { fprintf(stderr, "qcc: bad array declaration\n"); return; }
 		p++;
@@ -2216,8 +2910,71 @@ void tc_staticlocal(const char* start, const char* end) {
 }
 END
 ROUTINE C tc_globalend
+/* Mehrere Deklaratoren in einer globalen Deklaration
+   ("static TCType a[512], b[512][64];", 31 Fundstellen in den beiden
+   Bootstrap-Zieldateien). tcGlobalOne parst eine VOLLSTAENDIGE Deklaration aus
+   dem Rohtext (Typ + EIN Deklarator), deshalb wird hier an den Kommas der
+   OBERSTEN Ebene geteilt und fuer jeden weiteren Deklarator der Typ-Praefix
+   davorgesetzt. Kommas innerhalb von "[...]" oder "{...}" (Initialisiererlisten)
+   zaehlen dabei nicht. */
+static void tc_globalend(const char* start, const char* end);
+static void tcGlobalOne(const char* start, const char* end);
 void tc_globalend(const char* start, const char* end) {
-const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 0, neg = 0, arrayLen = 0, arrayNDims = 1, initCount = -1; long value = 0, initValues[256]; int i; int arrayDims[TC_MAXDIMS - 1];
+	const char* p = start;
+	const char* declStart;
+	const char* seg;
+	char buf[1024];
+	int depth = 0, n, i;
+	/* Ende des Typ-Praefix suchen: erster Bezeichner, der von "[", "=", ","
+	   oder ";" gefolgt wird -- also der erste Deklaratorname. */
+	while (p < end && (*p == ' ' || *p == '\t')) p++;
+	declStart = p;
+	{
+		const char* q = p; const char* lastWord = p;
+		while (q < end && *q != '[' && *q != '=' && *q != ',' && *q != ';') {
+			if (*q == ' ' || *q == '\t' || *q == '*') { q++; lastWord = q; }
+			else q++;
+		}
+		declStart = lastWord;
+	}
+	/* Gibt es ueberhaupt ein Komma auf oberster Ebene? */
+	depth = 0; seg = 0;
+	for (p = declStart; p < end; p++) {
+		if (*p == '[' || *p == '{') depth++;
+		else if (*p == ']' || *p == '}') depth--;
+		else if (*p == ',' && depth == 0) { seg = p; break; }
+	}
+	if (!seg) { tcGlobalOne(start, end); return; }
+	/* erster Deklarator: Originaltext bis zum Komma, mit ";" abgeschlossen */
+	n = (int)(seg - start);
+	if (n > 1000) { fprintf(stderr, "qcc: declaration too long\n"); tcSemanticErrors++; return; }
+	for (i = 0; i < n; i++) buf[i] = start[i];
+	buf[n] = ';'; buf[n + 1] = 0;
+	tcGlobalOne(buf, buf + n + 1);
+	/* weitere Deklaratoren: Typ-Praefix + Segment */
+	p = seg + 1;
+	for (;;) {
+		const char* stop = 0;
+		int pre = (int)(declStart - start);
+		depth = 0;
+		for (seg = p; seg < end; seg++) {
+			if (*seg == '[' || *seg == '{') depth++;
+			else if (*seg == ']' || *seg == '}') depth--;
+			else if ((*seg == ',' || *seg == ';') && depth == 0) { stop = seg; break; }
+		}
+		if (!stop) stop = end;
+		n = 0;
+		for (i = 0; i < pre; i++) buf[n++] = start[i];
+		while (p < stop && (*p == ' ' || *p == '\t')) p++;
+		while (p < stop) buf[n++] = *p++;
+		buf[n++] = ';'; buf[n] = 0;
+		tcGlobalOne(buf, buf + n);
+		if (stop >= end || *stop == ';') break;
+		p = stop + 1;
+	}
+}
+static void tcGlobalOne(const char* start, const char* end) {
+const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 0, neg = 0, arrayLen = 0, arrayNDims = 1, initCount = -1; int hadBrackets = 0; long value = 0, initValues[256]; int i; int arrayDims[TC_MAXDIMS - 1];
 	int isConst = tcPendingConst; int isStatic = 0; tcPendingConst = 0;
 	tcPendingStatic = 0;
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
@@ -2247,12 +3004,37 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		type = tcMakeType('s', 0); type.structId = (unsigned char)(sid + 1);
 		p = ne;
 	}
-	else if (end - p >= 12 && p[0] == 'u') { p += 12; type.base = 'u'; }
+	/* "unsigned" wird jetzt WORTWEISE ausgewertet statt pauschal 12 Zeichen zu
+	   ueberspringen -- das traf nur "unsigned int" und lief bei "unsigned char"
+	   (13 Zeichen) mitten in den Bezeichner hinein. */
+	else if (end - p >= 8 && p[0] == 'u' && p[1] == 'n' && p[2] == 's' && p[3] == 'i'
+	         && p[4] == 'g' && p[5] == 'n' && p[6] == 'e' && p[7] == 'd') {
+		const char* q; const char* qe;
+		p += 8;
+		while (p < end && (*p == ' ' || *p == '\t')) p++;
+		q = p; qe = tcWordEnd(q, end);
+		if (tcEqSpan(q, qe, "char")) { type.base = 'c'; p = qe; }
+		else if (tcEqSpan(q, qe, "int") || tcEqSpan(q, qe, "long")) { type.base = 'u'; p = qe; }
+		else type.base = 'u';                 /* blosses "unsigned" */
+	}
 	else if (end - p >= 3 && p[0] == 'i' && p[1] == 'n' && p[2] == 't') p += 3;
+	/* long ist auf dem 68k-Ziel wortgleich mit int (32 Bit), type.base bleibt 'i'. */
+	else if (end - p >= 4 && p[0] == 'l' && p[1] == 'o' && p[2] == 'n' && p[3] == 'g') p += 4;
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
-	else { fprintf(stderr, "qcc: bad global declaration\n"); return; }
+	else {
+		/* Typedef-Name als Basistyp ("TCType x;") -- dieselbe Aufloesung wie in
+		   tc_type. Steht ZULETZT, damit die eingebauten Schluesselwoerter nicht
+		   als Typedefname missdeutet werden. Ohne diesen Zweig scheiterte JEDE
+		   globale Variable eines typedef'ten Typs mit "bad global declaration",
+		   obwohl dieselbe Deklaration als LOKALE laengst funktionierte. */
+		const char* ne = tcWordEnd(p, end);
+		int td = tcLookupTypedef(p, ne);
+		if (td < 0) { fprintf(stderr, "qcc: bad global declaration\n"); return; }
+		type = tcTypedefTypes[td];
+		p = ne;
+	}
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	while (p < end && *p == '*') { type = tcPointerTo(type); p++; while (p < end && (*p == ' ' || *p == '\t')) p++; }
 	if (!tcIsPointer(type) && type.base == 'v') {
@@ -2264,15 +3046,18 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	if (p < end && *p == '[') {
 		int dims[TC_MAXDIMS]; int ndims = 0; int k;
 		while (p < end && *p == '[') {
-			int len = 0;
+			int len;
 			p++;
-			while (p < end && *p >= '0' && *p <= '9') len = len * 10 + (*p++ - '0');
+			len = tcConstArrayLen(&p, end);
 			if (p >= end || *p != ']') { fprintf(stderr, "qcc: bad array declaration\n"); return; }
 			p++;
-			if (len <= 0) { fprintf(stderr, "qcc: array size must be positive\n"); return; }
+			/* len==0 heisst "[]" -- Groesse offen, wird weiter unten aus dem
+			   String-Initialisierer abgeleitet. Nur echte Negativwerte sind ein Fehler. */
+			if (len < 0) { fprintf(stderr, "qcc: array size must be positive\n"); return; }
 			if (ndims >= TC_MAXDIMS) { fprintf(stderr, "qcc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
 			dims[ndims++] = len;
 		}
+		hadBrackets = 1;   /* auch bei "[]" -- arrayLen ist dann noch 0 */
 		arrayLen = dims[0];
 		for (k = 1; k < ndims; k++) { arrayLen *= dims[k]; arrayDims[k - 1] = dims[k]; }
 		arrayNDims = ndims;
@@ -2288,7 +3073,9 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 			tcSemanticErrors++; return;
 		}
 		p++;
-		if (arrayLen) {
+		/* hadBrackets statt arrayLen: bei "char x[] = \"abc\";" ist die Laenge
+		   hier noch unbekannt und wird erst aus dem Literal abgeleitet. */
+		if (arrayLen || hadBrackets) {
 			/* String-Literal als Array-Initialisierer (char msg[6] = "hallo";):
 			   erst pruefen, ob nach dem "=" (nach Whitespace) ein Anfuehrungszeichen
 			   folgt -- tcInitList erkennt nur "{...}", ein Roh-String-Scan (analog
@@ -2304,6 +3091,9 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 				if (strEnd < end) strEnd++;
 				if (!type.pointers && type.base == 'c') {
 					strLen = tcDecodeStringLit(q, strEnd, strBytes, 256);
+					/* "char x[] = \"abc\";" -- Groesse offen gelassen, also aus dem
+					   Literal ableiten (Zeichen + abschliessendes Nullbyte). */
+					if (arrayLen == 0) arrayLen = strLen + 1;
 					if (strLen > arrayLen) { fprintf(stderr, "qcc: string literal too long for array\n"); tcSemanticErrors++; return; }
 					initCount = strLen < arrayLen ? strLen + 1 : strLen;
 					for (i = 0; i < strLen; i++) initValues[i] = strBytes[i];
@@ -2440,7 +3230,27 @@ static int tcDecodeStringLit(const char* start, const char* end, unsigned char* 
 		unsigned char c;
 		if (*p == '\\' && p + 1 < stop) {
 			char esc = p[1]; p += 2;
-			c = esc == 'n' ? 10 : esc == 't' ? 9 : esc == 'r' ? 13 : esc == '0' ? 0 : (unsigned char)esc;
+			/* Hex- ("\x09") und Oktal-Escapes ("\011"): ohne sie wurden die
+			   Ziffern als EINZELNE Zeichen mitgezaehlt, was bei einer festen
+			   Arraygroesse als "string literal too long" scheiterte -- und bei
+			   offener Groesse eine falsche Laenge ergeben haette. */
+			if (esc == 'x' || esc == 'X') {
+				int v = 0, n = 0;
+				while (p < stop && n < 2) {
+					int d;
+					if (*p >= '0' && *p <= '9') d = *p - '0';
+					else if (*p >= 'a' && *p <= 'f') d = *p - 'a' + 10;
+					else if (*p >= 'A' && *p <= 'F') d = *p - 'A' + 10;
+					else break;
+					v = v * 16 + d; p++; n++;
+				}
+				c = (unsigned char)v;
+			} else if (esc >= '0' && esc <= '7') {
+				int v = esc - '0', n = 1;
+				while (p < stop && n < 3 && *p >= '0' && *p <= '7') { v = v * 8 + (*p++ - '0'); n++; }
+				c = (unsigned char)v;
+			}
+			else c = esc == 'n' ? 10 : esc == 't' ? 9 : esc == 'r' ? 13 : (unsigned char)esc;
 		} else {
 			c = (unsigned char)*p++;
 		}
@@ -2499,7 +3309,7 @@ void tc_neg(const char* start, const char* end) {
 	TCType operand = tcTypePop();
 	(void)end;
 	if (*start == '!') {
-		if (!tcIsBool(operand)) tcTypeError("logical negation", tcMakeType('b', 0), operand);
+		if (!tcIsTruthy(operand)) tcTypeError("logical negation", tcMakeType('b', 0), operand);
 		tcTypePush(tcMakeType('b', 0)); printf("NOT\n");
 	} else if (*start == '~') {
 		if (!tcIsInteger(operand)) tcTypeError("bitwise negation", tcMakeType('i', 0), operand);
@@ -2591,6 +3401,55 @@ void tc_varref(const char* start, const char* end) {
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 	}
+	/* p->feld (2026-08-10): identisch zu (*p).feld, braucht also KEINEN Index --
+	   schlicht Feldadresse = Zeigerwert + Feldoffset. IPADD poppt den Zeiger
+	   zuerst (muss oben liegen), deshalb PUSH offset VOR dem Laden des Zeigers.
+	   Ein Array-Feld liefert wie ueberall dessen ADRESSE statt eines Wertes. */
+	if (indexed && *nameEnd == '-' && nameEnd + 1 < end && nameEnd[1] == '>') {
+		TCType pt = slot >= 0 ? tcLocalTypes[slot] : (global >= 0 ? tcGlobalType(global) : tcBadType());
+		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		int sid, fi;
+		/* Kein Fehler, wenn die Basis nicht passt: der Zweig wird allein am
+		   Rohtext ("-" gefolgt von ">") erkannt, und ein Fehlalarm darf keine
+		   falsche Meldung erzeugen -- dann uebernehmen die regulaeren Zweige.
+		   Ein echtes "p->f" mit falscher Basis faellt weiter unten ohnehin als
+		   "unknown variable" bzw. Typfehler auf. */
+		if ((slot < 0 && global < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') goto tcArrowSkip;
+		sid = tcPointee(pt).structId - 1;
+		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
+		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+		if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]);
+		printf("IPADD c\n");
+		if (fieldEnd < end && *fieldEnd == '[') {
+			if (!tcStructFieldArrayLen[sid][fi]) {
+				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
+			if (tcStructFieldRowLen[sid][fi] > 0) {
+				/* ZWEIDIMENSIONALES Feld: "x->args[i]" adressiert ZEILE i, liefert also
+				   einen ZEIGER auf deren erstes Element -- kein LOADIND. Der Sprung geht
+				   um rowLen ELEMENTE, deshalb IPADDN mit der Zeilengroesse in Bytes
+				   (IPADD kennt nur feste Typtag-Groessen). */
+				int elemSize = tcTypeTag(tcStructFieldTypes[sid][fi]) == 'c' ? 1 : 4;
+				tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi] / tcStructFieldRowLen[sid][fi]);
+				printf("IPADDN %d\n", tcStructFieldRowLen[sid][fi] * elemSize);
+				tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return;
+			}
+			if (tcStructFieldRowLen[sid][fi] > 0) {
+				/* Bewusst NICHT umgesetzt (kommt im Bootstrap-Ziel nicht vor): lieber
+				   diagnostizieren als still mit falscher Schrittweite rechnen. */
+				fprintf(stderr, "qcc: indexing a two-dimensional struct field is only supported via '->' in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
+			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
+			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+		}
+		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
+		printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+		tcTypePush(tcStructFieldTypes[sid][fi]); return;
+	}
+	tcArrowSkip: ;
 	if (slot >= 0 && indexed && *nameEnd == '.' && tcLocalTypes[slot].base == 's') {
 		int sid = tcLocalTypes[slot].structId - 1;
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -2608,6 +3467,12 @@ void tc_varref(const char* start, const char* end) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
 				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
 				tcTypePush(tcBadType()); return;
+			}
+			if (tcStructFieldRowLen[sid][fi] > 0) {
+				/* Bewusst NICHT umgesetzt (kommt im Bootstrap-Ziel nicht vor): lieber
+				   diagnostizieren als still mit falscher Schrittweite rechnen. */
+				fprintf(stderr, "qcc: indexing a two-dimensional struct field is only supported via '->' in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
 			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -2675,6 +3540,12 @@ void tc_varref(const char* start, const char* end) {
 				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++;
 				tcTypePush(tcBadType()); return;
 			}
+			if (tcStructFieldRowLen[sid][fi] > 0) {
+				/* Bewusst NICHT umgesetzt (kommt im Bootstrap-Ziel nicht vor): lieber
+				   diagnostizieren als still mit falscher Schrittweite rechnen. */
+				fprintf(stderr, "qcc: indexing a two-dimensional struct field is only supported via '->' in this version\n");
+				tcSemanticErrors++; tcTypePush(tcBadType()); return;
+			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
 			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
@@ -2719,7 +3590,21 @@ void tc_varref(const char* start, const char* end) {
 	}
 	else {
 		int ec = tcLookupEnumConst(start, nameEnd);
+		int fnv;
 		if (ec >= 0 && !indexed) { printf("PUSH %ld\n", tcEnumConstValues[ec]); tcTypePush(tcMakeType('i', 0)); }
+		/* Ein blosser Funktionsname AUSSERHALB eines Aufrufs ist sein eigener
+		   Zeiger (implizites "&" wie in echtem C: "push(tc_foo)"). Dieser Zweig
+		   wird nur erreicht, wenn der Name weder lokale noch globale Variable
+		   noch Enum-Konstante ist -- ein echter Aufruf "foo(...)" laeuft ueber
+		   die call-Regel und kommt hier gar nicht an. Der Typ ist ein
+		   Funktionszeiger mit der Signatur der Funktion; sie wird bei Bedarf
+		   angelegt, damit auch Funktionen ohne passendes typedef zuweisbar
+		   bleiben. */
+		else if (!indexed && (fnv = tcLookupFunction2(start, nameEnd)) >= 0) {
+			int sig = tcFnSigForFunction(fnv);
+			printf("PUSHFN %s\n", tcFunctionNames[fnv]);
+			tcTypePush(sig >= 0 ? tcMakeFnPtr(sig) : tcBadType());
+		}
 		else { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; }
 	}
 }
@@ -2817,6 +3702,39 @@ void tc_term(const char* start, const char* end) {
 	}
 }
 END
+ROUTINE C tc_parenbegin
+/* Ein geklammerter Ausdruck darf die verzoegerten Operatoren des
+   UMSCHLIESSENDEN Ausdrucks nicht sehen. QCC emittiert "*"/"+" und Vergleiche
+   naemlich nicht sofort, sondern gemerkt (tcPendingMul/tcPendingAdd/tcRel0/
+   tcRel1) und wendet sie in tc_factor NACH JEDEM Faktor an -- also auch nach
+   dem ersten Faktor INNERHALB der Klammern. "x * (a + b)" erzeugte dadurch
+   "LOADL x / LOADL a / MUL / LOADL b / ADD", rechnete also (x*a)+b statt
+   x*(a+b): stiller Falschcode ohne jede Meldung. Dasselbe Rette-und-nulle-
+   Muster wie bei Aufrufen (tc_callname) und Indizes (tc_arg). */
+void tc_parenbegin(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (tcParenDepth >= 64) { fprintf(stderr, "qcc: parenthesis nesting too deep\n"); tcSemanticErrors++; return; }
+	tcParenSavedAdd[tcParenDepth] = tcPendingAdd;
+	tcParenSavedMul[tcParenDepth] = tcPendingMul;
+	tcParenSavedRel0[tcParenDepth] = tcRel0;
+	tcParenSavedRel1[tcParenDepth] = tcRel1;
+	tcPendingAdd = 0; tcPendingMul = 0; tcRel0 = 0; tcRel1 = 0;
+	tcParenDepth++;
+}
+END
+ROUTINE C tc_parenend
+/* Stellt die geretteten Operatoren wieder her -- feuert VOR tc_factor der
+   umschliessenden Klammer, sodass dort das richtige "*" angewendet wird. */
+void tc_parenend(const char* start, const char* end) {
+	(void)start; (void)end;
+	if (tcParenDepth <= 0) { fprintf(stderr, "qcc: parenthesis-frame mismatch\n"); tcSemanticErrors++; return; }
+	tcParenDepth--;
+	tcPendingAdd = tcParenSavedAdd[tcParenDepth];
+	tcPendingMul = tcParenSavedMul[tcParenDepth];
+	tcRel0 = tcParenSavedRel0[tcParenDepth];
+	tcRel1 = tcParenSavedRel1[tcParenDepth];
+}
+END
 ROUTINE C tc_mulop
 void tc_mulop(const char* start, const char* end) {
 	(void)end;
@@ -2847,7 +3765,7 @@ void tc_expr(const char* start, const char* end) {
 	if (tcRel0) {
 		TCType right = tcTypePop(), left = tcTypePop(); int pointerCompare = tcIsPointer(left) || tcIsPointer(right);
 		if (pointerCompare && !(tcSameType(left, right) || (tcIsPointer(left) && right.base == 'z' && !right.pointers) || (tcIsPointer(right) && left.base == 'z' && !left.pointers))) tcTypeError("pointer comparison", left, right);
-		else if (!pointerCompare && !(tcIsInteger(left) && tcIsInteger(right)) && !(tcIsBool(left) && tcIsBool(right))) tcTypeError("comparison", left, right);
+		else if (!pointerCompare && !((tcIsInteger(left) || tcIsBool(left)) && (tcIsInteger(right) || tcIsBool(right)))) tcTypeError("comparison", left, right);
 		tcTypePush(tcMakeType('b', 0));
 		if (pointerCompare) {
 			if (tcRel1 == '=' && tcRel0 == '=') printf("PCMPEQ\n");
@@ -2869,6 +3787,14 @@ void tc_expr(const char* start, const char* end) {
 END
 ROUTINE C tc_target
 void tc_target(const char* start, const char* end) {
+	/* bisheriges Ziel retten -- die Kettenzuweisung braucht beide (siehe tc_chainassign) */
+	tcPrevTargetSlot = tcTargetSlot;
+	tcPrevTargetIsGlobal = tcTargetIsGlobal;
+	tcPrevTargetType = tcTargetType;
+	tcPrevTargetIsArray = tcTargetIsArray;
+	tcPrevTargetIndirect = tcTargetIndirect;
+	tcCopy(tcPrevTargetGlobal, tcTargetGlobal, tcTargetGlobal + strlen(tcTargetGlobal));
+
 	const char* nameEnd = tcNameEnd(start, end);
 	int global;
 	tcTargetIsArray = nameEnd < end;
@@ -2899,6 +3825,36 @@ void tc_target(const char* start, const char* end) {
 	}
 	/* ptr[i].feld = .. (2026-07-25, Milestone B): siehe tc_varref fuer die Erklaerung.
 	   LOADP statt PUSHADDR, sonst identisch zum Array-Fall (tcTargetIndirect=1). */
+	/* p->feld = .. (2026-08-10): Gegenstueck zum Lesezweig in tc_varref.
+	   Feldadresse = Zeigerwert + Feldoffset, ohne Index; tcTargetIndirect=1
+	   laesst tc_assign daraus ein STOREIND machen. */
+	if (tcTargetIsArray && *nameEnd == '-' && nameEnd + 1 < end && nameEnd[1] == '>') {
+		int gslot = tcTargetSlot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
+		TCType pt = tcTargetSlot >= 0 ? tcTargetType : (gslot >= 0 ? tcGlobalType(gslot) : tcBadType());
+		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		int sid, fi;
+		/* siehe tc_varref: bei nicht passender Basis nicht melden, durchfallen. */
+		if ((tcTargetSlot < 0 && gslot < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') goto tcArrowSkipT;
+		sid = tcPointee(pt).structId - 1;
+		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
+		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); tcSemanticErrors++; return; }
+		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+		if (tcTargetSlot >= 0) printf("LOADP %d\n", tcTargetSlot); else printf("LOADGP %s\n", tcGlobalNames[gslot]);
+		printf("IPADD c\n");
+		if (fieldEnd < end && *fieldEnd == '[') {
+			if (!tcStructFieldArrayLen[sid][fi]) {
+				fprintf(stderr, "qcc: scalar struct field cannot be indexed\n"); tcSemanticErrors++; return;
+			}
+			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
+			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+		} else if (tcStructFieldArrayLen[sid][fi] > 0) {
+			fprintf(stderr, "qcc: cannot assign to array field\n"); tcSemanticErrors++;
+		}
+		tcTargetType = tcStructFieldTypes[sid][fi];
+		tcTargetIndirect = 1;
+		return;
+	}
+	tcArrowSkipT: ;
 	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') {
 		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
@@ -3088,9 +4044,39 @@ void tc_assignop(const char* start, const char* end) {
 	if (!(tcAssignOp[0] == '=' && tcAssignOp[1] == 0)) tcLoadTarget();
 }
 END
+ROUTINE C tc_chainassign
+/* "a = b = 0;" -- der Wert liegt einmal auf dem Stack und wird in BEIDE Ziele
+   geschrieben (in C ist die Zuweisung ein Ausdruck, dessen Wert nach links
+   weitergereicht wird). tc_target hat das erste Ziel nach tcPrevTarget*
+   gerettet, das zweite steht in tcTarget*. Bewusst nur EINFACHE Ziele
+   (Variable/Global, nicht indiziert, nicht ueber Zeiger) -- bei allem anderen
+   liegt bereits Adressrechnung auf dem Stack, die hier nicht doppelt
+   verwendet werden darf; das wird diagnostiziert statt still falsch gerechnet. */
+void tc_chainassign(const char* start, const char* end) {
+	TCType got; char tag;
+	(void)start; (void)end;
+	tcChainHandled = 1;
+	if (tcTargetIndirect || tcTargetIsArray || tcPrevTargetIndirect || tcPrevTargetIsArray) {
+		fprintf(stderr, "qcc: chained assignment is only supported for plain variables in this version\n");
+		tcSemanticErrors++; (void)tcTypePop(); return;
+	}
+	got = tcTypePop();
+	if (!tcCompatible(tcTargetType, got)) tcTypeError("assignment", tcTargetType, got);
+	if (!tcCompatible(tcPrevTargetType, got)) tcTypeError("assignment", tcPrevTargetType, got);
+	printf("DUP\n");
+	tag = tcTypeTag(tcTargetType);
+	if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
+	else printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
+	tag = tcTypeTag(tcPrevTargetType);
+	if (tcPrevTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcPrevTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcPrevTargetGlobal);
+	else printf("STORE%s %d\n", tcIsPointer(tcPrevTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcPrevTargetSlot);
+}
+END
 ROUTINE C tc_assign
 void tc_assign(const char* start, const char* end) {
 	const char* p; int hasAssign = 0; TCType got; char tag;
+	/* Kettenzuweisung hat bereits alles erledigt (siehe tc_chainassign). */
+	if (tcChainHandled) { tcChainHandled = 0; return; }
 	for (p = start; p < end; p++) if (*p == '=') { hasAssign = 1; break; }
 	if (!hasAssign) { if (!tcLastWasPrint) { printf("DROP\n"); (void)tcTypePop(); } return; }
 	if (!(tcAssignOp[0] == '=' && tcAssignOp[1] == 0)) tcCompoundAssign();
@@ -3131,6 +4117,7 @@ void tc_callname(const char* start, const char* end) {
 	if (tcCallDepth >= 64) { fprintf(stderr, "qcc: call nesting too deep\\n"); return; }
 	tcCopy(tcCallName[tcCallDepth], start, end);
 	tcCallArgCount[tcCallDepth] = 0;
+	tcCallFnSig[tcCallDepth] = -1;   /* normaler Aufruf ueber einen Namen */
 	/* Argument-Ausdruecke duerfen einen aeusseren +/*-Operator (oder Vergleich) nicht sehen. */
 	tcCallSavedAdd[tcCallDepth] = tcPendingAdd;
 	tcCallSavedMul[tcCallDepth] = tcPendingMul;
@@ -3248,7 +4235,7 @@ END
 ROUTINE C tc_ifcond
 void tc_ifcond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
-	if (!tcIsBool(condition)) tcTypeError("if condition", tcMakeType('b', 0), condition);
+	if (!tcIsTruthy(condition)) tcTypeError("if condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('i')) return;
 	printf("JZ L%d\n", tcCtrlTop[tcCtrlDepth - 1]);
 }
@@ -3282,7 +4269,7 @@ END
 ROUTINE C tc_whilecond
 void tc_whilecond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
-	if (!tcIsBool(condition)) tcTypeError("while condition", tcMakeType('b', 0), condition);
+	if (!tcIsTruthy(condition)) tcTypeError("while condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('w')) return;
 	printf("JZ L%d\n", tcCtrlEnd[tcCtrlDepth - 1]);
 }
@@ -3308,7 +4295,7 @@ END
 ROUTINE C tc_forcond
 void tc_forcond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
-	if (!tcIsBool(condition)) tcTypeError("for condition", tcMakeType('b', 0), condition);
+	if (!tcIsTruthy(condition)) tcTypeError("for condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('f')) return;
 	printf("JZ L%d\n", tcCtrlEnd[tcCtrlDepth - 1]);
 }
@@ -3356,7 +4343,7 @@ END
 ROUTINE C tc_docond
 void tc_docond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
-	if (!tcIsBool(condition)) tcTypeError("do-while condition", tcMakeType('b', 0), condition);
+	if (!tcIsTruthy(condition)) tcTypeError("do-while condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('d')) return;
 	printf("JNZ L%d\n", tcCtrlTop[tcCtrlDepth - 1]);
 }
@@ -3383,6 +4370,169 @@ void tc_continue(const char* start, const char* end) {
 	printf("JMP L%d\n", tcCtrlCont[frame]);
 }
 END
+ROUTINE C tc_goto
+/* "goto name;" -- der Sprung darf VORWAERTS gehen (Marke noch nicht gesehen);
+   tcGotoFind legt die Nummer dann schon jetzt an. Ob die Marke jemals
+   definiert wird, prueft tc_funcend. */
+void tc_goto(const char* start, const char* end) {
+	char name[32];
+	int i;
+	tcIdentFromSpan(name, start, end, "goto");
+	if (name[0] == 0) { fprintf(stderr, "qcc: goto without label name\n"); tcSemanticErrors++; return; }
+	i = tcGotoFind(name);
+	if (i < 0) return;
+	tcGotoUsed[i] = 1;
+	printf("JMP L%d\n", tcGotoLabel[i]);
+}
+END
+ROUTINE C tc_label
+/* "name:" -- Sprungmarke definieren. Bewusst KEINE Pruefung, ob die Marke
+   ueberhaupt angesprungen wird: eine unbenutzte Marke ist in C zulaessig
+   (hoechstens eine Warnung wert), und der generierte Parser Data/qcc_p.c
+   enthaelt genau solche Faelle. */
+void tc_label(const char* start, const char* end) {
+	char name[32];
+	int i;
+	tcIdentFromSpan(name, start, end, 0);
+	if (name[0] == 0) { fprintf(stderr, "qcc: empty label name\n"); tcSemanticErrors++; return; }
+	i = tcGotoFind(name);
+	if (i < 0) return;
+	if (tcGotoDefined[i]) {
+		fprintf(stderr, "qcc: duplicate label '%s'\n", name); tcSemanticErrors++; return;
+	}
+	tcGotoDefined[i] = 1;
+	printf("LABEL L%d\n", tcGotoLabel[i]);
+}
+END
+ROUTINE C tc_charlit
+/* Zeichenliteral 'x' -> Zahlwert. Typ int wie in echtem C (siehe
+   Grammatikkommentar bei charLit). Die Spanne ist inklusive der Hochkommata. */
+void tc_charlit(const char* start, const char* end) {
+	const char* p = start;
+	int v;
+	if (p < end && *p == 39) p++;            /* oeffnendes Hochkomma */
+	if (p >= end) { fprintf(stderr, "qcc: empty character literal\n"); tcSemanticErrors++; tcTypePush(tcMakeType('i', 0)); return; }
+	if (*p == 92) {                          /* Backslash: Escape-Form */
+		p++;
+		if (p >= end) { fprintf(stderr, "qcc: incomplete character escape\n"); tcSemanticErrors++; tcTypePush(tcMakeType('i', 0)); return; }
+		if      (*p == 'n')  v = 10;
+		else if (*p == 't')  v = 9;
+		else if (*p == 'r')  v = 13;
+		else if (*p == '0')  v = 0;
+		else if (*p == 92)   v = 92;
+		else { fprintf(stderr, "qcc: unsupported character escape\n"); tcSemanticErrors++; v = 0; }
+	} else {
+		v = (int)(unsigned char)*p;
+	}
+	printf("PUSH %d\n", v);
+	tcTypePush(tcMakeType('i', 0));
+}
+END
+ROUTINE C tc_voidcast
+/* "(void)ausdruck;" -- der Ausdruck wurde bereits ausgewertet und liegt auf
+   dem Stack; hier nur noch verwerfen. Ein Ausdruck vom Typ void (z.B. der
+   Aufruf einer void-Funktion) hat gar keinen Wert abgelegt, dann entfaellt
+   das DROP. */
+void tc_voidcast(const char* start, const char* end) {
+	TCType t = tcTypePop();
+	(void)start; (void)end;
+	if (tcIsPointer(t) || t.base != 'v') printf("DROP\n");
+}
+END
+ROUTINE C tc_fnptrbegin
+/* Feuert auf dem "(" der Zeigerklammer in
+   "typedef <rueckgabe> (*Name)(<params>);". An dieser Stelle steht in
+   tcCurrentType noch der RUECKGABEtyp -- gleich darauf ueberschreibt ihn die
+   Parameterliste (externParamList wird wiederverwendet, siehe Grammatik), also
+   hier retten. Ausserdem den gemeinsamen extern-Parameterpuffer zuruecksetzen,
+   den wir uns mit externDecl teilen (Deklarationen schachteln nicht). */
+void tc_fnptrbegin(const char* start, const char* end) {
+	(void)start; (void)end;
+	tcFnPtrRetPending = tcCurrentType;
+	tcExternBuildParamCount = 0;
+	tcExternIsVariadic = 0;
+}
+END
+ROUTINE C tc_fnptrtypedef
+/* Registriert "typedef <rueckgabe> (*Name)(<params>);" als eigenen Typ. Der
+   Name steht zwischen "(*" und ")" -- die Spanne wird dafuer direkt abgesucht,
+   weil die Rueckwaertssuche von tc_typedefend hier nicht passt (hinter dem
+   Namen folgt noch die Parameterliste). */
+void tc_fnptrtypedef(const char* start, const char* end) {
+	const char* p = start;
+	const char* nameStart;
+	const char* nameEnd;
+	int k, sig;
+	while (p < end && *p != '(') p++;          /* "(" der Zeigerklammer */
+	while (p < end && (*p == '(' || *p == '*' || *p == ' ' || *p == '\t')) p++;
+	nameStart = p;
+	while (p < end && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+	                   (*p >= '0' && *p <= '9') || *p == '_')) p++;
+	nameEnd = p;
+	if (nameStart == nameEnd) { fprintf(stderr, "qcc: malformed function pointer typedef\n"); tcSemanticErrors++; return; }
+	if (tcExternIsVariadic) { fprintf(stderr, "qcc: variadic function pointers are not supported\n"); tcSemanticErrors++; return; }
+	if (tcTypedefCount >= MAX_TYPEDEFS) { fprintf(stderr, "qcc: too many typedefs\n"); tcSemanticErrors++; return; }
+	if (tcLookupTypedef(nameStart, nameEnd) >= 0) { fprintf(stderr, "qcc: duplicate typedef\n"); tcSemanticErrors++; return; }
+	if (tcExternBuildParamCount > MAX_FNSIG_PARAMS) { fprintf(stderr, "qcc: too many function pointer parameters\n"); tcSemanticErrors++; return; }
+	if (tcFnSigCount >= MAX_FNSIGS) { fprintf(stderr, "qcc: too many function pointer signatures\n"); tcSemanticErrors++; return; }
+	sig = tcFnSigCount++;
+	tcFnSigRet[sig] = tcFnPtrRetPending;
+	tcFnSigNargs[sig] = tcExternBuildParamCount;
+	for (k = 0; k < tcExternBuildParamCount; k++) tcFnSigParams[sig][k] = tcExternBuildParamTypes[k];
+	tcCopy(tcTypedefNames[tcTypedefCount], nameStart, nameEnd);
+	tcTypedefTypes[tcTypedefCount] = tcMakeFnPtr(sig);
+	tcTypedefCount++;
+}
+END
+ROUTINE C tc_indcallbegin
+/* Feuert auf dem "(" eines indirekten Aufrufs "ausdruck(args)". Der Wert des
+   Callee-Ausdrucks liegt zu diesem Zeitpunkt bereits auf dem Stack (varRef hat
+   ihn emittiert) und sein Typ obenauf dem Typstapel -- beides wird hier
+   uebernommen. Ansonsten identische Frame-Buchfuehrung wie tc_callname, damit
+   tc_arg unveraendert mitzaehlt. */
+void tc_indcallbegin(const char* start, const char* end) {
+	TCType callee = tcTypePop();
+	(void)start; (void)end;
+	if (tcCallDepth >= 64) { fprintf(stderr, "qcc: call nesting too deep\n"); return; }
+	tcCallName[tcCallDepth][0] = 0;          /* kein Name -- tc_arg findet keine Funktion und zaehlt nur */
+	tcCallArgCount[tcCallDepth] = 0;
+	if (!tcIsFnPtr(callee)) {
+		fprintf(stderr, "qcc: called value is not a function pointer\n"); tcSemanticErrors++;
+		tcCallFnSig[tcCallDepth] = -1;
+	} else {
+		tcCallFnSig[tcCallDepth] = (int)callee.structId - 1;
+	}
+	tcCallSavedAdd[tcCallDepth] = tcPendingAdd;
+	tcCallSavedMul[tcCallDepth] = tcPendingMul;
+	tcCallSavedRel0[tcCallDepth] = tcRel0;
+	tcCallSavedRel1[tcCallDepth] = tcRel1;
+	tcPendingAdd = 0; tcPendingMul = 0; tcRel0 = 0; tcRel1 = 0;
+	tcCallDepth++;
+}
+END
+ROUTINE C tc_indcall
+/* Schliesst den indirekten Aufruf ab. BEWUSSTE GRENZE: geprueft wird nur die
+   ARGUMENTANZAHL, nicht die Argumenttypen -- tc_arg nimmt die Typen generisch
+   vom Stapel und kann sie mangels Funktionsnamen keiner Signatur zuordnen. Die
+   Rueckgabe traegt dagegen den korrekten Signaturtyp. */
+void tc_indcall(const char* start, const char* end) {
+	int frame, sig;
+	(void)start; (void)end;
+	if (tcCallDepth <= 0) { fprintf(stderr, "qcc: missing call frame\n"); return; }
+	frame = --tcCallDepth;
+	tcPendingAdd = tcCallSavedAdd[frame];
+	tcPendingMul = tcCallSavedMul[frame];
+	tcRel0 = tcCallSavedRel0[frame];
+	tcRel1 = tcCallSavedRel1[frame];
+	sig = tcCallFnSig[frame];
+	if (sig < 0) { tcTypePush(tcBadType()); return; }
+	if (tcFnSigNargs[sig] != tcCallArgCount[frame]) {
+		fprintf(stderr, "qcc: wrong argument count\n"); tcSemanticErrors++;
+	}
+	printf("CALLIND%s %d\n", tcIsPointer(tcFnSigRet[sig]) ? "P" : "", tcCallArgCount[frame]);
+	tcTypePush(tcFnSigRet[sig]);
+}
+END
 ROUTINE C tc_structbegin
 void tc_structbegin(const char* start, const char* end) {
 	tcCopy(tcStructBuildName, start, end);
@@ -3403,7 +4553,7 @@ void tc_structfield(const char* start, const char* end) {
 	/* Spanne deckt "type fieldName [ "[" arraySize "]" ] ;" ab -- Feldname + optionales
 	   Array-Suffix sind das letzte Wort vor ';' (kein Leerraum zwischen Name und "["). */
 	const char* p = end - 1; const char* fieldEnd; const char* fieldStart; const char* bracket;
-	int arrayLen = 0;
+	int arrayLen = 0; int rowLen = 0;
 	while (p > start && (*p == ' ' || *p == '\t' || *p == ';')) p--;
 	fieldEnd = p + 1;
 	/* "*" ebenfalls als Abbruchzeichen (2026-07-25, Pointer-Felder): deckt sowohl
@@ -3415,11 +4565,22 @@ void tc_structfield(const char* start, const char* end) {
 	if (bracket < fieldEnd) {
 		const char* q = bracket + 1;
 		while (q < fieldEnd && *q >= '0' && *q <= '9') arrayLen = arrayLen * 10 + (*q++ - '0');
+		/* optionale ZWEITE Dimension ("char args[6][64];"): arrayLen wird die
+		   GESAMTelementzahl (6*64), rowLen merkt sich die Zeilenlaenge (64),
+		   damit "x.feld[i]" spaeter um ganze ZEILEN springt statt um Elemente. */
+		while (q < fieldEnd && (*q == ']' || *q == ' ' || *q == '\t')) q++;
+		if (q < fieldEnd && *q == '[') {
+			int dim2 = 0;
+			q++;
+			while (q < fieldEnd && *q >= '0' && *q <= '9') dim2 = dim2 * 10 + (*q++ - '0');
+			if (dim2 > 0) { rowLen = dim2; arrayLen = arrayLen * dim2; }
+		}
 		fieldEnd = bracket;
 	}
 	if (tcStructBuildFieldCount < MAX_STRUCT_FIELDS) {
 		tcStructBuildFieldTypes[tcStructBuildFieldCount] = tcCurrentType;
 		tcStructBuildFieldArrayLen[tcStructBuildFieldCount] = arrayLen;
+		tcStructBuildFieldRowLen[tcStructBuildFieldCount] = rowLen;
 		tcCopy(tcStructBuildFieldNames[tcStructBuildFieldCount], fieldStart, fieldEnd);
 		tcStructBuildFieldCount++;
 	} else { fprintf(stderr, "qcc: too many struct fields\n"); tcSemanticErrors++; }
@@ -3470,6 +4631,7 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
 		tcStructFieldTypes[tcStructCount][i] = tcStructBuildFieldTypes[i];
 		tcStructFieldArrayLen[tcStructCount][i] = tcStructBuildFieldArrayLen[i];
+		tcStructFieldRowLen[tcStructCount][i] = tcStructBuildFieldRowLen[i];
 		tcCopy(tcStructFieldNames[tcStructCount][i], tcStructBuildFieldNames[i], tcStructBuildFieldNames[i] + strlen(tcStructBuildFieldNames[i]));
 	}
 	tcStructCount++;
@@ -3586,6 +4748,12 @@ void tc_preincdec(const char* start, const char* end) {
 	const char* p = start + 2; const char* nameStart; const char* nameEnd;
 	int slot, global = -1; TCType t;
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
+	/* "++(*p)": Klammerform, siehe tcDerefIncDec */
+	if (p < end && *p == '(') { tcDerefIncDec(p, end, isDec, 1); return; }
+	if (tcWordEnd(p, end) < end && *tcWordEnd(p, end) == '[') { tcIndexIncDec(p, end, isDec, 1); return; }
+	/* siehe tc_postincdec: "--x" darf nicht als Member-Zugriff gelten. */
+	{ const char* we = tcWordEnd(p, end);
+	  if (we < end && (*we == '.' || (*we == '-' && we + 1 < end && we[1] == '>'))) { tcMemberIncDec(p, end, isDec, 1); return; } }
 	nameStart = p; nameEnd = tcWordEnd(p, end);
 	slot = tcLookupLocal(nameStart, nameEnd);
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
@@ -3603,8 +4771,17 @@ void tc_preincdec(const char* start, const char* end) {
 END
 ROUTINE C tc_postincdec
 void tc_postincdec(const char* start, const char* end) {
-	const char* nameStart = start; const char* nameEnd = tcWordEnd(start, end);
+	const char* nameStart = start; const char* nameEnd;
 	int isDec = (end[-1] == '-');
+	if (start < end && *start == '(') { tcDerefIncDec(start, end, isDec, 0); return; }
+	if (tcWordEnd(start, end) < end && *tcWordEnd(start, end) == '[') { tcIndexIncDec(start, end, isDec, 0); return; }
+	/* NUR bei "." oder einem echten "->": bei "x--" endet das Wort ebenfalls
+	   vor einem "-", das ist aber der Dekrement-Operator und kein Member-
+	   Zugriff. Ohne die ">"-Pruefung meldete jedes "x--" faelschlich
+	   "'->' requires a pointer to struct". */
+	{ const char* we = tcWordEnd(start, end);
+	  if (we < end && (*we == '.' || (*we == '-' && we + 1 < end && we[1] == '>'))) { tcMemberIncDec(start, end, isDec, 0); return; } }
+	nameEnd = tcWordEnd(start, end);
 	int slot = tcLookupLocal(nameStart, nameEnd), global = -1; TCType t;
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
 	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); tcSemanticErrors++; tcTypePush(tcBadType()); return; }
@@ -3817,7 +4994,14 @@ void tc_ternarymiddle(const char* start, const char* end) {
 END
 ROUTINE C tc_ternaryend
 void tc_ternaryend(const char* start, const char* end) {
-	if (tcHasChar(start, end, '?')) tcTernaryEnd();
+	/* tcHasTopChar statt tcHasChar (2026-08-10): das "?" muss auf DIESER Ebene
+	   stehen, nicht irgendwo in einer geklammerten Teilspanne. Bei einem
+	   verschachtelten Ternaer ("a ? 1 : (b ? 2 : 3)") ist conditionalFalse
+	   selbst eine conditionalExpr OHNE eigenen Ternaer -- ihre Spanne enthaelt
+	   aber das "?" des geklammerten inneren Ausdrucks. Mit tcHasChar feuerte
+	   sie deshalb ein zusaetzliches tcTernaryEnd, der Frame-Zaehler lief unter
+	   und es gab "conditional-frame mismatch". */
+	if (tcHasTopChar(start, end, '?')) tcTernaryEnd();
 }
 END
 [ENDE]

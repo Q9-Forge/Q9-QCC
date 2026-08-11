@@ -422,6 +422,18 @@ void encodeTSField(char* in, char* out, int outMax) {
    TEIL 3: Tabellendruck, Adressaufloesung, Linksrekursion, Stack-Maschine
 =========================================================================== */
 
+/* OS-9-Terminals benoetigen fuer eine saubere neue Zeile nur CR. Die
+   Arbeitsdateien bleiben dagegen bewusst mit einfachem LF formatiert. */
+void consoleText(char* text) {
+	int i;
+	i = 0;
+	while (text[i] != 0) {
+		if (text[i] == 10) { putchar(13); }
+		else { putchar(text[i]); }
+		i = i + 1;
+	}
+}
+
 /* statString[-stat] aus dem Original (ein durch negative Statuswerte
    indiziertes char[]) wird durch eine if/else-Kette ersetzt -- weder ein
    global initialisiertes "char x[] = \"...\";" noch eine char*-Variable, der
@@ -440,14 +452,14 @@ void printLexTab() {
 	int i;
 	int stat;
 
-	printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
-	printf("| Nr  | Rule                            | Mode| NTS/TS                          | Addr | T  | F  |\n");
+	printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\r");
+	printf("| Nr  | Rule                            | Mode| NTS/TS                          | Addr | T  | F  |\r");
 	fprintf(fpLst, "+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
 	fprintf(fpLst, "| Nr  | Rule                            | Mode| NTS/TS                          | Addr | T  | F  |\n");
 	i = 0;
 	while (i < aktTabIndex) {
 		if (strlen(lexTab[i].ident) != 0) {
-			printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+			printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\r");
 			fprintf(fpLst, "+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
 		}
 		stat = lexTab[i].trueAction;
@@ -491,11 +503,11 @@ void printLexTab() {
 		} else {
 			tcCopyBounded(tsDisp, lexTab[i].TS, 32);
 		}
-		printf("| %-4d| %-32s| %-4s| %-32s| %-5s| %-3s| %-3s|\n", i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
+		printf("| %-4d| %-32s| %-4s| %-32s| %-5s| %-3s| %-3s|\r", i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
 		fprintf(fpLst, "| %-4d| %-32s| %-4s| %-32s| %-5s| %-3s| %-3s|\n", i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
 		i = i + 1;
 	}
-	printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
+	printf("+-----+---------------------------------+-----+---------------------------------+------+----+----+\r");
 	fprintf(fpLst, "+-----+---------------------------------+-----+---------------------------------+------+----+----+\n");
 }
 
@@ -529,7 +541,7 @@ void resolveCallAddresses() {
 			}
 			lexTab[i].callAddr = found;
 			if (found < 0) {
-				printf("FEHLER: Zeile %d referenziert undefinierte Regel '%s'\n", i, lexTab[i].TS);
+				printf("FEHLER: Zeile %d referenziert undefinierte Regel '%s'\r", i, lexTab[i].TS);
 				errorCnt = errorCnt + 1;
 			}
 		} else {
@@ -588,7 +600,7 @@ void printCyclePath(int targetIdx) {
 		printf("%s -> ", &dfsPathFlat[i * 33]);
 		i = i + 1;
 	}
-	printf("%s\n", &ruleNameListFlat[targetIdx * 33]);
+	printf("%s\r", &ruleNameListFlat[targetIdx * 33]);
 	leftRecursionFound = 1;
 }
 
@@ -683,7 +695,7 @@ int execFrom(int startRow, int pos) {
 			}
 		} else if (strcmp(lexTab[row].mode, "NTS") == 0) {
 			if (lexTab[row].callAddr < 0) {
-				printf("LAUFZEITFEHLER: Aufruf einer undefinierten Regel in Zeile %d\n", row);
+				printf("LAUFZEITFEHLER: Aufruf einer undefinierten Regel in Zeile %d\r", row);
 				return 0;
 			}
 			subPos = curPos;
@@ -694,7 +706,7 @@ int execFrom(int startRow, int pos) {
 				matched = 0;
 			}
 		} else {
-			printf("LAUFZEITFEHLER: unbekannter Modus '%s' in Zeile %d\n", lexTab[row].mode, row);
+			printf("LAUFZEITFEHLER: unbekannter Modus '%s' in Zeile %d\r", lexTab[row].mode, row);
 			return 0;
 		}
 
@@ -708,7 +720,7 @@ int execFrom(int startRow, int pos) {
 			return 0;
 		}
 		if (next < 0) {
-			printf("LAUFZEITFEHLER: unerwarteter Status %d in Zeile %d\n", next, row);
+			printf("LAUFZEITFEHLER: unerwarteter Status %d in Zeile %d\r", next, row);
 			return 0;
 		}
 		row = next;
@@ -737,7 +749,7 @@ void appendLexerCfgLine(char* line) {
 	int n;
 	n = strlen(line);
 	if (lexerCfgLen + n + 2 >= 4096) {		/* LEXER_CFG_LEN */
-		printf("WARNUNG: [LEXER]-Block groesser als %d Bytes -- Rest ignoriert.\n", 4095);
+		printf("WARNUNG: [LEXER]-Block groesser als %d Bytes -- Rest ignoriert.\r", 4095);
 		return;
 	}
 	memcpy(&lexerCfgBuf[lexerCfgLen], line, n);
@@ -751,7 +763,7 @@ void appendCgenCfgLine(char* line) {
 	int n;
 	n = strlen(line);
 	if (cgenCfgLen + n + 2 >= 4096) {		/* CGEN_CFG_LEN */
-		printf("WARNUNG: [CODEGEN]-Block groesser als %d Bytes -- Rest ignoriert.\n", 4095);
+		printf("WARNUNG: [CODEGEN]-Block groesser als %d Bytes -- Rest ignoriert.\r", 4095);
 		return;
 	}
 	memcpy(&cgenCfgBuf[cgenCfgLen], line, n);
@@ -1139,7 +1151,7 @@ int loadWorkfileAsGrammar(char* path) {
 					aktTabIndex = aktTabIndex + 1;
 					rowsLoaded = rowsLoaded + 1;
 				} else {
-					printf("FEHLER: Arbeitsdatei Zeile %d: unbekannter Modus '%s'\n", nr, modeBuf);
+					printf("FEHLER: Arbeitsdatei Zeile %d: unbekannter Modus '%s'\r", nr, modeBuf);
 					errorCnt = errorCnt + 1;
 				}
 			}
@@ -1151,7 +1163,7 @@ int loadWorkfileAsGrammar(char* path) {
 		/* "?" als reiner Text in einem String-Literal triggert den bekannten
 		   "conditional-frame mismatch"-Bug (Quirk 15) -- daher ohne Fragezeichen
 		   umformuliert. */
-		printf("FEHLER: '%s' enthaelt keinen [PARSER-TABELLE]-Block (vermutlich eine alte CSV-Datei)\n", path);
+		printf("FEHLER: '%s' enthaelt keinen [PARSER-TABELLE]-Block (vermutlich eine alte CSV-Datei)\r", path);
 		return 0;
 	}
 	return 1;
@@ -1181,12 +1193,12 @@ int runTests() {
 	if (testCaseCnt == 0) {
 		return 0;
 	}
-	printf("\n=== TESTS (%d Testfaelle) ===\n", testCaseCnt);
+	printf("\r=== TESTS (%d Testfaelle) ===\r", testCaseCnt);
 	if (leftRecursionFound != 0 || errorCnt > 0) {
 		if (leftRecursionFound != 0) {
-			printf("uebersprungen: Grammatik ist linksrekursiv\n");
+			printf("uebersprungen: Grammatik ist linksrekursiv\r");
 		} else {
-			printf("uebersprungen: Grammatik ist fehlerhaft\n");
+			printf("uebersprungen: Grammatik ist fehlerhaft\r");
 		}
 		return 0;
 	}
@@ -1206,9 +1218,9 @@ int runTests() {
 			printf("%s", testCases[i].input);
 			putchar(34);
 			if (testCases[i].expectOk != 0) {
-				printf(" OK\n");
+				printf(" OK\r");
 			} else {
-				printf(" FAIL\n");
+				printf(" FAIL\r");
 			}
 		} else {
 			printf("MISMATCH  TEST ");
@@ -1222,16 +1234,16 @@ int runTests() {
 			if (ok != 0 && fullOk == 0) {
 				printf(" (nur %d von %d Zeichen erkannt)", execPosResult, inputLen);
 			}
-			printf("\n");
+			printf("\r");
 			mismatches = mismatches + 1;
 		}
 		i = i + 1;
 	}
 	passCount = testCaseCnt - mismatches;
 	if (mismatches != 0) {
-		printf("=== %d/%d PASS, MISMATCHES! ===\n", passCount, testCaseCnt);
+		printf("=== %d/%d PASS, MISMATCHES! ===\r", passCount, testCaseCnt);
 	} else {
-		printf("=== %d/%d PASS ===\n", passCount, testCaseCnt);
+		printf("=== %d/%d PASS ===\r", passCount, testCaseCnt);
 	}
 	return mismatches;
 }
@@ -1331,7 +1343,7 @@ void loadPreservedTests(char* path) {
 	}
 	fclose(fp);
 	if (userCodeTruncated != 0) {
-		printf("WARNUNG: [NUTZER-CODE] ist groesser als %d Bytes und wurde gekuerzt.\n", 1048575);		/* USER_CODE_LEN - 1 */
+		printf("WARNUNG: [NUTZER-CODE] ist groesser als %d Bytes und wurde gekuerzt.\r", 1048575);		/* USER_CODE_LEN - 1 */
 	}
 }
 
@@ -1361,7 +1373,7 @@ void push(int line) {
 		lineStack[lineStackIndex] = line;
 		lineStackIndex = lineStackIndex + 1;
 	} else {
-		printf("LEX_ERROR >>> Stack Overflow");
+		printf("LEX_ERROR >>> Stack Overflow\r");
 	}
 }
 
@@ -1370,7 +1382,7 @@ int pop() {
 		lineStackIndex = lineStackIndex - 1;
 		return lineStack[lineStackIndex];
 	} else {
-		printf("LEX_ERROR >>> Stack underflow");
+		printf("LEX_ERROR >>> Stack underflow\r");
 		return -1;
 	}
 }
@@ -1388,7 +1400,7 @@ int restart() {
 }
 
 void errorMsg(char* msg) {
-	printf("<< %s erwartet. >>", msg);
+	printf("<< %s erwartet. >>\r", msg);
 	errorCnt = errorCnt + 1;
 	while (restart() == 0) {
 		lexikalischeAnalyse();
@@ -1425,8 +1437,8 @@ void patchLocalFalse(int fromRow, int toRowExclusive, int target) {
 				/* Auf zwei printf-Aufrufe aufgeteilt: eine einzelne QCC-
 				   String-Literal-Konstante ist auf 256 Bytes begrenzt
 				   (tcDecodeStringLit), der komplette Text ueberschreitet das. */
-				printf("WARNUNG: Regel '%s': Pflicht-Faktor nach ueberspringbarer Gruppe ([..]/{..})\n         vor einer Alternative/umschliessenden Gruppe: konsumiert die Gruppe\n", currentDefRule);
-				printf("         Eingabe und der Faktor schlaegt fehl, wird die Position NICHT\n         zurueckgesetzt (moeglicher Fehlakzept). Grammatik ggf. umformen.\n");
+				printf("WARNUNG: Regel '%s': Pflicht-Faktor nach ueberspringbarer Gruppe ([..]/{..})\r         vor einer Alternative/umschliessenden Gruppe: konsumiert die Gruppe\r", currentDefRule);
+				printf("         Eingabe und der Faktor schlaegt fehl, wird die Position NICHT\r         zurueckgesetzt (moeglicher Fehlakzept). Grammatik ggf. umformen.\r");
 				ambigFalseWarned = 1;
 			}
 			lexTab[i].falseAction = target;
@@ -1755,7 +1767,9 @@ void rule() {
 		}
 
 		addLst(".", 0);
-		printf("%s\n\n", lst);
+		consoleText(lst);
+		putchar(13);
+		putchar(13);
 		fprintf(fpLst, "%s\n\n", lst);
 		appendQuelltext(lst);
 		appendQuelltext("\n\n");
@@ -1802,13 +1816,24 @@ void initLexer() {
 char* comment() {
 	char* index;
 	char* indexEnd;
+	char* moveSrc;
+	char* moveDst;
 	int len;
 
 	if (flagBlockCommentActive != 0) {
 		if (flagBlockComment != 0) {
 			index = strstr(sourceBuffer, endBlockCommandString);
 			if (index != 0) {
-				strcpy(sourceBuffer, index + strlen(endBlockCommandString));
+				/* Quelle und Ziel ueberlappen hier. Microwares strcpy ist
+				   dafuer nicht definiert; deshalb byteweise nach links schieben. */
+				moveSrc = index + strlen(endBlockCommandString);
+				moveDst = index;
+				while (*moveSrc != 0) {
+					*moveDst = *moveSrc;
+					moveSrc = moveSrc + 1;
+					moveDst = moveDst + 1;
+				}
+				*moveDst = 0;
 				charLen = strlen(sourceBuffer);
 				flagBlockCommentActive = 0;
 			} else {
@@ -1824,7 +1849,15 @@ char* comment() {
 				if (indexEnd != 0) {
 					len = strlen(endBlockCommandString);
 					indexEnd = indexEnd + len;
-					strcpy(index, indexEnd);
+					/* Auch hier ueberlappen Quelle und Ziel. */
+					moveSrc = indexEnd;
+					moveDst = index;
+					while (*moveSrc != 0) {
+						*moveDst = *moveSrc;
+						moveSrc = moveSrc + 1;
+						moveDst = moveDst + 1;
+					}
+					*moveDst = 0;
 					charLen = strlen(sourceBuffer);
 				} else {
 					*index = 0;
@@ -1871,12 +1904,12 @@ char* getAktLine() {
 		}
 	}
 	if (charLen == 0 && feof(fpIn) != 0) {
-		printf("EOF\n");
+		printf("EOF\r");
 		flagEOF = 1;
 		sourceBuffer[0] = 0;
 		readPtr = sourceBuffer;
 	} else if (charLen == 0 && feof(fpIn) == 0) {
-		printf("LINE %-3d %s Scanner read Error, \n", lineCnt, sourceBuffer);
+		printf("LINE %-3d %s Scanner read Error, \r", lineCnt, sourceBuffer);
 		sourceBuffer[0] = 10;		/* EOL */
 		readPtr = sourceBuffer;
 	} else if (charLen > 0) {
@@ -1894,13 +1927,18 @@ int getNext() {
 		charLen = charLen - 1;
 		return aktChar;
 	} else {
+		/* Eine Kommentarzeile kann durch comment() vollstaendig leer
+		   werden. Nicht das NUL am Anfang des leeren Puffers als Zeichen
+		   zurueckgeben, sondern direkt die naechste Eingabezeile holen. */
+		while (charLen == 0 && flagEOF == 0) {
+			sourcePtr = getAktLine();
+		}
 		if (flagEOF != 0) {
 			lastChar = aktChar;
 			aktChar = -1;		/* EOF */
 			nextChar = -1;
 			return aktChar;
 		} else {
-			sourcePtr = getAktLine();
 			lastChar = aktChar;
 			aktChar = *sourcePtr;
 			sourcePtr = sourcePtr + 1;
@@ -2021,7 +2059,7 @@ void lexikalischeAnalyse() {
 		if (aktChar == 62) {		/* '>' */
 			getAktChar();
 		} else {
-			printf("LEX_ERROR: '>' nach <%s erwartet\n", aktName);
+			printf("LEX_ERROR: '>' nach <%s erwartet\r", aktName);
 		}
 		lastToken = aktToken;
 		aktToken = 138;		/* TOKEN_IDENT */
@@ -2061,7 +2099,7 @@ void lexikalischeAnalyse() {
 			else if (aktChar == -1) { aktToken = 144; }		/* EOF TOKEN_EXIT */
 			else {
 				aktToken = 145;		/* TOKEN_ERROR */
-				printf("LEX_ERROR: flasches Zeichen <%c>\n", aktChar);
+				printf("LEX_ERROR: flasches Zeichen <%c>\r", aktChar);
 			}
 		}
 		getAktChar();
@@ -2152,7 +2190,7 @@ void ebnfMain(char* baseArg) {
 	tcCopyBounded(cgen68kName, baseArg, len);
 	strcat(cgen68kName, ".s68");
 
-	printf("EBNF Translator on OS-9/68k\n");
+	printf("EBNF Translator on OS-9/68k\r");
 	astReset();
 
 	/* WICHTIG (Reihenfolge!): den TESTS-Block der alten Arbeitsdatei retten,
@@ -2165,9 +2203,9 @@ void ebnfMain(char* baseArg) {
 		/* Fall B: keine .ebnf-Quelle -- die Arbeitsdatei selbst ist die
 		   Grammatik-Quelle. */
 		fallB = 1;
-		printf("Hinweis: '%s' nicht gefunden -- lade Grammatik aus Arbeitsdatei '%s'\n", inputFileName, outputFileName);
+		printf("Hinweis: '%s' nicht gefunden -- lade Grammatik aus Arbeitsdatei '%s'\r", inputFileName, outputFileName);
 		if (loadWorkfileAsGrammar(outputFileName) == 0) {
-			printf("    error: weder '%s' noch eine Arbeitsdatei '%s' lesbar\n", inputFileName, outputFileName);
+			printf("    error: weder '%s' noch eine Arbeitsdatei '%s' lesbar\r", inputFileName, outputFileName);
 			exitProgram(-2);
 		}
 	}
@@ -2175,7 +2213,7 @@ void ebnfMain(char* baseArg) {
 	fpLst = fopen(listFileName, "w");
 	if (fpLst == 0) { fileRet = 1; } else { fileRet = 0; }
 	if (fileRet != 0) {
-		printf("    error: can't open list file: %s", listFileName);
+		printf("    error: can't open list file: %s\r", listFileName);
 		exitProgram(-2);
 	}
 
@@ -2184,7 +2222,7 @@ void ebnfMain(char* baseArg) {
 		resolveCallAddresses();
 		rebuildFirstEdgesFromTable();
 		checkLeftRecursion();
-		printf("%s", quelltextBuf);
+		consoleText(quelltextBuf);
 		fprintf(fpLst, "%s", quelltextBuf);
 		printLexTab();
 		tableReady = 1;
@@ -2200,12 +2238,12 @@ void ebnfMain(char* baseArg) {
 		fpOut = fopen(outputFileName, "w");
 		if (fpOut == 0) { fileRet = 1; } else { fileRet = 0; }
 		if (fileRet != 0) {
-			printf("    error: can't open output file: %s", outputFileName);
+			printf("    error: can't open output file: %s\r", outputFileName);
 			exitProgram(-2);
 		}
 		writeWorkfile(fpOut);
 	} else {
-		printf("Hinweis: Grammatik fehlerhaft -- Arbeitsdatei '%s' bleibt unveraendert.\n", outputFileName);
+		printf("Hinweis: Grammatik fehlerhaft -- Arbeitsdatei '%s' bleibt unveraendert.\r", outputFileName);
 	}
 
 	/* Codegenerierung (siehe docs/ARCHITEKTUR.md): nur im Fall A (echte
@@ -2214,9 +2252,9 @@ void ebnfMain(char* baseArg) {
 	if (fallB == 0 && tableReady != 0 && errorCnt == 0 && leftRecursionFound == 0) {
 		actionsParseConfig(userCodeBuf);
 		if (lexParseConfig(lexerCfgBuf) == 0 || cgenParseConfig(cgenCfgBuf) == 0) {
-			printf("CODEGEN: Konfiguration fehlerhaft -- Codegenerierung uebersprungen.\n");
+			printf("CODEGEN: Konfiguration fehlerhaft -- Codegenerierung uebersprungen.\r");
 		} else if (genParserC(cgenCName) != 0 && genParser68k(cgen68kName) != 0) {
-			printf("CODEGEN: '%s' und '%s' erzeugt.\n", cgenCName, cgen68kName);
+			printf("CODEGEN: '%s' und '%s' erzeugt.\r", cgenCName, cgen68kName);
 			if (cgenWantOS9() != 0) {
 				/* Basisname ohne Verzeichnis-Anteil als Default-psect-Name */
 				base = baseArg;
@@ -2226,7 +2264,7 @@ void ebnfMain(char* baseArg) {
 				tcCopyBounded(cgenOS9Name, baseArg, len);
 				strcat(cgenOS9Name, "_os9.a");
 				if (genParser68kOS9(cgenOS9Name, base) != 0) {
-					printf("CODEGEN: '%s' (OS-9/r68-Format) erzeugt.\n", cgenOS9Name);
+					printf("CODEGEN: '%s' (OS-9/r68-Format) erzeugt.\r", cgenOS9Name);
 				}
 			}
 		}
