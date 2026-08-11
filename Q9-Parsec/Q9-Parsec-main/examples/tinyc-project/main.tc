@@ -1,8 +1,0 @@
-int add(int a, int b);
-
-int main() {
-    putint(add(19, 23));
-    putchar(13);
-    putchar(10);
-    return 0;
-}
