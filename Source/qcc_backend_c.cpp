@@ -35,9 +35,23 @@
 #define MAX_GLOBALS     1024
 #define MAX_ARRAY_LEN   4096
 
+/* 2026-08-11: `args` war vorher `char args[MAX_ARGS][ARG_LEN]`, also 6x64 = 384
+   der damals 416 Byte pro Instr -- bei MAX_IR_LINES=65536 ergab das ein
+   statisches Feld von 26 MB. Auf dem Q9 (16 MB RAM) ist der Compiler damit
+   grundsaetzlich nicht lauffaehig, unabhaengig von jeder Sprachluecke.
+   Jetzt zeigen die Eintraege in einen gemeinsamen Textpool (s. argPool):
+   Instr schrumpft damit auf 24 + 6*sizeof(char*) + 8 Byte -- auf dem 68k mit
+   4-Byte-Zeigern also 56 Byte, das Feld auf 3,7 MB.
+
+   Bewusst als ZEIGER-Array (nicht als Offset-Index): dadurch bleibt jede der
+   101 Lesestellen (`insP->args[i]` als `const char*`) unveraendert gueltig,
+   nur die eine Schreibstelle in readIR() musste angepasst werden. Nicht
+   belegte Argumente zeigen auf einen leeren String, damit Leser sich weiter
+   auf "" statt NULL verlassen koennen -- genau das Verhalten des vormals
+   nullinitialisierten Arrays. */
 typedef struct {
 	char op[OP_LEN];
-	char args[MAX_ARGS][ARG_LEN];
+	char* args[MAX_ARGS];
 	int argc;
 	int line;
 } Instr;
@@ -67,6 +81,20 @@ typedef struct {
 } Global;
 
 static Instr ir[MAX_IR_LINES];
+
+/* Textpool fuer die Argumente aller IR-Zeilen (s. Kommentar an Instr).
+   Groesse an echten Daten bemessen, nicht geraten: SourceQCC/ebnf.tc (12220
+   IR-Zeilen) braucht 109 KB Argumenttext, codegen.tc (16469 Zeilen) 162 KB --
+   also rund 9 Byte pro Zeile. Auf MAX_IR_LINES=65536 hochgerechnet sind das
+   ~0,6 MB; 1 MB laesst damit ueber 60% Luft. Erschoepfung wird wie die
+   uebrigen Kapazitaetsgrenzen dieses Backends laut per fatal() gemeldet,
+   nicht still abgeschnitten. */
+#define ARG_POOL_BYTES  1048576
+static char argPool[ARG_POOL_BYTES];
+static int  argPoolUsed;
+/* Ziel fuer nicht belegte Argumentplaetze -- s. Instr-Kommentar. */
+static char argEmpty[1];
+
 static int irCount = 0;
 
 static Function funcs[MAX_FUNCS];
@@ -76,6 +104,26 @@ static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
 
 static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer registerExtern()/externTableOffset() vorwaertsdeklariert */
+
+/* Legt tok im Pool ab und liefert den Zeiger darauf. */
+static char* argIntern(const char* tok, int irLine)
+{
+	int len;
+	char msg[160];
+	char* dst;
+
+	len = (int)strlen(tok);
+	if (len > ARG_LEN - 1) len = ARG_LEN - 1;   /* wie vormals strncpy(.., ARG_LEN-1) */
+	if (argPoolUsed + len + 1 > ARG_POOL_BYTES) {
+		sprintf(msg, "IR Zeile %d: Argument-Textpool erschoepft (%d Byte)", irLine, ARG_POOL_BYTES);
+		fatal(msg);
+	}
+	dst = &argPool[argPoolUsed];
+	memcpy(dst, tok, len);   /* kein (size_t)-Cast: QCC kennt "(unsigned)" ohne "int" noch nicht, und der implizite Uebergang genuegt */
+	dst[len] = '\0';
+	argPoolUsed += len + 1;
+	return dst;
+}
 
 /* 2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/emitCall()-Kommentar
    in qcc_backend_c.cpp): jeder CALLEXT/CALLEXTP-Aufruf ging bisher per rohem
@@ -383,6 +431,7 @@ static void readIR(const char* path) {
 	char* tok;
 	Instr* insP;
 	char msg[300];
+	int ai;
 
 	fp = fopen(path, "r");
 	if (!fp) { sprintf(msg, "kann IR nicht lesen: %s", path); fatal(msg); }
@@ -396,10 +445,13 @@ static void readIR(const char* path) {
 		strncpy(insP->op, tok, OP_LEN - 1); insP->op[OP_LEN - 1] = '\0';
 		insP->line = line;
 		insP->argc = 0;
+		/* Alle Plaetze zuerst auf den leeren String zeigen lassen -- vormals
+		   waren nicht belegte Argumente "" (nullinitialisiertes Array), darauf
+		   duerfen Leser sich weiterhin verlassen. */
+		for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
 		while ((tok = strtok(NULL, " \t\r\n")) != NULL) {
 			if (insP->argc < MAX_ARGS) {
-				strncpy(insP->args[insP->argc], tok, ARG_LEN - 1);
-				insP->args[insP->argc][ARG_LEN - 1] = '\0';
+				insP->args[insP->argc] = argIntern(tok, line);
 			}
 			insP->argc++;
 		}
