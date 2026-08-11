@@ -370,6 +370,21 @@ def run(instructions, labels, global_initials=None):
         if match:
             write_operand(match.group(2), read_operand(match.group(1)) & 0xff)
             continue
+        # move.b SPEICHER,SPEICHER (2026-08-11): erzeugt das Backend genau
+        # einmal, im Prolog einer Funktion mit char-Parameter -- es kopiert das
+        # echte Wertbyte von der Zellenbasis+3 an die Zellenbasis, damit danach
+        # ALLE Zugriffspfade (LOADC, STOREC und ADDRL+LOADIND) dieselbe Adresse
+        # benutzen. Siehe den ausfuehrlichen Kommentar in
+        # Source/qcc_backend_c.cpp.
+        # Im Zellenmodell dieses Simulators setzt der Schreibzugriff die ganze
+        # Zelle auf den Bytewert. Das ist hier korrekt und keine Vereinfachung:
+        # der Aufrufer hat den char per "move.l #wert,-(a7)" als volles
+        # Langwort abgelegt, die Zelle enthaelt also bereits genau diesen Wert
+        # -- die Zuweisung ist wertgleich.
+        match = re.match(r"move\.b (-?\d+\((?:a[67])\)),(-?\d+\((?:a[67])\))$", ins)
+        if match:
+            write_operand(match.group(2), read_byte_operand(match.group(1)))
+            continue
         match = re.match(r"move\.l (.+),(d[0-7])$", ins)
         if match:
             write_operand(match.group(2), read_operand(match.group(1)))
