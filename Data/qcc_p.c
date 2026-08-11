@@ -26,7 +26,7 @@ static void ws(void) {
 	}
 }
 
-#define ACTION_LOG_MAX 1048576
+#define ACTION_LOG_MAX 262144
 extern void exit(int);
 typedef void (*ActionFn)(const char*, const char*);
 typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;
