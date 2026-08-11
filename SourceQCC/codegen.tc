@@ -1044,6 +1044,20 @@ void emitAndAnd(void* fp) {
 	fputc(38, fp);
 }
 
+/* Gibt den Nachlauf hinter einem erfolgreichen Parse aus: Replay der
+   ACTION-Routinen, danach die Pruefung des Fehlerzaehlers. Als eigene
+   Funktion, weil der Text Anfuehrungszeichen enthaelt und deshalb nicht als
+   einfacher Formatstring uebergeben werden kann (vgl. emitAndAnd). */
+void emitAfterParse(void* fp) {
+	if (routinesCCnt > 0) {
+		fprintf(fp, " actionLogReplay(); if (actionErrors != 0) { printf(");
+		fputc(34, fp);
+		fprintf(fp, "SEMERR\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 1; }");
+	}
+}
+
 void emitOrOr(void* fp) {
 	fputc(124, fp);
 	fputc(124, fp);
@@ -1162,7 +1176,6 @@ int genParserC(char* path) {
 	int r;
 	int fail;
 	char cName[64];			/* GEN_NAME_LEN */
-	char* replayStr;
 	char* lexComment;
 
 	if (validateAstForCodegen() == 0) {
@@ -1186,7 +1199,7 @@ int genParserC(char* path) {
 	fputc(34, fp);
 	fprintf(fp, "<eingabe>");
 	fputc(34, fp);
-	fprintf(fp, "  -> druckt OK/FAIL, exit 0/1.\n");
+	fprintf(fp, "  -> druckt OK/SEMERR/FAIL, exit 0/1/1.\n");
 	if (lexActive != 0) {
 		fprintf(fp, " * LEXER aktiv: Whitespace/Kommentare werden zwischen Symbolen ueberlesen,\n");
 		fprintf(fp, " * lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n");
@@ -1194,7 +1207,18 @@ int genParserC(char* path) {
 	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
 	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
 	fprintf(fp, "static const char* p;\n");
-	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n\n");
+	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
+	/* 2026-08-11: Fehlerzaehler fuer die ACTION-Routinen. Ohne ihn meldete ein
+	   erzeugter Parser semantische Fehler zwar auf stderr, endete aber mit
+	   Rueckgabewert 0 und schrieb "OK" -- eine aufrufende Build-Kette
+	   ("parser x.c > x.ir && backend x.ir") erzeugte dann klaglos falschen
+	   Code. Bewusst hier oben deklariert, damit der [NUTZER-CODE]-Block ihn
+	   sieht; bewusst nur bei vorhandenen Aktionen, damit aktionsfreie
+	   Grammatiken bitgleich bleiben. */
+	if (routinesCCnt > 0) {
+		fprintf(fp, "static int actionErrors = 0;\t/* ACTION-Routinen zaehlen hoch; != 0 => Rueckgabewert 1 */\n");
+	}
+	fprintf(fp, "\n");
 	if (lexActive != 0) {
 		fprintf(fp, "static int idch(int c) {\n");
 		fprintf(fp, "\treturn (c >= '0' ");
@@ -1358,9 +1382,16 @@ int genParserC(char* path) {
 	/* actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input
 	   erkannt) -- nur dann steht fest, dass keine der protokollierten
 	   Aktionen zu einem inzwischen verworfenen Backtracking-Pfad gehoert. */
-	if (routinesCCnt > 0) { replayStr = " actionLogReplay();"; } else { replayStr = ""; }
+	/* Nach dem Replay: hat eine ACTION-Routine einen Fehler gemeldet, ist der
+	   Lauf GESCHEITERT -- auch wenn die Grammatik die Eingabe vollstaendig
+	   erkannt hat. Die bereits ausgegebene Nutzlast bleibt auf stdout stehen
+	   (sie entsteht waehrend des Replays, der Zaehlerstand ist erst danach
+	   bekannt); das Schlusswort lautet dann aber "FAIL" statt "OK", und der
+	   Rueckgabewert ist 1. */
 	if (lexActive != 0) {
-		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {%s printf(", cName, replayStr);
+		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {", cName);
+		emitAfterParse(fp);
+		fprintf(fp, " printf(");
 		fputc(34, fp);
 		fprintf(fp, "OK\\n");
 		fputc(34, fp);
@@ -1368,7 +1399,9 @@ int genParserC(char* path) {
 	} else {
 		fprintf(fp, "\tif (p_%s() ", cName);
 		emitAndAnd(fp);
-		fprintf(fp, " *p == '\\0') {%s printf(", replayStr);
+		fprintf(fp, " *p == '\\0') {");
+		emitAfterParse(fp);
+		fprintf(fp, " printf(");
 		fputc(34, fp);
 		fprintf(fp, "OK\\n");
 		fputc(34, fp);

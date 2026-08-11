@@ -5,12 +5,28 @@
 import sys
 
 
+class SemanticReject(Exception):
+    """Das Frontend hat die Eingabe erkannt, aber semantisch beanstandet.
+
+    Kennzeichen ist das Schlusswort SEMERR auf stdout. Die vorangehende IR ist
+    dann nicht vertrauenswuerdig (siehe parse_ir).
+    """
+
+
 def parse_ir(text):
     prog = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith(";") or line.startswith("#"):
             continue
+        # Schlusswort des Frontends (siehe Kopf des erzeugten Parsers):
+        # OK = uebersetzt, FAIL = Grammatik hat nicht erkannt,
+        # SEMERR = erkannt, aber semantisch beanstandet. Bei SEMERR ist die
+        # vorangehende IR ausdruecklich NICHT vertrauenswuerdig -- sie
+        # auszufuehren wuerde ein falsches Ergebnis als Messwert ausgeben,
+        # deshalb bricht dieses Orakel hier ab statt weiterzurechnen.
+        if line == "SEMERR":
+            raise SemanticReject()
         if line in ("OK", "FAIL"):
             continue
         parts = line.split()
@@ -42,6 +58,20 @@ class Pointer:
 
     def shifted(self, count, size):
         return Pointer(self.block, self.offset + count * size)
+
+
+class FnRef:
+    """Wert eines Funktionszeigers: der Name der Zielfunktion.
+
+    Bewusst eine eigene Klasse und keine nackte Zeichenkette, damit CALLIND
+    einen falsch typisierten Operanden erkennen kann statt ihn zu deuten.
+    LOADP/STOREP/LOADG/STOREG behandeln Werte undurchsichtig, ein FnRef
+    ueberlebt Variablen, Arrayelemente und struct-Felder daher unveraendert.
+    """
+    __slots__ = ("name",)
+
+    def __init__(self, name):
+        self.name = name
 
 
 def type_size(tag):
@@ -261,6 +291,28 @@ def run(prog):
             newlocals = {k: [callargs[k]] for k in range(n)}
             frames.append((ip + 1, newlocals, {}))
             ip = func_start[name]
+        elif op == "PUSHFN":
+            opstack.append(FnRef(args[0])); ip += 1
+        elif op == "CALLIND" or op == "CALLINDP":
+            # Stapelbelegung wie beim 68k-Backend (siehe dessen CALLIND-Zweig):
+            # ZUERST der Funktionszeiger, DARUEBER arg1..argN -- diese Reihenfolge
+            # ergibt sich aus dem Parsen, weil der Callee-Ausdruck vor den
+            # Argumenten ausgewertet wird. Also erst die Argumente abheben,
+            # danach den Zeiger.
+            n = int(args[0])
+            callargs = [opstack.pop() for _ in range(n)][::-1]
+            fnref = opstack.pop()
+            if not isinstance(fnref, FnRef):
+                print("qccvm: CALLIND ueber einen Wert, der kein Funktionszeiger ist",
+                      file=sys.stderr)
+                return 1
+            if fnref.name not in func_start:
+                print("qccvm: CALLIND auf unbekannte Funktion '%s'" % fnref.name,
+                      file=sys.stderr)
+                return 1
+            newlocals = {k: [callargs[k]] for k in range(n)}
+            frames.append((ip + 1, newlocals, {}))
+            ip = func_start[fnref.name]
         elif op == "RET" or op == "RETP":
             retval = opstack.pop()
             ret_ip, _, _ = frames.pop()
@@ -287,7 +339,12 @@ def main():
             text = f.read()
     else:
         text = sys.stdin.read()
-    prog = parse_ir(text)
+    try:
+        prog = parse_ir(text)
+    except SemanticReject:
+        sys.stderr.write("qccvm: Eingabe war semantisch beanstandet (SEMERR) -- "
+                         "die IR wird nicht ausgefuehrt\n")
+        return 1
     if not any(op == "FUNC" for op, _ in prog):
         sys.stderr.write("qccvm: keine IR (Parse fehlgeschlagen?)\n")
         return 1

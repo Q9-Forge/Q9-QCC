@@ -568,6 +568,82 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: 1D-Array-Doppelindizierungs-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		# --- Funktionszeiger ueber eine EINFACHE Variable (2026-08-11) ---------
+		# Bis hierher STILL FALSCH: "f(7)" mit "Fn f;" wurde als direkter Aufruf
+		# geparst (callStmt probiert `call` vor `indirectCall`, und bei nacktem
+		# Bezeichner greift die direkte Regel). tc_call fand keine Funktion des
+		# Namens, meldete "unknown function" -- und kehrte OHNE Aufruf-Opcode
+		# zurueck. In der IR stand nur "PUSHFN g / STOREP 0 / PUSH 7 / DROP":
+		# der Aufruf war ersatzlos verschwunden, ohne Absturz, ohne FAIL.
+		# Ueber Arrayelement und struct-Feld war es immer korrekt (indirectCall
+		# greift dort) -- die letzten beiden Faelle sind die Gegenprobe, dass der
+		# bereits funktionierende Weg unveraendert blieb.
+		tc_check 'typedef void (*Fn)(int); void g(int x){ putint(x); } int main(){ Fn f; f = g; f(7); }' '7'
+		tc_check 'typedef void (*Fn)(int); void g(int x){ putint(x); } void call(Fn f){ f(9); } int main(){ call(g); }' '9'
+		tc_check 'typedef int (*Fn)(int); int g(int x){ return x+1; } int main(){ Fn f; f = g; putint(f(7)); }' '8'
+		tc_check 'typedef void (*Fn)(int); void g(int x){ putint(x); } Fn gf; int main(){ gf = g; gf(5); }' '5'
+		tc_check 'typedef int (*Fn)(int,int); int add(int a,int b){ return a+b; } int main(){ Fn f; f = add; putint(f(10,20)); }' '30'
+		tc_check 'typedef void (*Fn)(int); void g(int x){ putint(x); } int main(){ Fn t[4]; t[0] = g; t[0](7); }' '7'
+		tc_check 'typedef void (*Fn)(int); struct S{ Fn f; }; void g(int x){ putint(x); } int main(){ struct S s; s.f = g; s.f(3); }' '3'
+
+		# --- Semantische Fehler sind toedlich (2026-08-11) ---------------------
+		# Vorher meldete qcc_p JEDEN semantischen Fehler nur auf stderr, endete
+		# aber mit Rueckgabewert 0 und schrieb "OK" -- eine Kette
+		# "qcc_p x.c > x.ir && qcc_backend x.ir" erzeugte damit klaglos falschen
+		# Code. Der erzeugte Parser zaehlt jetzt in actionErrors (vom Generator
+		# deklariert, siehe Source/codegen.cpp) und liefert 1 statt 0.
+		# Die 58 Tests, die auf den MELDUNGSTEXT pruefen, sind davon unberuehrt:
+		# die Meldungen gehen unveraendert nach stderr.
+		tc_rc_fail() {
+			if build/qcc_p "$1" >/dev/null 2>&1; then
+				echo "FAIL  qcc: semantischer Fehler liefert Rueckgabewert 0: [$1]"; tcfail=1; fail=1
+			fi
+		}
+		tc_rc_ok() {
+			if ! build/qcc_p "$1" >/dev/null 2>&1; then
+				echo "FAIL  qcc: korrekter Code liefert Rueckgabewert != 0: [$1]"; tcfail=1; fail=1
+			fi
+		}
+		# Die drei Schlussworte muessen UNTERSCHEIDBAR bleiben. Sie melden drei
+		# verschiedene Dinge, und mindestens ein Aufrufer (tools/bootstrap_survey.py)
+		# haengt daran: dessen Stufe-1-Messung schiebt PRAEFIXE einer Datei durch
+		# den Parser, in denen unaufgeloeste Vorwaertsbezuege voellig regulaer sind.
+		# Wuerden Parse- und Semantikfehler dasselbe Wort melden, waere diese
+		# Messung wertlos (gemessen: 346 statt 5 Meldungen).
+		# Der Semantik-Marker hiess zuerst SEMFAIL -- und enthielt damit "FAIL"
+		# als Teilzeichenkette, was Aufrufer mit Teilstring-Pruefung genauso
+		# hereinfallen liess. Der letzte Test unten pinnt genau das.
+		tc_marker() {
+			got=$(build/qcc_p "$2" 2>/dev/null | grep -xE 'OK|SEMERR|FAIL' | tail -1)
+			if [ "$got" != "$1" ]; then
+				echo "FAIL  qcc: Schlusswort [$got] statt [$1] fuer: $2"; tcfail=1; fail=1
+			fi
+		}
+		tc_marker OK     'int main(){ putint(42); }'
+		tc_marker SEMERR 'int main(){ nichtda(1); }'
+		tc_marker SEMERR 'int main(){ int a; a = "text"; putint(a); }'
+		tc_marker FAIL   'int main(){ '
+		tc_marker FAIL   'int main(){ int a; a = (5, 6); }'
+		for m in OK SEMERR FAIL; do
+			for n in OK SEMERR FAIL; do
+				if [ "$m" != "$n" ] && case "$m" in *"$n"*) true;; *) false;; esac; then
+					echo "FAIL  qcc: Schlusswort '$m' enthaelt '$n' als Teilzeichenkette -- Aufrufer mit Teilstring-Pruefung fallen darauf herein"; tcfail=1; fail=1
+				fi
+			done
+		done
+
+		tc_rc_fail 'int main(){ nichtda(1); }'
+		tc_rc_fail 'int g(int a){ return a; } int main(){ g(1,2); }'
+		tc_rc_fail 'int x; int x; int main(){ return 0; }'
+		tc_rc_fail 'int main(){ int a[0]; return 0; }'
+		tc_rc_fail 'int main(){ int a; a = "text"; putint(a); }'
+		tc_rc_fail 'bool bad(){ return 1; } int main(){ return 0; }'
+		tc_rc_fail 'int main(){ int a[5]; putint(a[0][1]); }'
+		tc_rc_ok   'int main(){ putint(42); }'
+		tc_rc_ok   'int add(int a,int b){ return a+b; } int main(){ putint(add(19,23)); }'
+		tc_rc_ok   'struct S{int x;}; int main(){ struct S s; s.x=1; putint(s.x); }'
+		tc_rc_ok   'typedef void (*Fn)(int); void g(int x){ putint(x); } int main(){ Fn f; f = g; f(7); }'
+
 		# 2026-08-11: Bis Q9-QCC-Commit ae61e0a ("struct-Mehrfachfelder und freie
 		# Reihenfolge im Programm") war ein zweidimensionales struct-FELD ein
 		# Parse-Fehler -- eine BEWUSSTE Entscheidung (siehe docs/FORTSCHRITT.md:
@@ -3249,7 +3325,7 @@ fi
 # ---------------------------------------------------------------------------
 # Abgleich mit Q9-QCC (2026-08-11)
 #
-# Sieben Dateien existieren in BEIDEN Repos, weil diese Suite QCC mittestet,
+# Zwoelf Dateien existieren in BEIDEN Repos, weil diese Suite QCC mittestet,
 # die QCC-Sprachdefinition und das Backend aber in Q9-QCC gepflegt werden
 # (siehe README beider Repos). Bis zum 2026-08-11 waren sie unbemerkt in fuenf
 # Faellen auseinandergelaufen -- unter anderem mit ZWEI konkurrierenden
@@ -3257,25 +3333,33 @@ fi
 # vormals verwendete den Fall "&c" nicht abdeckte. Genau das soll dieser Test
 # kuenftig sofort sichtbar machen.
 #
+# Geprueft wird die VOLLSTAENDIGE Schnittmenge beider Repos (git ls-files),
+# nicht nur die zuletzt divergenten Dateien -- der erste Anlauf dieses Tests
+# listete sieben Pfade von Hand und liess dabei tools/qccvm.py aus, das
+# unmittelbar danach geaendert werden musste. Einzige bewusste Ausnahme:
+# README.md, der je Repo einen eigenen Text hat und haben soll.
+#
 # Der Test ist bewusst nur ein "warn", wenn das Nachbar-Auscheckverzeichnis
 # fehlt (normal in CI oder bei einem Einzelklon), aber ein echter FAIL, wenn es
 # da ist und abweicht.
 # ---------------------------------------------------------------------------
 QCC_SIBLING=${QCC_SIBLING:-../Q9-QCC}
 if [ -d "$QCC_SIBLING/Data" ]; then
-	divergent=""
-	for f in Data/qcc.ebnf Data/qcc.lextab \
-	         Source/qcc_backend_c.cpp Source/qcc_arm64_backend_c.cpp \
-	         SourceQCC/ebnf.tc SourceQCC/codegen.tc \
-	         tools/qcc68sim.py; do
+	divergent=""; shared=0
+	for f in $(git ls-files | sort); do
+		[ "$f" = "README.md" ] && continue
+		git -C "$QCC_SIBLING" ls-files --error-unmatch "$f" >/dev/null 2>&1 || continue
+		shared=$((shared + 1))
 		if [ ! -f "$QCC_SIBLING/$f" ]; then
 			divergent="$divergent $f(fehlt-dort)"
 		elif ! cmp -s "$f" "$QCC_SIBLING/$f"; then
 			divergent="$divergent $f"
 		fi
 	done
-	if [ -z "$divergent" ]; then
-		echo "ok    Abgleich Q9-QCC: alle 7 geteilten Dateien inhaltsgleich"
+	if [ "$shared" -eq 0 ]; then
+		echo "FAIL  Abgleich Q9-QCC: keine gemeinsamen Dateien gefunden -- Pruefung greift nicht"; fail=1
+	elif [ -z "$divergent" ]; then
+		echo "ok    Abgleich Q9-QCC: alle $shared geteilten Dateien inhaltsgleich"
 	else
 		echo "FAIL  Abgleich Q9-QCC: geteilte Datei(en) abweichend:$divergent"; fail=1
 	fi
