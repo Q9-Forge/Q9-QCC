@@ -358,6 +358,24 @@ conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
    rechnete dadurch (x*a)+b. */
 parenOpen  = "(" .
 parenClose = ")" .
+/* KOMMA-OPERATOR (2026-08-11), bewusst NUR innerhalb eines geklammerten
+   Ausdrucks. In C unterscheidet die Grammatik "expression" (mit Komma) von
+   "assignment-expression" (ohne); Argumentlisten und Initialisierer benutzen
+   letztere. Diese Trennung hier nachzubauen haette jede Regel angefasst, die
+   expr verwendet -- und ein Komma in argList bzw. initList als Operator
+   fehlzudeuten waere ein stiller Fehler. Die geklammerte Form ist eindeutig
+   (argList/initList haben ihre eigenen Kommas in eigenen Regeln) und deckt
+   den Bedarf: "return p == e ? (*value = v, 1) : 0;".
+   commaAssign steht VOR commaValue, weil die geordnete Auswahl sonst bei
+   "*p = 1" den Teilausdruck "*p" als commaValue annimmt und die Zuweisung
+   danach nicht mehr erreichbar ist. Der fehlgeschlagene Versuch ist
+   nebenwirkungsfrei: Aktionen laufen erst beim Replay, ein verworfener
+   Parse-Pfad wird aus dem Aktionsprotokoll zurueckgerollt. */
+commaExpr   = commaItem { commaTok commaItem } .
+commaTok    = "," .
+commaItem   = commaAssign | commaValue .
+commaAssign = target assignop expr .
+commaValue  = expr .
 qmark      = "?" .
 conditionalTrue = expr .
 colon      = ":" .
@@ -385,7 +403,7 @@ factor    = sizeofExpr
           | castExpr
           | preIncDec
           | postIncDec
-          | parenOpen expr parenClose
+          | parenOpen commaExpr parenClose
           | call [ postfixIndex ]
           | indirectCall
           | boolLit
