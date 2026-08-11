@@ -1053,6 +1053,29 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "FAIL  qcc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
 	fi
 
+	# M4a-oob) 2026-08-11: globales Array LAENGER als MAX_ARRAY_LEN mit mindestens
+	# einem GINIT. Bis dahin lief die Ausgabeschleife bis g->length, der
+	# Initialisierer-Puffer fasste aber nur MAX_ARRAY_LEN Elemente -- ab Index
+	# 4096 wurde Speicher HINTER dem Puffer ausgegeben (die Folgefelder und der
+	# Name der naechsten globalen Variablen als Zahlen interpretiert, z.B.
+	# 1751343470 = "nach"). Stiller Falschcode, kein Absturz. Der Fall ist im
+	# Generator selbst nicht aktiv (die grossen Arrays dort haben keinen
+	# Initialisierer), deshalb blieb er unentdeckt. Erwartung: alles ab Index
+	# 4096 ist 0, der gesetzte Index 0 bleibt erhalten, das Nachbar-Array
+	# unversehrt.
+	printf 'GARRAY big i 5000 0\nGINIT big 0 111\nGARRAY nachbar i 2 0\nGINIT nachbar 0 222\nGINIT nachbar 1 333\nFUNC main 0 0\nPUSH 0\nRET\nENDFUNC\n' > build/qcc_oob.ir
+	# Zeile 1 des Blocks ist die Marke, Element N steht also auf Zeile N+2.
+	# Tabulatoren werden vor dem Vergleich entfernt (die Ausgabe ist tabuliert).
+	oob_first=$(sed -n '/^tc_g_big:/,$p' build/qcc_oob.s68 | sed -n '2p' | tr -d ' \t')
+	oob_tail=$(sed -n '/^tc_g_big:/,$p' build/qcc_oob.s68 | sed -n '4098,5001p' | tr -d ' \t' | grep -vc '^dc.l0$')
+	oob_nb=$(sed -n '/^tc_g_nachbar:/,$p' build/qcc_oob.s68 | sed -n '2p' | tr -d ' \t')
+	if build/qcc_backend build/qcc_oob.ir build/qcc_oob.s68 -os9 2>/dev/null && \
+		[ "$oob_first" = "dc.l111" ] && [ "$oob_tail" = "0" ] && [ "$oob_nb" = "dc.l222" ]; then
+		echo "ok    qcc M4a-oob: grosses Array mit Initialisierer gibt jenseits MAX_ARRAY_LEN Nullen aus (kein Speicher hinter init[])"
+	else
+		echo "FAIL  qcc M4a-oob: Array > MAX_ARRAY_LEN mit GINIT gibt Fremdspeicher aus"; fail=1
+	fi
+
 	# 13a-ext) extern-Aufrufe (CALLEXT/CALLEXTP, 2026-07-24): die Microware-68K-
 	# C/C++-ABI (Ultra C/C++ Processor Guide, "Passing Arguments to Functions")
 	# schreibt vor: 1./2. Argument -> d0/d1, weitere Argumente auf dem Stack in
