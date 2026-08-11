@@ -1,455 +1,463 @@
-# Projektstatus
+# Project Status
 
-Stand: **2026-08-10 -- SCHRITT 3 (Live-Q9-Verifikation) ABGESCHLOSSEN.
-Der von QCC selbst übersetzte EBNF-Generator läuft auf dem echten Q9 und
-erzeugt eine mit der `xcc`-gebauten Referenz BITGLEICHE Parserausgabe.
-Siehe Abschnitt "Selfhosting-Kreis geschlossen" direkt unten.**
+*German version: [STATUS_de.md](STATUS_de.md)*
+
+Status: **2026-08-10 -- STEP 3 (Live Q9 Verification) COMPLETE.
+The EBNF generator, translated by QCC itself, runs on real Q9 hardware and
+produces parser output that is BIT-IDENTICAL to the reference built with
+`xcc`. See the "Selfhosting loop closed" section directly below.**
 
 <details>
-<summary>Vorheriger Stand (2026-07-26 spät abends) -- teilweise überholt</summary>
+<summary>Previous status (2026-07-26, late evening) -- partially superseded</summary>
 
-Schritt 3 [Live-Q9-Verifikation] läuft -- fünf echte `-largedata`/`-os9`-
-Backend-Bugs live auf Q9 gefunden und gefixt, main sauber (PR #48+#49). Ein
-sechster, neuer Laufzeitfehler ist beim ersten vollständigen End-zu-Ende-
-Testlauf aufgetaucht und wird gerade untersucht -- Details in der
-Claude-Memory-Datei `qcc-vollport-status.md`.
+Step 3 [Live Q9 verification] is underway -- five real `-largedata`/`-os9`
+backend bugs found and fixed live on Q9, main is clean (PR #48+#49). A
+sixth, new runtime error surfaced during the first complete end-to-end
+test run and is currently being investigated -- details in the
+Claude memory file `qcc-vollport-status.md`.
 
-**Überholt:** Der sechste Bug wurde am 2026-07-27 mit Commit `79024ea`
-gefixt (variadische extern-ABI legte falschen Wert in d1, "Volle Suite
-grün") -- dieser Abschnitt wurde damals nur nicht nachgezogen. Ebenfalls
-korrigiert: die ABI-Regel lautet laut jenem Commit "die ersten ZWEI
-Argumente insgesamt (fest + variadisch) gehen nach d0/d1", nicht die
-weiter unten in diesem Dokument beschriebene Fassung von 2026-07-24.
+**Superseded:** The sixth bug was fixed on 2026-07-27 in commit `79024ea`
+(variadic extern ABI put the wrong value into d1, "full suite green")
+-- this section just wasn't updated at the time. Also corrected: per
+that commit, the ABI rule is "the first TWO arguments in total (fixed +
+variadic) go into d0/d1", not the version described further below in
+this document dated 2026-07-24.
 
 </details>
 
-## Selfhosting-Kreis geschlossen (2026-08-10)
+## Selfhosting loop closed (2026-08-10)
 
-**Der von QCC selbst übersetzte EBNF-Generator läuft auf dem echten Q9 und
-liefert dieselbe Ausgabe wie die `xcc`-gebaute Referenz.**
+**The EBNF generator, translated by QCC itself, runs on real Q9 and
+produces the same output as the reference built with `xcc`.**
 
-Ablauf (vollständig reproduzierbar, alles gegen echte Werkzeuge):
+Procedure (fully reproducible, everything against real tools):
 
-1. `SourceQCC/ebnf.tc` + `SourceQCC/codegen.tc` mit `build/qcc_p` nach
-   Stack-IR, dann mit `qcc_backend -os9 -largedata` (codegen zusätzlich
-   `-part`) nach 68k-Assembler.
-2. Echter `r68` assembliert, echter `l68` linkt gegen echte
-   `clib.l`/`os_lib.l`/`sys.l` (`cstart.r` MUSS zuerst stehen) --
-   Ergebnis: gültiges 2,08-MB-OS-9-Modul, Datensegment nur 4826 Byte.
-3. Modul per ToolShed nach `PROJECTS/ebnf_gen_tc/` der isolierten
-   Arbeitskopie `OS9SYS.claude-work.hda`, Ausführung über
+1. `SourceQCC/ebnf.tc` + `SourceQCC/codegen.tc` compiled with `build/qcc_p`
+   to stack IR, then with `qcc_backend -os9 -largedata` (codegen additionally
+   `-part`) to 68k assembly.
+2. Real `r68` assembles it, real `l68` links it against real
+   `clib.l`/`os_lib.l`/`sys.l` (`cstart.r` MUST come first) --
+   result: a valid 2.08 MB OS-9 module, data segment only 4826 bytes.
+3. Module transferred via ToolShed into `PROJECTS/ebnf_gen_tc/` of the
+   isolated working copy `OS9SYS.claude-work.hda`, executed via
    `test/expect/test_qcc_selfhost_run.exp` (in Q9-Flux).
-4. Ausgabe `qcc_p.c` gegen die `xcc`-Referenz `oberon0_p.c` (identische
-   Eingabegrammatik) verglichen.
+4. Output `qcc_p.c` compared against the `xcc` reference `oberon0_p.c`
+   (identical input grammar).
 
-**Ergebnis:** `qcc_p.c` ist BITGLEICH (md5 `20a990d7ed2b8e816c95163c546b667c`).
-Die ebenfalls erzeugte `qcc.s68` unterscheidet sich in genau EINER Zeile --
-einem Kommentartext (`^Eingabe` vs. `Eingabezeiger`), der so schon im
-Quelltext abweicht (`Source/codegen.cpp:1530` gegen
-`SourceQCC/codegen.tc:1795`), also kein Übersetzungsunterschied.
+**Result:** `qcc_p.c` is BIT-IDENTICAL (md5 `20a990d7ed2b8e816c95163c546b667c`).
+The likewise-generated `qcc.s68` differs in exactly ONE line -- a comment
+text (`^Eingabe` vs. `Eingabezeiger`) that already differs in the source
+itself (`Source/codegen.cpp:1530` vs. `SourceQCC/codegen.tc:1795`), so
+it's not a translation difference.
 
-### Dafür gefundener und behobener Backend-Bug: char-Parameter auf Big-Endian
+### Backend bug found and fixed along the way: char parameter on big-endian
 
-Der erste Vergleich zeigte genau 8 abweichende Zeilen -- alle vier
-Zeichenbereiche der Grammatik kamen als `0x00`/`0x00` statt `0x30`/`0x39`
-usw. heraus:
+The first comparison showed exactly 8 differing lines -- all four
+character-range checks of the grammar came out as `0x00`/`0x00` instead of
+`0x30`/`0x39` etc.:
 
-| Grammatikregel | erwartet | vorher |
+| Grammar rule | expected | before |
 |---|---|---|
 | `digit = "0"~"9"` | `0x30`-`0x39` | `0x00`-`0x00` |
 | `hexDigit ... "A"~"F"` | `0x41`-`0x46` | `0x00`-`0x00` |
 | `lowerLetter = "a"~"z"` | `0x61`-`0x7A` | `0x00`-`0x00` |
 | `upperLetter = "A"~"Z"` | `0x41`-`0x5A` | `0x00`-`0x00` |
 
-**Ursache:** Der Aufrufer legt jedes Argument als volles 32-Bit-Langwort ab
-(`move.l #wert,-(a7)`). Ein `char`-Parameter steht damit im
-NIEDERWERTIGSTEN Byte des Slots, auf dem Big-Endian-68k also bei Slot+3.
-`LOADC`/`STOREC`/`ADDRL` adressierten aber die Slot-BASIS -- bei LOKALEN
-Slots ist das korrekt und in sich konsistent (dort benutzen Speichern und
-Laden dieselbe Adresse), bei PARAMETERN traf es das höchstwertige Byte,
-also für jeden ASCII-Wert konstant 0. Betroffen war u.a.
-`astPushRNG(char lo, char hi)`, das beide Bereichsgrenzen als 0 bekam.
+**Cause:** The caller stores each argument as a full 32-bit longword
+(`move.l #value,-(a7)`). A `char` parameter therefore ends up in the
+LEAST-significant byte of the slot -- on big-endian 68k that's slot+3.
+`LOADC`/`STOREC`/`ADDRL` however addressed the slot BASE -- for LOCAL
+slots that's correct and self-consistent (store and load use the same
+address there), but for PARAMETERS it hit the most-significant byte,
+which is constantly 0 for any ASCII value. Among those affected was
+`astPushRNG(char lo, char hi)`, which received 0 for both range bounds.
 
-**Warum bisher unentdeckt:** ARM64 ist Little-Endian (dort liegt das
-niederwertige Byte zufällig an der Slot-Basis, der Code war also
-versehentlich richtig), und QCCVM hält typisierte Slots statt roher
-Stack-Langworte. Beide Referenzpfade konnten den Fehler prinzipiell nicht
-zeigen -- nur echtes 68k-Big-Endian ist betroffen.
+**Why it went unnoticed until now:** ARM64 is little-endian (there the
+least-significant byte happens to sit at the slot base, so the code was
+accidentally correct), and QCCVM holds typed slots instead of raw stack
+longwords. Neither reference path could have exposed this bug in
+principle -- only real 68k big-endian is affected.
 
-**Fix** (`Source/qcc_backend_c.cpp`, Prolog-Emission): Für jeden Parameter,
-der im Rumpf tatsächlich byteweise benutzt wird (`LOADC`/`STOREC` auf
-seinem Slot -- der eindeutige Beleg, dass es ein `char`-Parameter ist),
-wird einmalig im Prolog das niederwertige Byte an die Slot-Basis kopiert:
+**Fix** (`Source/qcc_backend_c.cpp`, prologue emission): for every
+parameter that is actually accessed byte-wise in the body (`LOADC`/`STOREC`
+on its slot -- the unambiguous proof that it's a `char` parameter), the
+prologue now copies the low-order byte to the slot base once:
 
 ```
 	move.b	15(a5),12(a5)
 ```
 
-Danach stimmen alle bestehenden Byte-Zugriffspfade (`LOADC`, `STOREC` sowie
-`ADDRL`+`LOADIND`/`STOREIND`) unverändert überein, genau wie bei lokalen
-`char`-Slots -- kein Eingriff an den Opcodes nötig. Die Änderung ist rein
-additiv: im gesamten Generator entstehen dadurch genau 3 zusätzliche
-Assemblerzeilen (`tc_astPushRNG` zweimal, `tc_charComment` einmal), keine
-einzige bestehende Zeile ändert sich. Verifiziert wurde das durch einen
-Kontrolllauf, der mit dem UNVERÄNDERTEN Backend die eingecheckte
-`build/selfhost-20260801/codegen.s68` bitgenau reproduziert.
+After that, all existing byte-access paths (`LOADC`, `STOREC` as well as
+`ADDRL`+`LOADIND`/`STOREIND`) line up unchanged, exactly as for local
+`char` slots -- no opcode changes needed. The change is purely additive:
+across the whole generator it adds exactly 3 extra assembly lines
+(`tc_astPushRNG` twice, `tc_charComment` once), not a single existing
+line changes. Verified via a control run that reproduces the checked-in
+`build/selfhost-20260801/codegen.s68` byte-for-byte with the UNCHANGED
+backend.
 
-**Bewusst offene Restlücke:** Ein `char`-Parameter, dessen Adresse per
-`ADDRL` genommen wird, OHNE dass er irgendwo per `LOADC`/`STOREC`
-angefasst wird (`void f(char c){ char* p; p=&c; ... }`), wird nicht
-erkannt. Die IR (`FUNC <name> <nargs>`, s. `docs/IR_OPCODES.md`) trägt
-keine Parametertypen, und `ADDRL` allein ist kein Beleg für `char` -- bei
-einem `int`-Parameter wäre die Verengung sogar falsch. Im echten Generator
-kommt dieser Fall nicht vor.
+**Deliberately open remaining gap:** A `char` parameter whose address is
+taken via `ADDRL` WITHOUT ever being touched via `LOADC`/`STOREC`
+(`void f(char c){ char* p; p=&c; ... }`) is not detected. The IR
+(`FUNC <name> <nargs>`, see `docs/IR_OPCODES.md`) carries no parameter
+types, and `ADDRL` alone is not proof of `char` -- for an `int` parameter
+the narrowing would in fact be wrong. This case does not occur in the
+real generator.
 
-## Wichtig für eine neue Sitzung (auch mit anderer KI)
+## Important for a new session (even with a different AI)
 
-An diesem Projekt arbeiten nicht immer dieselbe KI/Session. Deshalb **vor** dieser
-Datei zusätzlich prüfen:
+Not always the same AI/session works on this project. Therefore **before**
+this file, also check:
 
-- `git status` und `git branch -a` im Repo-Wurzelverzeichnis -- Arbeit kann auf
-  einem noch nicht gemergten Branch liegen, unabhängig davon was hier steht.
-- `gh pr list` -- offene Pull Requests, die noch Review/Merge brauchen.
+- `git status` and `git branch -a` in the repo root -- work may sit on a
+  not-yet-merged branch, regardless of what's written here.
+- `gh pr list` -- open pull requests still needing review/merge.
 
-**Stand 2026-07-23, Sitzungsende:** `main` ist sauber, alle 11 PRs dieser
-Sitzung gemergt (#1--#11), kein offener PR, `./runtests.sh` komplett grün.
-Kein Zwischenstand liegt irgendwo uncommittet -- eine neue Sitzung kann direkt
-mit einer neuen Aufgabe starten.
+**Status 2026-07-23, end of session:** `main` is clean, all 11 PRs from this
+session merged (#1--#11), no open PR, `./runtests.sh` fully green.
+No intermediate state is left uncommitted anywhere -- a new session can
+start directly with a new task.
 
-### Q9/OS-9-Ausführbarkeit (neues Untersuchungsfeld, 2026-07-23)
+### Q9/OS-9 executability (new investigation area, 2026-07-23)
 
-Parallel zur Sprachfeature-Arbeit wurde geprüft, ob der Weg zur echten
-Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
+In parallel to the language-feature work, it was checked whether the path
+to real execution on the target platform (Q9 emulator, OS-9/68k) works:
 
-- Ein triviales, mit der echten Microware-`xcc`-Toolchain kompiliertes
-  C-Programm läuft nachweislich auf Q9 (ToolShed-Transfer, Modul-Format,
-  Ausführung -- alles bestätigt funktionsfähig).
-- Der **komplette EBNF-Generator** (`parsec.cpp`+`codegen.cpp`) kompiliert und
-  linkt inzwischen ebenfalls erfolgreich mit `xcc` zu einem validen OS-9-
-  Modul. Voraussetzung dafür (dauerhaft im Repo, PR #11): alle C++-Templates
-  aus `Source/msvc_compat.h` entfernt (waren der einzige Ort im ganzen
-  Projekt mit Templates; `xcc`s Template-Engine stürzte dabei ab).
-- Der Programmstart auf dem echten Q9-System scheiterte zunächst: Datensegment
-  ~34,6 MB, das System hat nur 16 MB RAM (14 MB frei). Ursache: bewusst nur
-  feste globale Puffer (keine dynamische Speicherverwaltung), aber großzügig
-  für einen modernen Mac dimensioniert.
-- **Behoben (2026-07-24):** Der weit überwiegende Teil (~32 MB) waren zwei
-  feste Tabellen in `codegen.cpp` für die ACTION/ROUTINE-Aktionsschnittstelle
-  (`routinesC`/`routines68k`, je 256 Slots à 64 KB Text, unabhängig davon ob
-  überhaupt Aktionen benutzt werden). Weder Anzahl noch Länge der Routinen
-  lässt sich für eine beliebige Grammatik sinnvoll im Voraus festlegen --
-  gelöst über `malloc`/`realloc`-Verdopplung (klein anfangen, bei Bedarf
-  wachsen) statt fester Arrays. Host-Datensegment damit von ~34,6 MB auf
-  ~1 MB gesunken (`size build/parsec`), passt jetzt auch für ein 8-MB-System.
-  Bestätigt: die Microware-`stdlib.h` stellt `malloc`/`realloc`/`free` bereit,
-  betrifft also nur QCC als Sprache fürs spätere Selfhosting, nicht die
-  OS-9-Zielplattform (siehe `docs/SELFHOSTING_LUECKENLISTE.md`, neue Zeile
-  "malloc/realloc/free"). `./runtests.sh` komplett grün nach der Umstellung.
-- **Bestätigt auf dem echten Q9-Emulator (2026-07-24, Nachtrag):** kompletter
-  EBNF-Generator (Source-Stand nach PR #26, inkl. aller QCC-Sprachfeatures
-  bis String-Literale) mit `xcc -tp=68030,ld` neu gebaut, per ToolShed als
-  `PROJECTS/ebnf_gen/ebnf_gen` eingespielt und live ausgeführt. `ident` zeigt
-  **Data size $FE7D0 = 1.042.384 Byte (~1 MB)** statt der vorherigen ~34,6 MB
-  -- passt jetzt klar in die 16-MB-RAM-Konfiguration. `./ebnf_gen seqtest`
-  lief fehlerfrei durch (Parsertabelle korrekt ausgegeben, `seqtest_p.c` +
-  `seqtest.s68` + `seqtest.lextab`/`.lexlst` erzeugt), kein Absturz, keine
-  PMMU-Fehler. Der vollständige, reproduzierbare xcc-Ablauf (Env-Setup,
-  Kommentarform-Konvertierung, `xcc`-Aufruf, ToolShed-Transfer) steht in der
-  Memory-Datei `q9-xcc-toolchain-milestone.md`. Damit ist dieser Strang
-  vollständig abgeschlossen.
+- A trivial C program compiled with the real Microware `xcc` toolchain
+  demonstrably runs on Q9 (ToolShed transfer, module format,
+  execution -- all confirmed working).
+- The **complete EBNF generator** (`parsec.cpp`+`codegen.cpp`) now also
+  compiles and links successfully with `xcc` into a valid OS-9
+  module. Prerequisite for that (permanently in the repo, PR #11): all
+  C++ templates removed from `Source/msvc_compat.h` (the only place in
+  the whole project using templates; `xcc`'s template engine crashed on
+  them).
+- Program startup on the real Q9 system initially failed: data segment
+  ~34.6 MB, the system only has 16 MB RAM (14 MB free). Cause:
+  deliberately only fixed global buffers (no dynamic memory management),
+  but generously sized for a modern Mac.
+- **Fixed (2026-07-24):** The vast majority (~32 MB) were two fixed
+  tables in `codegen.cpp` for the ACTION/ROUTINE action interface
+  (`routinesC`/`routines68k`, 256 slots of 64 KB text each, regardless of
+  whether actions are used at all). Neither the number nor the length of
+  routines can be meaningfully fixed in advance for an arbitrary grammar
+  -- solved via `malloc`/`realloc` doubling (start small, grow on demand)
+  instead of fixed arrays. Host data segment thus dropped from ~34.6 MB
+  to ~1 MB (`size build/parsec`), now also fits an 8 MB system. Confirmed:
+  the Microware `stdlib.h` provides `malloc`/`realloc`/`free`, so this
+  only affects QCC as the language for later selfhosting, not the OS-9
+  target platform itself (see `docs/SELFHOSTING_LUECKENLISTE.md`, new
+  line "malloc/realloc/free"). `./runtests.sh` fully green after the
+  change.
+- **Confirmed on the real Q9 emulator (2026-07-24, addendum):** complete
+  EBNF generator (source state after PR #26, including all QCC language
+  features up to string literals) rebuilt with `xcc -tp=68030,ld`,
+  deployed via ToolShed as `PROJECTS/ebnf_gen/ebnf_gen` and executed
+  live. `ident` shows **Data size $FE7D0 = 1,042,384 bytes (~1 MB)**
+  instead of the previous ~34.6 MB -- now comfortably fits within the
+  16 MB RAM configuration. `./ebnf_gen seqtest` ran through without
+  errors (parser table output correctly, `seqtest_p.c` +
+  `seqtest.s68` + `seqtest.lextab`/`.lexlst` generated), no crash, no
+  PMMU faults. The complete, reproducible xcc workflow (env setup,
+  comment-form conversion, `xcc` invocation, ToolShed transfer) is
+  documented in the memory file `q9-xcc-toolchain-milestone.md`. This
+  thread is thus fully concluded.
 
-Diese Untersuchung ist inhaltlich unabhängig von der QCC-Sprachfeature-
-Arbeit unten und betrifft ausschließlich den Generator selbst, nicht QCC.
+This investigation is content-wise independent of the QCC language-feature
+work below and concerns only the generator itself, not QCC.
 
-### Selfhosting L2 Vollport: `parsec.cpp` nach QCC ABGESCHLOSSEN (2026-07-26)
+### Selfhosting L2 full port: `parsec.cpp` to QCC COMPLETE (2026-07-26)
 
-**Der komplette Vollport von `Source/parsec.cpp` (2149 Zeilen) nach
-`SourceQCC/ebnf.tc` ist fertig** -- zusammen mit dem bereits am 2026-07-25
-abgeschlossenen `codegen.cpp`-Vollport (`SourceQCC/codegen.tc`) sind damit
-BEIDE Kerndateien des EBNF-Generators als QCC-Quelltext vorhanden. Ein
-echter `l68`-Link von `ebnf.tc` (inkl. seiner eigenen `main()`) gegen
-`codegen.tc` läuft zum ersten Mal komplett OHNE unresolved Symbole durch
-(Regressionstest in `runtests.sh`, letzter Eintrag) -- der resultierende
-2,1-MB-`.out`-Binary ist ein vollständig gelinktes OS-9-Modul.
+**The complete full port of `Source/parsec.cpp` (2149 lines) to
+`SourceQCC/ebnf.tc` is done** -- together with the `codegen.cpp` full port
+already completed on 2026-07-25 (`SourceQCC/codegen.tc`), BOTH core files
+of the EBNF generator now exist as QCC source. A real `l68` link of
+`ebnf.tc` (including its own `main()`) against `codegen.tc` completes for
+the first time entirely WITHOUT unresolved symbols (regression test in
+`runtests.sh`, last entry) -- the resulting 2.1 MB `.out` binary is a
+fully linked OS-9 module.
 
-Chronologischer Fortschritt, alle gefundenen QCC-Sprachquirks und die
-Details jedes einzelnen Portierungsschritts stehen in `docs/FORTSCHRITT.md`
-(Abschnitt "Selfhosting L2 Vollport: `parsec.cpp`") und der Memory-Datei
-`[[qcc-vollport-status]]` -- hier nur die Kurzfassung:
+Chronological progress, every QCC language quirk found, and the details
+of each individual porting step are in `docs/FORTSCHRITT.md` (section
+"Selfhosting L2 full port: `parsec.cpp`") and the memory file
+`[[qcc-vollport-status]]` -- here just the short version:
 
-- Alle neun Kernfunktionen der rekursiven-Abstiegs-Parsergruppe
+- All nine core functions of the recursive-descent parser group
   (`rule`/`expression`/`term`/`factor`/`block`/`repeat`/`option`/`ident`/
-  `literal`) sowie der komplette Lexer (`lexikalischeAnalyse`/`getNext`/
-  `getAktChar`/`comment`/`getAktLine`) und die Arbeitsdatei-Ein-/Ausgabe
+  `literal`) as well as the complete lexer (`lexikalischeAnalyse`/`getNext`/
+  `getAktChar`/`comment`/`getAktLine`) and the work-file I/O
   (`writeWorkfile`/`loadWorkfileAsGrammar`/`loadPreservedTests`/`runTests`)
-  sind portiert.
-- **Bewusste, dokumentierte Abweichung vom Original:** QCC `main()` kann
-  keine Kommandozeilenargumente (`argc`/`argv`) empfangen -- die komplette
-  Original-`main()`-Logik lebt deshalb in `ebnfMain(char* baseArg)`, `main()`
-  selbst ruft sie mit einem fest einprogrammierten Platzhalter-Basisnamen
-  (`"qcc"`) auf. Für einen echten, dateinamen-flexiblen OS-9-Build müsste
-  das durch einen Syscall zum Lesen der OS-9-Kommandozeile ersetzt werden --
-  nicht implementiert.
-- Dabei zwei bisher unentdeckte Backend-Bugs gefunden und gefixt
-  (`Source/qcc_backend_c.cpp`): interne Sprungmarken (`tc_L<n>`,
-  `tc_cmp_yes/done_<n>`) und die `-largedata`-Tabellen (`tc_functab`/
-  `tc_gadata`) kollidierten beim Mehrdatei-Link, weil ihre Zähler in jeder
-  Datei wieder bei 0 starten -- gefixt mit demselben `psectName`-Suffix-Muster
-  wie die bestehende `static`-Namensverfremdung.
-- Rohes Zeiger-Dereferenzieren (`*p` lesen/schreiben, nicht nur `p[i]`) wurde
-  zum ersten Mal im gesamten Projekt gebraucht (Lexer-Scanner) -- vorab per
-  Standalone-Test gegen QCCVM verifiziert, funktioniert einwandfrei.
-- **Schritt 3 (Live-Q9-Verifikation) LÄUFT (Stand 2026-07-26 spät abends):**
-  fünf unabhängige, tiefe Bugs im `-largedata`/`-os9`-68k-Backend
-  gefunden+gefixt (alle nur auf echter Hardware sichtbar, da weder QCCVM
-  noch `tools/qcc68sim.py` echte CPU-Flags/Register-Konventionen/Modul-
-  Relokation nachbilden): Tabellen-Relokation, a3/a4-Registerkonvention nach
-  externen `clib.l`-Aufrufen, `moveq`-Flag-Clobber zwischen Vergleich und
-  bedingtem Branch, und a3/a4-Konvention nach INTERNEN Cross-File-Aufrufen.
-  Alle committet+gemergt (`Source/qcc_backend_c.cpp`, PR #48+#49). Beim
-  ersten kompletten End-zu-Ende-Testlauf mit dem bereinigten Stand ist ein
-  SECHSTER, neuer (milderer, von OS-9 abgefangener statt Emulator-
-  abstürzender) Laufzeitfehler aufgetaucht -- noch nicht behoben, aktueller
-  Ermittlungsstand in der Claude-Memory-Datei `qcc-vollport-status.md`
-  (Bisektionsmethodik + genaue nächste Schritte dort dokumentiert).
+  are ported.
+- **Deliberate, documented deviation from the original:** QCC `main()`
+  cannot receive command-line arguments (`argc`/`argv`) -- the entire
+  original `main()` logic therefore lives in `ebnfMain(char* baseArg)`,
+  and `main()` itself calls it with a fixed, hardcoded placeholder base
+  name (`"qcc"`). For a real, filename-flexible OS-9 build this would
+  need to be replaced by a syscall reading the OS-9 command line -- not
+  implemented.
+- Along the way, two previously undiscovered backend bugs were found and
+  fixed (`Source/qcc_backend_c.cpp`): internal jump labels (`tc_L<n>`,
+  `tc_cmp_yes/done_<n>`) and the `-largedata` tables (`tc_functab`/
+  `tc_gadata`) collided on multi-file linking because their counters
+  restart at 0 in every file -- fixed with the same `psectName` suffix
+  pattern already used for `static` name mangling.
+- Raw pointer dereferencing (reading/writing `*p`, not just `p[i]`) was
+  needed for the first time in the whole project (lexer scanner) --
+  verified beforehand with a standalone test against QCCVM, works
+  correctly.
+- **Step 3 (Live Q9 verification) IN PROGRESS (as of 2026-07-26, late
+  evening):** five independent, deep bugs found+fixed in the
+  `-largedata`/`-os9` 68k backend (all visible only on real hardware,
+  since neither QCCVM nor `tools/qcc68sim.py` model real CPU
+  flags/register conventions/module relocation): table relocation,
+  a3/a4 register convention after external `clib.l` calls, `moveq`
+  flag clobber between compare and conditional branch, and a3/a4
+  convention after INTERNAL cross-file calls. All committed+merged
+  (`Source/qcc_backend_c.cpp`, PR #48+#49). On the first complete
+  end-to-end test run with the cleaned-up state, a SIXTH, new (milder,
+  caught by OS-9 rather than crashing the emulator) runtime error
+  surfaced -- not yet fixed, current investigation status in the Claude
+  memory file `qcc-vollport-status.md` (bisection methodology + exact
+  next steps documented there).
 
-## Kurzfassung
+## Summary
 
-Der EBNF-Generator erzeugt aus Grammatiken Parsercode. Als vollständiger
-Referenzpfad ist QCC verfügbar:
+The EBNF generator produces parser code from grammars. QCC is available
+as a complete reference path:
 
-`Data/qcc.ebnf` → generierter Parser → Stack-IR → QCCVM / 68000 / ARM64
+`Data/qcc.ebnf` → generated parser → stack IR → QCCVM / 68000 / ARM64
 
-Alle derzeitigen Regressionstests sind erfolgreich.
+All current regression tests pass.
 
-## Aktuell implementiert
+## Currently implemented
 
-- Ganzzahl-, unsigned-, char-, bool- und Nullwerte
-- Funktionen mit Parametern, Rückgabewerten, Verschachtelung und Rekursion
-- lokale/globale Variablen und eindimensionale Arrays
-- arithmetische, relationale, logische und bitweise Operatoren
-- Kurzschlussauswertung von `&&` und `||`
-- ternärer Operator `?:`
-- Zuweisungen und zusammengesetzte Zuweisungen
-- Kontrollfluss: `if/else`, `while`, `for`, `do/while`, `break`, `continue`
-- `typedef` (Skalar-/Pointer-Aliase, `typedef struct Name Alias;`, sowie
-  `typedef struct { ... } Name;` mit anonymem struct inline)
-- `struct` mit gemischten skalaren Feldtypen (echtes Byte-Layout mit natürlichem
-  Alignment, Feldzugriff lesend/schreibend, lokale Variablen) inkl. Array-Feldern
-  (z. B. `char name[8]`, direkte `p.field[i]`-Indizierung ODER über eine
-  Pointer-Zwischenvariable); Pointer-Felder und verschachtelte structs noch
-  offen, siehe SELFHOSTING_LUECKENLISTE.md
-- `enum` (benannte int-Konstanten)
-- `sizeof` (int/char/bool/unsigned/struct, keine Pointer)
-- Prä-/Postinkrement `++`/`--` (einfache int/unsigned/char-Skalare)
-- `switch`/`case`/`default` (gestapelte Case-Label, kein Fallthrough mit Code zwischen Bodies)
-- Casts `(int)`/`(unsigned int)`/`(char)`/`(bool)` (kein Pointer-/typedef-Ziel)
-- `sizeof(variable)` zusaetzlich zu `sizeof(Typ)` (Skalare und Arrays, lokal+global)
-- `enum Name` als Typ (Deklaration, Parameter, Rueckgabetyp), bleibt intern `int`
-- Pointer: Deklaration, `&`, `*`, `p[i]`, Pointerparameter/-rückgabe,
-  Pointervergleich, skalierte Arithmetik und Pointerdifferenz
-- `const` bei globalen/lokalen Variablen, Arrays und Parametern (Skalar-/Array-
-  Bindung wird gegen Zuweisung/++/-- geschützt) inkl. Pointee-Constness
-  (`const T*`: Schreiben durch den Pointer verboten, Pointer selbst bleibt
-  frei zuweisbar -- `p++`-Idiom funktioniert weiterhin), siehe docs/FORTSCHRITT.md
-- `static`: bei globalen Variablen/Funktionen ein reines No-op (interne
-  Verlinkung ist bei einer einzigen Übersetzungseinheit bedeutungslos); bei
-  lokalen Variablen echte Aufruf-übergreifende Persistenz (als GLOBAL
-  registriert, funktioniert in QCCVM, 68000 und ARM64), inkl. konstantem
-  UND nicht-konstantem Laufzeit-Initialisierer (Runs-once-Guard mit
-  verstecktem bool-Flag-Global, siehe docs/FORTSCHRITT.md). Bewusst OHNE
-  struct/Array in dieser Version, siehe docs/FORTSCHRITT.md
-- `void` als Funktions-Rückgabetyp und `void *` als generischer, bidirektional
-  zu jedem anderen Pointer gleicher Tiefe kompatibler Pointer (Zuweisung/
-  Parameter/Rückgabe ohne Cast); `void *` selbst nicht dereferenzierbar/
-  indizierbar/arithmetikfähig (sauber diagnostiziert), bare `void` bleibt
-  außerhalb des Rückgabetyps verboten, siehe docs/FORTSCHRITT.md
-- Mehrdimensionale Arrays (`int m[2][3]`, `int m[2][3][4]`, `char names[3][4]`,
-  bis `TC_MAXDIMS`=6 Dimensionen) bei lokalen/globalen Variablen --
-  `arr[i1]..[iN]` wird im Frontend per Horner-Schema zu einem flachen Index
-  zusammengeführt (kein neuer Opcode, kein Backend-Change), flache
-  Initialisierer funktionieren mit; bewusst NICHT bei struct-Feldern/
-  Parametern oder verschachtelten Brace-Initialisierern, siehe
+- Integer, unsigned, char, bool, and null values
+- Functions with parameters, return values, nesting, and recursion
+- Local/global variables and one-dimensional arrays
+- Arithmetic, relational, logical, and bitwise operators
+- Short-circuit evaluation of `&&` and `||`
+- Ternary operator `?:`
+- Assignments and compound assignments
+- Control flow: `if/else`, `while`, `for`, `do/while`, `break`, `continue`
+- `typedef` (scalar/pointer aliases, `typedef struct Name Alias;`, as well
+  as `typedef struct { ... } Name;` with an inline anonymous struct)
+- `struct` with mixed scalar field types (real byte layout with natural
+  alignment, field access read/write, local variables), including array
+  fields (e.g. `char name[8]`, direct `p.field[i]` indexing OR via a
+  pointer intermediate variable); pointer fields and nested structs
+  still open, see SELFHOSTING_LUECKENLISTE.md
+- `enum` (named int constants)
+- `sizeof` (int/char/bool/unsigned/struct, no pointers)
+- Pre-/post-increment `++`/`--` (simple int/unsigned/char scalars)
+- `switch`/`case`/`default` (stacked case labels, no fallthrough with code
+  between bodies)
+- Casts `(int)`/`(unsigned int)`/`(char)`/`(bool)` (no pointer/typedef target)
+- `sizeof(variable)` in addition to `sizeof(type)` (scalars and arrays,
+  local+global)
+- `enum Name` as a type (declaration, parameter, return type), stays
+  `int` internally
+- Pointers: declaration, `&`, `*`, `p[i]`, pointer parameters/return
+  values, pointer comparison, scaled arithmetic, and pointer difference
+- `const` on global/local variables, arrays, and parameters (scalar/array
+  binding is protected against assignment/++/--), including pointee
+  constness (`const T*`: writing through the pointer forbidden, the
+  pointer itself remains freely assignable -- the `p++` idiom keeps
+  working), see docs/FORTSCHRITT.md
+- `static`: on global variables/functions a pure no-op (internal linkage
+  is meaningless with a single translation unit); on local variables real
+  cross-call persistence (registered as GLOBAL, works in QCCVM, 68000,
+  and ARM64), including both a constant AND a non-constant runtime
+  initializer (runs-once guard via a hidden bool flag global, see
+  docs/FORTSCHRITT.md). Deliberately WITHOUT struct/array in this
+  version, see docs/FORTSCHRITT.md
+- `void` as a function return type and `void *` as a generic pointer,
+  bidirectionally compatible with any other pointer of the same depth
+  (assignment/parameter/return without a cast); `void *` itself is not
+  dereferenceable/indexable/usable in arithmetic (cleanly diagnosed),
+  bare `void` remains forbidden outside the return type, see
   docs/FORTSCHRITT.md
-- `extern`-Deklarationen für nicht in QCC definierte Funktionen (z. B. echte
-  OS-9/Microware-`clib`-Funktionen wie `strcmp`/`printf`/`malloc`) -- Aufruf
-  über die dokumentierte Microware-68K-ABI (`CALLEXT`/`CALLEXTP`): die FEST
-  deklarierten Parameter gehen nach `d0`/`d1` (genau wie bei einem
-  nicht-variadischen Aufruf), NUR der variadische `"..."`-Überschuss geht auf
-  den Stack -- korrigiert 2026-07-24 nach einem am echten Q9 gefundenen
-  PMMU-Absturz beim ersten echten `printf(fmt, ...)`-Aufruf (frühere Annahme
-  "variadisch = alles auf dem Stack" war nie gegen echten Compiler-Code
-  verifiziert), NUR im 68000-Backend, siehe docs/FORTSCHRITT.md
-- String-Literale (`char*`) -- erzeugen einen anonymen globalen char-Array-
-  Konstanten (`GARRAY`/`GINIT` + Nullterminator) und liefern dessen Adresse
-  (`ADDRG`), dieselben IR-Opcodes wie ein initialisiertes globales char-Array,
-  kein neuer Opcode/Backend-Change; als `const char*` an `extern`-Aufrufe
-  (z. B. ein `printf`-Formatstring) übergebbar. Auch als Array-Initialisierer
-  nutzbar (`char msg[6] = "hallo";`, lokal UND global) -- kopiert die Bytes
-  direkt in die Array-Slots (nicht nur eine Adresse), ein exakt passendes
-  Array ohne Platz für den Nullterminator ist wie in echtem C erlaubt.
-  Bewusst NICHT Teil dieser Version: String-Vergleich/-Verkettung, `sizeof`
-  auf einem Literal ohne Zwischenvariable, siehe docs/FORTSCHRITT.md
-- Direkte Indizierung ohne Zwischenvariable (`func()[i]`, `"text"[i]`) --
-  `postfixIndex`-Huellregel um die bestehende `index`-Regel, `PADD`+`LOADIND`
-  statt `PTRINDEX` (Laufzeitreihenfolge auf dem Stack ist hier `[Pointer,
-  Indexwert]` wie bei `p + n`, nicht wie bei einer benannten Pointer-Variable),
-  kein neuer Opcode/Backend-Change. Bewusst NICHT Teil dieser Version:
-  Indizierung als Zuweisungsziel, verkettete Postfix-Indizierung (`f()[0][1]`),
-  Indizierung auf `"(" expr ")"`, siehe docs/FORTSCHRITT.md
-- 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
-  Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
-  `align 4`/`dc.l` statt `even`/`ds.l` -- Microwares r68 kennt letztere nicht,
-  empirisch via Wine/MWOS ermittelt); Default-Modus (vasm) bleibt
-  unverändert/byte-identisch, siehe docs/FORTSCHRITT.md
-- **Echtes Linken gegen `clib.l` (Microware-Linker `l68`) UND echte Ausführung
-  auf dem echten Q9-Emulator: erledigt (2026-07-24).** `putint`/`putuint`/
-  `putchar` rufen im `-os9`-Modus jetzt den echten, ungepufferten
-  `_os_write`-Syscall aus `clib.l` auf (Ganzzahl->ASCII-Wandlung komplett in
-  eigenem 68k-Code, kein `printf`/keine String-Literale nötig). Ein Testprogramm
-  wurde mit `r68`+`l68` zu einem echten OS-9-Modul gelinkt, per ToolShed auf
-  das Q9-Image kopiert und auf dem LAUFENDEN Emulator per Telnet ausgeführt --
-  korrekte Ausgabe (`42`, `-7`, `X`), kein Absturz. Dabei drei eigenständige
-  Linker-/ABI-Bugs gefunden und behoben (falsches Frame-Register `a6` statt
-  `a5`, `jsr` statt `bsr` für externe Aufrufe, falsche `l68`-Dateireihenfolge)
-  plus einen unabhängigen, vorher nie entdeckten Bug im `%`-Operator des
-  68000-Backends (`tc_mod_i32`/`tc_umod_u32` multiplizierten Quotient*Dividend
-  statt Quotient*Divisor). Details siehe docs/FORTSCHRITT.md.
-- QCCVM als ausführbares Testorakel
-- 68000-Backend mit Simulatorprüfung
-- natives ARM64/Darwin-Backend mit Runtime
-- **Mehrdatei-Übersetzung** (erledigt 2026-07-25, siehe eigener Abschnitt unten) --
-  bare Funktionsprototyp ohne Rumpf + `extern` bei globalen Variablen für echte
-  getrennte Kompilation, `static` bekommt echte Bedeutung, live gegen echten
-  `r68`+`l68`- UND `clang`/`ld`-Link verifiziert
+- Multi-dimensional arrays (`int m[2][3]`, `int m[2][3][4]`,
+  `char names[3][4]`, up to `TC_MAXDIMS`=6 dimensions) for local/global
+  variables -- `arr[i1]..[iN]` is folded into a flat index in the
+  frontend via Horner's scheme (no new opcode, no backend change), flat
+  initializers work along with it; deliberately NOT for struct fields/
+  parameters or nested brace initializers, see docs/FORTSCHRITT.md
+- `extern` declarations for functions not defined in QCC (e.g. real
+  OS-9/Microware `clib` functions like `strcmp`/`printf`/`malloc`) --
+  called via the documented Microware 68K ABI (`CALLEXT`/`CALLEXTP`): the
+  FIXED declared parameters go into `d0`/`d1` (exactly as in a
+  non-variadic call), ONLY the variadic `"..."` overflow goes on the
+  stack -- corrected 2026-07-24 after a PMMU crash found on real Q9 on
+  the first real `printf(fmt, ...)` call (the earlier assumption
+  "variadic = everything on the stack" had never been verified against
+  real compiler code), ONLY in the 68000 backend, see docs/FORTSCHRITT.md
+- String literals (`char*`) -- create an anonymous global char-array
+  constant (`GARRAY`/`GINIT` + null terminator) and yield its address
+  (`ADDRG`), the same IR opcodes as an initialized global char array, no
+  new opcode/backend change; passable as `const char*` to `extern` calls
+  (e.g. a `printf` format string). Also usable as an array initializer
+  (`char msg[6] = "hallo";`, local AND global) -- copies the bytes
+  directly into the array slots (not just an address), an exactly fitting
+  array with no room for the null terminator is allowed just like in real
+  C. Deliberately NOT part of this version: string comparison/
+  concatenation, `sizeof` on a literal without an intermediate variable,
+  see docs/FORTSCHRITT.md
+- Direct indexing without an intermediate variable (`func()[i]`,
+  `"text"[i]`) -- `postfixIndex` wrapper rule around the existing `index`
+  rule, `PADD`+`LOADIND` instead of `PTRINDEX` (the runtime order on the
+  stack here is `[pointer, index value]` as with `p + n`, not as with a
+  named pointer variable), no new opcode/backend change. Deliberately NOT
+  part of this version: indexing as an assignment target, chained
+  postfix indexing (`f()[0][1]`), indexing on `"(" expr ")"`, see
+  docs/FORTSCHRITT.md
+- 68000 backend: optional `-os9` output mode for the REAL Microware
+  assembler `r68` (`nam`/`psect`/`ends` framing, `*` full-line comments,
+  `align 4`/`dc.l` instead of `even`/`ds.l` -- Microware's r68 doesn't
+  know the latter, determined empirically via Wine/MWOS); default mode
+  (vasm) remains unchanged/byte-identical, see docs/FORTSCHRITT.md
+- **Real linking against `clib.l` (Microware linker `l68`) AND real
+  execution on the real Q9 emulator: done (2026-07-24).** `putint`/
+  `putuint`/`putchar` now call the real, unbuffered `_os_write` syscall
+  from `clib.l` in `-os9` mode (integer→ASCII conversion entirely in
+  hand-written 68k code, no `printf`/no string literals needed). A test
+  program was linked into a real OS-9 module with `r68`+`l68`, copied to
+  the Q9 image via ToolShed, and executed on the RUNNING emulator over
+  Telnet -- correct output (`42`, `-7`, `X`), no crash. In the process
+  three independent linker/ABI bugs were found and fixed (wrong frame
+  register `a6` instead of `a5`, `jsr` instead of `bsr` for external
+  calls, wrong `l68` file order), plus an independent, previously
+  undiscovered bug in the `%` operator of the 68000 backend
+  (`tc_mod_i32`/`tc_umod_u32` multiplied quotient*dividend instead of
+  quotient*divisor). Details in docs/FORTSCHRITT.md.
+- QCCVM as an executable test oracle
+- 68000 backend with simulator checking
+- Native ARM64/Darwin backend with runtime
+- **Multi-file compilation** (done 2026-07-25, see its own section below)
+  -- bare function prototype without a body + `extern` for global
+  variables for real separate compilation, `static` gets real meaning,
+  verified live against real `r68`+`l68` AND `clang`/`ld` linking
 
-## Verifikation
+## Verification
 
-`./runtests.sh` meldet aktuell:
+`./runtests.sh` currently reports:
 
 ```text
-135 QCC-Programme korrekt
-68000-Pointer-End-to-End-Test korrekt
-ARM64/Darwin-Test korrekt
-struct-Feldzugriff (einheitlich + gemischt + anonym im typedef + Array-Feld) 68000 + ARM64 korrekt
-switch/case 68000 + ARM64 korrekt
-static-Lokale-Persistenz 68000 + ARM64 korrekt
-void/void* 68000 + ARM64 korrekt
-2D-Array-Indizierung 68000 + ARM64 korrekt
-extern-Aufruf-ABI (2 Register / 2 Register+2 Stack / variadisch / char*-String-Literal) 68000 korrekt, ARM64 lehnt sauber ab
-String-Literal-Adressierung (GARRAY/GINIT/ADDRG) 68000 + ARM64 korrekt
--os9-Ausgabemodus: DATA/BSS/Scratch-Puffer + CALLEXT assemblieren fehlerfrei mit dem echten r68 (via Wine)
-68k signed/unsigned MUL/DIV/MOD + Fakultaet korrekt (inkl. der 2026-07-24 gefundenen %-Regression)
-Mehrdatei M1: Funktionsaufruf+Global ueber Dateigrenze, static-Isolation, Duplicate-/Signatur-Konsistenzpruefung (QCCVM-Merge-Tool)
-Mehrdatei M2: echter r68+l68-Link zweier getrennt kompilierter Dateien + Duplicate-Symbol-Erkennung durch l68
-Mehrdatei M3: echte getrennte .o-Kompilate + clang/ld-Link + Duplicate-Symbol-Erkennung durch ld
-=== ALLE TESTS OK ===
+135 QCC programs correct
+68000 pointer end-to-end test correct
+ARM64/Darwin test correct
+struct field access (uniform + mixed + anonymous in typedef + array field) 68000 + ARM64 correct
+switch/case 68000 + ARM64 correct
+static local persistence 68000 + ARM64 correct
+void/void* 68000 + ARM64 correct
+2D array indexing 68000 + ARM64 correct
+extern call ABI (2 registers / 2 registers+2 stack / variadic / char* string literal) 68000 correct, ARM64 cleanly rejects
+string literal addressing (GARRAY/GINIT/ADDRG) 68000 + ARM64 correct
+-os9 output mode: DATA/BSS/scratch buffers + CALLEXT assemble without errors with the real r68 (via Wine)
+68k signed/unsigned MUL/DIV/MOD + factorial correct (including the %-regression found 2026-07-24)
+Multi-file M1: function call+global across file boundary, static isolation, duplicate/signature consistency check (QCCVM merge tool)
+Multi-file M2: real r68+l68 link of two separately compiled files + duplicate symbol detection by l68
+Multi-file M3: real separate .o compiles + clang/ld link + duplicate symbol detection by ld
+=== ALL TESTS OK ===
 ```
 
-Zusätzlich (nicht Teil von `./runtests.sh`, da echter Q9-Zugriff nötig): ein `-os9`-Modul mit
-`putint`/`putchar` wurde mit `r68`+`l68 -a` (Reihenfolge: `cstart.r` zuerst!) gegen
-`clib.l`/`os_lib.l`/`sys.l` gelinkt, per ToolShed auf `local_images/OS9SYS.hda` kopiert und
-auf dem laufenden Q9-Emulator per Telnet ausgeführt -- Ausgabe `42\r-7\rX` bytegenau bestätigt.
-```
+Additionally (not part of `./runtests.sh`, since it requires real Q9
+access): an `-os9` module with `putint`/`putchar` was linked with
+`r68`+`l68 -a` (order: `cstart.r` first!) against
+`clib.l`/`os_lib.l`/`sys.l`, copied to `local_images/OS9SYS.hda` via
+ToolShed, and executed on the running Q9 emulator over Telnet -- output
+`42\r-7\rX` confirmed byte-for-byte.
 
-## Nächster sinnvoller Schritt
+## Next reasonable step
 
-Zwei unabhängige Stränge stehen zur Wahl:
+Two independent strands are on the table:
 
-1. **Sprachfeatures:** weiter ein klar abgegrenztes Feature pro Schritt.
-   `const` (inkl. Pointee-Constness), `static` (inkl. konstantem
-   Initialisierer), Array-Felder in `struct`, `void`/`void *`,
-   zweidimensionale Arrays, `extern`-Deklarationen (inkl. Microware-ABI-
-   Aufrufcodegen), der `-os9`-r68-Ausgabemodus, echtes `l68`-Linken gegen
-   `clib.l` (inkl. echter Ausführung auf dem Q9) UND String-Literale (inkl.
-   Übergabe als `const char*` an einen `extern`-Aufruf) sind seit 2026-07-24
-   erledigt (siehe oben). Ebenfalls seit 2026-07-24 erledigt: ein echter
-   extern-ABI-Bug (variadische Aufrufe legten faelschlich ALLE Argumente auf
-   den Stack statt nur den `"..."`-Ueberschuss) wurde am echten Q9 gefunden
-   und behoben -- `printf("value: %d\n", x)` gegen die reale `clib.l` liefert
-   jetzt korrekt `value: 42`, siehe docs/FORTSCHRITT.md. Ebenfalls seit
-   2026-07-24 erledigt: String-Literale als Array-Initialisierer
-   (`char msg[6] = "hallo";`, lokal und global, mit Laengen- und
-   Typpruefung), nicht-konstanter `static`-Initialisierer (Runs-once-Guard
-   mit hidden Flag-Global), direkte Indizierung ohne Zwischenvariable
-   (`func()[i]`, `"text"[i]`), direkte `p.field[i]`-Indizierung von
-   struct-Array-Feldern UND mehr als 2 Array-Dimensionen (bis
-   `TC_MAXDIMS`=6). Damit ist der urspruengliche Sprachfeature-Fahrplan aus
-   der Selfhosting-Lueckenliste (Abschnitt 1) vollstaendig abgearbeitet --
-   Mehrdatei-Uebersetzung (siehe unten) ist seit 2026-07-25 ebenfalls
-   erledigt -- damit ist der Sprachmittel-Fahrplan aus
-   docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 1 vollstaendig abgearbeitet.
-2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
-   seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
-   oben) -- dieser Strang ist damit abgeschlossen. Die QCC-68k-Backend-
-   Laufzeit-Anbindung (`putint`/`putchar` gegen `clib.l`) ist bereits erledigt
-   (siehe oben); `exit`/Rückgabewert-Weitergabe an
-   `F$Exit` noch nicht gesondert geprüft.
+1. **Language features:** continue one clearly scoped feature per step.
+   `const` (including pointee constness), `static` (including a constant
+   initializer), array fields in `struct`, `void`/`void *`,
+   two-dimensional arrays, `extern` declarations (including Microware ABI
+   call codegen), the `-os9` r68 output mode, real `l68` linking against
+   `clib.l` (including real execution on Q9) AND string literals
+   (including passing as `const char*` to an `extern` call) have been
+   done since 2026-07-24 (see above). Also done since 2026-07-24: a real
+   extern ABI bug (variadic calls incorrectly put ALL arguments on the
+   stack instead of just the `"..."` overflow) was found and fixed on
+   real Q9 -- `printf("value: %d\n", x)` against the real `clib.l` now
+   correctly outputs `value: 42`, see docs/FORTSCHRITT.md. Also done
+   since 2026-07-24: string literals as array initializers
+   (`char msg[6] = "hallo";`, local and global, with length and type
+   checking), non-constant `static` initializer (runs-once guard with a
+   hidden flag global), direct indexing without an intermediate variable
+   (`func()[i]`, `"text"[i]`), direct `p.field[i]` indexing of
+   struct array fields AND more than 2 array dimensions (up to
+   `TC_MAXDIMS`=6). This completes the original language-feature roadmap
+   from the selfhosting gap list (section 1) -- multi-file compilation
+   (see below) has likewise been done since 2026-07-25 -- so the
+   language-feature roadmap from docs/SELFHOSTING_LUECKENLISTE.md
+   section 1 is now fully worked through.
+2. **Q9 executability:** the generator's memory footprint has been
+   reduced AND confirmed on the real Q9 emulator since 2026-07-24 (see
+   the section above) -- this strand is thus concluded. The QCC 68k
+   backend runtime bridging (`putint`/`putchar` against `clib.l`) is
+   already done (see above); `exit`/return-value handoff to `F$Exit`
+   has not yet been separately checked.
 
-Vor jeder Sprach-Erweiterung sind Frontend, IR, QCCVM, 68000- und
-ARM64-Backend sowie ein Regressionstest zu prüfen.
+Before every language extension, the frontend, IR, QCCVM, 68000 and
+ARM64 backends, and a regression test must be checked.
 
-## Mehrdatei-Übersetzung (2026-07-25, M1-M3 erledigt)
+## Multi-file compilation (2026-07-25, M1-M3 done)
 
-Getrennt kompilierte QCC-Dateien können jetzt echt separat übersetzt und
-gelinkt werden (Nutzerwunsch: bei größeren Projekten soll nicht mehr alles
-in einem Rutsch kompiliert werden müssen). Vier Meilensteine (M0-Spike +
-M1-M3), alle live gegen die echten Toolchains verifiziert:
+Separately compiled QCC files can now really be compiled and linked
+separately (user request: larger projects should no longer require
+compiling everything in one shot). Four milestones (M0 spike + M1-M3),
+all verified live against the real toolchains:
 
-- **Neue Deklarationsformen:** ein bare Funktionsprototyp ohne Rumpf
-  (`int f(int x);`) für normale interne `bsr`/`bl`-Verlinkung -- bewusst
-  GETRENNT vom bestehenden `extern` (das bleibt fest an die Microware-ABI/
-  `CALLEXT` für echte `clib.l`-Aufrufe gebunden). `extern <typ> <name>;`
-  deklariert jetzt auch globale Variablen ohne Speicherallokation.
-- **`static` bekommt zum ersten Mal echte Bedeutung** bei globalen
-  Funktionen/Variablen (bisher reines No-op).
-- **Neue IR-Pseudo-Opcodes** `FUNCDECL`/`GLOBALDECL`: "existiert, ist aber
-  nicht hier definiert".
-- **`tools/qcc_merge.py`** (neu): Mini-Linker-Simulation für QCCVM, da
-  QCCVM selbst kein Objektdatei-/Linker-Modell hat -- prüft doppelte
-  Definitionen, genau ein `main`, `static`-Sichtbarkeit und als Bonus
-  Signatur-Konsistenz (Parameterzahl) zwischen Deklaration und Definition.
-- **M0-Spike-Ergebnis (wichtiger, planändernder Fund):** `r68`/`l68` (68k/
-  OS-9-Ziel) kennen GAR KEINE Export/Import-Direktive -- `xdef` (die
-  ursprüngliche Annahme) und acht weitere Kandidaten (`global`/`public`/
-  `def`/`entry`/`export`/`section`/`external`/`symbol`) wurden allesamt als
-  "bad mnemonic" abgelehnt, empirisch mit zwei handgeschriebenen `.a`-Modulen
-  gegen den echten `r68`+`l68` getestet. Jedes Label ist beim Linken
-  automatisch für JEDE andere gelinkte Datei sichtbar. Für `static` bedeutet
-  das: KEINE echte Durchsetzung möglich, nur Namensverfremdung
-  (`tc_<name>__<psect>`) zur Kollisionsvermeidung -- ohne die würde `static`
-  seinen Hauptzweck verfehlen (zwei Dateien könnten keinen privaten Helfer
-  gleichen Namens mehr haben, `l68` lehnt das als "duplicate symbol" ab,
-  ebenfalls empirisch bestätigt).
-- **ARM64/Mach-O verhält sich GRUNDLEGEND ANDERS:** `ld` unterstützt ECHTE
-  lokale Symbole -- ein Label ohne `.globl` ist für andere Objektdateien
-  unsichtbar (empirisch verifiziert: zwei `.o` mit je einem lokalen,
-  gleichnamigen Symbol linken ohne Konflikt). Für `static` reicht hier
-  reines Weglassen von `.globl`, KEINE Namensverfremdung nötig.
-- **68k-Backend zusätzlich:** neues `-runtime`-Flag (nur mit `-part`).
-  Grund (live gefunden): der gemeinsame 68k-Core (`mul`/`div`) sowie
-  `putint`/`putchar`/`tc_io_write` + deren Scratch-Speicher wurden bisher
-  IMMER emittiert -- bei getrennter Kompilation hätte das garantiert zu
-  "duplicate symbol" geführt (jede Datei hätte ihre eigene Kopie
-  mitgebracht). Genau EINE Datei im Mehrdatei-Programm muss `-runtime`
-  zusätzlich zu `-part` setzen.
-- **Live verifiziert:** 68k/OS-9 über echten `r68`+`l68`-Link (zwei
-  getrennt kompilierte Dateien, Funktionsaufruf + geteilte globale
-  Variable über die Dateigrenze, `static`-Isolation, Symbolkarte bestätigt
-  korrekte Auflösung); ARM64 über echte getrennte `.o`-Kompilate (`clang -c`)
-  + `clang`/`ld`-Link (gleiches Testprogramm, `nm` bestätigt lokale vs.
-  globale Symbole). Beide Ziele: ein zweiter Testfall bestätigt, dass der
-  jeweilige echte Linker eine ECHTE Namenskollision (zwei nicht-static
-  Definitionen desselben Symbols) zuverlässig als "duplicate symbol"
-  ablehnt.
-- **Bekannte, bewusst akzeptierte Grenze:** kein `#include`-Mechanismus,
-  keine gemeinsame Header-Datei -- Nutzer müssen Funktionssignaturen/
-  Global-Typen von Hand in beiden Dateien konsistent halten (wie rohes C
-  ohne Header-Disziplin). Für die ECHTEN Backends (68k, ARM64) gibt es
-  dafür KEINE Prüfung (reale Linker kennen nur Namen, keine Typen) -- nur
-  der QCCVM-Merge-Check bietet das als Bonus.
+- **New declaration forms:** a bare function prototype without a body
+  (`int f(int x);`) for normal internal `bsr`/`bl` linking -- deliberately
+  SEPARATE from the existing `extern` (which stays fixed to the
+  Microware ABI/`CALLEXT` for real `clib.l` calls). `extern <type> <name>;`
+  now also declares global variables without allocating storage.
+- **`static` gets real meaning for the first time** for global
+  functions/variables (previously a pure no-op).
+- **New IR pseudo-opcodes** `FUNCDECL`/`GLOBALDECL`: "exists, but is not
+  defined here".
+- **`tools/qcc_merge.py`** (new): a mini linker simulation for QCCVM,
+  since QCCVM itself has no object-file/linker model -- checks for
+  duplicate definitions, exactly one `main`, `static` visibility, and as
+  a bonus signature consistency (parameter count) between declaration
+  and definition.
+- **M0 spike result (important, plan-changing finding):** `r68`/`l68`
+  (68k/OS-9 target) know NO export/import directive AT ALL -- `xdef`
+  (the original assumption) and eight further candidates (`global`/
+  `public`/`def`/`entry`/`export`/`section`/`external`/`symbol`) were
+  all rejected as "bad mnemonic", tested empirically with two
+  hand-written `.a` modules against the real `r68`+`l68`. Every label
+  automatically becomes visible to EVERY other linked file at link time.
+  For `static` that means: NO real enforcement is possible, only name
+  mangling (`tc_<name>__<psect>`) to avoid collisions -- without it,
+  `static` would fail its main purpose (two files could no longer have
+  a private helper of the same name, `l68` rejects that as "duplicate
+  symbol", also empirically confirmed).
+- **ARM64/Mach-O behaves FUNDAMENTALLY DIFFERENTLY:** `ld` supports REAL
+  local symbols -- a label without `.globl` is invisible to other object
+  files (empirically verified: two `.o` files each with a local symbol
+  of the same name link without conflict). For `static` here, simply
+  omitting `.globl` is enough, NO name mangling needed.
+- **68k backend additionally:** new `-runtime` flag (only with `-part`).
+  Reason (found live): the shared 68k core (`mul`/`div`) as well as
+  `putint`/`putchar`/`tc_io_write` plus their scratch memory were
+  previously ALWAYS emitted -- with separate compilation that would have
+  guaranteed "duplicate symbol" errors (every file would have brought
+  its own copy). Exactly ONE file in a multi-file program must set
+  `-runtime` in addition to `-part`.
+- **Verified live:** 68k/OS-9 via a real `r68`+`l68` link (two separately
+  compiled files, function call + shared global variable across the file
+  boundary, `static` isolation, symbol map confirmed correct
+  resolution); ARM64 via real separate `.o` compiles (`clang -c`)
+  + `clang`/`ld` link (same test program, `nm` confirms local vs. global
+  symbols). Both targets: a second test case confirms that the
+  respective real linker reliably rejects a REAL name collision (two
+  non-static definitions of the same symbol) as "duplicate symbol".
 
-`./runtests.sh`: 8 neue Mehrdatei-Tests (4x QCCVM/M1, 2x echter 68k/`l68`-
-Link/M2, 2x echter ARM64/`clang`+`ld`-Link/M3), alle grün neben den 135
-bestehenden QCC-Programmen.
-
+`./runtests.sh`: 8 new multi-file tests (4x QCCVM/M1, 2x real 68k/`l68`
+link/M2, 2x real ARM64/`clang`+`ld` link/M3), all green alongside the
+135 existing QCC programs.
