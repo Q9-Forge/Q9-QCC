@@ -586,6 +586,47 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'typedef void (*Fn)(int); void g(int x){ putint(x); } int main(){ Fn t[4]; t[0] = g; t[0](7); }' '7'
 		tc_check 'typedef void (*Fn)(int); struct S{ Fn f; }; void g(int x){ putint(x); } int main(){ struct S s; s.f = g; s.f(3); }' '3'
 
+		# --- Komma-Operator (2026-08-11) ---------------------------------------
+		# Nur INNERHALB von Klammern, siehe Kommentar bei commaExpr in
+		# Data/qcc.ebnf: in C trennt die Grammatik "expression" (mit Komma) von
+		# "assignment-expression" (ohne), und Argumentlisten/Initialisierer
+		# benutzen letztere. Die geklammerte Form ist eindeutig und deckt den
+		# Bedarf des Bootstrap-Ziels: tcConstIndex endet auf
+		# "return p == e ? (*value = v, 1) : 0;".
+		#
+		# Der eigentliche Fallstrick war nicht die Grammatik, sondern der
+		# ZIELZUSTAND: tc_target/tc_assignop schreiben in Globale, eine innere
+		# Zuweisung nahm sie der aeusseren weg -- "x = (y = 1, 2)" legte 2 in y
+		# und 0 in x. Gesichert wird jetzt im Klammerrahmen (der hat einen
+		# Tiefenstapel), nicht im einstufigen tcPrevTarget*-Puffer, der bei
+		# "(y = (z = 1, 2), 3)" schon belegt ist. Die vier Faelle mit
+		# geschachtelten und zusammengesetzten Zuweisungen unten pinnen genau das.
+		tc_check 'int main(){ int x; x = (1, 2); putint(x); }' '2'
+		tc_check 'int main(){ int x; int y; x = (y = 1, 2); putint(x); putint(y); }' '2\n1'
+		tc_check 'int f(int* p){ return (*p = 1, 2); } int main(){ int a; putint(f(&a)); putint(a); }' '2\n1'
+		tc_check 'int f(int* v){ return 1 ? (*v = 5, 1) : 0; } int main(){ int a; putint(f(&a)); putint(a); }' '1\n5'
+		tc_check 'int main(){ int x; int y; int z; x = (y = 1, z = 2, 3); putint(x); putint(y); putint(z); }' '3\n1\n2'
+		tc_check 'int main(){ int r; int x; r = ((x = 1, 2), 3); putint(r); putint(x); }' '3\n1'
+		tc_check 'int main(){ int x; int y; int z; x = (y = (z = 1, 2), 3); putint(x); putint(y); putint(z); }' '3\n2\n1'
+		tc_check 'int g; int main(){ int y; g = (y = 4, 5); putint(g); putint(y); }' '5\n4'
+		tc_check 'int main(){ int a[3]; int y; a[1] = (y = 7, 8); putint(a[1]); putint(y); }' '8\n7'
+		tc_check 'int main(){ int x = 10; int y; x += (y = 1, 2); putint(x); putint(y); }' '12\n1'
+		tc_check 'int n = 0; int bump(){ n = n + 1; return 7; } int main(){ int x; x = (bump(), bump(), 9); putint(x); putint(n); }' '9\n2'
+		# Komma-Ausdruck als ARGUMENT -- das Komma der Argumentliste darf nicht
+		# als Operator gelesen werden und umgekehrt.
+		tc_check 'int add(int a,int b){ return a+b; } int main(){ int y; putint(add((y = 1, 2), 3)); putint(y); }' '5\n1'
+		# Gegenproben: die gewoehnliche Klammer und ihre Vorrangrettung bleiben.
+		tc_check 'int main(){ int x=2; int a=3; int b=4; putint(x * (a + b)); }' '14'
+		tc_check 'int main(){ putint((2 + 3) * 4); }' '20'
+		# BEWUSSTE GRENZE: das letzte Glied muss einen Wert liefern. "(x = 1)"
+		# waere in C erlaubt, hier ist es diagnostiziert statt ein Faktor ohne
+		# Wert zu sein, der den Operandenstapel unter dem Ausdruck wegzieht.
+		if build/qcc_p 'int main(){ int x; x = (x = 1); putint(x); }' 2>&1 | grep -q 'comma expression must end in a value'; then
+			echo "ok    qcc: Komma-Ausdruck ohne Wert am Ende wird diagnostiziert"
+		else
+			echo "FAIL  qcc: Komma-Ausdruck ohne Wert am Ende nicht diagnostiziert"; tcfail=1; fail=1
+		fi
+
 		# --- Semantische Fehler sind toedlich (2026-08-11) ---------------------
 		# Vorher meldete qcc_p JEDEN semantischen Fehler nur auf stderr, endete
 		# aber mit Rueckgabewert 0 und schrieb "OK" -- eine Kette
@@ -623,7 +664,12 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_marker SEMERR 'int main(){ nichtda(1); }'
 		tc_marker SEMERR 'int main(){ int a; a = "text"; putint(a); }'
 		tc_marker FAIL   'int main(){ '
-		tc_marker FAIL   'int main(){ int a; a = (5, 6); }'
+		# Bewusst ein STRUKTURELLER Syntaxfehler. Hier stand zuerst
+		# "a = (5, 6);" als Beispiel -- das war der noch fehlende Komma-Operator
+		# und wurde am 2026-08-11 gueltig, womit der Test fehlschlug. Ein Test
+		# fuer "Parse-Fehler" darf nicht auf einer Sprachluecke fussen, sonst
+		# schlaegt er beim Schliessen der Luecke an statt beim Regress.
+		tc_marker FAIL   'int main(){ int a; a = ; }'
 		for m in OK SEMERR FAIL; do
 			for n in OK SEMERR FAIL; do
 				if [ "$m" != "$n" ] && case "$m" in *"$n"*) true;; *) false;; esac; then
