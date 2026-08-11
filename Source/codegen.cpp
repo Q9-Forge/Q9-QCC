@@ -870,7 +870,7 @@ static void charComment(char c, char* out, int outMax) {
 // Erzeugte Struktur: static const char* p; pro Regel eine Funktion p_<name>() -> 1/0,
 // bei Misserfolg ist p unveraendert (Ruecksetzung an Regel-/Auswahl-/Options-/
 // Wiederholungs-Grenzen ueber lokalen save-Stack sv[]). main() nimmt die Eingabe als
-// argv[1], druckt OK/FAIL und liefert exit 0/1 -- damit kann runtests.sh die
+// argv[1], druckt OK/SEMERR/FAIL und liefert exit 0/1/1 -- damit kann runtests.sh die
 // TESTS-Bloecke der Arbeitsdatei direkt gegen den ERZEUGTEN Parser laufen lassen.
 static void emitCString(FILE* fp, const char* s) {
 	fputc('"', fp);
@@ -1020,7 +1020,7 @@ int genParserC(const char* path) {
 
 	fprintf(fp, "/* Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n");
 	fprintf(fp, " * Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl).\n");
-	fprintf(fp, " * Aufruf: %s \"<eingabe>\"  -> druckt OK/FAIL, exit 0/1.\n", "parser");
+	fprintf(fp, " * Aufruf: %s \"<eingabe>\"  -> druckt OK/SEMERR/FAIL, exit 0/1/1.\n", "parser");
 	if (lexActive) {
 		fprintf(fp, " * LEXER aktiv: Whitespace/Kommentare werden zwischen Symbolen ueberlesen,\n");
 		fprintf(fp, " * lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n");
@@ -1028,7 +1028,18 @@ int genParserC(const char* path) {
 	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
 	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
 	fprintf(fp, "static const char* p;\n");
-	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n\n");
+	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
+	if (routinesCCnt > 0) {
+		// 2026-08-11: Fehlerzaehler fuer die ACTION-Routinen. Ohne ihn meldete ein
+		// erzeugter Parser semantische Fehler zwar auf stderr, endete aber mit
+		// Rueckgabewert 0 und schrieb "OK" -- eine aufrufende Build-Kette
+		// ("parser x.c > x.ir && backend x.ir") erzeugte dann klaglos falschen
+		// Code. Bewusst hier oben deklariert, damit der [NUTZER-CODE]-Block ihn
+		// sieht; bewusst nur bei vorhandenen Aktionen, damit aktionsfreie
+		// Grammatiken bitgleich bleiben.
+		fprintf(fp, "static int actionErrors = 0;\t/* ACTION-Routinen zaehlen hoch; != 0 => Rueckgabewert 1 */\n");
+	}
+	fprintf(fp, "\n");
 	if (lexActive) {
 		fprintf(fp, "static int idch(int c) {\n");
 		fprintf(fp, "\treturn (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')\n");
@@ -1173,13 +1184,38 @@ int genParserC(const char* path) {
 	// actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input erkannt) --
 	// nur dann steht fest, dass keine der protokollierten Aktionen zu einem inzwischen
 	// verworfenen Backtracking-Pfad gehoert (siehe Kommentar bei actionLogPush oben).
+	// Nach dem Replay: hat eine ACTION-Routine einen Fehler gemeldet, ist der Lauf
+	// GESCHEITERT -- auch wenn die Grammatik die Eingabe vollstaendig erkannt hat.
+	// Die bereits ausgegebene Nutzlast bleibt auf stdout stehen (sie entsteht
+	// waehrend des Replays, der Zaehlerstand ist erst danach bekannt).
+	//
+	// Das Schlusswort lautet dann "SEMERR", NICHT "FAIL". Der Unterschied ist
+	// wesentlich und war zunaechst falsch gebaut: "FAIL" heisst "die Grammatik
+	// hat die Eingabe nicht erkannt", und dieses Ergebnis ist praefix-stabil --
+	// Werkzeuge wie tools/bootstrap_survey.py schieben Teilstuecke einer Datei
+	// durch den Parser und messen genau das. Semantische Fehler sind in einem
+	// Teilstueck dagegen voellig regulaer (Vorwaertsbezuege auf noch nicht
+	// eingespeiste Definitionen). Beide unter demselben Wort zu melden machte
+	// diese Messung unbrauchbar: aus 5 gemeldeten Luecken wurden 346.
+	// Drei Ergebnisse, drei Woerter -- OK / SEMERR / FAIL, Rueckgabewert
+	// 0 / 1 / 1.
+	//
+	// Das Wort heisst bewusst SEMERR und nicht SEMFAIL: der erste Versuch hiess
+	// so und enthielt damit "FAIL" als Teilzeichenkette, worauf jeder Aufrufer
+	// hereinfiel, der per Teilstring statt zeilenweise prueft (genau das tat
+	// bootstrap_survey.py -- die 346 Falschmeldungen blieben deshalb auch nach
+	// der Trennung der Faelle bestehen). Ein Marker, der einen anderen enthaelt,
+	// ist eine Falle; die drei Woerter sind jetzt paarweise teilstring-fremd.
+	const char* afterParse = routinesCCnt > 0
+		? " actionLogReplay(); if (actionErrors != 0) { printf(\"SEMERR\\n\"); return 1; }"
+		: "";
 	if (lexActive) {
 		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {%s printf(\"OK\\n\"); return 0; } }\n",
-			cName, routinesCCnt > 0 ? " actionLogReplay();" : "");
+			cName, afterParse);
 	}
 	else {
 		fprintf(fp, "\tif (p_%s() && *p == '\\0') {%s printf(\"OK\\n\"); return 0; }\n",
-			cName, routinesCCnt > 0 ? " actionLogReplay();" : "");
+			cName, afterParse);
 	}
 	fprintf(fp, "\tprintf(\"FAIL\\n\");\n\treturn 1;\n}\n");
 	fclose(fp);
