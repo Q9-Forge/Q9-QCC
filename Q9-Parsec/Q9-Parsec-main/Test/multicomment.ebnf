@@ -1,2 +1,0 @@
-num = digit { digit } .
-digit = "0"~"9" .

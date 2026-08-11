@@ -1,2 +1,0 @@
-expr2 = "(" expr2 ")" "A" | "(" expr2 ")" "B" | leaf.
-leaf = "x".

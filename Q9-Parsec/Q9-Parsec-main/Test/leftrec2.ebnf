@@ -1,3 +1,0 @@
-# indirekte Linksrekursion ueber 2 Regeln: a -> b -> a
-a = b "x" .
-b = a "y" | "z" .
