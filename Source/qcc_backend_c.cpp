@@ -75,7 +75,16 @@ typedef struct {
 	int isChar;
 	int isArray;
 	int length;
-	int init[MAX_ARRAY_LEN];
+	/* 2026-08-11: war `int init[MAX_ARRAY_LEN]`, also 16 KB pro Global und bei
+	   MAX_GLOBALS=1024 ein statisches Feld von 16,8 MB -- der groesste Einzel-
+	   posten des Backends und auf dem Q9 (16 MB RAM) allein schon zu viel.
+	   Jetzt ein Zeiger in initPool, erst beim ERSTEN GINIT zugeteilt: Arrays
+	   ohne Initialisierer kosten gar nichts mehr. Gemessener echter Bedarf:
+	   ebnf.tc 20,5 KB, codegen.tc 34,9 KB.
+	   initLen = Anzahl tatsaechlich zugeteilter Elemente (<= MAX_ARRAY_LEN);
+	   init == NULL bedeutet "kein Initialisierer, alles null". */
+	int* init;
+	int initLen;
 	int hasGinit; /* 2026-07-25: mind. ein GINIT fuer dieses Array gesehen (siehe unten) */
 	int declOnly, isStatic; /* siehe Function */
 } Global;
@@ -122,6 +131,31 @@ static char* argIntern(const char* tok, int irLine)
 	memcpy(dst, tok, len);   /* kein (size_t)-Cast: QCC kennt "(unsigned)" ohne "int" noch nicht, und der implizite Uebergang genuegt */
 	dst[len] = '\0';
 	argPoolUsed += len + 1;
+	return dst;
+}
+
+/* Pool fuer die Initialisierer globaler Arrays (s. Kommentar an Global.init).
+   Groesse an echten Daten bemessen: ebnf.tc braucht 20,5 KB, codegen.tc
+   34,9 KB -- 256 KB lassen damit ueber das Siebenfache Luft. Wie bei den
+   uebrigen Kapazitaetsgrenzen meldet Erschoepfung laut per fatal(). */
+#define INIT_POOL_INTS  65536
+static int initPool[INIT_POOL_INTS];
+static int initPoolUsed;
+
+/* Teilt n nullinitialisierte Elemente zu und liefert den Zeiger darauf. */
+static int* initAlloc(int n, int irLine)
+{
+	char msg[160];
+	int* dst;
+	int k;
+
+	if (initPoolUsed + n > INIT_POOL_INTS) {
+		sprintf(msg, "IR Zeile %d: Initialisierer-Pool erschoepft (%d Elemente)", irLine, INIT_POOL_INTS);
+		fatal(msg);
+	}
+	dst = &initPool[initPoolUsed];
+	for (k = 0; k < n; k++) dst[k] = 0;
+	initPoolUsed += n;
 	return dst;
 }
 
@@ -485,6 +519,14 @@ static void collectGlobals(void) {
 					   nullinitialisiertes Array (z.B. ein 8192-Elemente-AST-Knotenpuffer) braucht
 					   dafuer keinen Speicher, siehe emitIR()-Nullfuellung weiter unten. */
 					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
+					if (globals[gi].init == NULL) {
+						/* Erst jetzt zuteilen -- und nur so viel, wie per GINIT
+						   ueberhaupt erreichbar ist (Indizes >= MAX_ARRAY_LEN
+						   lehnt die Pruefung oben ab). */
+						int want = globals[gi].length < MAX_ARRAY_LEN ? globals[gi].length : MAX_ARRAY_LEN;
+						globals[gi].init = initAlloc(want, insP->line);
+						globals[gi].initLen = want;
+					}
 					globals[gi].init[idx] = number(insP->args[2], insP->line);
 					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
 					globals[gi].hasGinit = 1;
@@ -1640,7 +1682,19 @@ static void emitIR(FILE* out) {
 						}
 					} else {
 						fprintf(out, "%s:\n", gAsmName);
-						for (e = 0; e < g->length; e++) fprintf(out, "\tdc.%s\t%d\n", g->isChar ? "b" : "l", g->init[e]);
+						/* 2026-08-11 behobener Korrektheitsfehler: die Schleife lief bis
+						   g->length, init[] fasste aber nur MAX_ARRAY_LEN Elemente. Ein
+						   Array laenger als MAX_ARRAY_LEN MIT mindestens einem GINIT gab
+						   dadurch Speicher HINTER init[] aus -- nachweisbar die Folgefelder
+						   und der Name der naechsten globalen Variablen als Zahlen. Live
+						   reproduziert mit GARRAY-Laenge 5000 + einem GINIT: ab Index 4096
+						   erschienen Werte wie 1751343470 (= "nach", Name des Nachbarn).
+						   Indizes ab initLen sind logisch null (GINIT lehnt sie ab), werden
+						   also als 0 ausgegeben. */
+						for (e = 0; e < g->length; e++) {
+							int v = e < g->initLen ? g->init[e] : 0;
+							fprintf(out, "\tdc.%s\t%d\n", g->isChar ? "b" : "l", v);
+						}
 					}
 				}
 			}
