@@ -1271,7 +1271,7 @@ int genParserC(char* path) {
 		   PROTOKOLLIERT (actionLogPush) und erst am Ende bei ENDGUELTIGEM
 		   Gesamterfolg abgespielt (actionLogReplay) -- siehe ARCHITEKTUR.md
 		   Paragraph 9.4. */
-		fprintf(fp, "#define ACTION_LOG_MAX 8192\n");
+		fprintf(fp, "#define ACTION_LOG_MAX 262144\n");
 		fprintf(fp, "extern void exit(int);\n");
 		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
 		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");

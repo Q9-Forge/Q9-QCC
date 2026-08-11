@@ -1099,7 +1099,7 @@ int genParserC(const char* path) {
 		/* Host-side generated parsers need room for the full Tiny-C source;
 		   the compact OS-9 selfhost variant uses a smaller limit in
 		   SourceTinyC/codegen.tc. */
-		fprintf(fp, "#define ACTION_LOG_MAX 1048576\n");
+		fprintf(fp, "#define ACTION_LOG_MAX 262144\n");
 		fprintf(fp, "extern void exit(int);\n");
 		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
 		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
