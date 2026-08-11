@@ -10,7 +10,7 @@ geschrieben und von ihr selbst übersetzt werden könnte -- "Selfhosting" im
 klassischen Compilerbau-Sinn?
 
 Diese Liste ist NICHT aus dem ISO-C-Standard abgeleitet (siehe dazu
-`docs/ISO_C_LUECKENLISTE.md`), sondern direkt am tatsächlichen Quellcode der
+`docs/ISO_C_GAP_LIST_de.md`), sondern direkt am tatsächlichen Quellcode der
 Toolchain gemessen: Es wurde durchsucht, welche C/C++-Konstrukte
 `Source/parsec.cpp`, `Source/codegen.cpp`, `Source/tiny-regex.cpp` sowie die
 generierten Parser-Zwillinge (`Data/*_p.c`) wirklich verwenden. Die Liste
@@ -321,7 +321,7 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    lassen (siehe Empfehlung in Abschnitt 5).
 
 Diese Reihenfolge überschneidet sich stark mit Stufe A/B der
-`ISO_C_LUECKENLISTE.md` (`struct`/`enum`/`typedef`/`for`/`switch` stehen dort
+`ISO_C_GAP_LIST_de.md` (`struct`/`enum`/`typedef`/`for`/`switch` stehen dort
 ohnehin schon als "sehr hoch"/"hoch") -- die beiden Listen ziehen also
 weitgehend am selben Strang, nur dass diese hier zusätzlich den konkreten
 Bibliotheks- und Mehrdateibedarf des eigenen Werkzeugs sichtbar macht.

@@ -145,7 +145,7 @@ Ausführung auf der Zielplattform (Q9-Emulator, OS-9/68k) funktioniert:
   ~1 MB gesunken (`size build/parsec`), passt jetzt auch für ein 8-MB-System.
   Bestätigt: die Microware-`stdlib.h` stellt `malloc`/`realloc`/`free` bereit,
   betrifft also nur QCC als Sprache fürs spätere Selfhosting, nicht die
-  OS-9-Zielplattform (siehe `docs/SELFHOSTING_LUECKENLISTE.md`, neue Zeile
+  OS-9-Zielplattform (siehe `docs/SELFHOSTING_GAP_LIST_de.md`, neue Zeile
   "malloc/realloc/free"). `./runtests.sh` komplett grün nach der Umstellung.
 - **Bestätigt auf dem echten Q9-Emulator (2026-07-24, Nachtrag):** kompletter
   EBNF-Generator (Source-Stand nach PR #26, inkl. aller QCC-Sprachfeatures
@@ -240,7 +240,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
   Alignment, Feldzugriff lesend/schreibend, lokale Variablen) inkl. Array-Feldern
   (z. B. `char name[8]`, direkte `p.field[i]`-Indizierung ODER über eine
   Pointer-Zwischenvariable); Pointer-Felder und verschachtelte structs noch
-  offen, siehe SELFHOSTING_LUECKENLISTE.md
+  offen, siehe SELFHOSTING_GAP_LIST_de.md
 - `enum` (benannte int-Konstanten)
 - `sizeof` (int/char/bool/unsigned/struct, keine Pointer)
 - Prä-/Postinkrement `++`/`--` (einfache int/unsigned/char-Skalare)
@@ -380,7 +380,7 @@ Zwei unabhängige Stränge stehen zur Wahl:
    der Selfhosting-Lueckenliste (Abschnitt 1) vollstaendig abgearbeitet --
    Mehrdatei-Uebersetzung (siehe unten) ist seit 2026-07-25 ebenfalls
    erledigt -- damit ist der Sprachmittel-Fahrplan aus
-   docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 1 vollstaendig abgearbeitet.
+   docs/SELFHOSTING_GAP_LIST_de.md Abschnitt 1 vollstaendig abgearbeitet.
 2. **Q9-Ausführbarkeit:** Speicherbedarf des Generators ist verkleinert UND
    seit 2026-07-24 auf dem echten Q9-Emulator bestätigt (siehe Abschnitt
    oben) -- dieser Strang ist damit abgeschlossen. Die QCC-68k-Backend-

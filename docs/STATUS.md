@@ -146,7 +146,7 @@ to real execution on the target platform (Q9 emulator, OS-9/68k) works:
   to ~1 MB (`size build/parsec`), now also fits an 8 MB system. Confirmed:
   the Microware `stdlib.h` provides `malloc`/`realloc`/`free`, so this
   only affects QCC as the language for later selfhosting, not the OS-9
-  target platform itself (see `docs/SELFHOSTING_LUECKENLISTE.md`, new
+  target platform itself (see `docs/SELFHOSTING_GAP_LIST.md`, new
   line "malloc/realloc/free"). `./runtests.sh` fully green after the
   change.
 - **Confirmed on the real Q9 emulator (2026-07-24, addendum):** complete
@@ -245,7 +245,7 @@ All current regression tests pass.
   alignment, field access read/write, local variables), including array
   fields (e.g. `char name[8]`, direct `p.field[i]` indexing OR via a
   pointer intermediate variable); pointer fields and nested structs
-  still open, see SELFHOSTING_LUECKENLISTE.md
+  still open, see SELFHOSTING_GAP_LIST.md
 - `enum` (named int constants)
 - `sizeof` (int/char/bool/unsigned/struct, no pointers)
 - Pre-/post-increment `++`/`--` (simple int/unsigned/char scalars)
@@ -392,7 +392,7 @@ Two independent strands are on the table:
    `TC_MAXDIMS`=6). This completes the original language-feature roadmap
    from the selfhosting gap list (section 1) -- multi-file compilation
    (see below) has likewise been done since 2026-07-25 -- so the
-   language-feature roadmap from docs/SELFHOSTING_LUECKENLISTE.md
+   language-feature roadmap from docs/SELFHOSTING_GAP_LIST.md
    section 1 is now fully worked through.
 2. **Q9 executability:** the generator's memory footprint has been
    reduced AND confirmed on the real Q9 emulator since 2026-07-24 (see

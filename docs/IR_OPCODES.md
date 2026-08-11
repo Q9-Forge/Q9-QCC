@@ -1,135 +1,138 @@
-# QCC Stack-IR — Opcode-Referenz
+# QCC Stack IR — Opcode Reference
 
-Stand: **2026-07-25**
+*German version: [IR_OPCODES_de.md](IR_OPCODES_de.md)*
 
-Ausführliches Referenzdokument zur Text-IR, die zwischen dem generierten
-QCC-Frontend-Parser und den Backends (QCCVM, 68000, ARM64, C) steht.
-Kurzfassung mit Einbettung in den Gesamtkontext: `docs/ARCHITEKTUR.md`
-Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
+Status: **2026-07-25**
 
-## Modell
+Detailed reference document for the text IR that sits between the
+generated QCC frontend parser and the backends (QCCVM, 68000, ARM64, C).
+Short version embedded in the overall context: `docs/ARCHITEKTUR.md`
+section 10 (10.5 shows the same opcode set more compactly).
 
-- **Operanden-Stack-Maschine**, kein Register-Modell. Jede Zeile ist ein
-  Opcode, optional gefolgt von Argumenten, getrennt durch Whitespace.
-  Kommentarzeilen beginnen mit `;` oder `#`.
-- **Werte und Pointer sind getrennte Konzepte.** Ein Pointer ist intern ein
-  Paar `(Block, Offset)` (siehe `Pointer`-Klasse in `tools/qccvm.py`),
-  kein simpler Integer — Pointer-Arithmetik läuft über eigene Opcodes
-  (`PADD`/`IPADD`/`PSUB`/`PDIFF`), nicht über `ADD`/`SUB`.
-- **Typtags** (`<typtag>`), wo relevant: `c`/`b` = 1 Byte (char/bool),
-  `p` = Pointer-Breite (architekturabhängig, 68k kleiner als ARM64),
-  alles andere = 4 Byte (int/unsigned/enum).
-- **Kanonische Semantik-Quelle:** `tools/qccvm.py` — jeder Backend-Codegen
-  (68k, ARM64, C) muss für dieselbe IR dasselbe Ergebnis liefern wie der
-  QCCVM-Interpreter. Bei Zweifeln an der Semantik eines Opcodes: dort
-  nachschauen, nicht raten.
-- Zwei Opcode-Familien sind **backend-only** und von QCCVM nicht
-  ausführbar: `CALLEXT`/`CALLEXTP` (echte `extern`-Aufrufe gegen Microware-
-  `clib.l`, nur 68k) und `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
-  deklarationen ohne Rumpf — reine Backend-/Linker-Information).
+## Model
 
-## Programmstruktur / Deklarationen
+- **Operand stack machine**, no register model. Every line is an opcode,
+  optionally followed by arguments, separated by whitespace. Comment
+  lines start with `;` or `#`.
+- **Values and pointers are separate concepts.** A pointer is internally
+  a `(block, offset)` pair (see the `Pointer` class in `tools/qccvm.py`),
+  not a plain integer -- pointer arithmetic runs through its own opcodes
+  (`PADD`/`IPADD`/`PSUB`/`PDIFF`), not `ADD`/`SUB`.
+- **Type tags** (`<typetag>`), where relevant: `c`/`b` = 1 byte (char/bool),
+  `p` = pointer width (architecture-dependent, smaller on 68k than
+  ARM64), everything else = 4 bytes (int/unsigned/enum).
+- **Canonical semantics source:** `tools/qccvm.py` -- every backend
+  codegen (68k, ARM64, C) must produce the same result as the QCCVM
+  interpreter for the same IR. When in doubt about an opcode's
+  semantics, check there rather than guessing.
+- Two opcode families are **backend-only** and cannot be executed by
+  QCCVM: `CALLEXT`/`CALLEXTP` (real `extern` calls against Microware
+  `clib.l`, 68k only) and `FUNCDECL`/`GLOBALDECL` (multi-file forward
+  declarations without a body -- pure backend/linker information).
 
-| Opcode | Stack-Effekt | Beschreibung |
+## Program structure / declarations
+
+| Opcode | Stack effect | Description |
 |---|---|---|
-| `GLOBAL <name> [init]` | — | globale skalare Variable, optionaler Initialwert |
-| `GARRAY <name> <typtag> <len>` | — | globales Array fester Länge |
-| `GINIT <name> <idx> <wert>` | — | Initialwert für ein Array-Element (mehrfach pro Array) |
-| `FUNC <name> <nargs>` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter |
-| `ENDFUNC` | — | Funktionsende (Rahmengröße = höchster Slot+1, vom Backend ermittelt) |
-| `LABEL <L>` | — | definiert Sprungziel `L` |
-| `FUNCDECL <name> <argc>` | — | Vorwärtsdeklaration ohne Rumpf (Mehrdatei/gegenseitige Rekursion); backend-only |
-| `GLOBALDECL <typ> <name>` | — | `extern`-Variable, keine eigene Allokation; backend-only |
+| `GLOBAL <name> [init]` | — | global scalar variable, optional initial value |
+| `GARRAY <name> <typetag> <len>` | — | global array of fixed length |
+| `GINIT <name> <idx> <value>` | — | initial value for an array element (multiple per array) |
+| `FUNC <name> <nargs>` | — | start of function; slots `0..nargs-1` = parameters |
+| `ENDFUNC` | — | end of function (frame size = highest slot+1, determined by the backend) |
+| `LABEL <L>` | — | defines jump target `L` |
+| `FUNCDECL <name> <argc>` | — | forward declaration without a body (multi-file/mutual recursion); backend-only |
+| `GLOBALDECL <type> <name>` | — | `extern` variable, no allocation of its own; backend-only |
 
-## Werte laden/speichern
+## Loading/storing values
 
-Lokal (`L`) und global (`G`), je getrennt nach int/char/pointer:
+Local (`L`) and global (`G`), each split by int/char/pointer:
 
-| Opcode | Stack-Effekt | Beschreibung |
+| Opcode | Stack effect | Description |
 |---|---|---|
-| `PUSH <n>` | `→ n` | Integer-Konstante |
-| `LOADL <i>` / `STOREL <i>` | `→ v` / `v →` | lokaler int-Slot |
-| `LOADC <i>` / `STOREC <i>` | `→ v` / `v →` | lokaler char-Slot (maskiert auf `0xff`) |
-| `LOADP <i>` / `STOREP <i>` | `→ p` / `p →` | lokaler Pointer-Slot |
-| `LOADG <name>` / `STOREG <name>` | `→ v` / `v →` | globale int-Variable |
-| `LOADGC <name>` / `STOREGC <name>` | `→ v` / `v →` | globale char-Variable |
-| `LOADGP <name>` / `STOREGP <name>` | `→ p` / `p →` | globaler Pointer |
-| `LARRAY` | — | lokales Array reservieren |
+| `PUSH <n>` | `→ n` | integer constant |
+| `LOADL <i>` / `STOREL <i>` | `→ v` / `v →` | local int slot |
+| `LOADC <i>` / `STOREC <i>` | `→ v` / `v →` | local char slot (masked to `0xff`) |
+| `LOADP <i>` / `STOREP <i>` | `→ p` / `p →` | local pointer slot |
+| `LOADG <name>` / `STOREG <name>` | `→ v` / `v →` | global int variable |
+| `LOADGC <name>` / `STOREGC <name>` | `→ v` / `v →` | global char variable |
+| `LOADGP <name>` / `STOREGP <name>` | `→ p` / `p →` | global pointer |
+| `LARRAY` | — | reserve a local array |
 
-## Adressen, Arrays, Pointer
+## Addresses, arrays, pointers
 
-| Opcode | Stack-Effekt | Beschreibung |
+| Opcode | Stack effect | Description |
 |---|---|---|
-| `ADDRL <i>` | `→ p` | Adresse eines lokalen Slots |
-| `ADDRG <name>` | `→ p` | Adresse einer globalen Variable |
-| `PUSHADDR L/G/P <i>` | `→ p` | Adresse eines lokalen/globalen Arrays bzw. eines Pointer-Werts selbst |
-| `LOADIDX L/P/G <i> <typtag>` | `idx → v` | Array-Element lesen, Index vom Stack |
-| `STOREIDX L/P/G <i> <typtag>` | `idx, v →` | Array-Element schreiben |
-| `PTRINDEX <typtag>` | `p, idx → p'` | Pointer+Index → skalierte Adresse (echter Pointer, `p[i]`-Muster) |
-| `LOADIND <typtag>` | `p → v` | durch Pointer dereferenzieren (lesen) |
-| `STOREIND <typtag>` | `p, v →` | durch Pointer dereferenzieren (schreiben) |
-| `PADD <typtag>` | `p, n → p'` | Pointer + Ganzzahl, skaliert nach fester Typgröße |
-| `IPADD <typtag>` | `n, p → p'` | wie `PADD`, andere Operandenreihenfolge auf dem Stack |
-| `IPADDN <bytesize>` | `n, p → p'` | wie `IPADD`, aber mit einer **Laufzeit**-Bytegröße statt fixer Typtag-Größe (gebraucht für `arr[i].feld` bei Arrays von structs, da `IPADD` nur feste Typtag-Größen kennt) |
-| `PSUB <typtag>` | `p, n → p'` | Pointer − Ganzzahl |
-| `PDIFF <typtag>` | `p1, p2 → n` | Pointer − Pointer → skalierte Ganzzahl-Differenz (beide müssen zum selben Block gehören) |
+| `ADDRL <i>` | `→ p` | address of a local slot |
+| `ADDRG <name>` | `→ p` | address of a global variable |
+| `PUSHADDR L/G/P <i>` | `→ p` | address of a local/global array, or of a pointer value itself |
+| `LOADIDX L/P/G <i> <typetag>` | `idx → v` | read an array element, index from the stack |
+| `STOREIDX L/P/G <i> <typetag>` | `idx, v →` | write an array element |
+| `PTRINDEX <typetag>` | `p, idx → p'` | pointer+index → scaled address (real pointer, `p[i]` pattern) |
+| `LOADIND <typetag>` | `p → v` | dereference through a pointer (read) |
+| `STOREIND <typetag>` | `p, v →` | dereference through a pointer (write) |
+| `PADD <typetag>` | `p, n → p'` | pointer + integer, scaled by the fixed type size |
+| `IPADD <typetag>` | `n, p → p'` | like `PADD`, operands in the other order on the stack |
+| `IPADDN <bytesize>` | `n, p → p'` | like `IPADD`, but with a **runtime** byte size instead of a fixed type-tag size (needed for `arr[i].field` on arrays of structs, since `IPADD` only knows fixed type-tag sizes) |
+| `PSUB <typetag>` | `p, n → p'` | pointer − integer |
+| `PDIFF <typetag>` | `p1, p2 → n` | pointer − pointer → scaled integer difference (both must belong to the same block) |
 
-## Arithmetik/Logik
+## Arithmetic/logic
 
-| Opcode | Stack-Effekt | Beschreibung |
+| Opcode | Stack effect | Description |
 |---|---|---|
-| `ADD` `SUB` `MUL` `DIV` `MOD` | `a, b → r` | signed, `DIV`/`MOD` runden Richtung 0 (C-Semantik, nicht floor) |
-| `UDIV` `UMOD` | `a, b → r` | unsigned-Varianten (32-Bit) |
-| `NEG` | `a → -a` | unäres Minus |
-| `NOT` | `a → r` | logisches Nicht → 0/1 |
-| `NOTBIT` | `a → r` | bitweises Komplement (32-Bit) |
-| `BAND` `BXOR` `BOR` | `a, b → r` | bitweise Und/Xor/Oder (32-Bit) |
-| `SHL` | `a, n → r` | Shift links |
-| `SHR` | `a, n → r` | Shift rechts, signed/arithmetisch |
-| `USHR` | `a, n → r` | Shift rechts, unsigned/logisch |
-| `NARROWC` | `a → r` | auf ein Byte einschränken (char-Zuweisung/-Cast) |
-| `DUP` | `a → a, a` | oberstes Stackelement duplizieren (Wert) |
-| `SWAP` | `a, b → b, a` | oberste zwei Stackelemente vertauschen |
-| `DUPP` | `p → p, p` | wie `DUP`, für Pointer (semantisch identisch, eigener Opcode zur Klarheit im Backend) |
+| `ADD` `SUB` `MUL` `DIV` `MOD` | `a, b → r` | signed, `DIV`/`MOD` round toward 0 (C semantics, not floor) |
+| `UDIV` `UMOD` | `a, b → r` | unsigned variants (32-bit) |
+| `NEG` | `a → -a` | unary minus |
+| `NOT` | `a → r` | logical not → 0/1 |
+| `NOTBIT` | `a → r` | bitwise complement (32-bit) |
+| `BAND` `BXOR` `BOR` | `a, b → r` | bitwise and/xor/or (32-bit) |
+| `SHL` | `a, n → r` | shift left |
+| `SHR` | `a, n → r` | shift right, signed/arithmetic |
+| `USHR` | `a, n → r` | shift right, unsigned/logical |
+| `NARROWC` | `a → r` | narrow to one byte (char assignment/cast) |
+| `DUP` | `a → a, a` | duplicate the top stack element (value) |
+| `SWAP` | `a, b → b, a` | swap the top two stack elements |
+| `DUPP` | `p → p, p` | like `DUP`, for pointers (semantically identical, its own opcode for clarity in the backend) |
 
-## Vergleiche
+## Comparisons
 
-Alle Vergleiche: `a, b → 0|1`.
+All comparisons: `a, b → 0|1`.
 
-| Familie | Opcodes |
+| Family | Opcodes |
 |---|---|
 | signed int | `CMPLT` `CMPGT` `CMPLE` `CMPGE` `CMPEQ` `CMPNE` |
 | unsigned int | `CMPULT` `CMPUGT` `CMPULE` `CMPUGE` |
-| Pointer | `PCMPEQ` `PCMPNE` `PCMPLT` `PCMPLE` `PCMPGT` `PCMPGE` (mit Block-Identitätsprüfung; `EQ`/`NE` erlauben zusätzlich den Nullpointer-Vergleich) |
+| pointer | `PCMPEQ` `PCMPNE` `PCMPLT` `PCMPLE` `PCMPGT` `PCMPGE` (with block-identity check; `EQ`/`NE` additionally allow comparison against the null pointer) |
 
-## Kontrollfluss / Funktionsaufrufe
+## Control flow / function calls
 
-| Opcode | Stack-Effekt | Beschreibung |
+| Opcode | Stack effect | Description |
 |---|---|---|
-| `JMP <L>` | — | unbedingter Sprung |
-| `JZ <L>` | `a →` | Sprung wenn `a == 0` |
-| `JNZ <L>` | `a →` | Sprung wenn `a != 0` |
-| `CALL <name> <nargs>` | `a1..aN → r` | Argumente links→rechts gepusht, Ergebnis auf Stack |
-| `CALLP <name> <nargs>` | `a1..aN → p` | wie `CALL`, Ergebnis ist ein Pointer (reine Kennzeichnung fürs Backend) |
-| `PUSHFN <name>` | `→ p` | Adresse einer QCC-Funktion als Wert (Funktionszeiger); im `-largedata`-Modus über die Funktionsindirektionstabelle berechnet, sonst PC-relativ |
-| `CALLIND <nargs>` / `CALLINDP <nargs>` | `a1..aN, f → r`/`p` | indirekter Aufruf; der Funktionszeiger liegt ZUOBERST (über den Argumenten), darunter wie bei `CALL` die Argumente links→rechts |
-| `RET` / `RETP` | `r →` | Rückgabewert vom Stack, Rahmen abbauen, zurück zum Aufrufer |
-| `CALLEXT <name> <argc> <...>` / `CALLEXTP ...` | `a1..aN → r`/`p` | Aufruf einer echten `extern`-Funktion über die Microware-ABI (feste Parameter in `d0`/`d1`, nur der variadische `"..."`-Überschuss auf dem Stack); backend-only (68k) |
+| `JMP <L>` | — | unconditional jump |
+| `JZ <L>` | `a →` | jump if `a == 0` |
+| `JNZ <L>` | `a →` | jump if `a != 0` |
+| `CALL <name> <nargs>` | `a1..aN → r` | arguments pushed left→right, result on the stack |
+| `CALLP <name> <nargs>` | `a1..aN → p` | like `CALL`, result is a pointer (pure marker for the backend) |
+| `PUSHFN <name>` | `→ p` | address of a QCC function as a value (function pointer); in `-largedata` mode computed via the function indirection table, otherwise PC-relative |
+| `CALLIND <nargs>` / `CALLINDP <nargs>` | `a1..aN, f → r`/`p` | indirect call; the function pointer sits ON TOP (above the arguments), below it the arguments left→right as with `CALL` |
+| `RET` / `RETP` | `r →` | return value from the stack, tear down the frame, back to the caller |
+| `CALLEXT <name> <argc> <...>` / `CALLEXTP ...` | `a1..aN → r`/`p` | call a real `extern` function via the Microware ABI (fixed parameters in `d0`/`d1`, only the variadic `"..."` overflow on the stack); backend-only (68k) |
 
-## Sonstiges
+## Miscellaneous
 
-| Opcode | Stack-Effekt | Beschreibung |
+| Opcode | Stack effect | Description |
 |---|---|---|
-| `DROP` | `a →` | oberen Stackwert verwerfen (unbenutztes Ausdrucksergebnis) |
-| `PRINT` | `a →` | Debug-Ausgabe als signed int (Builtin `putint`) |
-| `PRINTU` | `a →` | Debug-Ausgabe als unsigned int (Builtin `putuint`) |
-| `PRINTC` | `a →` | Debug-Ausgabe als Zeichen (Builtin `putchar`) |
+| `DROP` | `a →` | discard the top stack value (unused expression result) |
+| `PRINT` | `a →` | debug output as signed int (builtin `putint`) |
+| `PRINTU` | `a →` | debug output as unsigned int (builtin `putuint`) |
+| `PRINTC` | `a →` | debug output as a character (builtin `putchar`) |
 
-## Siehe auch
+## See also
 
-- `docs/ARCHITEKTUR.md` Abschnitt 10 — Entstehung der IR, Emissions-Muster
-  (wie Parser-Aktionen die IR erzeugen), Funktions-ABI (Slots/Frames).
-- `tools/qccvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
-  alle Backends.
-- `docs/SELFHOSTING_LUECKENLISTE.md` / `[[qcc-vollport-status]]` (Memory)
-  — Kontext zum laufenden QCC-Vollport von `codegen.cpp`/`parsec.cpp`.
+- `docs/ARCHITEKTUR.md` section 10 -- how the IR comes about, emission
+  patterns (how parser actions produce the IR), function ABI
+  (slots/frames).
+- `tools/qccvm.py` -- reference interpreter, also the test oracle for
+  all backends.
+- `docs/SELFHOSTING_GAP_LIST.md` / `[[qcc-vollport-status]]` (memory)
+  -- context for the ongoing QCC full port of `codegen.cpp`/`parsec.cpp`.
