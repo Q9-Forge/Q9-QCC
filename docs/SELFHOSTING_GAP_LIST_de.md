@@ -10,7 +10,7 @@ geschrieben und von ihr selbst übersetzt werden könnte -- "Selfhosting" im
 klassischen Compilerbau-Sinn?
 
 Diese Liste ist NICHT aus dem ISO-C-Standard abgeleitet (siehe dazu
-`docs/ISO_C_LUECKENLISTE.md`), sondern direkt am tatsächlichen Quellcode der
+`docs/ISO_C_GAP_LIST_de.md`), sondern direkt am tatsächlichen Quellcode der
 Toolchain gemessen: Es wurde durchsucht, welche C/C++-Konstrukte
 `Source/parsec.cpp`, `Source/codegen.cpp`, `Source/tiny-regex.cpp` sowie die
 generierten Parser-Zwillinge (`Data/*_p.c`) wirklich verwenden. Die Liste
@@ -199,6 +199,108 @@ Luecken zu rechnen (die Tabelle erfasst nur die fuenf urspruenglich
 gezaehlten Konstrukte, nicht den gesamten Sprachumfang der beiden
 Dateien).
 
+### Nachmessung mit zweistufiger Erhebung (2026-08-12)
+
+Die obige Aussage, alle gemessenen Sprachlücken seien geschlossen, galt nur
+für die fünf gezählten Konstrukte — und bei den Funktionszeigern war sie
+**zu optimistisch**. Zwei Dinge mussten zuerst behoben werden, bevor
+überhaupt eine Zahl belastbar war:
+
+**Semantische Fehler waren nicht tödlich.** Der erzeugte Parser meldete
+`qcc: unknown function`, Typfehler und alles Übrige auf stderr, beendete
+sich aber mit **0**, schrieb `OK` und gab die (falsche) IR trotzdem aus.
+Eine Kette `qcc_p x.c > x.ir && qcc_backend x.ir` erzeugte damit klaglos
+falschen Code. Der Zähler `tcSemanticErrors` existierte, wurde 163-mal
+hochgezählt und **nirgends** gelesen. Das ist keine QCC-Eigenheit, sondern
+eine Lücke des Generators: jede Grammatik mit Aktionen hatte sie.
+`Source/codegen.cpp` deklariert jetzt `actionErrors` im erzeugten Parser und
+prüft ihn nach dem Replay. Siehe die drei Schlussworte `OK`/`SEMERR`/`FAIL`
+im README.
+
+**Die Erhebung hat deshalb jetzt zwei Stufen** (`tools/bootstrap_survey.py`):
+
+| Stufe | misst | Verfahren |
+|---|---|---|
+| 1 | Nimmt die Grammatik den Text an? | Einheiten **kumulativ**, wertet nur `FAIL` |
+| 2 | Ist er auch bedeutungsvoll? | die **ganze Datei** in einem Lauf, wertet den Rückgabewert |
+
+Stufe 1 darf semantische Fehler nicht werten: ein Präfix enthält regulär
+unaufgelöste Vorwärtsbezüge. Beides zu vermischen machte aus 5 gemeldeten
+Lücken 346.
+
+Gemessener Stand (2026-08-12, nachdem der Memberzugriff auf
+Funktionsrückgabewerte ergänzt wurde — `callMember`/`tc_callmember`, parallel
+in einer anderen Sitzung entstanden):
+
+| Ziel | Einheiten | Stufe 1 angenommen | Stufe 1 Lücken |
+|---|---:|---:|---:|
+| `Data/qcc_p.c` | 768 | **768** | **0** |
+
+**Stufe 1 am Bootstrap-Ziel ist erstmals leer** — die Grammatik nimmt
+`Data/qcc_p.c` vollständig an. Eine Zwischenmessung wenige Stunden vorher
+zeigte noch 4 Lücken, und alle vier scheiterten am selben Konstrukt
+(`tcPointee(bt).base` in `tcMemberIncDec`, `tc_varref`, `tc_term`,
+`tc_target`); sie zu schließen schloss alle auf einmal.
+
+**Stufe 2 ist damit erstmals messbar**: 30 verschiedene Beanstandungen. Sie
+sind mit Vorsicht zu lesen, mehrere sind Artefakte des Messaufbaus und keine
+Compilerlücken:
+
+- `unknown function`, `unknown type name 'FILE'` und die daraus folgende
+  Kaskade von `?`-Typen sind Folgen der hier verwendeten Vorverarbeitung,
+  die `#include`-Zeilen streicht. Das Gegenmittel steht schon oben: die 2
+  `#include` durch `extern`-Deklarationen ersetzen, bevor man Stufe 2 liest.
+- Echte Lücken in der Liste: `multi-dimensional struct arrays`, `partial
+  indexing of a 2D/3D array`, `chained assignment is only supported for
+  plain variables`, `cannot assign through pointer to const`.
+- **Und eine selbstverschuldete**: `a comma expression must end in a value,
+  not an assignment` — siehe die Anmerkung zum Komma-Operator unten.
+
+**Korrektur zum Funktionszeiger-Eintrag oben.** `CALLIND` funktionierte über
+Arrayelement (`t[0](7)`) und struct-Feld (`s.f(3)`). Kaputt war der Aufruf
+über eine einfache **Variable oder einen Parameter** (`Fn f; f = g; f(7);`)
+— und zwar still: die IR enthielt `PUSHFN g / STOREP 0 / PUSH 7 / DROP`, gar
+keinen Aufruf. Ursache: die Grammatik probiert in `callStmt` die Regel
+`call` vor `indirectCall`, und bei einem nackten Bezeichner greift die
+direkte. Behoben in `tc_callname`, also **vor** den Argumenten — die einzig
+mögliche Stelle, weil das Backend den Zeiger zuunterst erwartet (er wird bei
+`nargs*4(a7)` gelesen).
+
+Warum das so lange überlebte: **`tools/qccvm.py`, das IR-Referenzorakel
+hinter `tc_check`, kannte weder `PUSHFN` noch `CALLIND`.** Funktionszeiger
+waren nie durch die Suite abgedeckt — auch die funktionierenden Wege nicht.
+Wer eine Sprachlücke schließt, muss prüfen, ob das Orakel den Opcode
+überhaupt ausführen kann.
+
+**Komma-Operator geschlossen (2026-08-11).** Bewusst nur *innerhalb* von
+Klammern (`factor = parenOpen commaExpr parenClose`): in C trennt die
+Grammatik `expression` (mit Komma) von `assignment-expression` (ohne), und
+Argumentlisten wie Initialisierer benutzen letztere — ein Komma in `argList`
+als Operator fehlzudeuten wäre ein stiller Fehler. Der Fallstrick war nicht
+die Grammatik, sondern der **Zielzustand**: `tc_target`/`tc_assignop`
+schreiben in Globale, eine innere Zuweisung nahm sie der äußeren weg
+(`x = (y = 1, 2)` legte 2 in `y` und 0 in `x`). Gesichert im Klammerrahmen,
+der bereits einen Tiefenstapel hat; der einstufige `tcPrevTarget*`-Puffer
+genügt bei `(y = (z = 1, 2), 3)` nicht.
+
+**Die erklärte „bewusste Grenze" dieser Änderung hält nicht stand und ist
+als Nächstes zu beheben.** Sie besagt, das letzte Glied müsse einen Wert
+liefern, `(x = 1)` sei diagnostiziert. Stufe 2 zeigt, dass das echte Ziel
+genau dagegen läuft — und zwar in keinem exotischen Fall, sondern in
+gewöhnlichem C: `if ((p = f()))` und `while ((c = g()))`. Vor dem
+Komma-Operator waren das Parse-Fehler, es ist also kein Regress, aber die
+Grenze muss weg: eine geklammerte Zuweisung muss den zugewiesenen Wert
+liefern. Das heißt, Zuweisung als Ausdruck zu unterstützen und nicht nur als
+linkes Glied eines Kommas.
+
+Nächste Schritte, in dieser Reihenfolge:
+
+1. Geklammerte Zuweisung liefert einen Wert (`if ((p = f()))`) — beseitigt
+   die selbstverschuldete Stufe-2-Beanstandung.
+2. Die 2 `#include` in der Bootstrap-Kopie durch `extern`-Deklarationen
+   ersetzen, damit Stufe 2 keine Phantom-`unknown function` mehr meldet.
+3. Danach die echten Stufe-2-Lücken abarbeiten.
+
 ### Was "Bootstrap" genau hieße (Begriffsklärung, 2026-08-10)
 
 Wichtig, weil leicht zu verwechseln -- der 2026-08-10 geschlossene
@@ -321,7 +423,7 @@ dazu: **Speicherbedarf der statischen Puffer für das Zielsystem verkleinern.**
    lassen (siehe Empfehlung in Abschnitt 5).
 
 Diese Reihenfolge überschneidet sich stark mit Stufe A/B der
-`ISO_C_LUECKENLISTE.md` (`struct`/`enum`/`typedef`/`for`/`switch` stehen dort
+`ISO_C_GAP_LIST_de.md` (`struct`/`enum`/`typedef`/`for`/`switch` stehen dort
 ohnehin schon als "sehr hoch"/"hoch") -- die beiden Listen ziehen also
 weitgehend am selben Strang, nur dass diese hier zusätzlich den konkreten
 Bibliotheks- und Mehrdateibedarf des eigenen Werkzeugs sichtbar macht.

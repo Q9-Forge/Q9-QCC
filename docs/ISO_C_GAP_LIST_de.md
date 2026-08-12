@@ -138,7 +138,7 @@ zielsystemspezifische Runtime sinnvoll, nicht sofort die komplette Bibliothek.
 Name;` anonym inline (erledigt, 2026-07-24),
 `struct` mit gemischten skalaren Feldtypen (erledigt, 2026-07-24; Array-Felder,
 Pointer-Felder und verschachtelte structs noch offen, siehe
-SELFHOSTING_LUECKENLISTE.md), Prä-/Postinkrement (erledigt,
+SELFHOSTING_GAP_LIST_de.md), Prä-/Postinkrement (erledigt,
 2026-07-23), `sizeof` auf Basistypen/struct (erledigt, 2026-07-23; auf Pointer
 weiterhin offen), noch offen: Casts, Funktionsprototypen, `enum`-Typsicherheit
 (Konstanten sind erledigt, aber ohne eigenen Typ) und ein robuster Präprozessor.

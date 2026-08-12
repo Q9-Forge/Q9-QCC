@@ -1,33 +1,34 @@
 # Q9-QCC
 
-Der gemeinsame projektübergreifende Kontext und die verbindlichen Namen
-stehen in [Q9Forge/AI_CONTEXT.md](../Q9Forge/AI_CONTEXT.md).
+*German version: [README_de.md](README_de.md)*
 
-QCC-Toolchain für Q9 (C-Sprachkern, IR, 68000-/ARM64-Backends).
-Extrahiert aus dem ehemaligen `ebnf`-Repo (2026-07-31, volle Historie
-erhalten), das jetzt als [Q9-Parsec](https://github.com/Q9-Forge/Q9-Parsec)
-weiterlebt.
+The shared cross-project context and the binding names live in
+[Q9Forge/AI_CONTEXT.md](../Q9Forge/AI_CONTEXT.md).
 
-## Abhängigkeit zu Q9-Parsec
+QCC toolchain for Q9 (C language core, IR, 68000/ARM64 backends).
+Extracted from the former `ebnf` repo (2026-07-31, full history
+preserved), which now lives on as [Q9-Parsec](https://github.com/Q9-Forge/Q9-Parsec).
 
-Der QCC-Parser `Data/qcc_p.c` wird vom EBNF-Generator aus Q9-Parsec erzeugt.
-Er ist hier **eingecheckt** (in Q9-Parsec ist dieselbe Datei nur ein
-unversioniertes Bauartefakt), damit dieses Repo ohne Generator übersetzbar
-bleibt:
+## Dependency on Q9-Parsec
+
+The QCC parser `Data/qcc_p.c` is produced by the EBNF generator from
+Q9-Parsec. It **is checked in here** (in Q9-Parsec the same file is only an
+unversioned build artifact), so that this repo stays buildable without the
+generator:
 
 ```
-Data/qcc.ebnf + Data/qcc.lextab  --[parsec aus Q9-Parsec]-->  Data/qcc_p.c
+Data/qcc.ebnf + Data/qcc.lextab  --[parsec from Q9-Parsec]-->  Data/qcc_p.c
 ```
 
-**Achtung, Falle:** ohne die `.lextab` entsteht ein Parser ohne Lexer und
-ohne Aktionen — die `.ebnf` allein trägt das nicht. Mit beiden Dateien ist
-die Erzeugung bitgleich reproduzierbar; nach jeder Grammatikänderung
-`Data/qcc_p.c` neu erzeugen und mitcommitten.
+**Watch out:** without the `.lextab` you get a parser with no lexer and no
+actions -- the `.ebnf` alone does not carry them. With both files the
+generation is reproducible bit for bit; regenerate `Data/qcc_p.c` after every
+grammar change and commit it along.
 
-Die QCC-Sprachdefinition `Data/qcc.ebnf`/`qcc.lextab` wird **hier** gepflegt;
-Q9-Parsec hält davon eine Kopie, weil seine Regressionssuite QCC mittestet
-(siehe „Bekannte Lücke" unten). Q9-Parsec zum Bauen des Generators
-zusätzlich auschecken:
+The QCC language definition `Data/qcc.ebnf`/`qcc.lextab` is maintained
+**here**; Q9-Parsec keeps a copy of it because its regression suite tests QCC
+as well (see "Known gap" below). Also check out Q9-Parsec to build the
+generator:
 
 ```sh
 git clone git@github.com:Q9-Forge/Q9-Parsec.git ../Q9-Parsec
@@ -35,50 +36,73 @@ git clone git@github.com:Q9-Forge/Q9-Parsec.git ../Q9-Parsec
 ../Q9-Parsec/build/parsec Data/qcc
 ```
 
-## Struktur
+## The three closing words of a generated parser
 
-- `Source/qcc_backend*.cpp`, `qcc_arm64_backend*.cpp` — IR-zu-68k- bzw.
-  IR-zu-ARM64-Codegenerierung
-- `SourceQCC/` — der EBNF-Generator selbst, nach QCC portiert
-  (Selfhosting-Nachweis: beweist, dass dieser Compiler ein echtes,
-  größeres Programm übersetzen kann)
-- `runtime/arm64_darwin/` — Laufzeit-Unterstützung fürs ARM64-Testbackend
-- `examples/qcc-project/` — Beispielprojekt
-- `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` —
-  Test-Orakel/Simulatoren + vendorter 68k-Assembler
-- `docs/` — Status, Fortschritt, IR-Opcodes, ISO-C-Lückenlisten,
-  OS-9-Bootstrap, Selfhosting-Lückenliste, Teilprojekt-Roadmap
+`OK` / `SEMERR` / `FAIL`, exit code `0` / `1` / `1`.
 
-## Bekannte Lücke: geteilte Dateien mit Q9-Parsec (Stand 2026-08-11)
+- `FAIL` -- the grammar did not accept the input. **Prefix-stable.**
+- `SEMERR` -- accepted, but semantically rejected. Inside a *prefix* of a file
+  this is entirely normal (forward references), so it is no finding there.
+- `OK` -- translated without complaint.
 
-Die vollständige Regressionssuite (`runtests.sh`, ehemals im gemeinsamen
-`ebnf`-Repo, testet EBNF-Generator und QCC in einem gemischten
-3200-Zeilen-Skript) wurde **noch nicht sauber aufgetrennt** — sie bleibt
-vorerst nur in Q9-Parsec. Weil sie QCC mittestet, existieren sieben Dateien
-in beiden Repos. Sie sind am 2026-08-11 zusammengeführt und **inhaltlich
-deckungsgleich**; damit das so bleibt, gilt eine feste Zuständigkeit:
+Keeping these apart matters. `tools/bootstrap_survey.py` feeds *prefixes* of a
+file through the parser and measures grammar coverage; reporting both failure
+kinds under one word made that measurement worthless (346 reported gaps
+instead of 5). Compare the closing word line-wise, never as a substring: the
+semantic marker was first called `SEMFAIL` and thereby *contained* `FAIL`,
+which fooled every caller doing a substring check.
 
-| Datei | gepflegt in |
+## Structure
+
+- `Source/qcc_backend*.cpp`, `qcc_arm64_backend*.cpp` -- IR-to-68k and
+  IR-to-ARM64 code generation
+- `SourceQCC/` -- the EBNF generator itself, ported to QCC
+  (selfhosting proof: demonstrates that this compiler can translate a
+  real, larger program)
+- `runtime/arm64_darwin/` -- runtime support for the ARM64 test backend
+- `examples/qcc-project/` -- example project
+- `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` --
+  test oracles/simulators + vendored 68k assembler
+- `tools/bootstrap_survey.py` -- two-stage gap survey against a bootstrap
+  target (stage 1 grammar, stage 2 semantics)
+- `docs/` -- status, progress, IR opcodes, ISO C gap lists,
+  OS-9 bootstrap, selfhosting gap list, subproject roadmap
+
+## Known gap: files shared with Q9-Parsec (as of 2026-08-11)
+
+The full regression suite (`runtests.sh`, formerly in the shared `ebnf` repo,
+tests the EBNF generator and QCC together in a mixed 3200-line script) has
+**not yet been cleanly split apart** -- for now it stays only in Q9-Parsec.
+Because it tests QCC as well, twelve files exist in both repos. They were
+merged on 2026-08-11 and are **identical in content**; to keep it that way, a
+fixed ownership applies:
+
+| File | maintained in |
 |---|---|
 | `Data/qcc.ebnf`, `Data/qcc.lextab` | **Q9-QCC** |
 | `Source/qcc_backend_c.cpp`, `Source/qcc_arm64_backend_c.cpp` | **Q9-QCC** |
-| `SourceQCC/ebnf.tc`, `SourceQCC/codegen.tc` | **Q9-Parsec** (Generator-Zwillinge) |
-| `tools/qcc68sim.py` | **Q9-Parsec** (dort läuft die Suite) |
+| `SourceQCC/ebnf.tc`, `SourceQCC/codegen.tc` | **Q9-Parsec** (generator twins) |
+| `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` | **Q9-Parsec** (the suite runs there) |
+| `runtime/arm64_darwin/start.s`, `LICENSE` | either, keep in step |
 
-Eine Änderung an einer dieser Dateien muss ins jeweils andere Repo
-mitgespielt werden. Prüfbefehl bei Nachbar-Auscheckung:
+A change to one of these must be carried over into the other repo.
+`runtests.sh` in Q9-Parsec enforces this automatically: it compares the
+complete intersection of both repos (`git ls-files`) against `../Q9-QCC` and
+fails on any divergence. `README.md`/`README_de.md` are the deliberate
+exception -- each repo has its own text.
+
+Manual check with a sibling checkout:
 
 ```sh
-for f in Data/qcc.ebnf Data/qcc.lextab Source/qcc_backend_c.cpp \
-         Source/qcc_arm64_backend_c.cpp SourceQCC/ebnf.tc \
-         SourceQCC/codegen.tc tools/qcc68sim.py; do
-  cmp -s "$f" "../Q9-Parsec/$f" || echo "DIVERGENT: $f"
+for f in $(git ls-files); do
+  [ "$f" = "README.md" ] || [ "$f" = "README_de.md" ] && continue
+  [ -f "../Q9-QCC/$f" ] && { cmp -s "$f" "../Q9-QCC/$f" || echo "DIVERGENT: $f"; }
 done
 ```
 
-**Warum das mühsam ist:** die Abhängigkeit ist gegenseitig — Q9-Parsec
-erzeugt QCCs Parser, und QCC übersetzt Q9-Parsecs Selfhosting-Zwillinge.
-Bis die Suite aufgeteilt (oder ein Submodul eingerichtet) ist, ersetzt die
-Tabelle oben keine Automatik. Zur Vorgeschichte: bis zum 2026-08-11 lagen
-diese Dateien **unbemerkt in fünf Fällen auseinander**, unter anderem mit
-zwei konkurrierenden Behebungen desselben Big-Endian-Fehlers.
+**Why this is tedious:** the dependency is mutual -- Q9-Parsec generates QCC's
+parser, and QCC compiles Q9-Parsec's selfhosting twins. Until the suite is
+split (or a submodule is set up), the table above is no substitute for
+automation. For the record: until 2026-08-11 these files had drifted apart
+**unnoticed in five cases**, among them two competing fixes for the same
+big-endian bug.

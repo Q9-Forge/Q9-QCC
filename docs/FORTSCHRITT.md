@@ -1,5 +1,76 @@
 # Fortschritt und Roadmap
 
+> Hinweis zur Sprache: Dieses Journal ist als einziges Dokument NICHT auf die
+> Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
+> Neue Eintraege daher weiterhin auf Deutsch.
+
+## Komma-Operator; semantische Fehler sind toedlich (2026-08-11/12)
+
+**Komma-Operator**, bewusst nur INNERHALB von Klammern
+(`factor = parenOpen commaExpr parenClose`). In C trennt die Grammatik
+`expression` (mit Komma) von `assignment-expression` (ohne); Argumentlisten
+und Initialisierer benutzen letztere. Ein Komma in `argList` als Operator
+fehlzudeuten waere ein stiller Fehler, die geklammerte Form ist eindeutig.
+`commaAssign` steht VOR `commaValue`, sonst nimmt die geordnete Auswahl bei
+`*p = 1` schon `*p` als Wert.
+
+Der Fallstrick war nicht die Grammatik, sondern der ZIELZUSTAND:
+`tc_target`/`tc_assignop` schreiben in Globale, eine innere Zuweisung nahm
+sie der aeusseren weg -- `x = (y = 1, 2)` legte 2 in `y` und 0 in `x`, auf
+IR-VM UND 68k gleich falsch. Gesichert wird im Klammerrahmen (hat einen
+Tiefenstapel); der einstufige `tcPrevTarget*`-Puffer genuegt bei
+`(y = (z = 1, 2), 3)` nicht. 16 Faelle auf beiden Wegen verifiziert.
+
+**Bereits ueberholt:** die erklaerte Grenze "letztes Glied muss einen Wert
+liefern" bricht gewoehnliches C (`if ((p = f()))`, `while ((c = g()))`) und
+taucht in Stufe 2 der Erhebung als Beanstandung auf. Naechster Schritt:
+geklammerte Zuweisung liefert den zugewiesenen Wert.
+
+**Semantische Fehler waren nicht toedlich.** Der erzeugte Parser meldete
+`qcc: unknown function`, Typfehler und alles Uebrige auf stderr, endete aber
+mit Rueckgabewert 0, schrieb `OK` und gab die falsche IR trotzdem aus. Eine
+Kette `qcc_p x.c > x.ir && qcc_backend x.ir` erzeugte klaglos falschen Code.
+`tcSemanticErrors` existierte, wurde 163-mal hochgezaehlt und NIRGENDS
+gelesen; an 27 der 187 Fehlerstellen fehlte die Zaehlung ganz. Behoben auf
+GENERATOR-Ebene (`Source/codegen.cpp` deklariert `actionErrors`), weil jede
+Grammatik mit Aktionen betroffen war. Drei Schlussworte: `OK`/`SEMERR`/`FAIL`,
+Rueckgabewert 0/1/1 -- die Trennung traegt, weil `FAIL` praefixstabil ist und
+`bootstrap_survey.py` Praefixe misst. Der Marker hiess zuerst `SEMFAIL` und
+enthielt damit `FAIL` als Teilzeichenkette; das kostete eine Runde
+Falschmessungen (346 statt 5).
+
+**Funktionszeiger-Aufruf ueber eine einfache Variable erzeugte keinen
+Aufruf.** `Fn f; f = g; f(7);` ergab `PUSHFN g / STOREP 0 / PUSH 7 / DROP`.
+`callStmt` probiert `call` vor `indirectCall`, bei nacktem Bezeichner greift
+die direkte Regel. Behoben in `tc_callname`, also VOR den Argumenten -- das
+Backend erwartet den Zeiger zuunterst (`nargs*4(a7)`). Ueber Arrayelement und
+struct-Feld war es immer korrekt. Ueberlebt hat der Fehler, weil
+`tools/qccvm.py` weder `PUSHFN` noch `CALLIND` kannte: Funktionszeiger waren
+NIE durch `tc_check` abgedeckt. Nebenbei berichtigt: `docs/IR_OPCODES.md`
+beschrieb die Stapelbelegung von `CALLIND` genau falsch herum.
+
+## Bootstrap: Memberzugriff auf Funktionsrueckgaben (2026-08-12)
+
+Die Grammatik unterstuetzt jetzt direkte Struct-Memberzugriffe auf den
+Rueckgabewert eines Aufrufs, insbesondere `get()->field` und
+`get()->array[index]`. `tc_callmember` prueft den Rueckgabetyp, berechnet den
+Feldoffset und erzeugt nur vorhandene Stack-IR-Operationen. Beim indizierten
+Feldzugriff wird die Stack-Reihenfolge mit `SWAP` korrigiert, weil der Index
+bereits ueber dem Rueckgabepointer liegt.
+
+Verifiziert mit QCCVM sowie den 68000- und ARM64-Backends. Der VM-/ARM64-
+Support fuer `SWAP` wurde dabei nachgezogen; das 68k-Backend hatte ihn bereits.
+Ein Laufzeittest mit einem globalen Struct und `get()->a[1]` liefert `20`.
+Direkter Zugriff mit `.` auf einen Struct-Wert als Rueckgabe bleibt bewusst
+diagnostiziert, solange Struct-Wert-Rueckgaben im Backend nicht als eigener
+ABI-Fall modelliert sind.
+
+Der Bootstrap-Gegencheck laeuft ebenfalls: `SourceQCC/ebnf.tc` und
+`SourceQCC/codegen.tc` werden nach Entfernen der Praeprozessorzeilen vom
+aktuellen QCC akzeptiert; beide IR-Ausgaben werden vom 68000-Backend erzeugt,
+`codegen.tc` als `-part`-Modul. Fuer die naechste Stufe bleibt die
+Vorverarbeitung (`xcc -pp` beziehungsweise Q9-cpp) der externe Schritt.
+
 ## Bootstrap: Speicher ist der eigentliche Blocker (2026-08-11)
 
 Vor dieser Sitzung war der Compiler auf dem Q9 (16 MB RAM) **grundsaetzlich
@@ -1323,4 +1394,3 @@ Ziel: Generator + QCC-Toolchain irgendwann in QCC selbst schreib- und
 6. 68000- und ARM64-Backend ergänzen.
 7. Kleinen gezielten Regressionstest in `runtests.sh` aufnehmen.
 8. `./runtests.sh` vollständig ausführen und diese Datei aktualisieren.
-
