@@ -248,6 +248,8 @@ def run(prog):
             opstack.append(opstack[-1]); ip += 1
         elif op == "DUPP":
             opstack.append(opstack[-1]); ip += 1
+        elif op == "SWAP":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(b); opstack.append(a); ip += 1
         elif op == "CMPLT":
             b = opstack.pop(); a = opstack.pop(); opstack.append(1 if a < b else 0); ip += 1
         elif op == "CMPGT":

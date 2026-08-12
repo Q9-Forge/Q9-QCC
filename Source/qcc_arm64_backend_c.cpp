@@ -533,6 +533,9 @@ static void emit(FILE* o) {
 				fputs("\tldr\tw0,[sp]\n", o); push(o, "w0");
 			} else if (strcmp(op, "DUPP") == 0) {
 				fputs("\tldr\tx0,[sp]\n", o); push(o, "x0");
+			} else if (strcmp(op, "SWAP") == 0) {
+				/* Oberste zwei 64-bit Stackwerte vertauschen. */
+				fputs("\tldr\tx0,[sp]\n\tldr\tx1,[sp,#8]\n\tstr\tx1,[sp]\n\tstr\tx0,[sp,#8]\n", o);
 			} else if (strncmp(op, "CMP", 3) == 0) {
 				const char* cc = strcmp(op, "CMPLT") == 0 ? "lt" : strcmp(op, "CMPGT") == 0 ? "gt" : strcmp(op, "CMPLE") == 0 ? "le" :
 					strcmp(op, "CMPGE") == 0 ? "ge" : strcmp(op, "CMPULT") == 0 ? "lo" : strcmp(op, "CMPUGT") == 0 ? "hi" :
