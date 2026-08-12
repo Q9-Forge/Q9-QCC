@@ -1,10 +1,10 @@
 # Kleine ISO-C-Arbeitseinheiten
 
-Diese Liste zerlegt die große [ISO-C-Lückenliste](ISO_C_LUECKENLISTE.md) in
+Diese Liste zerlegt die große [ISO-C-Lückenliste](ISO_C_GAP_LIST_de.md) in
 Aufgaben, die jeweils in einem überschaubaren Arbeitsgang erledigt und getestet
 werden können. Präprozessor, Bibliothek, Optimierer und zusätzliche Backends
 sind dabei eigene Teilprojekte; ihre Abgrenzung steht in
-[TEILPROJEKTE.md](TEILPROJEKTE.md). Eine Zeile ist bewusst kein Versprechen, dass
+[SUBPROJECTS_de.md](SUBPROJECTS_de.md). Eine Zeile ist bewusst kein Versprechen, dass
 sie immer in genau einer Sitzung fertig wird; bei Bedarf wird sie in
 Untereinheiten geteilt.
 

@@ -404,7 +404,7 @@ factor    = sizeofExpr
           | preIncDec
           | postIncDec
           | parenOpen commaExpr parenClose
-          | call [ postfixIndex ]
+          | call [ postfixIndex ] [ callMember ]
           | indirectCall
           | boolLit
           | addressRef
@@ -491,6 +491,11 @@ incdecOp   = "++" | "--" .
 incDecStmt = preIncDec ";" | postIncDec ";" .
 derefRef  = "*" factor .
 call      = funcName "(" argList ")" .
+/* Memberzugriff auf den Wert eines direkten Aufrufs, z.B. get()->field oder
+   make().field. Der Aufruf wird zuerst durch tc_call abgeschlossen; dadurch
+   liegt sein Rueckgabetyp bereits auf dem Typstack, wenn tc_callmember den
+   Feldzugriff prueft und die Adresse berechnet. */
+callMember = member [ index ] .
 /* Aufruf ueber einen Funktionszeiger-Ausdruck, z.B. "actionLog[i].fn(a, b)".
    varRef deckt "ident [index...] [.member]" bereits ab und legt den Zeiger als
    Wert auf den Stack; indCallOpen uebernimmt ihn dann als Callee (siehe
