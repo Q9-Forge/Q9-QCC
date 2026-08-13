@@ -145,7 +145,11 @@ static void emit(std::ostream& o, const std::vector<Instr>& ir, const std::vecto
 			}
 			else if (op == "LARRAY" && x.args.size() == 3) { }
 			else if (op == "PUSHADDR" && x.args.size() == 2) {
-				if (x.args[0] == "L") { bool ignored = false; int off = arrayOffset(ir, f, number(x.args[1], x.line), ignored, x.line); o << "\tsub\tx0,x29,#" << off << "\n"; }
+				if (x.args[0] == "L") {
+					int slotN = number(x.args[1], x.line);
+					if (slotN < f.nargs) o << "\tadd\tx0,x29,#" << (16 + 16 * (f.nargs - 1 - slotN)) << "\n";
+					else { bool ignored = false; int off = arrayOffset(ir, f, slotN, ignored, x.line); o << "\tsub\tx0,x29,#" << off << "\n"; }
+				}
 				else if (x.args[0] == "P") o << "\tldr\tx0,[x29," << slot(number(x.args[1], x.line), f, x.line) << "]\n";
 				else if (x.args[0] == "G" && global.count(x.args[1])) o << "\tadrp\tx0,_tc_g_" << x.args[1] << "@PAGE\n\tadd\tx0,x0,_tc_g_" << x.args[1] << "@PAGEOFF\n";
 				else throw std::runtime_error("unbekanntes Array");

@@ -32,7 +32,10 @@
    ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
    Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
    nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
-#define MAX_GLOBALS     1024
+/* Der vollstaendige selbst erzeugte qcc_p-Parser enthaelt rund 1.053
+   Globals (fast alle sind Stringliterale). 1024 war damit eine kuenstliche
+   Bootstrap-Grenze, nicht eine Speichergrenze. */
+#define MAX_GLOBALS     2048
 #define MAX_ARRAY_LEN   4096
 
 /* 2026-08-11: `args` war vorher `char args[MAX_ARGS][ARG_LEN]`, also 6x64 = 384
@@ -236,6 +239,9 @@ static int runtimeMode = 0;
    Globale erreichbar macht -- auf Kosten eines zusaetzlichen Speicherzugriffs
    pro Zugriff. */
 static int largeDataMode = 0;
+/* Experimenteller Fernaufrufpfad; ohne -trampolines bleibt der getestete
+   Tabellenpfad unveraendert. */
+static int trampolineMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
 /* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
@@ -431,10 +437,9 @@ static int helperTableOffset(const char* rawName) {
 static void emitCall(FILE* out, const char* asmName, int tableOffset, int* serial, const char* psectName) {
 	if (largeDataMode) {
 		int id = (*serial)++;
-		fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", tableOffset);
+		if (trampolineMode) fprintf(out, "\tbsr\t%s\n", asmName);
+		else fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", tableOffset);
 		fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
-		fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a4\n\tadda.l\t#(tc_functab__%s-tc_callret_%d__%s),a4\n", id, psectName, psectName, id, psectName);
-		fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-tc_callret_%d__%s),a3\n", id, psectName, psectName, id, psectName);
 	} else {
 		fprintf(out, "\tbsr\t%s\n", asmName);
 	}
@@ -865,7 +870,19 @@ static void emitIR(FILE* out) {
 	fprintf(out, "%s a7: Operand-Stack, %s: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix(), framePtr());
 	if (os9Mode) {
 		fprintf(out, "\tnam\t%s\n", psectName);
-		fprintf(out, "\tpsect\t%s,0,0,1,0,0\n\n", psectName);
+		fprintf(out, "\tpsect\t%s,0,0,%d,0,0\n", psectName, trampolineMode ? 0 : 1);
+		if (trampolineMode)
+			/* r68 braucht fuer -j eine explizite Registerangabe. Der Register-
+			   wert wird nur beim Assemblieren benutzt; l68 -a erzeugt die
+			   eigentliche OS-9-relokierbare Sprungtabelle. */
+			fputs("\tspanreg\td7\n", out);
+		fputs("\n", out);
+		if (trampolineMode) {
+			/* l68 -a legt seine Sprungtabelle in den initialisierten
+			   Datenbereich. Ein expliziter Vsect-Anker sorgt dafuer, dass
+			   cstart dafuer auch eine OS-9-Datenbasis in A6 einrichtet. */
+			fputs("\tvsect\n\tds.b\t1\n\tends\n\n", out);
+		}
 		fprintf(out, "%s Kein eigener tc_start-Boot-Code hier: cstart.r (echte Microware-\n", fullCommentPrefix());
 		fprintf(out, "%s C-Laufzeit) ruft \"main\" direkt auf und kuemmert sich selbst ums\n", fullCommentPrefix());
 		fprintf(out, "%s Beenden -- a6 bleibt dadurch als dessen statischer Datenzeiger\n", fullCommentPrefix());
@@ -1059,7 +1076,9 @@ static void emitIR(FILE* out) {
 		   ganze Block nah an den Tabellen liegt, ist auch das "lea (pc)" hier
 		   selbst immer sicher erreichbar. */
 		fputs("tc_io_write:\n\tlea\ttc_io_cnt(pc),a2\n\tmove.l\td1,(a2)\n\tmove.l\ta1,d1\n", out);
-		fputs("\tmove.l\ta2,-(a7)\n\tmoveq\t#1,d0\n\tbsr\t_os_write\n\tlea\t4(a7),a7\n", out);
+		fputs("\tmove.l\ta2,-(a7)\n\tmoveq\t#1,d0\n", out);
+		fputs("\tbsr\t_os_write\n", out);
+		fputs("\tlea\t4(a7),a7\n", out);
 		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		fputs("\trts\n\n", out);
 	} else {
@@ -1116,11 +1135,32 @@ static void emitIR(FILE* out) {
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
-			if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n", psectName);
-			if (largeDataMode) fprintf(out, "\tlea\ttc_gadata__%s(pc),a3\n", psectName);
+			/* cstart.r ruft den exportierten Einstieg nach der Microware-C-ABI
+			   auf: argc in d0, argv in d1. QCC-interne CALLs verwenden dagegen
+			   ausschliesslich den Operand-Stack (erstes Argument weiter oben).
+			   Ein parameterloses main braucht keinen Adapter; bei main(argc,argv)
+			   beziehungsweise jeder von QCC akzeptierten parameterbehafteten Form
+			   macht dieser kurze Stub die beiden Welten kompatibel. */
+			if (fn->nargs > 0) {
+				if (fn->nargs >= 1) fputs("\tmove.l\td0,-(a7)\n", out);
+				if (fn->nargs >= 2) fputs("\tmove.l\td1,-(a7)\n", out);
+				if (fn->nargs > 2) {
+					/* Cstart kann nur argc/argv liefern. Weitere Parameter bleiben
+					   bewusst null statt aus undefiniertem Registerinhalt zu kommen. */
+					int mi;
+					for (mi = 2; mi < fn->nargs; mi++) fputs("\tmoveq\t#0,d0\n\tmove.l\td0,-(a7)\n", out);
+				}
+				fputs("\tbsr\ttc_main\n", out);
+				fprintf(out, "\tlea\t%d(a7),a7\n\trts\n", fn->nargs * 4);
+			}
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
 		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
+		if (largeDataMode && os9Mode && strcmp(fn->name, "main") == 0) {
+			/* OS-9 cstart enters main directly; establish the one shared table
+			   basis before any QCC-internal call is made. */
+			fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
+		}
 		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- vierter, tiefster
 		   -largedata-Bug dieser Sitzung): a3/a4 werden bisher NUR beim
 		   Programmstart (main:) einmalig gesetzt UND nach jedem CALLEXT/
@@ -1171,10 +1211,9 @@ static void emitIR(FILE* out) {
 		   keine PC-relativ-Grenze, im Gegensatz zu "d(pc)"-Adressierungs-
 		   arten). So kann JEDE Funktion, egal wie weit von ihrer eigenen
 		   Tabelle entfernt, diese trotzdem sicher erreichen. */
-		if (largeDataMode) {
-			fprintf(out, "\tlea\t%s(pc),a4\n\tadda.l\t#(tc_functab__%s-%s),a4\n", asmName, psectName, asmName);
-			fprintf(out, "\tlea\t%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-%s),a3\n", asmName, psectName, asmName);
-		}
+		/* a3/a4 werden am Programmeinstieg gesetzt und von internen QCC-
+		   Funktionen nicht veraendert. Externe Aufrufe nutzen Wrapper, die
+		   diese ABI-Temporaerregister wiederherstellen. */
 		/* BIG-ENDIAN-KORREKTUR FUER char-PARAMETER (2026-08-10, live am
 		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
 		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
@@ -1267,8 +1306,20 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
 				int ignored;
 				if (strcmp(insP->args[0], "L") == 0) {
-					int off = arrayOffset(fn, number(insP->args[1], insP->line), &ignored, insP->line);
-					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
+					int slotN = number(insP->args[1], insP->line);
+					/* Ein Struct mit genau einem Langwort (der Bootstrap-Fall
+					   TCType: vier char-Felder) wird als normaler 32-Bit-
+					   Parameter uebergeben. Seine Feldzugriffe verwenden trotzdem
+					   PUSHADDR L <param>; dafuer ist die Parameteradresse selbst
+					   korrekt. Nicht jede L-Adresse ist also ein LARRAY. Groessere
+					   Struct-by-value-Parameter brauchen weiterhin eine eigene ABI. */
+					if (slotN < fn->nargs) {
+						slotAddress(addrBuf, slotN, fn, insP->line);
+						fprintf(out, "\tlea\t%s,a0\n", addrBuf);
+					} else {
+						int off = arrayOffset(fn, slotN, &ignored, insP->line);
+						fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
+					}
 				} else if (strcmp(insP->args[0], "P") == 0) {
 					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
 					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
@@ -1278,10 +1329,11 @@ static void emitIR(FILE* out) {
 					fatal("unbekanntes Array");
 				}
 				fputs("\tmove.l\ta0,-(a7)\n", out);
-			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0) && insP->argc == 3) {
+			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && insP->argc == 3) {
 				int isChar = isByteWord(insP->args[2]);
+				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
 				if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 && !isChar) fatal("unbekannter Arraytyp");
-				if (strcmp(op, "STOREIDX") == 0) fputs("\tmove.l\t(a7)+,d0\n", out);
+				if (strcmp(op, "STOREIDX") == 0 || keepValue) fputs("\tmove.l\t(a7)+,d0\n", out);
 				fputs("\tmove.l\t(a7)+,d1\n", out);
 				if (!isChar) fputs("\tlsl.l\t#2,d1\n", out);
 				if (strcmp(insP->args[0], "L") == 0) {
@@ -1301,7 +1353,9 @@ static void emitIR(FILE* out) {
 					else fputs("\tmove.l\t(a0),d0\n", out);
 					fputs("\tmove.l\td0,-(a7)\n", out);
 				} else {
+					if (isChar && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
 					fprintf(out, "\tmove.%s\td0,(a0)\n", isChar ? "b" : "l");
+					if (keepValue) fputs("\tmove.l\td0,-(a7)\n", out);
 				}
 			} else if (strcmp(op, "LOADG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
@@ -1348,14 +1402,17 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
 				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
 				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
-			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0) && insP->argc == 1) {
+			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && insP->argc == 1) {
 				int byte = isByteWord(insP->args[0]);
+				int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 				if (strcmp(op, "LOADIND") == 0) {
 					fputs("\tmove.l\t(a7)+,a0\n", out);
 					if (byte) fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n", out); else fputs("\tmove.l\t(a0),d0\n", out);
 					fputs("\tmove.l\td0,-(a7)\n", out);
 				} else {
 					fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n\tmove.%s\td0,(a0)\n", byte ? "b" : "l");
+					if (byte && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
+					if (keepValue) fputs("\tmove.l\td0,-(a7)\n", out);
 				}
 			} else if ((strcmp(op, "PADD") == 0 || strcmp(op, "PSUB") == 0) && insP->argc == 1) {
 				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n", out);
@@ -1463,15 +1520,21 @@ static void emitIR(FILE* out) {
 				int fnIdx = findFunction(insP->args[0]);
 				char asmName[NAME_LEN + 40];
 				if (fnIdx < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
+				mangledName(asmName, "tc_", insP->args[0], funcs[fnIdx].isStatic);
 				if (largeDataMode) {
 					/* "add.l a4,d0", NICHT "adda.l": ADDA verlangt ein ADRESSregister
 					   als Ziel (emitCall() rechnet deshalb in a2). Hier ist das Ziel
 					   ein Datenregister, also das normale ADD -- "ADD.L An,Dn" ist
 					   zulaessig. Der echte r68 weist "adda.l a4,d0" korrekt ab
 					   ("incomplete line: code not generated"). */
-					fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+					if (trampolineMode) {
+						/* Funktionszeiger bleiben im Tabellenpfad; r68 -j gilt fuer
+						   direkte Aufrufe, nicht fuer einen beliebigen Datenwert. */
+						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+					} else {
+						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+					}
 				} else {
-					mangledName(asmName, "tc_", insP->args[0], funcs[fnIdx].isStatic);
 					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
 				}
 			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
@@ -1604,7 +1667,10 @@ static void emitIR(FILE* out) {
 				   unveraendert (keine Tabellen, kein Korruptionsrisiko in der Praxis,
 				   da dieser Modus bisher nur fuer Simulator-Mocks genutzt wird). */
 				if (largeDataMode) {
-					fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", externTableOffset(insP->args[0]));
+					if (trampolineMode) {
+						fprintf(out, "\tbsr\ttc_extwrap_%s__%s\n", insP->args[0], psectName);
+					}
+					else fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", externTableOffset(insP->args[0]));
 				} else {
 					fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", insP->args[0]);
 				}
@@ -1722,7 +1788,7 @@ int main(int argc, char* argv[]) {
 	char msg[300];
 	int i;
 	if (argc < 3) {
-		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata]\n", argv[0]);
+		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata] [-trampolines]\n", argv[0]);
 		fprintf(stderr, "  -os9:       Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
 		fprintf(stderr, "              fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
 		fprintf(stderr, "  -part:      diese Datei ist EIN TEIL eines Mehrdatei-Programms (kein\n");
@@ -1737,6 +1803,9 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "              PC-relative Adressierung reicht nur +-32 KB) -- Standard (ohne\n");
 		fprintf(stderr, "              diese Option) ist schneller/kompakter, reicht aber nur fuer\n");
 		fprintf(stderr, "              kleinere Programme mit wenig globalem Zustand.\n");
+		fprintf(stderr, "  -trampolines: optionaler relokierbarer Fernaufrufpfad; nur mit -largedata.\n");
+		fprintf(stderr, "                Zusammen mit r68 -j und l68 -a verwenden; erzeugt eine\n");
+		fprintf(stderr, "                Microware-Jump-Tabelle und einen kleinen OS-9-Datenanker.\n");
 		return 2;
 	}
 	for (i = 3; i < argc; i++) {
@@ -1744,6 +1813,7 @@ int main(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "-part") == 0) partMode = 1;
 		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
 		else if (strcmp(argv[i], "-largedata") == 0) largeDataMode = 1;
+		else if (strcmp(argv[i], "-trampolines") == 0) trampolineMode = 1;
 		else { fprintf(stderr, "unbekannte Option: %s\n", argv[i]); return 2; }
 	}
 	readIR(argv[1]);

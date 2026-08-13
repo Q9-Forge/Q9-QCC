@@ -3,8 +3,9 @@
 *German version: [STATUS_de.md](STATUS_de.md)*
 
 Status: **2026-08-12 -- bootstrap preparation. Memory hurdle cleared, both
-targets now fit into the Q9's 16 MB. Four language gaps left in the frontend,
-all of them the same construct. See "Bootstrap preparation" directly below.**
+targets now fit into the Q9's 16 MB. The XCC-built parser already runs in the
+emulator; the remaining work is semantic self-compilation. See "Bootstrap
+preparation" directly below.**
 
 Previous milestone (2026-08-10): STEP 3 (Live Q9 Verification) COMPLETE --
 the EBNF generator, translated by QCC itself, runs on real Q9 hardware and
@@ -55,22 +56,32 @@ never covered by the suite.
 ### Measured state
 
 **Stage 1 (grammar) on the bootstrap target is empty for the first time:
-768 of 768 units.** Two gaps were closed on the way there -- the comma
+786 of 786 units.** Two gaps were closed on the way there -- the comma
 operator (2026-08-11) and member access on function return values
 (`callMember`/`tc_callmember`, developed in parallel by another session).
 The latter closed four units at once, because all four failed on the same
 construct.
 
-**Stage 2 (semantics) is therefore measurable for the first time**: 30
-distinct complaints. Several of them are artifacts of the measurement setup
-(the preprocessing strips `#include`, hence phantom `unknown function` and
-`unknown type name 'FILE'`), so the list must be read with care -- details
-and the genuine gaps in `SELFHOSTING_GAP_LIST.md`.
+**Stage 2 (semantics) is therefore measurable for the first time.** The
+current, header-normalised bootstrap source reports **zero** semantic
+complaints, down from 30. The replacement preamble now models `FILE*`/`stderr` through
+QCC typedef and extern-global support, so it no longer creates header-only
+phantom diagnostics.
 
-One of the complaints is self-inflicted and comes first: the comma
-operator's declared limit ("last operand must yield a value") breaks plain C
--- `if ((p = f()))` and `while ((c = g()))`. A parenthesised assignment has
-to yield the assigned value.
+The parenthesised-assignment issue is also closed: `if ((p = f()))`,
+`while ((c = g()))`, indirect assignments and array-element assignments now
+return their assigned value. `STOREINDKEEP` and `STOREIDXKEEP` preserve the
+value across the store in QCCVM and both machine backends. Partial indexing
+and multidimensional struct arrays (`a[i][j].field`) are now also implemented,
+removing the largest former error cascade; the remaining type-error cascades
+are closed. The next integration step is the backend's negative-local-slot
+diagnostic and then the clean complete run of the XCC-built parser inside the
+emulator.
+
+For reproducibility, `tools/bootstrap_prepare.py` turns XCC's `-pp` output
+into this header-normalised input. It removes only the expanded XCC header
+prefix and maps its `(&_niob[2])` stderr macro to an ordinary QCC external;
+the generated parser body itself remains unchanged.
 
 Still open beyond that: `inputFileBuf` is 256 KB while `Data/qcc_p.c` is
 ~300 KB (preprocessed it fits, but it grows with every grammar change), and

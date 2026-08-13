@@ -1,0 +1,321 @@
+* QCC 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR
+* a7: Operand-Stack, a5: aktueller Frame, d0/d1: Scratch/Rueckgabe
+
+	nam	qcc_strchr_call_entry_p
+	psect	qcc_strchr_call_entry_p,0,0,1,0,0
+
+* Kein eigener tc_start-Boot-Code hier: cstart.r (echte Microware-
+* C-Laufzeit) ruft "main" direkt auf und kuemmert sich selbst ums
+* Beenden -- a6 bleibt dadurch als dessen statischer Datenzeiger
+* unangetastet (siehe framePtr()-Kommentar oben im Quelltext).
+
+* Funktions-Indirektionstabelle (-largedata): Link-Zeit-Offsets relativ zur Tabellenbasis (siehe emitCall())
+	align	4
+tc_functab__qcc_strchr_call_entry_p:
+	dc.l	tc_helper-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_main-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_mul_i32-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_div_i32-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_udiv_u32-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_mod_i32-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_umod_u32-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_putint-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_putuint-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_putchar-tc_functab__qcc_strchr_call_entry_p
+	dc.l	tc_extwrap_strchr__qcc_strchr_call_entry_p-tc_functab__qcc_strchr_call_entry_p
+* Daten-Indirektionstabelle (-largedata): Link-Zeit-Offsets relativ zur Tabellenbasis (siehe emitLeaGlobal())
+	align	4
+tc_gadata__qcc_strchr_call_entry_p:
+	dc.l	tc_g_text-tc_gadata__qcc_strchr_call_entry_p
+	dc.l	tc_extcall_tmp-tc_gadata__qcc_strchr_call_entry_p
+tc_extwrap_strchr__qcc_strchr_call_entry_p:
+	move.l	(a7)+,d7
+	bsr	strchr
+	lea	tc_functab__qcc_strchr_call_entry_p(pc),a4
+	lea	tc_gadata__qcc_strchr_call_entry_p(pc),a3
+	move.l	d7,-(a7)
+	rts
+* 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit
+tc_mul_i32:
+	move.l	d2,-(a7)
+	move.l	d3,-(a7)
+	move.l	d4,-(a7)
+	moveq	#0,d2
+	moveq	#0,d4
+	tst.l	d0
+	bpl	tc_mul_a_pos
+	neg.l	d0
+	addq.l	#1,d4
+tc_mul_a_pos:	tst.l	d1
+	bpl	tc_mul_b_pos
+	neg.l	d1
+	eori.l	#1,d4
+tc_mul_b_pos:	moveq	#31,d3
+tc_mul_loop:	lsr.l	#1,d1
+	bcc	tc_mul_skip
+	add.l	d0,d2
+tc_mul_skip:	add.l	d0,d0
+	dbra	d3,tc_mul_loop
+	tst.l	d4
+	beq	tc_mul_done
+	neg.l	d2
+tc_mul_done:	move.l	d2,d0
+	move.l	(a7)+,d4
+	move.l	(a7)+,d3
+	move.l	(a7)+,d2
+	rts
+
+tc_div_i32:
+	move.l	d2,-(a7)
+	move.l	d3,-(a7)
+	move.l	d4,-(a7)
+	move.l	d5,-(a7)
+	moveq	#0,d5
+	tst.l	d1
+	bne	tc_div_nonzero
+	moveq	#0,d0
+	bra	tc_div_done
+tc_div_nonzero:	tst.l	d0
+	bpl	tc_div_a_pos
+	neg.l	d0
+	addq.l	#1,d5
+tc_div_a_pos:	tst.l	d1
+	bpl	tc_div_b_pos
+	neg.l	d1
+	eori.l	#1,d5
+tc_div_b_pos:	moveq	#0,d2
+	moveq	#0,d3
+	moveq	#31,d4
+tc_div_loop:	lsl.l	#1,d0
+	roxl.l	#1,d3
+	lsl.l	#1,d2
+	cmp.l	d1,d3
+	bcs	tc_div_skip
+	sub.l	d1,d3
+	addq.l	#1,d2
+tc_div_skip:	dbra	d4,tc_div_loop
+	tst.l	d5
+	beq	tc_div_result
+	neg.l	d2
+tc_div_result:	move.l	d2,d0
+tc_div_done:	move.l	(a7)+,d5
+	move.l	(a7)+,d4
+	move.l	(a7)+,d3
+	move.l	(a7)+,d2
+	rts
+
+tc_udiv_u32:
+	move.l	d2,-(a7)
+	move.l	d3,-(a7)
+	move.l	d4,-(a7)
+	tst.l	d1
+	bne	tc_udiv_nonzero
+	moveq	#0,d0
+	bra	tc_udiv_done
+tc_udiv_nonzero:	moveq	#0,d2
+	moveq	#0,d3
+	moveq	#31,d4
+tc_udiv_loop:	lsl.l	#1,d0
+	roxl.l	#1,d3
+	lsl.l	#1,d2
+	cmp.l	d1,d3
+	bcs	tc_udiv_skip
+	sub.l	d1,d3
+	addq.l	#1,d2
+tc_udiv_skip:	dbra	d4,tc_udiv_loop
+	move.l	d2,d0
+tc_udiv_done:	move.l	(a7)+,d4
+	move.l	(a7)+,d3
+	move.l	(a7)+,d2
+	rts
+
+tc_mod_i32:
+	move.l	d2,-(a7)
+	move.l	d3,-(a7)
+	move.l	d0,d2
+	move.l	d1,d3
+	bsr	tc_div_i32
+	move.l	d0,d1
+	move.l	d3,d0
+	bsr	tc_mul_i32
+	sub.l	d0,d2
+	move.l	d2,d0
+	move.l	(a7)+,d3
+	move.l	(a7)+,d2
+	rts
+
+tc_umod_u32:
+	move.l	d2,-(a7)
+	move.l	d3,-(a7)
+	move.l	d0,d2
+	move.l	d1,d3
+	bsr	tc_udiv_u32
+	move.l	d0,d1
+	move.l	d3,d0
+	bsr	tc_mul_i32
+	sub.l	d0,d2
+	move.l	d2,d0
+	move.l	(a7)+,d3
+	move.l	(a7)+,d2
+	rts
+
+tc_putint:
+	link	a5,#0
+	move.l	d0,d2
+	moveq	#0,d3
+	tst.l	d2
+	bge	tc_pi_nonneg
+	neg.l	d2
+	moveq	#1,d3
+tc_pi_nonneg:	lea	tc_io_buf+11(pc),a1
+	move.b	#13,(a1)
+tc_pi_loop:	move.l	d2,d0
+	moveq	#10,d1
+	bsr	tc_udiv_u32
+	move.l	d0,d4
+	move.l	d2,d0
+	moveq	#10,d1
+	bsr	tc_umod_u32
+	addi.b	#48,d0
+	subq.l	#1,a1
+	move.b	d0,(a1)
+	move.l	d4,d2
+	tst.l	d2
+	bne	tc_pi_loop
+	tst.l	d3
+	beq	tc_pi_go
+	subq.l	#1,a1
+	move.b	#45,(a1)
+tc_pi_go:	lea	tc_io_buf+12(pc),a2
+	move.l	a2,d1
+	sub.l	a1,d1
+	bsr	tc_io_write
+	unlk	a5
+	rts
+
+tc_putuint:
+	link	a5,#0
+	move.l	d0,d2
+	lea	tc_io_buf+11(pc),a1
+	move.b	#13,(a1)
+tc_pu_loop:	move.l	d2,d0
+	moveq	#10,d1
+	bsr	tc_udiv_u32
+	move.l	d0,d4
+	move.l	d2,d0
+	moveq	#10,d1
+	bsr	tc_umod_u32
+	addi.b	#48,d0
+	subq.l	#1,a1
+	move.b	d0,(a1)
+	move.l	d4,d2
+	tst.l	d2
+	bne	tc_pu_loop
+	lea	tc_io_buf+12(pc),a2
+	move.l	a2,d1
+	sub.l	a1,d1
+	bsr	tc_io_write
+	unlk	a5
+	rts
+
+tc_putchar:
+	link	a5,#0
+	lea	tc_io_buf(pc),a1
+	move.b	d0,(a1)
+	moveq	#1,d1
+	bsr	tc_io_write
+	unlk	a5
+	rts
+
+tc_io_write:
+	lea	tc_io_cnt(pc),a2
+	move.l	d1,(a2)
+	move.l	a1,d1
+	move.l	a2,-(a7)
+	moveq	#1,d0
+	bsr	_os_write
+	lea	4(a7),a7
+	lea	tc_functab__qcc_strchr_call_entry_p(pc),a4
+	lea	tc_gadata__qcc_strchr_call_entry_p(pc),a3
+	rts
+
+	align	4
+tc_extcall_tmp:	dc.l	0,0,0,0,0,0,0,0
+tc_io_buf:	dc.l	0,0,0
+tc_io_cnt:	dc.l	0
+main:
+tc_main:	link	a5,#0
+	lea	tc_main(pc),a4
+	adda.l	#(tc_functab__qcc_strchr_call_entry_p-tc_main),a4
+	lea	tc_main(pc),a3
+	adda.l	#(tc_gadata__qcc_strchr_call_entry_p-tc_main),a3
+	move.l	0(a4),a2
+	adda.l	a4,a2
+	jsr	(a2)
+tc_callret_0__qcc_strchr_call_entry_p:
+	lea	tc_callret_0__qcc_strchr_call_entry_p(pc),a4
+	adda.l	#(tc_functab__qcc_strchr_call_entry_p-tc_callret_0__qcc_strchr_call_entry_p),a4
+	lea	tc_callret_0__qcc_strchr_call_entry_p(pc),a3
+	adda.l	#(tc_gadata__qcc_strchr_call_entry_p-tc_callret_0__qcc_strchr_call_entry_p),a3
+	move.l	d0,-(a7)
+	addq.l	#4,a7
+	move.l	#0,-(a7)
+	move.l	(a7)+,d0
+	unlk	a5
+	rts
+	move.l	#0,-(a7)
+	move.l	(a7)+,d0
+	unlk	a5
+	rts
+
+tc_helper:	link	a5,#0
+	lea	tc_helper(pc),a4
+	adda.l	#(tc_functab__qcc_strchr_call_entry_p-tc_helper),a4
+	lea	tc_helper(pc),a3
+	adda.l	#(tc_gadata__qcc_strchr_call_entry_p-tc_helper),a3
+	move.l	0(a3),a0
+	adda.l	a3,a0
+	move.l	a0,-(a7)
+	move.l	#98,-(a7)
+	move.l	(a7)+,d1
+	move.l	(a7)+,d0
+	move.l	40(a4),a2
+	adda.l	a4,a2
+	jsr	(a2)
+	move.l	d0,-(a7)
+	move.l	#0,-(a7)
+	move.l	(a7)+,d1
+	move.l	(a7)+,d0
+	cmp.l	d1,d0
+	bne	tc_cmp_yes_1__qcc_strchr_call_entry_p
+	moveq	#0,d0
+	bra	tc_cmp_done_1__qcc_strchr_call_entry_p
+tc_cmp_yes_1__qcc_strchr_call_entry_p:	moveq	#1,d0
+tc_cmp_done_1__qcc_strchr_call_entry_p:	move.l	d0,-(a7)
+	move.l	(a7)+,d0
+	move.l	28(a4),a2
+	adda.l	a4,a2
+	jsr	(a2)
+tc_callret_2__qcc_strchr_call_entry_p:
+	lea	tc_callret_2__qcc_strchr_call_entry_p(pc),a4
+	adda.l	#(tc_functab__qcc_strchr_call_entry_p-tc_callret_2__qcc_strchr_call_entry_p),a4
+	lea	tc_callret_2__qcc_strchr_call_entry_p(pc),a3
+	adda.l	#(tc_gadata__qcc_strchr_call_entry_p-tc_callret_2__qcc_strchr_call_entry_p),a3
+	move.l	#0,-(a7)
+	move.l	(a7)+,d0
+	unlk	a5
+	rts
+	move.l	#0,-(a7)
+	move.l	(a7)+,d0
+	unlk	a5
+	rts
+
+
+* DATA-Aequivalent des flachen Einzelmoduls: statisch initialisierte int32-Globals
+	align	4
+tc_g_text:
+	dc.b	97
+	dc.b	98
+	dc.b	99
+	dc.b	0
+	ends

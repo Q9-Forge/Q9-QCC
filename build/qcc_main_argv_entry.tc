@@ -1,0 +1,12 @@
+/* Isoliert den Microware-cstart -> QCC-main(argc, argv)-Adapter.
+   Keine globale Tabelle und keine externe C-Bibliothek: wenn dieses Modul
+   laeuft, liegen argc/argv und der Ruecksprung des Einstiegs korrekt. */
+int helper(void) {
+    putint(4242);
+    return 0;
+}
+
+int main(int argc, char* argv[]) {
+    helper();
+    return argc == 0 || argv == 0;
+}

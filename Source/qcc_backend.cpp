@@ -269,7 +269,11 @@ static void emitIR(std::ostream& out, const std::vector<Instr>& ir, const std::v
 			}
 			else if (op == "LARRAY" && ins.args.size() == 3) { }
 			else if (op == "PUSHADDR" && ins.args.size() == 2) {
-				if (ins.args[0] == "L") { bool ignored = false; int off = arrayOffset(ir, fn, asInt(ins.args[1], ins.line), ignored, ins.line); out << "\tlea\t-" << off << "(a6),a0\n"; }
+				if (ins.args[0] == "L") {
+					int slot = asInt(ins.args[1], ins.line);
+					if (slot < fn.nargs) out << "\tlea\t" << slotAddress(slot, fn, ins.line) << ",a0\n";
+					else { bool ignored = false; int off = arrayOffset(ir, fn, slot, ignored, ins.line); out << "\tlea\t-" << off << "(a6),a0\n"; }
+				}
 				else if (ins.args[0] == "P") out << "\tmove.l\t" << slotAddress(asInt(ins.args[1], ins.line), fn, ins.line) << ",a0\n";
 				else if (ins.args[0] == "G" && globalByName.find(ins.args[1]) != globalByName.end()) out << "\tlea\ttc_g_" << ins.args[1] << "(pc),a0\n";
 				else throw std::runtime_error("unbekanntes Array");

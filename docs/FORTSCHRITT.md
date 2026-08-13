@@ -21,10 +21,28 @@ IR-VM UND 68k gleich falsch. Gesichert wird im Klammerrahmen (hat einen
 Tiefenstapel); der einstufige `tcPrevTarget*`-Puffer genuegt bei
 `(y = (z = 1, 2), 3)` nicht. 16 Faelle auf beiden Wegen verifiziert.
 
-**Bereits ueberholt:** die erklaerte Grenze "letztes Glied muss einen Wert
-liefern" bricht gewoehnliches C (`if ((p = f()))`, `while ((c = g()))`) und
-taucht in Stufe 2 der Erhebung als Beanstandung auf. Naechster Schritt:
-geklammerte Zuweisung liefert den zugewiesenen Wert.
+**Zuweisung als geklammerter Wertausdruck (2026-08-12):** Die fruehere
+Grenze "letztes Glied muss einen Wert liefern" ist entfernt. Damit funktionieren
+jetzt normales C wie `if ((p = f()))`, `while ((c = g()))` und `x = (y = 1)`.
+Der gemeinsame Store-Helfer `tcAssignStore(leaveValue)` verwendet bei
+einfachen Variablen weiterhin `DUP` vor dem Store. Fuer `*p = v` und
+`a[i] = v` reicht das nicht, weil Adresse/Index unter dem Wert liegen. Zwei
+neue Stack-IR-Operationen halten deshalb den gespeicherten Wert korrekt fest:
+`STOREINDKEEP` (`p,v -> v`) und `STOREIDXKEEP` (`idx,v -> v`). QCCVM, 68000-
+und ARM64-Backend setzen sie gleich um. Verifiziert fuer lokale/globale
+Variablen, Arrayelemente, indirekte Ziele, verschachtelte Komma-Ausdruecke
+und Bytewerte (der Speicherwert von `char c; c=300` ist korrekt `44`; der
+Wert der einfachen Direktzuweisung wird noch als 32-Bit-Originalwert
+weitergereicht und ist als separater C-Semantik-Feinschliff festgehalten).
+
+**Mehrdimensionale Arrays (2026-08-12):** Teilindizierung ist jetzt echter
+C-Zeigerzugriff statt einer pauschalen Diagnose: `int m[2][3]; int *p=m[1];`
+liefert die zweite Zeile, bei 3D auch `m[i][j]`. `tcCheckNDIndex` flacht die
+vorhandenen Indizes in Row-Major-Reihenfolge ab und gibt den Unterschied
+zwischen Element und Teilarray an den Aufrufer zurueck. Das gilt auch fuer
+mehrdimensionale Struct-Arrays einschliesslich `a[i][j].feld`; deren Speicher
+wird wie vorher bytegenau als flaches `c`-Array angelegt. QCCVM-Test:
+`a[1][2].x=77`/`putint(a[1][2].x)` ergibt `77`.
 
 **Semantische Fehler waren nicht toedlich.** Der erzeugte Parser meldete
 `qcc: unknown function`, Typfehler und alles Uebrige auf stderr, endete aber

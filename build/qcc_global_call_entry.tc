@@ -1,0 +1,12 @@
+int state;
+
+int helper(void) {
+    putint(state);
+    return 0;
+}
+
+int main(void) {
+    state = 42;
+    helper();
+    return 0;
+}

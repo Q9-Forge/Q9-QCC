@@ -67,9 +67,11 @@ Local (`L`) and global (`G`), each split by int/char/pointer:
 | `PUSHADDR L/G/P <i>` | `→ p` | address of a local/global array, or of a pointer value itself |
 | `LOADIDX L/P/G <i> <typetag>` | `idx → v` | read an array element, index from the stack |
 | `STOREIDX L/P/G <i> <typetag>` | `idx, v →` | write an array element |
+| `STOREIDXKEEP L/P/G <i> <typetag>` | `idx, v → v` | write an array element and keep the assigned value |
 | `PTRINDEX <typetag>` | `p, idx → p'` | pointer+index → scaled address (real pointer, `p[i]` pattern) |
 | `LOADIND <typetag>` | `p → v` | dereference through a pointer (read) |
 | `STOREIND <typetag>` | `p, v →` | dereference through a pointer (write) |
+| `STOREINDKEEP <typetag>` | `p, v → v` | write through a pointer and keep the assigned value |
 | `PADD <typetag>` | `p, n → p'` | pointer + integer, scaled by the fixed type size |
 | `IPADD <typetag>` | `n, p → p'` | like `PADD`, operands in the other order on the stack |
 | `IPADDN <bytesize>` | `n, p → p'` | like `IPADD`, but with a **runtime** byte size instead of a fixed type-tag size (needed for `arr[i].field` on arrays of structs, since `IPADD` only knows fixed type-tag sizes) |
