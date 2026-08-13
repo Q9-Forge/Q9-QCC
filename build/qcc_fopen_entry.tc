@@ -1,0 +1,7 @@
+extern void* fopen(char* path, char* mode);
+
+int main(void) {
+    void* file = fopen("/dd/bootstrap_probe.c", "r");
+    putint(file != 0);
+    return 0;
+}

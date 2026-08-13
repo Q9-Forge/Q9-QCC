@@ -421,8 +421,14 @@ static void emit(FILE* o) {
 			} else if (strcmp(op, "PUSHADDR") == 0 && x->argc == 2) {
 				int ignored;
 				if (strcmp(x->args[0], "L") == 0) {
-					int off = arrayOffset(f, number(x->args[1], x->line), &ignored, x->line);
-					fprintf(o, "\tsub\tx0,x29,#%d\n", off);
+					int slotN = number(x->args[1], x->line);
+					if (slotN < f->nargs) {
+						slotStr(slotBuf, slotN, f, x->line);
+						fprintf(o, "\tadd\tx0,x29,%s\n", slotBuf);
+					} else {
+						int off = arrayOffset(f, slotN, &ignored, x->line);
+						fprintf(o, "\tsub\tx0,x29,#%d\n", off);
+					}
 				} else if (strcmp(x->args[0], "P") == 0) {
 					slotStr(slotBuf, number(x->args[1], x->line), f, x->line);
 					fprintf(o, "\tldr\tx0,[x29,%s]\n", slotBuf);
@@ -432,10 +438,11 @@ static void emit(FILE* o) {
 					fatal("unbekanntes Array");
 				}
 				fputs("\tstr\tx0,[sp,#-16]!\n", o);
-			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0) && x->argc == 3) {
+			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && x->argc == 3) {
 				int isChar = isByteWord(x->args[2]), isPointer = strcmp(x->args[2], "p") == 0;
+				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
 				if (strcmp(x->args[2], "i") != 0 && !isChar && !isPointer) fatal("unbekannter Arraytyp");
-				if (strcmp(op, "STOREIDX") == 0) { if (isPointer) pop(o, "x0"); else pop(o, "w0"); }
+				if (strcmp(op, "STOREIDX") == 0 || keepValue) { if (isPointer) pop(o, "x0"); else pop(o, "w0"); }
 				pop(o, "w1");
 				if (strcmp(x->args[0], "L") == 0) {
 					int off = arrayOffset(f, number(x->args[1], x->line), &isChar, x->line);
@@ -454,6 +461,8 @@ static void emit(FILE* o) {
 					if (isPointer) push(o, "x0"); else push(o, "w0");
 				} else {
 					fprintf(o, "\tstr%s\t%s,[x9]\n", isChar ? "b" : "", isPointer ? "x0" : "w0");
+					if (isChar && keepValue) fputs("\tuxtb\tw0,w0\n", o);
+					if (keepValue) { if (isPointer) push(o, "x0"); else push(o, "w0"); }
 				}
 			} else if ((strcmp(op, "LOADG") == 0 || strcmp(op, "STOREG") == 0) && x->argc == 1) {
 				if (findGlobal(x->args[0]) < 0) fatal("unbekannte globale Variable");
@@ -474,8 +483,9 @@ static void emit(FILE* o) {
 				pop(o, "x0"); pop(o, "w1");
 				fprintf(o, "\tadd\tx0,x0,w1,sxtw%s", scaleSuffix(x->args[0]));
 				push(o, "x0");
-			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0) && x->argc == 1) {
+			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && x->argc == 1) {
 				int byte = isByteWord(x->args[0]), ptr = strcmp(x->args[0], "p") == 0;
+				int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 				if (strcmp(op, "LOADIND") == 0) {
 					pop(o, "x9");
 					fprintf(o, "\tldr%s\t%s,[x9]\n", byte ? "b" : "", ptr ? "x0" : "w0");
@@ -484,6 +494,8 @@ static void emit(FILE* o) {
 					if (ptr) pop(o, "x0"); else pop(o, "w0");
 					pop(o, "x9");
 					fprintf(o, "\tstr%s\t%s,[x9]\n", byte ? "b" : "", ptr ? "x0" : "w0");
+					if (byte && keepValue) fputs("\tuxtb\tw0,w0\n", o);
+					if (keepValue) { if (ptr) push(o, "x0"); else push(o, "w0"); }
 				}
 			} else if ((strcmp(op, "PADD") == 0 || strcmp(op, "PSUB") == 0) && x->argc == 1) {
 				pop(o, "w1"); pop(o, "x0");

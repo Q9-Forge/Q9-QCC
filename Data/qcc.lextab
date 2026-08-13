@@ -1770,6 +1770,7 @@ static int  tcFunctionIsStatic[MAX_FUNCTIONS];
 static int  tcGlobalIsDeclOnly[MAX_GLOBALS];
 static int  tcGlobalIsStatic[MAX_GLOBALS];
 static int  tcIdxNDScratchDeclared[TC_MAXDIMS + 1]; /* Index 2..TC_MAXDIMS: GLOBAL __idxNd_<lvl> einmalig deklariert */
+static int  tcPtrIdxScratchDeclared[TC_MAXDIMS + 1]; /* dito fuer verschachtelte Pointer-Indizes */
 static int  tcStringCounter = 0;    /* naechster freier __strN-Name fuer String-Literale */
 static int  tcPendingConst = 0;      /* gesetzt durch constKw, konsumiert von tc_local/tc_param/tc_globalend */
 static int  tcPendingStatic = 0;     /* gesetzt durch staticKw; konsumiert von tc_local/tc_param/tc_staticlocal/
@@ -1830,6 +1831,7 @@ static char tcParenSavedAssignOp[64][3];
    steht im erzeugten Parser aber VOR tc_assign (Reihenfolge der ROUTINE-Bloecke
    dieser Arbeitsdatei) -- daher die Vorwaertsdeklaration. */
 void tc_assign(const char* start, const char* end);
+static void tcAssignStore(int leaveValue);
 static char tcIndexSavedAdd[64], tcIndexSavedMul[64];
 static char tcIndexSavedRel0[64], tcIndexSavedRel1[64];
 static int  tcIndexDepth = 0;
@@ -2213,15 +2215,20 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 }
 static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 	char tag = tcTypeTag(t);
+	const char* loadOp;
+	const char* storeOp;
+	const char* ld;
+	const char* st;
+	char ptag;
 	if (tcIsPointer(t)) {
 		/* Zeiger-Inkrement rechnet in ELEMENTEN, nicht in Bytes -- deshalb IPADD
 		   mit dem Tag des ZIELtyps statt eines schlichten ADD. IPADD erwartet den
 		   Zaehler UNTEN und den Zeiger OBEN (siehe docs/IR_OPCODES.md), weshalb
 		   der Zeiger beim Postfix zweimal geladen statt per DUP vervielfaeltigt
 		   wird: ein DUP laege an der falschen Stelle relativ zum Zaehler. */
-		const char* ld = slot >= 0 ? "LOADP" : "LOADGP";
-		const char* st = slot >= 0 ? "STOREP" : "STOREGP";
-		char ptag = tcTypeTag(tcPointee(t));
+		ld = slot >= 0 ? "LOADP" : "LOADGP";
+		st = slot >= 0 ? "STOREP" : "STOREGP";
+		ptag = tcTypeTag(tcPointee(t));
 		if (isPre) {
 			printf("PUSH %d\n", isDec ? -1 : 1);
 			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
@@ -2236,8 +2243,8 @@ static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 		tcTypePush(t);
 		return;
 	}
-	const char* loadOp = slot >= 0 ? (tag == 'i' ? "LOADL" : "LOADC") : (tag == 'i' ? "LOADG" : "LOADGC");
-	const char* storeOp = slot >= 0 ? (tag == 'i' ? "STOREL" : "STOREC") : (tag == 'i' ? "STOREG" : "STOREGC");
+	loadOp = slot >= 0 ? (tag == 'i' ? "LOADL" : "LOADC") : (tag == 'i' ? "LOADG" : "LOADGC");
+	storeOp = slot >= 0 ? (tag == 'i' ? "STOREL" : "STOREC") : (tag == 'i' ? "STOREG" : "STOREGC");
 	if (slot >= 0) printf("%s %d\n", loadOp, slot); else printf("%s %s\n", loadOp, tcGlobalNames[global]);
 	if (isPre) printf("PUSH 1\n%s\nDUP\n", isDec ? "SUB" : "ADD");
 	else printf("DUP\nPUSH 1\n%s\n", isDec ? "SUB" : "ADD");
@@ -2291,8 +2298,14 @@ static int tcHasChar(const char* s, const char* e, char c) {
 	return 0;
 }
 static int tcHasTopToken(const char* s, const char* e, char a, char b) {
-	const char* p; int round = 0, square = 0;
+	const char* p; int round = 0, square = 0; char quote = 0;
 	for (p = s; p < e; p++) {
+		if (quote) {
+			if (*p == '\\' && p + 1 < e) { p++; continue; }
+			if (*p == quote) quote = 0;
+			continue;
+		}
+		if (*p == '\'' || *p == '"') { quote = *p; continue; }
 		if (*p == '(') round++;
 		else if (*p == ')') round--;
 		else if (*p == '[') square++;
@@ -2302,8 +2315,14 @@ static int tcHasTopToken(const char* s, const char* e, char a, char b) {
 	return 0;
 }
 static int tcHasTopChar(const char* s, const char* e, char c) {
-	const char* p; int round = 0, square = 0;
+	const char* p; int round = 0, square = 0; char quote = 0;
 	for (p = s; p < e; p++) {
+		if (quote) {
+			if (*p == '\\' && p + 1 < e) { p++; continue; }
+			if (*p == quote) quote = 0;
+			continue;
+		}
+		if (*p == '\'' || *p == '"') { quote = *p; continue; }
 		if (*p == '(') round++;
 		else if (*p == ')') round--;
 		else if (*p == '[') square++;
@@ -2504,6 +2523,13 @@ static const char* tcSkipOneIndex(const char* p, const char* end) {
 	}
 	return p;
 }
+/* Wie tcSkipOneIndex, aber bis hinter die letzte direkt folgende Klammer.
+   Ein struct-Array darf mehrdimensional sein: bei a[i][j].field muss die
+   Feld-Logik deshalb das '.' HINTER beiden Indizes finden. */
+static const char* tcSkipAllIndexes(const char* p, const char* end) {
+	while (p < end && *p == '[') p = tcSkipOneIndex(p, end);
+	return p;
+}
 /* arr[i1][i2]...[iN] -- der Laufzeit-Operandenstack traegt an dieser Stelle
    bereits [i1, i2, ..., iN] (i1 unten, iN oben, durch die N bereits geparsten
    Index-Ausdruecke). Direktes MUL/ADD wuerde die FALSCHEN Operanden erwischen
@@ -2534,19 +2560,58 @@ static void tcEmitNDCombine(int ndims, const int* trailingDims) {
    Fall idxCount==ndims emittiert die Kombinationslogik (ab ndims>1); alle anderen
    Nicht-Uebereinstimmungen werden nur diagnostiziert (kein Absturz, der
    nachfolgende Code laeuft mit dem unveraendert vorhandenen Operandenstack weiter
-   -- ein Kompilierfehler ist ohnehin schon gemeldet). Die beiden urspruenglichen
-   2D-spezifischen Meldungen ("array is not two-dimensional", "partial indexing of
-   a 2D array is not supported") bleiben fuer ndims==1/2 wortgleich bestehen (siehe
-   runtests.sh), fuer ndims>2 gibt es generalisierte Entsprechungen. */
-static void tcCheckNDIndex(int ndims, const int* trailingDims, int idxCount) {
-	if (idxCount == ndims) { if (ndims > 1) tcEmitNDCombine(ndims, trailingDims); return; }
-	if (ndims == 1 && idxCount == 2) { fprintf(stderr, "qcc: array is not two-dimensional\n"); actionErrors++; return; }
-	if (ndims > 1 && idxCount == ndims - 1) {
-		fprintf(stderr, "qcc: partial indexing of a %dD array is not supported (use arr[i1]...[i%d])\n", ndims, ndims);
-		actionErrors++; return;
+   -- ein Kompilierfehler ist ohnehin schon gemeldet). Ein echter Teilzugriff
+   arr[i] bzw. arr[i][j] liefert jetzt korrekt einen Zeiger auf die verbleibende
+   Zeile/Teilmatrix; nur zu viele oder gar keine Indizes bleiben Fehler. */
+/* Liefert 1 fuer ein Element, 2 fuer einen Zeiger auf das verbleibende
+   Teilarray und 0 bei einem ungueltigen Zugriff. Bei Teilindizierung wird
+   der Offset bereits auf die Basiselemente abgeflacht. Beispiel m[2][3][4]:
+   m[i] -> i*3*4, m[i][j] -> i*3+j, jeweils als int*. */
+static int tcCheckNDIndex(int ndims, const int* trailingDims, int idxCount) {
+	char name[24]; int lvl;
+	if (idxCount == ndims) { if (ndims > 1) tcEmitNDCombine(ndims, trailingDims); return 1; }
+	if (idxCount > 0 && idxCount < ndims) {
+		/* Wie tcEmitNDCombine, aber nur die vorhandenen Indizes zusammenfassen. */
+		for (lvl = idxCount; lvl >= 2; lvl--) {
+			sprintf(name, "__idxNd_%d", lvl);
+			if (!tcIdxNDScratchDeclared[lvl]) { printf("GLOBAL %s 0 i 1\n", name); tcIdxNDScratchDeclared[lvl] = 1; }
+			printf("STOREG %s\n", name);
+		}
+		for (lvl = 2; lvl <= idxCount; lvl++) {
+			sprintf(name, "__idxNd_%d", lvl);
+			printf("PUSH %d\nMUL\nLOADG %s\nADD\n", trailingDims[lvl - 2], name);
+		}
+		for (lvl = idxCount; lvl < ndims; lvl++) printf("PUSH %d\nMUL\n", trailingDims[lvl - 1]);
+		return 2;
 	}
+	if (ndims == 1 && idxCount == 2) { fprintf(stderr, "qcc: array is not two-dimensional\n"); actionErrors++; return 0; }
 	fprintf(stderr, "qcc: array has %d dimension(s), but %d index(es) were given\n", ndims, idxCount);
-	actionErrors++;
+	actionErrors++; return 0;
+}
+/* p[i][j] fuer einen Pointer p: die Index-Aktionen haben die Werte bereits
+   als [i,j] auf den Stack gelegt. Fuer jeden weiteren Index wird der oberste
+   Wert kurz gesichert, damit zuerst p+i geladen und danach (p[i])+j berechnet
+   werden kann. PTRINDEX erwartet dabei den Zeiger oben auf dem Stack. */
+static TCType tcEmitPointerIndexChain(int slot, const char* globalName, TCType pointer, int idxCount) {
+	char name[24]; int level;
+	for (level = idxCount; level >= 2; level--) {
+		sprintf(name, "__ptrIdx_%d", level);
+		if (!tcPtrIdxScratchDeclared[level]) { printf("GLOBAL %s 0 i 1\n", name); tcPtrIdxScratchDeclared[level] = 1; }
+		printf("STOREG %s\n", name);
+	}
+	if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", globalName);
+	for (level = 1; level <= idxCount; level++) {
+		TCType value = tcPointee(pointer);
+		if (!tcIsPointer(pointer)) { fprintf(stderr, "qcc: too many pointer indexes\n"); actionErrors++; return tcBadType(); }
+		if (!tcIsPointer(value) && value.base == 'v') { fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; return tcMakeType('i', 0); }
+		if (level > 1) {
+			sprintf(name, "__ptrIdx_%d", level);
+			printf("LOADG %s\nSWAP\n", name);
+		}
+		printf("PTRINDEX %c\nLOADIND %c\n", tcTypeTag(value), tcTypeTag(value));
+		pointer = value;
+	}
+	return pointer;
 }
 static int tcInitList(const char* start, const char* end, long* values, int cap) {
 	const char* p = start; int count = 0;
@@ -2850,10 +2915,6 @@ void tc_localdecl(const char* start, const char* end) {
 		if (ndims >= TC_MAXDIMS) { actionErrors++; fprintf(stderr, "qcc: too many array dimensions (max %d)\n", TC_MAXDIMS); return; }
 		dims[ndims++] = len;
 	}
-	if (isStruct && ndims > 1) {
-		fprintf(stderr, "qcc: multi-dimensional struct arrays not supported in this version\n");
-		actionErrors++; return;
-	}
 	total = dims[0];
 	for (k = 1; k < ndims; k++) { total *= dims[k]; tcLocalArrayDims[slot][k - 1] = dims[k]; }
 	tcLocalArrayNDims[slot] = ndims;
@@ -2992,7 +3053,15 @@ void tc_globalend(const char* start, const char* end) {
 	{
 		const char* q = p; const char* lastWord = p;
 		while (q < end && *q != '[' && *q != '=' && *q != ',' && *q != ';') {
-			if (*q == ' ' || *q == '\t' || *q == '*') { q++; lastWord = q; }
+			if (*q == ' ' || *q == '\t') {
+				const char* next = q;
+				while (next < end && (*next == ' ' || *next == '\t')) next++;
+				/* Leerraum NACH dem ersten Deklarator gehoert nicht mehr zum
+				   Typ-Praefix. Vorher machte "char a = 0, b = 0" aus dem
+				   zweiten Segment still "char a b = 0". */
+				if (next >= end || *next == '[' || *next == '=' || *next == ',' || *next == ';') break;
+				q = next; lastWord = q;
+			} else if (*q == '*') { q++; lastWord = q; }
 			else q++;
 		}
 		declStart = lastWord;
@@ -3121,10 +3190,6 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		arrayLen = dims[0];
 		for (k = 1; k < ndims; k++) { arrayLen *= dims[k]; arrayDims[k - 1] = dims[k]; }
 		arrayNDims = ndims;
-		if (!type.pointers && type.base == 's' && ndims > 1) {
-			fprintf(stderr, "qcc: multi-dimensional struct arrays not supported in this version\n");
-			actionErrors++; return;
-		}
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
 	if (p < end && *p == '=') {
@@ -3220,18 +3285,30 @@ ROUTINE C tc_externglobaldecl
    docs/SELFHOSTING_LUECKENLISTE.md / docs/STATUS.md fuer die Motivation
    (Mehrdatei-Uebersetzung). */
 void tc_externglobaldecl(const char* start, const char* end) {
-	const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 0;
+	const char* p = start; const char* ne; char name[32]; TCType type = tcMakeType('i', 0); int n = 0, td;
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	if (end - p >= 6 && p[0] == 'e' && p[1] == 'x' && p[2] == 't' && p[3] == 'e' && p[4] == 'r' && p[5] == 'n') {
 		p += 6;
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
-	if (end - p >= 12 && p[0] == 'u') { p += 12; type.base = 'u'; }
+	if (end - p >= 8 && strncmp(p, "unsigned", 8) == 0) {
+		const char* q; const char* qe;
+		p += 8; while (p < end && (*p == ' ' || *p == '\t')) p++;
+		q = p; qe = tcWordEnd(q, end);
+		if (tcEqSpan(q, qe, "char")) { type.base = 'c'; p = qe; }
+		else if (tcEqSpan(q, qe, "int") || tcEqSpan(q, qe, "long")) { type.base = 'u'; p = qe; }
+		else type.base = 'u';
+	}
 	else if (end - p >= 3 && p[0] == 'i' && p[1] == 'n' && p[2] == 't') p += 3;
+	else if (end - p >= 4 && p[0] == 'l' && p[1] == 'o' && p[2] == 'n' && p[3] == 'g') p += 4;
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
-	else { actionErrors++; fprintf(stderr, "qcc: bad extern global declaration\n"); return; }
+	else {
+		ne = tcWordEnd(p, end); td = tcLookupTypedef(p, ne);
+		if (td < 0) { actionErrors++; fprintf(stderr, "qcc: bad extern global declaration\n"); return; }
+		type = tcTypedefTypes[td]; p = ne;
+	}
 	while (p < end && (*p == ' ' || *p == '\t')) p++;
 	while (p < end && *p == '*') { type = tcPointerTo(type); p++; while (p < end && (*p == ' ' || *p == '\t')) p++; }
 	if (!tcIsPointer(type) && type.base == 'v') {
@@ -3402,7 +3479,7 @@ void tc_varref(const char* start, const char* end) {
 	    !(slot >= 0 && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's') &&
 	    !(global >= 0 && tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') &&
 	    !(global >= 0 && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's')) {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			fprintf(stderr, "qcc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
 			actionErrors++; tcTypePush(tcBadType()); return;
@@ -3415,7 +3492,7 @@ void tc_varref(const char* start, const char* end) {
 	   Array-Fall, nur PUSHADDR (Blockadresse) durch LOADP (geladener Pointer-WERT) ersetzt --
 	   IPADDN skaliert genauso um die Laufzeit-Byte-Groesse des Elements. */
 	if (slot >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcPointee(tcLocalTypes[slot]).structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -3438,7 +3515,7 @@ void tc_varref(const char* start, const char* end) {
 	   WIRKLICH "als Array deklariert", nicht mehr die Feldanzahl-Verwechslung von
 	   frueher -- die Bedingung ist damit endlich korrekt auswertbar. */
 	if (slot >= 0 && indexed && *nameEnd == '[' && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcLocalTypes[slot].structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -3448,6 +3525,9 @@ void tc_varref(const char* start, const char* end) {
 			if (fieldEnd < end && *fieldEnd == '[') {
 				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
+			}
+			if (tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
+				fprintf(stderr, "qcc: member access requires a complete struct-array index\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[slot]);
 			/* Index bereits gepusht (vor uns, durch die index-ACTION). PUSHADDR liefert die
@@ -3549,7 +3629,7 @@ void tc_varref(const char* start, const char* end) {
 	   GLOBAL wie bei GARRAY einheitlich eine Liste) -- PUSHADDR G verwendet, um optisch
 	   parallel zum lokalen Muster zu bleiben. */
 	if (global >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcPointee(tcGlobalType(global)).structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -3568,7 +3648,7 @@ void tc_varref(const char* start, const char* end) {
 		}
 	}
 	if (global >= 0 && indexed && *nameEnd == '[' && tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcGlobalType(global).structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -3579,6 +3659,9 @@ void tc_varref(const char* start, const char* end) {
 			if (fieldEnd < end && *fieldEnd == '[') {
 				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
+			}
+			if (tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
+				fprintf(stderr, "qcc: member access requires a complete struct-array index\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
 			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
@@ -3619,15 +3702,15 @@ void tc_varref(const char* start, const char* end) {
 			if (!indexed) {
 				printf("PUSHADDR L %d\n", slot); tcTypePush(tcPointerTo(tcLocalType(slot))); return;
 			}
-			tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, end));
+			if (tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, end)) == 2) {
+				printf("PUSHADDR L %d\nIPADD %c\n", slot, tcTypeTag(tcLocalType(slot)));
+				tcTypePush(tcPointerTo(tcLocalType(slot))); return;
+			}
 			tcCheckConstIndex(start, end, tcLocalArrayLen[slot]);
 			printf("LOADIDX L %d %c\n", slot, tcTypeTag(tcLocalType(slot))); tcTypePush(tcLocalType(slot));
 		} else if (indexed && tcIsPointer(tcLocalType(slot))) {
-			TCType valueType = tcPointee(tcLocalType(slot));
-			if (!tcIsPointer(valueType) && valueType.base == 'v') {
-				fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; tcTypePush(tcMakeType('i', 0)); return;
-			}
-			printf("LOADP %d\nPTRINDEX %c\nLOADIND %c\n", slot, tcTypeTag(valueType), tcTypeTag(valueType)); tcTypePush(valueType);
+			TCType valueType = tcEmitPointerIndexChain(slot, 0, tcLocalType(slot), tcCountTopIndexes(nameEnd, end));
+			tcTypePush(valueType);
 		} else if (indexed) { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); actionErrors++; }
 		else { TCType t = tcLocalType(slot); printf("LOAD%s %d\n", tcIsPointer(t) ? "P" : tcTypeTag(t) == 'i' ? "L" : "C", slot); tcTypePush(t); }
 	} else if ((global = tcLookupGlobal(start, nameEnd)) >= 0) {
@@ -3636,15 +3719,15 @@ void tc_varref(const char* start, const char* end) {
 			if (!indexed) {
 				printf("PUSHADDR G %s\n", name); tcTypePush(tcPointerTo(tcGlobalType(global))); return;
 			}
-			tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end));
+			if (tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end)) == 2) {
+				printf("PUSHADDR G %s\nIPADD %c\n", name, tcTypeTag(tcGlobalType(global)));
+				tcTypePush(tcPointerTo(tcGlobalType(global))); return;
+			}
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 			printf("LOADIDX G %s %c\n", name, tcTypeTag(tcGlobalType(global))); tcTypePush(tcGlobalType(global));
 		} else if (indexed && tcIsPointer(tcGlobalType(global))) {
-			TCType valueType = tcPointee(tcGlobalType(global));
-			if (!tcIsPointer(valueType) && valueType.base == 'v') {
-				fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; tcTypePush(tcMakeType('i', 0)); return;
-			}
-			printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, tcTypeTag(valueType), tcTypeTag(valueType)); tcTypePush(valueType);
+			TCType valueType = tcEmitPointerIndexChain(-1, name, tcGlobalType(global), tcCountTopIndexes(nameEnd, end));
+			tcTypePush(valueType);
 		} else if (indexed) { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); actionErrors++; }
 		else { TCType t = tcGlobalType(global); printf("LOADG%s %s\n", tcIsPointer(t) ? "P" : tcTypeTag(t) == 'i' ? "" : "C", name); tcTypePush(t); }
 	}
@@ -3888,11 +3971,15 @@ void tc_commavalue(const char* start, const char* end) {
 END
 ROUTINE C tc_commaassign
 void tc_commaassign(const char* start, const char* end) {
-	/* Dieselbe Maschinerie wie eine Zuweisungsanweisung -- target und assignop
-	   haben ihre Aktionen regulaer gefeuert, tc_assign findet den Zustand also
-	   vor wie gewohnt. Es sucht in start..end nach '=', was hier zutrifft. */
-	tc_assign(start, end);
-	tcCommaHasValue = 0;
+	/* Eine Zuweisung ist in C selbst ein Wertausdruck.  Im Komma-Ausdruck darf
+	   sie den zugewiesenen Wert deshalb NICHT wie eine Anweisung verbrauchen:
+	   "(x = 1)" und "(x = 1, y)" sind beide gueltig.  tcAssignStore(1)
+	   dupliziert den fertig berechneten Wert vor dem Store und laesst die Kopie
+	   auf dem Wertestapel; normale assignStmt verwendet weiterhin (0). */
+	(void)start; (void)end;
+	if (!(tcAssignOp[0] == '=' && tcAssignOp[1] == 0)) tcCompoundAssign();
+	tcAssignStore(1);
+	tcCommaHasValue = 1;
 }
 END
 ROUTINE C tc_commadrop
@@ -3973,6 +4060,8 @@ void tc_expr(const char* start, const char* end) {
 END
 ROUTINE C tc_target
 void tc_target(const char* start, const char* end) {
+	const char* nameEnd;
+	int global;
 	/* bisheriges Ziel retten -- die Kettenzuweisung braucht beide (siehe tc_chainassign) */
 	tcPrevTargetSlot = tcTargetSlot;
 	tcPrevTargetIsGlobal = tcTargetIsGlobal;
@@ -3981,8 +4070,7 @@ void tc_target(const char* start, const char* end) {
 	tcPrevTargetIndirect = tcTargetIndirect;
 	tcCopy(tcPrevTargetGlobal, tcTargetGlobal, tcTargetGlobal + strlen(tcTargetGlobal));
 
-	const char* nameEnd = tcNameEnd(start, end);
-	int global;
+	nameEnd = tcNameEnd(start, end);
 	tcTargetIsArray = nameEnd < end;
 	tcTargetSlot = tcLookupLocal(start, nameEnd);
 	tcTargetIsGlobal = 0; tcTargetIndirect = 0;
@@ -4002,7 +4090,7 @@ void tc_target(const char* start, const char* end) {
 		    !(tcTargetSlot >= 0 && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') &&
 		    !(targetGlobal >= 0 && tcGlobalArrayLen[targetGlobal] > 0 && targetGlobalType.base == 's') &&
 		    !(targetGlobal >= 0 && tcIsPointer(targetGlobalType) && tcPointee(targetGlobalType).base == 's')) {
-			const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+			const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 			if (afterIdx < end && *afterIdx == '.') {
 				fprintf(stderr, "qcc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
 				actionErrors++; return;
@@ -4042,7 +4130,7 @@ void tc_target(const char* start, const char* end) {
 	}
 	tcArrowSkipT: ;
 	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcPointee(tcTargetType).structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -4062,7 +4150,7 @@ void tc_target(const char* start, const char* end) {
 	   (Allokations-Fix, IPADDN, tcSkipOneIndex). Schreibend identisch bis auf
 	   tcTargetIndirect=1 statt LOADIND (wie beim bestehenden p.field = ..-Pfad). */
 	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcTargetType.structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -4071,6 +4159,9 @@ void tc_target(const char* start, const char* end) {
 			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); actionErrors++; return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
 				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n"); actionErrors++; return;
+			}
+			if (tcCheckNDIndex(tcLocalArrayNDims[tcTargetSlot], tcLocalArrayDims[tcTargetSlot], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
+				fprintf(stderr, "qcc: member access requires a complete struct-array index\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[tcTargetSlot]);
 			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
@@ -4113,7 +4204,7 @@ void tc_target(const char* start, const char* end) {
 	   denselben STOREIND-Pfad nehmen wie bei den bereits vorhandenen lokalen Faellen. */
 	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
 	    tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcPointee(tcGlobalType(global)).structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -4132,7 +4223,7 @@ void tc_target(const char* start, const char* end) {
 	}
 	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
 	    tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') {
-		const char* afterIdx = tcSkipOneIndex(nameEnd, end);
+		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcGlobalType(global).structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
@@ -4142,6 +4233,9 @@ void tc_target(const char* start, const char* end) {
 			if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); actionErrors++; return; }
 			if (fieldEnd < end && *fieldEnd == '[') {
 				fprintf(stderr, "qcc: arr[i].field[j] not supported in this version\n"); actionErrors++; return;
+			}
+			if (tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
+				fprintf(stderr, "qcc: member access requires a complete struct-array index\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
 			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
@@ -4187,7 +4281,10 @@ void tc_target(const char* start, const char* end) {
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 		}
 		else if (tcTargetIsArray && tcIsPointer(tcTargetType)) {
-			if (tcTargetType.pointeeConst) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
+			/* const char **pp: *pp ist ein veraenderbarer char*-Slot; erst **pp
+			   trifft auf das const char. Das kompakte TCType-Modell merkt die
+			   Qualifikation nur an der Basis, deshalb gilt sie nur auf Ebene 1. */
+			if (tcTargetType.pointeeConst && tcTargetType.pointers == 1) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
 			tcTargetType = tcPointee(tcTargetType);
 			if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
 				fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; tcTargetType = tcMakeType('i', 0);
@@ -4198,7 +4295,7 @@ void tc_target(const char* start, const char* end) {
 		tcCheckNDIndex(tcLocalArrayNDims[tcTargetSlot], tcLocalArrayDims[tcTargetSlot], tcCountTopIndexes(nameEnd, end));
 		tcCheckConstIndex(start, end, tcLocalArrayLen[tcTargetSlot]);
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcIsPointer(tcTargetType)) {
-		if (tcTargetType.pointeeConst) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
+		if (tcTargetType.pointeeConst && tcTargetType.pointers == 1) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
 		tcTargetType = tcPointee(tcTargetType);
 		if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
 			fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; tcTargetType = tcMakeType('i', 0);
@@ -4214,7 +4311,7 @@ void tc_indirecttarget(const char* start, const char* end) {
 	TCType pointer = tcTypePop(); (void)start; (void)end;
 	tcTargetSlot = -1; tcTargetIsGlobal = 0; tcTargetIsArray = 0; tcTargetIndirect = 1;
 	if (!tcIsPointer(pointer)) { tcTypeError("indirect assignment", tcPointerTo(tcMakeType('i', 0)), pointer); tcTargetType = tcMakeType('i', 0); return; }
-	if (pointer.pointeeConst) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
+	if (pointer.pointeeConst && pointer.pointers == 1) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
 	tcTargetType = tcPointee(pointer);
 	if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
 		fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++;
@@ -4242,6 +4339,23 @@ void tc_chainassign(const char* start, const char* end) {
 	TCType got; char tag;
 	(void)start; (void)end;
 	tcChainHandled = 1;
+	/* a[i] = x = value: Der Index von a[i] liegt schon unter dem Wert auf dem
+	   Laufzeitstack. Erst x speichern (DUP laesst den Wert fuer a[i]), danach
+	   STOREIDX. Dasselbe Prinzip funktioniert fuer *p = x = value. */
+	if (!tcTargetIndirect && !tcTargetIsArray && (tcPrevTargetIndirect || tcPrevTargetIsArray)) {
+		got = tcTypePop();
+		if (!tcCompatible(tcTargetType, got)) tcTypeError("assignment", tcTargetType, got);
+		if (!tcCompatible(tcPrevTargetType, got)) tcTypeError("assignment", tcPrevTargetType, got);
+		printf("DUP\n");
+		tag = tcTypeTag(tcTargetType);
+		if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
+		else printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
+		tag = tcTypeTag(tcPrevTargetType);
+		if (tcPrevTargetIndirect) printf("STOREIND %c\n", tag);
+		else if (tcPrevTargetIsGlobal) printf("STOREIDX G %s %c\n", tcPrevTargetGlobal, tag);
+		else printf("STOREIDX L %d %c\n", tcPrevTargetSlot, tag);
+		return;
+	}
 	if (tcTargetIndirect || tcTargetIsArray || tcPrevTargetIndirect || tcPrevTargetIsArray) {
 		fprintf(stderr, "qcc: chained assignment is only supported for plain variables in this version\n");
 		actionErrors++; (void)tcTypePop(); return;
@@ -4260,20 +4374,37 @@ void tc_chainassign(const char* start, const char* end) {
 END
 ROUTINE C tc_assign
 void tc_assign(const char* start, const char* end) {
-	const char* p; int hasAssign = 0; TCType got; char tag;
+	const char* p; int hasAssign = 0;
 	/* Kettenzuweisung hat bereits alles erledigt (siehe tc_chainassign). */
 	if (tcChainHandled) { tcChainHandled = 0; return; }
 	for (p = start; p < end; p++) if (*p == '=') { hasAssign = 1; break; }
 	if (!hasAssign) { if (!tcLastWasPrint) { printf("DROP\n"); (void)tcTypePop(); } return; }
 	if (!(tcAssignOp[0] == '=' && tcAssignOp[1] == 0)) tcCompoundAssign();
-	got = tcTypePop(); if (!tcCompatible(tcTargetType, got)) tcTypeError("assignment", tcTargetType, got);
+	tcAssignStore(0);
+}
+END
+ROUTINE C tcAssignStore
+/* Gemeinsamer letzter Schritt aller Zuweisungen.  leaveValue ist fuer eine
+   Zuweisung IM Ausdruck gesetzt: DUP bewahrt dann eine Kopie fuer den
+   umgebenden Ausdruck, waehrend STORE die andere wie gewohnt verbraucht. */
+static void tcAssignStore(int leaveValue) {
+	TCType got; char tag;
+	got = tcTypePop();
+	if (!tcCompatible(tcTargetType, got)) tcTypeError("assignment", tcTargetType, got);
 	tag = tcTypeTag(tcTargetType);
-	if (tcTargetIndirect) printf("STOREIND %c\n", tag);
-	else if (tcTargetIsGlobal && tcTargetIsArray) printf("STOREIDX G %s %c\n", tcTargetGlobal, tag);
+	/* Bei einer indirekten oder indizierten Zuweisung liegen Adresse/Index
+	   UNTER dem Wert. DUP wuerde dort die Stapelfolge zerstoeren (p,v,v --
+	   STOREIND erwartet aber p,v). Die KEEP-IR-Varianten verbrauchen p/v bzw.
+	   i/v und legen genau den gespeicherten Wert wieder ab. Bei einfachen
+	   Variablen ist DUP vor dem normalen Store korrekt und bleibt kompakter. */
+	if (leaveValue && !tcTargetIndirect && !tcTargetIsArray) printf("DUP\n");
+	if (tcTargetIndirect) printf("STOREIND%s %c\n", leaveValue ? "KEEP" : "", tag);
+	else if (tcTargetIsGlobal && tcTargetIsArray) printf("STOREIDX%s G %s %c\n", leaveValue ? "KEEP" : "", tcTargetGlobal, tag);
 	else if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
-	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("STOREIDX L %d %c\n", tcTargetSlot, tag);
+	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("STOREIDX%s L %d %c\n", leaveValue ? "KEEP" : "", tcTargetSlot, tag);
 	else if (tcTargetSlot >= 0) printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
-	else { actionErrors++; fprintf(stderr, "qcc: unknown assignment target\n"); }
+	else { actionErrors++; fprintf(stderr, "qcc: unknown assignment target\n"); return; }
+	if (leaveValue) tcTypePush(tcTargetType);
 }
 END
 ROUTINE C tc_callname
@@ -5003,6 +5134,7 @@ ROUTINE C tc_postincdec
 void tc_postincdec(const char* start, const char* end) {
 	const char* nameStart = start; const char* nameEnd;
 	int isDec = (end[-1] == '-');
+	int slot, global = -1; TCType t;
 	if (start < end && *start == '(') { tcDerefIncDec(start, end, isDec, 0); return; }
 	if (tcWordEnd(start, end) < end && *tcWordEnd(start, end) == '[') { tcIndexIncDec(start, end, isDec, 0); return; }
 	/* NUR bei "." oder einem echten "->": bei "x--" endet das Wort ebenfalls
@@ -5012,7 +5144,7 @@ void tc_postincdec(const char* start, const char* end) {
 	{ const char* we = tcWordEnd(start, end);
 	  if (we < end && (*we == '.' || (*we == '-' && we + 1 < end && we[1] == '>'))) { tcMemberIncDec(start, end, isDec, 0); return; } }
 	nameEnd = tcWordEnd(start, end);
-	int slot = tcLookupLocal(nameStart, nameEnd), global = -1; TCType t;
+	slot = tcLookupLocal(nameStart, nameEnd);
 	if (slot < 0) global = tcLookupGlobal(nameStart, nameEnd);
 	if (slot < 0 && global < 0) { fprintf(stderr, "qcc: unknown variable\n"); actionErrors++; tcTypePush(tcBadType()); return; }
 	if ((slot >= 0 && tcLocalConst[slot]) || (global >= 0 && tcGlobalConst[global])) {
