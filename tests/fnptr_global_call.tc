@@ -1,0 +1,27 @@
+/* Regression probe: function pointer stored in file-scope data.
+ * This distinguishes a local CALLIND from the action-log layout used by the
+ * bootstrap parser.  The output is deliberately simple for Q9/expect tests.
+ */
+typedef void (*ActionFn)(const char*, const char*);
+
+static ActionFn callback;
+static const char* first;
+static const char* last;
+static int seen;
+
+extern int printf(const char*, ...);
+
+void mark(const char* start, const char* end) {
+    if (start && end && start[0] == 'A' && end[0] == 'Z') {
+        seen = 1;
+    }
+}
+
+int main() {
+    callback = mark;
+    first = "A";
+    last = "Z";
+    callback(first, last);
+    printf("global-fn: %d\n", seen);
+    return seen ? 0 : 1;
+}
