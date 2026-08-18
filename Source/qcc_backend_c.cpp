@@ -243,6 +243,10 @@ static int largeDataMode = 0;
    Tabellenpfad unveraendert. */
 static int trampolineMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
+/* -unit=<name> groups artificially split IR parts that originated from one
+   translation unit.  It deliberately affects only static-symbol mangling:
+   normal multi-file builds keep using their individual psect name. */
+static char staticUnit[NAME_LEN] = "";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
 /* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
    "68K" -> "Register Usage"): a5 = Frame/local pointer, a6 = STATIC STORAGE
@@ -270,7 +274,8 @@ static const char* framePtr(void) { return os9Mode ? "a5" : "a6"; }
    psect-Name (aus dem Ausgabedateinamen abgeleitet, siehe main()) ist bereits
    der natuerliche Ort fuer Eindeutigkeit pro Datei. */
 static char* mangledName(char* buf, const char* prefix, const char* name, int isStatic) {
-	if (os9Mode && isStatic) sprintf(buf, "%s%s__%s", prefix, name, psectName);
+	if (os9Mode && isStatic) sprintf(buf, "%s%s__%s", prefix, name,
+		staticUnit[0] ? staticUnit : psectName);
 	else sprintf(buf, "%s%s", prefix, name);
 	return buf;
 }
@@ -396,6 +401,16 @@ static int helperTableOffset(const char* rawName) {
 	return -1;
 }
 
+/* Rebuild this psect's large-data table bases from an instruction-local
+   anchor.  The anchor is deliberately close to its use: a function name or a
+   synthetic return label can never exceed the 68000's PC-relative range. */
+static void emitTableBases(FILE* out, const char* anchor, const char* psect) {
+	fprintf(out, "\tlea\t%s(pc),a4\n", anchor);
+	fprintf(out, "\tadda.l\t#(tc_functab__%s-%s),a4\n", psect, anchor);
+	fprintf(out, "\tlea\t%s(pc),a3\n", anchor);
+	fprintf(out, "\tadda.l\t#(tc_gadata__%s-%s),a3\n", psect, anchor);
+}
+
 /* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer QCC-
    Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
    Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
@@ -440,6 +455,13 @@ static void emitCall(FILE* out, const char* asmName, int tableOffset, int* seria
 		if (trampolineMode) fprintf(out, "\tbsr\t%s\n", asmName);
 		else fprintf(out, "\tmove.l\t%d(a4),a2\n\tadda.l\ta4,a2\n\tjsr\t(a2)\n", tableOffset);
 		fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
+		/* The callee may use a3/a4 as ABI scratch registers.  Rebuild both
+		   table bases from this nearby return label before the caller continues. */
+		{
+			char anchor[NAME_LEN + 40];
+			sprintf(anchor, "tc_callret_%d__%s", id, psectName);
+			emitTableBases(out, anchor, psectName);
+		}
 	} else {
 		fprintf(out, "\tbsr\t%s\n", asmName);
 	}
@@ -590,7 +612,9 @@ static void collectGlobals(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
 		if (strcmp(insP->op, "GLOBALDECL") != 0) continue;
-		if (insP->argc != 2) fatal("ungueltiges GLOBALDECL");
+		/* The optional third word carries file-static visibility when an IR
+		   file was artificially split into several -part inputs. */
+		if (insP->argc != 2 && insP->argc != 3) fatal("ungueltiges GLOBALDECL");
 		if (findGlobal(insP->args[0]) >= 0) {
 			sprintf(msg, "IR Zeile %d: doppelte globale Variable %s", insP->line, insP->args[0]);
 			fatal(msg);
@@ -600,6 +624,7 @@ static void collectGlobals(void) {
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
 		globals[gi].isChar = isByteWord(insP->args[1]);
+		globals[gi].isStatic = insP->argc == 3 && number(insP->args[2], insP->line) != 0;
 		globals[gi].declOnly = 1;
 	}
 }
@@ -665,7 +690,10 @@ static void collectFunctions(void) {
 		Instr* insP = &ir[i];
 		int existing;
 		if (strcmp(insP->op, "FUNCDECL") != 0) continue;
-		if (insP->argc != 2) fatal("ungueltiges FUNCDECL");
+		/* As with GLOBALDECL, a third optional word retains file-static
+		   mangling across artificial IR parts.  Existing two-word IR remains
+		   fully compatible. */
+		if (insP->argc != 2 && insP->argc != 3) fatal("ungueltiges FUNCDECL");
 		existing = findFunction(insP->args[0]);
 		if (existing >= 0) {
 			/* Vorwaertsdeklaration innerhalb DERSELBEN Datei, deren echter Rumpf
@@ -683,6 +711,7 @@ static void collectFunctions(void) {
 		current.nargs = number(insP->args[1], insP->line);
 		current.first = -1;
 		current.last = -1;
+		current.isStatic = insP->argc == 3 && number(insP->args[2], insP->line) != 0;
 		current.declOnly = 1;
 		funcs[funcCount++] = current;
 	}
@@ -1161,6 +1190,13 @@ static void emitIR(FILE* out) {
 			   basis before any QCC-internal call is made. */
 			fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		}
+		if (largeDataMode) {
+			/* Jede Funktion muss beim Eintritt ihre eigene Tabellenbasis herstellen.
+			   Der Aufrufer kann aus einem anderen Psect kommen; ausserdem sind a3/a4
+			   ABI-Temporaerregister. Das eigene Label bleibt PC-relativ erreichbar,
+			   die beiden Linkzeit-Differenzen sind ohne 16-Bit-PC-Grenze. */
+			emitTableBases(out, asmName, psectName);
+		}
 		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- vierter, tiefster
 		   -largedata-Bug dieser Sitzung): a3/a4 werden bisher NUR beim
 		   Programmstart (main:) einmalig gesetzt UND nach jedem CALLEXT/
@@ -1553,9 +1589,10 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tmove.l\t%d(a7),a2\n\tjsr\t(a2)\n", nargsI * 4);
 				if (largeDataMode) {
 					int id = serial++;
+					char anchor[NAME_LEN + 40];
 					fprintf(out, "tc_callret_%d__%s:\n", id, psectName);
-					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a4\n\tadda.l\t#(tc_functab__%s-tc_callret_%d__%s),a4\n", id, psectName, psectName, id, psectName);
-					fprintf(out, "\tlea\ttc_callret_%d__%s(pc),a3\n\tadda.l\t#(tc_gadata__%s-tc_callret_%d__%s),a3\n", id, psectName, psectName, id, psectName);
+					sprintf(anchor, "tc_callret_%d__%s", id, psectName);
+					emitTableBases(out, anchor, psectName);
 				}
 				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
@@ -1788,7 +1825,7 @@ int main(int argc, char* argv[]) {
 	char msg[300];
 	int i;
 	if (argc < 3) {
-		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata] [-trampolines]\n", argv[0]);
+		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata] [-trampolines] [-unit=name]\n", argv[0]);
 		fprintf(stderr, "  -os9:       Microware-r68-Ausgabeformat (nam/psect/ends, \"*\" statt \";\"\n");
 		fprintf(stderr, "              fuer volle Kommentarzeilen) statt vasm-kompatiblem Format.\n");
 		fprintf(stderr, "  -part:      diese Datei ist EIN TEIL eines Mehrdatei-Programms (kein\n");
@@ -1804,6 +1841,7 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "              diese Option) ist schneller/kompakter, reicht aber nur fuer\n");
 		fprintf(stderr, "              kleinere Programme mit wenig globalem Zustand.\n");
 		fprintf(stderr, "  -trampolines: optionaler relokierbarer Fernaufrufpfad; nur mit -largedata.\n");
+		fprintf(stderr, "  -unit=name: gemeinsamer static-Namensraum fuer kuenstlich gesplittete Teile.\n");
 		fprintf(stderr, "                Zusammen mit r68 -j und l68 -a verwenden; erzeugt eine\n");
 		fprintf(stderr, "                Microware-Jump-Tabelle und einen kleinen OS-9-Datenanker.\n");
 		return 2;
@@ -1814,6 +1852,10 @@ int main(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
 		else if (strcmp(argv[i], "-largedata") == 0) largeDataMode = 1;
 		else if (strcmp(argv[i], "-trampolines") == 0) trampolineMode = 1;
+		else if (strncmp(argv[i], "-unit=", 6) == 0 && argv[i][6] != '\0') {
+			strncpy(staticUnit, argv[i] + 6, NAME_LEN - 1);
+			staticUnit[NAME_LEN - 1] = '\0';
+		}
 		else { fprintf(stderr, "unbekannte Option: %s\n", argv[i]); return 2; }
 	}
 	readIR(argv[1]);

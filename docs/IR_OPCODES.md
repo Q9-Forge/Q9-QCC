@@ -40,8 +40,8 @@ section 10 (10.5 shows the same opcode set more compactly).
 | `FUNC <name> <nargs>` | — | start of function; slots `0..nargs-1` = parameters |
 | `ENDFUNC` | — | end of function (frame size = highest slot+1, determined by the backend) |
 | `LABEL <L>` | — | defines jump target `L` |
-| `FUNCDECL <name> <argc>` | — | forward declaration without a body (multi-file/mutual recursion); backend-only |
-| `GLOBALDECL <type> <name>` | — | `extern` variable, no allocation of its own; backend-only |
+| `FUNCDECL <name> <argc> [static]` | — | forward declaration without a body (multi-file/mutual recursion); backend-only. `static=1` preserves private-name mangling when one source unit is deliberately split into backend parts. |
+| `GLOBALDECL <name> <type> [static]` | — | `extern` variable, no allocation of its own; backend-only. The optional flag has the same artificial-split meaning as for `FUNCDECL`. |
 
 ## Loading/storing values
 

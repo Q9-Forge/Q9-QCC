@@ -1,0 +1,8 @@
+# Second artificial part: its declarations must resolve to the same static
+# labels that backend_static_unit.ir defines when both receive -unit=demo.
+GLOBALDECL counter i 1
+FUNCDECL helper 0 1
+FUNC main 0
+CALL helper 0
+RET
+ENDFUNC

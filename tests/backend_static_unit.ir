@@ -1,0 +1,11 @@
+# Backend regression: artificial IR parts retain the original translation
+# unit's static namespace via -unit=demo.
+GLOBAL counter 0 i 1
+FUNC helper 0 1
+LOADG counter
+RET
+ENDFUNC
+FUNC main 0
+CALL helper 0
+RET
+ENDFUNC
