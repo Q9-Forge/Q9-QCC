@@ -1,0 +1,318 @@
+* Q9 OS-9/68000 C-Startmodul
+* -----------------------------------------------------------------------------
+* Eigenstaendige Q9-Fassung des Microware-C-Startcodes.
+*
+* Zweck       : Initialisiert die C-Laufzeit und ruft main(argc, argv, envp).
+* Grundlage   : Microware OS-9 Professional V3.3, cstart.a, Edition 7.
+* Q9-Stand    : 2026-08-13
+*
+* Die Ablaufsemantik und die OS-9/C-ABI bleiben unveraendert. Die Kommentare
+* wurden neu gefasst; Inline-Kommentare beginnen einheitlich ab Spalte 48.
+* Die Definitionsdatei bleibt zunaechst die Microware-Datei. Sie wird spaeter
+* durch eine Q9-eigene Definitionsdatei ersetzt.
+* -----------------------------------------------------------------------------
+
+        use     q9defs.d                         * Q9-Definitionen; siehe q9defsfile
+
+Typ             equ     1                       * OS-9-Programmmodul
+Edition         equ     7                       * Q9-Ausgabeedition
+StackSize       equ     2048+1024               * Standard-Stackreservierung
+CError          equ     257                     * Interner C-Fehlercode
+
+* Modulbeschreibung ----------------------------------------------------------
+
+        psect   q9_cstart_a,(Q9Prgrm<<8)!Q9Objct,(Q9ReEnt<<8)!1,Edition,StackSize,_cstart,trapinit
+
+CR              equ     $0d                     * Wagenruecklauf
+Space           equ     $20                     * Leerzeichen
+Comma           equ     $2c                     * Komma
+DQuote          equ     $22                     * Doppeltes Anfuehrungszeichen
+SQuote          equ     $27                     * Einfaches Anfuehrungszeichen
+
+* Prozessdaten ---------------------------------------------------------------
+* Diese Bereiche liegen im Vsect. OS-9 uebergibt die Basis in A6.
+
+        vsect
+_sttop: ds.l    1                               * Obergrenze des Anfangsstacks
+_csl_a6:ds.l    1                               * CSL-Datenzeiger im OSK-Modus
+        ends
+
+        vsect
+_mtop:  ds.l    1                               * Aktuelles Ende des Datenspeichers
+_stbot: ds.l    1                               * Untere Stackgrenze
+errno:  ds.l    1                               * Globaler C-Fehlercode
+_totmem:ds.l    1                               * Bereits reservierter Speicher
+_sbsize:ds.l    1                               * Obergrenze fuer sbrk()
+_pathcnt:ds.w  1                               * Anzahl geerbter Pfade
+_sysglob:ds.l  1                               * Zeiger auf System-Globals
+_modhead:ds.l  1                               * Zeiger auf den Prozessmodulheader
+_modname:ds.l  1                               * Zeiger auf den aktuellen Modulnamen
+_procid:ds.l  1                                * Prozess-ID
+_maxstack:ds.l 1                               * Maximal erreichte Stacktiefe
+_glob_data:ds.l 1                              * Zeiger auf statische C-Daten
+_csl_bsrentry:ds.l 1                           * CSL-BSR-Einstieg
+q9_cstart_reserved:ds.l 1                      * Reservierter Laufzeitbereich
+        ends
+
+        vsect
+_fcbs:  dc.l    _iob                            * Zeiger auf CIO-Dateibloecke
+_ofcbs: dc.l    0                               * Kompatibilitaets-CIO-Zeiger
+environ:dc.l    EVNULL                          * Zeiger auf die Environmentliste
+_stklimit:dc.l  0                               * Noch nicht verifizierter Stack
+        ends
+
+* C-Einstieg -----------------------------------------------------------------
+* Eintrittsregister:
+*   A3  Modulbasis, A4 System-Globals, A5 Parameterbereich, A6 Prozessdaten
+*   D3  Anzahl geerbter Pfade, D5 Parameterlaenge, D6 Anfangsdatengroesse
+
+_cstart:
+        move.l  a6,_glob_data(a6)                * Statische Datenbasis sichern
+        move.l  a3,_modhead(a6)                 * Modulheader sichern
+        move.l  d0,_procid(a6)                  * Prozess-ID sichern
+        movea.l a3,a0                           * Moduladresse kopieren
+        adda.l  Q9_M_ID(a0),a0                  * Modulnamenoffset anwenden
+        move.l  a0,_modname(a6)                 * Modulnamenzeiger sichern
+        move.l  d6,_totmem(a6)                  * Anfangsgroesse sichern
+        move.l  d6,_sbsize(a6)                  * Anfangsgroesse fuer sbrk()
+        move.w  d3,_pathcnt(a6)                 * Geerbte Pfade sichern
+
+        btst    #Q9SupStBit,Q9_M_Attr(a3)        * System-State-Modul?
+        beq.s   _cs10                           * Nein: Systemzeiger ignorieren
+        move.l  a4,_sysglob(a6)                 * System-Globals uebernehmen
+        bne.s   _cs10                           * Gueltiger Zeiger vorhanden
+        move.l  0.l,_sysglob(a6)                * Alte OS-9-Konvention: Adresse 0
+_cs10:
+
+* Kommandozeilenparameter ----------------------------------------------------
+
+        tst.l   d5                              * Gibt es Parameter?
+        beq.s   oldarg_a                        * Nein: alter Aufrufweg
+        btst    #0,d5                            * Ungerade Laenge?
+        bne.s   oldarg                          * Alter OS-9-Parameterweg
+        lea     (a5,d5.l),a0                     * Ende des Parameterbereichs
+        tst.w   -2(a0)                           * Neuer argv-Aufbau?
+        bne.s   oldarg                          * Nein: alter Aufbau
+        subq.l  #4,a0                            * Environment-Ende ueberspringen
+        lea     -4(a0),a4                        * Letztes envp/argv-Element
+        moveq   #1,d0                            * Zaehler fuer argv
+        bra.s   newarg_b
+
+oldarg:
+        clr.b   -1(a5,d5.l)                      * CR am Parameterende loeschen
+oldarg_a:
+        move.l  a5,a0                            * Parameterbasis kopieren
+        adda.l  Q9_M_Name(a3),a3                * Modulname als argv[0]
+        clr.l   -(sp)                            * argv-Abschluss
+        move.l  a3,-(sp)                         * argv[0]
+        moveq.l #1,d2                            * Mindestens ein Argument
+        move.l  #_initarg-*-8,d0                 * Relokativer _initarg-Aufruf
+        jsr     (pcr,d0.l)
+        bra.s   iobinit
+
+newarg_a:
+        lea     4(a0),a1                         * Environmentliste merken
+        move.l  a1,environ(a6)                  * environ setzen
+        moveq   #0,d2                            * argc initialisieren
+newarg_b:
+        move.l  -(a0),a1                         * Naechsten Offset lesen
+        move.l  a1,d7                            * Offset gleich null?
+        beq.s   newarg_c                        * Ende der Liste
+        adda.l  a5,a1                            * Offset in Pointer umwandeln
+        clr.b   -1(a1)                            * Vorherige Zeichenkette beenden
+        move.l  a1,(a0)                          * Pointer zurueckschreiben
+        addq.l  #1,d2                            * argc erhoehen
+        bra.s   newarg_b
+
+newarg_c:
+        subq.l  #1,d0                            * argv-Aufbau pruefen
+        beq.s   newarg_a                        * Ein weiteres Element verarbeiten
+        tst.l   d2                               * Existiert ein erstes Argument?
+        bne.s   newarg_e                        * Ja
+        tst.w   -2(a0)                            * Wurde argv ueber os9exec geliefert?
+        beq.s   newarg_e                        * Ja: ein Argument existiert
+        clr.b   -1(a0)                            * CR des alten Aufbaus loeschen
+        movea.l a0,a2                            * argv[0]-Pruefadresse sichern
+        addq.l  #4,a0                            * Auf naechsten Eintrag zeigen
+        bra.s   newarg_f
+
+newarg_e:
+        move.l  a5,(a0)                          * argv[1] auf Parameterbasis setzen
+        movea.l a0,a2                            * argv[0]-Pruefadresse sichern
+        addq.l  #1,d2                            * Fehlendes argv-Element ausgleichen
+newarg_f:
+        addq.l  #1,d2                            * argv[0] mitzaehlen
+        tst.l   (a4)                             * Weitere Eintraege vorhanden?
+        beq.s   newarg_i                        * Nein
+        move.l  (a4),a4                          * Letzten Pointer holen
+newarg_g:
+        tst.b   (a4)+                            * Ende des Strings suchen
+        bne.s   newarg_g
+        cmpa.l  a4,a2                            * Luecke zwischen Bereichen?
+        bls.s   newarg_s                        * Nein: normaler Aufbau
+        cmpi.b  #$fc,(a4)+                       * argv[0]-Synchronisationsbyte?
+        bne.s   newarg_s                        * Nein
+        addq.l  #1,a4                            * Versionsbyte ueberspringen
+        move.l  (a4),a3                          * argv[0]-Offset lesen
+        adda.l  a5,a3                            * Offset in Pointer umwandeln
+        bra.s   newarg_t
+
+newarg_i:
+        cmpi.b  #$fc,2(a5)                       * Alternativer argv[0]-Aufbau?
+        bne.s   newarg_s
+        move.l  4(a5),a3                         * argv[0]-Offset lesen
+        adda.l  a5,a3                            * Offset in Pointer umwandeln
+        bra.s   newarg_t
+
+newarg_s:
+        adda.l  Q9_M_Name(a3),a3                 * Modulname als argv[0]
+newarg_t:
+        move.l  a3,-(a0)                         * argv[0] einsetzen
+        move.l  a0,-(sp)                         * argv sichern
+        clr.b   -1(a0)                            * CR des Environmentendes loeschen
+        move.l  d2,-(sp)                         * argc sichern
+
+* CIO-Initialisierung --------------------------------------------------------
+
+iobinit:
+        move.l  #_iobinit-*-8,a0                 * Relokativer _iobinit-Aufruf
+        jsr     (pcr,a0.l)
+        bcs     die                             * Fehler: Programm beenden
+
+* Hauptprogramm aufrufen -----------------------------------------------------
+
+        bsr.s   _fixtop                         * Speichergrenzen vorbereiten
+        movem.l (sp)+,d0-d1                      * argc und argv laden
+        suba.l  a5,a5                            * Zukuenftigen Framepointer loeschen
+        move.l  environ(a6),-(sp)               * envp an main uebergeben
+        move.l  #main-*-8,a0                     * Relokativer main-Aufruf
+        jsr     (pcr,a0.l)
+        moveq   #0,d0                            * Rueckgabestatus fuer exit()
+        move.l  #exit-*-8,a0                     * Relokativer exit-Aufruf
+        jsr     (pcr,a0.l)
+
+* Speicher- und Stackverwaltung ---------------------------------------------
+
+_fixtop:
+        move.l  #end,a0                         * Ende der statischen Daten
+        adda.l  a6,a0                            * In reale Adresse umwandeln
+        move.l  a0,_mtop(a6)                    * Aktuelles Speicherende
+        move.l  a7,_sttop(a6)                   * Obergrenze des Stacks
+        move.l  a7,_stbot(a6)                   * Untere reservierte Stackgrenze
+        move.l  #-252,d0                         * Sicherheitsabstand
+
+_stkchec:
+_stkcheck:
+        add.l   a7,d0                            * Neue Stackgrenze berechnen
+        cmp.l   _stbot(a6),d0                    * Bereits reservierter Bereich?
+        blo.s   stk10                           * Weiter pruefen
+        rts                                     * Genuegend Stack vorhanden
+stk10:
+        cmp.l   _mtop(a6),d0                     * Datenbereich ueberschritten?
+        blo.s   fsterr                          * Ja: Stackfehler
+        move.l  d0,_stbot(a6)                    * Neue Grenze speichern
+        rts
+
+fsterr:
+        lea     fixserr(pc),a0                  * Fehlermeldung ausgeben
+        bsr.s   PrtMsg
+        move.l  #CError,-(a7)                   * Fehlercode fuer _exit
+        move.l  #_os_exit-*-8,a0                * Relokativer _os_exit-Aufruf
+        jsr     (pcr,a0.l)
+
+* OS-9-Fehlermeldung ---------------------------------------------------------
+
+PrtMsg:
+        move.w  d1,-(sp)                        * Fehlercode sichern
+        moveq   #100,d1                         * Maximale Meldungsgroesse
+        moveq   #2,d0                           * Standardausgabe
+        os9     I$WritLn                         * Meldung schreiben
+        move.w  (sp)+,d1                        * Fehlercode wiederherstellen
+        rts
+
+* Oeffentliche Laufzeitfunktionen --------------------------------------------
+
+stacksiz:
+        move.l  _sttop(a6),d0                   * Anfangsadresse des Stacks
+        sub.l   _stbot(a6),d0                   * Aktuell reservierte Groesse
+        rts
+
+freemem:
+        move.l  _stbot(a6),d0                   * Untere Stackgrenze
+        sub.l   _mtop(a6),d0                    * Freier Speicherbereich
+        rts
+
+* Uninitialisierter Trap-Handler ---------------------------------------------
+* Eintritt:  A7 caller-a6, 4(A7) trap code, 6(A7) vector, 8(A7) return PC.
+
+stacked         set     6*4                     * Offset nach Registersave
+trapinit:
+        movem.l d0-d1/a0-a3,-(a7)               * Arbeitsregister sichern
+        move.w  6+stacked(a7),d0               * Trapvektor lesen
+        subi.w  #$80,d0                         * Trapnummer bilden
+        asr.w   #2,d0                           * Trapnummer skalieren
+        cmpi.w  #T$Math,d0                      * Mathematik-Trap?
+        bne.s   tryuser
+        lea     m1nam(pc),a0                   * Mathematikmodul
+trap_x:
+        moveq   #0,d1                           * Kein Zusatzspeicher
+        os9     F$TLink                         * Trapmodul laden
+        bcc.s   trap_y
+tryuser:
+        move.l  #_utinit-*-8,a1                 * Benutzer-Trapinitialisierung
+        jsr     (pcr,a1.l)
+        bcs.s   die
+trap_y:
+        movem.l (a7)+,d0-d1/a0-a3               * Arbeitsregister restaurieren
+        addq.l  #8,a7                           * Trapparameter entfernen
+        subq.l  #4,(a7)                         * Ruecksprungadresse korrigieren
+        rts
+
+* Konstanten und Fehlermeldungen ---------------------------------------------
+
+        dc.w    $4afb                          * Debugger-Markierung
+        dc.w    StrEnd-*-2                      * Debugger-Stringlaenge
+fixserr:
+        dc.b    "**** Stack Overflow ****",CR,0
+TrapErr:
+        dc.b    "**** Can't install trap handler ****",CR,0
+TrapEr1:
+        dc.b    " **** ",0
+m1nam:
+        dc.b    "math",0
+        align
+EVNULL:
+        dc.l    0                               * Leere Environmentliste
+StrEnd:
+
+* Fehlerausgang ---------------------------------------------------------------
+
+badtrap:
+        move.l  #E$IllFnc,d1                    * Fehlercode setzen
+die:
+        move.l  a0,-(sp)                        * Handlername sichern
+        lea     TrapErr(pc),a0                  * Allgemeine Fehlermeldung
+        bsr     PrtMsg
+        movea.l #_iob,a1                        * CIO-Pufferbasis
+        adda.l  a6,a1                           * In Prozessadresse umwandeln
+        lea     TrapEr1(pc),a0                  * Meldungspraefix
+        bsr.s   mover
+        move.l  (sp)+,a0                        * Handlername zurueckholen
+        subq.l  #1,a1                           * CR-Position korrigieren
+        bsr.s   mover
+        lea     TrapEr1(pc),a0                  * Meldungssuffix
+        subq.l  #1,a1                           * CR-Position korrigieren
+        bsr.s   mover
+        move.b  #CR,-1(a1)                      * Meldung abschliessen
+        movea.l #_iob,a0                        * CIO-Pufferbasis
+        adda.l  a6,a0                           * In Prozessadresse umwandeln
+        bsr     PrtMsg
+        os9     F$Exit                          * Prozess beenden
+        os9     F$Exit                          * Debugger-Sicherheitsausgang
+
+mover:
+        move.b  (a0)+,(a1)+                     * Zeichen kopieren
+        bne.s   mover                           * Bis Nullbyte kopieren
+        rts
+
+        ends

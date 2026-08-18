@@ -1,0 +1,3 @@
+* Q9-Definitionswrapper fuer alte Microware-Quellen.
+* Quelle der Definitionen: q9defs.d im selben Runtime-Verzeichnis.
+        use     q9defs.d
