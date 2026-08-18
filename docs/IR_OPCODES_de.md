@@ -40,8 +40,8 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
 | `FUNC <name> <nargs>` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter |
 | `ENDFUNC` | — | Funktionsende (Rahmengröße = höchster Slot+1, vom Backend ermittelt) |
 | `LABEL <L>` | — | definiert Sprungziel `L` |
-| `FUNCDECL <name> <argc>` | — | Vorwärtsdeklaration ohne Rumpf (Mehrdatei/gegenseitige Rekursion); backend-only |
-| `GLOBALDECL <typ> <name>` | — | `extern`-Variable, keine eigene Allokation; backend-only |
+| `FUNCDECL <name> <argc> [static]` | — | Vorwärtsdeklaration ohne Rumpf (Mehrdatei/gegenseitige Rekursion); backend-only. `static=1` erhält die private Namensverfremdung, wenn eine Übersetzungseinheit gezielt in Backend-Teile zerlegt wird. |
+| `GLOBALDECL <name> <typ> [static]` | — | `extern`-Variable ohne eigene Allokation; backend-only. Das optionale Flag hat dieselbe Bedeutung wie bei `FUNCDECL`. |
 
 ## Werte laden/speichern
 
