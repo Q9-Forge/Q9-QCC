@@ -2,10 +2,71 @@
 
 *English version: [STATUS.md](STATUS.md)*
 
-Stand: **2026-08-12 -- Bootstrap-Vorbereitung. Die Speicherhürde ist
+Stand: **2026-08-13 -- Q9-Runtime und Bootstrap-Pipeline verifiziert. Die Speicherhürde ist
 genommen, beide Ziele passen jetzt in die 16 MB des Q9. Im Frontend bleiben
 vier Sprachlücken, alle dasselbe Konstrukt. Siehe "Bootstrap-Vorbereitung"
 direkt unten.**
+
+## Blockgueltigkeitsbereiche lokaler Variablen (2026-08-20) -- Ursache des PMMU-Abbruchs
+
+Der beim Emulatorlauf des vollstaendigen Bootstrap-Parsers ab **Aktion 310**
+auftretende PMMU-Abbruch (Nullzugriff) war **kein** Backend-, Tabellen- oder
+Speicherproblem, sondern eine Luecke im Frontend: `tcNames[]`/`tcLocalTypes[]`
+waren **flach pro Funktion**, ohne jeden Blockgueltigkeitsbereich.
+
+Eine gleichnamige Deklaration in einem SPAETEREN Block legte dadurch einen
+NEUEN Slot an -- `tcLookupLocal()` suchte aber vorwaerts und fand die ERSTE
+Namensgleichheit, also die Variable eines FRUEHEREN, laengst geschlossenen
+Blocks. Der Initialisierer schrieb damit in den neuen Slot, jeder spaetere
+Zugriff las den alten, nie beschriebenen. Im Bootstrap-Compiler traf das
+`tcGlobalOne` (`const char* q = p;` im String-Initialisierer-Zweig, danach
+`*q == ' '`): der gelesene Slot war 0, und `move.b (a0),d0` mit `a0 = 0` ist
+auf dem echten Q9 genau der beobachtete PMMU-Abbruch.
+
+Ausmass im Bootstrap-IR (alte gegen neue Uebersetzung derselben Quelle
+verglichen): **342 falsch adressierte Zugriffe in 5 Funktionen** --
+`tc_varref` (193), `tc_target` (121), `tcGlobalOne` (12), `tc_type` (10),
+`tcDecodeStringLit` (6). Dass die Fehlerspur zuerst auf `tc_varref` zeigte,
+erklaert sich damit. Die dort vermutete Verschiebung der Global-Indizes
+zwischen IR-Liste, `tc_gadata` und Zugriffscode existiert NICHT: die drei
+Zahlen 40/41/43 waren ein Vergleich von 0- gegen 1-basierter Zaehlung plus
+eine Verwechslung von `tcNames` mit `tcLocalArrayLen`, dessen Tabellenoffset
+172 korrekt ist. Es gibt im Backend ueberhaupt nur zwei a3-relative
+Emissionsstellen, beide aus demselben `globals[]`-Array wie die
+Tabellenausgabe -- ein Versatz ist dort konstruktiv unmoeglich.
+
+Behebung: `block` bekommt mit `blockOpen` eine eigene Regel fuer die oeffnende
+Klammer (dasselbe Muster wie `funcBodyOpen`, ein Literal traegt keine ACTION),
+`tc_blockopen` merkt `tcLocalCount` beim Betreten, `tc_blockend` markiert alle
+seither angelegten Slots als `tcLocalDead`. `tcLookupLocal()` sucht seitdem
+RUECKWAERTS und ueberspringt tote Slots -- damit verdeckt eine innere
+Deklaration eine gleichnamige aeussere, und die aeussere ist nach dem Block
+wieder sichtbar. Slots werden bewusst NICHT wiederverwendet (die Rahmengroesse
+berechnet das Backend aus dem hoechsten benutzten Slot).
+
+BEWUSSTE, DOKUMENTIERTE GRENZE: die Klammern von `switchStmt` oeffnen noch
+keinen eigenen Bereich -- eine Deklaration direkt in einem `case`-Rumpf bleibt
+bis zum Funktionsende sichtbar (in echtem C endet sie mit dem switch-Rumpf).
+
+Vier Regressionstests in `runtests.sh` (Q9-Parsec) pruefen beide Richtungen:
+Geschwisterbloecke, Verdecken, dreifache Schachtelung und den echten
+Pointer-Fall aus `tcGlobalOne`.
+
+## Q9-C-Startmodul und erster kompletter Bootstrap-Lauf (2026-08-13)
+
+Die eigene Runtime-Datei `runtime/os9/q9_cstart.a` und `runtime/os9/q9defs.d`
+wurden mit `r68` assembliert und mit dem QCC-Testprogramm gegen `clib.l`,
+`os_lib.l` und `sys.l` gelinkt. Der Test läuft im Q9-Flux-Emulator und gibt
+korrekt `1` aus; der zuvor beobachtete PMMU-Fehler tritt mit der korrigierten
+Register- und Modulheader-Initialisierung nicht mehr auf.
+
+Der vorbereitete eigene Parserquelltext `build/qcc_p.bootstrap.c` wurde
+anschließend vollständig durch `build/qcc_p` übersetzt (`OK`, Rückgabewert 0).
+Der erzeugte Stack-IR wurde vom 68000-Backend akzeptiert, von `r68` ohne
+Fehler assembliert und mit dem Q9-C-Startmodul erfolgreich gelinkt. Damit ist
+die Pipeline **QCC-Frontend -> Stack-IR -> QCC-68000-Backend -> r68 -> l68**
+für das Bootstrap-Ziel durchgängig reproduzierbar. Die Ausführung des großen
+Compiler-Moduls im Emulator ist der nächste Testschritt.
 
 Vorheriger Meilenstein (2026-08-10): SCHRITT 3 (Live-Q9-Verifikation)
 ABGESCHLOSSEN -- der von QCC selbst übersetzte EBNF-Generator läuft auf dem
@@ -524,4 +585,3 @@ M1-M3), alle live gegen die echten Toolchains verifiziert:
 `./runtests.sh`: 8 neue Mehrdatei-Tests (4x QCCVM/M1, 2x echter 68k/`l68`-
 Link/M2, 2x echter ARM64/`clang`+`ld`-Link/M3), alle grün neben den 135
 bestehenden QCC-Programmen.
-

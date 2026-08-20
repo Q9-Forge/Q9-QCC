@@ -2,10 +2,68 @@
 
 *German version: [STATUS_de.md](STATUS_de.md)*
 
-Status: **2026-08-12 -- bootstrap preparation. Memory hurdle cleared, both
+Status: **2026-08-13 -- Q9 runtime and bootstrap pipeline verified. Memory hurdle cleared, both
 targets now fit into the Q9's 16 MB. The XCC-built parser already runs in the
 emulator; the remaining work is semantic self-compilation. See "Bootstrap
 preparation" directly below.**
+
+## Block scopes for local variables (2026-08-20) -- root cause of the PMMU fault
+
+The PMMU fault (null access) that hit from **action 310** onwards while running
+the complete bootstrap parser in the emulator was **not** a backend, table or
+memory problem but a gap in the frontend: `tcNames[]`/`tcLocalTypes[]` were
+**flat per function**, with no block scoping at all.
+
+A same-named declaration in a LATER block therefore allocated a NEW slot -- but
+`tcLookupLocal()` searched forwards and returned the FIRST name match, i.e. the
+variable of an EARLIER, long-closed block. The initialiser wrote the new slot
+while every later access read the old, never-written one. In the bootstrap
+compiler this hit `tcGlobalOne` (`const char* q = p;` in the string-initialiser
+branch, then `*q == ' '`): the slot read as 0, and `move.b (a0),d0` with
+`a0 = 0` is exactly the observed PMMU fault on the real Q9.
+
+Extent in the bootstrap IR (old versus new translation of the same source):
+**342 wrongly addressed accesses in 5 functions** -- `tc_varref` (193),
+`tc_target` (121), `tcGlobalOne` (12), `tc_type` (10), `tcDecodeStringLit` (6).
+That explains why the trail first pointed at `tc_varref`. The global-index skew
+suspected there between the IR list, `tc_gadata` and the access code does NOT
+exist: the three numbers 40/41/43 were a 0-based versus 1-based comparison plus
+a mix-up of `tcNames` with `tcLocalArrayLen`, whose table offset of 172 is
+correct. The backend has only two a3-relative emission sites at all, both fed
+from the same `globals[]` array as the table output -- a skew is impossible
+there by construction.
+
+Fix: `block` gets its own `blockOpen` rule for the opening brace (the same
+pattern as `funcBodyOpen`; a literal cannot carry an ACTION), `tc_blockopen`
+records `tcLocalCount` on entry, `tc_blockend` marks every slot allocated since
+as `tcLocalDead`. `tcLookupLocal()` now searches BACKWARDS and skips dead slots
+-- so an inner declaration shadows a same-named outer one, and the outer one is
+visible again after the block. Slots are deliberately NOT reused (the backend
+derives the frame size from the highest slot used).
+
+DELIBERATE, DOCUMENTED LIMIT: the braces of `switchStmt` do not yet open a
+scope of their own -- a declaration directly in a `case` body stays visible
+until the end of the function (in real C it ends with the switch body).
+
+Four regression tests in `runtests.sh` (Q9-Parsec) cover both directions:
+sibling blocks, shadowing, triple nesting and the real pointer case from
+`tcGlobalOne`.
+
+## Q9 C startup and first complete bootstrap pass (2026-08-13)
+
+The own runtime files `runtime/os9/q9_cstart.a` and `runtime/os9/q9defs.d`
+were assembled with `r68` and linked with the QCC test program against
+`clib.l`, `os_lib.l`, and `sys.l`. The test runs in the Q9-Flux emulator and
+correctly prints `1`; the previously observed PMMU fault does not recur with
+the corrected register and module-header initialization.
+
+The prepared compiler-parser source `build/qcc_p.bootstrap.c` was then fully
+translated by `build/qcc_p` (`OK`, return code 0). Its stack IR was accepted by
+the 68000 backend, assembled by `r68` without errors, and linked successfully
+with the Q9 C startup module. Thus the complete pipeline **QCC frontend ->
+stack IR -> QCC 68000 backend -> r68 -> l68** is reproducible for the
+bootstrap target. Running the resulting large compiler module in the emulator
+is the next test.
 
 Previous milestone (2026-08-10): STEP 3 (Live Q9 Verification) COMPLETE --
 the EBNF generator, translated by QCC itself, runs on real Q9 hardware and
