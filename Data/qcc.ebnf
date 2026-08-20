@@ -171,7 +171,15 @@ param     = [ constKw ] type pointerDecl paramDecl .
 paramDecl = paramName [ paramArray ] .
 paramArray = "[" "]" .
 
-block     = "{" { statement } "}" .
+/* blockOpen (2026-08-20): eigene Regel fuer die oeffnende Klammer, damit eine
+   ACTION beim BETRETEN des Blocks feuern kann -- dasselbe Muster wie
+   funcBodyOpen (ein Literal "{" traegt keine ACTION). Gebraucht fuer echte
+   Blockgueltigkeitsbereiche lokaler Variablen: ohne Einstiegs-Hook konnte
+   tcLookupLocal eine in einem FRUEHEREN, schon geschlossenen Block
+   deklarierte Variable gleichen Namens nicht von der aktuellen unterscheiden
+   (siehe tc_blockopen/tc_blockend). */
+block     = blockOpen { statement } "}" .
+blockOpen = "{" .
 
 statement = labelStmt
           | unlabeledStmt .
@@ -467,11 +475,15 @@ addressRef = "&" ident [ index ] .
 
 sizeofExpr = "sizeof" "(" sizeofArg ")" .
 sizeofArg  = sizeofType | sizeofVarName .
-sizeofType = "unsigned" unsignedInt | "int" | "char" | "bool" | "struct" structTypeRef .
+/* sizeof folgt derselben Typgrammatik wie Deklarationen und Casts. Das
+   erlaubt auch typedef-Namen und Zeigertypen, etwa sizeof(ActionLogEntry). */
+sizeofType = type pointerDecl .
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
-castType   = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" .
+/* Ein Cast verwendet dieselbe Typgrammatik wie eine Deklaration. Damit sind
+   typedef-Namen und beliebig viele Zeigersterne moeglich, z.B. (ActionFn*)p. */
+castType   = type pointerDecl .
 castOperand = factor .
 
 /* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
