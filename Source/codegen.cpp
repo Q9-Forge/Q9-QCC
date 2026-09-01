@@ -1026,7 +1026,15 @@ int genParserC(const char* path) {
 		fprintf(fp, " * lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n");
 	}
 	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
-	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
+	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n");
+	fprintf(fp, "#ifdef QCC_BUFFERED_OUTPUT\n#include <stdarg.h>\n");
+	fprintf(fp, "static char qccOutputBuffer[8192]; static int qccOutputUsed = 0;\n");
+	fprintf(fp, "static void qccOutputFlush(void) { if (qccOutputUsed) { fwrite(qccOutputBuffer, 1, qccOutputUsed, stdout); qccOutputUsed = 0; } }\n");
+	fprintf(fp, "static void qccOutputChar(int c) { if (qccOutputUsed == 8192) qccOutputFlush(); qccOutputBuffer[qccOutputUsed++] = (char)c; }\n");
+	fprintf(fp, "static void qccOutputString(const char* s) { while (*s) qccOutputChar(*s++); }\n");
+	fprintf(fp, "static void qccOutputLong(long v) { unsigned long u; char digits[16]; int n = 0; if (v < 0) { qccOutputChar('-'); u = (unsigned long)(-(v + 1)); u++; } else u = (unsigned long)v; do { digits[n++] = (char)('0' + (u %% 10)); u /= 10; } while (u); while (n) qccOutputChar(digits[--n]); }\n");
+	fprintf(fp, "static int qccPrintf(const char* fmt, ...) { va_list ap; int longArg; va_start(ap, fmt); while (*fmt) { if (*fmt != '%%') { qccOutputChar(*fmt++); continue; } fmt++; longArg = 0; if (*fmt == 'l') { longArg = 1; fmt++; } if (*fmt == 's') qccOutputString(va_arg(ap, const char*)); else if (*fmt == 'c') qccOutputChar(va_arg(ap, int)); else if (*fmt == 'd') qccOutputLong(longArg ? va_arg(ap, long) : (long)va_arg(ap, int)); else if (*fmt == '%%') qccOutputChar('%%'); if (*fmt) fmt++; } va_end(ap); return 0; }\n");
+	fprintf(fp, "#define printf qccPrintf\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() ((void)0)\n#endif\n\n");
 	fprintf(fp, "static const char* p;\n");
 	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
 	if (routinesCCnt > 0) {
@@ -1110,25 +1118,31 @@ int genParserC(const char* path) {
 		/* Host-side generated parsers need room for the full Tiny-C source;
 		   the compact OS-9 selfhost variant uses a smaller limit in
 		   SourceTinyC/codegen.tc. */
-		fprintf(fp, "#define ACTION_LOG_MAX 262144\n");
 		fprintf(fp, "extern void exit(int);\n");
-		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
-		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
-		fprintf(fp, "static ActionLogEntry actionLog[ACTION_LOG_MAX];\n");
-		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
-		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
-		fprintf(fp, "\t\tfprintf(stderr, \"qcc: Aktions-Log-Grenze (%%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n\", ACTION_LOG_MAX);\n");
-		fprintf(fp, "\t\texit(1);\n\t}\n");
-		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
+		fprintf(fp, "extern char* realloc(char*, int);\n");
+		/* Function pointers in a dynamically allocated record are not reliable
+		   on the self-hosted 68k path.  Keep a stable routine ID instead and
+		   dispatch directly after parsing has completed. */
+		fprintf(fp, "typedef struct { int id; const char* start; const char* end; } ActionLogEntry;\n");
+		fprintf(fp, "static ActionLogEntry* actionLog;\nstatic int actionLogCap;\n");
+		fprintf(fp, "static void actionLogDispatch(int id, const char* start, const char* end);\n");
+		fprintf(fp, "static void actionLogPush(int id, const char* start, const char* end) {\n");
+		fprintf(fp, "\tif (actionLogLen == actionLogCap) { int n = actionLogCap ? actionLogCap * 2 : 1024; ActionLogEntry* q = (ActionLogEntry*)realloc((char*)actionLog, n * sizeof(ActionLogEntry)); if (!q) { fprintf(stderr, \"qcc: kein Speicher fuer Aktions-Log\\n\"); exit(1); } actionLog = q; actionLogCap = n; }\n");
+		fprintf(fp, "\tactionLog[actionLogLen].id = id;\n");
 		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");
 		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
 		fprintf(fp, "\tactionLogLen++;\n}\n");
 		fprintf(fp, "static void actionLogReplay(void) {\n");
-		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLog[i].fn(actionLog[i].start, actionLog[i].end);\n}\n\n");
+		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);\n}\n\n");
 		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
 		for (r = 0; r < routinesCCnt; r++) {
 			fprintf(fp, "%s\n", routinesC[r].text);
 		}
+		fprintf(fp, "static void actionLogDispatch(int id, const char* start, const char* end) {\n");
+		for (r = 0; r < ruleCnt; r++)
+			if (ruleActionCall[r][0] != '\0' && routineTextC(ruleActionCall[r]) != NULL)
+				fprintf(fp, "\tif (id == %d) { %s(start, end); return; }\n", r, ruleActionCall[r]);
+		fprintf(fp, "\tactionErrors++;\n}\n\n");
 	}
 	for (r = 0; r < ruleCnt; r++) {
 		sanitizeName(rules[r].name, cName);
@@ -1154,20 +1168,24 @@ int genParserC(const char* path) {
 		fprintf(fp, "\t(void)sv; (void)svLog; (void)sp; (void)entryLog;\n");
 		genNodeC(fp, rules[r].root, fail, ruleIsLexical[r]);
 		if (ruleActionCall[r][0] != '\0' && routineTextC(ruleActionCall[r]) != NULL) {
-			fprintf(fp, "\tactionLogPush(%s, entry, p);\t/* ACTION AFTER %s */\n",
-				ruleActionCall[r], rules[r].name);
+			fprintf(fp, "\tactionLogPush(%d, entry, p);\t/* ACTION AFTER %s */\n",
+				r, rules[r].name);
 		}
 		fprintf(fp, "\treturn 1;\n");
 		fprintf(fp, "L%d:\tp = entry; actionLogLen = entryLog;\n", fail);
 		fprintf(fp, "\treturn 0;\n}\n\n");
 	}
 	sanitizeName(rules[0].name, cName);
-	fprintf(fp, "#define INPUT_FILE_MAX 262144\n");
-	fprintf(fp, "static char inputFileBuf[INPUT_FILE_MAX];\n\n");
-	fprintf(fp, "int main(int argc, char* argv[]) {\n");
+	fprintf(fp, "#define INPUT_FILE_MAX 524288\n");
+	fprintf(fp, "static char* inputFileBuf;\n\n");
+	/* `char**` avoids the parameter-array spelling in the self-hosting
+	   frontend; it has the same ABI as `char* argv[]`. */
+	fprintf(fp, "int main(int argc, char** argv) {\n");
 	fprintf(fp, "\tFILE* inputFile; size_t inputLen;\n");
 	fprintf(fp, "\tif (argc < 2) { fprintf(stderr, \"usage: %%s <eingabe>\\n\", argv[0]); return 2; }\n");
-	fprintf(fp, "\tif (argv[1][0] == '@') {\n");
+	/* `*argv[1]` is equivalent to argv[1][0], but keeps the generated
+	   bootstrap driver within QCC's single-level pointer-index subset. */
+	fprintf(fp, "\tif (*argv[1] == '@') {\n");
 	fprintf(fp, "\t\tinputFile = fopen(argv[1] + 1, ");
 	fputc(34, fp);
 	fprintf(fp, "r");
@@ -1178,6 +1196,8 @@ int genParserC(const char* path) {
 	fprintf(fp, "can't open %%s\\n");
 	fputc(34, fp);
 	fprintf(fp, ", argv[1] + 1); return 2; }\n");
+	fprintf(fp, "\t\tinputFileBuf = realloc(0, INPUT_FILE_MAX);\n");
+	fprintf(fp, "\t\tif (!inputFileBuf) { fclose(inputFile); fprintf(stderr, \"out of memory\\n\"); return 2; }\n");
 	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
 	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
 	fprintf(fp, "\t} else p = argv[1];\n");
@@ -1207,17 +1227,17 @@ int genParserC(const char* path) {
 	// der Trennung der Faelle bestehen). Ein Marker, der einen anderen enthaelt,
 	// ist eine Falle; die drei Woerter sind jetzt paarweise teilstring-fremd.
 	const char* afterParse = routinesCCnt > 0
-		? " actionLogReplay(); if (actionErrors != 0) { printf(\"SEMERR\\n\"); return 1; }"
+		? " actionLogReplay(); if (actionErrors != 0) { printf(\"SEMERR\\n\"); QCC_OUTPUT_FLUSH(); return 1; }"
 		: "";
 	if (lexActive) {
-		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {%s printf(\"OK\\n\"); return 0; } }\n",
+		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {%s printf(\"OK\\n\"); QCC_OUTPUT_FLUSH(); return 0; } }\n",
 			cName, afterParse);
 	}
 	else {
-		fprintf(fp, "\tif (p_%s() && *p == '\\0') {%s printf(\"OK\\n\"); return 0; }\n",
+		fprintf(fp, "\tif (p_%s() && *p == '\\0') {%s printf(\"OK\\n\"); QCC_OUTPUT_FLUSH(); return 0; }\n",
 			cName, afterParse);
 	}
-	fprintf(fp, "\tprintf(\"FAIL\\n\");\n\treturn 1;\n}\n");
+	fprintf(fp, "\tprintf(\"FAIL\\n\"); QCC_OUTPUT_FLUSH();\n\treturn 1;\n}\n");
 	fclose(fp);
 	return 1;
 }

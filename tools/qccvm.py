@@ -177,21 +177,27 @@ def run(prog):
                 sys.stderr.write("qccvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
             value = values[index]
             opstack.append(value & 0xff if args[2] in ("c", "b") else value); ip += 1
-        elif op == "STOREIDX":
+        elif op in ("STOREIDX", "STOREIDXKEEP"):
             value = opstack.pop(); index = opstack.pop()
             values = frames[-1][2][int(args[1])] if args[0] == "L" else frames[-1][1][int(args[1])] if args[0] == "P" else globals_[args[1]]
             if index < 0 or index >= len(values):
                 sys.stderr.write("qccvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
-            values[index] = value & 0xff if args[2] in ("c", "b") else value; ip += 1
+            value = value & 0xff if args[2] in ("c", "b") else value
+            values[index] = value
+            if op == "STOREIDXKEEP": opstack.append(value)
+            ip += 1
         elif op == "PTRINDEX":
             p = pointer(opstack.pop(), "indexing"); index = opstack.pop()
             opstack.append(p.shifted(index, type_size(args[0]))); ip += 1
         elif op == "LOADIND":
             block, index = pointer_index(opstack.pop(), args[0]); value = block[index]
             opstack.append(value & 0xff if args[0] in ("c", "b") else value); ip += 1
-        elif op == "STOREIND":
+        elif op in ("STOREIND", "STOREINDKEEP"):
             value = opstack.pop(); block, index = pointer_index(opstack.pop(), args[0])
-            block[index] = value & 0xff if args[0] in ("c", "b") else value; ip += 1
+            value = value & 0xff if args[0] in ("c", "b") else value
+            block[index] = value
+            if op == "STOREINDKEEP": opstack.append(value)
+            ip += 1
         elif op == "PADD":
             count = opstack.pop(); p = pointer(opstack.pop(), "addition")
             opstack.append(p.shifted(count, type_size(args[0]))); ip += 1
