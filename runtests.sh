@@ -440,16 +440,22 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x=5; putint((x)); putint((x)+1); }' '5\n6'
 		tc_check 'int main(){ int a=2; int b=3; putint((a+b)*2); }' '10'
 		tc_check 'int main(){ putint((int)sizeof(char)); }' '1'
+		# bool ist ein arithmetischer und damit skalarer Typ, taugt also als
+		# Cast-Operand (C89 3.3.4). Wurde bis 2026-09-01 abgelehnt, weil
+		# tcIsInteger() 'b' ausschliesst -- Regressionstest dafuer:
+		tc_check 'int main(){ bool b = true; putint((int)b); }' '1'
 		# 2026-09-01 nachgezogen: dieser Test pruefte urspruenglich (int)p auf einem
 		# ZEIGER und stammt vom Tag der Cast-Einfuehrung (4eb7a1b, 2026-07-23).
-		# 3c37198 (2026-08-20) hat die erlaubten Quelltypen bewusst um Zeiger und
-		# Funktionszeiger erweitert -- der Bootstrap-Parser braucht genau das
-		# (etwa (char*)actionLog). Der Test blieb dabei stehen und war seither
-		# dauerhaft rot, ohne einen echten Mangel anzuzeigen. Er prueft jetzt
-		# dieselbe Absicht an einer Quelle, die weiterhin ungueltig ist und sein
-		# soll: ein void-Ausdruck.
-		if build/qcc_p 'void f(){} int main(){ putint((int)f()); }' 2>&1 | grep -q 'cast expects int'; then
-			echo "ok    qcc: Cast auf Pointer wird diagnostiziert"
+		# Das war schon damals falsch herum: C89 3.3.4 verlangt vom Operanden
+		# lediglich SKALAREN Typ, und Zeiger sind skalar -- ein konformer Compiler
+		# darf (int)p nicht ablehnen. 3c37198 (2026-08-20) hat die Quelltypen dann
+		# bewusst um Zeiger und Funktionszeiger erweitert, weil der Bootstrap-Parser
+		# das braucht (etwa (char*)actionLog); der Test blieb stehen und war seither
+		# dauerhaft rot, ohne einen echten Mangel anzuzeigen.
+		# Geprueft wird jetzt ein Operand, der WIRKLICH nicht skalar ist und fuer den
+		# die Norm eine Diagnose vorschreibt: ein void-Ausdruck.
+		if build/qcc_p 'void f(){} int main(){ putint((int)f()); }' 2>&1 | grep -q 'cast expects scalar'; then
+			echo "ok    qcc: nicht-skalarer Cast-Operand (void) wird diagnostiziert"
 		else
 			echo "FAIL  qcc: Cast-Diagnose fehlt"; tcfail=1; fail=1
 		fi
