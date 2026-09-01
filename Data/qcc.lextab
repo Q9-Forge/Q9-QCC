@@ -5702,8 +5702,28 @@ void tc_cast(const char* start, const char* end) {
 	TCType target; TCType src = tcTypePop(); (void)start; (void)end;
 	if (tcCastDepth <= 0) { tcTypePush(tcBadType()); return; }
 	target = tcCastStack[--tcCastDepth];
-	if (!tcIsInteger(src) && !tcIsPointer(src) && !tcIsFnPtr(src)) {
-		tcTypeError("cast", tcMakeType('i', 0), src);
+	/* ANSI C stellt an den Cast-Operanden genau eine Anforderung, C89 3.3.4
+	   "Cast operators" (wortgleich als C99 6.5.4p2 uebernommen): "the operand
+	   shall have scalar type". Skalar heisst arithmetischer Typ ODER
+	   Zeigertyp. Zulaessig sind hier also int/unsigned/char/enum, bool, Zeiger
+	   und Funktionszeiger; eine Constraint-Verletzung -- und damit eine von der
+	   Norm VORGESCHRIEBENE Diagnose -- sind struct und void.
+	   ZWEI ECHTE ABWEICHUNGEN GEFIXT (2026-09-01, gemessen):
+	   - bool fehlte in der Zulassung, weil tcIsInteger() 'b' ausschliesst
+	     (dieselbe Wurzel wie der Zielseiten-Fehler weiter unten). (int)b auf
+	     einem bool wurde damit abgelehnt, obwohl bool ein arithmetischer und
+	     folglich skalarer Typ ist.
+	   - Der Meldungstext lautete "cast expects int" und lief ueber
+	     tcTypeError(), das einen TCType als Sollwert druckt. Verlangt wird
+	     aber nicht int, sondern ein SKALARER Operand -- die Meldung war
+	     irrefuehrend, deshalb hier eine eigene statt tcTypeError().
+	   Die Zeiger-Quelle ist NICHT zu diagnostizieren: C89 3.3.4 erlaubt sie
+	   ausdruecklich, die Umwandlung selbst ist implementierungsdefiniert
+	   (C99 6.3.2.3p6). Auf dem 68k-Ziel sind int und Zeiger beide 32 Bit, der
+	   Wert passt also exakt. */
+	if (!tcIsInteger(src) && !tcIsBool(src) && !tcIsPointer(src) && !tcIsFnPtr(src)) {
+		fprintf(stderr, "qcc: cast expects scalar operand, got ");
+		tcPrintType(stderr, src); fputc('\n', stderr); actionErrors++;
 		tcTypePush(target); return;
 	}
 	/* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, aus dem Diff von 3c37198
