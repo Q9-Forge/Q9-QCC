@@ -21,7 +21,7 @@
    dieser Cap den Nachweis bei realistischer Groessenordnung (150 generierte
    Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
-#define MAX_IR_LINES    65536
+#define MAX_IR_LINES    98304
 /* 2026-08-10 von 256 auf 1024 erhoeht: Data/qcc_p.c allein bringt 354
    Funktionen mit -- der Selbstuebersetzungsversuch lief hier in die Grenze. */
 #define MAX_FUNCS       1024
@@ -198,12 +198,12 @@ static int registerExtern(const char* name) {
 	return externCount++;
 }
 
-/* Tabellen-Offset EINES externen Wrappers, direkt NACH QCC-Funktionen und
-   den 8 eingebauten Laufzeit-Helfern (siehe helperTableOffset()). */
+/* Tabellen-Offset EINES externen Wrappers, direkt nach den festen Helfern
+   und den QCC-Funktionen. */
 static int externTableOffset(const char* name) {
 	int idx = findExtern(name);
 	if (idx < 0) fatal("interner Fehler: externe Funktion nicht registriert");
-	return funcCount * 4 + 8 * 4 + idx * 4;
+	return 8 * 4 + idx * 4;
 }
 
 /* -os9: Microware-r68-Ausgabeformat statt vasm-kompatiblem "nacktem" Motorola-
@@ -396,7 +396,7 @@ static int helperTableOffset(const char* rawName) {
 		"tc_putint", "tc_putuint", "tc_putchar"
 	};
 	int i;
-	for (i = 0; i < 8; i++) if (strcmp(helperNames[i], rawName) == 0) return funcCount * 4 + i * 4;
+	for (i = 0; i < 8; i++) if (strcmp(helperNames[i], rawName) == 0) return i * 4;
 	fatal("interner Fehler: unbekannter Laufzeit-Helfer fuer -largedata-Funktionstabelle");
 	return -1;
 }
@@ -924,7 +924,7 @@ static void emitIR(FILE* out) {
 		if (mainIdx >= 0) {
 			char mainAsmName[NAME_LEN + 40];
 			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
-			emitCall(out, mainAsmName, mainIdx * 4, &serial, psectName);
+				emitCall(out, mainAsmName, 8 * 4 + externCount * 4 + mainIdx * 4, &serial, psectName);
 		} else {
 			fputs("\tbsr\ttc_main\n", out); /* main nicht in dieser Datei -- wie zuvor, siehe -part oben */
 		}
@@ -955,11 +955,6 @@ static void emitIR(FILE* out) {
 		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): Link-Zeit-Offsets relativ zur Tabellenbasis (siehe emitCall())\n", fullCommentPrefix());
 		emitAlign(out);
 		fprintf(out, "tc_functab__%s:\n", psectName);
-		for (fi = 0; fi < funcCount; fi++) {
-			char asmName[NAME_LEN + 40];
-			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
-			fprintf(out, "\tdc.l\t%s-tc_functab__%s\n", asmName, psectName);
-		}
 		fprintf(out, "\tdc.l\ttc_mul_i32-tc_functab__%s\n\tdc.l\ttc_div_i32-tc_functab__%s\n\tdc.l\ttc_udiv_u32-tc_functab__%s\n",
 			psectName, psectName, psectName);
 		fprintf(out, "\tdc.l\ttc_mod_i32-tc_functab__%s\n\tdc.l\ttc_umod_u32-tc_functab__%s\n", psectName, psectName);
@@ -975,6 +970,11 @@ static void emitIR(FILE* out) {
 		   auf den WRAPPER-Stub direkt darunter. */
 		for (fi = 0; fi < externCount; fi++) {
 			fprintf(out, "\tdc.l\ttc_extwrap_%s__%s-tc_functab__%s\n", externNames[fi], psectName, psectName);
+		}
+		for (fi = 0; fi < funcCount; fi++) {
+			char asmName[NAME_LEN + 40];
+			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
+			fprintf(out, "\tdc.l\t%s-tc_functab__%s\n", asmName, psectName);
 		}
 		/* Daten-Indirektionstabelle (siehe emitLeaGlobal()-Kommentar): MUSS wie
 		   tc_functab direkt nach tc_start/main stehen (VOR den potenziell
@@ -1544,7 +1544,7 @@ static void emitIR(FILE* out) {
 				char asmName[NAME_LEN + 40];
 				if (callee < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[callee].isStatic);
-				emitCall(out, asmName, callee * 4, &serial, psectName);
+				emitCall(out, asmName, 8 * 4 + externCount * 4 + callee * 4, &serial, psectName);
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "PUSHFN") == 0 && insP->argc == 1) {
@@ -1566,9 +1566,9 @@ static void emitIR(FILE* out) {
 					if (trampolineMode) {
 						/* Funktionszeiger bleiben im Tabellenpfad; r68 -j gilt fuer
 						   direkte Aufrufe, nicht fuer einen beliebigen Datenwert. */
-						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", (8 + externCount + fnIdx) * 4);
 					} else {
-						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", fnIdx * 4);
+						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", (8 + externCount + fnIdx) * 4);
 					}
 				} else {
 					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
@@ -1740,13 +1740,18 @@ static void emitIR(FILE* out) {
 
 	{
 		int hasData = 0, hasBss = 0, gi;
-		// std::vector<int>(len) im Original ist NIE leer -- jedes Array landet
-		// deshalb immer im DATA-Zweig, nie im BSS-Zweig. Das wird hier bewusst
-		// direkt als Regel (isArray || initialValue!=0) nachgebildet.
+		/* Ein Array ohne GINIT ist C-semantisch vollstaendig nullinitialisiert.
+		   Es gehoert deshalb in einen OS-9-vsect statt als Millionen explizite
+		   "dc.b 0"-Zeichen in die r68-Eingabe geschrieben zu werden. Das ist
+		   besonders wichtig fuer den QCC-Bootstrap (mehrere MB Action-Log).
+		   Arrays MIT GINIT bleiben im DATA-Abschnitt, damit ihre Werte erhalten
+		   bleiben. */
 		for (gi = 0; gi < globalCount; gi++) {
 			if (globals[gi].declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
-			hasData |= globals[gi].isArray || globals[gi].initialValue != 0;
-			hasBss |= !globals[gi].isArray && globals[gi].initialValue == 0;
+			/* Microware l68 limits one non-remote vsect to 64 KB.  The
+			   bootstrap's static parser tables are much larger, whereas the
+			   dynamic action log itself is only scalar pointer state. */
+			hasData |= 1;
 		}
 		/* Die -largedata-Datenindirektionstabelle (tc_gadata) wird NICHT mehr
 		   hier emittiert (siehe emitLeaGlobal()-Kommentar) -- sie sitzt jetzt
@@ -1760,21 +1765,14 @@ static void emitIR(FILE* out) {
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->declOnly) continue;
-				if (g->isArray || g->initialValue != 0) {
+				if (g->isArray || !g->isArray) {
 					int e; char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
 					if (!g->isChar) emitAlign(out);
 					if (!g->isArray) {
 						fprintf(out, "%s:\tdc.%s\t%d\n", gAsmName, g->isChar ? "b" : "l", g->initialValue);
 					} else if (!g->hasGinit) {
-						/* 2026-07-25: komplett nullinitialisiertes Array (nie per GINIT gesetzt) --
-						   kompakt fuellen statt eine dc.b/dc.l-Zeile PRO ELEMENT zu schreiben (bei
-						   grossen Arrays, z.B. ein 8192-Elemente-AST-Knotenpuffer als Byte-Array,
-						   waeren das sonst hunderttausende Zeilen UND braeuchte ein entsprechend
-						   grosses init[]). r68 kennt kein ds.b/rmb (siehe tc_extcall_tmp-Kommentar
-						   weiter oben) -- wie dort mehrere wiederholte "0"-Werte kommagetrennt
-						   pro Zeile, analog zu "dc.l 0,0,0,0,0,0,0,0". */
-						int perLine = g->isChar ? 40 : 20;
+						int e, perLine = g->isChar ? 40 : 20;
 						fprintf(out, "%s:\n", gAsmName);
 						for (e = 0; e < g->length; ) {
 							int n = g->length - e < perLine ? g->length - e : perLine, k;
@@ -1803,18 +1801,20 @@ static void emitIR(FILE* out) {
 			}
 		}
 		if (hasBss) {
-			fprintf(out, "\n%s BSS-Aequivalent des flachen Einzelmoduls: nullinitialisierte int32-Globals\n", fullCommentPrefix());
-			emitAlign(out);
+			fprintf(out, "\n%s VSECT: uninitialisierte, vom OS-9-Lader auf null gesetzte Globals\n", fullCommentPrefix());
+			if (os9Mode) fputs("\tvsect\n", out);
+			else fputs("\tsection .bss\n", out);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->declOnly) continue;
 				if (!g->isArray && g->initialValue == 0) {
 					char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
-					if (!g->isChar) emitAlign(out);
-					fprintf(out, "%s:\tdc.%s\t0\n", gAsmName, g->isChar ? "b" : "l");
+					fprintf(out, "%s:\tds.%s\t%d\n", gAsmName, g->isChar ? "b" : "l",
+					        g->isArray ? g->length : 1);
 				}
 			}
+			if (os9Mode) fputs("\tends\n", out);
 		}
 	}
 	if (os9Mode) fputs("\tends\n", out);

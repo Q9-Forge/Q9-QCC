@@ -1295,19 +1295,17 @@ int genParserC(char* path) {
 		   PROTOKOLLIERT (actionLogPush) und erst am Ende bei ENDGUELTIGEM
 		   Gesamterfolg abgespielt (actionLogReplay) -- siehe ARCHITEKTUR.md
 		   Paragraph 9.4. */
-		fprintf(fp, "#define ACTION_LOG_MAX 262144\n");
 		fprintf(fp, "extern void exit(int);\n");
+		fprintf(fp, "extern char* realloc(char*, int);\n");
 		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
 		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
-		fprintf(fp, "static ActionLogEntry actionLog[ACTION_LOG_MAX];\n");
+		fprintf(fp, "static ActionLogEntry* actionLog;\nstatic int actionLogCap;\n");
 		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
-		fprintf(fp, "\tif (actionLogLen >= ACTION_LOG_MAX) {\n");
-		fprintf(fp, "\t\tfprintf(stderr, ");
+		fprintf(fp, "\tif (actionLogLen == actionLogCap) { int n = actionLogCap ? actionLogCap * 2 : 1024; ActionLogEntry* q = (ActionLogEntry*)realloc((char*)actionLog, n * sizeof(ActionLogEntry)); if (!q) { fprintf(stderr, ");
 		fputc(34, fp);
-		fprintf(fp, "%s", "qcc: Aktions-Log-Grenze (%d) ueberschritten -- Eingabe zu gross/komplex fuer diese Version.\\n");
+		fprintf(fp, "%s", "qcc: kein Speicher fuer Aktions-Log\\n");
 		fputc(34, fp);
-		fprintf(fp, ", ACTION_LOG_MAX);\n");
-		fprintf(fp, "\t\texit(1);\n\t}\n");
+		fprintf(fp, "); exit(1); } actionLog = q; actionLogCap = n; }\n");
 		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
 		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");
 		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
