@@ -1,0 +1,11 @@
+typedef void (*ActionFn)(const char*, const char*);
+
+void mark(const char* start, const char* end) {
+}
+
+int main() {
+    ActionFn arr[1];
+    arr[0] = mark;
+    arr[0]("A", "Z");
+    return 0;
+}

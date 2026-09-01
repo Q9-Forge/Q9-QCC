@@ -1,0 +1,5 @@
+typedef struct { int first; int second; int third; } Triple;
+
+int main() {
+    return sizeof(Triple);
+}

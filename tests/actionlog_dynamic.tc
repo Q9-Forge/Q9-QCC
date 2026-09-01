@@ -1,0 +1,23 @@
+typedef void (*ActionFn)(const char*, const char*);
+typedef struct {
+    ActionFn fn;
+    const char* start;
+    const char* end;
+} ActionLogEntry;
+
+extern char* realloc(char*, int);
+static ActionLogEntry* entries;
+
+static void noop(const char* start, const char* end) {
+    return;
+}
+
+int main() {
+    int n = 1024;
+    entries = (ActionLogEntry*)realloc((char*)entries, n * sizeof(ActionLogEntry));
+    entries[0].fn = noop;
+    entries[0].start = "A";
+    entries[0].end = "Z";
+    entries[0].fn(entries[0].start, entries[0].end);
+    return entries ? 0 : 1;
+}

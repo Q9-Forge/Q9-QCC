@@ -1,0 +1,7 @@
+int* entries;
+int index;
+
+int main() {
+ entries[index] = 7;
+ return 0;
+}

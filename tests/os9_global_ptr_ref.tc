@@ -1,0 +1,5 @@
+int* entries;
+
+int main() {
+ return entries != 0;
+}

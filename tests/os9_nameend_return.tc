@@ -1,0 +1,16 @@
+static const char* name_end(const char* s, const char* e) {
+ const char* p = s;
+ while (p < e && *p != '[' && *p != '.' && *p != '-') p++;
+ return p;
+}
+
+int main() {
+ char text[12];
+ const char* p;
+ text[0] = 'e'; text[1] = 'n'; text[2] = 't'; text[3] = 'r';
+ text[4] = 'i'; text[5] = 'e'; text[6] = 's'; text[7] = '[';
+ text[8] = '0'; text[9] = ']'; text[10] = 0;
+ p = name_end(text, text + 10);
+ putchar(*p);
+ return 0;
+}

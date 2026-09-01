@@ -1,0 +1,11 @@
+char* advance(char* p) { return p + 1; }
+
+int main() {
+  char text[3];
+  char* q;
+  text[0] = 65;
+  text[1] = 66;
+  text[2] = 0;
+  q = advance(text);
+  putchar(*q);
+}

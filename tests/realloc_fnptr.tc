@@ -1,0 +1,8 @@
+typedef void (*ActionFn)(const char*, const char*);
+extern char* realloc(char*, int);
+static ActionFn action;
+
+int main() {
+    action = (ActionFn)realloc(0, 4096);
+    return action ? 0 : 1;
+}
