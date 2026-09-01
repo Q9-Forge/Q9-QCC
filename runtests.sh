@@ -388,6 +388,18 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int i; int sum=0; for(i=0; i<10; i+=1) { if(i==5) break; if(i==2) continue; sum += i; } putint(sum); }' '8'
 		tc_check 'int main(){ int n=0; int sum=0; do { sum += n; n += 1; } while(n<5); putint(sum); }' '10'
 		tc_check 'int main(){ int i; int j; int count=0; for(i=0;i<3;i+=1){ j=0; while(j<10){ if(j==2) break; count += 1; j+=1; } } putint(count); }' '6'
+		# Blockgueltigkeitsbereiche (2026-08-20): tcNames[] war FLACH pro Funktion --
+		# eine gleichnamige Deklaration in einem SPAETEREN Block legte einen neuen
+		# Slot an, jeder Zugriff traf aber weiter den alten aus dem schon
+		# geschlossenen Block. Echter Fund: im Bootstrap-Compiler auf dem Q9 ergab
+		# das in tcGlobalOne einen Nullpointer und einen PMMU-Abbruch; im ganzen
+		# Bootstrap-IR waren 342 Zugriffe in 5 Funktionen betroffen (tc_varref,
+		# tc_target, tcGlobalOne, tc_type, tcDecodeStringLit). Die vier Faelle
+		# pruefen beide Richtungen: Verdecken UND Wiederauftauchen der aeusseren.
+		tc_check 'int main(){ { int t = 5; putint(t); } { int t = 9; putint(t); } }' '5\n9'
+		tc_check 'int main(){ int x = 1; { int x = 2; putint(x); } putint(x); }' '2\n1'
+		tc_check 'int main(){ int a=1; putint(a); { int a=2; putint(a); { int a=3; putint(a); } putint(a); } putint(a); }' '1\n2\n3\n2\n1'
+		tc_check 'int main(){ char buf[4]; buf[0]=65; buf[1]=32; buf[2]=66; buf[3]=0; { char* q = buf; while (*q == 65) q++; } { char* q = buf + 2; putchar(*q); } }' 'B'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 3; p.y = 4; putint(p.x + p.y); }' '7'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 10; p.y = p.x * 2; putint(p.y); }' '20'
 		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
@@ -558,10 +570,19 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int m[2][3]; putint(sizeof(m)); }' '24'
 		tc_check 'int m[2][3] = {1,2,3,4,5,6}; int main(){ putint(m[0][0]); putint(m[1][2]); }' '1\n6'
 		tc_check 'int main(){ int b[2]; b[0]=1; int a[3]; a[0]=10; a[1]=20; putint(a[b[0]]); }' '20'
-		if build/qcc_p 'int main(){ int m[2][3]; putint(m[0]); }' 2>&1 | grep -q 'partial indexing of a 2D array is not supported'; then
-			echo "ok    qcc: partielle Indizierung eines 2D-Arrays wird diagnostiziert"
+		tc_check 'int main(){ int m[2][3]; int* p=m[1]; p[2]=73; putint(m[1][2]); }' '73'
+		tc_check 'static char left = 0, right = 0; int main(){ right=41; putint(right); }' '41'
+		tc_check 'int main(){int a[2];int x;a[1]=x=37;putint(a[1]);putint(x);}' '37\n37'
+		tc_check 'int main(){ char* p; char* e; if(p<e&&(*p=='"'"'('"'"'||*p=='"'"'*'"'"'||*p=='"'"' '"'"')) putint(1); return 0; }' ''
+		if build/qcc_p 'int f(const char** pp){*pp="x";return 0;} int main(){return 0;}' 2>&1 | grep -qx 'OK'; then
+			echo "ok    qcc: const char** erlaubt Zuweisung an den Pointer-Slot"
 		else
-			echo "FAIL  qcc: 2D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: const char**-Pointer-Slot wird faelschlich als const behandelt"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'int f(char** argv){return argv[1][0] == '"'"'@'"'"';}' 2>&1 | grep -qx 'OK'; then
+			echo "ok    qcc: mehrfach indizierter Pointer (argv[1][0])"
+		else
+			echo "FAIL  qcc: mehrfach indizierter Pointer"; tcfail=1; fail=1
 		fi
 		if build/qcc_p 'int main(){ int a[5]; putint(a[0][1]); }' 2>&1 | grep -q 'array is not two-dimensional'; then
 			echo "ok    qcc: 2 Indizes auf ein 1D-Array werden diagnostiziert"
@@ -618,14 +639,11 @@ if command -v python3 >/dev/null 2>&1; then
 		# Gegenproben: die gewoehnliche Klammer und ihre Vorrangrettung bleiben.
 		tc_check 'int main(){ int x=2; int a=3; int b=4; putint(x * (a + b)); }' '14'
 		tc_check 'int main(){ putint((2 + 3) * 4); }' '20'
-		# BEWUSSTE GRENZE: das letzte Glied muss einen Wert liefern. "(x = 1)"
-		# waere in C erlaubt, hier ist es diagnostiziert statt ein Faktor ohne
-		# Wert zu sein, der den Operandenstapel unter dem Ausdruck wegzieht.
-		if build/qcc_p 'int main(){ int x; x = (x = 1); putint(x); }' 2>&1 | grep -q 'comma expression must end in a value'; then
-			echo "ok    qcc: Komma-Ausdruck ohne Wert am Ende wird diagnostiziert"
-		else
-			echo "FAIL  qcc: Komma-Ausdruck ohne Wert am Ende nicht diagnostiziert"; tcfail=1; fail=1
-		fi
+		# Eine Zuweisung ist selbst ein Wertausdruck: die letzte Komma-Komponente
+		# darf also eine Zuweisung sein. Das ist fuer if ((p = f())) und den
+		# Bootstrap-Parser erforderlich. Die zwei Tests weiter oben decken die
+		# indirekte Variante (*p = ...) ab; hier der einfache Ziel-Registerfall.
+		tc_check 'int main(){ int x; x = (x = 1); putint(x); }' '1'
 
 		# --- Semantische Fehler sind toedlich (2026-08-11) ---------------------
 		# Vorher meldete qcc_p JEDEN semantischen Fehler nur auf stderr, endete
@@ -730,11 +748,7 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int g[2][2][2]; int main(){ g[0][0][0]=1; g[0][0][1]=2; g[0][1][0]=3; g[1][1][1]=8; putint(g[1][1][1]); putint(g[0][1][0]); putint(g[0][0][1]); }' '8\n3\n2'
 		tc_check 'int m[2][2][2] = {1,2,3,4,5,6,7,8}; int main(){ putint(m[1][1][1]); putint(m[0][1][0]); }' '8\n3'
 		tc_check 'int main(){ int m[2][2][2]; m[0][0][0]=5; m[1][1][1]=10; putint(1 + m[0][0][0] + m[1][1][1]); }' '16'
-		if build/qcc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
-			echo "ok    qcc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
-		else
-			echo "FAIL  qcc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
-		fi
+		tc_check 'int main(){ int m[2][3][4]; int* p=m[1][2]; p[3]=91; putint(m[1][2][3]); }' '91'
 		if build/qcc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
 			echo "ok    qcc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
 		else
@@ -1084,11 +1098,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: Diagnose fuer struct-Global-Initialisierer fehlt"; tcfail=1; fail=1
 		fi
-		if build/qcc_p 'struct Rec { int a; }; struct Rec g[2][2]; int main(){ putint(1); }' 2>&1 | grep -q 'multi-dimensional struct arrays not supported'; then
-			echo "ok    qcc: mehrdimensionales globales struct-Array wird diagnostiziert"
-		else
-			echo "FAIL  qcc: Diagnose fuer mehrdimensionales globales struct-Array fehlt"; tcfail=1; fail=1
-		fi
+		tc_check 'struct Rec { int a; }; struct Rec g[2][2]; int main(){ g[1][1].a=88; putint(g[1][1].a); }' '88'
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
 		# Obergrenze). arr[i1]..[iN] wird per Horner-Schema ueber N-1 Scratch-Globals
@@ -1100,11 +1110,7 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int g[2][2][2]; int main(){ g[0][0][0]=1; g[0][0][1]=2; g[0][1][0]=3; g[1][1][1]=8; putint(g[1][1][1]); putint(g[0][1][0]); putint(g[0][0][1]); }' '8\n3\n2'
 		tc_check 'int m[2][2][2] = {1,2,3,4,5,6,7,8}; int main(){ putint(m[1][1][1]); putint(m[0][1][0]); }' '8\n3'
 		tc_check 'int main(){ int m[2][2][2]; m[0][0][0]=5; m[1][1][1]=10; putint(1 + m[0][0][0] + m[1][1][1]); }' '16'
-		if build/qcc_p 'int main(){ int m[2][3][4]; putint(m[0][1]); }' 2>&1 | grep -q 'partial indexing of a 3D array is not supported'; then
-			echo "ok    qcc: partielle Indizierung eines 3D-Arrays wird diagnostiziert"
-		else
-			echo "FAIL  qcc: 3D-Array-Teilindizierungs-Diagnose fehlt"; tcfail=1; fail=1
-		fi
+		tc_check 'int main(){ int m[2][3][4]; int* p=m[1][2]; p[3]=91; putint(m[1][2][3]); }' '91'
 		if build/qcc_p 'int main(){ int m[2][2][2][2][2][2][2]; putint(1); }' 2>&1 | grep -q 'too many array dimensions (max 6)'; then
 			echo "ok    qcc: Ueberschreiten von TC_MAXDIMS wird diagnostiziert"
 		else
