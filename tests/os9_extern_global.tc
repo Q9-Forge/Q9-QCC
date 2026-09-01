@@ -1,0 +1,5 @@
+extern int shared_value;
+
+int main() {
+ return 0;
+}

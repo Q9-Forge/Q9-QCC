@@ -1,0 +1,5 @@
+int index;
+
+int main() {
+ return index;
+}

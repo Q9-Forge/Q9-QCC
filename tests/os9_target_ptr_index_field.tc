@@ -1,0 +1,8 @@
+typedef struct { int value; } Entry;
+Entry* entries;
+int index;
+
+int main() {
+  entries[index].value = 7;
+  return 0;
+}

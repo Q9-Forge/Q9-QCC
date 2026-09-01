@@ -1,0 +1,6 @@
+int main() {
+ int k;
+ k = 0;
+ while (k < 32) { k++; }
+ return 0;
+}

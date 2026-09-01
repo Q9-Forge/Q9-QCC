@@ -1,0 +1,8 @@
+/* Bootstrap probe: dynamic storage removes the Microware 64 KiB vsect limit. */
+extern char* realloc(char*, int);
+
+int main() {
+    char* values;
+    values = realloc(0, 4096);
+    return values ? 0 : 1;
+}

@@ -1,0 +1,25 @@
+typedef void (*Fn)(const char*, const char*);
+
+const char* name_end(const char* s, const char* e) {
+ const char* p = s;
+ while (p < e && *p != '[' && *p != '.' && *p != '-') p++;
+ return p;
+}
+
+void target(const char* s, const char* e) {
+ char pad[256];
+ const char* p;
+ pad[0] = 0;
+ p = name_end(s, e);
+ putchar(*p);
+}
+
+int main() {
+ char text[12];
+ Fn fn;
+ text[0]='e'; text[1]='n'; text[2]='t'; text[3]='r'; text[4]='i';
+ text[5]='e'; text[6]='s'; text[7]='['; text[8]='0'; text[9]=']'; text[10]=0;
+ fn = target;
+ fn(text, text + 10);
+ return 0;
+}

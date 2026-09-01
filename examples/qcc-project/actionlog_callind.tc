@@ -1,0 +1,21 @@
+typedef void (*ActionFn)(const char*, const char*);
+typedef struct {
+    ActionFn fn;
+    const char* start;
+    const char* end;
+} ActionLogEntry;
+
+static int seen;
+
+void mark(const char* start, const char* end) {
+    if (start && end && *start == 'A' && *end == 'Z') seen = 1;
+}
+
+int main() {
+    ActionLogEntry entries[1];
+    entries[0].fn = mark;
+    entries[0].start = "A";
+    entries[0].end = "Z";
+    entries[0].fn(entries[0].start, entries[0].end);
+    return seen ? 0 : 1;
+}

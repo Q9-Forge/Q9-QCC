@@ -1,0 +1,19 @@
+const char* skip_one(const char* p, const char* end) {
+  (void)end;
+  return p + 1;
+}
+
+const char* skip_all(const char* p, const char* end) {
+  while (p < end && *p == '[') p = skip_one(p, end);
+  return p;
+}
+
+int main() {
+  char text[3];
+  const char* q;
+  text[0] = '[';
+  text[1] = 66;
+  text[2] = 0;
+  q = skip_all(text, text + 2);
+  putchar(*q);
+}

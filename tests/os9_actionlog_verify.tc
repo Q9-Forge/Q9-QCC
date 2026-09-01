@@ -1,0 +1,21 @@
+typedef void (*ActionFn)(const char*, const char*);
+typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;
+
+extern char* realloc(char*, int);
+static int failed;
+
+static void check(const char* start, const char* end) {
+ if (*start != 'A') failed = 1;
+ if (*end != 'Z') failed = 2;
+}
+
+int main() {
+ ActionLogEntry* log;
+ log = (ActionLogEntry*)realloc(0, 1024 * sizeof(ActionLogEntry));
+ if (!log) return 3;
+ log[0].fn = check;
+ log[0].start = "A";
+ log[0].end = "Z";
+ log[0].fn(log[0].start, log[0].end);
+ return failed;
+}

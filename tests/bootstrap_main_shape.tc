@@ -1,0 +1,29 @@
+typedef int FILE;
+typedef unsigned int size_t;
+extern int fprintf(FILE*, const char*, ...);
+extern FILE* fopen(const char*, const char*);
+extern size_t fread(void*, size_t, size_t, FILE*);
+extern int fclose(FILE*);
+extern int printf(const char*, ...);
+static FILE* stderr;
+static char inputFileBuf[262144];
+static const char* p;
+static int p_program(void) { return 1; }
+static void ws(void) { return; }
+static void actionLogReplay(void) { return; }
+static int actionErrors;
+
+int main(int argc, char** argv) {
+    FILE* inputFile;
+    size_t inputLen;
+    if (argc < 2) { fprintf(stderr, "usage\n"); return 2; }
+    if (*argv[1] == '@') {
+        inputFile = fopen(argv[1] + 1, "r");
+        if (!inputFile) { fprintf(stderr, "can't open\n"); return 2; }
+        inputLen = fread(inputFileBuf, 1, 262144 - 1, inputFile);
+        fclose(inputFile); inputFileBuf[inputLen] = '\0'; p = inputFileBuf;
+    } else p = argv[1];
+    if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); return 1; } printf("OK\n"); return 0; } }
+    printf("FAIL\n");
+    return 1;
+}

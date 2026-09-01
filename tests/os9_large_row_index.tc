@@ -1,0 +1,8 @@
+static char names[768][32];
+
+int main() {
+ int f;
+ f = 512;
+ names[f][0] = 65;
+ return names[f][0] == 65 ? 0 : 1;
+}

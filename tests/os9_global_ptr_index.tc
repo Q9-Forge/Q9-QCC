@@ -1,0 +1,6 @@
+int* entries;
+int index;
+
+int main() {
+ return entries[index];
+}
