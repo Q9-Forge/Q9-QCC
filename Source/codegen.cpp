@@ -1053,6 +1053,15 @@ int genParserC(const char* path) {
 	fprintf(fp, "static int qccPrintf(const char* fmt, ...) { va_list ap; int longArg; va_start(ap, fmt); while (*fmt) { if (*fmt != '%%') { qccOutputChar(*fmt++); continue; } fmt++; longArg = 0; if (*fmt == 'l') { longArg = 1; fmt++; } if (*fmt == 's') qccOutputString(va_arg(ap, const char*)); else if (*fmt == 'c') qccOutputChar(va_arg(ap, int)); else if (*fmt == 'd') qccOutputLong(longArg ? va_arg(ap, long) : (long)va_arg(ap, int)); else if (*fmt == '%%') qccOutputChar('%%'); if (*fmt) fmt++; } va_end(ap); return 0; }\n");
 	fprintf(fp, "#define printf qccPrintf\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() ((void)0)\n#endif\n\n");
 	fprintf(fp, "static const char* p;\n");
+	/* Anker fuer Positionsangaben im Nutzercode (2026-09-01): der Zeiger p
+	   wandert waehrend des Parsens, der Anfang der Eingabe bleibt stehen. Aus
+	   beidem kann eine Aktion Zeile und Spalte zaehlen -- ohne diesen Anker
+	   kann eine Diagnose keinen Ort nennen. */
+	fprintf(fp, "static const char* parserInputStart;\n");
+	/* Spanne der gerade abgespielten Aktion. Hilfsfunktionen ohne eigene
+	   Spanne koennen daran den Ort einer Meldung festmachen -- der Zeiger p
+	   steht beim Abspielen laengst am Eingabeende und taugt dafuer nicht. */
+	fprintf(fp, "static const char* parserActionAt;\n");
 	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
 	if (routinesCCnt > 0) {
 		// 2026-08-11: Fehlerzaehler fuer die ACTION-Routinen. Ohne ihn meldete ein
@@ -1156,7 +1165,7 @@ int genParserC(const char* path) {
 		for (r = 0; r < routinesCCnt; r++) {
 			fprintf(fp, "%s\n", routinesC[r].text);
 		}
-		fprintf(fp, "static void actionLogDispatch(int id, const char* start, const char* end) {\n");
+		fprintf(fp, "static void actionLogDispatch(int id, const char* start, const char* end) {\n\tparserActionAt = start;\n");
 		for (r = 0; r < ruleCnt; r++)
 			if (ruleActionCall[r][0] != '\0' && routineTextC(ruleActionCall[r]) != NULL)
 				fprintf(fp, "\tif (id == %d) { %s(start, end); return; }\n", r, ruleActionCall[r]);
@@ -1219,6 +1228,9 @@ int genParserC(const char* path) {
 	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
 	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
 	fprintf(fp, "\t} else p = argv[1];\n");
+	/* Beide Zweige oben setzen p; eine Zuweisung dahinter deckt deshalb den
+	   Datei- UND den Kommandozeilenfall ab. */
+	fprintf(fp, "\tparserInputStart = p;\n");
 	// actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input erkannt) --
 	// nur dann steht fest, dass keine der protokollierten Aktionen zu einem inzwischen
 	// verworfenen Backtracking-Pfad gehoert (siehe Kommentar bei actionLogPush oben).

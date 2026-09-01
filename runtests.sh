@@ -479,7 +479,7 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: struct-Feld-Diagnose fehlt"; tcfail=1; fail=1
 		fi
-		if build/qcc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; putint(m.a); }' 2>&1 | grep -q 'FEHLER\|qcc: unknown\|qcc: struct'; then
+		if build/qcc_p 'struct Mixed { int a; char b; }; int main(){ struct Mixed m; m.a = 1; putint(m.a); }' 2>&1 | grep -q 'FEHLER\|qcc: '; then
 			echo "FAIL  qcc: gemischte Feldtypen (int+char) werden faelschlich abgelehnt"; tcfail=1; fail=1
 		else
 			echo "ok    qcc: gemischte Feldtypen (int+char) werden akzeptiert"
