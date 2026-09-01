@@ -440,7 +440,15 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x=5; putint((x)); putint((x)+1); }' '5\n6'
 		tc_check 'int main(){ int a=2; int b=3; putint((a+b)*2); }' '10'
 		tc_check 'int main(){ putint((int)sizeof(char)); }' '1'
-		if build/qcc_p 'int main(){ int x=5; int *p=&x; putint((int)p); }' 2>&1 | grep -q 'cast expects int'; then
+		# 2026-09-01 nachgezogen: dieser Test pruefte urspruenglich (int)p auf einem
+		# ZEIGER und stammt vom Tag der Cast-Einfuehrung (4eb7a1b, 2026-07-23).
+		# 3c37198 (2026-08-20) hat die erlaubten Quelltypen bewusst um Zeiger und
+		# Funktionszeiger erweitert -- der Bootstrap-Parser braucht genau das
+		# (etwa (char*)actionLog). Der Test blieb dabei stehen und war seither
+		# dauerhaft rot, ohne einen echten Mangel anzuzeigen. Er prueft jetzt
+		# dieselbe Absicht an einer Quelle, die weiterhin ungueltig ist und sein
+		# soll: ein void-Ausdruck.
+		if build/qcc_p 'void f(){} int main(){ putint((int)f()); }' 2>&1 | grep -q 'cast expects int'; then
 			echo "ok    qcc: Cast auf Pointer wird diagnostiziert"
 		else
 			echo "FAIL  qcc: Cast-Diagnose fehlt"; tcfail=1; fail=1
