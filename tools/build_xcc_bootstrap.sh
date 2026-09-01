@@ -68,9 +68,23 @@ echo "== 3/3 Bootstrap-Quelltext erzeugen =="
 wine_xcc "-pp -mw=M:\\MWOS ${STAGE_WIN}\\qcc_p.c" > build/qcc_p.xcc.i
 python3 tools/bootstrap_prepare.py build/qcc_p.xcc.i build/qcc_p.bootstrap.c
 
+# ---------------------------------------------------------------------------
+# Selbsttest: QCC muss die eben erzeugte Bootstrap-Quelle fehlerfrei
+# uebersetzen. Ohne diesen Schritt faellt hier nichts auf -- die Suite in
+# Q9-Parsec uebersetzt immer Data/qcc_p.c direkt, nie die xcc-vorverarbeitete
+# Fassung. Genau daran ist am 2026-09-01 eine fehlende realloc-Deklaration
+# unbemerkt durchgegangen: sie stand im Kopf des erzeugten Parsers und damit
+# VOR dem Marker, an dem bootstrap_prepare.py den Header-Vorspann abschneidet.
+echo "== Selbsttest: QCC uebersetzt die Bootstrap-Quelle =="
+if ! ./build/qcc_p "@build/qcc_p.bootstrap.c" > build/qcc_p.bootstrap.ir 2> build/qcc_p.bootstrap.err; then
+	echo "FEHLGESCHLAGEN -- Meldungen:" >&2
+	cat build/qcc_p.bootstrap.err >&2
+	exit 1
+fi
+echo "  ok ($(wc -l < build/qcc_p.bootstrap.ir | tr -d ' ') IR-Zeilen, Schlusswort $(tail -1 build/qcc_p.bootstrap.ir))"
+
 echo
-echo "Fertig. Selbsttest am Host:"
-echo "  ./build/qcc_p @build/qcc_p.bootstrap.c | tail -1     # muss OK sein"
+echo "Fertig."
 echo "Im Emulator (Q9-Flux), Modul + Quelltext vorher per ToolShed ins Image:"
 echo "  os9 copy -r build/$MODULE   IMG,/CMDS/$MODULE"
 echo "  os9 copy -l -r build/qcc_p.bootstrap.c IMG,/qcc_p.bootstrap.c"

@@ -76,6 +76,16 @@ extern int sprintf(char*, const char*, ...);
 extern size_t strlen(const char*);
 extern char* strchr(const char*, int);
 extern int strncmp(const char*, const char*, size_t);
+/* realloc braucht der erzeugte Parser an zwei Stellen: fuer das Aktions-Log
+   und fuer den Eingabepuffer in main(). Die Deklaration stand frueher im
+   Rumpf des Parsers und ueberlebte hier nur, weil diese Stelle zufaellig
+   HINTER dem Marker oben liegt; seit genParserC sie unbedingt im Kopf ausgibt
+   (also davor), faellt sie mit dem Header-Vorspann weg. Sie gehoert ohnehin
+   hierher -- das ist die Liste aller libc-Funktionen, die die
+   Bootstrap-Teilmenge braucht. Signatur wie von genParserC ausgegeben: die
+   Teilmenge kennt kein size_t-typisiertes Allozieren, und auf dem 68k-Ziel
+   sind int und Zeiger beide 32 Bit. */
+extern char* realloc(char*, int);
 """
 
 # Both preprocessors used in the project turn `stderr` into an implementation
