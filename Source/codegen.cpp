@@ -1027,6 +1027,23 @@ int genParserC(const char* path) {
 	}
 	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
 	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n");
+	/* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gefunden per Diff der FAIL-LISTE
+	   gegen den Commit davor -- der reine Zaehlervergleich verdeckte ihn: die
+	   Suite ging von 189 ok/19 FAIL auf 181 ok/24 FAIL, weil derselbe Commit 8
+	   FAILs reparierte und 13 neue erzeugte): main() belegt den Eingabepuffer
+	   seit dem Umstieg auf INPUT_FILE_MAX dynamisch und ruft dafuer UNBEDINGT
+	   realloc() auf (s. u. bei inputFileBuf), die Deklaration wurde aber nur im
+	   Aktions-Log-Zweig weiter unten ausgegeben. Jede Grammatik OHNE
+	   ACTIONS-Block erzeugte damit C-Code ohne realloc-Deklaration. Apple clang
+	   21 macht aus einer impliziten Funktionsdeklaration einen FEHLER (seit C99
+	   ist sie ungueltig, seit clang 16 nicht mehr nur eine Warnung) -- das -w in
+	   runtests.sh unterdrueckt Warnungen, keine Fehler, deshalb schlugen alle 13
+	   codegen-/lexer-Tests mit "C-Parser kompiliert nicht" fehl.
+	   Bewusst KEIN #include <stdlib.h>: derselbe erzeugte Parser wird auf dem
+	   68k-Weg von QCC uebersetzt, das keine Header kennt -- die explizite
+	   extern-Deklaration ist die Form, die dort seit jeher traegt (sie stand aus
+	   genau diesem Grund schon im Aktionszweig, nur eben nicht unbedingt). */
+	fprintf(fp, "extern char* realloc(char*, int);\n");
 	fprintf(fp, "#ifdef QCC_BUFFERED_OUTPUT\n#include <stdarg.h>\n");
 	fprintf(fp, "static char qccOutputBuffer[8192]; static int qccOutputUsed = 0;\n");
 	fprintf(fp, "static void qccOutputFlush(void) { if (qccOutputUsed) { fwrite(qccOutputBuffer, 1, qccOutputUsed, stdout); qccOutputUsed = 0; } }\n");
@@ -1119,7 +1136,8 @@ int genParserC(const char* path) {
 		   the compact OS-9 selfhost variant uses a smaller limit in
 		   SourceTinyC/codegen.tc. */
 		fprintf(fp, "extern void exit(int);\n");
-		fprintf(fp, "extern char* realloc(char*, int);\n");
+		/* realloc wird jetzt unbedingt im Kopf deklariert (s. o.) -- hier
+		   entfernt, damit die Deklaration nicht doppelt im erzeugten C steht. */
 		/* Function pointers in a dynamically allocated record are not reliable
 		   on the self-hosted 68k path.  Keep a stable routine ID instead and
 		   dispatch directly after parsing has completed. */
