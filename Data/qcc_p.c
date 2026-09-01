@@ -42,20 +42,20 @@ static void ws(void) {
 
 extern void exit(int);
 extern char* realloc(char*, int);
-typedef void (*ActionFn)(const char*, const char*);
-typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;
+typedef struct { int id; const char* start; const char* end; } ActionLogEntry;
 static ActionLogEntry* actionLog;
 static int actionLogCap;
-static void actionLogPush(ActionFn fn, const char* start, const char* end) {
+static void actionLogDispatch(int id, const char* start, const char* end);
+static void actionLogPush(int id, const char* start, const char* end) {
 	if (actionLogLen == actionLogCap) { int n = actionLogCap ? actionLogCap * 2 : 1024; ActionLogEntry* q = (ActionLogEntry*)realloc((char*)actionLog, n * sizeof(ActionLogEntry)); if (!q) { fprintf(stderr, "qcc: kein Speicher fuer Aktions-Log\n"); exit(1); } actionLog = q; actionLogCap = n; }
-	actionLog[actionLogLen].fn = fn;
+	actionLog[actionLogLen].id = id;
 	actionLog[actionLogLen].start = start;
 	actionLog[actionLogLen].end = end;
 	actionLogLen++;
 }
 static void actionLogReplay(void) {
 	int i;
-	for (i = 0; i < actionLogLen; i++) actionLog[i].fn(actionLog[i].start, actionLog[i].end);
+	for (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);
 }
 
 /* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */
@@ -201,6 +201,16 @@ static int  tcGlobalIsDeclOnly[MAX_GLOBALS];
 static int  tcGlobalIsStatic[MAX_GLOBALS];
 static int  tcIdxNDScratchDeclared[TC_MAXDIMS + 1]; /* Index 2..TC_MAXDIMS: GLOBAL __idxNd_<lvl> einmalig deklariert */
 static int  tcPtrIdxScratchDeclared[TC_MAXDIMS + 1]; /* dito fuer verschachtelte Pointer-Indizes */
+static int  tcStructCopyScratchDeclared; /* dito fuer die Quelladresse einer Struct-Kopie */
+static int  tcStructRetDeclared[MAX_STRUCTS]; /* je Struct-Typ ein Rueckgabepuffer, s. tc_return */
+static int  tcStructArgSeq; /* laufende Nummer: je AUFRUFSTELLE ein eigener Argumentpuffer, s. tc_arg */
+/* 1 = im Slot steht die ADRESSE einer Struct (Parameter), 0 = die Daten
+   liegen im Slot selbst (lokale Variable mit LARRAY). Bei beiden ist
+   tcLocalArrayLen 0, deshalb diese eigene Markierung. */
+static int  tcLocalStructByAddr[MAX_LOCALS];
+/* Vorwaertsdeklaration: der Generator gibt tc_varinit vor tcAssignStore
+   aus, wo die Kopierhilfe definiert ist. */
+static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size);
 static int  tcStringCounter = 0;    /* naechster freier __strN-Name fuer String-Literale */
 static int  tcPendingConst = 0;      /* gesetzt durch constKw, konsumiert von tc_local/tc_param/tc_globalend */
 static int  tcPendingStatic = 0;     /* gesetzt durch staticKw; konsumiert von tc_local/tc_param/tc_staticlocal/
@@ -470,10 +480,15 @@ static int tcLookupStruct(const char* s, const char* e) {
 	for (i = 0; i < tcStructCount; i++) if (tcEq(tcStructNames[i], name)) return i;
 	return -1;
 }
+static char tcDiagVarRef[128];
 static int tcLookupStructField(int sid, const char* s, const char* e) {
 	char name[32]; int i; tcCopy(name, s, e);
-	if (sid < 0 || sid >= tcStructCount) return -1;
+	if (sid < 0 || sid >= tcStructCount) {
+		fprintf(stderr, "qcc: struct lookup ref=%s sid=%d count=%d field=%s\n", tcDiagVarRef, sid, tcStructCount, name);
+		return -1;
+	}
 	for (i = 0; i < tcStructFieldCount[sid]; i++) if (tcEq(tcStructFieldNames[sid][i], name)) return i;
+	fprintf(stderr, "qcc: struct lookup ref=%s sid=%d name=%s field=%s\n", tcDiagVarRef, sid, tcStructNames[sid], name);
 	return -1;
 }
 static int tcLookupTypedef(const char* s, const char* e) {
@@ -564,6 +579,51 @@ static int tcFnSigForFunction(int fnIdx) {
 }
 static void tcTypePush(TCType type) { if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = type; else actionErrors++; }
 static TCType tcTypePop(void) { return tcValueDepth > 0 ? tcValueTypes[--tcValueDepth] : tcBadType(); }
+/* Die Typwert-Stacks duerfen im selbstgehosteten 68k-Pfad keine TCType-Werte
+   als Funktionsargument/Rueckgabe bewegen. Stattdessen werden die vier Bytes
+   explizit kopiert; Zeigerparameter sind im ABI stabil. */
+static void tcTypePush4(int base, int pointers, int structId, int pointeeConst) {
+	if (tcValueDepth >= 256) { actionErrors++; return; }
+	tcValueTypes[tcValueDepth].base = (unsigned char)base;
+	tcValueTypes[tcValueDepth].pointers = (unsigned char)pointers;
+	tcValueTypes[tcValueDepth].structId = (unsigned char)structId;
+	tcValueTypes[tcValueDepth].pointeeConst = (unsigned char)pointeeConst;
+	tcValueDepth++;
+}
+static void tcTypePop4(TCType* out) {
+	if (tcValueDepth <= 0) { out->base = '?'; out->pointers = 0; out->structId = 0; out->pointeeConst = 0; actionErrors++; return; }
+	tcValueDepth--;
+	out->base = tcValueTypes[tcValueDepth].base;
+	out->pointers = tcValueTypes[tcValueDepth].pointers;
+	out->structId = tcValueTypes[tcValueDepth].structId;
+	out->pointeeConst = tcValueTypes[tcValueDepth].pointeeConst;
+}
+static int tcCompatible4(const TCType* wanted, const TCType* got) {
+	if (wanted->base == got->base && wanted->pointers == got->pointers &&
+	    ((wanted->base != 's' && wanted->base != 'F') || wanted->structId == got->structId)) return 1;
+	if (wanted->pointers && got->pointers && wanted->pointers == got->pointers &&
+	    (wanted->base == 'v' || got->base == 'v')) return 1;
+	if (wanted->pointers) return !got->pointers && got->base == 'z';
+	if ((wanted->base == 'i' || wanted->base == 'u' || wanted->base == 'c' || wanted->base == 'z') &&
+	    !wanted->pointers && !got->pointers && got->base == 'b') return 1;
+	return !wanted->pointers && !got->pointers &&
+	       (wanted->base == 'i' || wanted->base == 'u' || wanted->base == 'c' || wanted->base == 'z') &&
+	       (got->base == 'i' || got->base == 'u' || got->base == 'c' || got->base == 'z');
+}
+#define TC_SET_CURRENT(B, P) do { tcCurrentType.base = (unsigned char)(B); tcCurrentType.pointers = (unsigned char)(P); tcCurrentType.structId = 0; tcCurrentType.pointeeConst = 0; } while (0)
+#define TC_TYPE_PUSH(B, P, S, C) do { if (tcValueDepth < 256) { tcValueTypes[tcValueDepth].base = (unsigned char)(B); tcValueTypes[tcValueDepth].pointers = (unsigned char)(P); tcValueTypes[tcValueDepth].structId = (unsigned char)(S); tcValueTypes[tcValueDepth].pointeeConst = (unsigned char)(C); tcValueDepth++; } else actionErrors++; } while (0)
+#define TC_TYPE_POP(OUT) do { \
+	if (tcValueDepth > 0) { \
+		tcValueDepth--; \
+		OUT.base = tcValueTypes[tcValueDepth].base; \
+		OUT.pointers = tcValueTypes[tcValueDepth].pointers; \
+		OUT.structId = tcValueTypes[tcValueDepth].structId; \
+		OUT.pointeeConst = tcValueTypes[tcValueDepth].pointeeConst; \
+	} else { \
+		OUT.base = '?'; OUT.pointers = 0; \
+		OUT.structId = 0; OUT.pointeeConst = 0; actionErrors++; \
+	} \
+} while (0)
 /* Prae-/Postinkrement/-dekrement, nur einfache int/unsigned/char-Skalare (lokal/global) --
    Praefix: LOAD;PUSH 1;ADD-oder-SUB;DUP;STORE (laesst NEUEN Wert); Postfix: LOAD;DUP;PUSH 1;
    ADD-oder-SUB;STORE (laesst ALTEN Wert). STOREC/STOREGC uebernehmen die Byte-Kuerzung wie
@@ -666,7 +726,12 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 	tag = tcTypeTag(ft);
 	printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
 	if (viaPtr) { if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]); }
-	else        { if (slot >= 0) printf("PUSHADDR L %d\n", slot); else printf("PUSHADDR G %s\n", tcGlobalNames[global]); }
+	else        { if (slot >= 0) {
+			/* Struct-Parameter: im Slot steht die Adresse (s. tc_arg/tc_param),
+			   also LOADP statt der Adresse DES Slots. */
+			if (tcLocalStructByAddr[slot]) printf("LOADP %d\n", slot);
+			else printf("PUSHADDR L %d\n", slot);
+		} else printf("PUSHADDR G %s\n", tcGlobalNames[global]); }
 	printf("IPADD c\n");
 	if (isPre) printf("DUP\nDUP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\nLOADIND %c\n", tag, isDec ? "SUB" : "ADD", tag, tag);
 	else       printf("DUP\nLOADIND %c\nSWAP\nDUP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, tag, isDec ? "SUB" : "ADD", tag);
@@ -741,7 +806,8 @@ static void tcTypeError(const char* what, TCType wanted, TCType got) {
 	fputs(", got ", stderr); tcPrintType(stderr, got); fputc('\n', stderr); actionErrors++;
 }
 static void tcLogicBegin(char kind) {
-	TCType left = tcTypePop(); int branch, end;
+	TCType left; int branch, end;
+	tcTypePop4(&left);
 	if (!tcIsTruthy(left)) tcTypeError("logical operator", tcMakeType('b', 0), left);
 	if (tcLogicDepth >= 64) { fprintf(stderr, "qcc: logical nesting too deep\n"); actionErrors++; return; }
 	branch = tcNextLabel++; end = tcNextLabel++;
@@ -795,12 +861,12 @@ static int tcHasTopChar(const char* s, const char* e, char c) {
 static void tcLogicEnd(char kind) {
 	TCType right; int frame;
 	if (tcLogicDepth <= 0 || tcLogicKind[tcLogicDepth - 1] != kind) { fprintf(stderr, "qcc: logical-frame mismatch\n"); actionErrors++; return; }
-	right = tcTypePop(); if (!tcIsTruthy(right)) tcTypeError("logical operator", tcMakeType('b', 0), right);
+	tcTypePop4(&right); if (!tcIsTruthy(right)) tcTypeError("logical operator", tcMakeType('b', 0), right);
 	frame = --tcLogicDepth;
 	printf("%s L%d\nPUSH %d\nJMP L%d\nLABEL L%d\nPUSH %d\nLABEL L%d\n",
 		kind == '&' ? "JZ" : "JNZ", tcLogicBranch[frame], kind == '&' ? 1 : 0,
 		tcLogicDone[frame], tcLogicBranch[frame], kind == '&' ? 0 : 1, tcLogicDone[frame]);
-	tcTypePush(tcMakeType('b', 0));
+	tcTypePush4('b', 0, 0, 0);
 }
 static void tcBitBegin(char kind) {
 	if (tcBitDepth >= 64) { fprintf(stderr, "qcc: bitwise nesting too deep\n"); actionErrors++; return; }
@@ -1053,8 +1119,10 @@ static int tcCheckNDIndex(int ndims, const int* trailingDims, int idxCount) {
    als [i,j] auf den Stack gelegt. Fuer jeden weiteren Index wird der oberste
    Wert kurz gesichert, damit zuerst p+i geladen und danach (p[i])+j berechnet
    werden kann. PTRINDEX erwartet dabei den Zeiger oben auf dem Stack. */
-static TCType tcEmitPointerIndexChain(int slot, const char* globalName, TCType pointer, int idxCount) {
-	char name[24]; int level;
+static TCType tcEmitPointerIndexChain(int slot, const char* globalName, char base, int pointers, int structId, int pointeeConst, int idxCount) {
+	char name[24]; int level; TCType pointer = tcMakeType(base, pointers);
+	pointer.structId = (unsigned char)structId;
+	pointer.pointeeConst = (unsigned char)pointeeConst;
 	for (level = idxCount; level >= 2; level--) {
 		sprintf(name, "__ptrIdx_%d", level);
 		if (!tcPtrIdxScratchDeclared[level]) { printf("GLOBAL %s 0 i 1\n", name); tcPtrIdxScratchDeclared[level] = 1; }
@@ -1101,7 +1169,10 @@ void tc_defname(const char* start, const char* end) {
 	for (i = 0; i < MAX_LOCALS; i++) tcLocalDead[i] = 0;
 	tcScopeDepth = 0;
 	tcGotoCount = 0;          /* Sprungmarken sind funktionslokal (wie in echtem C) */
-	tcFuncType = tcCurrentType;
+	tcFuncType.base = tcCurrentType.base;
+	tcFuncType.pointers = tcCurrentType.pointers;
+	tcFuncType.structId = tcCurrentType.structId;
+	tcFuncType.pointeeConst = tcCurrentType.pointeeConst;
 	tcCopy(tcFuncName, start, end);
 	/* "static" vor einer Funktion: Schnappschuss VOR dem Reset retten (tc_funcbegin
 	   feuert erst am ENDE von funcHead und liest tcFuncNameIsStatic, um
@@ -1164,6 +1235,15 @@ void tc_externdeclend(const char* start, const char* end) {
 	tcFunctionIsVariadic[i] = tcExternIsVariadic;
 }
 
+static void tc_setcurrenttype(int base, int pointers) {
+	/* Keine TCType-Rueckgabe: die 68k-Selbsthost-ABI kann einen 4-Byte-Struct-
+	   Rueckgabewert nicht verlaesslich transportieren. */
+	tcCurrentType.base = (unsigned char)base;
+	tcCurrentType.pointers = (unsigned char)pointers;
+	tcCurrentType.structId = 0;
+	tcCurrentType.pointeeConst = 0;
+}
+
 void tc_type(const char* start, const char* end) {
 	const char* we = tcWordEnd(start, end);
 	if (tcEqSpan(start, we, "unsigned")) {
@@ -1174,47 +1254,63 @@ void tc_type(const char* start, const char* end) {
 		const char* q = we; const char* qe;
 		while (q < end && (*q == ' ' || *q == '\t')) q++;
 		qe = tcWordEnd(q, end);
-		if (tcEqSpan(q, qe, "char")) tcCurrentType = tcMakeType('c', 0);
-		else tcCurrentType = tcMakeType('u', 0);
+		if (tcEqSpan(q, qe, "char")) TC_SET_CURRENT('c', 0);
+		else TC_SET_CURRENT('u', 0);
 	}
-	else if (tcEqSpan(start, we, "int")) tcCurrentType = tcMakeType('i', 0);
+	else if (tcEqSpan(start, we, "int")) TC_SET_CURRENT('i', 0);
 	/* long ist auf dem 68k-Ziel wortgleich mit int (32 Bit) -- siehe Grammatik. */
-	else if (tcEqSpan(start, we, "long")) tcCurrentType = tcMakeType('i', 0);
-	else if (tcEqSpan(start, we, "char")) tcCurrentType = tcMakeType('c', 0);
-	else if (tcEqSpan(start, we, "bool")) tcCurrentType = tcMakeType('b', 0);
-	else if (tcEqSpan(start, we, "void")) tcCurrentType = tcMakeType('v', 0);
+	else if (tcEqSpan(start, we, "long")) TC_SET_CURRENT('i', 0);
+	else if (tcEqSpan(start, we, "char")) TC_SET_CURRENT('c', 0);
+	else if (tcEqSpan(start, we, "bool")) TC_SET_CURRENT('b', 0);
+	else if (tcEqSpan(start, we, "void")) TC_SET_CURRENT('v', 0);
 	else if (tcEqSpan(start, we, "struct")) {
 		const char* p = we; const char* ne; int sid;
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 		ne = tcWordEnd(p, end);
 		sid = tcLookupStruct(p, ne);
-		if (sid < 0) { fprintf(stderr, "qcc: unknown struct\n"); actionErrors++; tcCurrentType = tcBadType(); return; }
-		tcCurrentType = tcMakeType('s', 0); tcCurrentType.structId = (unsigned char)(sid + 1);
+		if (sid < 0) { fprintf(stderr, "qcc: unknown struct\n"); actionErrors++; TC_SET_CURRENT('?', 0); return; }
+		TC_SET_CURRENT('s', 0); tcCurrentType.structId = (unsigned char)(sid + 1);
 	} else if (tcEqSpan(start, we, "enum")) {
 		const char* p = we; const char* ne;
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 		ne = tcWordEnd(p, end);
-		if (tcLookupEnumType(p, ne) < 0) { fprintf(stderr, "qcc: unknown enum\n"); actionErrors++; tcCurrentType = tcBadType(); return; }
-		tcCurrentType = tcMakeType('i', 0);
+		if (tcLookupEnumType(p, ne) < 0) { fprintf(stderr, "qcc: unknown enum\n"); actionErrors++; TC_SET_CURRENT('?', 0); return; }
+		TC_SET_CURRENT('i', 0);
 	} else {
 		int td = tcLookupTypedef(start, we);
-		if (td < 0) { fprintf(stderr, "qcc: unknown type name '%.*s'\n", (int)(we - start), start); actionErrors++; tcCurrentType = tcBadType(); return; }
-		tcCurrentType = tcTypedefTypes[td];
+		if (td < 0) { fprintf(stderr, "qcc: unknown type name '%.*s'\n", (int)(we - start), start); actionErrors++; TC_SET_CURRENT('?', 0); return; }
+		tcCurrentType.base = tcTypedefTypes[td].base;
+		tcCurrentType.pointers = tcTypedefTypes[td].pointers;
+		tcCurrentType.structId = tcTypedefTypes[td].structId;
+		tcCurrentType.pointeeConst = tcTypedefTypes[td].pointeeConst;
 	}
 }
 
 void tc_pointerdecl(const char* start, const char* end) {
-	const char* p; for (p = start; p < end; p++) if (*p == '*') tcCurrentType = tcPointerTo(tcCurrentType);
+	const char* p;
+	/* TCType nicht durch eine Funktionsgrenze reichen: der selfhostende
+	   68k-Aufrufpfad behandelt den 4-Byte-Struct-Rueckgabewert nicht korrekt. */
+	for (p = start; p < end; p++) if (*p == '*') {
+		if (tcCurrentType.pointers < 255) tcCurrentType.pointers++;
+		else actionErrors++;
+	}
 }
 
 void tc_param(const char* start, const char* end) {
 	const char* nameEnd = tcNameEnd(start, end);
 	if (tcLocalCount >= MAX_LOCALS) { fprintf(stderr, "qcc: too many locals\n"); actionErrors++; return; }
 	tcCopy(tcNames[tcLocalCount], start, nameEnd);
-	tcLocalTypes[tcLocalCount] = nameEnd < end ? tcPointerTo(tcCurrentType) : tcCurrentType;
-	if (!tcIsPointer(tcLocalTypes[tcLocalCount]) && tcLocalTypes[tcLocalCount].base == 'v') {
+	/* TCType weder per Rueckgabewert noch per Struct-Zuweisung transportieren. */
+	tcLocalTypes[tcLocalCount].base = tcCurrentType.base;
+	tcLocalTypes[tcLocalCount].pointers = tcCurrentType.pointers + (nameEnd < end ? 1 : 0);
+	tcLocalTypes[tcLocalCount].structId = tcCurrentType.structId;
+	tcLocalTypes[tcLocalCount].pointeeConst = tcCurrentType.pointeeConst;
+	if (!tcLocalTypes[tcLocalCount].pointers && tcLocalTypes[tcLocalCount].base == 'v') {
 		fprintf(stderr, "qcc: void is not a valid parameter type\n"); actionErrors++;
-		tcLocalTypes[tcLocalCount] = tcMakeType('i', 0);
+		tcLocalTypes[tcLocalCount].base = 'i';
+		tcLocalTypes[tcLocalCount].pointers = 0;
+		tcLocalTypes[tcLocalCount].structId = 0;
+		tcLocalTypes[tcLocalCount].pointeeConst = 0;
 	}
 	tcLocalArrayLen[tcLocalCount] = 0;
 	tcLocalArrayNDims[tcLocalCount] = 1;
@@ -1222,9 +1318,13 @@ void tc_param(const char* start, const char* end) {
 	   frei zuweisbar, aber *p/p[i] = .. wird verboten -- tcTargetType.pointeeConst greift
 	   in tc_target/tc_indirecttarget), keine Bindungs-Immutabilitaet (das uebliche
 	   "p++"-Idiom bleibt erlaubt). */
-	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]);
-	if (tcPendingConst && tcIsPointer(tcLocalTypes[tcLocalCount])) tcLocalTypes[tcLocalCount].pointeeConst = 1;
+	tcLocalConst[tcLocalCount] = tcPendingConst && !tcLocalTypes[tcLocalCount].pointers;
+	if (tcPendingConst && tcLocalTypes[tcLocalCount].pointers) tcLocalTypes[tcLocalCount].pointeeConst = 1;
 	tcLocalDead[tcLocalCount] = 0;
+	/* Ein Struct-Parameter kommt als Adresse an (s. tc_arg), eine lokale
+	   Struct-Variable liegt dagegen selbst im Slot. */
+	tcLocalStructByAddr[tcLocalCount] =
+		tcLocalTypes[tcLocalCount].base == 's' && !tcLocalTypes[tcLocalCount].pointers;
 	tcPendingConst = 0;
 	tcLocalCount++;
 }
@@ -1269,6 +1369,11 @@ void tc_funcbegin(const char* start, const char* end) {
 /* Feuert bei "{" (Beginn eines echten Funktionsrumpfs) -- siehe tc_funcbegin. */
 void tc_funcbodybegin(const char* start, const char* end) {
 	(void)start; (void)end;
+	tcLogicDepth = 0;
+	tcBitDepth = 0;
+	tcPendingShift0 = 0;
+	tcPendingShift1 = 0;
+	tcIndexDepth = 0;
 	if (tcCurrentFuncIndex >= 0) tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 0;
 	printf("FUNC %s %d %d\n", tcFuncName, tcLocalCount, tcCurrentFuncIndex >= 0 ? tcFunctionIsStatic[tcCurrentFuncIndex] : 0);
 }
@@ -1337,6 +1442,10 @@ void tc_local(const char* start, const char* end) {
 	tcLocalConst[tcLocalCount] = tcPendingConst && !tcIsPointer(tcLocalTypes[tcLocalCount]);
 	if (tcPendingConst && tcIsPointer(tcLocalTypes[tcLocalCount])) tcLocalTypes[tcLocalCount].pointeeConst = 1;
 	tcLocalDead[tcLocalCount] = 0;
+	/* Die Slot-Tabellen ueberdauern die Funktion -- ohne dieses Loeschen
+	   erbt eine lokale Variable die Markierung eines frueheren Parameters
+	   auf demselben Slot. */
+	tcLocalStructByAddr[tcLocalCount] = 0;
 	tcPendingConst = 0;
 	tcLocalCount++;
 }
@@ -1791,13 +1900,32 @@ void tc_varinit(const char* start, const char* end) {
 	}
 	if (tcInitList(start, end, values, 256) >= 0) { actionErrors++; fprintf(stderr, "qcc: scalar cannot use array initializer\n"); return; }
 	{ TCType got = tcTypePop(), wanted = tcLocalType(slot); if (!tcCompatible(wanted, got)) tcTypeError("initializer", wanted, got); }
+	{
+		/* Struct-Initialisierung: kopieren statt skalar speichern.  Ohne
+		   diesen Zweig landet die Quelladresse als 4-Byte-Wert im Slot und
+		   jeder spaetere Feldzugriff liest daneben -- lautlos. */
+		TCType initType = tcLocalType(slot);
+		if (initType.base == 's' && !initType.pointers) {
+			int sid = initType.structId - 1;
+			if (sid < 0 || sid >= tcStructCount) {
+				fprintf(stderr, "qcc: initializer for an unknown struct type\n");
+				actionErrors++;
+			} else if (slot < 0) {
+				fprintf(stderr, "qcc: struct initializer without a slot\n");
+				actionErrors++;
+			} else {
+				tcEmitStructCopy(slot, 0, tcStructByteSize[sid]);
+			}
+			return;
+		}
+	}
 	printf("STORE%s %d\n", tcIsPointer(tcLocalType(slot)) ? "P" : tcTypeTag(tcLocalType(slot)) == 'i' ? "L" : "C", slot);
 }
 
 void tc_number(const char* start, const char* end) {
-	if (end - start == 4 && start[0] == 't') { printf("PUSH 1\n"); tcTypePush(tcMakeType('b', 0)); }
-	else if (end - start == 5 && start[0] == 'f') { printf("PUSH 0\n"); tcTypePush(tcMakeType('b', 0)); }
-	else { long value = tcNum(start, end); printf("PUSH %ld\n", value); tcTypePush(tcMakeType(value == 0 ? 'z' : 'i', 0)); }
+	if (end - start == 4 && start[0] == 't') { printf("PUSH 1\n"); tcTypePush4('b', 0, 0, 0); }
+	else if (end - start == 5 && start[0] == 'f') { printf("PUSH 0\n"); tcTypePush4('b', 0, 0, 0); }
+	else { long value = tcNum(start, end); printf("PUSH %ld\n", value); tcTypePush4(value == 0 ? 'z' : 'i', 0, 0, 0); }
 }
 
 /* Escapes eines String-Literals (start zeigt auf das oeffnende, end hinter das
@@ -1903,6 +2031,8 @@ void tc_neg(const char* start, const char* end) {
 void tc_varref(const char* start, const char* end) {
 	const char* nameEnd = tcNameEnd(start, end); int indexed = nameEnd < end;
 	int slot = tcLookupLocal(start, nameEnd), global;
+	TCType globalType, globalPointee;
+	tcCopy(tcDiagVarRef, start, end);
 	/* Die Grammatik erlaubt seit 2026-07-25 "ident [index...] [.member...]" als SEQUENZ
 	   (vorher eine Alternation -- "arr[i].feld" haette gar nicht geparst). Das oeffnet
 	   grammatisch auch Kombinationen, die (noch) KEINE Codegen-Unterstuetzung haben --
@@ -1916,11 +2046,17 @@ void tc_varref(const char* start, const char* end) {
 	   gebaut sind (lokales, als Array deklariertes struct; lokale Pointer-auf-struct-
 	   Variable, siehe naechster Block -- Letzteres seit 2026-07-25 fuer Milestone B). */
 	global = slot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
+	/* TCType ist ein 4-Byte-Wert. Nicht einen structwertigen Funktionsrueckgabewert
+	   direkt als Argument an tcPointee weiterreichen: der Bootstrap-68k-Pfad kann
+	   diese verschachtelte Uebergabe nicht korrekt materialisieren. */
+	globalType = global >= 0 ? tcGlobalTypes[global] : tcMakeType('i', 0);
+	globalPointee = globalType;
+	if (globalPointee.pointers) globalPointee.pointers--; else globalPointee = tcMakeType('i', 0);
 	if (indexed && *nameEnd == '[' &&
 	    !(slot >= 0 && tcLocalArrayLen[slot] > 0 && tcLocalTypes[slot].base == 's') &&
-	    !(slot >= 0 && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's') &&
-	    !(global >= 0 && tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') &&
-	    !(global >= 0 && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's')) {
+	    !(slot >= 0 && tcLocalTypes[slot].pointers && tcLocalTypes[slot].base == 's') &&
+	    !(global >= 0 && tcGlobalArrayLen[global] > 0 && globalType.base == 's') &&
+	    !(global >= 0 && globalType.pointers && globalPointee.base == 's')) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			fprintf(stderr, "qcc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
@@ -1933,10 +2069,10 @@ void tc_varref(const char* start, const char* end) {
 	   Array wie beim bereits fertigen arr[i].feld oben). Stack-Reihenfolge identisch zum
 	   Array-Fall, nur PUSHADDR (Blockadresse) durch LOADP (geladener Pointer-WERT) ersetzt --
 	   IPADDN skaliert genauso um die Laufzeit-Byte-Groesse des Elements. */
-	if (slot >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcLocalTypes[slot]) && tcPointee(tcLocalTypes[slot]).base == 's') {
+	if (slot >= 0 && indexed && *nameEnd == '[' && tcLocalTypes[slot].pointers && tcLocalTypes[slot].base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			int sid = tcPointee(tcLocalTypes[slot]).structId - 1;
+			int sid = tcLocalTypes[slot].structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
@@ -1988,7 +2124,7 @@ void tc_varref(const char* start, const char* end) {
 	   zuerst (muss oben liegen), deshalb PUSH offset VOR dem Laden des Zeigers.
 	   Ein Array-Feld liefert wie ueberall dessen ADRESSE statt eines Wertes. */
 	if (indexed && *nameEnd == '-' && nameEnd + 1 < end && nameEnd[1] == '>') {
-		TCType pt = slot >= 0 ? tcLocalTypes[slot] : (global >= 0 ? tcGlobalType(global) : tcBadType());
+		TCType pt;
 		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int sid, fi;
 		/* Kein Fehler, wenn die Basis nicht passt: der Zweig wird allein am
@@ -1996,8 +2132,11 @@ void tc_varref(const char* start, const char* end) {
 		   falsche Meldung erzeugen -- dann uebernehmen die regulaeren Zweige.
 		   Ein echtes "p->f" mit falscher Basis faellt weiter unten ohnehin als
 		   "unknown variable" bzw. Typfehler auf. */
-		if ((slot < 0 && global < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') goto tcArrowSkip;
-		sid = tcPointee(pt).structId - 1;
+		if (slot >= 0) pt = tcLocalTypes[slot];
+		else if (global >= 0) pt = tcGlobalTypes[global];
+		else goto tcArrowSkip;
+		if (!pt.pointers || pt.base != 's') goto tcArrowSkip;
+		sid = pt.structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); actionErrors++; tcTypePush(tcBadType()); return; }
 		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
@@ -2039,7 +2178,10 @@ void tc_varref(const char* start, const char* end) {
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); actionErrors++; tcTypePush(tcBadType()); return; }
 		/* IPADD poppt Pointer ZUERST (muss oben liegen), dann Count -- daher PUSH vor PUSHADDR. */
-		printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+		if (tcLocalStructByAddr[slot])
+			printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+		else
+			printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
 		if (hasIndex) {
 			/* p.field[i] (2026-07-24): der Index-Ausdruck hat seinen Wert bereits VOR uns
 			   gepusht (ACTION AFTER index CALL tc_arg feuert vor dem umschliessenden
@@ -2070,10 +2212,10 @@ void tc_varref(const char* start, const char* end) {
 	   austauschbar (beide liefern denselben Blockzeiger, siehe qccvm.py: globals_ ist bei
 	   GLOBAL wie bei GARRAY einheitlich eine Liste) -- PUSHADDR G verwendet, um optisch
 	   parallel zum lokalen Muster zu bleiben. */
-	if (global >= 0 && indexed && *nameEnd == '[' && tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
+	if (global >= 0 && indexed && *nameEnd == '[' && globalType.pointers && globalPointee.base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			char gname[32]; int sid = tcPointee(tcGlobalType(global)).structId - 1;
+			char gname[32]; int sid = globalPointee.structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
@@ -2089,10 +2231,10 @@ void tc_varref(const char* start, const char* end) {
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 	}
-	if (global >= 0 && indexed && *nameEnd == '[' && tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') {
+	if (global >= 0 && indexed && *nameEnd == '[' && tcGlobalArrayLen[global] > 0 && tcGlobalTypes[global].base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			char gname[32]; int sid = tcGlobalType(global).structId - 1;
+			char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
@@ -2112,8 +2254,8 @@ void tc_varref(const char* start, const char* end) {
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 	}
-	if (global >= 0 && indexed && *nameEnd == '.' && tcGlobalType(global).base == 's') {
-		char gname[32]; int sid = tcGlobalType(global).structId - 1;
+	if (global >= 0 && indexed && *nameEnd == '.' && tcGlobalTypes[global].base == 's') {
+		char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
@@ -2140,38 +2282,84 @@ void tc_varref(const char* start, const char* end) {
 		tcTypePush(tcStructFieldTypes[sid][fi]); return;
 	}
 	if (slot >= 0) {
+		TCType localValueType = tcLocalTypes[slot];
 		if (tcLocalArrayLen[slot]) {
 			if (!indexed) {
-				printf("PUSHADDR L %d\n", slot); tcTypePush(tcPointerTo(tcLocalType(slot))); return;
+				localValueType.pointers++; printf("PUSHADDR L %d\n", slot); tcTypePush(localValueType); return;
 			}
 			if (tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, end)) == 2) {
-				printf("PUSHADDR L %d\nIPADD %c\n", slot, tcTypeTag(tcLocalType(slot)));
-				tcTypePush(tcPointerTo(tcLocalType(slot))); return;
+				printf("PUSHADDR L %d\nIPADD %c\n", slot, tcTypeTag(localValueType));
+				localValueType.pointers++; tcTypePush(localValueType); return;
 			}
 			tcCheckConstIndex(start, end, tcLocalArrayLen[slot]);
-			printf("LOADIDX L %d %c\n", slot, tcTypeTag(tcLocalType(slot))); tcTypePush(tcLocalType(slot));
-		} else if (indexed && tcIsPointer(tcLocalType(slot))) {
-			TCType valueType = tcEmitPointerIndexChain(slot, 0, tcLocalType(slot), tcCountTopIndexes(nameEnd, end));
+			if (localValueType.base == 's' && !localValueType.pointers) {
+				/* Ganze Struct aus einem Array: die ADRESSE des Elements, nicht
+				   sein erstes Wort (siehe Patch 6). Der Index liegt bereits auf
+				   dem Stapel, IPADDN skaliert ihn mit der Structgroesse. */
+				printf("PUSHADDR L %d\nIPADDN %d\n", slot,
+				       tcStructByteSize[localValueType.structId - 1]);
+				TC_TYPE_PUSH(localValueType.base, localValueType.pointers,
+				             localValueType.structId, localValueType.pointeeConst);
+			} else {
+			printf("LOADIDX L %d %c\n", slot, tcTypeTag(localValueType)); tcTypePush(localValueType);
+			}
+		} else if (indexed && tcIsPointer(localValueType)) {
+			TCType valueType = tcEmitPointerIndexChain(slot, 0, localValueType.base, localValueType.pointers, localValueType.structId, localValueType.pointeeConst, tcCountTopIndexes(nameEnd, end));
 			tcTypePush(valueType);
 		} else if (indexed) { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); actionErrors++; }
-		else { TCType t = tcLocalType(slot); printf("LOAD%s %d\n", tcIsPointer(t) ? "P" : tcTypeTag(t) == 'i' ? "L" : "C", slot); tcTypePush(t); }
+		else if (tcLocalTypes[slot].base == 's' && !tcLocalTypes[slot].pointers) {
+			/* Eine Struct als Ganzes passt in kein Register.  Wie bei einem
+			   Feld-/Array-Zugriff wird die Adresse abgelegt; die eigentliche
+			   Kopie erzeugt tcAssignStore.  Vorher lief dieser Fall in den
+			   'C'-Zweig darunter und lud EIN Byte. */
+			if (tcLocalStructByAddr[slot]) printf("LOADP %d\n", slot);
+			else printf("PUSHADDR L %d\n", slot);
+			TC_TYPE_PUSH(tcLocalTypes[slot].base, tcLocalTypes[slot].pointers,
+			             tcLocalTypes[slot].structId, tcLocalTypes[slot].pointeeConst);
+		}
+		else {
+			printf("LOAD%s %d\n", tcLocalTypes[slot].pointers ? "P" : tcLocalTypes[slot].base == 'i' || tcLocalTypes[slot].base == 'u' ? "L" : "C", slot);
+			TC_TYPE_PUSH(tcLocalTypes[slot].base, tcLocalTypes[slot].pointers,
+			             tcLocalTypes[slot].structId, tcLocalTypes[slot].pointeeConst);
+		}
 	} else if ((global = tcLookupGlobal(start, nameEnd)) >= 0) {
-		char name[32]; tcCopy(name, start, nameEnd);
+		char name[32]; TCType globalValueType = tcGlobalTypes[global]; tcCopy(name, start, nameEnd);
 		if (tcGlobalArrayLen[global]) {
 			if (!indexed) {
-				printf("PUSHADDR G %s\n", name); tcTypePush(tcPointerTo(tcGlobalType(global))); return;
+				globalValueType.pointers++; printf("PUSHADDR G %s\n", name); tcTypePush(globalValueType); return;
 			}
 			if (tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end)) == 2) {
-				printf("PUSHADDR G %s\nIPADD %c\n", name, tcTypeTag(tcGlobalType(global)));
-				tcTypePush(tcPointerTo(tcGlobalType(global))); return;
+				printf("PUSHADDR G %s\nIPADD %c\n", name, tcTypeTag(globalValueType));
+				globalValueType.pointers++; tcTypePush(globalValueType); return;
 			}
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
-			printf("LOADIDX G %s %c\n", name, tcTypeTag(tcGlobalType(global))); tcTypePush(tcGlobalType(global));
-		} else if (indexed && tcIsPointer(tcGlobalType(global))) {
-			TCType valueType = tcEmitPointerIndexChain(-1, name, tcGlobalType(global), tcCountTopIndexes(nameEnd, end));
-			tcTypePush(valueType);
+			if (globalValueType.base == 's' && !globalValueType.pointers) {
+				/* siehe lokalen Zweig */
+				printf("PUSHADDR G %s\nIPADDN %d\n", name,
+				       tcStructByteSize[globalValueType.structId - 1]);
+				TC_TYPE_PUSH(globalValueType.base, globalValueType.pointers,
+				             globalValueType.structId, globalValueType.pointeeConst);
+			} else {
+			printf("LOADIDX G %s %c\n", name, tcTypeTag(globalValueType)); tcTypePush(globalValueType);
+			}
+		} else if (indexed && tcIsPointer(globalValueType)) {
+			/* Ein einfacher Pointerindex ist der Bootstrap-Hauptpfad. Direkt
+			   emittieren statt TCType durch eine weitere Funktionsgrenze zu geben. */
+			TCType valueType = globalValueType;
+			char valueTag;
+			valueType.pointers = valueType.pointers - 1;
+			valueTag = valueType.pointers ? 'p' : (valueType.base == 'c' || valueType.base == 'b') ? valueType.base : 'i';
+			printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, valueTag, valueTag);
+			if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = valueType; else actionErrors++;
 		} else if (indexed) { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); actionErrors++; }
-		else { TCType t = tcGlobalType(global); printf("LOADG%s %s\n", tcIsPointer(t) ? "P" : tcTypeTag(t) == 'i' ? "" : "C", name); tcTypePush(t); }
+		else if (globalValueType.base == 's' && !globalValueType.pointers) {
+			/* Wie im lokalen Fall (siehe dort): eine Struct als Ganzes wird als
+			   Adresse weitergegeben, tcAssignStore macht daraus die Kopie. */
+			printf("ADDRG %s\n", name);
+			TC_TYPE_PUSH(globalValueType.base, globalValueType.pointers,
+			             globalValueType.structId, globalValueType.pointeeConst);
+		}
+		else { printf("LOADG%s %s\n", tcIsPointer(globalValueType) ? "P" : tcTypeTag(globalValueType) == 'i' ? "" : "C", name); tcTypePush(globalValueType); }
 	}
 	else {
 		int ec = tcLookupEnumConst(start, nameEnd);
@@ -2205,7 +2393,13 @@ void tc_addressref(const char* start, const char* end) {
 			else { fprintf(stderr, "qcc: scalar variable cannot be indexed\n"); actionErrors++; return; }
 			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
 		}
-		if (tcLocalArrayLen[slot]) printf("PUSHADDR L %d\n", slot); else printf("ADDRL %d\n", slot);
+		/* Eine skalare Struct liegt ebenfalls als Block vor (LARRAY, s.
+		   tc_localdecl), hat aber tcLocalArrayLen 0 -- ohne die zweite
+		   Bedingung liefert &s die Adresse eines leeren Skalarslots statt
+		   die des Objekts. */
+		if (tcLocalArrayLen[slot] || (valueType.base == 's' && !valueType.pointers))
+			printf("PUSHADDR L %d\n", slot);
+		else printf("ADDRL %d\n", slot);
 		tcTypePush(tcPointerTo(valueType)); return;
 	}
 	if (global >= 0) {
@@ -2462,10 +2656,16 @@ void tc_relop(const char* start, const char* end) {
 void tc_expr(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (tcRel0) {
-		TCType right = tcTypePop(), left = tcTypePop(); int pointerCompare = tcIsPointer(left) || tcIsPointer(right);
+		TCType right, left; int pointerCompare, leftInteger, rightInteger, leftBool, rightBool;
+		TC_TYPE_POP(right); TC_TYPE_POP(left);
+		pointerCompare = tcIsPointer(left) || tcIsPointer(right);
+		leftInteger = !left.pointers && (left.base == 'i' || left.base == 'u' || left.base == 'c' || left.base == 'z');
+		rightInteger = !right.pointers && (right.base == 'i' || right.base == 'u' || right.base == 'c' || right.base == 'z');
+		leftBool = !left.pointers && left.base == 'b';
+		rightBool = !right.pointers && right.base == 'b';
 		if (pointerCompare && !(tcSameType(left, right) || (tcIsPointer(left) && right.base == 'z' && !right.pointers) || (tcIsPointer(right) && left.base == 'z' && !left.pointers))) tcTypeError("pointer comparison", left, right);
-		else if (!pointerCompare && !((tcIsInteger(left) || tcIsBool(left)) && (tcIsInteger(right) || tcIsBool(right)))) tcTypeError("comparison", left, right);
-		tcTypePush(tcMakeType('b', 0));
+		else if (!pointerCompare && !((leftInteger || leftBool) && (rightInteger || rightBool))) tcTypeError("comparison", left, right);
+		TC_TYPE_PUSH('b', 0, 0, 0);
 		if (pointerCompare) {
 			if (tcRel1 == '=' && tcRel0 == '=') printf("PCMPEQ\n");
 			else if (tcRel1 == '=' && tcRel0 == '!') printf("PCMPNE\n");
@@ -2499,7 +2699,7 @@ void tc_target(const char* start, const char* end) {
 	tcTargetIsArray = nameEnd < end;
 	tcTargetSlot = tcLookupLocal(start, nameEnd);
 	tcTargetIsGlobal = 0; tcTargetIndirect = 0;
-	tcTargetType = tcLocalType(tcTargetSlot);
+	tcTargetType = tcTargetSlot >= 0 ? tcLocalType(tcTargetSlot) : tcMakeType('i', 0);
 	if (tcTargetSlot >= 0 && tcLocalConst[tcTargetSlot]) {
 		fprintf(stderr, "qcc: cannot assign to const variable\n"); actionErrors++;
 	}
@@ -2509,12 +2709,16 @@ void tc_target(const char* start, const char* end) {
 	   ignorieren statt sauber zu diagnostizieren. */
 	{
 		int targetGlobal = tcTargetSlot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
-		TCType targetGlobalType = targetGlobal >= 0 ? tcGlobalType(targetGlobal) : tcMakeType('i', 0);
+		TCType targetGlobalType = targetGlobal >= 0 ? tcGlobalTypes[targetGlobal] : tcMakeType('i', 0);
+		TCType targetGlobalPointee = targetGlobalType;
+		if (targetGlobalPointee.pointers) targetGlobalPointee.pointers--; else targetGlobalPointee = tcMakeType('i', 0);
 		if (tcTargetIsArray && *nameEnd == '[' &&
 		    !(tcTargetSlot >= 0 && tcLocalArrayLen[tcTargetSlot] > 0 && tcTargetType.base == 's') &&
-		    !(tcTargetSlot >= 0 && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') &&
+		    /* TCType ist im Bootstrap-ABI kein sicher verschachtelter Rueckgabewert:
+		       bei einem Pointer bleibt die Basis beim Dereferenzieren unveraendert. */
+		    !(tcTargetSlot >= 0 && tcTargetType.pointers && tcTargetType.base == 's') &&
 		    !(targetGlobal >= 0 && tcGlobalArrayLen[targetGlobal] > 0 && targetGlobalType.base == 's') &&
-		    !(targetGlobal >= 0 && tcIsPointer(targetGlobalType) && tcPointee(targetGlobalType).base == 's')) {
+		    !(targetGlobal >= 0 && targetGlobalType.pointers && targetGlobalPointee.base == 's')) {
 			const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 			if (afterIdx < end && *afterIdx == '.') {
 				fprintf(stderr, "qcc: indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct, in this version\n");
@@ -2529,12 +2733,17 @@ void tc_target(const char* start, const char* end) {
 	   laesst tc_assign daraus ein STOREIND machen. */
 	if (tcTargetIsArray && *nameEnd == '-' && nameEnd + 1 < end && nameEnd[1] == '>') {
 		int gslot = tcTargetSlot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
-		TCType pt = tcTargetSlot >= 0 ? tcTargetType : (gslot >= 0 ? tcGlobalType(gslot) : tcBadType());
+		TCType pt;
 		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int sid, fi;
-		/* siehe tc_varref: bei nicht passender Basis nicht melden, durchfallen. */
-		if ((tcTargetSlot < 0 && gslot < 0) || !tcIsPointer(pt) || tcPointee(pt).base != 's') goto tcArrowSkipT;
-		sid = tcPointee(pt).structId - 1;
+		/* siehe tc_varref: bei nicht passender Basis nicht melden, durchfallen.
+		   Kein tcPointee(pt): der Bootstrap kann dessen Struct-Rueckgabe nicht
+		   direkt als Argument/Feldzugriff transportieren. */
+		if (tcTargetSlot >= 0) pt = tcTargetType;
+		else if (gslot >= 0) pt = tcGlobalTypes[gslot];
+		else goto tcArrowSkipT;
+		if (!pt.pointers || pt.base != 's') goto tcArrowSkipT;
+		sid = pt.structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { fprintf(stderr, "qcc: unknown struct field\n"); actionErrors++; return; }
 		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
@@ -2554,10 +2763,10 @@ void tc_target(const char* start, const char* end) {
 		return;
 	}
 	tcArrowSkipT: ;
-	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcIsPointer(tcTargetType) && tcPointee(tcTargetType).base == 's') {
+	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '[' && tcTargetType.pointers && tcTargetType.base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			int sid = tcPointee(tcTargetType).structId - 1;
+			int sid = tcTargetType.structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
@@ -2604,7 +2813,10 @@ void tc_target(const char* start, const char* end) {
 		/* Wie tc_varref: IPADD poppt Pointer ZUERST, daher PUSH vor PUSHADDR. tcTargetIndirect=1
 		   laesst tc_assign/tcLoadTarget denselben STOREIND/DUPP+LOADIND-Pfad wie bei einer
 		   echten Pointer-Dereferenz nehmen -- die Feldadresse liegt bereits auf dem Stack. */
-		printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+		if (tcLocalStructByAddr[tcTargetSlot])
+			printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+		else
+			printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
 		if (hasIndex) {
 			/* p.field[i] = .. (2026-07-24): siehe tc_varref -- der Index-Ausdruck hat seinen
 			   Wert bereits VOR uns gepusht, ein zweites IPADD kombiniert Feldadresse+Index. */
@@ -2628,10 +2840,13 @@ void tc_target(const char* start, const char* end) {
 	   siehe dort fuer die vollstaendige Erklaerung. tcTargetIndirect=1 laesst tc_assign
 	   denselben STOREIND-Pfad nehmen wie bei den bereits vorhandenen lokalen Faellen. */
 	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
-	    tcIsPointer(tcGlobalType(global)) && tcPointee(tcGlobalType(global)).base == 's') {
+	    tcGlobalTypes[global].pointers) {
+		TCType globalPointee = tcGlobalTypes[global];
+		globalPointee.pointers--;
+		if (globalPointee.base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
-			char gname[32]; int sid = tcPointee(tcGlobalType(global)).structId - 1;
+			char gname[32]; int sid = globalPointee.structId - 1;
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
@@ -2645,9 +2860,10 @@ void tc_target(const char* start, const char* end) {
 			tcTargetIndirect = 1;
 			return;
 		}
+		}
 	}
 	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
-	    tcGlobalArrayLen[global] > 0 && tcGlobalType(global).base == 's') {
+	    tcGlobalArrayLen[global] > 0 && tcGlobalTypes[global].base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcGlobalType(global).structId - 1;
@@ -2670,8 +2886,8 @@ void tc_target(const char* start, const char* end) {
 		}
 	}
 	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '.' &&
-	    tcGlobalType(global).base == 's') {
-		char gname[32]; int sid = tcGlobalType(global).structId - 1;
+	    tcGlobalTypes[global].base == 's') {
+		char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
 		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
@@ -2699,7 +2915,7 @@ void tc_target(const char* start, const char* end) {
 		int global = tcLookupGlobal(start, nameEnd);
 		tcCopy(tcTargetGlobal, start, nameEnd);
 		tcTargetIsGlobal = 1;
-		tcTargetType = tcGlobalType(global);
+		tcTargetType = tcGlobalTypes[global];
 		if (tcGlobalConst[global]) { fprintf(stderr, "qcc: cannot assign to const variable\n"); actionErrors++; }
 		if (tcTargetIsArray && tcGlobalArrayLen[global]) {
 			tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, end));
@@ -2710,7 +2926,7 @@ void tc_target(const char* start, const char* end) {
 			   trifft auf das const char. Das kompakte TCType-Modell merkt die
 			   Qualifikation nur an der Basis, deshalb gilt sie nur auf Ebene 1. */
 			if (tcTargetType.pointeeConst && tcTargetType.pointers == 1) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
-			tcTargetType = tcPointee(tcTargetType);
+			if (tcTargetType.pointers) tcTargetType.pointers--; else tcTargetType = tcMakeType('i', 0);
 			if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
 				fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; tcTargetType = tcMakeType('i', 0);
 			}
@@ -2721,7 +2937,7 @@ void tc_target(const char* start, const char* end) {
 		tcCheckConstIndex(start, end, tcLocalArrayLen[tcTargetSlot]);
 	} else if (tcTargetSlot >= 0 && tcTargetIsArray && tcIsPointer(tcTargetType)) {
 		if (tcTargetType.pointeeConst && tcTargetType.pointers == 1) { fprintf(stderr, "qcc: cannot assign through pointer to const\n"); actionErrors++; }
-		tcTargetType = tcPointee(tcTargetType);
+		if (tcTargetType.pointers) tcTargetType.pointers--; else tcTargetType = tcMakeType('i', 0);
 		if (!tcIsPointer(tcTargetType) && tcTargetType.base == 'v') {
 			fprintf(stderr, "qcc: cannot dereference void*\n"); actionErrors++; tcTargetType = tcMakeType('i', 0);
 		}
@@ -2807,10 +3023,91 @@ void tc_assign(const char* start, const char* end) {
 /* Gemeinsamer letzter Schritt aller Zuweisungen.  leaveValue ist fuer eine
    Zuweisung IM Ausdruck gesetzt: DUP bewahrt dann eine Kopie fuer den
    umgebenden Ausdruck, waehrend STORE die andere wie gewohnt verbraucht. */
+/* Struct-Zuweisung `x = y`.  Eine Struct ist hier ein char-Feld (siehe
+   LARRAY ... c <groesse> in tc_localdecl), deshalb ist die Kopie eine
+   schlichte Byteschleife: typunabhaengig und damit auch fuer verschachtelte
+   Structs und Feld-Arrays richtig.  Die QUELLADRESSE liegt beim Aufruf oben
+   auf dem Stapel -- tc_varref legt fuer eine Struct die Adresse ab statt
+   eines Registerwerts.  Sie wird in einem Scratch-Global gesichert, weil sie
+   fuer jedes Byte erneut gebraucht wird; DUP je Byte waere kuerzer, wuerde
+   aber die Stapeltiefe an die Structgroesse koppeln. */
+/* Beide Scratch-Globals einmalig deklarieren: die Quelladresse braucht
+   jede Kopie, die Zieladresse nur die indizierte Variante. */
+static void tcDeclStructCopyScratch(void) {
+	if (!tcStructCopyScratchDeclared) {
+		printf("GLOBAL __structCopySrc 0 i 1\n");
+		printf("GLOBAL __structCopyDst 0 i 1\n");
+		tcStructCopyScratchDeclared = 1;
+	}
+}
+/* Kopie, wenn BEIDE Adressen bereits in den Scratch-Globals stehen --
+   fuer `arr[i] = s`, wo das Ziel erst zur Laufzeit feststeht. */
+static void tcEmitStructCopyDyn(int size) {
+	int off;
+	for (off = 0; off < size; off++) {
+		printf("PUSH %d\nLOADGP __structCopyDst\nIPADD c\n", off);
+		printf("PUSH %d\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n", off);
+		printf("STOREIND c\n");
+	}
+}
+static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size) {
+	int off;
+	tcDeclStructCopyScratch();
+	{
+	printf("STOREGP __structCopySrc\n");
+	for (off = 0; off < size; off++) {
+		printf("PUSH %d\n", off);
+		if (dstGlobal) printf("ADDRG %s\n", dstGlobal);
+		else printf("PUSHADDR L %d\n", dstSlot);
+		printf("IPADD c\n");
+		printf("PUSH %d\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n", off);
+		printf("STOREIND c\n");
+	}
+	}
+}
 static void tcAssignStore(int leaveValue) {
 	TCType got; char tag;
 	got = tcTypePop();
 	if (!tcCompatible(tcTargetType, got)) tcTypeError("assignment", tcTargetType, got);
+	/* Struct als Ganzes: kein Registerwert, sondern eine Kopie.  Muss VOR
+	   den skalaren Zweigen stehen -- tcTypeTag('s') liefert 'i', wodurch
+	   frueher ein 4-Byte-Store fuer ein groesseres Objekt erzeugt wurde. */
+	if (tcTargetType.base == 's' && !tcTargetType.pointers && !tcTargetIndirect) {
+		int sid = tcTargetType.structId - 1;
+		if (sid < 0 || sid >= tcStructCount) {
+			fprintf(stderr, "qcc: struct assignment to an unknown struct type\n");
+			actionErrors++; return;
+		}
+		if (leaveValue) {
+			fprintf(stderr, "qcc: struct assignment inside an expression is not supported\n");
+			actionErrors++; return;
+		}
+		if (tcTargetIsArray) {
+			/* arr[i] = s -- Stapel: Index unten, Quelladresse oben. Die
+			   Zieladresse (Basis + Index * Groesse) entsteht erst zur
+			   Laufzeit, also ueber den zweiten Scratch-Global. Das ist der
+			   Fall, mit dem der Compiler seine eigene Typtabelle fuellt
+			   (tc_local: tcLocalTypes[tcLocalCount] = tcCurrentType). */
+			tcDeclStructCopyScratch();
+			printf("STOREGP __structCopySrc\n");
+			if (tcTargetIsGlobal) printf("PUSHADDR G %s\n", tcTargetGlobal);
+			else if (tcTargetSlot >= 0) printf("PUSHADDR L %d\n", tcTargetSlot);
+			else {
+				fprintf(stderr, "qcc: indexed struct assignment without a target\n");
+				actionErrors++; return;
+			}
+			printf("IPADDN %d\n", tcStructByteSize[sid]);
+			printf("STOREGP __structCopyDst\n");
+			tcEmitStructCopyDyn(tcStructByteSize[sid]);
+		}
+		else if (tcTargetIsGlobal) tcEmitStructCopy(-1, tcTargetGlobal, tcStructByteSize[sid]);
+		else if (tcTargetSlot >= 0) tcEmitStructCopy(tcTargetSlot, 0, tcStructByteSize[sid]);
+		else {
+			fprintf(stderr, "qcc: struct assignment without a target\n");
+			actionErrors++;
+		}
+		return;
+	}
 	tag = tcTypeTag(tcTargetType);
 	/* Bei einer indirekten oder indizierten Zuweisung liegen Adresse/Index
 	   UNTER dem Wert. DUP wuerde dort die Stapelfolge zerstoeren (p,v,v --
@@ -2823,7 +3120,7 @@ static void tcAssignStore(int leaveValue) {
 	else if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
 	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("STOREIDX%s L %d %c\n", leaveValue ? "KEEP" : "", tcTargetSlot, tag);
 	else if (tcTargetSlot >= 0) printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
-	else { actionErrors++; fprintf(stderr, "qcc: unknown assignment target\n"); return; }
+	else { actionErrors++; fprintf(stderr, "qcc: unknown assignment target slot=%d global=%d array=%d indirect=%d\n", tcTargetSlot, tcTargetIsGlobal, tcTargetIsArray, tcTargetIndirect); return; }
 	if (leaveValue) tcTypePush(tcTargetType);
 }
 
@@ -2912,7 +3209,28 @@ void tc_arg(const char* start, const char* end) {
 	(void)end;
 	if (tcCallDepth <= 0) { actionErrors++; fprintf(stderr, "qcc: missing call frame\\n"); return; }
 	{ int f = tcLookupFunction(tcCallName[tcCallDepth - 1]); int n = tcCallArgCount[tcCallDepth - 1]; TCType got = tcTypePop();
-	  if (f >= 0 && n < tcFunctionNargs[f] && !tcCompatible(tcFunctionParamTypes[f][n], got)) tcTypeError("argument", tcFunctionParamTypes[f][n], got); }
+	  if (f >= 0 && n < tcFunctionNargs[f] && !tcCompatible(tcFunctionParamTypes[f][n], got)) tcTypeError("argument", tcFunctionParamTypes[f][n], got);
+	  /* Struct per Wert: auf dem Stapel liegt die Adresse des Originals.
+	     Der Aufgerufene darf seinen Parameter aendern (tcPointerTo/
+	     tcPointee tun genau das), also bekommt er eine Kopie. Ein Puffer
+	     je Typ und Argumentposition reicht: die Argumente eines Aufrufs
+	     werden nacheinander ausgewertet und sofort verbraucht. */
+	  if (got.base == 's' && !got.pointers) {
+	  	int sid = got.structId - 1;
+	  	if (sid < 0 || sid >= tcStructCount) {
+	  		fprintf(stderr, "qcc: struct argument of an unknown struct type\n");
+	  		actionErrors++;
+	  	} else {
+	  		/* Eigener Puffer je Aufrufstelle: ein Puffer je Position wuerde
+	  		   von einem verschachtelten Aufruf ueberschrieben, der dieselbe
+	  		   Position benutzt -- siehe tcCompatible/tcIsPointer. */
+	  		char argName[40];
+	  		sprintf(argName, "__structArg_%d_%d", sid, tcStructArgSeq++);
+	  		printf("GARRAY %s c %d 1\n", argName, tcStructByteSize[sid]);
+	  		tcEmitStructCopy(-1, argName, tcStructByteSize[sid]);
+	  		printf("ADDRG %s\n", argName);
+	  	}
+	  } }
 	tcCallArgCount[tcCallDepth - 1]++;
 }
 
@@ -2985,13 +3303,34 @@ void tc_whileend(const char* start, const char* end) {
 void tc_retval(const char* start, const char* end) {
 	(void)start; (void)end;
 	tcRetHasVal = 1;
-	tcRetType = tcTypePop();
+	tcTypePop4(&tcRetType);
 }
 
 void tc_return(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (!tcRetHasVal) printf("PUSH 0\n");
-	if (tcRetHasVal && !tcCompatible(tcFuncType, tcRetType)) tcTypeError("return", tcFuncType, tcRetType);
+	if (tcRetHasVal && !tcCompatible4(&tcFuncType, &tcRetType)) tcTypeError("return", tcFuncType, tcRetType);
+	/* Struct-Rueckgabe: auf dem Stapel liegt die Adresse einer lokalen
+	   Variable DIESES Rahmens (die Leseseite legt fuer Structs Adressen ab).
+	   Sie ueberlebt das RET nicht, also vorher in den Rueckgabepuffer des
+	   Typs kopieren und dessen Adresse zurueckgeben. Der Aufrufer sieht
+	   damit wieder eine Struct-Adresse und kopiert sie regulaer weiter. */
+	if (tcRetHasVal && !tcIsPointer(tcFuncType) && tcFuncType.base == 's') {
+		int sid = tcFuncType.structId - 1;
+		if (sid < 0 || sid >= tcStructCount) {
+			fprintf(stderr, "qcc: return of an unknown struct type\n");
+			actionErrors++;
+		} else {
+			char retName[32];
+			sprintf(retName, "__structRet_%d", sid);
+			if (!tcStructRetDeclared[sid]) {
+				printf("GARRAY %s c %d 1\n", retName, tcStructByteSize[sid]);
+				tcStructRetDeclared[sid] = 1;
+			}
+			tcEmitStructCopy(-1, retName, tcStructByteSize[sid]);
+			printf("ADDRG %s\n", retName);
+		}
+	}
 	if (!tcIsPointer(tcFuncType) && tcFuncType.base == 'c') printf("NARROWC\n");
 	printf("%s\n", tcIsPointer(tcFuncType) ? "RETP" : "RET");
 	tcRetHasVal = 0;
@@ -3164,10 +3503,10 @@ void tc_charlit(const char* start, const char* end) {
 	const char* p = start;
 	int v;
 	if (p < end && *p == 39) p++;            /* oeffnendes Hochkomma */
-	if (p >= end) { fprintf(stderr, "qcc: empty character literal\n"); actionErrors++; tcTypePush(tcMakeType('i', 0)); return; }
+	if (p >= end) { fprintf(stderr, "qcc: empty character literal\n"); actionErrors++; TC_TYPE_PUSH('i', 0, 0, 0); return; }
 	if (*p == 92) {                          /* Backslash: Escape-Form */
 		p++;
-		if (p >= end) { fprintf(stderr, "qcc: incomplete character escape\n"); actionErrors++; tcTypePush(tcMakeType('i', 0)); return; }
+		if (p >= end) { fprintf(stderr, "qcc: incomplete character escape\n"); actionErrors++; TC_TYPE_PUSH('i', 0, 0, 0); return; }
 		if      (*p == 'n')  v = 10;
 		else if (*p == 't')  v = 9;
 		else if (*p == 'r')  v = 13;
@@ -3178,7 +3517,7 @@ void tc_charlit(const char* start, const char* end) {
 		v = (int)(unsigned char)*p;
 	}
 	printf("PUSH %d\n", v);
-	tcTypePush(tcMakeType('i', 0));
+	TC_TYPE_PUSH('i', 0, 0, 0);
 }
 
 /* "(void)ausdruck;" -- der Ausdruck wurde bereits ausgewertet und liegt auf
@@ -3670,7 +4009,7 @@ void tc_bitandop(const char* start, const char* end) {
 }
 
 void tc_bitandend(const char* start, const char* end) {
-	if (tcHasTopChar(start, end, '&') && tcBitDepth > 0 && tcBitKind[tcBitDepth - 1] == '&') tcBitEnd('&');
+	if (tcBitDepth > 0 && tcBitKind[tcBitDepth - 1] == '&' && tcHasTopChar(start, end, '&')) tcBitEnd('&');
 }
 
 void tc_bitxorop(const char* start, const char* end) {
@@ -3679,7 +4018,7 @@ void tc_bitxorop(const char* start, const char* end) {
 }
 
 void tc_bitxorend(const char* start, const char* end) {
-	if (tcHasTopChar(start, end, '^') && tcBitDepth > 0 && tcBitKind[tcBitDepth - 1] == '^') tcBitEnd('^');
+	if (tcBitDepth > 0 && tcBitKind[tcBitDepth - 1] == '^' && tcHasTopChar(start, end, '^')) tcBitEnd('^');
 }
 
 void tc_bitorop(const char* start, const char* end) {
@@ -3688,7 +4027,7 @@ void tc_bitorop(const char* start, const char* end) {
 }
 
 void tc_bitorend(const char* start, const char* end) {
-	if (tcHasTopChar(start, end, '|') && tcBitDepth > 0 && tcBitKind[tcBitDepth - 1] == '|') tcBitEnd('|');
+	if (tcBitDepth > 0 && tcBitKind[tcBitDepth - 1] == '|' && tcHasTopChar(start, end, '|')) tcBitEnd('|');
 }
 
 void tc_shiftop(const char* start, const char* end) {
@@ -3743,6 +4082,133 @@ void tc_blockend(const char* start, const char* end) {
 	tcScopeDepth--;
 	mark = tcScopeMark[tcScopeDepth];
 	for (i = mark; i < tcLocalCount; i++) tcLocalDead[i] = 1;
+}
+
+static void actionLogDispatch(int id, const char* start, const char* end) {
+	if (id == 1) { tc_externdeclend(start, end); return; }
+	if (id == 2) { tc_externname(start, end); return; }
+	if (id == 4) { tc_externparam(start, end); return; }
+	if (id == 5) { tc_externvariadic(start, end); return; }
+	if (id == 6) { tc_enumdecl(start, end); return; }
+	if (id == 7) { tc_structend(start, end); return; }
+	if (id == 8) { tc_structbegin(start, end); return; }
+	if (id == 11) { tc_structfield(start, end); return; }
+	if (id == 13) { tc_typedefend(start, end); return; }
+	if (id == 14) { tc_fnptrtypedef(start, end); return; }
+	if (id == 15) { tc_fnptrbegin(start, end); return; }
+	if (id == 20) { tc_anonstructbegin(start, end); return; }
+	if (id == 23) { tc_externglobaldecl(start, end); return; }
+	if (id == 24) { tc_globalend(start, end); return; }
+	if (id == 26) { tc_const(start, end); return; }
+	if (id == 27) { tc_static(start, end); return; }
+	if (id == 38) { tc_funcend(start, end); return; }
+	if (id == 40) { tc_funcbodybegin(start, end); return; }
+	if (id == 41) { tc_funcdeclend(start, end); return; }
+	if (id == 42) { tc_funcbegin(start, end); return; }
+	if (id == 49) { tc_param(start, end); return; }
+	if (id == 51) { tc_blockend(start, end); return; }
+	if (id == 52) { tc_blockopen(start, end); return; }
+	if (id == 55) { tc_staticlocal(start, end); return; }
+	if (id == 56) { tc_staticlocalname(start, end); return; }
+	if (id == 58) { tc_staticruntimeinit(start, end); return; }
+	if (id == 59) { tc_switchend(start, end); return; }
+	if (id == 60) { tc_switchbegin(start, end); return; }
+	if (id == 61) { tc_switchcond(start, end); return; }
+	if (id == 63) { tc_casegroup_end(start, end); return; }
+	if (id == 64) { tc_caselabelrun_end(start, end); return; }
+	if (id == 65) { tc_caselabel(start, end); return; }
+	if (id == 71) { tc_defaultlabel(start, end); return; }
+	if (id == 74) { tc_localdecl(start, end); return; }
+	if (id == 75) { tc_varinit(start, end); return; }
+	if (id == 76) { tc_arrayinitstring(start, end); return; }
+	if (id == 82) { tc_assign(start, end); return; }
+	if (id == 83) { tc_chainassign(start, end); return; }
+	if (id == 84) { tc_assignop(start, end); return; }
+	if (id == 85) { tc_callstmt(start, end); return; }
+	if (id == 87) { tc_voidcast(start, end); return; }
+	if (id == 89) { tc_return(start, end); return; }
+	if (id == 90) { tc_retval(start, end); return; }
+	if (id == 91) { tc_ifend(start, end); return; }
+	if (id == 92) { tc_ifbegin(start, end); return; }
+	if (id == 94) { tc_ifcond(start, end); return; }
+	if (id == 95) { tc_thenend(start, end); return; }
+	if (id == 97) { tc_whileend(start, end); return; }
+	if (id == 98) { tc_whilebegin(start, end); return; }
+	if (id == 99) { tc_whilecond(start, end); return; }
+	if (id == 101) { tc_forend(start, end); return; }
+	if (id == 102) { tc_forbegin(start, end); return; }
+	if (id == 103) { tc_forsep1(start, end); return; }
+	if (id == 104) { tc_forsep2(start, end); return; }
+	if (id == 105) { tc_forclose(start, end); return; }
+	if (id == 106) { tc_assign(start, end); return; }
+	if (id == 107) { tc_forcond(start, end); return; }
+	if (id == 108) { tc_forstep(start, end); return; }
+	if (id == 110) { tc_doend(start, end); return; }
+	if (id == 111) { tc_dobegin(start, end); return; }
+	if (id == 112) { tc_dowhiletok(start, end); return; }
+	if (id == 113) { tc_docond(start, end); return; }
+	if (id == 116) { tc_break(start, end); return; }
+	if (id == 117) { tc_continue(start, end); return; }
+	if (id == 118) { tc_goto(start, end); return; }
+	if (id == 119) { tc_label(start, end); return; }
+	if (id == 121) { tc_ternaryend(start, end); return; }
+	if (id == 122) { tc_parenbegin(start, end); return; }
+	if (id == 123) { tc_parenend(start, end); return; }
+	if (id == 124) { tc_commaend(start, end); return; }
+	if (id == 125) { tc_commadrop(start, end); return; }
+	if (id == 127) { tc_commaassign(start, end); return; }
+	if (id == 128) { tc_commavalue(start, end); return; }
+	if (id == 129) { tc_ternarybegin(start, end); return; }
+	if (id == 131) { tc_ternarymiddle(start, end); return; }
+	if (id == 133) { tc_logicorend(start, end); return; }
+	if (id == 134) { tc_logicorop(start, end); return; }
+	if (id == 135) { tc_logicandend(start, end); return; }
+	if (id == 136) { tc_logicandop(start, end); return; }
+	if (id == 137) { tc_bitorend(start, end); return; }
+	if (id == 138) { tc_bitorop(start, end); return; }
+	if (id == 139) { tc_bitxorend(start, end); return; }
+	if (id == 140) { tc_bitxorop(start, end); return; }
+	if (id == 141) { tc_bitandend(start, end); return; }
+	if (id == 142) { tc_bitandop(start, end); return; }
+	if (id == 143) { tc_expr(start, end); return; }
+	if (id == 145) { tc_shiftrhs(start, end); return; }
+	if (id == 146) { tc_shiftop(start, end); return; }
+	if (id == 147) { tc_relop(start, end); return; }
+	if (id == 149) { tc_addop(start, end); return; }
+	if (id == 150) { tc_term(start, end); return; }
+	if (id == 151) { tc_mulop(start, end); return; }
+	if (id == 152) { tc_factor(start, end); return; }
+	if (id == 153) { tc_postfixindex(start, end); return; }
+	if (id == 154) { tc_string(start, end); return; }
+	if (id == 155) { tc_charlit(start, end); return; }
+	if (id == 163) { tc_neg(start, end); return; }
+	if (id == 164) { tc_addressref(start, end); return; }
+	if (id == 167) { tc_sizeof(start, end); return; }
+	if (id == 168) { tc_sizeofvar(start, end); return; }
+	if (id == 169) { tc_cast(start, end); return; }
+	if (id == 170) { tc_castcapture(start, end); return; }
+	if (id == 172) { tc_preincdec(start, end); return; }
+	if (id == 173) { tc_postincdec(start, end); return; }
+	if (id == 178) { tc_incdecstmt(start, end); return; }
+	if (id == 179) { tc_derefref(start, end); return; }
+	if (id == 180) { tc_call(start, end); return; }
+	if (id == 181) { tc_callmember(start, end); return; }
+	if (id == 182) { tc_indcall(start, end); return; }
+	if (id == 183) { tc_indcallbegin(start, end); return; }
+	if (id == 185) { tc_arg(start, end); return; }
+	if (id == 187) { tc_target(start, end); return; }
+	if (id == 188) { tc_indirecttarget(start, end); return; }
+	if (id == 189) { tc_varref(start, end); return; }
+	if (id == 190) { tc_arg(start, end); return; }
+	if (id == 191) { tc_callname(start, end); return; }
+	if (id == 193) { tc_defname(start, end); return; }
+	if (id == 195) { tc_local(start, end); return; }
+	if (id == 197) { tc_callname(start, end); return; }
+	if (id == 198) { tc_type(start, end); return; }
+	if (id == 202) { tc_pointerdecl(start, end); return; }
+	if (id == 205) { tc_number(start, end); return; }
+	if (id == 207) { tc_number(start, end); return; }
+	actionErrors++;
 }
 
 static int p_program(void);
@@ -4019,7 +4485,7 @@ static int p_externDecl(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L10;
 	p += 1;
-	actionLogPush(tc_externdeclend, entry, p);	/* ACTION AFTER externDecl */
+	actionLogPush(1, entry, p);	/* ACTION AFTER externDecl */
 	return 1;
 L10:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4034,7 +4500,7 @@ static int p_externName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L11;
-	actionLogPush(tc_externname, entry, p);	/* ACTION AFTER externName */
+	actionLogPush(2, entry, p);	/* ACTION AFTER externName */
 	return 1;
 L11:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4092,7 +4558,7 @@ L21:	;
 	sp--; goto L23;
 L22:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L23:	;
-	actionLogPush(tc_externparam, entry, p);	/* ACTION AFTER externParam */
+	actionLogPush(4, entry, p);	/* ACTION AFTER externParam */
 	return 1;
 L19:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4108,7 +4574,7 @@ static int p_ellipsisTok(void) {
 	ws();
 	if (strncmp(p, "...", 3) != 0) goto L24;
 	p += 3;
-	actionLogPush(tc_externvariadic, entry, p);	/* ACTION AFTER ellipsisTok */
+	actionLogPush(5, entry, p);	/* ACTION AFTER ellipsisTok */
 	return 1;
 L24:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4146,7 +4612,7 @@ L27:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L25;
 	p += 1;
-	actionLogPush(tc_enumdecl, entry, p);	/* ACTION AFTER enumDecl */
+	actionLogPush(6, entry, p);	/* ACTION AFTER enumDecl */
 	return 1;
 L25:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4178,7 +4644,7 @@ L30:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L28;
 	p += 1;
-	actionLogPush(tc_structend, entry, p);	/* ACTION AFTER structDecl */
+	actionLogPush(7, entry, p);	/* ACTION AFTER structDecl */
 	return 1;
 L28:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4193,7 +4659,7 @@ static int p_structName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L31;
-	actionLogPush(tc_structbegin, entry, p);	/* ACTION AFTER structName */
+	actionLogPush(8, entry, p);	/* ACTION AFTER structName */
 	return 1;
 L31:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4263,7 +4729,7 @@ L42:	;
 	sp--; goto L40;
 L39:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L40:	;
-	actionLogPush(tc_structfield, entry, p);	/* ACTION AFTER structDeclarator */
+	actionLogPush(11, entry, p);	/* ACTION AFTER structDeclarator */
 	return 1;
 L38:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4306,7 +4772,7 @@ L46:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L45;
 L47:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L44;
 L45:	sp--;
-	actionLogPush(tc_typedefend, entry, p);	/* ACTION AFTER typedefDecl */
+	actionLogPush(13, entry, p);	/* ACTION AFTER typedefDecl */
 	return 1;
 L44:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4344,7 +4810,7 @@ static int p_fnPtrTypedef(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L48;
 	p += 1;
-	actionLogPush(tc_fnptrtypedef, entry, p);	/* ACTION AFTER fnPtrTypedef */
+	actionLogPush(14, entry, p);	/* ACTION AFTER fnPtrTypedef */
 	return 1;
 L48:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4360,7 +4826,7 @@ static int p_fnPtrOpen(void) {
 	ws();
 	if (strncmp(p, "(", 1) != 0) goto L49;
 	p += 1;
-	actionLogPush(tc_fnptrbegin, entry, p);	/* ACTION AFTER fnPtrOpen */
+	actionLogPush(15, entry, p);	/* ACTION AFTER fnPtrOpen */
 	return 1;
 L49:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4455,7 +4921,7 @@ static int p_anonStructOpen(void) {
 	ws();
 	if (strncmp(p, "{", 1) != 0) goto L61;
 	p += 1;
-	actionLogPush(tc_anonstructbegin, entry, p);	/* ACTION AFTER anonStructOpen */
+	actionLogPush(20, entry, p);	/* ACTION AFTER anonStructOpen */
 	return 1;
 L61:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4512,7 +4978,7 @@ static int p_externGlobalDecl(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L67;
 	p += 1;
-	actionLogPush(tc_externglobaldecl, entry, p);	/* ACTION AFTER externGlobalDecl */
+	actionLogPush(23, entry, p);	/* ACTION AFTER externGlobalDecl */
 	return 1;
 L67:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4548,7 +5014,7 @@ L74:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L68;
 	p += 1;
-	actionLogPush(tc_globalend, entry, p);	/* ACTION AFTER plainGlobalDecl */
+	actionLogPush(24, entry, p);	/* ACTION AFTER plainGlobalDecl */
 	return 1;
 L68:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4596,7 +5062,7 @@ static int p_constKw(void) {
 	if (strncmp(p, "const", 5) != 0) goto L82;
 	if (idch((unsigned char)p[5])) goto L82;
 	p += 5;
-	actionLogPush(tc_const, entry, p);	/* ACTION AFTER constKw */
+	actionLogPush(26, entry, p);	/* ACTION AFTER constKw */
 	return 1;
 L82:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4613,7 +5079,7 @@ static int p_staticKw(void) {
 	if (strncmp(p, "static", 6) != 0) goto L83;
 	if (idch((unsigned char)p[6])) goto L83;
 	p += 6;
-	actionLogPush(tc_static, entry, p);	/* ACTION AFTER staticKw */
+	actionLogPush(27, entry, p);	/* ACTION AFTER staticKw */
 	return 1;
 L83:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4863,7 +5329,7 @@ L119:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L118;
 L120:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L117;
 L118:	sp--;
-	actionLogPush(tc_funcend, entry, p);	/* ACTION AFTER funcdef */
+	actionLogPush(38, entry, p);	/* ACTION AFTER funcdef */
 	return 1;
 L117:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4899,7 +5365,7 @@ static int p_funcBodyOpen(void) {
 	ws();
 	if (strncmp(p, "{", 1) != 0) goto L124;
 	p += 1;
-	actionLogPush(tc_funcbodybegin, entry, p);	/* ACTION AFTER funcBodyOpen */
+	actionLogPush(40, entry, p);	/* ACTION AFTER funcBodyOpen */
 	return 1;
 L124:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4915,7 +5381,7 @@ static int p_protoEnd(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L125;
 	p += 1;
-	actionLogPush(tc_funcdeclend, entry, p);	/* ACTION AFTER protoEnd */
+	actionLogPush(41, entry, p);	/* ACTION AFTER protoEnd */
 	return 1;
 L125:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -4942,7 +5408,7 @@ L130:	;
 	if (!p_pointerDecl()) goto L126;
 	if (!p_defName()) goto L126;
 	if (!p_funcParams()) goto L126;
-	actionLogPush(tc_funcbegin, entry, p);	/* ACTION AFTER funcHead */
+	actionLogPush(42, entry, p);	/* ACTION AFTER funcHead */
 	return 1;
 L126:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5082,7 +5548,7 @@ static int p_paramDecl(void) {
 	sp--; goto L148;
 L147:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L148:	;
-	actionLogPush(tc_param, entry, p);	/* ACTION AFTER paramDecl */
+	actionLogPush(49, entry, p);	/* ACTION AFTER paramDecl */
 	return 1;
 L146:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5121,7 +5587,7 @@ L152:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	ws();
 	if (strncmp(p, "}", 1) != 0) goto L150;
 	p += 1;
-	actionLogPush(tc_blockend, entry, p);	/* ACTION AFTER block */
+	actionLogPush(51, entry, p);	/* ACTION AFTER block */
 	return 1;
 L150:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5137,7 +5603,7 @@ static int p_blockOpen(void) {
 	ws();
 	if (strncmp(p, "{", 1) != 0) goto L153;
 	p += 1;
-	actionLogPush(tc_blockopen, entry, p);	/* ACTION AFTER blockOpen */
+	actionLogPush(52, entry, p);	/* ACTION AFTER blockOpen */
 	return 1;
 L153:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5256,7 +5722,7 @@ L181:	;
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L177;
 	p += 1;
-	actionLogPush(tc_staticlocal, entry, p);	/* ACTION AFTER staticVarDecl */
+	actionLogPush(55, entry, p);	/* ACTION AFTER staticVarDecl */
 	return 1;
 L177:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5271,7 +5737,7 @@ static int p_staticLocalName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L182;
-	actionLogPush(tc_staticlocalname, entry, p);	/* ACTION AFTER staticLocalName */
+	actionLogPush(56, entry, p);	/* ACTION AFTER staticLocalName */
 	return 1;
 L182:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5305,7 +5771,7 @@ static int p_staticRuntimeInit(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L187;
-	actionLogPush(tc_staticruntimeinit, entry, p);	/* ACTION AFTER staticRuntimeInit */
+	actionLogPush(58, entry, p);	/* ACTION AFTER staticRuntimeInit */
 	return 1;
 L187:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5339,7 +5805,7 @@ L190:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L191:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L192:	;
 	if (!p_switchClose()) goto L188;
-	actionLogPush(tc_switchend, entry, p);	/* ACTION AFTER switchStmt */
+	actionLogPush(59, entry, p);	/* ACTION AFTER switchStmt */
 	return 1;
 L188:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5356,7 +5822,7 @@ static int p_switchKw(void) {
 	if (strncmp(p, "switch", 6) != 0) goto L193;
 	if (idch((unsigned char)p[6])) goto L193;
 	p += 6;
-	actionLogPush(tc_switchbegin, entry, p);	/* ACTION AFTER switchKw */
+	actionLogPush(60, entry, p);	/* ACTION AFTER switchKw */
 	return 1;
 L193:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5370,7 +5836,7 @@ static int p_switchCond(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L194;
-	actionLogPush(tc_switchcond, entry, p);	/* ACTION AFTER switchCond */
+	actionLogPush(61, entry, p);	/* ACTION AFTER switchCond */
 	return 1;
 L194:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5400,7 +5866,7 @@ static int p_caseGroup(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_caseLabelRun()) goto L196;
 	if (!p_caseBody()) goto L196;
-	actionLogPush(tc_casegroup_end, entry, p);	/* ACTION AFTER caseGroup */
+	actionLogPush(63, entry, p);	/* ACTION AFTER caseGroup */
 	return 1;
 L196:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5418,7 +5884,7 @@ L198:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_caseLabel()) goto L199;
 	sp--; goto L198;
 L199:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	actionLogPush(tc_caselabelrun_end, entry, p);	/* ACTION AFTER caseLabelRun */
+	actionLogPush(64, entry, p);	/* ACTION AFTER caseLabelRun */
 	return 1;
 L197:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5439,7 +5905,7 @@ static int p_caseLabel(void) {
 	ws();
 	if (strncmp(p, ":", 1) != 0) goto L200;
 	p += 1;
-	actionLogPush(tc_caselabel, entry, p);	/* ACTION AFTER caseLabel */
+	actionLogPush(65, entry, p);	/* ACTION AFTER caseLabel */
 	return 1;
 L200:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5551,7 +6017,7 @@ static int p_defaultLabel(void) {
 	ws();
 	if (strncmp(p, ":", 1) != 0) goto L214;
 	p += 1;
-	actionLogPush(tc_defaultlabel, entry, p);	/* ACTION AFTER defaultLabel */
+	actionLogPush(71, entry, p);	/* ACTION AFTER defaultLabel */
 	return 1;
 L214:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5626,7 +6092,7 @@ L227:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	sp--; goto L225;
 L224:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L225:	;
-	actionLogPush(tc_localdecl, entry, p);	/* ACTION AFTER localDecl */
+	actionLogPush(74, entry, p);	/* ACTION AFTER localDecl */
 	return 1;
 L223:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5650,7 +6116,7 @@ L231:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L229;
 L232:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L228;
 L229:	sp--;
-	actionLogPush(tc_varinit, entry, p);	/* ACTION AFTER varInit */
+	actionLogPush(75, entry, p);	/* ACTION AFTER varInit */
 	return 1;
 L228:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5665,7 +6131,7 @@ static int p_arrayStringInit(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_stringLit()) goto L233;
-	actionLogPush(tc_arrayinitstring, entry, p);	/* ACTION AFTER arrayStringInit */
+	actionLogPush(76, entry, p);	/* ACTION AFTER arrayStringInit */
 	return 1;
 L233:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5808,7 +6274,7 @@ L254:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L253;
 L255:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L252;
 L253:	sp--;
-	actionLogPush(tc_assign, entry, p);	/* ACTION AFTER assignStmt */
+	actionLogPush(82, entry, p);	/* ACTION AFTER assignStmt */
 	return 1;
 L252:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5829,7 +6295,7 @@ static int p_chainAssign(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L256;
 	p += 1;
-	actionLogPush(tc_chainassign, entry, p);	/* ACTION AFTER chainAssign */
+	actionLogPush(83, entry, p);	/* ACTION AFTER chainAssign */
 	return 1;
 L256:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5900,7 +6366,7 @@ L268:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L258;
 L269:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L257;
 L258:	sp--;
-	actionLogPush(tc_assignop, entry, p);	/* ACTION AFTER assignop */
+	actionLogPush(84, entry, p);	/* ACTION AFTER assignop */
 	return 1;
 L257:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5927,7 +6393,7 @@ L272:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L271;
 L273:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L270;
 L271:	sp--;
-	actionLogPush(tc_callstmt, entry, p);	/* ACTION AFTER callStmt */
+	actionLogPush(85, entry, p);	/* ACTION AFTER callStmt */
 	return 1;
 L270:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5960,7 +6426,7 @@ static int p_voidCastStmt(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L275;
 	p += 1;
-	actionLogPush(tc_voidcast, entry, p);	/* ACTION AFTER voidCastStmt */
+	actionLogPush(87, entry, p);	/* ACTION AFTER voidCastStmt */
 	return 1;
 L275:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6007,7 +6473,7 @@ L279:	;
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L277;
 	p += 1;
-	actionLogPush(tc_return, entry, p);	/* ACTION AFTER returnStmt */
+	actionLogPush(89, entry, p);	/* ACTION AFTER returnStmt */
 	return 1;
 L277:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6021,7 +6487,7 @@ static int p_retVal(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L280;
-	actionLogPush(tc_retval, entry, p);	/* ACTION AFTER retVal */
+	actionLogPush(90, entry, p);	/* ACTION AFTER retVal */
 	return 1;
 L280:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6049,7 +6515,7 @@ static int p_ifStmt(void) {
 	sp--; goto L283;
 L282:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L283:	;
-	actionLogPush(tc_ifend, entry, p);	/* ACTION AFTER ifStmt */
+	actionLogPush(91, entry, p);	/* ACTION AFTER ifStmt */
 	return 1;
 L281:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6066,7 +6532,7 @@ static int p_ifKw(void) {
 	if (strncmp(p, "if", 2) != 0) goto L284;
 	if (idch((unsigned char)p[2])) goto L284;
 	p += 2;
-	actionLogPush(tc_ifbegin, entry, p);	/* ACTION AFTER ifKw */
+	actionLogPush(92, entry, p);	/* ACTION AFTER ifKw */
 	return 1;
 L284:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6096,7 +6562,7 @@ static int p_ifCond(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L286;
-	actionLogPush(tc_ifcond, entry, p);	/* ACTION AFTER ifCond */
+	actionLogPush(94, entry, p);	/* ACTION AFTER ifCond */
 	return 1;
 L286:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6110,7 +6576,7 @@ static int p_thenPart(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_statement()) goto L287;
-	actionLogPush(tc_thenend, entry, p);	/* ACTION AFTER thenPart */
+	actionLogPush(95, entry, p);	/* ACTION AFTER thenPart */
 	return 1;
 L287:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6145,7 +6611,7 @@ static int p_whileStmt(void) {
 	if (strncmp(p, ")", 1) != 0) goto L289;
 	p += 1;
 	if (!p_whileBody()) goto L289;
-	actionLogPush(tc_whileend, entry, p);	/* ACTION AFTER whileStmt */
+	actionLogPush(97, entry, p);	/* ACTION AFTER whileStmt */
 	return 1;
 L289:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6162,7 +6628,7 @@ static int p_whileKw(void) {
 	if (strncmp(p, "while", 5) != 0) goto L290;
 	if (idch((unsigned char)p[5])) goto L290;
 	p += 5;
-	actionLogPush(tc_whilebegin, entry, p);	/* ACTION AFTER whileKw */
+	actionLogPush(98, entry, p);	/* ACTION AFTER whileKw */
 	return 1;
 L290:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6176,7 +6642,7 @@ static int p_whileCond(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L291;
-	actionLogPush(tc_whilecond, entry, p);	/* ACTION AFTER whileCond */
+	actionLogPush(99, entry, p);	/* ACTION AFTER whileCond */
 	return 1;
 L291:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6225,7 +6691,7 @@ L298:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L299:	;
 	if (!p_forClose()) goto L293;
 	if (!p_forBody()) goto L293;
-	actionLogPush(tc_forend, entry, p);	/* ACTION AFTER forStmt */
+	actionLogPush(101, entry, p);	/* ACTION AFTER forStmt */
 	return 1;
 L293:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6242,7 +6708,7 @@ static int p_forKw(void) {
 	if (strncmp(p, "for", 3) != 0) goto L300;
 	if (idch((unsigned char)p[3])) goto L300;
 	p += 3;
-	actionLogPush(tc_forbegin, entry, p);	/* ACTION AFTER forKw */
+	actionLogPush(102, entry, p);	/* ACTION AFTER forKw */
 	return 1;
 L300:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6258,7 +6724,7 @@ static int p_forSep1(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L301;
 	p += 1;
-	actionLogPush(tc_forsep1, entry, p);	/* ACTION AFTER forSep1 */
+	actionLogPush(103, entry, p);	/* ACTION AFTER forSep1 */
 	return 1;
 L301:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6274,7 +6740,7 @@ static int p_forSep2(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L302;
 	p += 1;
-	actionLogPush(tc_forsep2, entry, p);	/* ACTION AFTER forSep2 */
+	actionLogPush(104, entry, p);	/* ACTION AFTER forSep2 */
 	return 1;
 L302:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6290,7 +6756,7 @@ static int p_forClose(void) {
 	ws();
 	if (strncmp(p, ")", 1) != 0) goto L303;
 	p += 1;
-	actionLogPush(tc_forclose, entry, p);	/* ACTION AFTER forClose */
+	actionLogPush(105, entry, p);	/* ACTION AFTER forClose */
 	return 1;
 L303:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6306,7 +6772,7 @@ static int p_forInit(void) {
 	if (!p_target()) goto L304;
 	if (!p_assignop()) goto L304;
 	if (!p_expr()) goto L304;
-	actionLogPush(tc_assign, entry, p);	/* ACTION AFTER forInit */
+	actionLogPush(106, entry, p);	/* ACTION AFTER forInit */
 	return 1;
 L304:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6320,7 +6786,7 @@ static int p_forCond(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L305;
-	actionLogPush(tc_forcond, entry, p);	/* ACTION AFTER forCond */
+	actionLogPush(107, entry, p);	/* ACTION AFTER forCond */
 	return 1;
 L305:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6346,7 +6812,7 @@ L309:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L307;
 L310:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L306;
 L307:	sp--;
-	actionLogPush(tc_forstep, entry, p);	/* ACTION AFTER forStep */
+	actionLogPush(108, entry, p);	/* ACTION AFTER forStep */
 	return 1;
 L306:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6383,7 +6849,7 @@ static int p_doStmt(void) {
 	if (strncmp(p, ")", 1) != 0) goto L312;
 	p += 1;
 	if (!p_doClose()) goto L312;
-	actionLogPush(tc_doend, entry, p);	/* ACTION AFTER doStmt */
+	actionLogPush(110, entry, p);	/* ACTION AFTER doStmt */
 	return 1;
 L312:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6400,7 +6866,7 @@ static int p_doKw(void) {
 	if (strncmp(p, "do", 2) != 0) goto L313;
 	if (idch((unsigned char)p[2])) goto L313;
 	p += 2;
-	actionLogPush(tc_dobegin, entry, p);	/* ACTION AFTER doKw */
+	actionLogPush(111, entry, p);	/* ACTION AFTER doKw */
 	return 1;
 L313:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6417,7 +6883,7 @@ static int p_doWhileTok(void) {
 	if (strncmp(p, "while", 5) != 0) goto L314;
 	if (idch((unsigned char)p[5])) goto L314;
 	p += 5;
-	actionLogPush(tc_dowhiletok, entry, p);	/* ACTION AFTER doWhileTok */
+	actionLogPush(112, entry, p);	/* ACTION AFTER doWhileTok */
 	return 1;
 L314:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6431,7 +6897,7 @@ static int p_doCond(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L315;
-	actionLogPush(tc_docond, entry, p);	/* ACTION AFTER doCond */
+	actionLogPush(113, entry, p);	/* ACTION AFTER doCond */
 	return 1;
 L315:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6479,7 +6945,7 @@ static int p_breakStmt(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L318;
 	p += 1;
-	actionLogPush(tc_break, entry, p);	/* ACTION AFTER breakStmt */
+	actionLogPush(116, entry, p);	/* ACTION AFTER breakStmt */
 	return 1;
 L318:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6499,7 +6965,7 @@ static int p_continueStmt(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L319;
 	p += 1;
-	actionLogPush(tc_continue, entry, p);	/* ACTION AFTER continueStmt */
+	actionLogPush(117, entry, p);	/* ACTION AFTER continueStmt */
 	return 1;
 L319:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6521,7 +6987,7 @@ static int p_gotoStmt(void) {
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L320;
 	p += 1;
-	actionLogPush(tc_goto, entry, p);	/* ACTION AFTER gotoStmt */
+	actionLogPush(118, entry, p);	/* ACTION AFTER gotoStmt */
 	return 1;
 L320:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6539,7 +7005,7 @@ static int p_labelStmt(void) {
 	ws();
 	if (strncmp(p, ":", 1) != 0) goto L321;
 	p += 1;
-	actionLogPush(tc_label, entry, p);	/* ACTION AFTER labelStmt */
+	actionLogPush(119, entry, p);	/* ACTION AFTER labelStmt */
 	return 1;
 L321:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6574,7 +7040,7 @@ static int p_conditionalExpr(void) {
 	sp--; goto L325;
 L324:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L325:	;
-	actionLogPush(tc_ternaryend, entry, p);	/* ACTION AFTER conditionalExpr */
+	actionLogPush(121, entry, p);	/* ACTION AFTER conditionalExpr */
 	return 1;
 L323:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6590,7 +7056,7 @@ static int p_parenOpen(void) {
 	ws();
 	if (strncmp(p, "(", 1) != 0) goto L326;
 	p += 1;
-	actionLogPush(tc_parenbegin, entry, p);	/* ACTION AFTER parenOpen */
+	actionLogPush(122, entry, p);	/* ACTION AFTER parenOpen */
 	return 1;
 L326:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6606,7 +7072,7 @@ static int p_parenClose(void) {
 	ws();
 	if (strncmp(p, ")", 1) != 0) goto L327;
 	p += 1;
-	actionLogPush(tc_parenend, entry, p);	/* ACTION AFTER parenClose */
+	actionLogPush(123, entry, p);	/* ACTION AFTER parenClose */
 	return 1;
 L327:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6625,7 +7091,7 @@ L329:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_commaItem()) goto L330;
 	sp--; goto L329;
 L330:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	actionLogPush(tc_commaend, entry, p);	/* ACTION AFTER commaExpr */
+	actionLogPush(124, entry, p);	/* ACTION AFTER commaExpr */
 	return 1;
 L328:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6641,7 +7107,7 @@ static int p_commaTok(void) {
 	ws();
 	if (strncmp(p, ",", 1) != 0) goto L331;
 	p += 1;
-	actionLogPush(tc_commadrop, entry, p);	/* ACTION AFTER commaTok */
+	actionLogPush(125, entry, p);	/* ACTION AFTER commaTok */
 	return 1;
 L331:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6677,7 +7143,7 @@ static int p_commaAssign(void) {
 	if (!p_target()) goto L336;
 	if (!p_assignop()) goto L336;
 	if (!p_expr()) goto L336;
-	actionLogPush(tc_commaassign, entry, p);	/* ACTION AFTER commaAssign */
+	actionLogPush(127, entry, p);	/* ACTION AFTER commaAssign */
 	return 1;
 L336:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6691,7 +7157,7 @@ static int p_commaValue(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L337;
-	actionLogPush(tc_commavalue, entry, p);	/* ACTION AFTER commaValue */
+	actionLogPush(128, entry, p);	/* ACTION AFTER commaValue */
 	return 1;
 L337:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6707,7 +7173,7 @@ static int p_qmark(void) {
 	ws();
 	if (strncmp(p, "?", 1) != 0) goto L338;
 	p += 1;
-	actionLogPush(tc_ternarybegin, entry, p);	/* ACTION AFTER qmark */
+	actionLogPush(129, entry, p);	/* ACTION AFTER qmark */
 	return 1;
 L338:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6736,7 +7202,7 @@ static int p_colon(void) {
 	ws();
 	if (strncmp(p, ":", 1) != 0) goto L340;
 	p += 1;
-	actionLogPush(tc_ternarymiddle, entry, p);	/* ACTION AFTER colon */
+	actionLogPush(131, entry, p);	/* ACTION AFTER colon */
 	return 1;
 L340:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6769,7 +7235,7 @@ static int p_orExpr(void) {
 	sp--; goto L344;
 L343:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L344:	;
-	actionLogPush(tc_logicorend, entry, p);	/* ACTION AFTER orExpr */
+	actionLogPush(133, entry, p);	/* ACTION AFTER orExpr */
 	return 1;
 L342:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6785,7 +7251,7 @@ static int p_orop(void) {
 	ws();
 	if (strncmp(p, "||", 2) != 0) goto L345;
 	p += 2;
-	actionLogPush(tc_logicorop, entry, p);	/* ACTION AFTER orop */
+	actionLogPush(134, entry, p);	/* ACTION AFTER orop */
 	return 1;
 L345:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6805,7 +7271,7 @@ static int p_andExpr(void) {
 	sp--; goto L348;
 L347:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L348:	;
-	actionLogPush(tc_logicandend, entry, p);	/* ACTION AFTER andExpr */
+	actionLogPush(135, entry, p);	/* ACTION AFTER andExpr */
 	return 1;
 L346:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6821,7 +7287,7 @@ static int p_andop(void) {
 	ws();
 	if (strncmp(p, "&&", 2) != 0) goto L349;
 	p += 2;
-	actionLogPush(tc_logicandop, entry, p);	/* ACTION AFTER andop */
+	actionLogPush(136, entry, p);	/* ACTION AFTER andop */
 	return 1;
 L349:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6841,7 +7307,7 @@ static int p_bitOrExpr(void) {
 	sp--; goto L352;
 L351:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L352:	;
-	actionLogPush(tc_bitorend, entry, p);	/* ACTION AFTER bitOrExpr */
+	actionLogPush(137, entry, p);	/* ACTION AFTER bitOrExpr */
 	return 1;
 L350:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6859,7 +7325,7 @@ static int p_bitorop(void) {
 	if (strncmp(p, "|=", 2) == 0) goto L353;	/* Longest-Match */
 	if (strncmp(p, "||", 2) == 0) goto L353;	/* Longest-Match */
 	p += 1;
-	actionLogPush(tc_bitorop, entry, p);	/* ACTION AFTER bitorop */
+	actionLogPush(138, entry, p);	/* ACTION AFTER bitorop */
 	return 1;
 L353:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6879,7 +7345,7 @@ static int p_bitXorExpr(void) {
 	sp--; goto L356;
 L355:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L356:	;
-	actionLogPush(tc_bitxorend, entry, p);	/* ACTION AFTER bitXorExpr */
+	actionLogPush(139, entry, p);	/* ACTION AFTER bitXorExpr */
 	return 1;
 L354:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6896,7 +7362,7 @@ static int p_bitxorop(void) {
 	if (strncmp(p, "^", 1) != 0) goto L357;
 	if (strncmp(p, "^=", 2) == 0) goto L357;	/* Longest-Match */
 	p += 1;
-	actionLogPush(tc_bitxorop, entry, p);	/* ACTION AFTER bitxorop */
+	actionLogPush(140, entry, p);	/* ACTION AFTER bitxorop */
 	return 1;
 L357:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6916,7 +7382,7 @@ static int p_bitAndExpr(void) {
 	sp--; goto L360;
 L359:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L360:	;
-	actionLogPush(tc_bitandend, entry, p);	/* ACTION AFTER bitAndExpr */
+	actionLogPush(141, entry, p);	/* ACTION AFTER bitAndExpr */
 	return 1;
 L358:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6934,7 +7400,7 @@ static int p_bitandop(void) {
 	if (strncmp(p, "&=", 2) == 0) goto L361;	/* Longest-Match */
 	if (strncmp(p, "&&", 2) == 0) goto L361;	/* Longest-Match */
 	p += 1;
-	actionLogPush(tc_bitandop, entry, p);	/* ACTION AFTER bitandop */
+	actionLogPush(142, entry, p);	/* ACTION AFTER bitandop */
 	return 1;
 L361:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6954,7 +7420,7 @@ static int p_comparison(void) {
 	sp--; goto L364;
 L363:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L364:	;
-	actionLogPush(tc_expr, entry, p);	/* ACTION AFTER comparison */
+	actionLogPush(143, entry, p);	/* ACTION AFTER comparison */
 	return 1;
 L362:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -6986,7 +7452,7 @@ static int p_shiftRhs(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_addExpr()) goto L368;
-	actionLogPush(tc_shiftrhs, entry, p);	/* ACTION AFTER shiftRhs */
+	actionLogPush(145, entry, p);	/* ACTION AFTER shiftRhs */
 	return 1;
 L368:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7013,7 +7479,7 @@ L371:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L370;
 L372:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L369;
 L370:	sp--;
-	actionLogPush(tc_shiftop, entry, p);	/* ACTION AFTER shiftop */
+	actionLogPush(146, entry, p);	/* ACTION AFTER shiftop */
 	return 1;
 L369:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7064,7 +7530,7 @@ L379:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L374;
 L380:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L373;
 L374:	sp--;
-	actionLogPush(tc_relop, entry, p);	/* ACTION AFTER relop */
+	actionLogPush(147, entry, p);	/* ACTION AFTER relop */
 	return 1;
 L373:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7112,7 +7578,7 @@ L386:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L385;
 L387:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L384;
 L385:	sp--;
-	actionLogPush(tc_addop, entry, p);	/* ACTION AFTER addop */
+	actionLogPush(149, entry, p);	/* ACTION AFTER addop */
 	return 1;
 L384:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7131,7 +7597,7 @@ L389:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_factor()) goto L390;
 	sp--; goto L389;
 L390:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	actionLogPush(tc_term, entry, p);	/* ACTION AFTER term */
+	actionLogPush(150, entry, p);	/* ACTION AFTER term */
 	return 1;
 L388:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7164,7 +7630,7 @@ L394:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L392;
 L395:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L391;
 L392:	sp--;
-	actionLogPush(tc_mulop, entry, p);	/* ACTION AFTER mulop */
+	actionLogPush(151, entry, p);	/* ACTION AFTER mulop */
 	return 1;
 L391:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7244,7 +7710,7 @@ L415:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L397;
 L418:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L396;
 L397:	sp--;
-	actionLogPush(tc_factor, entry, p);	/* ACTION AFTER factor */
+	actionLogPush(152, entry, p);	/* ACTION AFTER factor */
 	return 1;
 L396:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7258,7 +7724,7 @@ static int p_postfixIndex(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_index()) goto L419;
-	actionLogPush(tc_postfixindex, entry, p);	/* ACTION AFTER postfixIndex */
+	actionLogPush(153, entry, p);	/* ACTION AFTER postfixIndex */
 	return 1;
 L419:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7278,7 +7744,7 @@ L421:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 L422:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	if (strncmp(p, "\"", 1) != 0) goto L420;
 	p += 1;
-	actionLogPush(tc_string, entry, p);	/* ACTION AFTER stringLit */
+	actionLogPush(154, entry, p);	/* ACTION AFTER stringLit */
 	return 1;
 L420:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7295,7 +7761,7 @@ static int p_charLit(void) {
 	if (!p_charLitBody()) goto L423;
 	if (strncmp(p, "'", 1) != 0) goto L423;
 	p += 1;
-	actionLogPush(tc_charlit, entry, p);	/* ACTION AFTER charLit */
+	actionLogPush(155, entry, p);	/* ACTION AFTER charLit */
 	return 1;
 L423:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7472,7 +7938,7 @@ L451:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 L452:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L448;
 L449:	sp--;
 	if (!p_factor()) goto L448;
-	actionLogPush(tc_neg, entry, p);	/* ACTION AFTER negFactor */
+	actionLogPush(163, entry, p);	/* ACTION AFTER negFactor */
 	return 1;
 L448:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7497,7 +7963,7 @@ static int p_addressRef(void) {
 	sp--; goto L455;
 L454:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L455:	;
-	actionLogPush(tc_addressref, entry, p);	/* ACTION AFTER addressRef */
+	actionLogPush(164, entry, p);	/* ACTION AFTER addressRef */
 	return 1;
 L453:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7555,7 +8021,7 @@ static int p_sizeofType(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_type()) goto L461;
 	if (!p_pointerDecl()) goto L461;
-	actionLogPush(tc_sizeof, entry, p);	/* ACTION AFTER sizeofType */
+	actionLogPush(167, entry, p);	/* ACTION AFTER sizeofType */
 	return 1;
 L461:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7570,7 +8036,7 @@ static int p_sizeofVarName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L462;
-	actionLogPush(tc_sizeofvar, entry, p);	/* ACTION AFTER sizeofVarName */
+	actionLogPush(168, entry, p);	/* ACTION AFTER sizeofVarName */
 	return 1;
 L462:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7591,7 +8057,7 @@ static int p_castExpr(void) {
 	if (strncmp(p, ")", 1) != 0) goto L463;
 	p += 1;
 	if (!p_castOperand()) goto L463;
-	actionLogPush(tc_cast, entry, p);	/* ACTION AFTER castExpr */
+	actionLogPush(169, entry, p);	/* ACTION AFTER castExpr */
 	return 1;
 L463:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7606,7 +8072,7 @@ static int p_castType(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_type()) goto L464;
 	if (!p_pointerDecl()) goto L464;
-	actionLogPush(tc_castcapture, entry, p);	/* ACTION AFTER castType */
+	actionLogPush(170, entry, p);	/* ACTION AFTER castType */
 	return 1;
 L464:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7651,7 +8117,7 @@ L470:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L467;
 L471:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L466;
 L467:	sp--;
-	actionLogPush(tc_preincdec, entry, p);	/* ACTION AFTER preIncDec */
+	actionLogPush(172, entry, p);	/* ACTION AFTER preIncDec */
 	return 1;
 L466:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7683,7 +8149,7 @@ L476:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L473;
 L477:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L472;
 L473:	sp--;
-	actionLogPush(tc_postincdec, entry, p);	/* ACTION AFTER postIncDec */
+	actionLogPush(173, entry, p);	/* ACTION AFTER postIncDec */
 	return 1;
 L472:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7788,7 +8254,7 @@ L487:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L486;
 L488:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L485;
 L486:	sp--;
-	actionLogPush(tc_incdecstmt, entry, p);	/* ACTION AFTER incDecStmt */
+	actionLogPush(178, entry, p);	/* ACTION AFTER incDecStmt */
 	return 1;
 L485:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7806,7 +8272,7 @@ static int p_derefRef(void) {
 	if (strncmp(p, "*=", 2) == 0) goto L489;	/* Longest-Match */
 	p += 1;
 	if (!p_factor()) goto L489;
-	actionLogPush(tc_derefref, entry, p);	/* ACTION AFTER derefRef */
+	actionLogPush(179, entry, p);	/* ACTION AFTER derefRef */
 	return 1;
 L489:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7827,7 +8293,7 @@ static int p_call(void) {
 	ws();
 	if (strncmp(p, ")", 1) != 0) goto L490;
 	p += 1;
-	actionLogPush(tc_call, entry, p);	/* ACTION AFTER call */
+	actionLogPush(180, entry, p);	/* ACTION AFTER call */
 	return 1;
 L490:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7846,7 +8312,7 @@ static int p_callMember(void) {
 	sp--; goto L493;
 L492:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L493:	;
-	actionLogPush(tc_callmember, entry, p);	/* ACTION AFTER callMember */
+	actionLogPush(181, entry, p);	/* ACTION AFTER callMember */
 	return 1;
 L491:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7865,7 +8331,7 @@ static int p_indirectCall(void) {
 	ws();
 	if (strncmp(p, ")", 1) != 0) goto L494;
 	p += 1;
-	actionLogPush(tc_indcall, entry, p);	/* ACTION AFTER indirectCall */
+	actionLogPush(182, entry, p);	/* ACTION AFTER indirectCall */
 	return 1;
 L494:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7881,7 +8347,7 @@ static int p_indCallOpen(void) {
 	ws();
 	if (strncmp(p, "(", 1) != 0) goto L495;
 	p += 1;
-	actionLogPush(tc_indcallbegin, entry, p);	/* ACTION AFTER indCallOpen */
+	actionLogPush(183, entry, p);	/* ACTION AFTER indCallOpen */
 	return 1;
 L495:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7919,7 +8385,7 @@ static int p_arg(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	if (!p_expr()) goto L501;
-	actionLogPush(tc_arg, entry, p);	/* ACTION AFTER arg */
+	actionLogPush(185, entry, p);	/* ACTION AFTER arg */
 	return 1;
 L501:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7973,7 +8439,7 @@ L514:	;
 	sp--; goto L512;
 L511:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L512:	;
-	actionLogPush(tc_target, entry, p);	/* ACTION AFTER directTarget */
+	actionLogPush(187, entry, p);	/* ACTION AFTER directTarget */
 	return 1;
 L506:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -7991,7 +8457,7 @@ static int p_indirectTarget(void) {
 	if (strncmp(p, "*=", 2) == 0) goto L515;	/* Longest-Match */
 	p += 1;
 	if (!p_factor()) goto L515;
-	actionLogPush(tc_indirecttarget, entry, p);	/* ACTION AFTER indirectTarget */
+	actionLogPush(188, entry, p);	/* ACTION AFTER indirectTarget */
 	return 1;
 L515:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8025,7 +8491,7 @@ L524:	;
 	sp--; goto L522;
 L521:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L522:	;
-	actionLogPush(tc_varref, entry, p);	/* ACTION AFTER varRef */
+	actionLogPush(189, entry, p);	/* ACTION AFTER varRef */
 	return 1;
 L516:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8043,7 +8509,7 @@ static int p_index(void) {
 	ws();
 	if (strncmp(p, "]", 1) != 0) goto L525;
 	p += 1;
-	actionLogPush(tc_arg, entry, p);	/* ACTION AFTER index */
+	actionLogPush(190, entry, p);	/* ACTION AFTER index */
 	return 1;
 L525:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8059,7 +8525,7 @@ static int p_indexOpen(void) {
 	ws();
 	if (strncmp(p, "[", 1) != 0) goto L526;
 	p += 1;
-	actionLogPush(tc_callname, entry, p);	/* ACTION AFTER indexOpen */
+	actionLogPush(191, entry, p);	/* ACTION AFTER indexOpen */
 	return 1;
 L526:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8101,7 +8567,7 @@ static int p_defName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L531;
-	actionLogPush(tc_defname, entry, p);	/* ACTION AFTER defName */
+	actionLogPush(193, entry, p);	/* ACTION AFTER defName */
 	return 1;
 L531:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8130,7 +8596,7 @@ static int p_localName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L533;
-	actionLogPush(tc_local, entry, p);	/* ACTION AFTER localName */
+	actionLogPush(195, entry, p);	/* ACTION AFTER localName */
 	return 1;
 L533:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8159,7 +8625,7 @@ static int p_funcName(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
 	if (!p_ident()) goto L535;
-	actionLogPush(tc_callname, entry, p);	/* ACTION AFTER funcName */
+	actionLogPush(197, entry, p);	/* ACTION AFTER funcName */
 	return 1;
 L535:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8228,7 +8694,7 @@ L545:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L537;
 L546:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L536;
 L537:	sp--;
-	actionLogPush(tc_type, entry, p);	/* ACTION AFTER type */
+	actionLogPush(198, entry, p);	/* ACTION AFTER type */
 	return 1;
 L536:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8287,7 +8753,7 @@ L551:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_pointerStar()) goto L552;
 	sp--; goto L551;
 L552:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	actionLogPush(tc_pointerdecl, entry, p);	/* ACTION AFTER pointerDecl */
+	actionLogPush(202, entry, p);	/* ACTION AFTER pointerDecl */
 	return 1;
 L550:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8362,7 +8828,7 @@ L561:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L560;
 L562:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L559;
 L560:	sp--;
-	actionLogPush(tc_number, entry, p);	/* ACTION AFTER boolLit */
+	actionLogPush(205, entry, p);	/* ACTION AFTER boolLit */
 	return 1;
 L559:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8405,7 +8871,7 @@ L571:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L570;
 L572:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L569;
 L570:	sp--;
-	actionLogPush(tc_number, entry, p);	/* ACTION AFTER number */
+	actionLogPush(207, entry, p);	/* ACTION AFTER number */
 	return 1;
 L569:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -8529,7 +8995,7 @@ L593:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
-#define INPUT_FILE_MAX 262144
+#define INPUT_FILE_MAX 524288
 static char* inputFileBuf;
 
 int main(int argc, char** argv) {
