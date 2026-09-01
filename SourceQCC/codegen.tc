@@ -1207,6 +1207,15 @@ int genParserC(char* path) {
 	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
 	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
 	fprintf(fp, "static const char* p;\n");
+	/* Anker fuer Positionsangaben im Nutzercode (2026-09-01): der Zeiger p
+	   wandert waehrend des Parsens, der Anfang der Eingabe bleibt stehen. Aus
+	   beidem kann eine Aktion Zeile und Spalte zaehlen -- ohne diesen Anker
+	   kann eine Diagnose keinen Ort nennen. */
+	fprintf(fp, "static const char* parserInputStart;\n");
+	/* Spanne der gerade abgespielten Aktion. Hilfsfunktionen ohne eigene
+	   Spanne koennen daran den Ort einer Meldung festmachen -- der Zeiger p
+	   steht beim Abspielen laengst am Eingabeende und taugt dafuer nicht. */
+	fprintf(fp, "static const char* parserActionAt;\n");
 	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
 	/* 2026-08-11: Fehlerzaehler fuer die ACTION-Routinen. Ohne ihn meldete ein
 	   erzeugter Parser semantische Fehler zwar auf stderr, endete aber mit
@@ -1311,7 +1320,7 @@ int genParserC(char* path) {
 		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
 		fprintf(fp, "\tactionLogLen++;\n}\n");
 		fprintf(fp, "static void actionLogReplay(void) {\n");
-		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLog[i].fn(actionLog[i].start, actionLog[i].end);\n}\n\n");
+		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) { parserActionAt = actionLog[i].start; actionLog[i].fn(actionLog[i].start, actionLog[i].end); }\n}\n\n");
 		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
 		r = 0;
 		while (r < routinesCCnt) {
@@ -1377,6 +1386,9 @@ int genParserC(char* path) {
 	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
 	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
 	fprintf(fp, "\t} else p = argv[1];\n");
+	/* Beide Zweige oben setzen p; eine Zuweisung dahinter deckt deshalb den
+	   Datei- UND den Kommandozeilenfall ab. */
+	fprintf(fp, "\tparserInputStart = p;\n");
 	/* actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input
 	   erkannt) -- nur dann steht fest, dass keine der protokollierten
 	   Aktionen zu einem inzwischen verworfenen Backtracking-Pfad gehoert. */
