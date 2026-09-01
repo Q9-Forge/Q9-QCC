@@ -475,9 +475,18 @@ addressRef = "&" ident [ index ] .
 
 sizeofExpr = "sizeof" "(" sizeofArg ")" .
 sizeofArg  = sizeofType | sizeofVarName .
-/* sizeof folgt derselben Typgrammatik wie Deklarationen und Casts. Das
-   erlaubt auch typedef-Namen und Zeigertypen, etwa sizeof(ActionLogEntry). */
-sizeofType = type pointerDecl .
+/* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gemessen): sizeofType lief frueher
+   ueber die volle Typregel `type`, und die endet auf `typedefRef = ident`.
+   Damit matchte der TYPZWEIG JEDEN BEZEICHNER und gewann die geordnete Auswahl
+   immer -- sizeofVarName/tc_sizeofvar wurde nie erreicht. Folge: sizeof(v)
+   meldete "unknown type name 'v'" (zweimal, weil tc_sizeof tc_type selbst noch
+   einmal aufruft) und lieferte den Default 4; bei `char line[80]` also 4 statt
+   80. Deshalb steht hier jetzt nur noch sizeofBaseType -- die Typformen, die
+   mit einem Schluesselwort beginnen. Der nackte Bezeichner geht an
+   sizeofVarName, das Variable UND typedef-Namen aufloest; sizeof(ActionLogEntry)
+   bleibt also moeglich (der Bootstrap braucht genau das). */
+sizeofType = sizeofBaseType pointerDecl .
+sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" .
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
