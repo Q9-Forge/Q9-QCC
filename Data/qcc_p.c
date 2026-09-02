@@ -19,7 +19,7 @@ static int qccPrintf(const char* fmt, ...) { va_list ap; int longArg; va_start(a
 #define printf qccPrintf
 #define QCC_OUTPUT_FLUSH() qccOutputFlush()
 #else
-#define QCC_OUTPUT_FLUSH() ((void)0)
+#define QCC_OUTPUT_FLUSH() (void)0
 #endif
 
 static const char* p;

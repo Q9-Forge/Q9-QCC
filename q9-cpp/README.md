@@ -32,14 +32,18 @@ diese Lücke.
 | IR-Vergleich qcpp-Weg gegen xcc-Weg | **byteidentisch** (1.123.656 Byte) |
 | `make os9` — OS-9/68K-Modul | linkt: 44 KB Code, 4,2 MB Daten, 512 KB Stack |
 | `tools/test_68k.sh` — Lauf auf echtem 68030 | Ausgabe **byteidentisch** zum Hostlauf |
+| `tools/bootstrap.sh` — Kette ohne xcc/Wine/Python | IR **byteidentisch** zum alten Weg (1.123.692 Byte) |
 
-Zwei Befunde tragen das:
+Drei Befunde tragen das:
 
 1. **Das byteidentische IR** — qcpp ersetzt `xcc -pp` in der Bootstrap-Kette,
    ohne das Ergebnis zu verändern.
 2. **qcpp läuft auf echtem 68030** (Q9-Flux, OS-9-Image) und liefert dort
    byteidentisch dasselbe wie am Host. Wiederholbar über
    `tools/test_68k.sh`.
+3. **Die Bootstrap-Kette braucht kein Fremdteil mehr** — kein xcc, kein Wine,
+   kein Python (`tools/bootstrap.sh`), und das Ergebnis ist byteidentisch zum
+   alten Weg.
 
 ## Sprachumfang
 
@@ -210,29 +214,71 @@ trifft auf jede Raute, die gerade am Puffernde steht — und
 Präprozessorausgabe ist voll davon (`move.l #40,d0`, `#asm`). `run_68k.exp`
 ankert deshalb am echten Prompt.
 
-## Der Weg zum eigenen Bootstrap
-
-Heute:
+## Bootstrap ohne Fremdteile
 
 ```
-xcc -pp Data/qcc_p.c > build/qcc_p.xcc.i        # Wine + Microware
-python3 tools/bootstrap_prepare.py …            # Python
+./tools/bootstrap.sh
 ```
 
-Mit qcpp (gemessen: erzeugt byteidentisches IR):
+Vorher brauchte die Kette zwei Dinge, die es auf OS-9 nicht gibt:
 
 ```
-q9-cpp/build/qcpp -ansi -I$MWOS/SRC/DEFS ../Data/qcc_p.c build/qcc_p.i
-python3 ../tools/bootstrap_prepare.py build/qcc_p.i build/qcc_p.bootstrap.c
-../build/qcc_p @build/qcc_p.bootstrap.c > build/qcc_p.ir
+xcc -pp Data/qcc_p.c > build/qcc_p.xcc.i        # Microware, über Wine
+python3 tools/bootstrap_prepare.py …            # Header-Vorspann wegschneiden
 ```
 
-Was danach noch zwischen hier und „nur eigene Werkzeuge" steht:
+Jetzt:
+
+```
+q9-cpp/build/qcpp -Iq9-cpp/include Data/qcc_p.c build/qcc_p.q9.c
+build/qcc_p @build/qcc_p.q9.c > build/qcc_p.q9.ir
+```
+
+Das Skript prüft dabei nicht nur, dass QCC durchläuft (89.769 IR-Zeilen,
+Schlusswort `OK`, 0 Meldungen), sondern vergleicht das IR **byteweise** mit
+dem alten Weg, solange dessen Referenz (`build/qcc_p.bootstrap.ir`) noch
+herumliegt. Ergebnis: gleich, 1.123.692 Byte.
+
+### Was das Python-Werkzeug getan hat und warum es entfällt
+
+| Aufgabe von `bootstrap_prepare.py` | Warum sie wegfällt |
+|---|---|
+| expandierten SDK-Header-Vorspann wegschneiden | eigene Header in `include/` |
+| `stderr` von `(&_niob[2])` bzw. `__stderrp` auf ein normales Symbol bringen | eigenes `stdio.h` deklariert es |
+| Apples `__builtin___sprintf_chk` zurückbauen | ohne Apple-Header kommt es nicht vor |
+| Leerzeichen um `.` entfernen (xcc setzt sie bei Makroexpansion, 128 Stellen) | qcpp setzt dort keine |
+| `((void)0);` aus `QCC_OUTPUT_FLUSH()` löschen | der Generator gibt jetzt `(void)0` aus |
+
+Der letzte Punkt war der einzige, der eine Änderung außerhalb von q9-cpp
+brauchte: **QCCs Anweisungsliste kennt keine allgemeine Ausdrucksanweisung**,
+sondern nur `voidCastStmt = "(" "void" ")" expr ";"` — `((void)0);` ist
+gültiges C, das QCC mit `FAIL` ablehnt. Die drei Aufrufstellen von
+`QCC_OUTPUT_FLUSH()` sind reine Anweisungen in einem Block, die äußeren
+Klammern tragen dort nichts; deshalb gibt `genParserC` (Q9-Parsec
+`Source/codegen.cpp`) jetzt `(void)0` aus. Nebenwirkung, die die Byteidentität
+erst hergestellt hat: das Python-Skript entfernte diese Anweisungen nur in
+der geklammerten Form, hielt also *weniger* IR als der neue Weg — seit der
+Änderung behalten beide Wege sie, und das IR ist gleich.
+
+Die eigenen Header sind bewusst die Schnittmenge, die der Bootstrap braucht
+(`stddef.h`: `size_t`; `stdio.h`: `FILE`, `stderr` und acht Funktionen;
+`string.h`: `strlen`, `strchr`, `strncmp` — nachgezählt in `Data/qcc_p.c`).
+Sie werden absichtlich **nicht** vorsorglich erweitert: das IR wird byteweise
+verglichen, und jede zusätzliche Deklaration ist eine Änderung an der Eingabe
+des Compilers.
+
+Noch am Python-Werkzeug hängt nur die Diagnosevariante
+(`bootstrap_prepare.py --diag`), die `stderr` in `main` auf einen echten
+Strom legt — das ist eine Code-Einfügung, die ein Header nicht leisten kann.
+
+Was zwischen hier und „nur eigene Werkzeuge" noch steht:
 
 1. ~~`qcpp` auf echtem 68030 laufen lassen~~ — erledigt, byteidentisch zum
    Hostlauf (`tools/test_68k.sh`).
-2. `bootstrap_prepare.py` ablösen — was es tut, ist im Kern das Ersetzen des
-   Microware-`stdio`-Vorspanns; mit einem eigenen Präprozessor und einer
-   eigenen kleinen `stdio.h` wird das Skript überflüssig.
+2. ~~`bootstrap_prepare.py` ablösen~~ — erledigt für den Hauptweg
+   (`tools/bootstrap.sh`), offen bleibt nur `--diag`.
 3. `qcpp` sich selbst vorverarbeiten und von QCC übersetzen lassen (dafür ist
    die Quelle im QCC-Subset geschrieben).
+4. Der Präprozessor auf dem Ziel ist damit da, der Kernel fehlt noch — das
+   ist der andere Zweig des Ziels „Image mit ausschließlich eigenen
+   Werkzeugen".

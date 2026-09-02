@@ -98,6 +98,14 @@ body = (text[offset:]
         # The optional host-only buffered-output macro is defined before the
         # marker and deliberately removed with the system header prefix.
         # Flushing is not required by the OS-9 bootstrap variant.
+        #
+        # 2026-09-02: der "((void)0);"-Fall tritt nicht mehr auf. genParserC
+        # gibt den Leerlauf-Zweig jetzt als "(void)0" ohne aeussere Klammern
+        # aus, weil QCCs voidCastStmt keine Klammern um den Cast erlaubt und
+        # der erzeugte Parser damit OHNE dieses Werkzeug lesbar ist (s.
+        # q9-cpp/tools/bootstrap.sh). Das Muster bleibt fuer aeltere, schon
+        # erzeugte Quellen stehen -- und die Anweisung selbst wird jetzt
+        # BEHALTEN, weshalb beide Wege dasselbe IR liefern.
         .replace("QCC_OUTPUT_FLUSH();", "")
         .replace("QCC_OUTPUT_FLUSH()", "")
         .replace("((void)0);", ""))

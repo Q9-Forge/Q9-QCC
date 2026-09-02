@@ -9128,7 +9128,7 @@ int main(int argc, char** argv) {
 		fclose(inputFile); inputFileBuf[inputLen] = '\0'; p = inputFileBuf;
 	} else p = argv[1];
 	parserInputStart = p;
-	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n");  return 1; } printf("OK\n");  return 0; } }
-	printf("FAIL\n"); 
+	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); (void)0; return 1; } printf("OK\n"); (void)0; return 0; } }
+	printf("FAIL\n"); (void)0;
 	return 1;
 }
