@@ -1,0 +1,79 @@
+#!/usr/bin/expect -f
+# Faehrt BEIDE Stufen auf dem Ziel: qcpp ueber seine eigene Quelle, dann QCC
+# ueber das Ergebnis. Wird von tools/target_chain_68k.sh aufgerufen
+# (Q9FLUX, QCPP_IMAGE, MWOS).
+
+# Die Anmeldeschleife unten wiederholt das Enter genau BEI ZEITABLAUF -- sie
+# braucht deshalb eine kurze Schranke. Mit der langen Schranke fuer die
+# Uebersetzung (weiter unten) wartet sie sonst vierzig Minuten auf einen
+# Anmeldeprompt, der schon durch war.
+set timeout 60
+set send_slow {1 .003}
+
+# Am echten Prompt ankern: Praeprozessor- und Compilerausgabe sind voller
+# Rauten, ein Muster aus Raute-oder-Dollar trifft auf jede am Pufferende.
+set prompt {ROOT# *$}
+
+set flux  $env(Q9FLUX)
+set image $env(QCPP_IMAGE)
+set mwos  $env(MWOS)
+
+cd $flux
+spawn ./build/macos/q9.exe --rom $mwos/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf $image
+expect {
+    "devices online" {}
+    timeout { send_user "\n<<< BOOT TIMEOUT >>>\n"; exit 1 }
+}
+send "\r"
+
+set logged_in 0
+for {set i 0} {$i < 10 && !$logged_in} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re $prompt { set logged_in 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$logged_in} { send_user "\n<<< LOGIN FEHLGESCHLAGEN >>>\n"; exit 1 }
+
+# Ab hier weit: das qcpp-Modul ist ueber 4 MB gross (QCCs Backend legt die
+# genullten Tabellen in den initialisierten Datenbereich), und QCC uebersetzt
+# 48 KB Quelle auf einem emulierten 68030.
+set timeout 2400
+
+send_user "\n<<< STUFE 1: qcpp ueber seine eigene Quelle >>>\n"
+send -s "/dd/CMDS/qcpp -v /dd/qcpp.c /dd/qcpp.self.c\r"
+expect {
+    -re {geschrieben: ([0-9]+) Byte} {
+        send_user "\n<<< STUFE 1 FERTIG: $expect_out(1,string) Byte >>>\n"
+    }
+    -re {qcpp: [^ \r\n]+:[0-9]+:} { send_user "\n<<< STUFE 1: QCPP MELDET EINEN FEHLER >>>\n"; exit 1 }
+    -re {Error #([0-9]+)} { send_user "\n<<< OS-9-FEHLER $expect_out(1,string) >>>\n"; exit 1 }
+    timeout { send_user "\n<<< STUFE 1 TIMEOUT >>>\n"; exit 1 }
+}
+
+# QCCs IR geht in eine Datei, am Terminal erscheint also nichts. Als
+# Endesignal dient deshalb ein zweites Kommando in derselben Zeile -- auf den
+# Prompt zu warten trifft sofort, der steht noch im Puffer.
+send_user "\n<<< STUFE 2: QCC uebersetzt das Ergebnis >>>\n"
+send -s "/dd/CMDS/qcc @/dd/qcpp.self.c >/dd/qcpp.ir; echo STUFE2_FERTIG\r"
+
+# ZUERST das Echo der eigenen Kommandozeile abraeumen. Sonst trifft das
+# Muster darin -- die getippte Zeile enthaelt "echo STUFE2_FERTIG" ja
+# woertlich -- und der Emulator wird beendet, bevor QCC ueberhaupt gerechnet
+# hat. Genau so ist ein Lauf durchgegangen, bei dem die IR-Datei danach
+# fehlte.
+expect {
+    -re {echo STUFE2_FERTIG} {}
+    timeout { send_user "\n<<< kein Echo der Kommandozeile >>>\n"; exit 1 }
+}
+expect {
+    -re {STUFE2_FERTIG} { send_user "\n<<< STUFE 2 FERTIG >>>\n" }
+    -re {Error #([0-9]+)} { send_user "\n<<< OS-9-FEHLER $expect_out(1,string) >>>\n"; exit 1 }
+    timeout { send_user "\n<<< STUFE 2 TIMEOUT >>>\n"; exit 1 }
+}
+
+send "\x1d"
+expect eof
+exit 0

@@ -34,6 +34,7 @@ diese Lücke.
 | `tools/test_68k.sh` — Lauf auf echtem 68030 | Ausgabe **byteidentisch** zum Hostlauf |
 | `tools/bootstrap.sh` — Kette ohne xcc/Wine/Python | IR **byteidentisch** zum alten Weg (1.123.692 Byte) |
 | `tools/selfhost_68k.sh` — qcpp von QCC gebaut, auf 68030 | Ausgabe **byteidentisch** zum Hostlauf |
+| `tools/target_chain_68k.sh` — beide Stufen **auf dem Ziel** | vorverarbeitete Quelle und IR **byteidentisch** |
 
 Drei Befunde tragen das:
 
@@ -48,6 +49,9 @@ Drei Befunde tragen das:
 4. **qcpp trägt sich selbst**: von sich selbst vorverarbeitet, von QCC
    übersetzt, auf echtem 68030 gelaufen — mit byteidentischem Ergebnis
    (`tools/selfhost_68k.sh`).
+5. **Die Sprachverarbeitung läuft auf dem Ziel**: qcpp verarbeitet seine
+   eigene Quelle *auf dem 68030* vor, und QCC übersetzt das dort — beide
+   Ergebnisse byteidentisch zum Hostlauf (`tools/target_chain_68k.sh`).
 
 ## Sprachumfang
 
@@ -277,6 +281,41 @@ letzte war ein echter Denkfehler:
 - **ToolSheds `ident` stürzt an diesem Modul ab** (Exit 138, SIGBUS). Das
   Skript liest den Modulkopf deshalb direkt und prüft Sync `$4AFC` und
   `M$Size` gegen die Dateigröße.
+
+## Die Kette auf dem Ziel
+
+```
+./tools/target_chain_68k.sh          # rund 20 Minuten
+```
+
+Der Unterschied zu `selfhost_68k.sh`: dort laufen Vorverarbeitung und
+Übersetzung am Host, und nur das fertige Modul läuft auf dem 68030. Hier
+läuft die **Sprachverarbeitung selbst** auf dem Ziel:
+
+```
+Vorbereitung (Host)  qcpp -> QCC -> Backend -> r68 -> l68   =>  zwei Module
+Stufe 1  (68030)     qcpp  /dd/qcpp.c        ->  /dd/qcpp.self.c
+Stufe 2  (68030)     qcc  @/dd/qcpp.self.c   ->  /dd/qcpp.ir
+Prüfung  (Host)      beide Ergebnisse byteweise gegen den Hostlauf
+```
+
+Gemessen: Stufe 1 liefert 48.490 Byte, Stufe 2 15.840 IR-Zeilen (211.265
+Byte), **beide byteidentisch** zum Hostlauf derselben Quelle. Beide Werkzeuge
+im Image sind selbstgebaut — qcpp aus qcpps eigenem IR (4,3 MB Modul), QCC aus
+QCCs eigenem IR (867 KB Modul, 1 MB Stack).
+
+Was in dieser Kette **noch nicht** auf dem Ziel läuft: `qcc_backend`, `r68`
+und `l68` — also der Weg vom IR zum Modul. Der Präprozessor und das
+Compiler-Frontend sind dort angekommen, die Codeerzeugung und das Binden
+nicht.
+
+Auch hier war der Fehlschlag im Testgerüst und nicht im Programm, und diesmal
+besonders lehrreich: das Endesignal `echo STUFE2_FERTIG` stand **wörtlich in
+der abgesendeten Kommandozeile**, und das Terminal echot sie. Expect traf also
+den eigenen Befehl, beendete den Emulator, bevor QCC gerechnet hatte — und
+die IR-Datei fehlte danach. Ein von Hand gefahrener Lauf davor war nur
+zufällig gutgegangen, weil ein `dir`-Kommando dahinter QCC die Zeit gab. Das
+Skript räumt das Echo jetzt ausdrücklich ab, bevor es auf die Ausgabe wartet.
 
 ## Der Lauf auf echtem 68030
 
