@@ -25,7 +25,7 @@ diese Lücke.
 
 | Prüfung | Ergebnis |
 |---|---|
-| `make test` — 57 Regressionsfälle | **57 ok / 0 FAIL** |
+| `make test` — 64 Regressionsfälle | **64 ok / 0 FAIL** |
 | `make difftest` — 61 MWOS-SDK-Header gegen `cc -E` | **0 echte Abweichungen** (6× nur andere Abstände) |
 | `Data/qcc_p.c` (282 KB Ausgabe) gegen `cc -E` | gleicher Tokenstrom, nur andere Abstände |
 | QCC übersetzt die qcpp-Ausgabe | 89.763 IR-Zeilen, Schlusswort `OK`, **0 Meldungen** |
@@ -66,6 +66,11 @@ Dazu:
   endet an der Zeile und verschluckt keine Direktive der Folgezeile, in einer
   Zeichenkette ist `//` kein Kommentar, und im Makrorumpf gehört er nicht zum
   Rumpf.
+- **`#pragma once`** wird beachtet — und nicht durchgegeben, genau wie bei
+  `cc -E` (gemessen). Erkannt wird der Pfad, unter dem geladen wurde; derselbe
+  Header über zwei verschiedene Pfade fällt also nicht auf. Echte
+  Präprozessoren nehmen dafür Gerät und Inode, das braucht Systemaufrufe, die
+  auf den beiden Zielen unterschiedlich aussehen.
 - `#warning` (verbreitete Erweiterung), `#ident` / `#sccs` (werden überlesen),
   und `# <zahl> "datei"` — die Zeilenmarken anderer Präprozessoren, damit sich
   Werkzeuge verketten lassen.
@@ -147,12 +152,19 @@ Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
 
 ## Grenzen (bekannt und bewusst)
 
-- **`#if` rechnet in `int`, nicht in `long`/`unsigned long`.** C89 3.8.1
-  verlangt die größten Typen; auf dem 68k-Ziel und am Host sind `int` und
-  `long` beide 32 Bit, und die Vorzeichenlosigkeit von `…u`-Konstanten wird
-  nicht nachgebildet. Für die Ausdrücke, die im SDK vorkommen (`defined`,
-  kleine Zahlen, `BYTE_ORDER`-Vergleiche), trägt das; ein Ausdruck, der die
-  Vorzeichengrenze überschreitet, würde falsch entscheiden.
+- **`#if` rechnet in 32 Bit — das ist die Zielbreite, keine Nachlässigkeit.**
+  OS-9/68K hat 32-Bit-`long`, und qcpp erzeugt Text *für dieses Ziel*, also
+  wird auch so entschieden. Am Host weicht `cc -E` deshalb bei Ausdrücken ab,
+  die 32 Bit überschreiten: `(1 << 31) > 0` ist dort wahr, weil macOS
+  64-Bit-`long` hat, und hier falsch, weil `1 << 31` in 32 Bit negativ ist.
+  Beides ist für die jeweilige Breite richtig; Testfall 20d schreibt die
+  Zielentscheidung fest.
+  Die **Vorzeichenlosigkeit** wird mitgeführt, wie C89 3.8.1 es verlangt:
+  `0xFFFFFFFF > 0` ist wahr, `0x80000000 / 2` ergibt `0x40000000`,
+  `0x80000000 >> 4` ergibt `0x08000000` — und ohne vorzeichenlosen Operanden
+  bleibt es vorzeichenbehaftet (`-7 / 2 == -3`, `-8 >> 1 == -4`). Bis zum
+  2026-09-03 war das falsch: es wurde durchgehend vorzeichenbehaftet
+  gerechnet.
 - **Kein `#define` mit `...`** (C99-Variadic) — Abbruch mit klarer Meldung.
 - **`-Dx=a+b` wird als *ein* Token übernommen.** Zahlen und Namen gehen
   richtig durch, ein zusammengesetzter Wert nicht; das wäre ein zweiter
@@ -161,6 +173,11 @@ Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
   Makroaufruf, dessen `(` erst hinter dieser Grenze stünde, ist in C89
   undefiniert; qcpp bricht ab statt zu raten.
 - **Trigraphen** (`??=` → `#`) fehlen. Im SDK kommt keiner vor.
+- **Tiefe Schachtelung bricht mit Meldung ab, nicht mit Absturz.** Bei
+  `F(F(F(…)))` füllt zuerst der Argumentspeicher (das rohe Argument wird auf
+  jeder Ebene erneut abgelegt, also quadratisch); für Formen mit winzigen
+  Argumenten greift zusätzlich eine Tiefengrenze. Ohne die wäre der C-Stack
+  die Grenze — auf dem Ziel mit 512 KB Stack zuerst.
 - Zeilenmarken im Zusammenspiel mit `#include`: innerhalb einer Datei ist die
   Ausgabe zeilentreu, nach einem `#include` verschiebt sich die Zählung des
   einbindenden Textes. Wer die exakte Zuordnung braucht, nimmt `-lines`.
@@ -168,7 +185,7 @@ Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
 ## Testen
 
 ```
-make test        # 57 Fälle, Eingabe und Sollwert stehen direkt untereinander
+make test        # 64 Fälle, Eingabe und Sollwert stehen direkt untereinander
 make difftest    # Differenztest gegen cc -E über die MWOS-SDK-Header
 make check       # beides
 ```
@@ -180,6 +197,11 @@ das erst selbst richtig sein müsste. Verglichen wird der Tokenstrom, nicht die
 Formatierung: zwei normgerechte Präprozessoren dürfen anders umbrechen.
 Abweichungen, die nur die Abstände betreffen, werden getrennt gezählt und
 gemeldet, gelten aber nicht als Fehler.
+
+Der Differenztest bindet jeden Header **zweimal** ein. Das ist keine
+Kosmetik: vorher band er ihn genau einmal ein und konnte damit strukturell
+nicht sehen, dass `#pragma once` nicht beachtet wurde — der Fehler saß hinter
+einer Prüfung, die ihn nicht sehen konnte.
 
 Einzelne Datei prüfen:
 
