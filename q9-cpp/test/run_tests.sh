@@ -327,6 +327,90 @@ ja
 EOF
 t_run "20 Bedingungsoperator"
 
+# Vorzeichenlose Arithmetik im #if. C89 3.8.1 verlangt die Auswertung in
+# long/unsigned long mit den ueblichen arithmetischen Umwandlungen -- rechnet
+# man durchgehend vorzeichenbehaftet, entscheiden diese Faelle ALLE falsch.
+# "1 << 31" ist dabei kein exotischer Ausdruck, sondern ein Bitmaskentest.
+t_src <<'EOF'
+#if 0xFFFFFFFF > 0
+a
+#endif
+#if 0xFFFFFFFFu > 0
+b
+#endif
+#if 4294967295 > 0
+c
+#endif
+#if 0x80000000 / 2 == 0x40000000
+e
+#endif
+#if 0x80000000 >> 4 == 0x08000000
+f
+#endif
+EOF
+t_exp <<'EOF'
+a
+b
+c
+e
+f
+EOF
+t_run "20a #if rechnet vorzeichenlos, wo C89 es verlangt"
+
+# Gegenprobe: OHNE vorzeichenlosen Operanden bleibt alles vorzeichenbehaftet.
+t_src <<'EOF'
+#if -1 < 0
+signed_ok
+#endif
+#if -1 > 0u
+gemischt_unsigned
+#endif
+#if (-8 >> 1) == -4
+arith_shift
+#endif
+#if -7 / 2 == -3
+signed_div
+#endif
+EOF
+t_exp <<'EOF'
+signed_ok
+gemischt_unsigned
+arith_shift
+signed_div
+EOF
+t_run "20b vorzeichenbehaftet bleibt vorzeichenbehaftet"
+
+t_src <<'EOF'
+#if 1 ? 0xFFFFFFFF : 0
+ja
+#endif
+EOF
+t_exp <<'EOF'
+ja
+EOF
+t_run "20c Bedingungsoperator uebernimmt die Vorzeichenlosigkeit"
+
+# BREITE, nicht Vorzeichen: qcpp rechnet in 32 Bit, weil das Ziel (OS-9/68K)
+# 32-Bit-long hat. "1 << 31" ist dort negativ, also ist NEIN die richtige
+# C89-Antwort. Am Host weicht cc -E hier ab -- nicht weil es besser rechnet,
+# sondern weil macOS 64-Bit-long hat. Das ist eine Zielentscheidung und
+# deshalb hier festgeschrieben.
+t_src <<'EOF'
+#if (1 << 31) > 0
+host_64bit
+#else
+ziel_32bit
+#endif
+#if (1 << 30) > 0
+dreissig_positiv
+#endif
+EOF
+t_exp <<'EOF'
+ziel_32bit
+dreissig_positiv
+EOF
+t_run "20d #if rechnet in 32 Bit (Zielbreite)"
+
 # ------------------------------------------------------- Vorbelegungen ----
 t_src <<'EOF'
 #ifdef _OSK
@@ -551,17 +635,49 @@ int x = 1;
 EOF
 t_run "32b // im Makrorumpf"
 
+# "#pragma once" wird BEACHTET und deshalb nicht durchgegeben (so macht es
+# cc -E auch, gemessen). Alles andere geht unveraendert durch, samt Abstaenden.
 t_src <<'EOF'
 #pragma once
 #pragma warning ( disable : 4114)
 int x;
 EOF
 t_exp <<'EOF'
-#pragma once
 #pragma warning ( disable : 4114)
 int x;
 EOF
-t_run "33 #pragma geht unveraendert durch"
+t_run "33 #pragma geht unveraendert durch (ausser once)"
+
+# Der Fall, den der Differenztest strukturell NICHT sehen konnte: der bindet
+# jeden Header genau einmal ein. Genau deshalb steht dieser Test hier.
+t_file "einmal.h" <<'EOF'
+#pragma once
+int einmal;
+EOF
+t_src <<'EOF'
+#include "einmal.h"
+#include "einmal.h"
+#include <einmal.h>
+int ende;
+EOF
+t_exp <<'EOF'
+int einmal;
+int ende;
+EOF
+t_run "33a #pragma once schuetzt vor Doppeleinbindung" "-I$TMP"
+
+t_file "zweimal.h" <<'EOF'
+int zweimal;
+EOF
+t_src <<'EOF'
+#include "zweimal.h"
+#include "zweimal.h"
+EOF
+t_exp <<'EOF'
+int zweimal;
+int zweimal;
+EOF
+t_run "33b ohne once wird zweimal eingebunden" "-I$TMP"
 
 t_src <<'EOF'
 int a = __LINE__;
@@ -728,6 +844,22 @@ t_src <<'EOF'
 #include "gibt-es-wirklich-nicht.h"
 EOF
 t_fail "50 fehlender Header" "nicht gefunden"
+
+# Tief geschachtelte Argumente: der Prescan steigt echt ab, und ohne eigene
+# Grenze waere der C-Stack die Grenze -- ein Absturz statt einer Meldung.
+{
+	printf '#define F(x) x\n'
+	printf 'int y = '
+	i=0; while [ $i -lt 400 ]; do printf 'F('; i=$((i + 1)); done
+	printf '1'
+	i=0; while [ $i -lt 400 ]; do printf ')'; i=$((i + 1)); done
+	printf ';\n'
+} > "$TMP/in.c"
+# Erwartet wird eine MELDUNG, nicht eine bestimmte: bei dieser Form fuellt der
+# Argumentspeicher zuerst (das rohe Argument wird auf jeder Ebene erneut
+# abgelegt, also quadratisch), bei Formen mit winzigen Argumenten greift die
+# Tiefengrenze. Wichtig ist beides gleich: sauberer Abbruch statt Absturz.
+t_fail "51 tiefe Schachtelung bricht mit Meldung ab" "qcpp: "
 
 echo
 echo "=== Zusammenfassung ==="

@@ -83,6 +83,7 @@ static int flName[512];
 static int flDir[512];
 static int flStart[512];
 static int flEnd[512];
+static int flOnce[512];     /* Datei hat "#pragma once" gesehen */
 static int flN;
 
 static int INC_MAX = 64;
@@ -424,8 +425,28 @@ static int fileLoad(const char *path)
 	flDir[id] = dirOfPath(path);
 	flStart[id] = start;
 	flEnd[id] = srcTop;
+	flOnce[id] = 0;
 	flN++;
 	return id;
+}
+
+/* Wurde dieser Pfad schon geladen UND hat er dabei "#pragma once" gesagt?
+   Verglichen wird der Pfad, unter dem geladen wurde -- derselbe Header ueber
+   zwei verschiedene Pfade ("./x.h" und "x.h") wird also nicht erkannt.
+   Echte Praeprozessoren nehmen dafuer Geraet und Inode; das braucht
+   Systemaufrufe, die es auf beiden Zielen unterschiedlich gibt, deshalb hier
+   bewusst der Pfadvergleich. */
+static int onceSeen(const char *path)
+{
+	int name;
+	int i;
+
+	name = intern(path);
+	for (i = 0; i < flN; i++) {
+		if (flName[i] == name && flOnce[i])
+			return 1;
+	}
+	return 0;
 }
 
 /* ================================================================ Lexer === */
@@ -1079,12 +1100,24 @@ static int collectArgs(int m)
    die Laenge steht in preLen. */
 static int preLen;
 
+/* Die Expansion ist gegen Rekursion durch die Sperre des laufenden Makros
+   geschuetzt (C89 3.8.3.4), aber der Prescan von Argumenten steigt echt ab:
+   "F(F(F(...)))" schachtelt so tief wie der Quelltext es hergibt. Ohne eigene
+   Grenze waere der C-Stack die Grenze -- also ein Absturz statt einer
+   Meldung, und auf dem Ziel mit 512 KB Stack zuerst. Das widerspricht der
+   Linie dieses Programms, an Modellgrenzen abzubrechen. */
+static int expDepth;
+static int EXP_DEPTH_MAX = 200;
+
 static int prescanArg(int at, int n, int line, int file)
 {
 	int i;
 	int savePB;
 	int outAt;
 
+	expDepth++;
+	if (expDepth > EXP_DEPTH_MAX)
+		fatal("Makroargumente zu tief geschachtelt (EXP_DEPTH_MAX)", "");
 	savePB = pbN;
 	pbPush(TK_ARGEND, intern(""), line, file, 0);
 	for (i = n - 1; i >= 0; i--)
@@ -1105,6 +1138,7 @@ static int prescanArg(int at, int n, int line, int file)
 	}
 	if (pbN != savePB)
 		fatal("innerer Fehler: Stapel nach Prescan nicht ausgeglichen", "");
+	expDepth--;
 	preLen = agTop - outAt;
 	return outAt;
 }
@@ -1393,6 +1427,78 @@ static int evalTernary(void);
    scheitern. */
 static int evDead;
 
+/* Vorzeichenlosigkeit des zuletzt ausgewerteten Teilausdrucks. C89 3.8.1
+   verlangt die Auswertung in long/unsigned long und die "usual arithmetic
+   conversions": sobald EIN Operand vorzeichenlos ist, wird vorzeichenlos
+   gerechnet und verglichen. Ohne das entscheidet "#if 1 << 31 > 0" falsch --
+   und das ist ein Bitmaskentest, kein exotischer Fall. In diesem 32-Bit-
+   Modell fallen int und long zusammen; gehalten wird das BITMUSTER in int,
+   die Deutung steckt in diesem Kennzeichen. */
+static int evUns;
+
+static int arithDiv(int a, int b, int uns)
+{
+	unsigned int ua;
+	unsigned int ub;
+
+	if (uns) {
+		ua = a;
+		ub = b;
+		return ua / ub;
+	}
+	return a / b;
+}
+
+static int arithMod(int a, int b, int uns)
+{
+	unsigned int ua;
+	unsigned int ub;
+
+	if (uns) {
+		ua = a;
+		ub = b;
+		return ua % ub;
+	}
+	return a % b;
+}
+
+static int arithShr(int a, int b, int uns)
+{
+	unsigned int ua;
+
+	if (uns) {
+		ua = a;
+		return ua >> b;
+	}
+	return a >> b;
+}
+
+/* mode: 0 = "<", 1 = ">", 2 = "<=", 3 = ">=" */
+static int arithCmp(int a, int b, int uns, int mode)
+{
+	unsigned int ua;
+	unsigned int ub;
+
+	if (uns) {
+		ua = a;
+		ub = b;
+		if (mode == 0)
+			return (ua < ub);
+		if (mode == 1)
+			return (ua > ub);
+		if (mode == 2)
+			return (ua <= ub);
+		return (ua >= ub);
+	}
+	if (mode == 0)
+		return (a < b);
+	if (mode == 1)
+		return (a > b);
+	if (mode == 2)
+		return (a <= b);
+	return (a >= b);
+}
+
 static int evIsPunct(const char *s)
 {
 	if (evI >= evN)
@@ -1402,20 +1508,39 @@ static int evIsPunct(const char *s)
 	return poolEq(evText[evI], s);
 }
 
+/* Suffix nach den Ziffern pruefen: u/U macht die Konstante vorzeichenlos,
+   l/L ist in diesem 32-Bit-Modell wirkungslos. */
+static int evSuffixUns(const char *s, int from, int n)
+{
+	int i;
+
+	for (i = from; i < n; i++) {
+		if (s[i] == 'u' || s[i] == 'U')
+			return 1;
+		if (s[i] == 'l' || s[i] == 'L')
+			continue;
+		fatal("keine gueltige Zahl im #if: ", s);
+	}
+	return 0;
+}
+
 static int evNumValue(int text)
 {
 	const char *s;
 	int n;
 	int i;
-	int v;
+	unsigned int v;
 	int d;
+	int uns;
 
 	s = poolAt(text);
 	n = strLen(s);
 	v = 0;
+	uns = 0;
 
 	if (n > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-		for (i = 2; i < n; i++) {
+		i = 2;
+		while (i < n) {
 			d = -1;
 			if (s[i] >= '0' && s[i] <= '9')
 				d = s[i] - '0';
@@ -1423,37 +1548,41 @@ static int evNumValue(int text)
 				d = s[i] - 'a' + 10;
 			if (s[i] >= 'A' && s[i] <= 'F')
 				d = s[i] - 'A' + 10;
-			if (d < 0) {
-				if (s[i] == 'u' || s[i] == 'U' || s[i] == 'l' ||
-				    s[i] == 'L')
-					break;
-				fatal("keine gueltige Zahl im #if: ", s);
-			}
-			v = v * 16 + d;
-		}
-		return v;
-	}
-	if (n > 1 && s[0] == '0') {
-		for (i = 1; i < n; i++) {
-			if (s[i] >= '0' && s[i] <= '7') {
-				v = v * 8 + (s[i] - '0');
-				continue;
-			}
-			if (s[i] == 'u' || s[i] == 'U' || s[i] == 'l' || s[i] == 'L')
+			if (d < 0)
 				break;
-			fatal("keine gueltige Oktalzahl im #if: ", s);
+			v = v * 16 + d;
+			i++;
 		}
-		return v;
-	}
-	for (i = 0; i < n; i++) {
-		if (isDigitCh(s[i] & 255)) {
+		uns = evSuffixUns(s, i, n);
+	} else if (n > 1 && s[0] == '0') {
+		i = 1;
+		while (i < n) {
+			if (s[i] < '0' || s[i] > '7')
+				break;
+			v = v * 8 + (s[i] - '0');
+			i++;
+		}
+		uns = evSuffixUns(s, i, n);
+	} else {
+		i = 0;
+		while (i < n) {
+			if (!isDigitCh(s[i] & 255))
+				break;
 			v = v * 10 + (s[i] - '0');
-			continue;
+			i++;
 		}
-		if (s[i] == 'u' || s[i] == 'U' || s[i] == 'l' || s[i] == 'L')
-			break;
-		fatal("keine ganze Zahl im #if (Gleitkomma ist dort nicht erlaubt): ", s);
+		if (i < n && (s[i] == '.' || s[i] == 'e' || s[i] == 'E'))
+			fatal("Gleitkomma ist im #if nicht erlaubt: ", s);
+		uns = evSuffixUns(s, i, n);
 	}
+
+	/* Ein Wert, der nicht mehr in den vorzeichenbehafteten Bereich passt,
+	   ist nach C89 3.1.3.2 vorzeichenlos (int -> long -> unsigned long; hier
+	   fallen int und long zusammen). Genau daran haengt, dass
+	   "#if 0xFFFFFFFF > 0" wahr wird. */
+	if (v > 2147483647)
+		uns = 1;
+	evUns = uns;
 	return v;
 }
 
@@ -1495,6 +1624,7 @@ static int evCharValue(int text)
 		v = (v << 8) | c;
 		i++;
 	}
+	evUns = 0;                    /* Zeichenkonstanten sind int (C89 3.1.3.4) */
 	return v;
 }
 
@@ -1526,6 +1656,7 @@ static int evalPrimary(void)
 		/* Ein Bezeichner, der bis hierhin ueberlebt hat, ist NICHT als
 		   Makro definiert -- C89 3.8.1 schreibt dafuer den Wert 0 vor. */
 		evI++;
+		evUns = 0;
 		return 0;
 	}
 	if (evKind[evI] == TK_STR)
@@ -1549,6 +1680,7 @@ static int evalUnary(void)
 	if (evIsPunct("!")) {
 		evI++;
 		v = evalUnary();
+		evUns = 0;                    /* Ergebnis von ! ist int */
 		if (v == 0)
 			return 1;
 		return 0;
@@ -1560,86 +1692,116 @@ static int evalUnary(void)
 	return evalPrimary();
 }
 
+/* Ab hier tragen alle zweistelligen Operatoren das Vorzeichen-Kennzeichen
+   mit: nach JEDEM Teilausdruck wird evUns sofort gesichert (der naechste
+   Aufruf ueberschreibt es), und das Ergebnis ist vorzeichenlos, sobald einer
+   der Operanden es war. */
 static int evalMul(void)
 {
 	int v;
 	int r;
+	int lu;
+	int ru;
 
 	v = evalUnary();
+	lu = evUns;
 	while (1) {
 		if (evIsPunct("*")) {
 			evI++;
-			v = v * evalUnary();
+			r = evalUnary();
+			ru = evUns;
+			lu = lu | ru;
+			v = v * r;              /* Bitmuster, fuer beide gleich */
+			evUns = lu;
 			continue;
 		}
 		if (evIsPunct("/")) {
 			evI++;
 			r = evalUnary();
+			ru = evUns;
+			lu = lu | ru;
 			if (r == 0) {
 				if (!evDead)
 					fatal("#if: Division durch Null", "");
 				v = 0;
+				evUns = lu;
 				continue;
 			}
-			v = v / r;
+			v = arithDiv(v, r, lu);
+			evUns = lu;
 			continue;
 		}
 		if (evIsPunct("%")) {
 			evI++;
 			r = evalUnary();
+			ru = evUns;
+			lu = lu | ru;
 			if (r == 0) {
 				if (!evDead)
 					fatal("#if: Rest bei Division durch Null", "");
 				v = 0;
+				evUns = lu;
 				continue;
 			}
-			v = v % r;
+			v = arithMod(v, r, lu);
+			evUns = lu;
 			continue;
 		}
 		break;
 	}
+	evUns = lu;
 	return v;
 }
 
 static int evalAdd(void)
 {
 	int v;
+	int lu;
 
 	v = evalMul();
+	lu = evUns;
 	while (1) {
 		if (evIsPunct("+")) {
 			evI++;
 			v = v + evalMul();
+			lu = lu | evUns;
 			continue;
 		}
 		if (evIsPunct("-")) {
 			evI++;
 			v = v - evalMul();
+			lu = lu | evUns;
 			continue;
 		}
 		break;
 	}
+	evUns = lu;
 	return v;
 }
 
 static int evalShift(void)
 {
 	int v;
+	int lu;
 
+	/* Beim Schieben zaehlt nur die linke Seite: der rechte Operand geht
+	   nach C89 keine "usual arithmetic conversion" mit dem linken ein. */
 	v = evalAdd();
+	lu = evUns;
 	while (1) {
 		if (evIsPunct("<<")) {
 			evI++;
-			v = v << evalAdd();
+			v = v << evalAdd();      /* Bitmuster, fuer beide gleich */
 			continue;
 		}
 		if (evIsPunct(">>")) {
 			evI++;
-			v = v >> evalAdd();
+			v = arithShr(v, evalAdd(), lu);
 			continue;
 		}
 		break;
 	}
+	evUns = lu;
 	return v;
 }
 
@@ -1647,35 +1809,42 @@ static int evalRel(void)
 {
 	int v;
 	int r;
+	int lu;
 
 	v = evalShift();
+	lu = evUns;
 	while (1) {
 		if (evIsPunct("<")) {
 			evI++;
 			r = evalShift();
-			v = (v < r);
+			v = arithCmp(v, r, lu | evUns, 0);
+			lu = 0;                  /* Ergebnis eines Vergleichs ist int */
 			continue;
 		}
 		if (evIsPunct(">")) {
 			evI++;
 			r = evalShift();
-			v = (v > r);
+			v = arithCmp(v, r, lu | evUns, 1);
+			lu = 0;
 			continue;
 		}
 		if (evIsPunct("<=")) {
 			evI++;
 			r = evalShift();
-			v = (v <= r);
+			v = arithCmp(v, r, lu | evUns, 2);
+			lu = 0;
 			continue;
 		}
 		if (evIsPunct(">=")) {
 			evI++;
 			r = evalShift();
-			v = (v >= r);
+			v = arithCmp(v, r, lu | evUns, 3);
+			lu = 0;
 			continue;
 		}
 		break;
 	}
+	evUns = lu;
 	return v;
 }
 
@@ -1689,13 +1858,15 @@ static int evalEq(void)
 		if (evIsPunct("==")) {
 			evI++;
 			r = evalRel();
-			v = (v == r);
+			v = (v == r);           /* Bitmuster genuegt fuer Gleichheit */
+			evUns = 0;
 			continue;
 		}
 		if (evIsPunct("!=")) {
 			evI++;
 			r = evalRel();
 			v = (v != r);
+			evUns = 0;
 			continue;
 		}
 		break;
@@ -1706,36 +1877,48 @@ static int evalEq(void)
 static int evalBAnd(void)
 {
 	int v;
+	int lu;
 
 	v = evalEq();
+	lu = evUns;
 	while (evIsPunct("&")) {
 		evI++;
 		v = v & evalEq();
+		lu = lu | evUns;
 	}
+	evUns = lu;
 	return v;
 }
 
 static int evalBXor(void)
 {
 	int v;
+	int lu;
 
 	v = evalBAnd();
+	lu = evUns;
 	while (evIsPunct("^")) {
 		evI++;
 		v = v ^ evalBAnd();
+		lu = lu | evUns;
 	}
+	evUns = lu;
 	return v;
 }
 
 static int evalBOr(void)
 {
 	int v;
+	int lu;
 
 	v = evalBXor();
+	lu = evUns;
 	while (evIsPunct("|")) {
 		evI++;
 		v = v | evalBXor();
+		lu = lu | evUns;
 	}
+	evUns = lu;
 	return v;
 }
 
@@ -1755,6 +1938,7 @@ static int evalAnd(void)
 			r = 0;
 		}
 		v = (v != 0 && r != 0);
+		evUns = 0;
 	}
 	return v;
 }
@@ -1775,6 +1959,7 @@ static int evalOr(void)
 			r = 0;
 		}
 		v = (v != 0 || r != 0);
+		evUns = 0;
 	}
 	return v;
 }
@@ -1787,10 +1972,14 @@ static int evalTernary(void)
 
 	c = evalOr();
 	if (evIsPunct("?")) {
+		int au;
+		int bu;
+
 		evI++;
 		if (c == 0)
 			evDead++;
 		a = evalTernary();
+		au = evUns;
 		if (c == 0)
 			evDead--;
 		if (!evIsPunct(":"))
@@ -1799,8 +1988,12 @@ static int evalTernary(void)
 		if (c != 0)
 			evDead++;
 		b = evalTernary();
+		bu = evUns;
 		if (c != 0)
 			evDead--;
+		/* Der Typ des Bedingungsoperators ergibt sich aus BEIDEN Zweigen
+		   (usual arithmetic conversions), nicht aus dem gewaehlten. */
+		evUns = au | bu;
 		if (c != 0)
 			return a;
 		return b;
@@ -2206,6 +2399,7 @@ static int evalIfLine(void)
 	agTop = lineAt;
 	evI = 0;
 	evDead = 0;
+	evUns = 0;
 	val = evalTernary();
 	if (evI != evN)
 		fatal("#if: ueberzaehlige Tokens im Ausdruck", "");
@@ -2261,6 +2455,8 @@ static int findInclude(const char *name, int isAngle, int fromDir)
 		for (i = 0; i < k; i++)
 			n = lexAppend(n, name[i]);
 		lxTmp[n] = 0;
+		if (onceSeen(lxTmp))
+			return -2;
 		id = fileLoad(lxTmp);
 		if (id >= 0)
 			return id;
@@ -2286,6 +2482,8 @@ static int findInclude(const char *name, int isAngle, int fromDir)
 				n = lexAppend(n, name[j]);
 		}
 		lxTmp[n] = 0;
+		if (onceSeen(lxTmp))
+			return -2;
 		id = fileLoad(lxTmp);
 		if (id >= 0)
 			return id;
@@ -2350,6 +2548,8 @@ static void doInclude(void)
 		fatal("#include zu tief geschachtelt (INC_MAX)", "");
 
 	id = findInclude(name, isAngle, fromDir);
+	if (id == -2)
+		return;                       /* schon eingebunden, "#pragma once" */
 	if (id < 0)
 		fatal("#include: Datei nicht gefunden: ", name);
 
@@ -2409,8 +2609,19 @@ static void doPragma(void)
 	int i;
 
 	collectLine();
-	/* unveraendert durchgeben -- welche Pragmas die naechste Stufe kennt,
-	   entscheidet nicht der Praeprozessor (C89 3.8.6). */
+
+	/* "#pragma once" wird BEACHTET und nicht durchgegeben -- genau wie es
+	   cc -E tut (gemessen: dort erscheint die Zeile nicht in der Ausgabe).
+	   Ohne das wird ein Header, der sich so schuetzt (im MWOS-SDK z.B.
+	   SRC/DEFS/stdcomp.h), bei doppelter Einbindung zweimal ausgegeben. */
+	if (lineN == 1 && agKind[lineAt] == TK_ID && poolEq(agText[lineAt], "once")) {
+		flOnce[lxFile] = 1;
+		agTop = lineAt;
+		return;
+	}
+
+	/* alles andere unveraendert durchgeben -- welche Pragmas die naechste
+	   Stufe kennt, entscheidet nicht der Praeprozessor (C89 3.8.6). */
 	if (!atOutBOL)
 		outCh(10);
 	outStr("#pragma");
@@ -2460,6 +2671,7 @@ static void doLineDir(void)
 		flDir[id] = flDir[lxFile];
 		flStart[id] = flStart[lxFile];
 		flEnd[id] = flEnd[lxFile];
+		flOnce[id] = 0;
 		flN++;
 		lxFile = id;
 	}
