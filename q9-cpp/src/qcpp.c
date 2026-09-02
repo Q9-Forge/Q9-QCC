@@ -164,6 +164,7 @@ static int LXTMP_MAX = 8192;
 
 static char outBuf[8192];
 static int outN;
+static int outTotal;
 static char *outFp;
 
 /* ---------------------------------------------------------- Tokenarten ---- */
@@ -1813,6 +1814,7 @@ static void outFlush(void)
 	if (outN > 0) {
 		if (fwrite(outBuf, 1, outN, outFp) != outN)
 			fatal("Ausgabe konnte nicht geschrieben werden", "");
+		outTotal = outTotal + outN;
 		outN = 0;
 	}
 }
@@ -1932,10 +1934,16 @@ static void outTok(void)
 			needSpace = 1;
 		if (!isAlnumCh(lastCh) && !isAlnumCh(c0)) {
 			int q;
+			const char *pc;
 
+			/* Erst in einen Zeiger, dann indizieren:
+			   "punctList[q][0]" ist zweimaliges Indizieren eines
+			   Zeigerfeldes, das QCC ablehnt (gemessen: SEMERR).
+			   Ueber "char**" laufende Doppelindizes sind dagegen in
+			   Ordnung -- deshalb genau diese Form. */
 			for (q = 0; q < punctN; q++) {
-				if (punctList[q][0] == lastCh &&
-				    punctList[q][1] == c0) {
+				pc = punctList[q];
+				if (pc[0] == lastCh && pc[1] == c0) {
 					needSpace = 1;
 					q = punctN;
 				}
@@ -2851,7 +2859,7 @@ static void usage(void)
 	printf("  -lines             #line-Marken ausgeben\n");
 	printf("  -min               uebersprungene Zeilen nicht auffuellen\n");
 	printf("  -asm-strip         #asm/#endasm-Marken weglassen (wie xcc -pp)\n");
-	printf("  -v                 gelesene Dateien und Byteanzahl melden\n");
+	printf("  -v                 gelesene/geschriebene Byteanzahl melden\n");
 	printf("  -fdate=<text>      Wert fuer __DATE__\n");
 	printf("  -ftime=<text>      Wert fuer __TIME__\n");
 	exit(2);
@@ -2921,7 +2929,10 @@ int main(int argc, char **argv)
 	/* Erst die Optionen einsammeln, dann die Vorbelegungen aufbauen: -D
 	   soll eine Vorbelegung ueberschreiben koennen. */
 	for (i = 1; i < argc; i++) {
-		k = argStarts(argv[i], "-fdate=");
+		char *a;
+
+		a = argv[i];
+		k = argStarts(a, "-fdate=");
 		if (k > 0) {
 			int n;
 			int j;
@@ -2929,15 +2940,15 @@ int main(int argc, char **argv)
 			n = 0;
 			n = lexAppend(n, '"');
 			j = k;
-			while (argv[i][j] != 0) {
-				n = lexAppend(n, argv[i][j]);
+			while (a[j] != 0) {
+				n = lexAppend(n, a[j]);
 				j++;
 			}
 			n = lexAppend(n, '"');
 			dateText = internN(lxTmp, n);
 			continue;
 		}
-		k = argStarts(argv[i], "-ftime=");
+		k = argStarts(a, "-ftime=");
 		if (k > 0) {
 			int n;
 			int j;
@@ -2945,23 +2956,23 @@ int main(int argc, char **argv)
 			n = 0;
 			n = lexAppend(n, '"');
 			j = k;
-			while (argv[i][j] != 0) {
-				n = lexAppend(n, argv[i][j]);
+			while (a[j] != 0) {
+				n = lexAppend(n, a[j]);
 				j++;
 			}
 			n = lexAppend(n, '"');
 			timeText = internN(lxTmp, n);
 			continue;
 		}
-		if (argEq(argv[i], "-ansi")) {
+		if (argEq(a, "-ansi")) {
 			wantAnsi = 1;
 			continue;
 		}
-		if (argEq(argv[i], "-nopredef")) {
+		if (argEq(a, "-nopredef")) {
 			noPredef = 1;
 			continue;
 		}
-		if (argEq(argv[i], "-v")) {
+		if (argEq(a, "-v")) {
 			optVerbose = 1;
 			continue;
 		}
@@ -2969,57 +2980,65 @@ int main(int argc, char **argv)
 
 	setupBuiltins(wantAnsi, noPredef, dateText, timeText);
 
+	/* Das Argument einmal in einen eigenen Zeiger holen: "&argv[i][k]" ist
+	   die Adresse eines zweifach indizierten Ausdrucks, und die lehnt QCCs
+	   Grammatik ab (gemessen: FAIL). "&a[k]" auf einem char* geht. Lesende
+	   Doppelindizes wie "argv[i][0]" waeren in Ordnung -- der Zeiger macht
+	   die Schleife aber ohnehin lesbarer. */
 	for (i = 1; i < argc; i++) {
-		if (argStarts(argv[i], "-fdate=") > 0)
+		char *a;
+
+		a = argv[i];
+		if (argStarts(a, "-fdate=") > 0)
 			continue;
-		if (argStarts(argv[i], "-ftime=") > 0)
+		if (argStarts(a, "-ftime=") > 0)
 			continue;
-		if (argEq(argv[i], "-ansi") || argEq(argv[i], "-nopredef"))
+		if (argEq(a, "-ansi") || argEq(a, "-nopredef"))
 			continue;
-		if (argEq(argv[i], "-lines")) {
+		if (argEq(a, "-lines")) {
 			optLines = 1;
 			continue;
 		}
-		if (argEq(argv[i], "-min")) {
+		if (argEq(a, "-min")) {
 			optMin = 1;
 			continue;
 		}
-		if (argEq(argv[i], "-asm-strip")) {
+		if (argEq(a, "-asm-strip")) {
 			optAsmStrip = 1;
 			continue;
 		}
-		if (argEq(argv[i], "-v")) {
+		if (argEq(a, "-v")) {
 			optVerbose = 1;
 			continue;
 		}
-		if (argEq(argv[i], "-h") || argEq(argv[i], "-?"))
+		if (argEq(a, "-h") || argEq(a, "-?"))
 			usage();
-		k = argStarts(argv[i], "-D");
-		if (k > 0 && argv[i][k] != 0) {
-			defineFromArg(&argv[i][k]);
+		k = argStarts(a, "-D");
+		if (k > 0 && a[k] != 0) {
+			defineFromArg(&a[k]);
 			continue;
 		}
-		k = argStarts(argv[i], "-U");
-		if (k > 0 && argv[i][k] != 0) {
-			undefFromArg(&argv[i][k]);
+		k = argStarts(a, "-U");
+		if (k > 0 && a[k] != 0) {
+			undefFromArg(&a[k]);
 			continue;
 		}
-		k = argStarts(argv[i], "-I");
-		if (k > 0 && argv[i][k] != 0) {
+		k = argStarts(a, "-I");
+		if (k > 0 && a[k] != 0) {
 			if (dirN >= DIR_MAX)
 				fatal("zu viele -I-Verzeichnisse (DIR_MAX)", "");
-			dirPath[dirN] = intern(&argv[i][k]);
+			dirPath[dirN] = intern(&a[k]);
 			dirN++;
 			continue;
 		}
-		if (argv[i][0] == '-' && argv[i][1] != 0) {
-			printf("qcpp: unbekannte Option %s\n", argv[i]);
+		if (a[0] == '-' && a[1] != 0) {
+			printf("qcpp: unbekannte Option %s\n", a);
 			usage();
 		}
 		if (inPath == 0)
-			inPath = argv[i];
+			inPath = a;
 		else if (outPath == 0)
-			outPath = argv[i];
+			outPath = a;
 		else
 			usage();
 	}
@@ -3097,5 +3116,11 @@ int main(int argc, char **argv)
 		outCh(10);
 	outFlush();
 	fclose(outFp);
+	/* Diese Meldung kommt NACH dem Schreiben und Schliessen. Genau dafuer
+	   ist sie da: die Lesemeldung oben steht am ANFANG des Laufs und taugt
+	   nicht als Endesignal -- test/run_selfhost_68k.exp hat darauf gewartet
+	   und dann den Emulator zu frueh beendet. */
+	if (optVerbose)
+		printf("qcpp: geschrieben: %d Byte nach %s\n", outTotal, outPath);
 	return 0;
 }
