@@ -109,7 +109,15 @@ else
 		case "$h" in
 		*"(2)"*) continue;;      # Dubletten im SDK
 		esac
-		printf '#include <%s>\n' "$(basename "$h")" > "$TMP/w.c"
+		# ZWEIMAL einbinden. Der Test hat den Header vorher genau einmal
+		# eingebunden -- und konnte damit strukturell nicht sehen, dass
+		# "#pragma once" nicht beachtet wurde (im SDK nutzt es z.B.
+		# SRC/DEFS/stdcomp.h). Ein Header mit Wiederholungsschutz muss
+		# bei beiden Praeprozessoren einmal erscheinen, einer ohne
+		# Schutz bei beiden zweimal -- der Vergleich bleibt also
+		# aussagekraeftig und deckt jetzt beides ab.
+		printf '#include <%s>\n#include <%s>\n' \
+			"$(basename "$h")" "$(basename "$h")" > "$TMP/w.c"
 		compare "$TMP/w.c" "$(basename "$h")" "$DEFS1" "$DEFS2"
 		n=$((n + 1))
 	done
