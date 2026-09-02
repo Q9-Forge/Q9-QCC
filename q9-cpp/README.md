@@ -33,6 +33,7 @@ diese Lücke.
 | `make os9` — OS-9/68K-Modul | linkt: 44 KB Code, 4,2 MB Daten, 512 KB Stack |
 | `tools/test_68k.sh` — Lauf auf echtem 68030 | Ausgabe **byteidentisch** zum Hostlauf |
 | `tools/bootstrap.sh` — Kette ohne xcc/Wine/Python | IR **byteidentisch** zum alten Weg (1.123.692 Byte) |
+| `tools/selfhost_68k.sh` — qcpp von QCC gebaut, auf 68030 | Ausgabe **byteidentisch** zum Hostlauf |
 
 Drei Befunde tragen das:
 
@@ -44,6 +45,9 @@ Drei Befunde tragen das:
 3. **Die Bootstrap-Kette braucht kein Fremdteil mehr** — kein xcc, kein Wine,
    kein Python (`tools/bootstrap.sh`), und das Ergebnis ist byteidentisch zum
    alten Weg.
+4. **qcpp trägt sich selbst**: von sich selbst vorverarbeitet, von QCC
+   übersetzt, auf echtem 68030 gelaufen — mit byteidentischem Ergebnis
+   (`tools/selfhost_68k.sh`).
 
 ## Sprachumfang
 
@@ -81,7 +85,7 @@ Dazu:
 | `-lines` | `#line`-Marken ausgeben |
 | `-min` | übersprungene Zeilen nicht mit Umbrüchen auffüllen |
 | `-asm-strip` | `#asm`/`#endasm`-Marken weglassen (wie `xcc -pp`) |
-| `-v` | gelesene Dateien und Byteanzahl melden |
+| `-v` | gelesene und geschriebene Byteanzahl melden |
 | `-fdate=<text>`, `-ftime=<text>` | Werte für `__DATE__` / `__TIME__` |
 
 ## Am Original gemessen, nicht hergeleitet
@@ -183,6 +187,75 @@ Einzelne Datei prüfen:
 ./test/difftest.sh ../Data/qcc_p.c -I/Volumes/SSD1TB/projects/MWOS/SRC/DEFS
 ```
 
+## Selbsthost
+
+```
+./tools/selfhost_68k.sh
+```
+
+```
+Stufe 0  qcpp (Host)      src/qcpp.c        ->  qcpp.self.c
+Stufe 1  QCC (Host)       @qcpp.self.c      ->  self.ir      (15.437 Zeilen, OK, 0 Meldungen)
+Stufe 2  qcc_backend -> r68 -> l68          ->  68k-Modul
+Stufe 3  Modul im Emulator  /dd/qcpptest.c  ->  /dd/self.i
+Prüfung  self.i == Hostlauf derselben Quelle (byteweise)  ->  gleich, 165 Byte
+```
+
+In dieser Kette kommt für die **Sprache** kein Fremdwerkzeug mehr vor: kein
+xcc, kein Host-`cc`, kein Python. Offen bleiben `r68` und `l68` — Assembler
+und Binder, keine Compiler.
+
+### Was dabei über QCCs Subset herauskam
+
+Zwei Konstrukte musste qcpp aufgeben, beide mit einem Zwischenzeiger statt
+eines doppelten Index — und beide **gemessen**, nicht vermutet:
+
+| Konstrukt | QCC | Ausweg |
+|---|---|---|
+| `punctList[q][0]` (Zeigerfeld zweimal indiziert) | `SEMERR` | `pc = punctList[q]; pc[0]` |
+| `&argv[i][k]` (Adresse eines doppelten Index) | `FAIL` | `a = argv[i]; &a[k]` |
+
+Ausdrücklich geprüft und **in Ordnung**: lesende Doppelindizes über `char**`
+(`argv[i][0]`), `&a[k]` auf einem `char*`, `&global[i]` auf einem Array,
+Zeigerarithmetik `a + 2`, und `tab[n++] = "x"`. Die Grenze liegt also nicht
+beim Doppelindex an sich, sondern beim Zeigerfeld und bei der Adresse eines
+solchen Ausdrucks.
+
+Den Ort des Parse-Fehlers zu finden war der aufwendigere Teil: QCC meldet bei
+Syntaxfehlern nur `FAIL` ohne Position. Bisektion über die Klammertiefe der
+**vorverarbeiteten** Datei führte hin — nicht über die Einrückung, denn die
+gibt es in qcpps Ausgabe nicht mehr, dort sieht jede Zeile wie eine
+Top-Level-Zeile aus.
+
+### Woran der Testlauf dreimal scheiterte, obwohl qcpp lief
+
+Alle drei Fehlschläge lagen im Testgerüst, nicht im Programm — und der
+letzte war ein echter Denkfehler:
+
+1. Nach dem Absenden eines Kommandos auf den **Prompt** zu warten geht nicht:
+   der steht nach dem vorigen Kommando noch im Puffer und trifft sofort. Der
+   Emulator wurde dadurch beendet, bevor das Modul geladen war.
+2. Ein Fehlermuster `qcpp: <irgendwas>` trifft schon auf `qcpp: g` — also
+   mitten in der `-v`-Zeile. Expect nimmt das im Strom **zuerst passende**
+   Muster, nicht das zuerst notierte. Jetzt an der Diagnoseform
+   `datei:zeile:` geankert.
+3. Dann wurde auf die Lesemeldung von `-v` gewartet — die kommt aber am
+   **Anfang** des Laufs und beweist nur, dass das Modul geladen wurde. Genau
+   deshalb meldet `-v` jetzt auch das Schreiben (`geschrieben: N Byte nach
+   …`), und zwar nach `fclose()`: das ist ein Endesignal, das der Prompt nie
+   war.
+
+### Zwei Beobachtungen am Rand
+
+- **Das Modul ist 4,3 MB groß**, obwohl der Code nur einige Zehntausend Byte
+  ausmacht: QCCs Backend legt die genullten Tabellen in den
+  **initialisierten** Datenbereich, statt sie zu reservieren. Zum Vergleich
+  dasselbe Programm über xcc: 44 KB Modul mit 4,2 MB Datenbereich. Funktional
+  gleichwertig, aber das Laden im Emulator dauert entsprechend.
+- **ToolSheds `ident` stürzt an diesem Modul ab** (Exit 138, SIGBUS). Das
+  Skript liest den Modulkopf deshalb direkt und prüft Sync `$4AFC` und
+  `M$Size` gegen die Dateigröße.
+
 ## Der Lauf auf echtem 68030
 
 ```
@@ -277,8 +350,9 @@ Was zwischen hier und „nur eigene Werkzeuge" noch steht:
    Hostlauf (`tools/test_68k.sh`).
 2. ~~`bootstrap_prepare.py` ablösen~~ — erledigt für den Hauptweg
    (`tools/bootstrap.sh`), offen bleibt nur `--diag`.
-3. `qcpp` sich selbst vorverarbeiten und von QCC übersetzen lassen (dafür ist
-   die Quelle im QCC-Subset geschrieben).
-4. Der Präprozessor auf dem Ziel ist damit da, der Kernel fehlt noch — das
+3. ~~`qcpp` sich selbst vorverarbeiten und von QCC übersetzen lassen~~ —
+   erledigt, mit Lauf auf echtem 68030 (`tools/selfhost_68k.sh`).
+4. `r68`/`l68` sind die letzten Fremdteile der Kette — Assembler und Binder.
+5. Der Präprozessor auf dem Ziel ist damit da, der Kernel fehlt noch — das
    ist der andere Zweig des Ziels „Image mit ausschließlich eigenen
    Werkzeugen".

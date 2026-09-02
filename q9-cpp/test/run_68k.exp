@@ -12,7 +12,9 @@ set send_slow {1 .003}
 # die gerade am Ende des gelesenen Puffers steht -- und die Ausgabe eines
 # Praeprozessors ist voll davon ("move.l #40,d0", "#asm"). Der Lauf war in
 # Ordnung, das Muster nicht. Deshalb hier am ECHTEN Prompt geankert.
-set prompt {ROOT# ?$}
+# Beliebig viele Leerzeichen nach dem Prompt zulassen (der OS-9-Prompt
+# hat mehrere dahinter, mit "genau eines" trifft das Muster nie).
+set prompt {ROOT# *$}
 
 set flux  $env(Q9FLUX)
 set image $env(QCPP_IMAGE)

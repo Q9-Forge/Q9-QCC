@@ -1,0 +1,76 @@
+#!/usr/bin/expect -f
+# Faehrt das von QCC gebaute qcpp-Modul auf echtem 68030.
+# Wird von tools/selfhost_68k.sh aufgerufen (Q9FLUX, QCPP_IMAGE, MWOS).
+#
+# Der Zeitrahmen ist bewusst weit: das Modul ist ueber 4 MB gross (QCCs
+# Backend legt die genullten Tabellen in den INITIALISIERTEN Datenbereich,
+# nicht in einen reservierten -- s. README), und das laedt der Emulator vom
+# CF-Abbild nicht in einer Sekunde.
+set timeout 900
+set send_slow {1 .003}
+
+# Am echten Prompt ankern, nicht an Raute-oder-Dollar: Praeprozessorausgabe
+# ist voll von Rauten, und ein solches Muster trifft auf jede, die gerade am
+# Pufferende steht.
+# Beliebig viele Leerzeichen nach dem Prompt zulassen: der OS-9-Prompt
+# kommt mit mehreren Leerzeichen dahinter, und mit "genau eines" trifft
+# das Muster nie -- der Lauf haengt dann bis zur Zeitschranke.
+set prompt {ROOT# *$}
+
+set flux  $env(Q9FLUX)
+set image $env(QCPP_IMAGE)
+set mwos  $env(MWOS)
+
+cd $flux
+spawn ./build/macos/q9.exe --rom $mwos/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf $image
+expect {
+    "devices online" {}
+    timeout { send_user "\n<<< BOOT TIMEOUT >>>\n"; exit 1 }
+}
+send "\r"
+
+set logged_in 0
+for {set i 0} {$i < 10 && !$logged_in} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re $prompt { set logged_in 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$logged_in} { send_user "\n<<< LOGIN FEHLGESCHLAGEN >>>\n"; exit 1 }
+
+# Auf eine EIGENE Ausgabe des Kommandos warten (qcpp -v meldet die gelesene
+# Byteanzahl), NICHT auf den Prompt: der steht nach dem Login noch im Puffer
+# und wuerde sofort treffen -- so ist ein erfolgreicher Lauf hier schon
+# einmal als Fehlschlag durchgegangen, weil das Skript den Emulator beendete,
+# bevor das Modul ueberhaupt geladen war.
+# Gewartet wird auf die SCHREIB-Meldung von "-v": sie kommt erst nach
+# fclose(). Die Lesemeldung steht am Anfang des Laufs und beweist nur, dass
+# das Modul geladen wurde -- darauf zu warten hat den Emulator zu frueh
+# beendet. Auf den Prompt zu warten ist ebenfalls unbrauchbar: er steht nach
+# dem vorigen Kommando schon im Puffer.
+send -s "/dd/CMDS/q9_qcpp -v /dd/qcpptest.c /dd/self.i\r"
+expect {
+    -re {geschrieben: ([0-9]+) Byte} {
+        send_user "\n<<< QCPP LIEF AUF 68K DURCH, $expect_out(1,string) Byte geschrieben >>>\n"
+    }
+    # An die DIAGNOSEFORM ankern (qcpp: <datei>:<zeile>: <text>), nicht an
+    # "qcpp: " allein: expect nimmt das zuerst passende Muster im Strom, und
+    # "qcpp: [^\r\n]*" trifft bereits auf "qcpp: g" -- also mitten in der
+    # -v-Zeile, noch bevor "gelesen: ... Byte" vollstaendig da ist. Genau so
+    # wurde ein erfolgreicher Lauf hier als Fehler gemeldet.
+    -re {qcpp: [^ \r\n]+:[0-9]+:} {
+        send_user "\n<<< QCPP MELDET EINEN FEHLER >>>\n"
+        exit 1
+    }
+    -re {Error #([0-9]+)} { send_user "\n<<< OS-9-FEHLER $expect_out(1,string) >>>\n"; exit 1 }
+    timeout { send_user "\n<<< TIMEOUT beim Laden/Laufen >>>\n"; exit 1 }
+}
+# Danach direkt beenden. Eine Sichtkontrolle per "list" gab es hier
+# zwischenzeitlich -- sie ist wieder raus: die echte Pruefung ist der
+# byteweise Vergleich am Host (tools/selfhost_68k.sh), und sie war die
+# einzige Stelle, die haengen konnte.
+send "\x1d"
+expect eof
+exit 0
