@@ -203,6 +203,7 @@ static int pkLine;
 static int optLines;
 static int optMin;
 static int optAsmStrip;
+static int optVerbose;
 static int skipping;
 static int atBOL;
 static int inAsm;
@@ -383,6 +384,7 @@ static int fileLoad(const char *path)
 {
 	char *fp;
 	int got;
+	int want;
 	int start;
 	int id;
 
@@ -396,14 +398,25 @@ static int fileLoad(const char *path)
 	while (1) {
 		if (srcTop >= SRC_MAX)
 			fatal("Quelltextspeicher voll (SRC_MAX)", "");
-		got = fread(&srcArena[srcTop], 1, SRC_MAX - srcTop, fp);
+		/* In Haeppchen von 4 KB lesen, NICHT den ganzen freien Rest in
+		   einem Zug anfordern. Ein einzelnes fread ueber 2 MB kam auf
+		   OS-9/68K mit 0 zurueck (am 2026-09-02 im Emulator gemessen:
+		   Eingabe 590 Byte, Ausgabe leer) -- die Microware-libc oder
+		   der RBF-Treiber mag die Groesse nicht. Am Host ist beides
+		   gleichwertig. */
+		want = SRC_MAX - srcTop;
+		if (want > 4096)
+			want = 4096;
+		got = fread(&srcArena[srcTop], 1, want, fp);
 		if (got <= 0)
 			got = 0;
 		srcTop = srcTop + got;
-		if (got == 0)
+		if (got < want)
 			break;
 	}
 	fclose(fp);
+	if (optVerbose)
+		printf("qcpp: gelesen: %d Byte aus %s\n", srcTop - start, path);
 
 	id = flN;
 	flName[id] = intern(path);
@@ -417,7 +430,18 @@ static int fileLoad(const char *path)
 /* ================================================================ Lexer === */
 /* Liefert das logische Zeichen an der aktuellen Position: Zeilenfortsetzungen
    ("\" unmittelbar vor dem Umbruch) sind uebersprungen, die dabei
-   uebergangenen Umbrueche in pkLine gezaehlt. -1 = Dateiende. */
+   uebergangenen Umbrueche in pkLine gezaehlt. -1 = Dateiende.
+ *
+ * HIER werden ausserdem alle drei Umbruchformen auf LF vereinheitlicht, damit
+ * der restliche Lexer nur noch 10 kennt:
+ *   LF       Unix / Host
+ *   CR+LF    DOS -- so liegen Teile der SDK-Quellen vor
+ *   CR       OS-9 -- so liegt JEDE Textdatei auf dem Ziel
+ * Das CR-Allein ist am 2026-09-02 im Emulator aufgefallen: qcpp las die
+ * Eingabe vollstaendig (590 Byte) und gab NICHTS aus. Ursache war nicht die
+ * Ausgabe, sondern dass ohne LF die ganze Datei EINE Zeile war -- das erste
+ * "#define" schluckte damit den gesamten Rest als Makrorumpf. Ein Fehler, den
+ * am Host keine Eingabe zeigt. */
 static int rdPeek(void)
 {
 	int p;
@@ -442,14 +466,25 @@ static int rdPeek(void)
 			line++;
 			continue;
 		}
-		/* "\" + CR + LF: die SDK-Quellen haben teils DOS-Umbrueche */
-		if (c == 92 && p + 2 < end && srcArena[p + 1] == 13 &&
-		    srcArena[p + 2] == 10) {
-			p = p + 3;
+		/* "\" + CR + LF (DOS) und "\" + CR allein (OS-9) */
+		if (c == 92 && p + 1 < end && srcArena[p + 1] == 13) {
+			p = p + 2;
+			if (p < end && srcArena[p] == 10)
+				p = p + 1;
 			line++;
 			continue;
 		}
 		break;
+	}
+
+	if (c == 13) {
+		/* CR bzw. CR+LF melden wir als LF, s. Kopfkommentar */
+		pkCh = 10;
+		pkPos = p + 1;
+		if (pkPos < end && srcArena[pkPos] == 10)
+			pkPos = pkPos + 1;
+		pkLine = line + 1;
+		return 10;
 	}
 
 	pkCh = c;
@@ -2685,8 +2720,14 @@ static void setupBuiltins(int wantAnsi, int noPredef, int dateText, int timeText
 	defineMacro(intern("__TIME__"), 0, 0, 0, at, 1, 0);
 
 	if (!noPredef) {
-		/* am Original gemessen: xcc setzt _OSK und _UCC, aber weder
-		   _OS9000 noch __STDC__ */
+		/* _OSK und _UCC: am Original gemessen, xcc setzt genau diese
+		   zwei (weder _OS9000 noch __STDC__).
+		   _Q9 und _Q9OS: EIGENE Kennungen der Q9-Kette. _Q9 heisst "mit
+		   den Q9-Werkzeugen uebersetzt" (also qcpp/QCC statt xcc/Ultra
+		   C), _Q9OS "Ziel ist Q9-OS". Damit kann Quelltext, der auf
+		   beiden Ketten laufen soll, die Unterschiede benennen, statt
+		   sie an _OSK zu haengen -- das gilt fuer Microware genauso und
+		   taugt deshalb nicht zur Unterscheidung. */
 		at = mtTop;
 		mtKind[mtTop] = TK_NUM;
 		mtText[mtTop] = intern("1");
@@ -2694,6 +2735,8 @@ static void setupBuiltins(int wantAnsi, int noPredef, int dateText, int timeText
 		mtTop++;
 		defineMacro(intern("_OSK"), 0, 0, 0, at, 1, 0);
 		defineMacro(intern("_UCC"), 0, 0, 0, at, 1, 0);
+		defineMacro(intern("_Q9"), 0, 0, 0, at, 1, 0);
+		defineMacro(intern("_Q9OS"), 0, 0, 0, at, 1, 0);
 	}
 	if (wantAnsi) {
 		at = mtTop;
@@ -2804,10 +2847,11 @@ static void usage(void)
 	printf("  -I<verzeichnis>    Suchpfad fuer #include\n");
 	printf("  -ansi              __STDC__ auf 1 setzen (SDK-Header liefern\n");
 	printf("                     dann Prototypen statt K&R-Deklarationen)\n");
-	printf("  -nopredef          _OSK/_UCC NICHT vorbelegen\n");
+	printf("  -nopredef          _OSK/_UCC/_Q9/_Q9OS NICHT vorbelegen\n");
 	printf("  -lines             #line-Marken ausgeben\n");
 	printf("  -min               uebersprungene Zeilen nicht auffuellen\n");
 	printf("  -asm-strip         #asm/#endasm-Marken weglassen (wie xcc -pp)\n");
+	printf("  -v                 gelesene Dateien und Byteanzahl melden\n");
 	printf("  -fdate=<text>      Wert fuer __DATE__\n");
 	printf("  -ftime=<text>      Wert fuer __TIME__\n");
 	exit(2);
@@ -2917,6 +2961,10 @@ int main(int argc, char **argv)
 			noPredef = 1;
 			continue;
 		}
+		if (argEq(argv[i], "-v")) {
+			optVerbose = 1;
+			continue;
+		}
 	}
 
 	setupBuiltins(wantAnsi, noPredef, dateText, timeText);
@@ -2938,6 +2986,10 @@ int main(int argc, char **argv)
 		}
 		if (argEq(argv[i], "-asm-strip")) {
 			optAsmStrip = 1;
+			continue;
+		}
+		if (argEq(argv[i], "-v")) {
+			optVerbose = 1;
 			continue;
 		}
 		if (argEq(argv[i], "-h") || argEq(argv[i], "-?"))

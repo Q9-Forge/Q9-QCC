@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+# qcpp auf echtem 68030 laufen lassen (Q9-Flux, OS-9-Image).
+#
+# Wird von tools/test_68k.sh aufgerufen, das vorher Modul und Pruefquelle per
+# ToolShed ins Image legt und danach die Ausgabe wieder herausholt und
+# vergleicht. Erwartete Umgebungsvariablen: Q9FLUX, QCPP_IMAGE, MWOS.
+set timeout 240
+set send_slow {1 .003}
+
+# FALLE, die einen erfolgreichen Lauf als Fehlschlag gemeldet hat (2026-09-02):
+# ein Prompt-Muster aus Raute-oder-Dollar am Pufferende trifft auf JEDE Raute,
+# die gerade am Ende des gelesenen Puffers steht -- und die Ausgabe eines
+# Praeprozessors ist voll davon ("move.l #40,d0", "#asm"). Der Lauf war in
+# Ordnung, das Muster nicht. Deshalb hier am ECHTEN Prompt geankert.
+set prompt {ROOT# ?$}
+
+set flux  $env(Q9FLUX)
+set image $env(QCPP_IMAGE)
+set mwos  $env(MWOS)
+
+cd $flux
+spawn ./build/macos/q9.exe --rom $mwos/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf $image
+expect {
+    "devices online" {}
+    timeout { send_user "\n<<< BOOT TIMEOUT >>>\n"; exit 1 }
+}
+send "\r"
+
+set logged_in 0
+for {set i 0} {$i < 10 && !$logged_in} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re $prompt { set logged_in 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$logged_in} { send_user "\n<<< LOGIN FEHLGESCHLAGEN >>>\n"; exit 1 }
+
+# Nach einem Prompt-Match NICHT erneut auf den Prompt warten -- der ist
+# verbraucht, das haengt bis zum Timeout. Deshalb je Kommando genau ein
+# expect, und das naechste Kommando wird direkt gesendet.
+send -s "/dd/CMDS/qcpp /dd/qcpptest.c /dd/qcpptest.i\r"
+expect {
+    -re {qcpp: [^\r\n]*} {
+        send_user "\n<<< QCPP MELDET EINEN FEHLER >>>\n"
+        exit 1
+    }
+    -re $prompt { send_user "\n<<< QCPP-LAUF DURCH >>>\n" }
+    -re {Error|error #} { send_user "\n<<< OS-9-FEHLER >>>\n"; exit 1 }
+    timeout { send_user "\n<<< QCPP TIMEOUT >>>\n"; exit 1 }
+}
+
+# Zur Sichtkontrolle im Protokoll -- der eigentliche Vergleich passiert am
+# Host, byteweise gegen den Hostlauf derselben Quelle.
+send -s "list /dd/qcpptest.i\r"
+expect {
+    -re {int ende = 99;} { send_user "\n<<< AUSGABE SIEHT PLAUSIBEL AUS >>>\n" }
+    -re $prompt { send_user "\n<<< LIST OHNE ERWARTETE ZEILE >>>\n"; exit 1 }
+    timeout { send_user "\n<<< LIST TIMEOUT >>>\n"; exit 1 }
+}
+
+send "\x1d"
+expect eof
+exit 0

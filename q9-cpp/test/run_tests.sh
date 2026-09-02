@@ -21,6 +21,9 @@ fail=0
 failed_names=""
 
 t_src() { cat > "$TMP/in.c"; }
+# Zeilenenden des Ziels bzw. von DOS: auf OS-9 endet JEDE Textzeile mit CR.
+t_src_cr() { tr '\n' '\r' > "$TMP/in.c"; }
+t_src_crlf() { sed 's/$/\r/' > "$TMP/in.c"; }
 t_exp() { cat > "$TMP/exp.txt"; }
 t_file() { cat > "$TMP/$1"; }
 
@@ -345,6 +348,32 @@ ucc
 EOF
 t_run "21 Vorbelegung wie xcc (gemessen)"
 
+# Eigene Kennungen der Q9-Kette: _Q9 = mit qcpp/QCC uebersetzt, _Q9OS = Ziel
+# ist Q9-OS. _OSK taugt dafuer nicht, das setzt Microware auch.
+t_src <<'EOF'
+#if defined(_Q9) && defined(_Q9OS)
+int q9 = _Q9 + _Q9OS;
+#endif
+EOF
+t_exp <<'EOF'
+int q9 = 1 + 1;
+EOF
+t_run "21a _Q9 und _Q9OS sind vorbelegt"
+
+t_src <<'EOF'
+#ifdef _Q9
+falsch
+#endif
+#ifdef _Q9OS
+auch_falsch
+#endif
+ohne
+EOF
+t_exp <<'EOF'
+ohne
+EOF
+t_run "21b -nopredef nimmt auch _Q9/_Q9OS weg" -nopredef
+
 t_src <<'EOF'
 #ifdef __STDC__
 stdc
@@ -495,6 +524,33 @@ int a b; int c d;
 EOF
 t_run "32 Kommentar trennt Tokens"
 
+# // ist in C89 NICHT vorgesehen, wird hier aber unterstuetzt: 22 SDK-Dateien
+# nutzen es. Wichtig dabei: er endet an der Zeile und frisst keine Direktive
+# der Folgezeile, und in einer Zeichenkette ist er kein Kommentar.
+t_src <<'EOF'
+int a = 1;   // Zeilenkommentar
+#define N 2  // auch hinter einer Direktive
+int b = N;
+char *s = "kein // Kommentar";
+int c = 4;   // letzte Zeile ohne Umbruch danach
+EOF
+t_exp <<'EOF'
+int a = 1;
+int b = 2;
+char *s = "kein // Kommentar";
+int c = 4;
+EOF
+t_run "32a Zeilenkommentar //"
+
+t_src <<'EOF'
+#define M 1 // Kommentar gehoert NICHT zum Rumpf
+int x = M;
+EOF
+t_exp <<'EOF'
+int x = 1;
+EOF
+t_run "32b // im Makrorumpf"
+
 t_src <<'EOF'
 #pragma once
 #pragma warning ( disable : 4114)
@@ -568,6 +624,45 @@ int x = 1;
 EOF
 sed -i.bak "s|IN|$TMP/in.c|" "$TMP/exp.txt"
 t_run "39 -lines erzeugt eine Zeilenmarke" -lines
+
+# --------------------------------------------------------- Zeilenenden ----
+# Der Fall, der am Host nie auftritt und auf dem Ziel ALLES lahmlegt: OS-9
+# beendet Textzeilen mit CR. Ohne CR-Behandlung ist die ganze Datei eine
+# Zeile, und das erste #define schluckt den Rest als Makrorumpf -- im
+# Emulator am 2026-09-02 genau so passiert (Eingabe gelesen, Ausgabe leer).
+t_src_cr <<'EOF'
+#define N 40
+#define ADD(a,b) ((a)+(b))
+int x = ADD(N,2);
+#if N == 40
+int y = 1;
+#endif
+EOF
+t_exp <<'EOF'
+int x = ((40)+(2));
+int y = 1;
+EOF
+t_run "39a OS-9-Zeilenenden (CR)"
+
+t_src_crlf <<'EOF'
+#define N 7
+int x = N;
+EOF
+t_exp <<'EOF'
+int x = 7;
+EOF
+t_run "39b DOS-Zeilenenden (CR+LF)"
+
+# Zeilenfortsetzung mit CR: das "\" steht vor dem CR, nicht vor einem LF.
+t_src_cr <<'EOF'
+#define L 1 + \
+2
+int x = L;
+EOF
+t_exp <<'EOF'
+int x = 1 + 2;
+EOF
+t_run "39c Zeilenfortsetzung bei CR-Zeilenenden"
 
 # ------------------------------------------------------------- Abbrueche ---
 t_src <<'EOF'
