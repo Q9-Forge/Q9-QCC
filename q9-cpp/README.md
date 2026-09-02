@@ -25,17 +25,21 @@ diese Lücke.
 
 | Prüfung | Ergebnis |
 |---|---|
-| `make test` — 50 Regressionsfälle | **50 ok / 0 FAIL** |
+| `make test` — 57 Regressionsfälle | **57 ok / 0 FAIL** |
 | `make difftest` — 61 MWOS-SDK-Header gegen `cc -E` | **0 echte Abweichungen** (6× nur andere Abstände) |
 | `Data/qcc_p.c` (282 KB Ausgabe) gegen `cc -E` | gleicher Tokenstrom, nur andere Abstände |
 | QCC übersetzt die qcpp-Ausgabe | 89.763 IR-Zeilen, Schlusswort `OK`, **0 Meldungen** |
 | IR-Vergleich qcpp-Weg gegen xcc-Weg | **byteidentisch** (1.123.656 Byte) |
 | `make os9` — OS-9/68K-Modul | linkt: 44 KB Code, 4,2 MB Daten, 512 KB Stack |
+| `tools/test_68k.sh` — Lauf auf echtem 68030 | Ausgabe **byteidentisch** zum Hostlauf |
 
-Das byteidentische IR ist der eigentliche Befund: **qcpp ersetzt `xcc -pp` in
-der Bootstrap-Kette, ohne das Ergebnis zu verändern.** Noch nicht gemessen:
-qcpp *auf* echtem 68030 (Modul linkt, ist aber noch nicht im Emulator
-gelaufen).
+Zwei Befunde tragen das:
+
+1. **Das byteidentische IR** — qcpp ersetzt `xcc -pp` in der Bootstrap-Kette,
+   ohne das Ergebnis zu verändern.
+2. **qcpp läuft auf echtem 68030** (Q9-Flux, OS-9-Image) und liefert dort
+   byteidentisch dasselbe wie am Host. Wiederholbar über
+   `tools/test_68k.sh`.
 
 ## Sprachumfang
 
@@ -49,10 +53,17 @@ Vollständig ISO C89 (ANSI X3.159-1989) Abschnitt 3.8:
 Dazu:
 
 - **`#asm` / `#endasm`** — die Microware-Erweiterung, von Anfang an dabei.
+- **`//`-Zeilenkommentare** — in C89 nicht vorgesehen, aber 22 SDK-Dateien
+  nutzen sie. Getestet ist dabei auch, was leicht schiefgeht: der Kommentar
+  endet an der Zeile und verschluckt keine Direktive der Folgezeile, in einer
+  Zeichenkette ist `//` kein Kommentar, und im Makrorumpf gehört er nicht zum
+  Rumpf.
 - `#warning` (verbreitete Erweiterung), `#ident` / `#sccs` (werden überlesen),
-  `//`-Kommentare (in C89 nicht vorgesehen, aber 22 SDK-Dateien nutzen sie),
   und `# <zahl> "datei"` — die Zeilenmarken anderer Präprozessoren, damit sich
   Werkzeuge verketten lassen.
+- **Alle drei Zeilenendeformen**: LF (Host), CR+LF (DOS, so liegen Teile der
+  SDK-Quellen), **CR (OS-9 — so liegt dort jede Textdatei)**. Vereinheitlicht
+  wird zentral im Zeichenleser, der restliche Lexer kennt nur LF.
 
 ## Optionen
 
@@ -62,10 +73,11 @@ Dazu:
 | `-U<name>` | Makro löschen |
 | `-I<verzeichnis>` | Suchpfad für `#include` |
 | `-ansi` | `__STDC__` auf 1 setzen |
-| `-nopredef` | `_OSK`/`_UCC` nicht vorbelegen |
+| `-nopredef` | `_OSK`/`_UCC`/`_Q9`/`_Q9OS` nicht vorbelegen |
 | `-lines` | `#line`-Marken ausgeben |
 | `-min` | übersprungene Zeilen nicht mit Umbrüchen auffüllen |
 | `-asm-strip` | `#asm`/`#endasm`-Marken weglassen (wie `xcc -pp`) |
+| `-v` | gelesene Dateien und Byteanzahl melden |
 | `-fdate=<text>`, `-ftime=<text>` | Werte für `__DATE__` / `__TIME__` |
 
 ## Am Original gemessen, nicht hergeleitet
@@ -82,7 +94,11 @@ Dokumentation ergaben:
    lässt jede nachfolgende Stufe über C-Syntaxfehlern stehen statt über der
    Sache. `-asm-strip` stellt das xcc-Verhalten her.
 3. **Vordefiniert sind `_OSK` und `_UCC`** — und weder `_OS9000` noch
-   `__STDC__`. qcpp macht es genauso.
+   `__STDC__`. qcpp macht es genauso und setzt zusätzlich **`_Q9`** („mit den
+   Q9-Werkzeugen übersetzt", also qcpp/QCC statt xcc/Ultra C) und **`_Q9OS`**
+   („Ziel ist Q9-OS"). Beide braucht man, weil `_OSK` bei Microware genauso
+   gesetzt ist und deshalb nicht zur Unterscheidung taugt. `-nopredef` nimmt
+   alle vier weg.
 4. `#`/`##` und die Doppelexpansion (`XSTR(VAL)` → `"42"`) verhalten sich
    normgerecht.
 
@@ -144,7 +160,7 @@ Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
 ## Testen
 
 ```
-make test        # 50 Fälle, Eingabe und Sollwert stehen direkt untereinander
+make test        # 57 Fälle, Eingabe und Sollwert stehen direkt untereinander
 make difftest    # Differenztest gegen cc -E über die MWOS-SDK-Header
 make check       # beides
 ```
@@ -162,6 +178,37 @@ Einzelne Datei prüfen:
 ```
 ./test/difftest.sh ../Data/qcc_p.c -I/Volumes/SSD1TB/projects/MWOS/SRC/DEFS
 ```
+
+## Der Lauf auf echtem 68030
+
+```
+./tools/build_os9.sh          # Modul bauen
+./tools/test_68k.sh           # bauen, ins Image, Emulator, byteweise vergleichen
+```
+
+`test_68k.sh` klont das Ausgangsimage (`cp -c`, CoW und damit kostenlos),
+legt Modul und Prüfquelle per ToolShed hinein, fährt den Emulator über
+`test/run_68k.exp`, holt die Ausgabe wieder heraus und vergleicht sie
+**byteweise** mit dem Hostlauf derselben Quelle. Der Vergleich ist der Punkt:
+dass ein Modul im Emulator ohne Absturz durchläuft, sagt für sich genommen
+wenig.
+
+Zwei Dinge hat erst dieser Lauf gezeigt — beide hätte kein Hosttest gefunden:
+
+- **OS-9 beendet Textzeilen mit CR.** Ohne CR-Behandlung war die ganze Datei
+  *eine* Zeile: qcpp las die Eingabe vollständig (590 Byte) und gab **nichts**
+  aus, weil das erste `#define` den gesamten Rest als Makrorumpf schluckte.
+  Das ist der Grund für die zentrale Umbruchnormalisierung, und dafür, dass
+  drei Fälle in der Hostsuite jetzt mit CR- und CR+LF-Eingaben laufen.
+- **Ein einzelnes `fread` über 2 MB kam auf OS-9 mit 0 zurück.** Jetzt wird in
+  4-KB-Häppchen gelesen; `-v` meldet die gelesene Byteanzahl, damit sich so
+  etwas auf dem Ziel selbst beantworten lässt statt per Neubau.
+
+Dazu eine Falle im Testgerüst, die einen *erfolgreichen* Lauf als Fehlschlag
+gemeldet hat: das übliche Prompt-Muster aus Raute-oder-Dollar am Pufferende
+trifft auf jede Raute, die gerade am Puffernde steht — und
+Präprozessorausgabe ist voll davon (`move.l #40,d0`, `#asm`). `run_68k.exp`
+ankert deshalb am echten Prompt.
 
 ## Der Weg zum eigenen Bootstrap
 
@@ -182,8 +229,8 @@ python3 ../tools/bootstrap_prepare.py build/qcc_p.i build/qcc_p.bootstrap.c
 
 Was danach noch zwischen hier und „nur eigene Werkzeuge" steht:
 
-1. `qcpp` im Emulator auf echtem 68030 laufen lassen (`make os9` baut das
-   Modul, es ist noch nicht gefahren).
+1. ~~`qcpp` auf echtem 68030 laufen lassen~~ — erledigt, byteidentisch zum
+   Hostlauf (`tools/test_68k.sh`).
 2. `bootstrap_prepare.py` ablösen — was es tut, ist im Kern das Ersetzen des
    Microware-`stdio`-Vorspanns; mit einem eigenen Präprozessor und einer
    eigenen kleinen `stdio.h` wird das Skript überflüssig.
