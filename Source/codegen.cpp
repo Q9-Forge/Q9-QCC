@@ -1051,7 +1051,15 @@ int genParserC(const char* path) {
 	fprintf(fp, "static void qccOutputString(const char* s) { while (*s) qccOutputChar(*s++); }\n");
 	fprintf(fp, "static void qccOutputLong(long v) { unsigned long u; char digits[16]; int n = 0; if (v < 0) { qccOutputChar('-'); u = (unsigned long)(-(v + 1)); u++; } else u = (unsigned long)v; do { digits[n++] = (char)('0' + (u %% 10)); u /= 10; } while (u); while (n) qccOutputChar(digits[--n]); }\n");
 	fprintf(fp, "static int qccPrintf(const char* fmt, ...) { va_list ap; int longArg; va_start(ap, fmt); while (*fmt) { if (*fmt != '%%') { qccOutputChar(*fmt++); continue; } fmt++; longArg = 0; if (*fmt == 'l') { longArg = 1; fmt++; } if (*fmt == 's') qccOutputString(va_arg(ap, const char*)); else if (*fmt == 'c') qccOutputChar(va_arg(ap, int)); else if (*fmt == 'd') qccOutputLong(longArg ? va_arg(ap, long) : (long)va_arg(ap, int)); else if (*fmt == '%%') qccOutputChar('%%'); if (*fmt) fmt++; } va_end(ap); return 0; }\n");
-	fprintf(fp, "#define printf qccPrintf\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() ((void)0)\n#endif\n\n");
+	/* Der Leerlauf-Zweig lautet "(void)0" OHNE aeussere Klammern. Grund:
+	   QCCs Anweisungsliste kennt keine allgemeine Ausdrucksanweisung,
+	   sondern nur voidCastStmt = "(" "void" ")" expr ";" -- "((void)0);"
+	   ist gueltiges C, das QCC mit FAIL ablehnt. Alle Aufrufstellen von
+	   QCC_OUTPUT_FLUSH() sind reine Anweisungen in einem Block, die
+	   aeusseren Klammern tragen dort also nichts. Damit kann QCC den
+	   erzeugten Parser ohne jede Nachbearbeitung lesen, s.
+	   Q9-QCC/q9-cpp/tools/bootstrap.sh. */
+	fprintf(fp, "#define printf qccPrintf\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() (void)0\n#endif\n\n");
 	fprintf(fp, "static const char* p;\n");
 	/* Anker fuer Positionsangaben im Nutzercode (2026-09-01): der Zeiger p
 	   wandert waehrend des Parsens, der Anfang der Eingabe bleibt stehen. Aus
