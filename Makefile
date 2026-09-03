@@ -28,9 +28,14 @@ backend: build/qr68
 	./test/backend.sh
 	./test/handwritten.sh
 
+# Der schwerste Korpus: die SCF-Treiber des SDK. Laeuft NICHT in "check",
+# weil dort noch neun der 15 uebersetzbaren Quellen abweichen (s. README).
+mwos: build/qr68
+	./test/mwos.sh
+
 check: test backend
 
 clean:
 	rm -rf build
 
-.PHONY: all test backend check clean
+.PHONY: all test backend mwos check clean

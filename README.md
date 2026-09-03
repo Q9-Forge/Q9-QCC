@@ -21,6 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
+| 6 **SCF-Treiber des MWOS-SDK** (Includes, Makros, bedingte Assemblierung, `-b`) | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -76,6 +77,7 @@ ROF-Kopf. Also:
 make test                          # Proben, Befehlstabelle, use, -b
 make backend                       # QCC-Backend-Quellen + Q9-OS-Kernel
 make check                         # beides
+./test/mwos.sh                     # die SCF-Treiber des SDK
 
 ./test/difftest.sh                 # die eingebauten Proben
 ./test/difftest.sh datei.a         # eine echte Quelle, ganze ROF-Datei
@@ -173,6 +175,34 @@ dasselbe innerhalb des vsect, `$b0` = PC-relativ auf einen externen Namen,
 Globale: Code `$0004`, initialisierte Daten `$0001`, reservierte Daten
 `$0000`. Weitere Fälle werden beim Ausbau **einzeln gemessen**, nicht
 abgeleitet — bei jeder ungemessenen Kombination bricht `qr68` ab.
+
+### Mehrere verschiebbare Anteile in einem Ausdruck
+
+`r68` löst sie nicht auf, sondern legt **je Anteil eine Referenz auf denselben
+Offset** ab. `move.b PD_PAR-PD_OPT+M$DTyp(a1),d0` (so steht es in den
+SCF-Treibern, alle drei Namen extern) ergibt `$0030`, `$0070` und `$0030` auf
+dem Displacementwort; `dc.l EA+EB` ergibt zwei Referenzen, `dc.l basis+basis`
+ebenfalls. Nur die **Differenz zweier moduleigener Größen** rechnet r68 aus
+und gibt gar keine Referenz aus — auch über Abschnittsgrenzen hinweg
+(`dc.l dat-basis` mit `dat` im vsect: Wert 0, keine Referenz). Genau davon
+leben die Indirektionstabellen von QCCs `-largedata`.
+
+Multipliziert, geteilt, geschoben oder verundet werden darf nur ein Anteil
+ohne Bezug — aber es zählt der **Teilausdruck**, nicht der ganze:
+`(*-BaudTabl)/2` ist erlaubt (die Differenz ist eine Konstante), und
+`\1+\1+\1+\1+256*4` aus `MACROS/os9svc.m` ebenfalls.
+
+### Sofortwerte: drei gemessene Sonderfälle
+
+- `move.b #fremd,d0` bekommt eine **Byte**referenz auf das *niederwertige*
+  Byte des Erweiterungswortes (`$0028` auf Offset 3), die I-Formen dagegen
+  eine Wortreferenz auf das ganze Wort: `cmpi.b #-1,d0` legt `$ffff` ab,
+  `move.b #-1,d0` nur `$00ff`.
+- `moveq #fremd,d1` bekommt eine Byte-Referenz auf das niederwertige Byte des
+  **Befehlswortes** (`$0028` auf Offset 1). `addq`/Schiebeweiten lehnt r68
+  mit einem externen Namen ab.
+- `moveq` nimmt mehr als `-128..127`: `#$ff` wird `$70ff`, `#-129` wird
+  `$707f`, erst ab 256 meldet r68 „value out of range".
 
 ### Reihenfolgen, ohne die es keine Byteidentität gibt
 
@@ -326,14 +356,29 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
   ganze Datei eine Zeile war.
 - **An Modellgrenzen wird abgebrochen**, nicht geraten.
 
+## Wo es beim Treiberkorpus noch klemmt
+
+`./test/mwos.sh` fährt die 29 SCF-Treiber des SDK aus einem Port-Verzeichnis,
+so wie es die SDK-Makefiles tun (`-qb -u=. -u=<DEFS> -u=<MACROS>`). Von den
+15, die `r68` selbst übersetzt (die übrigen 14 brauchen Definitionen anderer
+Boards), sind **6 byteidentisch**. Die restlichen neun hängen an fünf
+benannten Stellen:
+
+- **`sc68562`** benutzt `bsr.l`/`bcs.l` — die in r68 kaputte lange Sprungform
+  (s. o.). `qr68` bricht dort ab.
+- **`sc68990`** springt auf die unmittelbar folgende Anweisung; r68 lässt den
+  Befehl mit `-b` weg, was sich nicht stabil nachbilden lässt (s. o.).
+- **`sc8251a`** prüft `ifeq CPUType-FM16s` mit einem Namen, den es nicht
+  gibt: r68 meldet dort „illegal external reference" und übersetzt den Block
+  trotzdem. `qr68` bricht ab.
+- **`sc68681`** löst ein `fail` in einem SDK-Makro aus — dort geht eine
+  Bedingung anders aus als bei r68, das ist noch nicht durchgemessen.
+- **`sc68070`, `sc6821`, `sc8250`, `sccd2401`** übersetzen durch, weichen
+  aber in der Länge ab (6 bis 196 Byte). Auch das ist noch nicht eingegrenzt.
+
 ## Nächste Schritte
 
-1. **Ausdrücke mit mehreren verschiebbaren Anteilen.** Die MWOS-Treiber
-   schreiben `move.b PD_PAR-PD_OPT+M$DTyp(a1),d0` — drei externe Namen in
-   einem Ausdruck; r68 macht daraus drei Referenzen auf denselben Offset
-   (die abgezogene mit `$40` im Typwort). `qr68` kann bisher einen positiven
-   und einen abgezogenen Anteil. Das ist das, was den Treiberkorpus
-   aufschließt.
+1. Die fünf oben benannten Stellen im Treiberkorpus.
 2. Kette `qcc_backend → qr68 → l68` einmal bis zum laufenden Modul auf dem
    68030 fahren (bisher ist nur gezeigt, dass `l68` von `qr68` byteweise
    dasselbe bekommt wie von `r68`).

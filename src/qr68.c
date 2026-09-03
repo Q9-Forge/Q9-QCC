@@ -312,7 +312,7 @@ static void fatal(const char *msg, const char *detail)
 	const char *fn;
 
 	fn = "<keine Datei>";
-	if (curFile >= 0 && curFile < flN)
+	if (curFile >= 0 && curFile < FILE_MAX && flName[curFile] > 0)
 		fn = poolAt(flName[curFile]);
 	printf("qr68: %s:%d: %s%s\n", fn, curLine, msg, detail);
 	exit(1);
@@ -541,12 +541,79 @@ static int readLine(void)
 static const char *exP;
 static int exSect;             /* Abschnitt des Ergebnisses */
 static int exExtern;           /* Pool-Index eines externen Namens, sonst -1 */
-/* Abschnitt eines ABGEZOGENEN verschiebbaren Anteils, sonst SECT_NONE.
-   "fremd-basis" ist bei r68 KEIN Fehler, sondern zwei Referenzen auf
-   denselben Offset: die externe mit $38 und die lokale mit $7c = $40|$3c.
-   Bit $40 heisst also "abziehen". Genau diese Form erzeugt QCCs Backend in
-   seiner Funktionstabelle, wenn dort ein externer Name steht. */
-static int exNegSect;
+/* Die VERSCHIEBBAREN ANTEILE eines Ausdrucks, mit Vorzeichen. r68 loest
+   "PD_PAR-PD_OPT+M$DTyp" nicht auf, sondern legt DREI Referenzen auf
+   denselben Offset ab: $0030, $0070 (das $40 heisst "abziehen") und $0030.
+   Ebenso ergibt "dc.l EA+EB" zwei Referenzen und "dc.l basis+basis" zwei
+   lokale. Nur eine DIFFERENZ zweier moduleigener Groessen rechnet r68 aus
+   und gibt gar keine Referenz aus -- auch ueber Abschnittsgrenzen hinweg
+   (gemessen an "dc.l dat-basis" mit dat im vsect: Wert 0, keine Referenz).
+   Genau davon leben die Indirektionstabellen von QCCs -largedata.
+
+   Die Anteile liegen in drei Faechern: 0 und 1 fuer die beiden Operanden
+   eines Befehls, 2 fuer den gerade ausgewerteten Ausdruck. */
+static int TERM_MAX = 8;
+static int termSect[24];       /* SECT_CODE/IDATA/UDATA/EXTERN */
+static int termName[24];       /* Pool-Index bei EXTERN, sonst -1 */
+static int termNeg[24];        /* 1 = wird abgezogen */
+static int termN[3];
+static int TERM_CUR = 2;       /* Fach des laufenden Ausdrucks */
+
+static void termAdd(int sect, int name)
+{
+	if (termN[2] >= TERM_MAX)
+		fatal("zu viele verschiebbare Anteile in einem Ausdruck (TERM_MAX)",
+		      "");
+	termSect[16 + termN[2]] = sect;
+	termName[16 + termN[2]] = name;
+	termNeg[16 + termN[2]] = 0;
+	termN[2]++;
+}
+
+/* Kuerzt Paare aus einem addierten und einem abgezogenen MODULEIGENEN
+   Anteil weg -- r68 rechnet solche Differenzen aus. Externe Namen bleiben
+   stehen, auch "EA-EB". */
+static void termFold(void)
+{
+	int i;
+	int j;
+	int k;
+
+	i = 0;
+	while (i < termN[2]) {
+		if (termSect[16 + i] == SECT_EXTERN || termNeg[16 + i]) {
+			i++;
+			continue;
+		}
+		j = 0;
+		while (j < termN[2] &&
+		       (termSect[16 + j] == SECT_EXTERN || !termNeg[16 + j]))
+			j++;
+		if (j >= termN[2]) {
+			i++;
+			continue;
+		}
+		/* i und j herausnehmen, hoeheres zuerst */
+		if (j < i) {
+			k = i;
+			i = j;
+			j = k;
+		}
+		for (k = j; k + 1 < termN[2]; k++) {
+			termSect[16 + k] = termSect[16 + k + 1];
+			termName[16 + k] = termName[16 + k + 1];
+			termNeg[16 + k] = termNeg[16 + k + 1];
+		}
+		termN[2]--;
+		for (k = i; k + 1 < termN[2]; k++) {
+			termSect[16 + k] = termSect[16 + k + 1];
+			termName[16 + k] = termName[16 + k + 1];
+			termNeg[16 + k] = termNeg[16 + k + 1];
+		}
+		termN[2]--;
+		i = 0;
+	}
+}
 
 /* 1 = im Ausdruck stand ein Name, der noch gar nicht bekannt sein KANN.
    Nur im ersten Durchlauf moeglich: ab dem zweiten ist die Symboltabelle
@@ -600,11 +667,19 @@ static int exNumber(int base)
    einen verschiebbaren Abschnitt. Die Verknuepfungen pruefen das: "SYM-SYM"
    im selben Abschnitt ist absolut (genau das erzeugt das QCC-Backend in
    seiner Funktionstabelle), "SYM+SYM" ist es nicht. */
-static void exNeedAbs(const char *what)
+/* Hat der gerade gelesene Teilausdruck -- alles ab "mark" -- einen
+   verschiebbaren Anteil? Dann darf er nicht multipliziert, geteilt,
+   geschoben oder verundet werden. Vorher wird gekuerzt, denn
+   "(*-BaudTabl)/2" steht so im SDK und IST eine Konstante. Und es zaehlt
+   nur der Teilausdruck, nicht der ganze: "\1+\1+\1+\1+256*4" (aus
+   MACROS/os9svc.m) hat vier verschiebbare Summanden und trotzdem eine
+   erlaubte Multiplikation. */
+static void exNeedAbsSince(int mark, const char *what)
 {
 	if (exOpen)
 		return;
-	if (exSect != SECT_ABS || exExtern >= 0 || exNegSect != SECT_NONE)
+	termFold();
+	if (termN[2] > mark)
 		fatal("Abschnittsbezug in diesem Ausdruck nicht moeglich: ", what);
 }
 
@@ -629,9 +704,12 @@ static int exPrimary(void)
 		return v;
 	}
 	if (exP[0] == '-') {
+		int mark;
+
 		exP = exP + 1;
+		mark = termN[2];
 		v = -exPrimary();
-		exNeedAbs("unaeres Minus");
+		exNeedAbsSince(mark, "unaeres Minus");
 		return v;
 	}
 	if (exP[0] == '+') {
@@ -643,9 +721,14 @@ static int exPrimary(void)
 		   ergibt "dc.b ^$0f" ein $f0, waehrend "$ff^$0f" mit
 		   "illegal expression terminator" abgelehnt wird. Ein "~"
 		   kennt r68 gar nicht ("bad operand"). */
-		exP = exP + 1;
-		v = ~exPrimary();
-		exNeedAbs("unaeres Nicht");
+		{
+			int mark;
+
+			exP = exP + 1;
+			mark = termN[2];
+			v = ~exPrimary();
+			exNeedAbsSince(mark, "unaeres Nicht");
+		}
 		return v;
 	}
 	if (exP[0] == '$') {
@@ -683,6 +766,7 @@ static int exPrimary(void)
 		if (curSect == SECT_NONE)
 			fatal("\"*\" ausserhalb eines Abschnitts", "");
 		exSect = curSect;
+		termAdd(curSect, -1);
 		return curPC;
 	}
 	if (exP[0] == '.' && !isSymCh(exP[1] & 255)) {
@@ -716,6 +800,7 @@ static int exPrimary(void)
 			   Name -- den traegt der Aufrufer als Referenz ein. */
 			exExtern = name;
 			exSect = SECT_EXTERN;
+			termAdd(SECT_EXTERN, name);
 			if (pass == 1)
 				exOpen = 1;
 			return 0;
@@ -723,6 +808,9 @@ static int exPrimary(void)
 		exSect = symSect[s];
 		if (exSect == SECT_NONE)
 			exSect = SECT_ABS;
+		if (exSect == SECT_CODE || exSect == SECT_IDATA ||
+		    exSect == SECT_UDATA)
+			termAdd(exSect, -1);
 		return symValue[s];
 	}
 
@@ -734,22 +822,26 @@ static int exMul(void)
 {
 	int v;
 	int r;
+	int mark;
 
+	mark = termN[2];
 	v = exPrimary();
 	while (1) {
 		exSkip();
 		if (exP[0] == '*' && exP[1] != 0) {
-			exNeedAbs("Multiplikation");
+			exNeedAbsSince(mark, "Multiplikation");
 			exP = exP + 1;
+			mark = termN[2];
 			v = v * exPrimary();
-			exNeedAbs("Multiplikation");
+			exNeedAbsSince(mark, "Multiplikation");
 			continue;
 		}
 		if (exP[0] == '/') {
-			exNeedAbs("Division");
+			exNeedAbsSince(mark, "Division");
 			exP = exP + 1;
+			mark = termN[2];
 			r = exPrimary();
-			exNeedAbs("Division");
+			exNeedAbsSince(mark, "Division");
 			if (r == 0)
 				fatal("Division durch Null im Ausdruck", "");
 			v = v / r;
@@ -764,97 +856,53 @@ static int exAdd(void)
 {
 	int v;
 	int r;
-	int ls;
-	int rs;
-	int lx;
+	int mark;
+	int i;
 
 	v = exMul();
-	ls = exSect;
-	lx = exExtern;
 	while (1) {
 		exSkip();
 		if (exP[0] != '+' && exP[0] != '-')
 			break;
 		if (exP[0] == '+') {
 			exP = exP + 1;
-			exSect = SECT_ABS;
-			exExtern = -1;
-			r = exMul();
-			rs = exSect;
-			v = v + r;
-			/* Verschiebbar darf hoechstens eine Seite sein. */
-			if (!exOpen && ls != SECT_ABS && rs != SECT_ABS)
-				fatal("Summe zweier verschiebbarer Groessen", "");
-			if (!exOpen && lx >= 0 && exExtern >= 0)
-				fatal("Summe zweier externer Namen", "");
-			if (ls == SECT_ABS)
-				ls = rs;
-			if (lx < 0)
-				lx = exExtern;
+			v = v + exMul();
 		} else {
 			exP = exP + 1;
-			exSect = SECT_ABS;
-			exExtern = -1;
+			mark = termN[2];
 			r = exMul();
-			rs = exSect;
 			v = v - r;
-			if (rs != SECT_ABS) {
-				/* Sind BEIDE Seiten Groessen des eigenen
-				   Moduls, rechnet r68 die Differenz aus und
-				   gibt KEINE Referenz aus -- und zwar auch
-				   ueber Abschnittsgrenzen hinweg (gemessen an
-				   "dc.l dat-basis" mit dat im vsect und basis
-				   im Code: Wert 0, keine Referenz). Genau
-				   davon leben die Indirektionstabellen, die
-				   QCCs Backend mit -largedata erzeugt.
-				   Steht links dagegen ein externer Name oder
-				   eine Konstante, bleibt der abgezogene Anteil
-				   offen und wird eine zweite Referenz mit $40
-				   im Typwort (gemessen an "dc.l fremd-basis"
-				   -> $38 und $7c, und "dc.l zwei-basis" mit
-				   "zwei equ 4" -> nur $7c). */
-				if (exOpen) {
-					ls = SECT_ABS;
-					lx = -1;
-				} else if (rs == SECT_EXTERN) {
-					fatal("ein externer Name als abgezogener Anteil -- nicht gemessen",
-					      "");
-				} else if (ls == SECT_CODE || ls == SECT_IDATA ||
-					   ls == SECT_UDATA) {
-					ls = SECT_ABS;
-				} else if (exNegSect != SECT_NONE) {
-					fatal("mehr als ein abgezogener verschiebbarer Anteil",
-					      "");
-				} else {
-					exNegSect = rs;
-				}
-			}
+			/* Alles, was rechts dazugekommen ist, geht negativ ein. */
+			for (i = mark; i < termN[2]; i++)
+				termNeg[16 + i] = !termNeg[16 + i];
 		}
 	}
-	exSect = ls;
-	exExtern = lx;
 	return v;
 }
 
 static int exShift(void)
 {
 	int v;
+	int mark;
 
+	mark = termN[2];
 	v = exAdd();
 	while (1) {
 		exSkip();
 		if (exP[0] == '<' && exP[1] == '<') {
-			exNeedAbs("Schiebeoperator");
+			exNeedAbsSince(mark, "Schiebeoperator");
 			exP = exP + 2;
+			mark = termN[2];
 			v = v << exAdd();
-			exNeedAbs("Schiebeoperator");
+			exNeedAbsSince(mark, "Schiebeoperator");
 			continue;
 		}
 		if (exP[0] == '>' && exP[1] == '>') {
-			exNeedAbs("Schiebeoperator");
+			exNeedAbsSince(mark, "Schiebeoperator");
 			exP = exP + 2;
+			mark = termN[2];
 			v = v >> exAdd();
-			exNeedAbs("Schiebeoperator");
+			exNeedAbsSince(mark, "Schiebeoperator");
 			continue;
 		}
 		break;
@@ -865,23 +913,27 @@ static int exShift(void)
 static int exprTop(void)
 {
 	int v;
+	int mark;
 
+	mark = termN[2];
 	v = exShift();
 	while (1) {
 		exSkip();
 		if (exP[0] == '&') {
-			exNeedAbs("UND-Verknuepfung");
+			exNeedAbsSince(mark, "UND-Verknuepfung");
 			exP = exP + 1;
+			mark = termN[2];
 			v = v & exShift();
-			exNeedAbs("UND-Verknuepfung");
+			exNeedAbsSince(mark, "UND-Verknuepfung");
 			continue;
 		}
 		if (exP[0] == '!') {
 			/* "!" ist bei Microware das bitweise ODER */
-			exNeedAbs("ODER-Verknuepfung");
+			exNeedAbsSince(mark, "ODER-Verknuepfung");
 			exP = exP + 1;
+			mark = termN[2];
 			v = v | exShift();
-			exNeedAbs("ODER-Verknuepfung");
+			exNeedAbsSince(mark, "ODER-Verknuepfung");
 			continue;
 		}
 		break;
@@ -898,9 +950,20 @@ static int evalExpr(const char *s)
 	exP = s;
 	exSect = SECT_ABS;
 	exExtern = -1;
-	exNegSect = SECT_NONE;
 	exOpen = 0;
+	termN[2] = 0;
 	v = exprTop();
+	termFold();
+	/* exSect/exExtern beschreiben den EINEN Anteil, wenn es genau einen
+	   gibt -- daran haengen die Pruefungen fuer Spruenge und
+	   PC-relative Formen. */
+	exSect = SECT_ABS;
+	exExtern = -1;
+	if (termN[2] > 0) {
+		exSect = termSect[16];
+		if (exSect == SECT_EXTERN)
+			exExtern = termName[16];
+	}
 	return v;
 }
 
@@ -1050,17 +1113,31 @@ static void refPcExtern(int ext, int size)
 	addRef(ext, 0x80 | refTypeFor(size, SECT_EXTERN), curPC, 0);
 }
 
-/* Traegt eine Referenz ein, wenn der zuletzt ausgewertete Ausdruck sich auf
-   ein verschiebbares Ziel bezieht. Der Ort ist die aktuelle Stelle, also VOR
-   dem Ablegen der Bytes aufzurufen. */
-static void refIfRelocatable(int sect, int ext, int neg, int size)
+/* Traegt je verschiebbarem Anteil des Ausdrucks EINE Referenz ein, alle auf
+   denselben Ort -- so legt r68 es ab. Der Ort ist die aktuelle Stelle, also
+   VOR dem Ablegen der Bytes aufzurufen. "slot" waehlt das Termfach:
+   0/1 fuer die Operanden eines Befehls, TERM_CUR fuer den gerade
+   ausgewerteten Ausdruck. */
+static void refTerms(int slot, int size)
 {
-	if (ext >= 0)
-		addRef(ext, refTypeFor(size, SECT_EXTERN), curPC, 0);
-	else if (sect == SECT_CODE || sect == SECT_IDATA || sect == SECT_UDATA)
-		addRef(-1, refTypeFor(size, sect), curPC, 1);
-	if (neg == SECT_CODE || neg == SECT_IDATA || neg == SECT_UDATA)
-		addRef(-1, 0x40 | refTypeFor(size, neg), curPC, 1);
+	int i;
+	int base;
+	int t;
+
+	base = slot * TERM_MAX;
+	for (i = 0; i < termN[slot]; i++) {
+		if (termSect[base + i] == SECT_EXTERN) {
+			t = refTypeFor(size, SECT_EXTERN);
+			if (termNeg[base + i])
+				t = t | 0x40;
+			addRef(termName[base + i], t, curPC, 0);
+		} else {
+			t = refTypeFor(size, termSect[base + i]);
+			if (termNeg[base + i])
+				t = t | 0x40;
+			addRef(-1, t, curPC, 1);
+		}
+	}
 }
 
 /* ============================================================== selfCheck = */
@@ -1380,15 +1457,15 @@ static void doDc(int size)
 		v = evalExpr(&lxTmp[LXTMP_MAX - 2048]);
 
 		if (size == 'b') {
-			refIfRelocatable(exSect, exExtern, exNegSect, 1);
+			refTerms(TERM_CUR, 1);
 			emitByte(v);
 		} else if (size == 'w') {
 			alignEven();
-			refIfRelocatable(exSect, exExtern, exNegSect, 2);
+			refTerms(TERM_CUR, 2);
 			emitWord(v);
 		} else {
 			alignEven();
-			refIfRelocatable(exSect, exExtern, exNegSect, 4);
+			refTerms(TERM_CUR, 4);
 			emitLong(v);
 		}
 		if (p[i] == ',')
@@ -1466,6 +1543,15 @@ static void doAlign(void)
 		a = evalExpr(lnArg);
 	if (a < 1)
 		fatal("align mit ungueltiger Groesse", "");
+	if (curSect == SECT_UDATA) {
+		/* Dort wird nichts abgelegt, nur gezaehlt. */
+		while ((udataPC % a) != 0)
+			udataPC++;
+		if (udataPC > statStorage)
+			statStorage = udataPC;
+		curPC = udataPC;
+		return;
+	}
 	if (curSect == SECT_CODE) {
 		if ((curPC % a) != 0 && (curPC % 2) != 0)
 			emitByte(0);
@@ -1508,7 +1594,6 @@ static int oExt[2];
 static int oIdx[2];            /* 0..7 = dN, 8..15 = aN, -1 = keiner */
 static int oIdxL[2];           /* 1 = .l, 0 = .w */
 static int oOpen[2];           /* 1 = Wert im ersten Durchlauf noch offen */
-static int oNeg[2];            /* abgezogener verschiebbarer Anteil, s. exNegSect */
 static int oN;                 /* Zahl der Operanden dieser Zeile */
 
 static char opTxt0[512];
@@ -1617,6 +1702,20 @@ static void splitOperands(void)
 	}
 }
 
+/* Uebernimmt die Anteile des zuletzt ausgewerteten Ausdrucks in das Fach
+   eines Operanden -- der zweite Operand wuerde sie sonst ueberschreiben. */
+static void termCopy(int k)
+{
+	int i;
+
+	termN[k] = termN[2];
+	for (i = 0; i < termN[2]; i++) {
+		termSect[k * TERM_MAX + i] = termSect[16 + i];
+		termName[k * TERM_MAX + i] = termName[16 + i];
+		termNeg[k * TERM_MAX + i] = termNeg[16 + i];
+	}
+}
+
 static void parseOperand(const char *s, int k)
 {
 	int n;
@@ -1639,7 +1738,7 @@ static void parseOperand(const char *s, int k)
 	oSect[k] = SECT_ABS;
 	oExt[k] = -1;
 	oOpen[k] = 0;
-	oNeg[k] = SECT_NONE;
+	termN[k] = 0;
 	oIdx[k] = -1;
 	oIdxL[k] = 1;
 
@@ -1653,7 +1752,7 @@ static void parseOperand(const char *s, int k)
 		oSect[k] = exSect;
 		oExt[k] = exExtern;
 		oOpen[k] = exOpen;
-		oNeg[k] = exNegSect;
+		termCopy(k);
 		oMode[k] = AM_IMM;
 		return;
 	}
@@ -1736,7 +1835,7 @@ static void parseOperand(const char *s, int k)
 				oSect[k] = exSect;
 				oExt[k] = exExtern;
 				oOpen[k] = exOpen;
-				oNeg[k] = exNegSect;
+				termCopy(k);
 			}
 			if (comma >= 0) {
 				int il;
@@ -1806,7 +1905,7 @@ static void parseOperand(const char *s, int k)
 	oSect[k] = exSect;
 	oExt[k] = exExtern;
 	oOpen[k] = exOpen;
-	oNeg[k] = exNegSect;
+	termCopy(k);
 }
 
 static int eaModeBits(int k)
@@ -1883,7 +1982,7 @@ static void emitEa(int k, int size)
 		   $30|Zielabschnitt am Displacementwort -- $0030 fuer
 		   reservierte Daten, $0031 fuer initialisierte, $0030 fuer
 		   einen externen Namen. */
-		refIfRelocatable(oSect[k], oExt[k], oNeg[k], 2);
+		refTerms(k, 2);
 		if (oVal[k] < -32768 || oVal[k] > 32767)
 			fatal("Displacement passt nicht in 16 Bit: ", lnArg);
 		emitWord(oVal[k]);
@@ -1925,29 +2024,34 @@ static void emitEa(int k, int size)
 		return;
 	}
 	if (m == AM_ABSW) {
-		refIfRelocatable(oSect[k], oExt[k], oNeg[k], 2);
+		refTerms(k, 2);
 		emitWord(oVal[k]);
 		return;
 	}
 	if (m == AM_ABSL) {
-		refIfRelocatable(oSect[k], oExt[k], oNeg[k], 4);
+		refTerms(k, 4);
 		emitLong(oVal[k]);
 		return;
 	}
 	/* AM_IMM */
 	if (size == 1) {
-		if (oExt[k] >= 0 || oSect[k] != SECT_ABS)
-			fatal("verschiebbarer Byte-Sofortwert -- nicht gemessen: ",
-			      lnArg);
-		emitWord(oVal[k] & 255);
+		/* Ein Byte-Sofortwert steht im NIEDERWERTIGEN Byte des
+		   Erweiterungswortes, und eine Referenz darauf ist bytegross
+		   und zeigt genau dorthin: "move.b #fremd,d0" ergibt $0028 auf
+		   Offset 3 (gemessen). Die I-Formen machen es anders, die
+		   bekommen deshalb von ihrer Aufrufstelle die Wortbreite --
+		   "cmpi.b #-1,d0" legt $ffff ab, "move.b #-1,d0" nur $00ff. */
+		emitByte(0);
+		refTerms(k, 1);
+		emitByte(oVal[k] & 255);
 		return;
 	}
 	if (size == 2) {
-		refIfRelocatable(oSect[k], oExt[k], oNeg[k], 2);
+		refTerms(k, 2);
 		emitWord(oVal[k]);
 		return;
 	}
-	refIfRelocatable(oSect[k], oExt[k], oNeg[k], 4);
+	refTerms(k, 4);
 	emitLong(oVal[k]);
 }
 
@@ -2318,7 +2422,11 @@ static void doCond(const char *base)
 
 	if (baseIs(base, "endc")) {
 		if (condN <= 0)
-			fatal("endc ohne if", "");
+			/* r68 uebergeht ein "endc" zu viel stillschweigend --
+			   in MWOS/OS9/SRC/IO/SCF/DRVR/sc68990.a steht genau
+			   eines (acht "if", neun "endc"), und die Datei
+			   uebersetzt dort. */
+			return;
 		condN--;
 		if (!condActive[condN])
 			condSkipN--;
@@ -2364,8 +2472,8 @@ static void doCond(const char *base)
 	}
 
 	v = evalExpr(lnArg);
-	if (exOpen)
-		fatal("bedingte Assemblierung mit einem noch unbekannten Namen: ",
+	if (exOpen || termN[2] > 0)
+		fatal("unbekannter Name in einer Bedingung -- r68 meldet dort \"illegal external reference\" und uebersetzt den Block trotzdem: ",
 		      lnArg);
 	active = 0;
 	if (baseIs(base, "ifeq"))
@@ -2422,6 +2530,17 @@ static int sizeField(int c)
 		return 2;
 	fatal("Groessenbuchstabe weder .b noch .w noch .l: ", lnOp);
 	return 0;
+}
+
+/* Umfang des Sofortwertes bei den I-Formen (addi/subi/andi/ori/eori/cmpi):
+   ein Byte-Sofortwert wird dort als ganzes WORT abgelegt, mit Vorzeichen und
+   mit einer Wortreferenz -- gemessen an "cmpi.b #-1,d0" ($ffff) gegen
+   "move.b #-1,d0" ($00ff). */
+static int immBytes(int c)
+{
+	if (c == 'b')
+		return 2;
+	return sizeBytes(c);
 }
 
 /* Umfangsfeld von MOVE: Byte 1, Wort 3, Langwort 2. */
@@ -2693,12 +2812,43 @@ static void doBranch(int cond, int size)
 	   nicht (die Ruecksprungadresse fehlt dann); dort bricht qr68 lieber
 	   ab, statt eine Bedeutungsaenderung nachzubauen. */
 	if (optBranch) {
+		if (exOpen && ext < 0) {
+			/* Erster Durchlauf, das Ziel ist noch unbekannt: hier
+			   wird die KURZE Form angenommen. Das ist kein Detail,
+			   sondern der Unterschied zwischen zwei Fixpunkten --
+			   waere die Annahme die Wortform, blieben Spruenge
+			   lang, die knapp hineinpassen, sobald sie selbst
+			   kuerzer werden (an r68 gemessen: zwei bsr/bcc mit
+			   Abstand 126 in sc8x30.a). Weil Spruenge danach nur
+			   noch wachsen, kommt die Schleife zur Ruhe. */
+			emitWord(0x6000 | (cond << 8));
+			return;
+		}
 		if (ext < 0 && !exOpen) {
 			d = v - (curPC + 2);
 			if (d == 0) {
-				if (cond == 1)
-					fatal("bsr auf die naechste Anweisung: r68 laesst den Befehl mit -b weg, was die Ruecksprungadresse verschluckt: ",
+				/* Abstand 0 -- das Ziel ist die naechste
+				   Anweisung. r68 laesst den Befehl mit -b
+				   dann GANZ WEG (gemessen). qr68 tut das
+				   NICHT, und zwar aus einem messbaren Grund:
+				   die Weglassung ist selbsterfuellend. Faellt
+				   der Sprung weg, rueckt sein Ziel um zwei
+				   Byte heran und der Abstand BLEIBT 0 --
+				   beide Zustaende sind in sich stimmig, und
+				   welchen r68 trifft, haengt an seinem
+				   Zwischenstand nach dem ersten Durchlauf.
+				   Genau das ist nicht nachzubauen, ohne r68s
+				   Zwei-Pass-Zwischenstand mitzufuehren.
+				   Waehrend der Messdurchlaeufe wird die kurze
+				   Form gerechnet (zwei Byte, das ist der
+				   Zustand, in dem r68 die Datei sieht); steht
+				   der Abstand am Ende wirklich auf 0, bricht
+				   qr68 ab, statt eine falsche Kodierung
+				   ($6000 waere die WORTform) auszugeben. */
+				if (emitting)
+					fatal("Sprung auf die unmittelbar folgende Anweisung -- r68 laesst den Befehl mit -b weg, qr68 kann das nicht stabil nachbilden: ",
 					      lnArg);
+				emitWord(0x6000 | (cond << 8));
 				return;
 			}
 			if (d >= -128 && d <= 127) {
@@ -2844,7 +2994,7 @@ static void doArith(const char *base, int size)
 			return;
 		}
 		emitWord(iop | (sf << 6) | eaBits(1));
-		emitEa(0, sizeBytes(size));
+		emitEa(0, immBytes(size));
 		emitEa(1, sizeBytes(size));
 		return;
 	}
@@ -2988,13 +3138,20 @@ static void doInstruction(void)
 	   Include-Datei). Gemessen: "os9 F$Link" wird $4E40 (trap #0) und ein
 	   WORT mit dem Aufrufcode. */
 	if (baseIs(base, "os9")) {
+		int code;
+
 		needNoSize(size);
 		needOps(1);
-		parseOperand(opTxt0, 0);
-		if (!oOpen[0] && (oExt[0] >= 0 || oSect[0] != SECT_ABS))
-			fatal("os9 braucht einen festen Aufrufcode: ", lnArg);
+		/* Der Aufrufcode darf ein externer Name sein -- die Namen
+		   stehen im SDK in einer Bibliothek, nicht in einer
+		   Definitionsdatei. r68 legt dann eine Wortreferenz an
+		   ($0030, gemessen an "os9 F$IRQ"). */
+		subStr(opTxt0, 0, strLen(opTxt0));
+		code = evalExpr(exBuf);
 		emitWord(0x4E40);
-		emitWord(oVal[0]);
+		if (!exOpen)
+			refTerms(TERM_CUR, 2);
+		emitWord(code);
 		return;
 	}
 	if (baseIs(base, "trap")) {
@@ -3150,12 +3307,22 @@ static void doInstruction(void)
 		needOps(2);
 		parseOperand(opTxt0, 0);
 		parseOperand(opTxt1, 1);
-		if (oMode[0] != AM_IMM ||
-		    (!oOpen[0] && (oExt[0] >= 0 || oSect[0] != SECT_ABS)))
-			fatal("moveq braucht einen festen Sofortwert: ", lnArg);
-		if (!oOpen[0] && (oVal[0] < -128 || oVal[0] > 127))
+		if (oMode[0] != AM_IMM)
+			fatal("moveq braucht einen Sofortwert: ", lnArg);
+		/* r68 nimmt hier mehr als -128..127: "moveq #$ff,d0" wird
+		   $70ff und "moveq #-129,d0" wird $707f, erst ab 256 meldet
+		   es "value out of range" (gemessen). Der Wert wird also
+		   schlicht auf ein Byte gestutzt. */
+		if (termN[0] == 0 && !oOpen[0] &&
+		    (oVal[0] < -256 || oVal[0] > 255))
 			fatal("moveq-Wert passt nicht in ein Byte: ", lnArg);
-		emitWord(0x7000 | (needDn(1) << 9) | (oVal[0] & 255));
+		/* Der Wert steht im niederwertigen Byte des Befehlswortes; ein
+		   externer Name dort ist erlaubt und ergibt eine BYTEreferenz
+		   genau auf dieses Byte ("moveq #fremd,d1" -> $0028 auf
+		   Offset 1, gemessen). */
+		emitByte(0x70 | (needDn(1) << 1));
+		refTerms(0, 1);
+		emitByte(oVal[0] & 255);
 		return;
 	}
 	if (baseIs(base, "movem")) {
@@ -3354,7 +3521,7 @@ static void doInstruction(void)
 		else if (baseIs(base, "cmpi"))
 			op = 0x0C00;
 		emitWord(op | (sizeField(size) << 6) | eaBits(1));
-		emitEa(0, sizeBytes(size));
+		emitEa(0, immBytes(size));
 		emitEa(1, sizeBytes(size));
 		return;
 	}
@@ -3643,6 +3810,13 @@ static void doInstruction(void)
 	/* --- bedingtes Setzen --- */
 	if (base[0] == 's') {
 		cond = condOf(&base[1]);
+		/* "st" und "sf" -- immer wahr bzw. immer falsch. Die kennt
+		   condOf() nicht, weil es zwei Zeichen verlangt (sonst waere
+		   jedes "s?" eine Bedingung). */
+		if (baseIs(base, "st"))
+			cond = 0;
+		else if (baseIs(base, "sf"))
+			cond = 1;
 		if (cond >= 0) {
 			if (size != 0 && size != 'b')
 				fatal("Scc kennt nur das Byte: ", lnOp);
@@ -3828,8 +4002,13 @@ static void runPass(void)
 			} else if (lnOp[0] != 0 && !baseIs(base, "equ") &&
 				   !baseIs(base, "set") && !baseIs(base, "align") &&
 				   !baseIs(base, "use") && !baseIs(base, "org") &&
-				   !baseIs(base, "do")) {
-				fatal("im vsect nur dc/ds/equ/set/align: ", lnOp);
+				   !baseIs(base, "do") && !baseIs(base, "nam") &&
+				   !baseIs(base, "ttl") && !baseIs(base, "page") &&
+				   !baseIs(base, "pag") && !baseIs(base, "opt") &&
+				   !baseIs(base, "spc") && !baseIs(base, "end") &&
+				   !baseIs(base, "fail")) {
+				fatal("im vsect nur Daten und beschreibende Direktiven: ",
+				      lnOp);
 			}
 		}
 
