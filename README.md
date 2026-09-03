@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **58 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule | **byteidentisch** |
+| **68 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule, Bootcode | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -222,6 +222,16 @@ nicht die Schreibweise: `pc` und `pcr` verhalten sich in beiden Fällen
 gleich. (`SYSMODS/GCLOCK/tickgeneric.a:188`: `jmp 3(pc)`.)
 
 ### Was sonst noch nur durchs Messen kam
+
+- **Das Mnemonic endet auch an einer Klammer**, nicht nur am Leerzeichen: im
+  SDK steht ` ifeq(CPUType-SYS360)` ohne Trennzeichen (auch
+  `move.l(a0),d0` → `$2010`).
+- **`|` ist ein zweites Zeichen für das bitweise ODER** neben `!`.
+- **Auch die Grundform darf nach `ccr`/`sr`**: `and.w #$fe,ccr` wird
+  `$023c`, `or.w #1,ccr` wird `$003c`, `and.w #$fe,sr` wird `$027c`.
+- **Ein verschiebbares Displacement gibt es auch in der Indexform**:
+  `move.b d0,dat(a2,d5.w)` ergibt eine Byte-Referenz auf das niederwertige
+  Byte des Erweiterungswortes.
 
 - **`use "datei"`** sucht im Verzeichnis der **einschließenden Datei** — das
   nackte `use datei` tut das nicht (dieselbe Datei nebenan wird dort nicht
@@ -454,6 +464,11 @@ Definitionen anderer Boards:
 | SCF-/RBF-/PCF-Descriptoren | **15 gleich, 0 abweichend** |
 | `SYSMODS/GCLOCK` (Uhren) | **12 gleich, 0 abweichend** |
 | `SYSMODS/SYSGO`, `SYSCACHE`, `INIT` | **7 gleich, 0 abweichend** |
+| `ROM/COMMON`, `ROM/SERIAL` (Bootcode) | **10 gleich, 0 abweichend** |
+
+Dieselben Gruppen laufen auch aus den Ports **MVME147**, **CB030**,
+**AtariST** und **Q9** heraus — dort greifen andere Bedingungen, und bis auf
+dieselben drei bewussten Verweigerungen bleibt alles byteidentisch.
 
 ```
 PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
@@ -471,8 +486,8 @@ Die drei verbliebenen Abweichungen sind alle drei bewusste Verweigerungen:
 
 ## Nächste Schritte
 
-1. Der Rest des Korpus: Dateimanager, SCSI, Bootcode, `ROM_CBOOT` — und die
-   Ports, für die hier die Definitionen fehlen.
+1. Der Rest des Korpus: Dateimanager, SCSI, `ROM/CBOOT` — und die Ports,
+   für die hier die Definitionen fehlen.
 2. Kette `qcc_backend → qr68 → l68` einmal bis zum laufenden Modul auf dem
    68030 fahren (bisher ist nur gezeigt, dass `l68` von `qr68` byteweise
    dasselbe bekommt wie von `r68`).
