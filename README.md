@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **38 Quellen des MWOS-SDK** — SCF- und RBF-Treiber und deren Descriptoren | **byteidentisch** |
+| **39 Quellen des MWOS-SDK** — SCF- und RBF-Treiber und Descriptoren dreier Familien | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -372,6 +372,28 @@ Schon `delay35 / rept (35-5-9)/2 / nop / endr` — so steht es in
 erzeugten Bytes stimmen dabei zwar, als Orakel taugt es aber nicht; `qr68`
 wiederholt genau den Rumpf zwischen `rept` und `endr`.
 
+### `set` sieht immer den Stand nach dem ERSTEN Durchlauf
+
+`r68` hat genau einen Messdurchlauf, und sein Ausgabelauf liest die Werte,
+wie sie am **Ende dieses ersten Durchlaufs** standen. Die Probe:
+
+```
+         dc.w    A
+         dc.w    B
+A        set     B
+B        set     5
+```
+
+`r68` legt `$0000 $0005` ab — beim ersten Lesen von `A set B` war `B` noch
+unbekannt, und der Ausgabelauf sieht genau diesen Zwischenstand. Wer bis zur
+Ruhe misst, bekäme zweimal `$0005`.
+
+Genau daran hingen die Descriptor-Quellen: `pcfdesc.a` setzt
+`WrtPrecomp set Cylnders` auf Dateiebene, **bevor** die Makroausdehnung
+`Cylnders` überhaupt setzt. `qr68` hält deshalb den Stand der `set`-Symbole
+nach dem ersten Durchlauf fest und stellt ihn vor dem Ausgeben wieder her —
+die Längen dürfen weiter bis zur Ruhe gemessen werden, die Werte nicht.
+
 ### Mehrere Durchläufe statt zwei
 
 Weil die Befehlslänge an Symbolwerten hängt (ADDQ), messen zwei feste
@@ -408,13 +430,13 @@ Definitionen anderer Boards:
 | RBF-Treiber | **13 gleich, 0 abweichend** |
 | SCF-Descriptoren | **7 gleich, 0 abweichend** |
 | RBF-Descriptoren | **7 gleich, 0 abweichend** |
-| PCF-Descriptoren | 0 gleich, 1 abweichend |
+| PCF-Descriptoren | **1 gleich, 0 abweichend** |
 
 ```
 PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
 ```
 
-Die vier verbliebenen Abweichungen:
+Die drei verbliebenen Abweichungen sind alle drei bewusste Verweigerungen:
 
 - **`sc68562`** benutzt `bsr.l`/`bcs.l` — die in r68 kaputte lange Sprungform
   (s. u.). `qr68` bricht dort ab.
@@ -423,13 +445,6 @@ Die vier verbliebenen Abweichungen:
 - **`sc8251a`** prüft `ifeq CPUType-FM16s` mit einem Namen, den es nicht
   gibt. r68 meldet dort „illegal external reference" und übersetzt **beide**
   Zweige — ein Ergebnis, das niemand haben will. `qr68` bricht ab.
-- **`pcd0`** (PCF-Descriptor) bekommt in zwei Datenwörtern `Cylnders` = 80,
-  wo r68 0 einsetzt. Der Wert wird in `PCFDesc` per `set` in einem
-  `ifeq \6-pcdos380`-Zweig gesetzt, und zwar **hinter** dem `dc.w`, das ihn
-  benutzt. Geprüft und als Ursache ausgeschlossen: Vorwärtsbezug auf `set`
-  (r68 löst ihn auf), `set` innerhalb eines Makros (trägt über die
-  Durchläufe), Argumentzählung bei geschachtelten Makros (`\#`=6, `\6`=„f").
-  Noch offen.
 
 ## Nächste Schritte
 

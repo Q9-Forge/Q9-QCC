@@ -56,6 +56,18 @@ nachorg  nop
          dc.l    $12345678
          align   2
 
+* ---- "set" und die Zahl der Durchlaeufe -------------------------------
+* r68 hat GENAU EINEN Messdurchlauf, und sein Ausgabelauf sieht die Werte,
+* wie sie am ENDE davon standen: hier kommt $0000 und $0005 heraus, denn
+* beim ersten Lesen von "SETA set SETB" war SETB noch unbekannt. Wer bis
+* zur Ruhe misst (wie qr68 fuer die Laengen), bekaeme zweimal $0005 --
+* deshalb stellt qr68 vor dem Ausgeben den Stand nach dem ersten Durchlauf
+* wieder her. Genau daran haengen die Descriptor-Quellen des SDK.
+         dc.w    SETA
+         dc.w    SETB
+SETA     set     SETB
+SETB     set     5
+
 * ---- ungerade Abschnittsgroessen (werden auf ein Vielfaches von 4
 *      gebracht, der Inhalt mit Nullen aufgefuellt) ----------------------
          vsect

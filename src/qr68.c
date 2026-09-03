@@ -129,6 +129,19 @@ static int symPass[16384];     /* Durchlauf der letzten Definition, s. ifdef */
    Referenz auf u_icr erzeugen. Ohne das fehlen im ROF stillschweigend
    Referenzen, und der Binder setzt die Adresse nie ein. */
 static int symExt[16384];
+/* "set"-Symbole: r68 hat GENAU EINEN Messdurchlauf, und sein Ausgabelauf
+   sieht die Werte, wie sie am ENDE dieses ersten Durchlaufs standen.
+   Gemessen an "dc.w A / dc.w B / A set B / B set 5": r68 legt $0000 und
+   $0005 ab -- A ist beim dc.w noch das, was der erste Durchlauf hinterlassen
+   hat (0, denn dort war B noch unbekannt). qr68 misst dagegen so lange, bis
+   die LAENGEN stehen, und haette sonst 5. Deshalb wird der Stand nach dem
+   ersten Durchlauf festgehalten und vor dem Ausgeben wiederhergestellt.
+   Genau daran haengen die Descriptor-Quellen des SDK: "WrtPrecomp set
+   Cylnders" steht dort VOR der Makroausdehnung, die Cylnders setzt. */
+static int symIsSet[16384];
+static int symSnapVal[16384];
+static int symSnapSect[16384];
+static int symSnapped[16384];
 static int symN;
 
 /* Codeausgabe */
@@ -424,6 +437,8 @@ static int symIntern(int name)
 	symUsed[s] = 0;
 	symPass[s] = 0;
 	symExt[s] = -1;
+	symIsSet[s] = 0;
+	symSnapped[s] = 0;
 	symN++;
 	return s;
 }
@@ -4225,6 +4240,8 @@ static void runPass(void)
 				symDefine(name, v, exSect, lnGlobal,
 					  opIs("equ"));
 				symExt[symIntern(name)] = sx;
+				if (opIs("set"))
+					symIsSet[symIntern(name)] = 1;
 				continue;
 			}
 			symDefine(name, curPC, curSect, lnGlobal, 1);
@@ -4303,6 +4320,34 @@ static void runPass(void)
 		}
 
 		doInstruction();
+	}
+}
+
+/* Haelt den Stand der "set"-Symbole nach dem ersten Durchlauf fest. */
+static void symSnapshot(void)
+{
+	int i;
+
+	for (i = 0; i < symN; i++) {
+		if (!symIsSet[i])
+			continue;
+		symSnapVal[i] = symValue[i];
+		symSnapSect[i] = symSect[i];
+		symSnapped[i] = 1;
+	}
+}
+
+/* Stellt ihn vor dem Ausgabelauf wieder her -- so sieht der dieselben Werte
+   wie r68s zweiter Durchlauf. */
+static void symRestore(void)
+{
+	int i;
+
+	for (i = 0; i < symN; i++) {
+		if (!symSnapped[i])
+			continue;
+		symValue[i] = symSnapVal[i];
+		symSect[i] = symSnapSect[i];
 	}
 }
 
@@ -4772,6 +4817,8 @@ int main(int argc, char **argv)
 				      "");
 			runPass();
 			reportPass();
+			if (pass == 1)
+				symSnapshot();
 			if (symMoved)
 				ruhig = 0;
 			else
@@ -4779,6 +4826,7 @@ int main(int argc, char **argv)
 		}
 		emitting = 1;
 		pass++;
+		symRestore();
 		runPass();
 		reportPass();
 	}
