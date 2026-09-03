@@ -53,6 +53,8 @@ ziel     move.l  d1,d0
          move.l  a5,sp
          move.l  sp,a5
          movea.l a5,a0
+         movea   4(a5),a0
+         move    d0,d1
          moveq   #0,d0
          moveq   #-1,d0
          moveq   #127,d0
@@ -183,6 +185,9 @@ nahpc    nop
          bclr    #3,(a0)
          bchg    d1,d0
          ori     #1,ccr
+         ori     #1,cc
+         andi    #1,cc
+         move.w  d0,cc
          andi    #$fe,ccr
          eori    #1,ccr
          ori.w   #$700,sr
@@ -208,6 +213,13 @@ nahpc    nop
          moves.l d0,(a0)
          moves.l (a0),d0
          moves.b d1,4(a5)
+         cmpm.l  (a0)+,(a5)+
+         cmpm.b  (a0)+,(a1)+
+         cmpm.w  (a2)+,(a3)+
+         movep.w d1,(a0)
+         movep.l (a0),d0
+         movep.w 4(a0),d1
+         movep.l d0,8(a2)
 
 * ---- bedingtes Setzen ----------------------------------------------------
          seq     d0

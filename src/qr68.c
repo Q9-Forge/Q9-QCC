@@ -2112,6 +2112,7 @@ static int argDefVal[32];
 static int argDefN;
 
 static char pathBuf[512];
+static char dirBuf[512];
 
 static void pathJoin(const char *dir, const char *name)
 {
@@ -2147,6 +2148,7 @@ static void doUse(void)
 	int n;
 	int i;
 	int angled;
+	int quoted;
 	int id;
 	int from;
 
@@ -2154,6 +2156,7 @@ static void doUse(void)
 	if (n == 0)
 		fatal("use ohne Dateinamen", "");
 	angled = 0;
+	quoted = 0;
 	from = 0;
 	/* Das schliessende Zeichen wird nur weggenommen, wenn es da ist:
 	   im SDK steht "use <memc040.d)" (Tippfehler in systype.d), und r68
@@ -2164,6 +2167,7 @@ static void doUse(void)
 		if (lnArg[n - 1] == '>' || lnArg[n - 1] == ')')
 			n = n - 1;
 	} else if (lnArg[0] == '"' && lnArg[n - 1] == '"') {
+		quoted = 1;
 		from = 1;
 		n = n - 1;
 	}
@@ -2172,7 +2176,34 @@ static void doUse(void)
 	lxTmp[LXTMP_MAX - 3072 + n - from] = 0;
 
 	id = -1;
-	if (angled) {
+	if (quoted) {
+		/* Die Anfuehrungsform sucht im Verzeichnis der
+		   EINSCHLIESSENDEN Datei -- gemessen: "use \"nachbar.a\""
+		   findet den Nachbarn auch dann, wenn das Arbeitsverzeichnis
+		   woanders liegt, waehrend das nackte "use nachbar.a" es
+		   nicht tut. Genau darauf bauen die Descriptor-Quellen des
+		   SDK ("use \"scfdesc.a\"" in SRC/IO/SCF/DESC/p1.a).
+		   Findet sich dort nichts, wird das Arbeitsverzeichnis
+		   versucht -- r68 nennt in seiner Fehlermeldung ".\name". */
+		int cut;
+		int k;
+		const char *fn;
+
+		fn = poolAt(flName[curFile]);
+		cut = -1;
+		for (k = 0; fn[k] != 0; k++) {
+			if (fn[k] == '/')
+				cut = k;
+		}
+		if (cut >= 0) {
+			for (k = 0; k < cut; k++)
+				dirBuf[k] = fn[k];
+			dirBuf[cut] = 0;
+			pathJoin(dirBuf, &lxTmp[LXTMP_MAX - 3072]);
+			id = fileGet(pathBuf);
+		}
+	}
+	if (id < 0 && angled) {
 		for (i = 0; i < useDirN && id < 0; i++) {
 			pathJoin(poolAt(useDirs[i]), &lxTmp[LXTMP_MAX - 3072]);
 			id = fileGet(pathBuf);
@@ -2180,7 +2211,8 @@ static void doUse(void)
 		if (id < 0)
 			fatal("use: Datei in keinem -u=-Verzeichnis gefunden: ",
 			      &lxTmp[LXTMP_MAX - 3072]);
-	} else {
+	}
+	if (id < 0) {
 		id = fileGet(&lxTmp[LXTMP_MAX - 3072]);
 		if (id < 0)
 			fatal("use: Datei nicht lesbar: ",
@@ -2280,6 +2312,23 @@ static void macSubstitute(int from, int to, const char *argp[], int argN,
 	i = to;
 	while (i > from) {
 		i--;
+		/* "\Ln" -- die LAENGE des Arguments n, zweistellig dezimal
+		   (gemessen: "a0" ergibt "02", ein leeres Argument "00"). Die
+		   SDK-Makros pruefen damit die Art eines Arguments:
+		   "ifne \L1-2 / fail ... must be a An register". Von hinten
+		   gelesen stehen hier drei Zeichen. */
+		if (i > from + 1 && macText[i - 2] == '\\' &&
+		    lowerCh(macText[i - 1] & 255) == 'l' &&
+		    macText[i] >= '1' && macText[i] <= '9') {
+			d = macText[i] - '1';
+			i = i - 2;
+			k = 0;
+			if (d < argN)
+				k = strLen(argp[d]);
+			expPut('0' + (k % 10));
+			expPut('0' + ((k / 10) % 10));
+			continue;
+		}
 		if (i > from && macText[i - 1] == '\\') {
 			/* Der Platzhalter besteht aus zwei Zeichen; er wird
 			   hier von hinten gesehen. */
@@ -2669,6 +2718,11 @@ static int specialReg(const char *s)
 	if (n == 3)
 		c = lowerCh(s[2] & 255);
 	if (n == 3 && a == 'c' && b == 'c' && c == 'r')
+		return 1;
+	/* "cc" nimmt r68 ebenfalls fuer das Bedingungsregister (nicht aber
+	   "c" oder "ccrx"). In MWOS/OS9/SRC/IO/RBF/DRVR/rbvme10.a:1074 steht
+	   genau das -- offenbar ein Tippfehler, den r68 klaglos uebersetzt. */
+	if (n == 2 && a == 'c' && b == 'c')
 		return 1;
 	if (n == 2 && a == 's' && b == 'r')
 		return 2;
@@ -3405,8 +3459,15 @@ static void doInstruction(void)
 		int sp0;
 		int sp1;
 
-		if (size == 0)
+		if (size == 0) {
+			/* Ohne Groessenbuchstaben ist "move" ein Wort,
+			   "movea" aber ein LANGWORT -- gemessen an
+			   "movea PD_BUF(a1),a0" ($2069) gegen "move d0,d1"
+			   ($3200). So steht es in den RBF-Treibern. */
 			size = 'w';
+			if (baseIs(base, "movea"))
+				size = 'l';
+		}
 		needOps(2);
 		/* SR, CCR und USP sind keine Ausdruecke -- gemessen:
 		   "move.w sr,d0" $40c0, "move.w ccr,d0" $42c0 (68010),
@@ -3654,6 +3715,64 @@ static void doInstruction(void)
 		}
 		emitWord(0x0100 | (needDn(0) << 9) | (kind << 6) | eaBits(1));
 		emitEa(1, 1);
+		return;
+	}
+
+	/* --- Speicher mit Speicher vergleichen --- */
+	/* Gemessen: "cmpm.l (a0)+,(a5)+" -> $bb88, der ERSTE Operand ist Ay
+	   (unten), der zweite Ax (Bits 11..9). */
+	if (baseIs(base, "cmpm")) {
+		if (size == 0)
+			size = 'w';
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		if (oMode[0] != AM_POST || oMode[1] != AM_POST)
+			fatal("cmpm vergleicht nur \"(aN)+,(aM)+\": ", lnArg);
+		emitWord(0xB108 | (oReg[1] << 9) | (sizeField(size) << 6) |
+			 oReg[0]);
+		return;
+	}
+
+	/* --- ueber ein Peripherieregister (movep) --- */
+	/* Gemessen: "movep.w d1,(a0)" -> $0388 $0000, "movep.l (a0),d0" ->
+	   $0148 $0000. Die Betriebsart in Bit 8..6: 4 = Wort aus dem
+	   Speicher, 5 = Langwort aus dem Speicher, 6 = Wort dorthin,
+	   7 = Langwort dorthin. Ein fehlendes Displacement ist 0. */
+	if (baseIs(base, "movep")) {
+		int opm;
+		int dn;
+		int an;
+		int disp;
+
+		if (size == 0)
+			size = 'w';
+		if (size != 'w' && size != 'l')
+			fatal("movep kennt nur .w und .l: ", lnOp);
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		opm = 4;
+		if (size == 'l')
+			opm = opm + 1;
+		if (oMode[0] == AM_DN) {
+			opm = opm + 2;
+			dn = oReg[0];
+			if (oMode[1] != AM_DISP && oMode[1] != AM_IND)
+				fatal("movep braucht \"d(aN)\" als Ziel: ", lnArg);
+			an = oReg[1];
+			disp = oVal[1];
+		} else {
+			dn = needDn(1);
+			if (oMode[0] != AM_DISP && oMode[0] != AM_IND)
+				fatal("movep braucht \"d(aN)\" als Quelle: ", lnArg);
+			an = oReg[0];
+			disp = oVal[0];
+		}
+		emitWord(0x0108 | (dn << 9) | (opm << 6) | an);
+		if (disp < -32768 || disp > 32767)
+			fatal("movep-Displacement passt nicht in 16 Bit: ", lnArg);
+		emitWord(disp);
 		return;
 	}
 

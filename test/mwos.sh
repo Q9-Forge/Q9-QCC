@@ -80,10 +80,10 @@ for f in "${files[@]}"; do
 	fi
 	stamp="$(python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); print(",".join(str(b) for b in d[12:18]))' "$TMP/$base.r")"
 	if [ -z "$stamp" ]; then
-		echo "  $base: Zeitstempel nicht lesbar:"
-		head -5 "$TMP/$base.r68" 2>&1 | sed 's/^/      /'
-		python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); print(",".join(str(b) for b in d[12:18]))' "$TMP/$base.r" 2>&1 | sed 's/^/      /'
-		bad=$((bad + 1))
+		# r68 hat die Datei zwar angelegt, aber nichts hineingeschrieben
+		# -- es ist selbst nicht durchgekommen.
+		echo "  $(printf '%-20s' "$base") r68 kommt selbst nicht durch: $(grep -m1 -o 'fatal:.*' "$TMP/$base.r68" | head -1)"
+		skip=$((skip + 1))
 		continue
 	fi
 	if ! (cd "$PORTDIR" && "$QR68" -qb -u=. "-u=$MWOS/OS9/SRC/DEFS" \

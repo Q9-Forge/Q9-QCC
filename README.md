@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| 11 **SCF-Treiber des MWOS-SDK** (Includes, Makros, bedingte Assemblierung, `-b`) | **byteidentisch** |
+| **38 Quellen des MWOS-SDK** — SCF- und RBF-Treiber und deren Descriptoren | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -43,7 +43,8 @@ gar nicht.
 `not`/`tst`/`tas`/`swap`/`ext`/`extb`, alle acht Schiebe- und Rotierbefehle
 (Sofortwert, Register, Speicherform), `Scc` (14 Bedingungen), `bra`/`bsr`/
 `Bcc` (kurz und Wort), `dbra`/`dbcc`, `jsr`/`jmp`, `link`/`unlk`,
-`rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`, dazu
+`rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`,
+`cmpm`, `movep`, dazu
 `movem` mit Registerlisten (`d0-d7/a0-a6`, bei `-(An)` mit umgekehrter
 Maske), die Bitbefehle `btst`/`bset`/`bclr`/`bchg` (statisch und dynamisch),
 `ori`/`andi`/`eori` nach `ccr`/`sr`, `move` von und nach `sr`/`ccr`/`usp`,
@@ -201,6 +202,19 @@ drei Argumente (`d0`, `(a0`, `d2.w)`), und genau darauf baut
 wohl: `#',',b` sind zwei Argumente.
 
 ### Was sonst noch nur durchs Messen kam
+
+- **`use "datei"`** sucht im Verzeichnis der **einschließenden Datei** — das
+  nackte `use datei` tut das nicht (dieselbe Datei nebenan wird dort nicht
+  gefunden). Die Descriptor-Quellen des SDK leben davon
+  (`use "scfdesc.a"` in `SRC/IO/SCF/DESC/p1.a`).
+- **`\Ln`** ist die **Länge** des Arguments n, zweistellig (`a0` → `02`,
+  leer → `00`). Die SDK-Makros prüfen damit die Art eines Arguments:
+  `ifne \L1-2 / fail … must be a An register`.
+- **`movea` ohne Größenbuchstaben ist ein LANGWORT**, `move` dagegen ein
+  Wort (`movea PD_BUF(a1),a0` → `$2069`, `move d0,d1` → `$3200`).
+- **`cc`** nimmt r68 neben `ccr` (aber nicht `c` oder `ccrx`) — in
+  `rbvme10.a:1074` steht `ori #Carry,cc`, offenbar ein Tippfehler, den r68
+  klaglos übersetzt.
 
 - **`equ` erbt einen externen Namen.** `IRQCtrl equ u_icr` (so in
   `sc68070.a`) bindet einen Namen an einen externen; jede Benutzung von
@@ -383,10 +397,24 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
 
 ## Wo es beim Treiberkorpus noch klemmt
 
-`./test/mwos.sh` fährt die 29 SCF-Treiber des SDK aus einem Port-Verzeichnis,
-so wie es die SDK-Makefiles tun (`-qb -u=. -u=<DEFS> -u=<MACROS>`). Von den
-15, die `r68` selbst übersetzt (die übrigen 14 brauchen Definitionen anderer
-Boards), sind **11 byteidentisch**. Die restlichen vier:
+`./test/mwos.sh` fährt Quellen des SDK aus einem Port-Verzeichnis, so wie es
+die SDK-Makefiles tun (`-qb -u=. -u=<DEFS> -u=<MACROS>`). Gezählt wird nur,
+was `r68` selbst übersetzt — die meisten übersprungenen brauchen
+Definitionen anderer Boards:
+
+| Gruppe | Ergebnis |
+|---|---|
+| SCF-Treiber | 11 gleich, 3 abweichend |
+| RBF-Treiber | **13 gleich, 0 abweichend** |
+| SCF-Descriptoren | **7 gleich, 0 abweichend** |
+| RBF-Descriptoren | **7 gleich, 0 abweichend** |
+| PCF-Descriptoren | 0 gleich, 1 abweichend |
+
+```
+PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
+```
+
+Die vier verbliebenen Abweichungen:
 
 - **`sc68562`** benutzt `bsr.l`/`bcs.l` — die in r68 kaputte lange Sprungform
   (s. u.). `qr68` bricht dort ab.
@@ -395,12 +423,18 @@ Boards), sind **11 byteidentisch**. Die restlichen vier:
 - **`sc8251a`** prüft `ifeq CPUType-FM16s` mit einem Namen, den es nicht
   gibt. r68 meldet dort „illegal external reference" und übersetzt **beide**
   Zweige — ein Ergebnis, das niemand haben will. `qr68` bricht ab.
-- **`sccom`** findet `backplane.d` nicht; daran scheitert schon `r68`.
+- **`pcd0`** (PCF-Descriptor) bekommt in zwei Datenwörtern `Cylnders` = 80,
+  wo r68 0 einsetzt. Der Wert wird in `PCFDesc` per `set` in einem
+  `ifeq \6-pcdos380`-Zweig gesetzt, und zwar **hinter** dem `dc.w`, das ihn
+  benutzt. Geprüft und als Ursache ausgeschlossen: Vorwärtsbezug auf `set`
+  (r68 löst ihn auf), `set` innerhalb eines Makros (trägt über die
+  Durchläufe), Argumentzählung bei geschachtelten Makros (`\#`=6, `\6`=„f").
+  Noch offen.
 
 ## Nächste Schritte
 
-1. Der Rest des Korpus: die RBF- und SBF-Treiber, die Dateimanager und die
-   Descriptor-Quellen — die SCF-Treiber sind nur ein Ausschnitt.
+1. Der Rest des Korpus: Dateimanager, SCSI, Bootcode, `ROM_CBOOT` — und die
+   Ports, für die hier die Definitionen fehlen.
 2. Kette `qcc_backend → qr68 → l68` einmal bis zum laufenden Modul auf dem
    68030 fahren (bisher ist nur gezeigt, dass `l68` von `qr68` byteweise
    dasselbe bekommt wie von `r68`).

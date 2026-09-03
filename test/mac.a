@@ -28,6 +28,9 @@ AUSSEN   macro
          INNEN   \1
          dc.b    \2
          endm
+LAENGE   macro
+         dc.b    \L1,\L2
+         endm
 BEDINGT  macro
          ifgt    \#-1
          dc.b    \2
@@ -45,6 +48,8 @@ marke2   MARKE   $66
          AUSSEN  $30,$40
          BEDINGT $01,$02
          BEDINGT $03
+         LAENGE  a0,abcde
+         LAENGE  x,
          dc.l    marke2
 
 * KEIN rept hier: r68 V2.9.1 spult fuer jede Wiederholung um eine feste
