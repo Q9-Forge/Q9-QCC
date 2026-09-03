@@ -37,6 +37,15 @@ nachorg  nop
          dc.l    nachorg
          dc.w    .
 
+* ---- "*" ist der Ort der ZEILE, nicht der laufende Ort ------------------
+* "dc.w *,*,*" auf Offset 2 ergibt dreimal $0002 (gemessen).
+         nop
+         dc.w    *,*,*
+         dc.l    *,*
+         nop
+         dc.b    *,*
+         align   2
+
 * ---- Ausdruecke ----------------------------------------------------------
 * "^" ist UNAER (Nicht), nicht XOR -- "$ff^$0f" waere ein Fehler; "~" kennt
 * r68 gar nicht.

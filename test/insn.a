@@ -67,6 +67,10 @@ ziel     move.l  d1,d0
          lea     4(a5,d1.l),a0
          lea     ziel(pc),a3
          lea     ziel(pcr),a3
+         jmp     3(pc)
+         jmp     3(pcr)
+         lea     8(pc),a0
+         lea     SPAETWERT(pc),a2
 nahpc    nop
          lea     nahpc(pcr,d1.w),a3
          lea     ziel,a3
@@ -132,6 +136,26 @@ nahpc    nop
          mulu.w  d1,d0
          divs.w  d1,d0
          divu.w  d1,d0
+         divu.l  d1,d0
+         divu.l  #$64,d1
+         divs.l  d0,d5
+         mulu.l  d2,d3
+         divs.l  d1,d0
+         divu.l  d1,d2:d0
+         divs.l  4(a5),d3:d4
+         mulu.l  d1,d0
+         muls.l  d1,d0
+         cinva   bc
+         cinva   ic
+         cinva   dc
+         cinva   nc
+         cpusha  bc
+         cpusha  ic
+         cpusha  dc
+         cinvl   bc,(a0)
+         cpushl  dc,(a1)
+         cinvp   ic,(a2)
+         cpushp  bc,(a3)
 
 * ---- ein Operand ---------------------------------------------------------
          clr.l   d0

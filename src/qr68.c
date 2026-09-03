@@ -226,6 +226,12 @@ static int curFile;
 static int curLine;
 static int curSect;
 static int curPC;              /* Offset im aktuellen Abschnitt */
+/* Der Ort, an dem die AKTUELLE ZEILE beginnt. Genau den liefert "*", und
+   zwar unveraendert fuer die ganze Zeile: "dc.w *,*,*" auf Offset 2 ergibt
+   dreimal $0002 (gemessen). Wer stattdessen den laufenden Ort nimmt, liegt
+   ab dem zweiten Wert daneben -- in SYSMODS/SYSCACHE/syscache.a:383 steht
+   "dc.w F$CCtl,UsrCCtl-*-4". */
+static int stmtPC;
 
 /* =============================================================== Zeichen == */
 static int isSpaceCh(int c)
@@ -789,7 +795,7 @@ static int exPrimary(void)
 			fatal("\"*\" ausserhalb eines Abschnitts", "");
 		exSect = curSect;
 		termAdd(curSect, -1);
-		return curPC;
+		return stmtPC;
 	}
 	if (exP[0] == '.' && !isSymCh(exP[1] & 255)) {
 		/* "." ist der org-Zaehler, nicht der Ort im Abschnitt
@@ -2042,7 +2048,10 @@ static void emitEa(int k, int size)
 		if (m == AM_PCIDX) {
 			if (oSect[k] != SECT_CODE && oSect[k] != SECT_ABS)
 				fatal("PC-Bezug auf einen anderen Abschnitt: ", lnArg);
-			d = d - curPC;
+			/* Nur ein Bezug auf eine Codestelle wird ausgerechnet;
+			   ein fester Wert steht direkt drin (s. AM_PCD). */
+			if (termN[k] > 0)
+				d = d - curPC;
 		} else if (oSect[k] != SECT_ABS) {
 			fatal("verschiebbares Displacement in einer Indexform: ",
 			      lnArg);
@@ -2064,7 +2073,16 @@ static void emitEa(int k, int size)
 		}
 		if (oSect[k] != SECT_CODE && oSect[k] != SECT_ABS)
 			fatal("PC-Bezug auf einen anderen Abschnitt: ", lnArg);
-		d = oVal[k] - curPC;
+		/* Zeigt der Ausdruck auf eine CODESTELLE, rechnet r68 den
+		   Abstand aus ("lea ziel(pc),a1" -> $ffec). Ist er dagegen ein
+		   fester Wert, steht er UNVERAENDERT als Abstand drin:
+		   "jmp 3(pc)" ergibt $0003, ebenso "lea WERT(pc),a2" mit
+		   "WERT equ 6" -> $0006. Fuer "pc" und "pcr" gleichermassen --
+		   den Unterschied macht der Ausdruck, nicht die Schreibweise.
+		   In SYSMODS/GCLOCK/tickgeneric.a:188 steht "jmp 3(pc)". */
+		d = oVal[k];
+		if (termN[k] > 0)
+			d = d - curPC;
 		if (d < -32768 || d > 32767)
 			fatal("PC-Abstand passt nicht in 16 Bit: ", lnArg);
 		emitWord(d);
@@ -3676,9 +3694,64 @@ static void doInstruction(void)
 	    baseIs(base, "divs") || baseIs(base, "divu")) {
 		int op;
 
+		/* Die 68020-Langform: "divu.l d1,d0" -> $4c41 $0000,
+		   "divs.l" setzt Bit 11, und "divu.l d1,d2:d0" (Rest in d2)
+		   setzt zusaetzlich Bit 10 und traegt d2 unten ein.
+		   mulu/muls.l liegen bei $4c00. Alles gemessen. */
+		if (size == 'l') {
+			int q;
+			int r;
+			int ext;
+			int colon;
+			int n2;
+			int i2;
+
+			needOps(2);
+			parseOperand(opTxt0, 0);
+			if (oMode[0] == AM_AN)
+				fatal("ein Adressregister ist hier nicht zulaessig: ",
+				      lnArg);
+			colon = -1;
+			n2 = strLen(opTxt1);
+			for (i2 = 0; i2 < n2; i2++) {
+				if (opTxt1[i2] == ':')
+					colon = i2;
+			}
+			r = -1;
+			if (colon >= 0) {
+				r = regNum(opTxt1, colon);
+				q = regNum(&opTxt1[colon + 1], n2 - colon - 1);
+				if (r < 0 || r > 7 || q < 0 || q > 7)
+					fatal("\"dr:dq\" braucht zwei Datenregister: ",
+					      lnArg);
+			} else {
+				q = regNum(opTxt1, n2);
+				if (q < 0 || q > 7)
+					fatal("Datenregister erwartet: ", lnArg);
+			}
+			ext = q << 12;
+			if (baseIs(base, "divs") || baseIs(base, "muls"))
+				ext = ext | 0x0800;
+			if (r >= 0) {
+				ext = ext | 0x0400 | r;
+			} else {
+				/* Ohne "dr:" traegt r68 in das untere Feld
+				   NICHT 0 ein, sondern noch einmal dq --
+				   gemessen an "divu.l #x,d1" aus
+				   SYSMODS/GCLOCK/tk162.a: $1001, nicht $1000
+				   (bei d0 faellt der Unterschied nicht auf). */
+				ext = ext | q;
+			}
+			op = 0x4C40;
+			if (baseIs(base, "muls") || baseIs(base, "mulu"))
+				op = 0x4C00;
+			emitWord(op | eaBits(0));
+			emitWord(ext);
+			emitEa(0, 4);
+			return;
+		}
 		if (size != 0 && size != 'w')
-			fatal("nur die Wortform ist gemessen (68020-Langform fehlt): ",
-			      lnOp);
+			fatal("mul/div kennen nur .w und .l: ", lnOp);
 		needOps(2);
 		parseOperand(opTxt0, 0);
 		parseOperand(opTxt1, 1);
@@ -3730,6 +3803,55 @@ static void doInstruction(void)
 		}
 		emitWord(0x0100 | (needDn(0) << 9) | (kind << 6) | eaBits(1));
 		emitEa(1, 1);
+		return;
+	}
+
+	/* --- Cachebefehle (68040) --- */
+	/* Gemessen: $F400 | Cache<<6 | (Zurueckschreiben ? $20 : 0) |
+	   Bereich<<3 | Register. Cache: nc 0, dc 1, ic 2, bc 3;
+	   Bereich: Zeile 1, Seite 2, alles 3. "cinva bc" -> $f4d8,
+	   "cpushl dc,(a1)" -> $f469. */
+	if (baseIs(base, "cinva") || baseIs(base, "cpusha") ||
+	    baseIs(base, "cinvl") || baseIs(base, "cpushl") ||
+	    baseIs(base, "cinvp") || baseIs(base, "cpushp")) {
+		int cache;
+		int scope;
+		int push;
+		int op;
+
+		needNoSize(size);
+		push = 0;
+		if (base[1] == 'p')
+			push = 0x20;
+		scope = 3;
+		if (base[strLen(base) - 1] == 'l')
+			scope = 1;
+		else if (base[strLen(base) - 1] == 'p')
+			scope = 2;
+		if (scope == 3)
+			needOps(1);
+		else
+			needOps(2);
+		cache = -1;
+		if (baseIs(opTxt0, "nc"))
+			cache = 0;
+		else if (baseIs(opTxt0, "dc"))
+			cache = 1;
+		else if (baseIs(opTxt0, "ic"))
+			cache = 2;
+		else if (baseIs(opTxt0, "bc"))
+			cache = 3;
+		if (cache < 0)
+			fatal("Cachekennung weder nc/dc/ic noch bc: ", lnArg);
+		op = 0xF400 | (cache << 6) | push | (scope << 3);
+		if (scope == 3) {
+			emitWord(op);
+			return;
+		}
+		parseOperand(opTxt1, 1);
+		if (oMode[1] != AM_IND)
+			fatal("Cachebefehl braucht \"(aN)\": ", lnArg);
+		emitWord(op | oReg[1]);
 		return;
 	}
 
@@ -4197,6 +4319,9 @@ static void runPass(void)
 		/* Ausrichten, bevor das Label seinen Wert bekommt. */
 		if (lineAligns())
 			alignEven();
+
+		/* Ab hier steht der Ort der Zeile fest -- das ist "*". */
+		stmtPC = curPC;
 
 		/* Label setzen, bevor der Befehl den Ort veraendert. */
 		if (lnLabel[0] != 0) {
@@ -4728,6 +4853,29 @@ int main(int argc, char **argv)
 		}
 		if (argEq(a, "-qb") || argEq(a, "-bq")) {
 			optBranch = 1;
+			continue;
+		}
+		if (argEq(a, "-bt") || argEq(a, "-y") || argEq(a, "-j") ||
+		    argStarts(a, "-p") > 0) {
+			/* Diese Schalter aendern die Ausgabe und sind nicht
+			   gemessen: -bt/-y machen Spruenge lang, -j legt eine
+			   Sprungtabelle an, -p richtet alle org aus. */
+			printf("qr68: Schalter %s aendert die Ausgabe und ist nicht nachgebildet\n",
+			       a);
+			exit(2);
+		}
+		if (a[0] == '-' && (a[1] == 'm' || a[1] == 'd') && a[2] != 0) {
+			/* -m<n> waehlt bei r68 die Ziel-CPU, -d<n> die
+			   Zeilenzahl je Listenseite. Beides beeinflusst nur
+			   Warnungen und das Listing, nicht die Ausgabe. */
+			continue;
+		}
+		if (argEq(a, "-l") || argEq(a, "-g") || argEq(a, "-e") ||
+		    argEq(a, "-s") || argEq(a, "-n") || argEq(a, "-x") ||
+		    argEq(a, "-c") || argEq(a, "-f") || argEq(a, "-r")) {
+			/* Listing- und Meldungsschalter von r68: angenommen
+			   und uebergangen, damit die Aufrufe der SDK-Makefiles
+			   unveraendert laufen. */
 			continue;
 		}
 		if (argEq(a, "-q")) {

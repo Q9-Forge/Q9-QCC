@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **39 Quellen des MWOS-SDK** — SCF- und RBF-Treiber und Descriptoren dreier Familien | **byteidentisch** |
+| **58 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -44,7 +44,9 @@ gar nicht.
 (Sofortwert, Register, Speicherform), `Scc` (14 Bedingungen), `bra`/`bsr`/
 `Bcc` (kurz und Wort), `dbra`/`dbcc`, `jsr`/`jmp`, `link`/`unlk`,
 `rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`,
-`cmpm`, `movep`, dazu
+`cmpm`, `movep`, die 68020-Langformen von `mulu`/`muls`/`divu`/`divs`
+(auch als `dr:dq`), die 68040-Cachebefehle `cinva`/`cpusha`/`cinvl`/
+`cpushl`/`cinvp`/`cpushp`, dazu
 `movem` mit Registerlisten (`d0-d7/a0-a6`, bei `-(An)` mit umgekehrter
 Maske), die Bitbefehle `btst`/`bset`/`bclr`/`bchg` (statisch und dynamisch),
 `ori`/`andi`/`eori` nach `ccr`/`sr`, `move` von und nach `sr`/`ccr`/`usp`,
@@ -61,7 +63,11 @@ Assemblierung (`ifeq`/`ifne`/`ifgt`/`ifge`/`iflt`/`ifle`/`ifdef`/`ifndef`/
 der Systemaufruf `os9`.
 
 Von r68s Schaltern: `-b` (Sprungweiten selbst wählen), `-a<sym>[=<wert>]`,
-`-u=<verz>`, `-q` (angenommen und ignoriert).
+`-u=<verz>`. Angenommen und übergangen werden die Listing- und
+Meldungsschalter (`-q -l -g -e -s -n -x -c -f -r -m<n> -d<n>`), damit die
+Aufrufe der SDK-Makefiles unverändert laufen; `-y`, `-bt`, `-j` und `-p<n>`
+ändern die Ausgabe und werden **abgelehnt**, statt sie stillschweigend zu
+übergehen.
 
 **Alles andere bricht mit Meldung ab.** Das ist Absicht: eine still falsche
 Kodierung wäre schlimmer als eine fehlende.
@@ -201,6 +207,20 @@ drei Argumente (`d0`, `(a0`, `d2.w)`), und genau darauf baut
 `move.b \1,\2,\3` wieder zusammen. Anführungszeichen zählen dagegen sehr
 wohl: `#',',b` sind zwei Argumente.
 
+### `*` ist der Ort der ZEILE
+
+Nicht der laufende Ort: `dc.w *,*,*` auf Offset 2 ergibt dreimal `$0002`.
+Wer den laufenden Ort nimmt, liegt ab dem zweiten Wert daneben — in
+`SYSMODS/SYSCACHE/syscache.a:383` steht `dc.w F$CCtl,UsrCCtl-*-4`.
+
+### PC-relativ: nur ein Codebezug wird ausgerechnet
+
+`lea ziel(pc),a1` ergibt den **Abstand** (`$ffec`), `jmp 3(pc)` dagegen
+`$0003` — der feste Wert steht unverändert als Displacement drin, ebenso
+`lea WERT(pc),a2` mit `WERT equ 6`. Den Unterschied macht der **Ausdruck**,
+nicht die Schreibweise: `pc` und `pcr` verhalten sich in beiden Fällen
+gleich. (`SYSMODS/GCLOCK/tickgeneric.a:188`: `jmp 3(pc)`.)
+
 ### Was sonst noch nur durchs Messen kam
 
 - **`use "datei"`** sucht im Verzeichnis der **einschließenden Datei** — das
@@ -215,6 +235,9 @@ wohl: `#',',b` sind zwei Argumente.
 - **`cc`** nimmt r68 neben `ccr` (aber nicht `c` oder `ccrx`) — in
   `rbvme10.a:1074` steht `ori #Carry,cc`, offenbar ein Tippfehler, den r68
   klaglos übersetzt.
+- **`divu.l d1,d1`** trägt im Erweiterungswort unten **noch einmal `dq`**
+  ein, nicht 0 (`$1001`). Bei `d0` fällt der Unterschied nicht auf — der
+  Korpus hat ihn gefunden (`SYSMODS/GCLOCK/tk162.a`).
 
 - **`equ` erbt einen externen Namen.** `IRQCtrl equ u_icr` (so in
   `sc68070.a`) bindet einen Namen an einen externen; jede Benutzung von
@@ -428,9 +451,9 @@ Definitionen anderer Boards:
 |---|---|
 | SCF-Treiber | 11 gleich, 3 abweichend |
 | RBF-Treiber | **13 gleich, 0 abweichend** |
-| SCF-Descriptoren | **7 gleich, 0 abweichend** |
-| RBF-Descriptoren | **7 gleich, 0 abweichend** |
-| PCF-Descriptoren | **1 gleich, 0 abweichend** |
+| SCF-/RBF-/PCF-Descriptoren | **15 gleich, 0 abweichend** |
+| `SYSMODS/GCLOCK` (Uhren) | **12 gleich, 0 abweichend** |
+| `SYSMODS/SYSGO`, `SYSCACHE`, `INIT` | **7 gleich, 0 abweichend** |
 
 ```
 PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
