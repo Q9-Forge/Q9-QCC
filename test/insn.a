@@ -1,0 +1,263 @@
+* Befehlsprobe: jede Form, die qr68 kodieren kann, genau einmal.
+* Orakel ist r68 -- test/insndiff.sh stellt beide Ausgaben Zeile fuer Zeile
+* gegenueber. Neue Befehlsformen gehoeren hier hinein, BEVOR sie im
+* Assembler stehen.
+         opt     l
+         psect   insn,0,0,1,0,0
+
+* r68 ist ein Zwei-Pass-Assembler: steht der Wert erst weiter unten, waehlt
+* es im ersten Durchlauf die lange Form und im zweiten ADDQ -- und meldet
+* dann "phasing error" fuer jedes Label dahinter. Deshalb steht der Wert
+* hier oben. (qr68 misst so lange, bis sich nichts mehr bewegt, und kaeme
+* auch mit der Vorwaertsform zurecht -- nur pruefen laesst sich das nicht,
+* weil das Orakel sie ablehnt.)
+SPAETWERT equ    4
+
+* ---- Adressierungsarten, durchgespielt an move.l -------------------------
+ziel     move.l  d1,d0
+         move.l  a1,d0
+         move.l  (a1),d0
+         move.l  (a1)+,d0
+         move.l  -(a1),d0
+         move.l  4(a1),d0
+         move.l  -4(a1),d0
+         move.l  0(a1),d0
+         move.l  4(a1,d2.l),d0
+         move.l  4(a1,d2.w),d0
+         move.l  -4(a1,a2.l),d0
+         move.l  (a1,d2.l),d0
+         move.l  $1000.w,d0
+         move.l  $12345678,d0
+         move.l  ziel,d0
+         move.l  ziel(pc),d0
+         move.l  ziel(pc,d2.l),d0
+         move.l  #$12345678,d0
+         move.l  d0,d1
+         move.l  d0,a1
+         move.l  d0,(a1)
+         move.l  d0,(a1)+
+         move.l  d0,-(a1)
+         move.l  d0,4(a1)
+         move.l  d0,4(a1,d2.l)
+         move.l  d0,$1000.w
+         move.l  d0,$12345678
+         move.l  d0,ziel
+         move.b  (a1),d0
+         move.b  d0,(a1)
+         move.b  #7,d0
+         move.b  4(a1),4(a2)
+         move.w  (a1),d0
+         move.w  #$1234,d0
+         move.l  a5,sp
+         move.l  sp,a5
+         movea.l a5,a0
+         moveq   #0,d0
+         moveq   #-1,d0
+         moveq   #127,d0
+         moveq   #-128,d1
+
+* ---- Adressen ------------------------------------------------------------
+         lea     4(a5),a0
+         lea     -4(a5),a0
+         lea     (a5),a0
+         lea     4(a5,d1.l),a0
+         lea     ziel(pc),a3
+         lea     ziel,a3
+         lea     $1000.w,a3
+         pea     4(a5)
+         pea     ziel(pc)
+
+* ---- Rechnen -------------------------------------------------------------
+         add.l   d0,d1
+         add.l   (a0),d1
+         add.l   (a0)+,d1
+         add.l   d1,(a0)
+         add.l   d0,a4
+         add.l   a4,d0
+         add.l   #1,d0
+         add.l   #8,d0
+         add.l   #9,d0
+         add.l   #0,d0
+         add.l   #-1,d0
+         add.l   #4,a0
+         add.l   #9,a0
+         add.b   #4,d0
+         add.w   #8,d0
+         add.l   #4,(a0)
+         sub.l   d0,d1
+         sub.l   #4,d0
+         sub.l   #9,d0
+         sub.l   #4,a0
+         sub.l   a4,d0
+         and.l   d1,d0
+         and.l   d1,(a0)
+         and.l   #4,d0
+         and.b   #$0f,d0
+         or.l    (a0),d1
+         or.l    #4,d0
+         eor.l   d1,d0
+         eor.l   d1,(a0)
+         eor.l   #4,d0
+         cmp.l   d1,d0
+         cmp.l   (a0),d1
+         cmp.l   #4,d0
+         cmp.l   a1,a0
+         cmp.b   #7,d0
+         adda.l  #4,a0
+         adda.l  a1,a0
+         adda.w  d1,a0
+         suba.l  a1,a0
+         cmpa.l  a1,a0
+         addi.l  #9,d0
+         subi.w  #9,d0
+         andi.l  #$ff,d0
+         ori.b   #1,d0
+         eori.l  #$ff,d0
+         cmpi.l  #9,d0
+         addq.l  #1,d0
+         addq.l  #8,a0
+         subq.l  #4,a0
+         muls    d1,d0
+         muls.w  (a0),d0
+         mulu.w  d1,d0
+         divs.w  d1,d0
+         divu.w  d1,d0
+
+* ---- ein Operand ---------------------------------------------------------
+         clr.l   d0
+         clr.b   (a0)
+         neg.l   d0
+         neg.l   (a0)
+         negx.l  d0
+         not.l   d0
+         not.l   (a0)
+         tst.l   d0
+         tst.b   (a0)
+         tst.w   4(a5)
+         tas     (a0)
+         swap    d0
+         ext.w   d0
+         ext.l   d0
+
+* ---- Schieben und Rotieren ----------------------------------------------
+         asl.l   #1,d0
+         asr.l   #8,d0
+         lsl.l   #3,d0
+         lsr.w   #2,d0
+         rol.b   #1,d0
+         ror.b   #1,d0
+         roxl.l  #2,d0
+         roxr.l  #2,d0
+         lsl.l   d1,d0
+         asr.w   d1,d0
+         lsl     (a0)
+         asr     (a0)
+         roxl    -(a0)
+
+* ---- bedingtes Setzen ----------------------------------------------------
+         seq     d0
+         sne     d0
+         scs     d0
+         scc     d0
+         sge     d0
+         slt     d0
+         sgt     d0
+         sle     d0
+         shi     d0
+         sls     d0
+         spl     d0
+         smi     d0
+         svc     d0
+         svs     d0
+         seq     (a0)
+
+* ---- Spruenge ------------------------------------------------------------
+nah      nop
+         bra     ziel
+         bra.s   nah
+         bra.w   ziel
+         bsr     ziel
+         bsr.s   nah
+         beq     ziel
+         bne     ziel
+         bcs     ziel
+         bcc     ziel
+         bge     ziel
+         blt     ziel
+         bgt     ziel
+         ble     ziel
+         bhi     ziel
+         bls     ziel
+         bpl     ziel
+         bmi     ziel
+         bvc     ziel
+         bvs     ziel
+         beq.s   nah
+         dbra    d0,ziel
+         dbeq    d0,ziel
+         dbne    d1,ziel
+         jsr     (a5)
+         jsr     4(a5)
+         jsr     ziel
+         jsr     fremd
+         jmp     (a5)
+         jmp     ziel
+
+* ---- Rahmen und Systemhaftes --------------------------------------------
+         link    a5,#-8
+         link    a5,#0
+         unlk    a5
+         rts
+         rte
+         rtr
+         nop
+         trapv
+         reset
+         illegal
+         trap    #0
+         trap    #15
+         stop    #$2700
+
+* ---- Vorwaerts- und Rueckwaertsbezuege ----------------------------------
+         bra     spaet
+         add.l   #SPAETWERT,d0
+         move.l  #spaet,d0
+         dc.l    spaet-ziel
+spaet    nop
+
+* ---- Ausrichtung ---------------------------------------------------------
+         dc.b    1
+mitte    nop
+         dc.b    1,2,3
+         dc.w    $1234
+         dc.b    1
+         dc.l    mitte
+
+* ---- Daten und Referenzen ------------------------------------------------
+         dc.l    ziel
+         dc.w    ziel
+         dc.b    ziel
+         align   2
+         dc.l    fremd
+         dc.w    fremd
+         dc.l    ziel-spaet
+         dc.l    wert
+         dc.l    puffer
+* Differenz mit einem externen bzw. absoluten Anteil: r68 macht daraus ZWEI
+* Referenzen auf denselben Offset, die abgezogene mit $40 im Typwort.
+         dc.l    fremd-spaet
+         dc.l    fremd-spaet+8
+         dc.w    fremd-spaet
+         dc.l    SPAETWERT-spaet
+* Differenz zweier eigener Groessen -- auch ueber Abschnittsgrenzen -- laesst
+* r68 ohne Referenz stehen.
+         dc.l    wert-spaet
+         dc.l    puffer-spaet
+         dc.l    wert-puffer
+
+         vsect
+wert:    dc.l    5
+zeiger:  dc.l    ziel
+puffer:  ds.b    16
+         ends
+         ends

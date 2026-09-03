@@ -18,8 +18,15 @@ build/qr68: src/qr68.c
 
 test: build/qr68
 	./test/difftest.sh
+	./test/insndiff.sh
+
+# Zusaetzlich an echtem Material: den Quellen des QCC-Backends.
+backend: build/qr68
+	./test/backend.sh
+
+check: test backend
 
 clean:
 	rm -rf build
 
-.PHONY: all test clean
+.PHONY: all test backend check clean
