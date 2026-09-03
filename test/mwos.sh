@@ -25,8 +25,9 @@ if [ ! -f "$PORTDIR/defsfile" ] || [ ! -d "$DRVDIR" ]; then
 	exit 0
 fi
 
-TMP="$(mktemp -d /tmp/qr68-mwos.XXXXXX)"
-trap 'rm -rf "$TMP"' EXIT
+TMP="${KEEP:-$(mktemp -d /tmp/qr68-mwos.XXXXXX)}"
+mkdir -p "$TMP"
+[ -n "${KEEP:-}" ] || trap 'rm -rf "$TMP"' EXIT
 
 # os9-toolchain.sh biegt MWOS auf den WINE-Pfad um -- der Unix-Pfad muss
 # vorher gerettet werden, sonst sucht qr68 seine Includes unter "M:\...".
@@ -97,8 +98,9 @@ for f in "${files[@]}"; do
 		| grep -q "gleich ("; then
 		ok=$((ok + 1))
 	else
-		python3 "$TOOLS/rofcmp.py" "$base:$TMP/$base.r:$TMP/$base.q" \
-			| head -4 | sed 's/^/  /'
+		echo "  $(printf '%-20s' "$base") ABWEICHUNG:"
+		python3 "$TOOLS/rofhunks.py" "$TMP/$base.r" "$TMP/$base.q" \
+			"${HUNKS:-4}" | sed 's/^/    /'
 		bad=$((bad + 1))
 	fi
 done

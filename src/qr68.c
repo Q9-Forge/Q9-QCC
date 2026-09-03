@@ -123,6 +123,12 @@ static int symDefined[16384];
 static int symGlobal[16384];
 static int symUsed[16384];
 static int symPass[16384];     /* Durchlauf der letzten Definition, s. ifdef */
+/* Pool-Index eines externen Namens, auf den dieses Symbol steht, sonst -1.
+   "IRQCtrl equ u_icr" (so in MWOS/.../sc68070.a:64) bindet einen Namen an
+   einen EXTERNEN -- jede Benutzung von IRQCtrl muss danach wieder eine
+   Referenz auf u_icr erzeugen. Ohne das fehlen im ROF stillschweigend
+   Referenzen, und der Binder setzt die Adresse nie ein. */
+static int symExt[16384];
 static int symN;
 
 /* Codeausgabe */
@@ -417,6 +423,7 @@ static int symIntern(int name)
 	symGlobal[s] = 0;
 	symUsed[s] = 0;
 	symPass[s] = 0;
+	symExt[s] = -1;
 	symN++;
 	return s;
 }
@@ -779,6 +786,13 @@ static int exPrimary(void)
 	}
 	if (isDigitCh(exP[0] & 255)) {
 		exSect = SECT_ABS;
+		/* "0x100" kennt r68 neben "$100" -- so steht es in
+		   MWOS/OS9/SRC/IO/SCF/DRVR/sccd2401.a:1151. Nur klein
+		   geschrieben: "0X10" lehnt r68 ab. */
+		if (exP[0] == '0' && exP[1] == 'x') {
+			exP = exP + 2;
+			return exNumber(16);
+		}
 		return exNumber(10);
 	}
 
@@ -809,8 +823,12 @@ static int exPrimary(void)
 		if (exSect == SECT_NONE)
 			exSect = SECT_ABS;
 		if (exSect == SECT_CODE || exSect == SECT_IDATA ||
-		    exSect == SECT_UDATA)
+		    exSect == SECT_UDATA) {
 			termAdd(exSect, -1);
+		} else if (exSect == SECT_EXTERN && symExt[s] >= 0) {
+			exExtern = symExt[s];
+			termAdd(SECT_EXTERN, symExt[s]);
+		}
 		return symValue[s];
 	}
 
@@ -953,6 +971,12 @@ static int evalExpr(const char *s)
 	exOpen = 0;
 	termN[2] = 0;
 	v = exprTop();
+	/* Der Ausdruck muss GANZ aufgebraucht sein. Ohne diese Pruefung
+	   liefert ein unbekanntes Zahlenformat still einen falschen Wert --
+	   "0x100" ergab, bevor es unterstuetzt war, klaglos 0. */
+	exSkip();
+	if (exP[0] != 0)
+		fatal("Rest im Ausdruck nicht auswertbar: ", exP);
 	termFold();
 	/* exSect/exExtern beschreiben den EINEN Anteil, wenn es genau einen
 	   gibt -- daran haengen die Pruefungen fuer Spruenge und
@@ -1823,9 +1847,17 @@ static void parseOperand(const char *s, int k)
 			blen = (ie - 1) - (lp + 1);
 		r = regNum(&s[lp + 1], blen);
 		isPc = 0;
-		if (blen == 2 && lowerCh(s[lp + 1] & 255) == 'p' &&
-		    lowerCh(s[lp + 2] & 255) == 'c')
-			isPc = 1;
+		if (blen >= 2 && lowerCh(s[lp + 1] & 255) == 'p' &&
+		    lowerCh(s[lp + 2] & 255) == 'c') {
+			if (blen == 2)
+				isPc = 1;
+			/* "pcr" ist Microwares zweite Schreibweise dafuer und
+			   verhaelt sich genauso -- gemessen: "ziel(pc)" und
+			   "ziel(pcr)" ergeben beide den Abstand vom
+			   Erweiterungswort. */
+			else if (blen == 3 && lowerCh(s[lp + 3] & 255) == 'r')
+				isPc = 1;
+		}
 		if (r >= 8 || isPc) {
 			if (!isPc)
 				oReg[k] = r - 8;
@@ -2290,12 +2322,16 @@ static void macSubstitute(int from, int to, const char *argp[], int argN,
 static char macArgBuf[1024];
 static const char *macArgP[9];
 
-/* Zerlegt das Operandenfeld des Aufrufs in bis zu neun Argumente. */
+/* Zerlegt das Operandenfeld des Aufrufs in bis zu neun Argumente.
+   An r68 gemessen: getrennt wird an JEDEM Komma -- Klammern zaehlen NICHT
+   mit. "REGMOVE2 d0,(a0,d2.w)" hat also DREI Argumente ("d0", "(a0",
+   "d2.w)"), und genau darauf baut MACROS/longio.m: das Makro setzt sie mit
+   "move.b \1,\2,\3" wieder zusammen und prueft vorher "\#-3".
+   Anfuehrungszeichen zaehlen dagegen sehr wohl: "#',',b" sind zwei. */
 static int macSplitArgs(void)
 {
 	int i;
 	int n;
-	int depth;
 	int q;
 	int out;
 	int argN;
@@ -2306,7 +2342,6 @@ static int macSplitArgs(void)
 	out = 0;
 	if (n == 0)
 		return 0;
-	depth = 0;
 	q = 0;
 	macArgP[0] = &macArgBuf[0];
 	argN = 1;
@@ -2319,11 +2354,7 @@ static int macSplitArgs(void)
 				q = 0;
 		} else if (i < n && (c == '"' || c == 39)) {
 			q = c;
-		} else if (i < n && c == '(') {
-			depth++;
-		} else if (i < n && c == ')') {
-			depth--;
-		} else if (i == n || (c == ',' && depth == 0)) {
+		} else if (i == n || c == ',') {
 			if (out + 1 >= 1024)
 				fatal("Makroargumente zu lang: ", lnArg);
 			macArgBuf[out] = 0;
@@ -3509,6 +3540,23 @@ static void doInstruction(void)
 		if (oMode[0] != AM_IMM)
 			fatal("die I-Form braucht einen Sofortwert: ", lnArg);
 		needAlterable(1);
+		/* Auch die AUSGESCHRIEBENE Form verkuerzt r68: "addi.b #1,d5"
+		   wird $5205, also ADDQ (gemessen). Fuer andi/ori/eori/cmpi
+		   gibt es keine Kurzform, die bleiben stehen. */
+		if ((baseIs(base, "addi") || baseIs(base, "subi")) &&
+		    termN[0] == 0 && !oOpen[0] && oVal[0] >= 1 && oVal[0] <= 8) {
+			int q;
+			int qop;
+
+			q = oVal[0] & 7;
+			qop = 0x5000;
+			if (baseIs(base, "subi"))
+				qop = 0x5100;
+			emitWord(qop | (q << 9) | (sizeField(size) << 6) |
+				 eaBits(1));
+			emitEa(1, sizeBytes(size));
+			return;
+		}
 		op = 0x0600;
 		if (baseIs(base, "subi"))
 			op = 0x0400;
@@ -4030,13 +4078,34 @@ static void runPass(void)
 			}
 			if (opIs("equ") || opIs("set")) {
 				int v;
+				int sx;
 
 				v = evalExpr(lnArg);
+				/* Steht rechts GENAU EIN externer Name, erbt
+				   das Symbol ihn: "IRQCtrl equ u_icr" (so in
+				   sc68070.a) muss bei jeder Benutzung wieder
+				   eine Referenz auf u_icr erzeugen.
+				   Bei mehreren -- im SDK kommt
+				   "ILVLR4_default equ ILVLR4a+ILVLR4b+..."
+				   mit lauter unbekannten Namen vor -- bleibt
+				   nur der Zahlwert; r68 legt dafuer ebenfalls
+				   keine Referenzen an (an sc68070.a
+				   nachgeprueft: dessen Code und Referenzen
+				   stimmen so byteweise). */
+				if (termN[2] == 1 &&
+				    termSect[16] == SECT_EXTERN) {
+					sx = termName[16];
+				} else {
+					sx = -1;
+					if (exSect == SECT_EXTERN)
+						exSect = SECT_ABS;
+				}
 				/* "set" darf sich innerhalb eines Durchlaufs
 				   aendern und zaehlt deshalb nicht als
 				   Bewegung, "equ" schon. */
 				symDefine(name, v, exSect, lnGlobal,
 					  opIs("equ"));
+				symExt[symIntern(name)] = sx;
 				continue;
 			}
 			symDefine(name, curPC, curSect, lnGlobal, 1);
@@ -4258,6 +4327,11 @@ static void writeRof(void)
 				outWord(0x0001);
 			else if (symSect[best] == SECT_UDATA)
 				outWord(0x0000);
+			else if (symSect[best] == SECT_ABS)
+				/* Ein globales equ auf einen festen Wert --
+				   gemessen: Typ $0006, und in der Adresse
+				   steht der Wert selbst. */
+				outWord(0x0006);
 			else
 				fatal("globaler Typ noch nicht gemessen: ",
 				      poolAt(symName[best]));

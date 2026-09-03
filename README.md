@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| 6 **SCF-Treiber des MWOS-SDK** (Includes, Makros, bedingte Assemblierung, `-b`) | **byteidentisch** |
+| 11 **SCF-Treiber des MWOS-SDK** (Includes, Makros, bedingte Assemblierung, `-b`) | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -192,6 +192,31 @@ ohne Bezug — aber es zählt der **Teilausdruck**, nicht der ganze:
 `(*-BaudTabl)/2` ist erlaubt (die Differenz ist eine Konstante), und
 `\1+\1+\1+\1+256*4` aus `MACROS/os9svc.m` ebenfalls.
 
+### Makroargumente werden an JEDEM Komma getrennt
+
+Klammern zählen dabei **nicht** mit: `REGMOVE2 d0,(a0,d2.w)` sind für r68
+drei Argumente (`d0`, `(a0`, `d2.w)`), und genau darauf baut
+`MACROS/longio.m` — das Makro prüft `\#-3` und setzt sie mit
+`move.b \1,\2,\3` wieder zusammen. Anführungszeichen zählen dagegen sehr
+wohl: `#',',b` sind zwei Argumente.
+
+### Was sonst noch nur durchs Messen kam
+
+- **`equ` erbt einen externen Namen.** `IRQCtrl equ u_icr` (so in
+  `sc68070.a`) bindet einen Namen an einen externen; jede Benutzung von
+  `IRQCtrl` muss danach wieder eine Referenz auf `u_icr` erzeugen. Ohne das
+  fehlen im ROF stillschweigend Referenzen — der Code ist byteidentisch, der
+  Binder setzt die Adresse aber nie ein. Stehen mehrere unbekannte Namen
+  rechts (`ILVLR4_default equ ILVLR4a+ILVLR4b+…`), legt auch r68 keine
+  Referenz an.
+- **`addi`/`subi` verkürzt r68 ebenfalls** zu `addq`/`subq` (1…8) — nicht
+  nur `add`/`sub`.
+- **`0x100`** ist neben `$100` ein gültiges Hexliteral (nur klein
+  geschrieben; `0X10` lehnt r68 ab).
+- **`pcr`** ist die zweite Schreibweise für `pc` und verhält sich genauso.
+- **Ein globales `equ`** auf einen festen Wert bekommt das Typwort `$0006`,
+  und in der Adresse steht der Wert selbst.
+
 ### Sofortwerte: drei gemessene Sonderfälle
 
 - `move.b #fremd,d0` bekommt eine **Byte**referenz auf das *niederwertige*
@@ -361,24 +386,21 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
 `./test/mwos.sh` fährt die 29 SCF-Treiber des SDK aus einem Port-Verzeichnis,
 so wie es die SDK-Makefiles tun (`-qb -u=. -u=<DEFS> -u=<MACROS>`). Von den
 15, die `r68` selbst übersetzt (die übrigen 14 brauchen Definitionen anderer
-Boards), sind **6 byteidentisch**. Die restlichen neun hängen an fünf
-benannten Stellen:
+Boards), sind **11 byteidentisch**. Die restlichen vier:
 
 - **`sc68562`** benutzt `bsr.l`/`bcs.l` — die in r68 kaputte lange Sprungform
-  (s. o.). `qr68` bricht dort ab.
+  (s. u.). `qr68` bricht dort ab.
 - **`sc68990`** springt auf die unmittelbar folgende Anweisung; r68 lässt den
-  Befehl mit `-b` weg, was sich nicht stabil nachbilden lässt (s. o.).
+  Befehl mit `-b` weg, was sich nicht stabil nachbilden lässt (s. u.).
 - **`sc8251a`** prüft `ifeq CPUType-FM16s` mit einem Namen, den es nicht
-  gibt: r68 meldet dort „illegal external reference" und übersetzt den Block
-  trotzdem. `qr68` bricht ab.
-- **`sc68681`** löst ein `fail` in einem SDK-Makro aus — dort geht eine
-  Bedingung anders aus als bei r68, das ist noch nicht durchgemessen.
-- **`sc68070`, `sc6821`, `sc8250`, `sccd2401`** übersetzen durch, weichen
-  aber in der Länge ab (6 bis 196 Byte). Auch das ist noch nicht eingegrenzt.
+  gibt. r68 meldet dort „illegal external reference" und übersetzt **beide**
+  Zweige — ein Ergebnis, das niemand haben will. `qr68` bricht ab.
+- **`sccom`** findet `backplane.d` nicht; daran scheitert schon `r68`.
 
 ## Nächste Schritte
 
-1. Die fünf oben benannten Stellen im Treiberkorpus.
+1. Der Rest des Korpus: die RBF- und SBF-Treiber, die Dateimanager und die
+   Descriptor-Quellen — die SCF-Treiber sind nur ein Ausschnitt.
 2. Kette `qcc_backend → qr68 → l68` einmal bis zum laufenden Modul auf dem
    68030 fahren (bisher ist nur gezeigt, dass `l68` von `qr68` byteweise
    dasselbe bekommt wie von `r68`).

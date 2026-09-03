@@ -12,6 +12,8 @@
 * auch mit der Vorwaertsform zurecht -- nur pruefen laesst sich das nicht,
 * weil das Orakel sie ablehnt.)
 SPAETWERT equ    4
+GLOBWERT: equ    5
+GLOBGROSS: equ   $12345
 
 * ---- Adressierungsarten, durchgespielt an move.l -------------------------
 ziel     move.l  d1,d0
@@ -62,6 +64,9 @@ ziel     move.l  d1,d0
          lea     (a5),a0
          lea     4(a5,d1.l),a0
          lea     ziel(pc),a3
+         lea     ziel(pcr),a3
+nahpc    nop
+         lea     nahpc(pcr,d1.w),a3
          lea     ziel,a3
          lea     $1000.w,a3
          pea     4(a5)
@@ -109,6 +114,9 @@ ziel     move.l  d1,d0
          suba.l  a1,a0
          cmpa.l  a1,a0
          addi.l  #9,d0
+         addi.b  #1,d5
+         addi.l  #4,d0
+         subi.l  #4,d0
          subi.w  #9,d0
          andi.l  #$ff,d0
          ori.b   #1,d0
