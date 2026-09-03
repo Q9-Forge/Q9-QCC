@@ -516,6 +516,43 @@ Die drei verbliebenen Abweichungen sind alle drei bewusste Verweigerungen:
   gibt. r68 meldet dort „illegal external reference" und übersetzt **beide**
   Zweige — ein Ergebnis, das niemand haben will. `qr68` bricht ab.
 
+## Was noch offen ist
+
+Am 2026-09-04 über den ganzen Korpus **nachgemessen**, nicht geschätzt.
+
+### Fehlende Befehle — fünf, in acht Dateien
+
+| Befehl | Vorkommen | Form im Korpus |
+|---|---|---|
+| `bfextu` / `bfins` / `bfffo` | 23× | `(a1,d1.l){d2:1}`, `d4{0:32}` |
+| `move16` | 20× | nur `(a0)+,(a2)+` |
+| `pmove` | 4× | PMMU |
+
+Alle in `boot.a`, `gdp.a`, `mc6845.a`, `ram.a`, `sysinit.a` — ROM- und
+Portcode. Neu daran ist allein die Bitfeldsyntax `{offset:breite}`. Die
+**Direktiven sind vollständig** für den Korpus; FPU kommt in 207.000 Zeilen
+nicht vor und bleibt draußen.
+
+### Strukturelle Grenzen
+
+- **Die Quelle wird ganz in eine Arena gelesen** (Host 4 MB, Ziel 256 KB).
+  Die vom Backend erzeugten Dateien sind bis 18 MB — dafür bräuchte es einen
+  strömenden Leser. Das ist auch der Grund, warum `qr68` seine *eigene*
+  Modulquelle nur am Host assemblieren kann, nicht auf dem 68030.
+  (Die Geschwindigkeit ist dagegen erledigt: mit Streutabellen für Namen und
+  Symbole braucht eine 3,5-MB-Quelle **0,3 s** statt 8,3 s.)
+- **Kein Listing.** `-l`, `-s`, `-g` werden angenommen und übergangen;
+  `-z=<datei>` (Argumentdatei) fehlt ganz.
+- **Das 1,18-MB-Modul** ist kein qr68-Problem, sondern QCCs Datenmodell
+  (s. o.).
+
+### Noch nicht geprüfte Korpusteile
+
+Dateimanager, SCSI, `ROM/CBOOT` (DISK/NETWORK/SYSBOOT) und die Ports, für
+die hier die Board-Definitionen fehlen. Die Befundrate ist stark gefallen —
+die letzten drei Gruppen brachten je null neue Abweichungen —, aber
+„ungeprüft" ist nicht „geprüft".
+
 ## Nächste Schritte
 
 1. **QCCs Datenmodell**: genullte Felder gehören in den reservierten
@@ -524,14 +561,7 @@ Die drei verbliebenen Abweichungen sind alle drei bewusste Verweigerungen:
    qr68s Modul von 1,18 MB auf ~50 KB bringen, qcpps von 4,3 MB auf ~44 KB
    — und qr68 könnte dann seine *eigene* Modulquelle auch auf dem Ziel
    assemblieren.
-2. Der Rest des Korpus: Dateimanager, SCSI, `ROM/CBOOT` — und die Ports,
-   für die hier die Definitionen fehlen.
-3. Voller 68000/010/020/030/040-Integerbestand, getrieben vom Korpus
-   (`move16`/Cache-Reste, Bitfelder 23×, `pmove` 4×).
-4. `l68` — der Binder, das letzte große Fremdteil neben Microwares `clib`.
-
-**Eine bekannte Grenze:** die Quelle wird ganz in eine Arena gelesen (am
-Host 4 MB). Die größten vom Backend erzeugten Dateien sind 18 MB — dafür
-bräuchte es einen strömenden Leser. (Die Geschwindigkeit ist erledigt: mit
-Streutabellen für Namen und Symbole braucht eine 3,5-MB-Quelle **0,3 s**
-statt 8,3 s.)
+2. Die fünf fehlenden Befehle (s. o.) — überschaubar, die Messmethode steht.
+3. Strömender Leser statt Arena.
+4. Der Rest des Korpus.
+5. `l68` — der Binder, das letzte große Fremdteil neben Microwares `clib`.
