@@ -154,6 +154,53 @@ ziel     move.l  d1,d0
          asr     (a0)
          roxl    -(a0)
 
+* ---- Registerlisten, Bits, Sonderregister -------------------------------
+         movem.l d0-d7/a0-a6,-(sp)
+         movem.l (sp)+,d0-d7/a0-a6
+         movem.l a0/d6,-(sp)
+         movem.l (sp)+,a0/d6
+         movem.l d4/d6/d7/a4,-(sp)
+         movem.l d2-d7/a3-a5,-(sp)
+         movem.l (sp),d2-d7/a3-a5
+         movem.l a2/a3/a4,$1000
+         movem.w d0-d3,-(sp)
+         movem.l d0,-(sp)
+         movem   d0-d1,-(sp)
+         movem.l 4(a5),d0-d3
+         btst    #2,d6
+         btst    d1,d6
+         btst    #2,(a0)
+         btst    #2,4(a5)
+         bset    #3,d0
+         bclr    #3,(a0)
+         bchg    d1,d0
+         ori     #1,ccr
+         andi    #$fe,ccr
+         eori    #1,ccr
+         ori.w   #$700,sr
+         andi.w  #$f8ff,sr
+         ori     #$700,sr
+         exg     d0,d1
+         exg     a0,a1
+         exg     d0,a1
+         exg     a1,d0
+         move.w  sr,d0
+         move.w  d0,sr
+         move.w  d0,ccr
+         move.l  usp,a0
+         move.l  a0,usp
+         movec   d0,vbr
+         movec   vbr,d0
+         movec   d0,sfc
+         movec   d0,dfc
+         movec   d0,cacr
+         movec   a0,usp
+         movec   d0,msp
+         movec   d0,isp
+         moves.l d0,(a0)
+         moves.l (a0),d0
+         moves.b d1,4(a5)
+
 * ---- bedingtes Setzen ----------------------------------------------------
          seq     d0
          sne     d0
@@ -232,6 +279,12 @@ mitte    nop
          dc.w    $1234
          dc.b    1
          dc.l    mitte
+
+* ---- Verschiebbares Displacement (OS-9-C-ABI ueber a6) ------------------
+         move.l  #$7FFFFFFF,puffer(a6)
+         move.l  wert(a6),d0
+         move.l  fremd(a6),d0
+         lea     wert(a6),a0
 
 * ---- Daten und Referenzen ------------------------------------------------
          dc.l    ziel

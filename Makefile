@@ -19,10 +19,14 @@ build/qr68: src/qr68.c
 test: build/qr68
 	./test/difftest.sh
 	./test/insndiff.sh
+	RFLAGS=-b ./test/insndiff.sh test/bopt.a
+	./test/usetest.sh
 
-# Zusaetzlich an echtem Material: den Quellen des QCC-Backends.
+# Zusaetzlich an echtem Material: den Quellen des QCC-Backends und den
+# handgeschriebenen Kernelquellen von Q9-OS.
 backend: build/qr68
 	./test/backend.sh
+	./test/handwritten.sh
 
 check: test backend
 

@@ -102,6 +102,11 @@ static int poolTop;
 static char srcArena[4194304];
 static int SRC_MAX = 4194304;
 static int srcTop;
+/* Der Ausdehnungsspeicher fuer Makros liegt am OBEREN Ende derselben Arena
+   und waechst nach unten: eingelesene Dateien wachsen von unten,
+   Ausdehnungen sind ein Stapel und werden beim Verlassen wieder
+   freigegeben. So kann eine Ausdehnung nie eine Datei ueberschreiben. */
+static int expTop;
 
 static int FILE_MAX = 64;
 static int flName[64];
@@ -117,6 +122,7 @@ static int symSect[16384];     /* s. SECT_* */
 static int symDefined[16384];
 static int symGlobal[16384];
 static int symUsed[16384];
+static int symPass[16384];     /* Durchlauf der letzten Definition, s. ifdef */
 static int symN;
 
 /* Codeausgabe */
@@ -182,9 +188,19 @@ static int dtMin = 0;
 static int dtSec = 0;
 
 static int optVerbose;
+static int optBranch;          /* -b: Sprungweiten selbst waehlen */
 static int pass;               /* Nummer des Durchlaufs, ab 1 */
 static int emitting;           /* 1 = letzter Durchlauf, Ausgabe in die Puffer */
 static int symMoved;           /* 1 = in diesem Durchlauf hat sich ein Wert bewegt */
+
+/* Der org-Zaehler ist NICHT der Ort im Abschnitt: "org" setzt ihn,
+   "do.b/.w/.l" legt darauf Namen ab, "." liest ihn. So beschreiben die
+   Definitionsdateien des SDK ihre Strukturen (1593 "do" in 127 Dateien).
+   An r68 gemessen: "org 4 / A do.b 1 / B do.w 1 / C do.l 2" ergibt
+   A=4, B=6, C=8 -- do.w und do.l richten vorher auf GERADE aus (nicht auf
+   ihre eigene Breite), do.b nicht. Und "org" bewegt den Ort im Abschnitt
+   ueberhaupt nicht: nach "nop / org 8" steht das naechste Label auf 2. */
+static int orgPC;
 
 /* Zustand der aktuellen Zeile */
 static int curFile;
@@ -346,6 +362,32 @@ static int fileLoad(const char *path)
 	return id;
 }
 
+/* Schon eingelesen? Eine Datei wird nur EINMAL in die Arena geholt, auch
+   wenn mehrere Durchlaeufe sie mehrfach ueber "use" erreichen -- sonst
+   liefe der Quelltextspeicher mit jedem Durchlauf weiter voll. */
+static int fileFind(const char *path)
+{
+	int name;
+	int i;
+
+	name = intern(path);
+	for (i = 0; i < flN; i++) {
+		if (flName[i] == name)
+			return i;
+	}
+	return -1;
+}
+
+static int fileGet(const char *path)
+{
+	int id;
+
+	id = fileFind(path);
+	if (id >= 0)
+		return id;
+	return fileLoad(path);
+}
+
 /* ================================================================ Symbole = */
 static int symFind(int name)
 {
@@ -374,6 +416,7 @@ static int symIntern(int name)
 	symDefined[s] = 0;
 	symGlobal[s] = 0;
 	symUsed[s] = 0;
+	symPass[s] = 0;
 	symN++;
 	return s;
 }
@@ -396,6 +439,7 @@ static void symDefine(int name, int value, int sect, int global, int track)
 	symValue[s] = value;
 	symSect[s] = sect;
 	symDefined[s] = 1;
+	symPass[s] = pass;
 	if (global)
 		symGlobal[s] = 1;
 }
@@ -444,7 +488,17 @@ static void rdTake(void)
 	curLine = rdPeekLine;
 }
 
-/* Eine Zeile in lxTmp holen (ohne Umbruch). Rueckgabe 0 = Dateiende. */
+/* Einschlussstapel fuer "use". */
+static int USE_MAX = 16;
+static int useFile[16];
+static int usePos[16];
+static int useLine[16];
+static int useExp[16];         /* Stand des Ausdehnungsspeichers beim Eintritt */
+static int useDepth;
+
+/* Eine Zeile in lxTmp holen (ohne Umbruch). Rueckgabe 0 = Dateiende der
+   aeussersten Datei; das Ende einer eingeschlossenen Datei kehrt still zur
+   einschliessenden zurueck. */
 static int readLine(void)
 {
 	int n;
@@ -452,6 +506,14 @@ static int readLine(void)
 
 	n = 0;
 	c = rdPeek();
+	while (c < 0 && useDepth > 0) {
+		useDepth--;
+		curFile = useFile[useDepth];
+		rdPos = usePos[useDepth];
+		curLine = useLine[useDepth];
+		expTop = useExp[useDepth];
+		c = rdPeek();
+	}
 	if (c < 0)
 		return 0;
 	while (1) {
@@ -472,9 +534,10 @@ static int readLine(void)
 
 /* ========================================================== Ausdruecke ==== */
 /* Microware-Syntax: $hex, %binaer, @oktal, 'z' Zeichen, Dezimal; Operatoren
-   + - * / & ! (oder) ^ (xor) << >> ~ und Klammern. "*" allein ist der
-   aktuelle Ort. Vorrang: unaer, dann * / , dann + - , dann Schiebe, dann
-   & ! ^ -- wie bei r68. */
+   + - * / & (und) ! (oder) << >> und unaer - + ^ (Nicht), dazu Klammern.
+   "*" allein ist der aktuelle Ort, "." der org-Zaehler.
+   An r68 gemessen: "^" ist UNAER (kein XOR -- "$ff^$0f" ist ein Fehler),
+   und "~" gibt es nicht. */
 static const char *exP;
 static int exSect;             /* Abschnitt des Ergebnisses */
 static int exExtern;           /* Pool-Index eines externen Namens, sonst -1 */
@@ -575,10 +638,14 @@ static int exPrimary(void)
 		exP = exP + 1;
 		return exPrimary();
 	}
-	if (exP[0] == '~') {
+	if (exP[0] == '^') {
+		/* "^" ist bei Microware das UNAERE Nicht, kein XOR: gemessen
+		   ergibt "dc.b ^$0f" ein $f0, waehrend "$ff^$0f" mit
+		   "illegal expression terminator" abgelehnt wird. Ein "~"
+		   kennt r68 gar nicht ("bad operand"). */
 		exP = exP + 1;
 		v = ~exPrimary();
-		exNeedAbs("unaere Negation");
+		exNeedAbs("unaeres Nicht");
 		return v;
 	}
 	if (exP[0] == '$') {
@@ -610,10 +677,21 @@ static int exPrimary(void)
 		return v;
 	}
 	if (exP[0] == '*') {
-		/* aktueller Ort */
+		/* aktueller Ort im Abschnitt. Ausserhalb eines Abschnitts gibt
+		   es ihn nicht -- r68 meldet dort "undefined org". */
 		exP = exP + 1;
+		if (curSect == SECT_NONE)
+			fatal("\"*\" ausserhalb eines Abschnitts", "");
 		exSect = curSect;
 		return curPC;
+	}
+	if (exP[0] == '.' && !isSymCh(exP[1] & 255)) {
+		/* "." ist der org-Zaehler, nicht der Ort im Abschnitt
+		   (gemessen: "SIZE equ ." nach do-Direktiven liefert deren
+		   Endstand, und zwar auch innerhalb eines psect). */
+		exP = exP + 1;
+		exSect = SECT_ABS;
+		return orgPC;
 	}
 	if (isDigitCh(exP[0] & 255)) {
 		exSect = SECT_ABS;
@@ -804,13 +882,6 @@ static int exprTop(void)
 			exP = exP + 1;
 			v = v | exShift();
 			exNeedAbs("ODER-Verknuepfung");
-			continue;
-		}
-		if (exP[0] == '^') {
-			exNeedAbs("XOR-Verknuepfung");
-			exP = exP + 1;
-			v = v ^ exShift();
-			exNeedAbs("XOR-Verknuepfung");
 			continue;
 		}
 		break;
@@ -1022,7 +1093,8 @@ static void selfCheck(void)
    Ein Label mit ":" ist GLOBAL -- gemessen an r68: aus "start: rts" wird ein
    Global-Eintrag im ROF, aus "start rts" nicht. */
 static char lnLabel[256];
-static char lnOp[64];
+static char lnOp[64];          /* kleingeschrieben -- Befehle sind egal welcher Schreibung */
+static char lnOpRaw[64];       /* wie geschrieben -- MAKRONAMEN sind es nicht */
 static char lnArg[1024];
 static int lnGlobal;
 
@@ -1035,6 +1107,7 @@ static int splitLine(void)
 
 	lnLabel[0] = 0;
 	lnOp[0] = 0;
+	lnOpRaw[0] = 0;
 	lnArg[0] = 0;
 	lnGlobal = 0;
 
@@ -1069,11 +1142,13 @@ static int splitLine(void)
 	while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255)) {
 		if (n + 1 >= 64)
 			fatal("Mnemonic zu lang", "");
+		lnOpRaw[n] = lxTmp[i];
 		lnOp[n] = lowerCh(lxTmp[i] & 255);
 		n++;
 		i++;
 	}
 	lnOp[n] = 0;
+	lnOpRaw[n] = 0;
 
 	/* Operanden -- Leerzeichen beenden das Feld, ausser innerhalb von
 	   Anfuehrungszeichen ("dc.b \"a b\"" muss ganz bleiben). */
@@ -1239,6 +1314,17 @@ static void doPsect(void)
    das Fuellbyte auf 3. Das gilt fuer Befehle wie fuer dc.w/dc.l. */
 static void alignEven(void)
 {
+	if (curSect == SECT_UDATA) {
+		/* Im reservierten Bereich wird nichts abgelegt, nur gezaehlt
+		   (gemessen: "u1 ds.b 1 / u2 ds.w 1" ergibt u2 = 2). */
+		if ((udataPC % 2) != 0) {
+			udataPC++;
+			if (udataPC > statStorage)
+				statStorage = udataPC;
+			curPC = udataPC;
+		}
+		return;
+	}
 	if (curSect != SECT_CODE && curSect != SECT_IDATA)
 		return;
 	if ((curPC % 2) != 0)
@@ -1344,6 +1430,33 @@ static void doDs(int size)
    selbst eine gerade Adresse. In den initialisierten Daten wird durchgehend
    mit 0 gefuellt ("d1 dc.b 1 / align 4 / d2 dc.l 7" ergibt
    "01 00 00 00 00 00 00 07"). */
+/* "do.b/.w/.l [anzahl]" -- legt einen Namen auf den org-Zaehler und schiebt
+   ihn weiter. Liefert die Adresse, die das Label der Zeile bekommt. */
+static int doDo(int size)
+{
+	int count;
+	int w;
+	int at;
+
+	if (size == 0)
+		size = 'w';
+	w = 1;
+	if (size == 'w')
+		w = 2;
+	else if (size == 'l')
+		w = 4;
+	else if (size != 'b')
+		fatal("do kennt nur .b, .w und .l: ", lnOp);
+	if (w > 1 && (orgPC % 2) != 0)
+		orgPC++;
+	count = 1;
+	if (lnArg[0] != 0)
+		count = evalExpr(lnArg);
+	at = orgPC;
+	orgPC = orgPC + count * w;
+	return at;
+}
+
 static void doAlign(void)
 {
 	int a;
@@ -1764,9 +1877,13 @@ static void emitEa(int k, int size)
 		return;
 	}
 	if (m == AM_DISP) {
-		if (oExt[k] >= 0 || oSect[k] != SECT_ABS)
-			fatal("verschiebbares Displacement -- Typwort nicht gemessen: ",
-			      lnArg);
+		/* Ein verschiebbares Displacement ist normal: so greift die
+		   OS-9-C-ABI ueber a6 auf die eigenen Daten zu
+		   ("move.l #x,_stklimit(a6)"). Gemessen: Referenz mit
+		   $30|Zielabschnitt am Displacementwort -- $0030 fuer
+		   reservierte Daten, $0031 fuer initialisierte, $0030 fuer
+		   einen externen Namen. */
+		refIfRelocatable(oSect[k], oExt[k], oNeg[k], 2);
 		if (oVal[k] < -32768 || oVal[k] > 32767)
 			fatal("Displacement passt nicht in 16 Bit: ", lnArg);
 		emitWord(oVal[k]);
@@ -1832,6 +1949,438 @@ static void emitEa(int k, int size)
 	}
 	refIfRelocatable(oSect[k], oExt[k], oNeg[k], 4);
 	emitLong(oVal[k]);
+}
+
+/* ================================================================== use == */
+/* An r68 gemessen, denn geraten haette man es anders:
+     use datei.a     und   use "datei.a"   -> genau dieser Pfad, also
+                                              relativ zum ARBEITSverzeichnis
+                                              (NICHT zum Verzeichnis der
+                                              einschliessenden Datei -- eine
+                                              Datei in sub/ findet ihren
+                                              Nachbarn nicht),
+     use <datei.a>                         -> die mit -u= angegebenen
+                                              Verzeichnisse.
+   r68 nimmt bei <> zusaetzlich ein festes <MWOS>/OS9/SRC/DEFS. Das haengt an
+   einer Umgebungsvariablen, die qr68 nicht liest -- dieses Verzeichnis muss
+   man ihm also mit -u= nennen. */
+static int USEDIR_MAX = 16;
+static int useDirs[16];
+static int useDirN;
+
+/* Symbole von der Kommandozeile (-a). Sie werden zu Beginn JEDES Durchlaufs
+   gesetzt, damit "ifdef" sie sieht. */
+static int ARGDEF_MAX = 32;
+static int argDefName[32];
+static int argDefVal[32];
+static int argDefN;
+
+static char pathBuf[512];
+
+static void pathJoin(const char *dir, const char *name)
+{
+	int i;
+	int n;
+
+	n = 0;
+	i = 0;
+	while (dir[i] != 0) {
+		if (n + 2 >= 512)
+			fatal("Pfad zu lang: ", name);
+		pathBuf[n] = dir[i];
+		n++;
+		i++;
+	}
+	if (n > 0 && pathBuf[n - 1] != '/') {
+		pathBuf[n] = '/';
+		n++;
+	}
+	i = 0;
+	while (name[i] != 0) {
+		if (n + 1 >= 512)
+			fatal("Pfad zu lang: ", name);
+		pathBuf[n] = name[i];
+		n++;
+		i++;
+	}
+	pathBuf[n] = 0;
+}
+
+static void doUse(void)
+{
+	int n;
+	int i;
+	int angled;
+	int id;
+	int from;
+
+	n = strLen(lnArg);
+	if (n == 0)
+		fatal("use ohne Dateinamen", "");
+	angled = 0;
+	from = 0;
+	/* Das schliessende Zeichen wird nur weggenommen, wenn es da ist:
+	   im SDK steht "use <memc040.d)" (Tippfehler in systype.d), und r68
+	   uebersetzt die Datei damit anstandslos. */
+	if (lnArg[0] == '<') {
+		angled = 1;
+		from = 1;
+		if (lnArg[n - 1] == '>' || lnArg[n - 1] == ')')
+			n = n - 1;
+	} else if (lnArg[0] == '"' && lnArg[n - 1] == '"') {
+		from = 1;
+		n = n - 1;
+	}
+	for (i = from; i < n; i++)
+		lxTmp[LXTMP_MAX - 3072 + i - from] = lnArg[i];
+	lxTmp[LXTMP_MAX - 3072 + n - from] = 0;
+
+	id = -1;
+	if (angled) {
+		for (i = 0; i < useDirN && id < 0; i++) {
+			pathJoin(poolAt(useDirs[i]), &lxTmp[LXTMP_MAX - 3072]);
+			id = fileGet(pathBuf);
+		}
+		if (id < 0)
+			fatal("use: Datei in keinem -u=-Verzeichnis gefunden: ",
+			      &lxTmp[LXTMP_MAX - 3072]);
+	} else {
+		id = fileGet(&lxTmp[LXTMP_MAX - 3072]);
+		if (id < 0)
+			fatal("use: Datei nicht lesbar: ",
+			      &lxTmp[LXTMP_MAX - 3072]);
+	}
+
+	if (useDepth >= USE_MAX)
+		fatal("use zu tief geschachtelt (USE_MAX): ", lnArg);
+	useFile[useDepth] = curFile;
+	usePos[useDepth] = rdPos;
+	useLine[useDepth] = curLine;
+	useExp[useDepth] = expTop;
+	useDepth++;
+	curFile = id;
+	rdPos = flStart[id];
+	curLine = 1;
+}
+
+/* ================================================================ Makros = */
+/* An r68 gemessen (Option -x zeigt die Ausdehnung im Listing):
+     NAME macro / ... / endm     -- der Name steht im LABELfeld,
+     \1 .. \9   die Argumente, TEXTUELL ersetzt, auch innerhalb von
+                Anfuehrungszeichen ("dc.b \"\\5\",0" im SDK),
+     \#         die Zahl der Argumente, ZWEISTELLIG dezimal ("03"),
+     \@         eine laufende Nummer, FUENFSTELLIG ("lok00001"), die mit der
+                ersten Ausdehnung bei 1 beginnt,
+     \0         liefert nichts (r68 kennt keinen Groessenbuchstaben an einem
+                Makroaufruf -- "SIZ.b" ist dort "bad mnemonic").
+   Ein fehlendes Argument wird zu NICHTS -- es darf nicht abbrechen, denn
+   die SDK-Makros pruefen "\#" und benutzen hoehere Argumente nur in einem
+   Zweig, den die bedingte Assemblierung dann ohnehin ueberspringt.
+   Makronamen sind schreibungsabhaengig ("mactest" findet "MacTest" nicht),
+   deshalb wird dafuer lnOpRaw genommen und nicht lnOp. */
+static int MAC_MAX = 128;
+static int macName[128];
+static int macStart[128];
+static int macEnd[128];
+static int macN;
+
+static char macText[131072];
+static int MACTEXT_MAX = 131072;
+static int macTop;
+
+static int macDefining;        /* 1 = Zeilen wandern in den Rumpf */
+static int macCounter;         /* fuer \@ */
+static int repActive;          /* 1 = Rumpf einer rept sammeln */
+static int repCount;
+
+static int macFind(int name)
+{
+	int i;
+
+	for (i = 0; i < macN; i++) {
+		if (macName[i] == name)
+			return i;
+	}
+	return -1;
+}
+
+/* Haengt die ROHE Zeile an den Rumpf des zuletzt begonnenen Makros. */
+static void macAppendLine(const char *line)
+{
+	int i;
+
+	i = 0;
+	while (line[i] != 0) {
+		if (macTop + 2 >= MACTEXT_MAX)
+			fatal("Makrospeicher voll (MACTEXT_MAX)", "");
+		macText[macTop] = line[i];
+		macTop++;
+		i++;
+	}
+	macText[macTop] = 10;
+	macTop++;
+}
+
+static void expPut(int c)
+{
+	if (expTop <= srcTop)
+		fatal("Quelltextspeicher voll (SRC_MAX) beim Ausdehnen eines Makros",
+		      "");
+	expTop--;
+	srcArena[expTop] = c;
+}
+
+/* Schreibt den Rumpf [from..to) rueckwaerts in den Ausdehnungsspeicher und
+   ersetzt dabei die Platzhalter. Rueckwaerts, weil der Speicher von oben
+   nach unten waechst -- das Ergebnis steht danach vorwaerts richtig. */
+static void macSubstitute(int from, int to, const char *argp[], int argN,
+			  int serial)
+{
+	int i;
+	int k;
+	int d;
+	const char *a;
+
+	i = to;
+	while (i > from) {
+		i--;
+		if (i > from && macText[i - 1] == '\\') {
+			/* Der Platzhalter besteht aus zwei Zeichen; er wird
+			   hier von hinten gesehen. */
+			k = macText[i] & 255;
+			i--;
+			if (k >= '1' && k <= '9') {
+				d = k - '1';
+				if (d < argN) {
+					a = argp[d];
+					k = strLen(a);
+					while (k > 0) {
+						k--;
+						expPut(a[k] & 255);
+					}
+				}
+				continue;
+			}
+			if (k == '#') {
+				expPut('0' + (argN % 10));
+				expPut('0' + ((argN / 10) % 10));
+				continue;
+			}
+			if (k == '@') {
+				d = serial;
+				for (k = 0; k < 5; k++) {
+					expPut('0' + (d % 10));
+					d = d / 10;
+				}
+				continue;
+			}
+			if (k == '0')
+				continue;      /* liefert nichts */
+			fatal("unbekannter Platzhalter im Makro (nur \\1..\\9, \\#, \\@, \\0)",
+			      "");
+		}
+		expPut(macText[i] & 255);
+	}
+}
+
+static char macArgBuf[1024];
+static const char *macArgP[9];
+
+/* Zerlegt das Operandenfeld des Aufrufs in bis zu neun Argumente. */
+static int macSplitArgs(void)
+{
+	int i;
+	int n;
+	int depth;
+	int q;
+	int out;
+	int argN;
+	int c;
+
+	n = strLen(lnArg);
+	argN = 0;
+	out = 0;
+	if (n == 0)
+		return 0;
+	depth = 0;
+	q = 0;
+	macArgP[0] = &macArgBuf[0];
+	argN = 1;
+	for (i = 0; i <= n; i++) {
+		c = 0;
+		if (i < n)
+			c = lnArg[i] & 255;
+		if (i < n && q != 0) {
+			if (c == q)
+				q = 0;
+		} else if (i < n && (c == '"' || c == 39)) {
+			q = c;
+		} else if (i < n && c == '(') {
+			depth++;
+		} else if (i < n && c == ')') {
+			depth--;
+		} else if (i == n || (c == ',' && depth == 0)) {
+			if (out + 1 >= 1024)
+				fatal("Makroargumente zu lang: ", lnArg);
+			macArgBuf[out] = 0;
+			out++;
+			if (i < n) {
+				if (argN >= 9)
+					fatal("mehr als neun Makroargumente: ", lnArg);
+				macArgP[argN] = &macArgBuf[out];
+				argN++;
+			}
+			continue;
+		}
+		if (out + 1 >= 1024)
+			fatal("Makroargumente zu lang: ", lnArg);
+		macArgBuf[out] = c;
+		out++;
+	}
+	return argN;
+}
+
+/* Dehnt den Makrorumpf in den Ausdehnungsspeicher aus und liest ab dann von
+   dort -- ueber denselben Stapel wie "use". */
+static void macExpand(int m)
+{
+	int argN;
+	int saved;
+	int slot;
+
+	argN = macSplitArgs();
+	macCounter++;
+	saved = expTop;
+	macSubstitute(macStart[m], macEnd[m], macArgP, argN, macCounter);
+
+	if (useDepth >= USE_MAX)
+		fatal("Makros zu tief geschachtelt (USE_MAX): ", lnOpRaw);
+	if (flN > FILE_MAX - USE_MAX - 1)
+		fatal("zu viele Dateien fuer den Makrostapel (FILE_MAX)", "");
+	slot = FILE_MAX - 1 - useDepth;
+	flName[slot] = macName[m];
+	flStart[slot] = expTop;
+	flEnd[slot] = saved;
+
+	useFile[useDepth] = curFile;
+	usePos[useDepth] = rdPos;
+	useLine[useDepth] = curLine;
+	useExp[useDepth] = saved;
+	useDepth++;
+	curFile = slot;
+	rdPos = expTop;
+	curLine = 1;
+}
+
+/* ==================================================== bedingt uebersetzen */
+/* ifeq/ifne/ifgt/ifge/iflt/ifle <ausdruck>, ifdef/ifndef <name>, else, endc.
+   Der Ausdruck wird gegen NULL geprueft: "ifeq NULL" mit NULL=0 uebersetzt,
+   "ifeq DEFINIERT" mit 1 nicht (an r68 gemessen, ebenso die Schachtelung und
+   dass ein uebersprungener Block auch Unuebersetzbares enthalten darf).
+   Der Operand von "endc" ist bei Microware ueblicherweise ein Kommentar --
+   er wird nicht angesehen. */
+static int COND_MAX = 32;
+static int condActive[32];     /* 1 = dieser Zweig wird uebersetzt */
+static int condAny[32];        /* 1 = ein Zweig war schon wahr */
+static int condN;
+static int condSkipN;          /* Zahl der Ebenen, die gerade ueberspringen */
+
+static int condDirective(const char *base)
+{
+	if (baseIs(base, "else") || baseIs(base, "endc"))
+		return 1;
+	if (base[0] != 'i' || base[1] != 'f')
+		return 0;
+	if (baseIs(base, "ifeq") || baseIs(base, "ifne") ||
+	    baseIs(base, "ifgt") || baseIs(base, "ifge") ||
+	    baseIs(base, "iflt") || baseIs(base, "ifle") ||
+	    baseIs(base, "ifdef") || baseIs(base, "ifndef"))
+		return 1;
+	return 0;
+}
+
+static void condPush(int active)
+{
+	if (condN >= COND_MAX)
+		fatal("bedingte Assemblierung zu tief geschachtelt (COND_MAX)", "");
+	condActive[condN] = active;
+	condAny[condN] = active;
+	condN++;
+	if (!active)
+		condSkipN++;
+}
+
+static void doCond(const char *base)
+{
+	int v;
+	int active;
+	int s;
+
+	if (baseIs(base, "endc")) {
+		if (condN <= 0)
+			fatal("endc ohne if", "");
+		condN--;
+		if (!condActive[condN])
+			condSkipN--;
+		return;
+	}
+	if (baseIs(base, "else")) {
+		if (condN <= 0)
+			fatal("else ohne if", "");
+		if (!condActive[condN - 1])
+			condSkipN--;
+		active = 0;
+		if (!condAny[condN - 1] && condSkipN == 0)
+			active = 1;
+		condActive[condN - 1] = active;
+		if (active)
+			condAny[condN - 1] = 1;
+		else
+			condSkipN++;
+		return;
+	}
+
+	/* Ein if innerhalb eines uebersprungenen Blocks wird nur gezaehlt --
+	   sein Ausdruck darf unauswertbar sein. */
+	if (condSkipN > 0) {
+		condPush(0);
+		condAny[condN - 1] = 1;
+		return;
+	}
+
+	if (baseIs(base, "ifdef") || baseIs(base, "ifndef")) {
+		/* "definiert" heisst: in DIESEM Durchlauf schon definiert.
+		   Sonst waere die Bedingung im ersten Durchlauf anders als in
+		   den folgenden (die Symboltabelle bleibt ja stehen) -- und
+		   r68 entscheidet in seinem ersten Durchlauf. */
+		s = symFind(intern(lnArg));
+		v = 0;
+		if (s >= 0 && symDefined[s] && symPass[s] == pass)
+			v = 1;
+		if (baseIs(base, "ifndef"))
+			v = !v;
+		condPush(v);
+		return;
+	}
+
+	v = evalExpr(lnArg);
+	if (exOpen)
+		fatal("bedingte Assemblierung mit einem noch unbekannten Namen: ",
+		      lnArg);
+	active = 0;
+	if (baseIs(base, "ifeq"))
+		active = (v == 0);
+	else if (baseIs(base, "ifne"))
+		active = (v != 0);
+	else if (baseIs(base, "ifgt"))
+		active = (v > 0);
+	else if (baseIs(base, "ifge"))
+		active = (v >= 0);
+	else if (baseIs(base, "iflt"))
+		active = (v < 0);
+	else if (baseIs(base, "ifle"))
+		active = (v <= 0);
+	condPush(active);
 }
 
 /* ============================================================== Befehle == */
@@ -1939,6 +2488,137 @@ static void needOps(int want)
 		fatal("falsche Zahl von Operanden: ", lnOp);
 }
 
+/* Fuer Befehle OHNE Operanden ist das dritte Feld der Zeile schon der
+   Kommentar -- im Korpus steht reichlich "rte   * Kommentar" ohne
+   Semikolon davor. Es wird deshalb nicht geprueft, sondern verworfen.
+   (Sonst waere ein Kommentar, der mit "*" beginnt, ein Operand: genau das
+   ist der aktuelle Ort.) */
+static void dropOps(void)
+{
+	oN = 0;
+	opTxt0[0] = 0;
+	opTxt1[0] = 0;
+}
+
+/* Sonderregister, die als Operandentext auftreten und KEIN Ausdruck sind:
+   1 = ccr, 2 = sr, 3 = usp, sonst 0. Die muessen abgefangen werden, bevor
+   parseOperand() sie als Symbolnamen liest. */
+static int specialReg(const char *s)
+{
+	int n;
+	char a;
+	char b;
+	char c;
+
+	n = strLen(s);
+	if (n < 2 || n > 3)
+		return 0;
+	a = lowerCh(s[0] & 255);
+	b = lowerCh(s[1] & 255);
+	c = 0;
+	if (n == 3)
+		c = lowerCh(s[2] & 255);
+	if (n == 3 && a == 'c' && b == 'c' && c == 'r')
+		return 1;
+	if (n == 2 && a == 's' && b == 'r')
+		return 2;
+	if (n == 3 && a == 'u' && b == 's' && c == 'p')
+		return 3;
+	return 0;
+}
+
+/* Kontrollregister fuer movec, mit den gemessenen Kennungen (movec d0,vbr
+   ergibt $4E7B $0801, movec a0,usp ergibt $8800): sfc 0, dfc 1, cacr 2,
+   usp $800, vbr $801, caar $802, msp $803, isp $804. -1 = unbekannt. */
+static int controlReg(const char *s)
+{
+	if (baseIs(s, "sfc"))
+		return 0x000;
+	if (baseIs(s, "dfc"))
+		return 0x001;
+	if (baseIs(s, "cacr"))
+		return 0x002;
+	if (baseIs(s, "usp"))
+		return 0x800;
+	if (baseIs(s, "vbr"))
+		return 0x801;
+	if (baseIs(s, "caar"))
+		return 0x802;
+	if (baseIs(s, "msp"))
+		return 0x803;
+	if (baseIs(s, "isp"))
+		return 0x804;
+	return -1;
+}
+
+/* Registerliste "d0-d7/a0-a6" -> Maske in der NORMALEN Ordnung: Bit 0 = d0
+   ... Bit 7 = d7, Bit 8 = a0 ... Bit 15 = a7. Rueckgabe -1, wenn der Text
+   keine Liste ist -- daran erkennt movem, welcher der beiden Operanden die
+   Liste ist. */
+static int regList(const char *s)
+{
+	int n;
+	int i;
+	int mask;
+	int r1;
+	int r2;
+	int start;
+	int len;
+	int k;
+
+	n = strLen(s);
+	if (n == 0)
+		return -1;
+	mask = 0;
+	i = 0;
+	while (i < n) {
+		start = i;
+		while (i < n && s[i] != '/' && s[i] != '-')
+			i++;
+		len = i - start;
+		r1 = regNum(&s[start], len);
+		if (r1 < 0)
+			return -1;
+		if (i < n && s[i] == '-') {
+			i++;
+			start = i;
+			while (i < n && s[i] != '/')
+				i++;
+			r2 = regNum(&s[start], i - start);
+			if (r2 < 0 || r2 < r1)
+				return -1;
+		} else {
+			r2 = r1;
+		}
+		for (k = r1; k <= r2; k++)
+			mask = mask | (1 << k);
+		if (i < n) {
+			if (s[i] != '/')
+				return -1;
+			i++;
+			if (i >= n)
+				return -1;
+		}
+	}
+	return mask;
+}
+
+/* Bei -(An) legt movem die Maske UMGEKEHRT ab: Bit 0 = a7 ... Bit 15 = d0.
+   Gemessen an "movem.l d0-d7/a0-a6,-(sp)" -> $FFFE gegen "(sp)+,..." ->
+   $7FFF. */
+static int regMaskReverse(int mask)
+{
+	int r;
+	int i;
+
+	r = 0;
+	for (i = 0; i < 16; i++) {
+		if (mask & (1 << i))
+			r = r | (1 << (15 - i));
+	}
+	return r;
+}
+
 static void needNoSize(int size)
 {
 	if (size != 0)
@@ -2003,6 +2683,46 @@ static void doBranch(int cond, int size)
 	if (size == 'l')
 		fatal("lange Sprungform nicht unterstuetzt -- r68 V2.9.1 erzeugt dafuer \"6000 00000000\", also weder das noetige $FF noch den Abstand: ",
 		      lnOp);
+
+	/* Mit -b waehlt r68 die Weite SELBST und uebergeht dabei einen
+	   angegebenen Buchstaben: "bra.w" auf ein nahes Ziel wird kurz,
+	   "beq.s" auf ein fernes wird zur Wortform (beides gemessen). Ein
+	   Ziel ausserhalb des Moduls bleibt die Wortform.
+	   Abstand 0 -- das Ziel ist die naechste Anweisung -- laesst r68 den
+	   Befehl GANZ WEG. Das ist bei bra/Bcc gleichbedeutend, bei bsr aber
+	   nicht (die Ruecksprungadresse fehlt dann); dort bricht qr68 lieber
+	   ab, statt eine Bedeutungsaenderung nachzubauen. */
+	if (optBranch) {
+		if (ext < 0 && !exOpen) {
+			d = v - (curPC + 2);
+			if (d == 0) {
+				if (cond == 1)
+					fatal("bsr auf die naechste Anweisung: r68 laesst den Befehl mit -b weg, was die Ruecksprungadresse verschluckt: ",
+					      lnArg);
+				return;
+			}
+			if (d >= -128 && d <= 127) {
+				emitWord(0x6000 | (cond << 8) | (d & 255));
+				return;
+			}
+		}
+		emitWord(0x6000 | (cond << 8));
+		if (exOpen) {
+			emitWord(0);
+			return;
+		}
+		if (ext >= 0) {
+			refPcExtern(ext, 2);
+			emitWord(0);
+			return;
+		}
+		d = v - curPC;
+		if (d < -32768 || d > 32767)
+			fatal("Sprung zu weit fuer die Wortform: ", lnArg);
+		emitWord(d);
+		return;
+	}
+
 	if (size == 's' || size == 'b') {
 		if (exOpen) {
 			emitWord(0x6000 | (cond << 8));
@@ -2224,44 +2944,57 @@ static void doInstruction(void)
 	/* --- ohne Operanden --- */
 	if (baseIs(base, "rts")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4E75);
 		return;
 	}
 	if (baseIs(base, "nop")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4E71);
 		return;
 	}
 	if (baseIs(base, "rte")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4E73);
 		return;
 	}
 	if (baseIs(base, "rtr")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4E77);
 		return;
 	}
 	if (baseIs(base, "trapv")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4E76);
 		return;
 	}
 	if (baseIs(base, "reset")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4E70);
 		return;
 	}
 	if (baseIs(base, "illegal")) {
 		needNoSize(size);
-		needOps(0);
+		dropOps();
 		emitWord(0x4AFC);
+		return;
+	}
+	/* Der Systemaufruf: r68 hat ihn eingebaut (kein Makro aus einer
+	   Include-Datei). Gemessen: "os9 F$Link" wird $4E40 (trap #0) und ein
+	   WORT mit dem Aufrufcode. */
+	if (baseIs(base, "os9")) {
+		needNoSize(size);
+		needOps(1);
+		parseOperand(opTxt0, 0);
+		if (!oOpen[0] && (oExt[0] >= 0 || oSect[0] != SECT_ABS))
+			fatal("os9 braucht einen festen Aufrufcode: ", lnArg);
+		emitWord(0x4E40);
+		emitWord(oVal[0]);
 		return;
 	}
 	if (baseIs(base, "trap")) {
@@ -2425,10 +3158,105 @@ static void doInstruction(void)
 		emitWord(0x7000 | (needDn(1) << 9) | (oVal[0] & 255));
 		return;
 	}
+	if (baseIs(base, "movem")) {
+		int mask;
+		int toMem;
+		int lbit;
+
+		if (size == 0)
+			size = 'w';
+		if (size != 'w' && size != 'l')
+			fatal("movem kennt nur .w und .l: ", lnOp);
+		lbit = 0;
+		if (size == 'l')
+			lbit = 0x40;
+		needOps(2);
+		mask = regList(opTxt0);
+		toMem = 1;
+		if (mask < 0) {
+			toMem = 0;
+			mask = regList(opTxt1);
+			if (mask < 0)
+				fatal("movem ohne Registerliste: ", lnArg);
+			parseOperand(opTxt0, 0);
+		} else {
+			parseOperand(opTxt1, 1);
+		}
+		if (toMem) {
+			needAlterable(1);
+			if (oMode[1] == AM_DN || oMode[1] == AM_AN ||
+			    oMode[1] == AM_POST)
+				fatal("movem kann dorthin nicht schreiben: ", lnArg);
+			emitWord(0x4880 | lbit | eaBits(1));
+			if (oMode[1] == AM_PRE)
+				emitWord(regMaskReverse(mask));
+			else
+				emitWord(mask);
+			emitEa(1, sizeBytes(size));
+		} else {
+			if (oMode[0] == AM_DN || oMode[0] == AM_AN ||
+			    oMode[0] == AM_PRE || oMode[0] == AM_IMM)
+				fatal("movem kann von dort nicht lesen: ", lnArg);
+			emitWord(0x4C80 | lbit | eaBits(0));
+			emitWord(mask);
+			emitEa(0, sizeBytes(size));
+		}
+		return;
+	}
 	if (baseIs(base, "move") || baseIs(base, "movea")) {
+		int sp0;
+		int sp1;
+
 		if (size == 0)
 			size = 'w';
 		needOps(2);
+		/* SR, CCR und USP sind keine Ausdruecke -- gemessen:
+		   "move.w sr,d0" $40c0, "move.w ccr,d0" $42c0 (68010),
+		   "move.w d0,sr" $46c0, "move.w d0,ccr" $44c0,
+		   "move.l usp,a0" $4e68, "move.l a0,usp" $4e60. */
+		sp0 = specialReg(opTxt0);
+		sp1 = specialReg(opTxt1);
+		if (sp0 == 3 || sp1 == 3) {
+			if (size != 'l')
+				fatal("usp wird nur als Langwort bewegt: ", lnOp);
+			if (sp0 == 3) {
+				parseOperand(opTxt1, 1);
+				emitWord(0x4E68 | needAn(1));
+			} else {
+				parseOperand(opTxt0, 0);
+				emitWord(0x4E60 | needAn(0));
+			}
+			return;
+		}
+		if (sp0 == 1 || sp0 == 2) {
+			if (size != 0 && size != 'w')
+				fatal("sr/ccr werden als Wort bewegt: ", lnOp);
+			parseOperand(opTxt1, 1);
+			needAlterable(1);
+			if (oMode[1] == AM_AN)
+				fatal("sr/ccr passen nicht in ein Adressregister: ",
+				      lnArg);
+			if (sp0 == 2)
+				emitWord(0x40C0 | eaBits(1));
+			else
+				emitWord(0x42C0 | eaBits(1));
+			emitEa(1, 2);
+			return;
+		}
+		if (sp1 == 1 || sp1 == 2) {
+			if (size != 0 && size != 'w')
+				fatal("sr/ccr werden als Wort bewegt: ", lnOp);
+			parseOperand(opTxt0, 0);
+			if (oMode[0] == AM_AN)
+				fatal("ein Adressregister ist hier nicht zulaessig: ",
+				      lnArg);
+			if (sp1 == 2)
+				emitWord(0x46C0 | eaBits(0));
+			else
+				emitWord(0x44C0 | eaBits(0));
+			emitEa(0, 2);
+			return;
+		}
 		parseOperand(opTxt0, 0);
 		parseOperand(opTxt1, 1);
 		if (oMode[1] == AM_AN && size == 'b')
@@ -2476,10 +3304,39 @@ static void doInstruction(void)
 	if (baseIs(base, "addi") || baseIs(base, "subi") || baseIs(base, "andi") ||
 	    baseIs(base, "ori") || baseIs(base, "eori") || baseIs(base, "cmpi")) {
 		int op;
+		int sp;
 
 		if (size == 0)
 			size = 'w';
 		needOps(2);
+		/* Nach CCR oder SR: eigene Befehlsworte, der Sofortwert ist in
+		   BEIDEN Faellen ein ganzes Wort. Gemessen: "ori #1,ccr"
+		   $003c $0001 (r68 warnt dabei "word sized immediate used with
+		   CCR", gibt aber das Wort aus), "andi #$fe,ccr" $023c,
+		   "eori #1,ccr" $0a3c, "ori.w #$700,sr" $007c,
+		   "andi.w #$f8ff,sr" $027c. */
+		sp = specialReg(opTxt1);
+		if (sp == 1 || sp == 2) {
+			if (baseIs(base, "addi") || baseIs(base, "subi") ||
+			    baseIs(base, "cmpi"))
+				fatal("nur ori/andi/eori gehen nach ccr/sr: ", lnOp);
+			if (size != 'w' && size != 'b')
+				fatal("ori/andi/eori nach ccr/sr: nur .b/.w: ", lnOp);
+			parseOperand(opTxt0, 0);
+			if (oMode[0] != AM_IMM)
+				fatal("die I-Form braucht einen Sofortwert: ", lnArg);
+			op = 0x0000;
+			if (baseIs(base, "andi"))
+				op = 0x0200;
+			else if (baseIs(base, "eori"))
+				op = 0x0A00;
+			if (sp == 1)
+				emitWord(op | 0x3C);
+			else
+				emitWord(op | 0x7C);
+			emitEa(0, 2);
+			return;
+		}
 		parseOperand(opTxt0, 0);
 		parseOperand(opTxt1, 1);
 		if (oMode[0] != AM_IMM)
@@ -2545,6 +3402,143 @@ static void doInstruction(void)
 			fatal("ein Adressregister ist hier nicht zulaessig: ", lnArg);
 		emitWord(op | (needDn(1) << 9) | eaBits(0));
 		emitEa(0, 2);
+		return;
+	}
+
+	/* --- Bitbefehle --- */
+	/* Gemessen: statisch "btst #2,d6" $0806 + Wort $0002, dynamisch
+	   "btst d1,d6" $0306; die Art steht in Bit 7..6 (btst 0, bchg 1,
+	   bclr 2, bset 3): "bset #3,d0" $08c0, "bclr #3,(a0)" $0890,
+	   "bchg d1,d0" $0340. Den Umfang bestimmt der Zieloperand
+	   (Datenregister lang, Speicher byteweise), nicht ein Buchstabe. */
+	if (baseIs(base, "btst") || baseIs(base, "bchg") ||
+	    baseIs(base, "bclr") || baseIs(base, "bset")) {
+		int kind;
+
+		if (size != 0 && size != 'b' && size != 'l')
+			fatal("Bitbefehle kennen nur .b und .l: ", lnOp);
+		kind = 0;
+		if (baseIs(base, "bchg"))
+			kind = 1;
+		else if (baseIs(base, "bclr"))
+			kind = 2;
+		else if (baseIs(base, "bset"))
+			kind = 3;
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		if (oMode[1] == AM_AN)
+			fatal("ein Adressregister hat keine Bits: ", lnArg);
+		if (kind != 0)
+			needAlterable(1);
+		if (oMode[0] == AM_IMM) {
+			emitWord(0x0800 | (kind << 6) | eaBits(1));
+			emitEa(0, 2);
+			emitEa(1, 1);
+			return;
+		}
+		emitWord(0x0100 | (needDn(0) << 9) | (kind << 6) | eaBits(1));
+		emitEa(1, 1);
+		return;
+	}
+
+	/* --- Register tauschen --- */
+	/* Gemessen: "exg d0,d1" $c141, "exg a0,a1" $c149, "exg d0,a1" $c189 --
+	   und "exg a1,d0" ergibt DASSELBE $c189, r68 dreht die gemischte Form
+	   also so, dass das Datenregister im Rx-Feld steht. */
+	if (baseIs(base, "exg")) {
+		if (size != 0 && size != 'l')
+			fatal("exg tauscht immer ganze Langworte: ", lnOp);
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		if (oMode[0] == AM_DN && oMode[1] == AM_DN) {
+			emitWord(0xC140 | (oReg[0] << 9) | oReg[1]);
+			return;
+		}
+		if (oMode[0] == AM_AN && oMode[1] == AM_AN) {
+			emitWord(0xC148 | (oReg[0] << 9) | oReg[1]);
+			return;
+		}
+		if (oMode[0] == AM_DN && oMode[1] == AM_AN) {
+			emitWord(0xC188 | (oReg[0] << 9) | oReg[1]);
+			return;
+		}
+		if (oMode[0] == AM_AN && oMode[1] == AM_DN) {
+			emitWord(0xC188 | (oReg[1] << 9) | oReg[0]);
+			return;
+		}
+		fatal("exg tauscht nur Register: ", lnArg);
+	}
+
+	/* --- Kontrollregister (68010) --- */
+	if (baseIs(base, "movec")) {
+		int cr;
+		int rn;
+		int ext;
+
+		if (size != 0 && size != 'l')
+			fatal("movec bewegt immer ein Langwort: ", lnOp);
+		needOps(2);
+		cr = controlReg(opTxt1);
+		if (cr >= 0) {
+			parseOperand(opTxt0, 0);
+			rn = 0;
+		} else {
+			cr = controlReg(opTxt0);
+			if (cr < 0)
+				fatal("kein Kontrollregister genannt: ", lnArg);
+			parseOperand(opTxt1, 1);
+			rn = 1;
+		}
+		if (oMode[rn] == AM_DN) {
+			ext = (oReg[rn] << 12) | cr;
+		} else if (oMode[rn] == AM_AN) {
+			ext = 0x8000 | (oReg[rn] << 12) | cr;
+		} else {
+			fatal("movec braucht ein Register: ", lnArg);
+			ext = 0;
+		}
+		if (rn == 0)
+			emitWord(0x4E7B);
+		else
+			emitWord(0x4E7A);
+		emitWord(ext);
+		return;
+	}
+	/* --- ueber die Funktionscodes (68010) --- */
+	/* Gemessen: "moves.l d0,(a0)" $0e90 + $0800 (Bit 11 = Register nach
+	   Speicher), "moves.l (a0),d0" $0e90 + $0000. */
+	if (baseIs(base, "moves")) {
+		int ext;
+		int rn;
+
+		if (size == 0)
+			size = 'w';
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		if (oMode[0] == AM_DN || oMode[0] == AM_AN) {
+			rn = 0;
+			ext = 0x0800;
+			needAlterable(1);
+			emitWord(0x0E00 | (sizeField(size) << 6) | eaBits(1));
+		} else if (oMode[1] == AM_DN || oMode[1] == AM_AN) {
+			rn = 1;
+			ext = 0;
+			emitWord(0x0E00 | (sizeField(size) << 6) | eaBits(0));
+		} else {
+			fatal("moves braucht ein Register auf einer Seite: ", lnArg);
+			return;
+		}
+		if (oMode[rn] == AM_AN)
+			ext = ext | 0x8000;
+		ext = ext | (oReg[rn] << 12);
+		emitWord(ext);
+		if (rn == 0)
+			emitEa(1, sizeBytes(size));
+		else
+			emitEa(0, sizeBytes(size));
 		return;
 	}
 
@@ -2676,14 +3670,17 @@ static int lineAligns(void)
 
 	if (lnOp[0] == 0)
 		return 0;
-	if (curSect != SECT_CODE && curSect != SECT_IDATA)
+	if (curSect == SECT_NONE || curSect == SECT_ABS ||
+	    curSect == SECT_EXTERN)
 		return 0;
 	opBase(b);
 	if (baseIs(b, "equ") || baseIs(b, "set") || baseIs(b, "end") ||
 	    baseIs(b, "psect") || baseIs(b, "vsect") || baseIs(b, "ends") ||
+	    baseIs(b, "endsect") ||
 	    baseIs(b, "nam") || baseIs(b, "ttl") || baseIs(b, "page") ||
 	    baseIs(b, "pag") || baseIs(b, "opt") || baseIs(b, "spc") ||
-	    baseIs(b, "fail") || baseIs(b, "align"))
+	    baseIs(b, "fail") || baseIs(b, "align") || baseIs(b, "use") ||
+	    baseIs(b, "org") || baseIs(b, "do"))
 		return 0;
 	sz = opSize();
 	if (baseIs(b, "dc") || baseIs(b, "dcb") || baseIs(b, "ds")) {
@@ -2691,6 +3688,11 @@ static int lineAligns(void)
 			return 0;
 		return 1;
 	}
+	/* Ein Makroaufruf legt selbst nichts ab -- was der Rumpf ablegt,
+	   richtet sich dort aus. r68 macht es genauso: zwei Aufrufe, die je
+	   ein "dc.b" ausdehnen, ergeben zwei aufeinanderfolgende Bytes. */
+	if (lnOpRaw[0] != 0 && macFind(intern(lnOpRaw)) >= 0)
+		return 0;
 	return 1;
 }
 
@@ -2712,6 +3714,23 @@ static void runPass(void)
 	   fortschreibt -- sonst schlaegt im zweiten Durchlauf die Wache gegen
 	   ein zweites psect an. */
 	psSeen = 0;
+	useDepth = 0;
+	orgPC = 0;
+	condN = 0;
+	condSkipN = 0;
+	macN = 0;
+	macTop = 0;
+	macDefining = 0;
+	repActive = 0;
+	macCounter = 0;
+	expTop = SRC_MAX;
+
+	{
+		int i;
+
+		for (i = 0; i < argDefN; i++)
+			symDefine(argDefName[i], argDefVal[i], SECT_ABS, 0, 0);
+	}
 	statStorage = 0;
 	idataPC = 0;
 	udataPC = 0;
@@ -2721,24 +3740,95 @@ static void runPass(void)
 		if (!splitLine())
 			continue;
 
+		size = opSize();
+		opBase(base);
+
+		/* Einen Makro- oder rept-Rumpf sammeln: bis "endm"/"endr"
+		   wandert JEDE Zeile roh in den Speicher, ohne sie anzusehen.
+		   Das steht vor der bedingten Assemblierung, weil ein "ifeq"
+		   im Rumpf erst bei der Ausdehnung gilt. Ein "macro" innerhalb
+		   eines uebersprungenen Blocks wird gar nicht erst erreicht. */
+		if (macDefining) {
+			if (baseIs(base, "endm") && !repActive) {
+				macEnd[macN - 1] = macTop;
+				macDefining = 0;
+				continue;
+			}
+			if (baseIs(base, "endr") && repActive) {
+				int r;
+
+				macEnd[macN - 1] = macTop;
+				macDefining = 0;
+				repActive = 0;
+				for (r = 0; r < repCount; r++)
+					macExpand(macN - 1);
+				macN--;
+				continue;
+			}
+			macAppendLine(lxTmp);
+			continue;
+		}
+
+		/* Bedingte Assemblierung: in einem uebersprungenen Block wird
+		   nur noch nach if/else/endc gesehen -- alles andere darf dort
+		   auch unuebersetzbar sein (gemessen: r68 meldet in einem
+		   falschen ifdef-Zweig nicht einmal einen unbekannten Namen). */
+		if (condDirective(base)) {
+			doCond(base);
+			continue;
+		}
+		if (condSkipN > 0)
+			continue;
+
+		/* Makrodefinition -- der Name steht im Labelfeld und wird
+		   deshalb VOR der Labelbehandlung abgefangen. */
+		if (baseIs(base, "macro")) {
+			if (lnLabel[0] == 0)
+				fatal("macro ohne Namen im Labelfeld", "");
+			if (macN >= MAC_MAX)
+				fatal("zu viele Makros (MAC_MAX): ", lnLabel);
+			macName[macN] = intern(lnLabel);
+			macStart[macN] = macTop;
+			macEnd[macN] = macTop;
+			macN++;
+			macDefining = 1;
+			continue;
+		}
+		if (baseIs(base, "rept")) {
+			if (macN >= MAC_MAX)
+				fatal("zu viele Makros (MAC_MAX)", "");
+			repCount = evalExpr(lnArg);
+			if (repCount < 0)
+				fatal("rept mit negativer Anzahl: ", lnArg);
+			macName[macN] = intern("*rept*");
+			macStart[macN] = macTop;
+			macEnd[macN] = macTop;
+			macN++;
+			macDefining = 1;
+			repActive = 1;
+			continue;
+		}
+		if (baseIs(base, "endm") || baseIs(base, "endr"))
+			fatal("endm/endr ohne macro/rept", "");
+
 		/* Im vsect entscheidet die Direktive der SELBEN Zeile, in
 		   welchen Adressraum ein Label gehoert: "dc" in die
 		   initialisierten Daten, "ds" in die reservierten. Deshalb
 		   wird der Abschnitt VOR dem Label festgelegt. */
 		if (curSect == SECT_IDATA || curSect == SECT_UDATA) {
-			char b2[64];
-
-			opBase(b2);
-			if (baseIs(b2, "ds")) {
+			if (baseIs(base, "ds")) {
 				curSect = SECT_UDATA;
 				curPC = udataPC;
-			} else if (baseIs(b2, "dc") || baseIs(b2, "dcb")) {
+			} else if (baseIs(base, "dc") || baseIs(base, "dcb")) {
 				curSect = SECT_IDATA;
 				curPC = idataPC;
-			} else if (baseIs(b2, "ends")) {
+			} else if (baseIs(base, "ends") ||
+				   baseIs(base, "endsect")) {
 				/* faellt unten durch */
-			} else if (lnOp[0] != 0 && !baseIs(b2, "equ") &&
-				   !baseIs(b2, "set") && !baseIs(b2, "align")) {
+			} else if (lnOp[0] != 0 && !baseIs(base, "equ") &&
+				   !baseIs(base, "set") && !baseIs(base, "align") &&
+				   !baseIs(base, "use") && !baseIs(base, "org") &&
+				   !baseIs(base, "do")) {
 				fatal("im vsect nur dc/ds/equ/set/align: ", lnOp);
 			}
 		}
@@ -2752,6 +3842,13 @@ static void runPass(void)
 			int name;
 
 			name = intern(lnLabel);
+			if (baseIs(base, "do")) {
+				/* Wie equ/set: das Label bekommt NICHT den Ort
+				   im Abschnitt, sondern den org-Zaehler. */
+				symDefine(name, doDo(size), SECT_ABS,
+					  lnGlobal, 1);
+				continue;
+			}
 			if (opIs("equ") || opIs("set")) {
 				int v;
 
@@ -2769,9 +3866,6 @@ static void runPass(void)
 		if (lnOp[0] == 0)
 			continue;
 
-		size = opSize();
-		opBase(base);
-
 		if (baseIs(base, "psect")) {
 			doPsect();
 			continue;
@@ -2781,7 +3875,7 @@ static void runPass(void)
 			curPC = idataPC;
 			continue;
 		}
-		if (baseIs(base, "ends")) {
+		if (baseIs(base, "ends") || baseIs(base, "endsect")) {
 			if (curSect == SECT_IDATA || curSect == SECT_UDATA) {
 				curSect = SECT_CODE;
 				curPC = codeN;
@@ -2806,6 +3900,18 @@ static void runPass(void)
 			doAlign();
 			continue;
 		}
+		if (baseIs(base, "use")) {
+			doUse();
+			continue;
+		}
+		if (baseIs(base, "org")) {
+			orgPC = evalExpr(lnArg);
+			continue;
+		}
+		if (baseIs(base, "do")) {
+			doDo(size);
+			continue;
+		}
 		if (baseIs(base, "end")) {
 			break;
 		}
@@ -2818,6 +3924,16 @@ static void runPass(void)
 			fatal("fail: ", lnArg);
 		if (baseIs(base, "equ") || baseIs(base, "set"))
 			fatal("equ/set ohne Label", "");
+
+		if (lnOpRaw[0] != 0) {
+			int m;
+
+			m = macFind(intern(lnOpRaw));
+			if (m >= 0) {
+				macExpand(m);
+				continue;
+			}
+		}
 
 		doInstruction();
 	}
@@ -2883,6 +3999,19 @@ static void writeRof(void)
 		codeBuf[codeN + 1] = 0x71;
 		codeN = codeN + 2;
 	}
+
+	/* Die beiden Datengroessen werden ebenfalls auf ein Vielfaches von
+	   vier gebracht -- gemessen an "ds.b 1/2/3" (statstorage 4) gegen
+	   "ds.b 5" (8) und "ds.b 9" (12), und ein einzelnes "dc.b 1" ergibt
+	   idatsz 4 mit drei Nullbytes im Inhalt. */
+	while ((idataN % 4) != 0) {
+		if (idataN >= IDATA_MAX)
+			fatal("Datenspeicher voll (IDATA_MAX)", "");
+		idataBuf[idataN] = 0;
+		idataN++;
+	}
+	while ((statStorage % 4) != 0)
+		statStorage++;
 
 	nGlob = 0;
 	for (i = 0; i < symN; i++) {
@@ -3111,6 +4240,10 @@ static void usage(void)
 	printf("qr68 -- 68k-Assembler der Q9-Kette, Ausgabe als OS-9-ROF\n");
 	printf("Aufruf: qr68 [Optionen] <eingabe.a> <ausgabe.r>\n");
 	printf("  -v                    gelesene/geschriebene Byteanzahl melden\n");
+	printf("  -u=<verz>             Suchverzeichnis fuer \"use <datei>\"\n");
+	printf("  -a<sym>[=<wert>]      Symbol setzen (ohne Wert: 1)\n");
+	printf("  -b                    Sprungweiten selbst waehlen (wie r68 -b)\n");
+	printf("  -q                    angenommen und ignoriert (r68-Kompatibilitaet)\n");
 	printf("  -fdate=J,M,T,S,Mi,Se  Zeitstempel im ROF-Kopf setzen\n");
 	printf("                        (J = Jahr-1900; fuer den Vergleich mit r68)\n");
 	exit(2);
@@ -3170,6 +4303,52 @@ int main(int argc, char **argv)
 		a = argv[i];
 		if (argEq(a, "-v")) {
 			optVerbose = 1;
+			continue;
+		}
+		if (argEq(a, "-b")) {
+			optBranch = 1;
+			continue;
+		}
+		if (argEq(a, "-qb") || argEq(a, "-bq")) {
+			optBranch = 1;
+			continue;
+		}
+		if (argEq(a, "-q")) {
+			/* r68 unterdrueckt damit Warnungen; qr68 gibt ohnehin
+			   nur Fehler aus. Angenommen, damit die Aufrufe der
+			   SDK-Makefiles unveraendert laufen. */
+			continue;
+		}
+		if (a[0] == '-' && a[1] == 'a' && a[2] != 0) {
+			/* -a<sym>[=<wert>] oder -a=<sym>[=<wert>]: Symbol von
+			   der Kommandozeile. Ohne Wert ist es 1 (gemessen). */
+			k = 2;
+			if (a[2] == '=')
+				k = 3;
+			if (argDefN >= ARGDEF_MAX)
+				fatal("zu viele -a-Symbole (ARGDEF_MAX)", "");
+			{
+				int j;
+				int val;
+
+				j = k;
+				while (a[j] != 0 && a[j] != '=')
+					j++;
+				argDefName[argDefN] = internN(&a[k], j - k);
+				val = 1;
+				if (a[j] == '=')
+					val = evalExpr(&a[j + 1]);
+				argDefVal[argDefN] = val;
+				argDefN++;
+			}
+			continue;
+		}
+		k = argStarts(a, "-u=");
+		if (k > 0 && a[k] != 0) {
+			if (useDirN >= USEDIR_MAX)
+				fatal("zu viele -u=-Verzeichnisse (USEDIR_MAX)", "");
+			useDirs[useDirN] = intern(&a[k]);
+			useDirN++;
 			continue;
 		}
 		k = argStarts(a, "-fdate=");

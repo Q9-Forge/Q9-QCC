@@ -18,16 +18,22 @@ Fremdteile der Kette.
 | Prüfung | Ergebnis |
 |---|---|
 | 10 Proben (Kopf, Globale, Externe, vsect, Padding) | **byteidentisch** |
-| `test/insn.a` — jede kodierbare Befehls- und Adressform, 217 Zeilen | **byteidentisch**, Zeile für Zeile |
+| `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
+| Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
-Abgedeckt: `psect`/`vsect`/`ends`, `equ`/`set`, `dc.b/.w/.l` (auch
+Abgedeckt: `psect`/`vsect`/`ends`/`endsect`, `equ`/`set`, `dc.b/.w/.l` (auch
 Zeichenketten), `ds.b/.w/.l`, `align`, `end`, die beschreibenden Direktiven
-(`nam`/`ttl`/`page`/`opt`/`spc`), Ausdrücke mit `$`/`%`/`@`/Zeichen, `+ - * /
-& ! ^ << >> ~`, Klammern und `*` als aktueller Ort, Symbole mit
-Vorwärtsreferenzen, globale Labels (`name:`), externe und lokale Referenzen.
+(`nam`/`ttl`/`page`/`opt`/`spc`), Ausdrücke mit `$`/`%`/`@`/Zeichen,
+`+ - * / & ! << >>` und unär `- + ^`, Klammern, `*` als aktueller Ort und
+`.` als org-Zähler, Symbole mit Vorwärtsreferenzen, globale Labels
+(`name:`), externe und lokale Referenzen.
+
+**Achtung bei Ausdrücken, an r68 gemessen:** `^` ist das **unäre Nicht**
+(`^$0f` = `$f0`), *kein* XOR — `$ff^$0f` lehnt r68 ab; und `~` kennt r68
+gar nicht.
 
 **Befehle:** `move`/`movea`/`moveq`, `lea`/`pea`,
 `add`/`sub`/`and`/`or`/`eor`/`cmp` mit allen Formen, die `r68` daraus macht
@@ -36,16 +42,27 @@ Vorwärtsreferenzen, globale Labels (`name:`), externe und lokale Referenzen.
 `not`/`tst`/`tas`/`swap`/`ext`/`extb`, alle acht Schiebe- und Rotierbefehle
 (Sofortwert, Register, Speicherform), `Scc` (14 Bedingungen), `bra`/`bsr`/
 `Bcc` (kurz und Wort), `dbra`/`dbcc`, `jsr`/`jmp`, `link`/`unlk`,
-`rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`.
+`rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`, dazu
+`movem` mit Registerlisten (`d0-d7/a0-a6`, bei `-(An)` mit umgekehrter
+Maske), die Bitbefehle `btst`/`bset`/`bclr`/`bchg` (statisch und dynamisch),
+`ori`/`andi`/`eori` nach `ccr`/`sr`, `move` von und nach `sr`/`ccr`/`usp`,
+`exg`, und vom 68010 `movec` und `moves`.
 
 **Adressierungsarten:** alle zwölf des 68000 —  `Dn`, `An`, `(An)`, `(An)+`,
 `-(An)`, `d16(An)`, `d8(An,Xn)`, `abs.w`, `abs.l`, `d16(PC)`, `d8(PC,Xn)`,
 `#imm`.
 
+Dazu die Direktiven `use` (Include, mit `-u=`-Suchliste), `org`/`do` (der
+Strukturbeschreiber des SDK) und `.` als org-Zähler, die bedingte
+Assemblierung (`ifeq`/`ifne`/`ifgt`/`ifge`/`iflt`/`ifle`/`ifdef`/`ifndef`/
+`else`/`endc`), **Makros** (`\1`…`\9`, `\#`, `\@`) mit `rept`/`endr`, und
+der Systemaufruf `os9`.
+
+Von r68s Schaltern: `-b` (Sprungweiten selbst wählen), `-a<sym>[=<wert>]`,
+`-u=<verz>`, `-q` (angenommen und ignoriert).
+
 **Alles andere bricht mit Meldung ab.** Das ist Absicht: eine still falsche
-Kodierung wäre schlimmer als eine fehlende. Was am handgeschriebenen Korpus
-zuerst fehlt, ist `use` (Include), `macro`/`endm`, die bedingte
-Assemblierung, `os9` und `movem` — s. „Nächste Schritte".
+Kodierung wäre schlimmer als eine fehlende.
 
 ## Der Prüfstein
 
@@ -56,13 +73,14 @@ ROF-Kopf. Also:
 > diese sechs Bytes ausgenommen.
 
 ```
-make test                          # Proben + Befehlstabelle
-make backend                       # dazu die Quellen des QCC-Backends
+make test                          # Proben, Befehlstabelle, use, -b
+make backend                       # QCC-Backend-Quellen + Q9-OS-Kernel
 make check                         # beides
 
 ./test/difftest.sh                 # die eingebauten Proben
 ./test/difftest.sh datei.a         # eine echte Quelle, ganze ROF-Datei
 ./test/insndiff.sh datei.a         # Quellzeile für Quellzeile
+RFLAGS=-b ./test/insndiff.sh d.a   # dieselben Schalter auf beiden Seiten
 ```
 
 `difftest.sh` vergleicht die ganze Datei und bleibt bei der ersten Abweichung
@@ -224,7 +242,51 @@ hergeleitet:
 **Was `r68` nicht kennt:** die Klammerform `(4,a5)` („parenthesis needed") —
 nur `4(a5)`.
 
+### Was `use`, `org`/`do` und die Makros wirklich tun
+
+Alles an r68 gemessen, weil es sich anders liest, als man vermutet:
+
+- **`use datei`** und **`use "datei"`** öffnen genau diesen Pfad, also
+  relativ zum **Arbeitsverzeichnis** — *nicht* zum Verzeichnis der
+  einschließenden Datei. **`use <datei>`** sucht in den `-u=`-Verzeichnissen
+  (r68 nimmt dort zusätzlich ein festes `<MWOS>/OS9/SRC/DEFS`; qr68 liest
+  keine Umgebungsvariablen, das Verzeichnis muss man ihm mit `-u=` nennen).
+  Ein fehlendes `>` stört nicht: im SDK steht `use <memc040.d)` — Tippfehler
+  in `systype.d` — und r68 übersetzt das anstandslos.
+- **`org`** bewegt den Ort im Abschnitt **nicht**. Es setzt einen eigenen
+  Zähler, auf den **`do.b/.w/.l`** Namen legt und den **`.`** liest — so
+  beschreiben die SDK-Definitionsdateien ihre Strukturen (1593 `do` in 127
+  Dateien). `do.w` und `do.l` richten dabei auf **gerade** aus, nicht auf
+  ihre eigene Breite: `org 4 / A do.b 1 / B do.w 1` ergibt A=4, B=6.
+- **Makros**: `\1`…`\9` sind die Argumente und werden **textuell** ersetzt,
+  auch innerhalb von Anführungszeichen (`dc.b "\5",0` steht so im SDK);
+  `\#` ist die Zahl der Argumente **zweistellig**, `\@` eine laufende
+  Nummer **fünfstellig** (`lok00001`, beginnt bei 1). Ein fehlendes Argument
+  wird zu nichts — es darf nicht abbrechen, denn die SDK-Makros prüfen `\#`
+  und benutzen höhere Argumente nur in einem Zweig, den die bedingte
+  Assemblierung dann überspringt.
+- **Symbol- und Makronamen sind schreibungsabhängig** (`mactest` findet
+  `MacTest` nicht), Befehlsnamen nicht.
+- Hinter einem Befehl **ohne Operanden** ist das dritte Feld schon der
+  Kommentar: `rte   * Kommentar` ist im Korpus üblich, und ein `*` dort ist
+  kein Operand.
+
+### Sprungweiten: `-b`
+
+Ohne `-b` kodiert r68 **immer** die Wortform und warnt höchstens. Mit `-b`
+wählt es selbst — und **übergeht den angegebenen Buchstaben ganz**: `bra.w`
+auf ein nahes Ziel wird kurz, `beq.s` auf ein fernes wird zur Wortform. Ein
+Ziel außerhalb des Moduls bleibt Wortform. Die SDK-Makefiles bauen alle
+Treiber mit `-qb`, deshalb kann `qr68` das auch.
+
+Bei **Abstand 0** — das Ziel ist die nächste Anweisung — lässt r68 den
+Befehl ganz weg. Bei `bra`/`Bcc` ist das gleichbedeutend, bei `bsr` nicht
+(die Rücksprungadresse fehlt dann). `qr68` bricht dort ab, statt eine
+Bedeutungsänderung nachzubauen.
+
 ### Ein Defekt in r68 V2.9.1
+
+Zwei Stellen, an denen `qr68` bewusst nicht folgt.
 
 Die **lange Sprungform** (`bra.l`, `bsr.l`, `bcc.l`, 68020) ist kaputt: `r68`
 gibt `6000 00000000` aus — ohne das nötige `$FF` im unteren Byte des
@@ -233,6 +295,13 @@ Leere. Im ganzen handgeschriebenen Korpus kommt die Form zweimal vor
 (`MWOS/OS9/SRC/IO/SCF/DRVR/sc68562.a:252`), beide Male trifft sie diesen
 Defekt. `qr68` **bricht dafür ab** statt entweder den Defekt nachzubauen oder
 still davon abzuweichen.
+
+Und **`rept` spult falsch zurück**: für jede Wiederholung liest r68 die
+Quellzeilen erneut, landet dabei aber mitten in einer vorangehenden Zeile.
+Schon `delay35 / rept (35-5-9)/2 / nop / endr` — so steht es in
+`MWOS/OS9/SRC/IO/SCF/DRVR/sc8x30.a` — ergibt neun `bad label`-Fehler. Die
+erzeugten Bytes stimmen dabei zwar, als Orakel taugt es aber nicht; `qr68`
+wiederholt genau den Rumpf zwischen `rept` und `endr`.
 
 ### Mehrere Durchläufe statt zwei
 
@@ -259,14 +328,17 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
 
 ## Nächste Schritte
 
-1. `use` (Include, 965×), `macro`/`endm` (157×), bedingte Assemblierung,
-   `os9` (742×) — das ist es, was die handgeschriebenen Quellen als Erstes
-   verlangen. `movem` fehlt dafür ebenfalls.
+1. **Ausdrücke mit mehreren verschiebbaren Anteilen.** Die MWOS-Treiber
+   schreiben `move.b PD_PAR-PD_OPT+M$DTyp(a1),d0` — drei externe Namen in
+   einem Ausdruck; r68 macht daraus drei Referenzen auf denselben Offset
+   (die abgezogene mit `$40` im Typwort). `qr68` kann bisher einen positiven
+   und einen abgezogenen Anteil. Das ist das, was den Treiberkorpus
+   aufschließt.
 2. Kette `qcc_backend → qr68 → l68` einmal bis zum laufenden Modul auf dem
    68030 fahren (bisher ist nur gezeigt, dass `l68` von `qr68` byteweise
    dasselbe bekommt wie von `r68`).
 3. Voller 68000/010/020/030/040-Integerbestand, getrieben vom Korpus
-   (`movec` 220×, `move16`/Cache 61×, Bitfelder 23×, `divul` 8×, `pmove` 4×).
+   (`move16`/Cache 61×, Bitfelder 23×, `divul` 8×, `pmove` 4×).
 4. `qr68` als OS-9-Modul und auf dem 68030 laufen lassen.
 
 **Zwei bekannte Grenzen dabei:**

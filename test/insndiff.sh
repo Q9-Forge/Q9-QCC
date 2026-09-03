@@ -25,8 +25,11 @@ WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/w
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TMPWIN="$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 
+# Zusaetzliche Schalter fuer BEIDE Seiten, z. B. RFLAGS=-b.
+: "${RFLAGS:=}"
+
 files=("$@")
-[ ${#files[@]} -gt 0 ] || files=(test/insn.a)
+[ ${#files[@]} -gt 0 ] || files=(test/insn.a test/dir.a test/mac.a)
 
 fail=0
 for f in "${files[@]}"; do
@@ -34,7 +37,7 @@ for f in "${files[@]}"; do
 	cp "$f" "$TMP/$base.a"
 	echo "=== $f ==="
 	arch -x86_64 "$WINE_BIN" cmd /c \
-		"Z: && cd $TMPWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $base.a -o=$base.r -l" \
+		"Z: && cd $TMPWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $base.a -o=$base.r -l $RFLAGS" \
 		> "$TMP/$base.lst" 2>&1
 	tr -d '\r' < "$TMP/$base.lst" > "$TMP/$base.lst2"
 	mv "$TMP/$base.lst2" "$TMP/$base.lst"
@@ -50,7 +53,7 @@ d = open(sys.argv[1], "rb").read()
 print(",".join(str(b) for b in d[12:18]))
 PY
 )"
-	if ! "$QR68" "-fdate=$stamp" "$TMP/$base.a" "$TMP/$base.q" > "$TMP/$base.msg" 2>&1; then
+	if ! "$QR68" $RFLAGS "-fdate=$stamp" "$TMP/$base.a" "$TMP/$base.q" > "$TMP/$base.msg" 2>&1; then
 		echo "  qr68 bricht ab:"
 		sed 's/^/    /' "$TMP/$base.msg" | head -5
 		fail=1
