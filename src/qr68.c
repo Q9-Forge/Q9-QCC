@@ -86,11 +86,55 @@ extern int printf(const char *fmt, ...);
 extern void exit(int code);
 
 /* ------------------------------------------------------------ Grenzen ---- */
+/* Auf dem ZIEL sind die Felder kleiner. Das ist kein Geiz, sondern
+   Notwendigkeit: QCCs Backend legt genullte Felder in den INITIALISIERTEN
+   Datenbereich, und der wandert vollstaendig ins OS-9-Modul -- jedes
+   Kilobyte Feld ist ein Kilobyte Modul (bei qcpp sind daraus 4,3 MB
+   geworden). Der Grund liegt tiefer: ein nicht-remoter vsect wird ueber
+   "d16(a6)" angesprochen und passt damit nur in 64 KB; r68 meldet fuer
+   alles darueber "value out of range". Solange QCCs Datenmodell so ist,
+   wird hier gespart.
+   Die Zielgroessen reichen fuer handgeschriebene OS-9-Quellen: der
+   Q9-OS-Kernel braucht 232 Symbole, der groesste SDK-Treiber 1428. */
+#ifdef _Q9OS
+#define QR_POOL     65536
+#define QR_POOLHASH  1024
+#define QR_PENT      8192
+#define QR_SRC     262144
+#define QR_SYM       4096
+#define QR_SYMHASH   1024
+#define QR_CODE    131072
+#define QR_IDATA    32768
+#define QR_REF       8192
+#define QR_MACTEXT  32768
+#else
+#define QR_POOL    524288
+#define QR_POOLHASH  4096
+#define QR_PENT     32768
+#define QR_SRC    4194304
+#define QR_SYM      16384
+#define QR_SYMHASH   4096
+#define QR_CODE   4194304
+#define QR_IDATA   524288
+#define QR_REF      65536
+#define QR_MACTEXT 131072
+#endif
+
+/* ------------------------------------------------------------ Grenzen ---- */
 /* Arraygroessen als Literale (QCCs constSize kennt nur Zahlen), daneben die
    Spiegelvariable fuer die Pruefungen; selfCheck() vergleicht beides. */
-static char pool[524288];
-static int POOL_MAX = 524288;
+static char pool[QR_POOL];
+static int POOL_MAX = QR_POOL;
 static int poolTop;
+
+/* Streutabelle ueber die Namen: poolHead[] zeigt auf den ersten Eintrag der
+   Kette, pentOff/pentNext beschreiben die Eintraege. */
+static int POOLHASH_MAX = QR_POOLHASH;
+static int poolHead[QR_POOLHASH];
+static int PENT_MAX = QR_PENT;
+static int pentOff[QR_PENT];
+static int pentNext[QR_PENT];
+static int pentN;
 
 /* Der handgeschriebene Korpus braucht davon nicht einmal ein Viertel
    (groesste Datei: 766 KB, MWOS/.../rlm-sys-1/libfame.a); die vom
@@ -99,8 +143,8 @@ static int poolTop;
    offen. Die Arena ist zugleich die Groesse, die das spaetere OS-9-Modul
    mitschleppt (QCCs Backend legt genullte Tabellen in den initialisierten
    Datenbereich), also nicht beliebig aufblasen. */
-static char srcArena[4194304];
-static int SRC_MAX = 4194304;
+static char srcArena[QR_SRC];
+static int SRC_MAX = QR_SRC;
 static int srcTop;
 /* Der Ausdehnungsspeicher fuer Makros liegt am OBEREN Ende derselben Arena
    und waechst nach unten: eingelesene Dateien wachsen von unten,
@@ -115,20 +159,23 @@ static int flEnd[64];
 static int flN;
 
 /* Symbole */
-static int SYM_MAX = 16384;
-static int symName[16384];
-static int symValue[16384];
-static int symSect[16384];     /* s. SECT_* */
-static int symDefined[16384];
-static int symGlobal[16384];
-static int symUsed[16384];
-static int symPass[16384];     /* Durchlauf der letzten Definition, s. ifdef */
+static int SYM_MAX = QR_SYM;
+static int symName[QR_SYM];
+static int symValue[QR_SYM];
+static int symSect[QR_SYM];     /* s. SECT_* */
+static int symDefined[QR_SYM];
+static int symGlobal[QR_SYM];
+static int symUsed[QR_SYM];
+static int symPass[QR_SYM];     /* Durchlauf der letzten Definition, s. ifdef */
+static int SYMHASH_MAX = QR_SYMHASH;
+static int symHead[QR_SYMHASH];
+static int symNext[QR_SYM];
 /* Pool-Index eines externen Namens, auf den dieses Symbol steht, sonst -1.
    "IRQCtrl equ u_icr" (so in MWOS/.../sc68070.a:64) bindet einen Namen an
    einen EXTERNEN -- jede Benutzung von IRQCtrl muss danach wieder eine
    Referenz auf u_icr erzeugen. Ohne das fehlen im ROF stillschweigend
    Referenzen, und der Binder setzt die Adresse nie ein. */
-static int symExt[16384];
+static int symExt[QR_SYM];
 /* "set"-Symbole: r68 hat GENAU EINEN Messdurchlauf, und sein Ausgabelauf
    sieht die Werte, wie sie am ENDE dieses ersten Durchlaufs standen.
    Gemessen an "dc.w A / dc.w B / A set B / B set 5": r68 legt $0000 und
@@ -138,29 +185,29 @@ static int symExt[16384];
    ersten Durchlauf festgehalten und vor dem Ausgeben wiederhergestellt.
    Genau daran haengen die Descriptor-Quellen des SDK: "WrtPrecomp set
    Cylnders" steht dort VOR der Makroausdehnung, die Cylnders setzt. */
-static int symIsSet[16384];
-static int symSnapVal[16384];
-static int symSnapSect[16384];
-static int symSnapped[16384];
+static int symIsSet[QR_SYM];
+static int symSnapVal[QR_SYM];
+static int symSnapSect[QR_SYM];
+static int symSnapped[QR_SYM];
 static int symN;
 
 /* Codeausgabe */
-static char codeBuf[1048576];
-static int CODE_MAX = 1048576;
+static char codeBuf[QR_CODE];
+static int CODE_MAX = QR_CODE;
 static int codeN;
 
 /* Initialisierte Daten (vsect) */
-static char idataBuf[262144];
-static int IDATA_MAX = 262144;
+static char idataBuf[QR_IDATA];
+static int IDATA_MAX = QR_IDATA;
 static int idataN;
 
 /* Referenzen auf externe Namen und auf eigene Symbole */
-static int REF_MAX = 65536;
-static int refName[65536];     /* Pool-Index des Namens (extern) oder -1 */
-static int refType[65536];
-static int refOffs[65536];
-static int refLocal[65536];    /* 1 = lokale Referenz (eigenes Symbol) */
-static int refDone[65536];     /* Merker beim Ausgeben der externen Namen */
+static int REF_MAX = QR_REF;
+static int refName[QR_REF];     /* Pool-Index des Namens (extern) oder -1 */
+static int refType[QR_REF];
+static int refOffs[QR_REF];
+static int refLocal[QR_REF];    /* 1 = lokale Referenz (eigenes Symbol) */
+static int refDone[QR_REF];     /* Merker beim Ausgeben der externen Namen */
 static int refN;
 
 static char lxTmp[4096];
@@ -291,38 +338,61 @@ static char *poolAt(int idx)
 	return &pool[idx];
 }
 
+/* Streuwert eines Namens -- klein gehalten, damit er auch auf dem 68030
+   billig bleibt. */
+static int nameHash(const char *s, int n)
+{
+	int h;
+	int i;
+
+	h = 0;
+	for (i = 0; i < n; i++)
+		h = h * 31 + (s[i] & 255);
+	if (h < 0)
+		h = -h;
+	return h & (POOLHASH_MAX - 1);
+}
+
 static int internN(const char *s, int n)
 {
-	int i;
 	int j;
 	int idx;
 	int same;
+	int h;
+	int e;
 
-	/* Lineare Suche: die Symbolmengen hier sind klein genug (der groesste
-	   Korpusfall hat wenige Tausend Namen), und eine Hashtabelle waere der
-	   erste Kandidat, falls das je messbar bremst. */
-	for (i = 0; i < poolTop; i++) {
-		if (pool[i] == 0)
-			continue;
+	/* Ueber eine Streutabelle: die lineare Suche ueber den ganzen
+	   Namensspeicher war bei 12.000 Namen der teuerste Teil des Laufs
+	   (3,5 MB Quelle brauchten damit acht Sekunden). Die Kette ist eine
+	   Liste von Eintraegen, jeder mit seinem Offset im Namensspeicher. */
+	h = nameHash(s, n);
+	e = poolHead[h];
+	while (e >= 0) {
+		idx = pentOff[e];
 		same = 1;
 		for (j = 0; j < n; j++) {
-			if (pool[i + j] != s[j]) {
+			if (pool[idx + j] != s[j]) {
 				same = 0;
 				j = n;
 			}
 		}
-		if (same && pool[i + n] == 0)
-			return i;
-		while (i < poolTop && pool[i] != 0)
-			i++;
+		if (same && pool[idx + n] == 0)
+			return idx;
+		e = pentNext[e];
 	}
 	if (poolTop + n + 1 >= POOL_MAX)
 		fatal("Namensspeicher voll (POOL_MAX)", "");
+	if (pentN >= PENT_MAX)
+		fatal("zu viele Namen (PENT_MAX)", "");
 	idx = poolTop;
 	for (j = 0; j < n; j++)
 		pool[idx + j] = s[j];
 	pool[idx + n] = 0;
 	poolTop = poolTop + n + 1;
+	pentOff[pentN] = idx;
+	pentNext[pentN] = poolHead[h];
+	poolHead[h] = pentN;
+	pentN++;
 	return idx;
 }
 
@@ -414,13 +484,25 @@ static int fileGet(const char *path)
 }
 
 /* ================================================================ Symbole = */
+/* Symbole werden ueber ihren Pool-Index gefunden; der ist bereits eindeutig,
+   also genuegt eine Streuung darueber. */
+static int symBucket(int name)
+{
+	int h;
+
+	h = name & (SYMHASH_MAX - 1);
+	return h;
+}
+
 static int symFind(int name)
 {
 	int i;
 
-	for (i = 0; i < symN; i++) {
+	i = symHead[symBucket(name)];
+	while (i >= 0) {
 		if (symName[i] == name)
 			return i;
+		i = symNext[i];
 	}
 	return -1;
 }
@@ -435,6 +517,8 @@ static int symIntern(int name)
 	if (symN >= SYM_MAX)
 		fatal("Symboltabelle voll (SYM_MAX)", "");
 	s = symN;
+	symNext[s] = symHead[symBucket(name)];
+	symHead[symBucket(name)] = s;
 	symName[s] = name;
 	symValue[s] = 0;
 	symSect[s] = SECT_NONE;
@@ -1189,6 +1273,18 @@ static void refTerms(int slot, int size)
 }
 
 /* ============================================================== selfCheck = */
+/* Die Streutabellen fangen LEER an, und leer heisst -1 -- 0 waere ein
+   gueltiger Eintrag. */
+static void hashInit(void)
+{
+	int i;
+
+	for (i = 0; i < POOLHASH_MAX; i++)
+		poolHead[i] = -1;
+	for (i = 0; i < SYMHASH_MAX; i++)
+		symHead[i] = -1;
+}
+
 static void selfCheck(void)
 {
 	int slot;
@@ -1210,6 +1306,14 @@ static void selfCheck(void)
 		fatal("innerer Fehler: LXTMP_MAX passt nicht zu lxTmp[]", "");
 	if ((int)sizeof(flName) != FILE_MAX * slot)
 		fatal("innerer Fehler: FILE_MAX passt nicht zu flName[]", "");
+	if ((int)sizeof(poolHead) != POOLHASH_MAX * slot)
+		fatal("innerer Fehler: POOLHASH_MAX passt nicht zu poolHead[]", "");
+	if ((int)sizeof(symHead) != SYMHASH_MAX * slot)
+		fatal("innerer Fehler: SYMHASH_MAX passt nicht zu symHead[]", "");
+	if ((int)sizeof(pentOff) != PENT_MAX * slot)
+		fatal("innerer Fehler: PENT_MAX passt nicht zu pentOff[]", "");
+	if ((int)sizeof(symNext) != SYM_MAX * slot)
+		fatal("innerer Fehler: SYM_MAX passt nicht zu symNext[]", "");
 }
 
 /* ========================================================= Zeilenzerlegung */
@@ -2306,8 +2410,8 @@ static int macStart[128];
 static int macEnd[128];
 static int macN;
 
-static char macText[131072];
-static int MACTEXT_MAX = 131072;
+static char macText[QR_MACTEXT];
+static int MACTEXT_MAX = QR_MACTEXT;
 static int macTop;
 
 static int macDefining;        /* 1 = Zeilen wandern in den Rumpf */
@@ -4676,7 +4780,7 @@ static void writeRof(void)
 	{
 		int done;
 		int best;
-		int marked[16384];
+		int marked[QR_SYM];
 
 		for (i = 0; i < symN; i++)
 			marked[i] = 0;
@@ -4924,6 +5028,7 @@ int main(int argc, char **argv)
 	curFile = -1;
 	curLine = 0;
 	selfCheck();
+	hashInit();
 
 	for (i = 1; i < argc; i++) {
 		char *a;

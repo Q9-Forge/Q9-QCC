@@ -22,6 +22,7 @@ Fremdteile der Kette.
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
 | **68 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule, Bootcode | **byteidentisch** |
+| **qr68 auf echtem 68030**, gebaut mit der eigenen Kette | **byteidentisch zum Hostlauf** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -71,6 +72,37 @@ Aufrufe der SDK-Makefiles unverändert laufen; `-y`, `-bt`, `-j` und `-p<n>`
 
 **Alles andere bricht mit Meldung ab.** Das ist Absicht: eine still falsche
 Kodierung wäre schlimmer als eine fehlende.
+
+## qr68 läuft auf dem 68030
+
+```
+make os9        # Modul bauen
+make test68k    # Modul auf echtem 68030 fahren und vergleichen
+```
+
+Die Kette dorthin kommt ohne Fremdcompiler aus, und Schritt 4 ist der Punkt:
+
+```
+1  qcpp        src/qr68.c   -> qr68.i      eigener Präprozessor
+2  qcc_p       @qr68.i      -> qr68.ir     eigener Compiler
+3  qcc_backend qr68.ir      -> qr68.s68    eigene Codeerzeugung
+4  qr68        qr68.s68     -> qr68.r      SICH SELBST
+5  r68         q9_cstart.a  -> q9_cstart.r Laufzeiteinstieg
+6  l68         + clib       -> q9_qr68     Modul (1,18 MB)
+```
+
+Auf dem 68030 assembliert das Modul dann eine Quelle, und das Ergebnis wird
+byteweise mit dem Hostlauf verglichen — geprüft mit `test/insn.a` (jede
+kodierbare Form) und mit `q9kernel_entry.a` des Q9-OS-Kernels (153 KB,
+249 Symbole). Beide **byteidentisch**.
+
+**Warum das Modul 1,18 MB groß ist:** QCCs Backend legt genullte Felder in
+den *initialisierten* Datenbereich, und der wandert vollständig ins Modul.
+Der Grund liegt tiefer — ein nicht-remoter `vsect` wird über `d16(a6)`
+angesprochen und passt damit nur in 64 KB; `r68` meldet für alles darüber
+„value out of range". Solange QCCs Datenmodell so ist, hält `-D_Q9OS` die
+Felder auf Zielmaß (64 KB Namen, 256 KB Quelle, 4096 Symbole — der
+Q9-OS-Kernel braucht 249, der größte SDK-Treiber 1428).
 
 ## Der Prüfstein
 
@@ -486,20 +518,20 @@ Die drei verbliebenen Abweichungen sind alle drei bewusste Verweigerungen:
 
 ## Nächste Schritte
 
-1. Der Rest des Korpus: Dateimanager, SCSI, `ROM/CBOOT` — und die Ports,
+1. **QCCs Datenmodell**: genullte Felder gehören in den reservierten
+   Bereich, nicht in den initialisierten. Dafür müssen Globals über
+   `a6 + 32-Bit-Offset` erreichbar werden statt über `d16(a6)`. Das würde
+   qr68s Modul von 1,18 MB auf ~50 KB bringen, qcpps von 4,3 MB auf ~44 KB
+   — und qr68 könnte dann seine *eigene* Modulquelle auch auf dem Ziel
+   assemblieren.
+2. Der Rest des Korpus: Dateimanager, SCSI, `ROM/CBOOT` — und die Ports,
    für die hier die Definitionen fehlen.
-2. Kette `qcc_backend → qr68 → l68` einmal bis zum laufenden Modul auf dem
-   68030 fahren (bisher ist nur gezeigt, dass `l68` von `qr68` byteweise
-   dasselbe bekommt wie von `r68`).
 3. Voller 68000/010/020/030/040-Integerbestand, getrieben vom Korpus
-   (`move16`/Cache 61×, Bitfelder 23×, `divul` 8×, `pmove` 4×).
-4. `qr68` als OS-9-Modul und auf dem 68030 laufen lassen.
+   (`move16`/Cache-Reste, Bitfelder 23×, `pmove` 4×).
+4. `l68` — der Binder, das letzte große Fremdteil neben Microwares `clib`.
 
-**Zwei bekannte Grenzen dabei:**
-
-- Die Quelle wird ganz in eine Arena gelesen (4 MB). Die größten vom Backend
-  erzeugten Dateien sind 18 MB — dafür braucht es einen strömenden Leser,
-  zumal die Arena später die Modulgröße mitbestimmt.
-- 8 Sekunden für 3,5 MB Quelle. Die Symbolsuche ist linear (`symFind` über
-  12.000 Symbole, `internN` über den ganzen Namensspeicher); eine
-  Hashtabelle ist der erste Kandidat, wenn das auf dem 68030 stört.
+**Eine bekannte Grenze:** die Quelle wird ganz in eine Arena gelesen (am
+Host 4 MB). Die größten vom Backend erzeugten Dateien sind 18 MB — dafür
+bräuchte es einen strömenden Leser. (Die Geschwindigkeit ist erledigt: mit
+Streutabellen für Namen und Symbole braucht eine 3,5-MB-Quelle **0,3 s**
+statt 8,3 s.)

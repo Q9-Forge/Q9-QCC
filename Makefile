@@ -28,6 +28,15 @@ backend: build/qr68
 	./test/backend.sh
 	./test/handwritten.sh
 
+# qr68 als OS-9-Modul bauen (qcpp -> QCC -> Backend -> qr68 selbst -> l68)
+# und auf echtem 68030 fahren. QUELLE= waehlt die Quelle, die dort
+# assembliert wird; verglichen wird byteweise mit dem Hostlauf.
+os9: build/qr68
+	./tools/build_os9.sh
+
+test68k: build/qr68
+	./tools/test_68k.sh
+
 # Der schwerste Korpus: die SCF-Treiber des SDK. Laeuft NICHT in "check",
 # weil dort noch neun der 15 uebersetzbaren Quellen abweichen (s. README).
 mwos: build/qr68
@@ -38,4 +47,4 @@ check: test backend
 clean:
 	rm -rf build
 
-.PHONY: all test backend mwos check clean
+.PHONY: all test backend mwos os9 test68k check clean
