@@ -966,8 +966,11 @@ static int exprTop(void)
 			exNeedAbsSince(mark, "UND-Verknuepfung");
 			continue;
 		}
-		if (exP[0] == '!') {
-			/* "!" ist bei Microware das bitweise ODER */
+		if (exP[0] == '!' || exP[0] == '|') {
+			/* "!" ist bei Microware das bitweise ODER -- "|" tut
+			   es auch (gemessen: "A|B|C" mit 1,2,4 ergibt 7). In
+			   PORTS/CB030/SYSMODS/rtccb030.a:78 steht die
+			   Strichform. */
 			exNeedAbsSince(mark, "ODER-Verknuepfung");
 			exP = exP + 1;
 			mark = termN[2];
@@ -1261,7 +1264,11 @@ static int splitLine(void)
 	while (lxTmp[i] != 0 && isSpaceCh(lxTmp[i] & 255))
 		i++;
 	n = 0;
-	while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255)) {
+	/* Das Mnemonic endet am Leerzeichen ODER an einer Klammer: im SDK
+	   steht " ifeq(CPUType-SYS360)" ohne Leerzeichen, und r68 nimmt das
+	   an (auch "move.l(a0),d0" -> $2010, gemessen). */
+	while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255) &&
+	       lxTmp[i] != '(') {
 		if (n + 1 >= 64)
 			fatal("Mnemonic zu lang", "");
 		lnOpRaw[n] = lxTmp[i];
@@ -2042,9 +2049,23 @@ static void emitEa(int k, int size)
 		return;
 	}
 	if (m == AM_IDX || m == AM_PCIDX) {
+		d = oVal[k];
+		if (m == AM_IDX && termN[k] > 0) {
+			/* Ein verschiebbares Displacement gibt es auch hier:
+			   "move.b d0,dat(a2,d5.w)" ergibt eine BYTEreferenz
+			   auf das niederwertige Byte des Erweiterungswortes
+			   ($0028 auf Offset 9, gemessen). So greift
+			   PORTS/CB030/SCF/oxc16954.a auf seine Daten zu. */
+			if (d < -128 || d > 127)
+				fatal("Index-Displacement passt nicht in 8 Bit: ",
+				      lnArg);
+			emitByte(((oIdx[k] & 15) << 4) | (oIdxL[k] << 3));
+			refTerms(k, 1);
+			emitByte(d & 255);
+			return;
+		}
 		if (oExt[k] >= 0)
 			fatal("externer Name in einer Indexform: ", lnArg);
-		d = oVal[k];
 		if (m == AM_PCIDX) {
 			if (oSect[k] != SECT_CODE && oSect[k] != SECT_ABS)
 				fatal("PC-Bezug auf einen anderen Abschnitt: ", lnArg);
@@ -2479,6 +2500,41 @@ static void macExpand(int m)
 	flStart[slot] = expTop;
 	flEnd[slot] = saved;
 
+	useFile[useDepth] = curFile;
+	usePos[useDepth] = rdPos;
+	useLine[useDepth] = curLine;
+	useExp[useDepth] = saved;
+	useDepth++;
+	curFile = slot;
+	rdPos = expTop;
+	curLine = 1;
+}
+
+/* Wie macExpand, aber fuer "rept": ALLE Wiederholungen kommen in EINE
+   Ausdehnung. Sie einzeln zu schieben wuerde den Stapel sprengen -- in
+   ROM/COMMON/mbugboot.a steht "REPT (MBBBoundary-MBBLenB)/4", und das sind
+   je nach Modulgroesse Dutzende. */
+static void repExpand(int m, int count)
+{
+	int saved;
+	int slot;
+	int i;
+
+	if (count <= 0)
+		return;
+	saved = expTop;
+	for (i = 0; i < count; i++) {
+		macCounter++;
+		macSubstitute(macStart[m], macEnd[m], macArgP, 0, macCounter);
+	}
+	if (useDepth >= USE_MAX)
+		fatal("rept zu tief geschachtelt (USE_MAX)", "");
+	if (flN > FILE_MAX - USE_MAX - 1)
+		fatal("zu viele Dateien fuer den Makrostapel (FILE_MAX)", "");
+	slot = FILE_MAX - 1 - useDepth;
+	flName[slot] = macName[m];
+	flStart[slot] = expTop;
+	flEnd[slot] = saved;
 	useFile[useDepth] = curFile;
 	usePos[useDepth] = rdPos;
 	useLine[useDepth] = curLine;
@@ -3036,6 +3092,7 @@ static void doArith(const char *base, int size)
 	int q;
 	int qop;
 	int aop;
+	int sp;
 
 	isAdd = baseIs(base, "add");
 	isSub = baseIs(base, "sub");
@@ -3068,6 +3125,38 @@ static void doArith(const char *base, int size)
 		size = 'w';
 	sf = sizeField(size);
 	needOps(2);
+
+	/* Auch die GRUNDFORM darf nach ccr/sr: "and.w #$fe,ccr" wird $023c,
+	   "or.w #1,ccr" wird $003c und "and.w #$fe,sr" wird $027c -- alles
+	   gemessen. Ohne das wuerde "ccr" als Symbolname gelesen und die
+	   Zeile vier Byte zu lang (so in PORTS/AtariST/SCF/sc_mfp_uart.a:184
+	   aufgefallen). */
+	sp = specialReg(opTxt1);
+	if (sp == 1 || sp == 2) {
+		int cop;
+
+		if (!isAdd && !isSub && !isCmp) {
+			if (size != 'w' && size != 'b')
+				fatal("nach ccr/sr nur .b/.w: ", lnOp);
+			parseOperand(opTxt0, 0);
+			if (oMode[0] != AM_IMM)
+				fatal("nach ccr/sr braucht es einen Sofortwert: ",
+				      lnArg);
+			cop = 0x0000;
+			if (baseIs(base, "and"))
+				cop = 0x0200;
+			else if (baseIs(base, "eor"))
+				cop = 0x0A00;
+			if (sp == 1)
+				emitWord(cop | 0x3C);
+			else
+				emitWord(cop | 0x7C);
+			emitEa(0, 2);
+			return;
+		}
+		fatal("diese Verknuepfung geht nicht nach ccr/sr: ", lnOp);
+	}
+
 	parseOperand(opTxt0, 0);
 	parseOperand(opTxt1, 1);
 
@@ -4233,13 +4322,10 @@ static void runPass(void)
 				continue;
 			}
 			if (baseIs(base, "endr") && repActive) {
-				int r;
-
 				macEnd[macN - 1] = macTop;
 				macDefining = 0;
 				repActive = 0;
-				for (r = 0; r < repCount; r++)
-					macExpand(macN - 1);
+				repExpand(macN - 1, repCount);
 				macN--;
 				continue;
 			}

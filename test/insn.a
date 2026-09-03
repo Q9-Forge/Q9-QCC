@@ -208,6 +208,10 @@ nahpc    nop
          bset    #3,d0
          bclr    #3,(a0)
          bchg    d1,d0
+         and.w   #$fe,ccr
+         and.b   #$fe,ccr
+         or.w    #1,ccr
+         and.w   #$fe,sr
          ori     #1,ccr
          ori     #1,cc
          andi    #1,cc
@@ -325,6 +329,8 @@ mitte    nop
          dc.l    mitte
 
 * ---- Verschiebbares Displacement (OS-9-C-ABI ueber a6) ------------------
+         move.b  d0,puffer(a2,d5.w)
+         move.b  puffer(a2,d5.w),d0
          move.l  #$7FFFFFFF,puffer(a6)
          move.l  wert(a6),d0
          move.l  fremd(a6),d0

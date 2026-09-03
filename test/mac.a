@@ -108,6 +108,18 @@ marke2   MARKE   $66
          endc
          align   2
 
+* ---- Mnemonic ohne Leerzeichen vor der Klammer --------------------------
+* Im SDK steht " ifeq(CPUType-SYS360)" ohne Trennzeichen; r68 beendet das
+* Mnemonic auch an der Klammer (auch "move.l(a0),d0" -> $2010).
+         ifeq(0)
+         dc.b    $11
+         endc
+         ifeq(1)
+         dc.b    $22
+         endc
+         move.l(a0),d0
+         align   2
+
 * ---- Systemaufruf --------------------------------------------------------
          os9     F$Link
          os9     I$ReadLn

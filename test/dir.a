@@ -53,6 +53,8 @@ nachorg  nop
          dc.w    ^$00ff
          dc.b    -^$0f
          dc.l    (BREITE!1)&$ff,BREITE*2,-BREITE,BREITE<<3,$40>>2
+* "|" tut es genauso wie "!"
+         dc.w    1|2|4,1!2
 
 * ---- Ausrichtung ---------------------------------------------------------
          dc.b    1
