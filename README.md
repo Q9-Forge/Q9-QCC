@@ -218,12 +218,22 @@ vier Langwörter (in allen gemessenen Fällen 0)
 1. **Die Zähler sind 32 Bit, nicht 16.** `rof.c` liest sie mit `fread_w` als
    Wort. Nachgemessen mit Proben von 0, 1, 2 und 3 Symbolen: `r68` schreibt
    Langwörter. Wer der Dokumentation folgt, verrutscht ab dem ersten Symbol.
+
+   **Nachtrag 2026-09-04 — der Grund ist jetzt bekannt.** Microwares
+   Handbuch (`ultrac_use.pdf`, Kap. 6) beschreibt *zwei* Untervarianten:
+   in **Edition 9.0** sind die Zähler 2 Byte, in **9.1** sind sie 4 Byte.
+   `rof.c` implementiert also 9.0, und `r68 V2.9.1` schreibt 9.1. Das
+   bestätigt Microwares eigenes `rdump` an einer von `qr68` erzeugten
+   Datei: `CPU/ROF type: 680x0/9.1`. Es war kein Fehler in `rof.c`,
+   sondern eine andere Formatversion — s.
+   `docs/ROF_UND_LINKER_QUELLEN.md`.
 2. **`r68` sortiert die Globalen alphabetisch**, nicht in Quellreihenfolge.
    Belegt an einer Quelle mit der Reihenfolge `wert`, `puffer`, `start` —
    ausgegeben wurde `puffer`, `start`, `wert`. Ohne dieselbe Reihenfolge gibt
    es keine Byteidentität.
 3. **Der Code wird mit `NOP` (`$4E71`) auf ein Vielfaches von vier
-   aufgefüllt.** Ein einzelnes `rts` ergibt `codsz` = 4.
+   aufgefüllt.** Ein einzelnes `rts` ergibt `codsz` = 4. (Verfeinert am
+   2026-09-04: das Füllwort hängt an `-m<n>` — s. u.)
 4. **Im `vsect` haben initialisierte und reservierte Daten je einen eigenen
    Adressraum, beide ab 0.** Bei `d1 dc.l / d2 dc.l / u1 ds.b 4 / u2 ds.b 4`
    kommen die Adressen 0, 4 und 0, 4 heraus, `idatsz` = 8 **und**
@@ -1060,4 +1070,7 @@ auf dem 68030. Was offen bleibt, ist **bewusst** offen:
    assemblieren. Der strömende Leser erledigt sich damit gleich mit.
 2. **`l68`** — der Binder, das letzte große Fremdteil neben Microwares
    `clib`. Für ihn gilt dieselbe Methode: Format messen statt herleiten,
-   und den Prüfstand aus den SDK-Makefiles speisen.
+   und den Prüfstand aus den SDK-Makefiles speisen. **Was Microware selbst
+   dazu dokumentiert — ROF-Format, Modulformat, Linkeralgorithmus,
+   Bibliotheksformat — ist in `docs/ROF_UND_LINKER_QUELLEN.md`
+   zusammengetragen**, samt Abgleich gegen unsere Messungen.
