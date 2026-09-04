@@ -141,17 +141,27 @@ Referenzen absteigend liefert — ein Trugschluss, den erst der zweite psect
 aufdeckt: zwei Codezeiger auf Datenoffset `$10` (Wurzel) und `$18`
 (zweiter psect) ergeben die Liste **`$18, $10`**.
 
-### Der Modulaufbau hängt am Typ
+### Der Modulaufbau hängt an der SPRACHE, nicht am Typ
 
-| Typ | Struktur | Erweiterung | Name | IData/IRefs |
-|---|---|---|---|---|
-| 15 Devic | `mod_dev` | keine feste — der ROF-Code liefert sie | **hinter** dem Code | nein |
-| 14 Drivr | `mod_driver` | `_mexec`/`_mexcpt`/`_mdata` (12 Byte), Rest aus dem Code | **hinter** dem Code | nein |
-| sonst | `mod_exec` | 24 Byte mit Stack, IData, IRefs | **vor** dem Code | ja |
+| | Erweiterung | Name | IData/IRefs |
+|---|---|---|---|
+| **Sprache 0** | keine | **hinter** dem Code (`$30`) | nein |
+| Sprache ≠ 0, Typ ≠ 1 | `_mexec`/`_mexcpt`/`_mdata` (12 Byte) | **hinter** dem Code (`$3c`) | nein |
+| Typ 1 (Prgm) | `mod_exec`, 24 Byte mit Stack, IData, IRefs | **vor** dem Code (`$48`) | ja |
 
-Bei Descriptor und Treiber gibt es die Abschnitte nicht, weil die
-Strukturen die Felder nicht haben — ein Treiber mit initialisierten Daten
-braucht bei `l68` eigens `-i`.
+Sprache 0 heißt „nicht ausführbar" — so ein Modul braucht keine
+Einsprungfelder. Das trifft die Descriptoren (`0f00`) **und** die
+Init-Module (`0c00`) mit derselben Regel.
+
+> **Eine Fehlverallgemeinerung, die der Prüfstand aufgedeckt hat.** Nach
+> den ersten Messungen stand hier eine Typliste: „Typ 2, 12 und 14 haben
+> 12 Byte, Typ 15 keine." Der Lauf über den SDK-Korpus zeigte, dass
+> **Typ 12 in beiden Formen vorkommt** — `snoop162` ist `0c01` und liegt
+> auf `$3c`, `init` ist `0c00` und liegt auf `$30`. Erst die Sprache
+> erklärt beide.
+
+Wo die Abschnitte fehlen, fehlen auch die Felder — ein Treiber mit
+initialisierten Daten braucht bei `l68` eigens `-i`.
 
 Gemessen an `sc8x30.a` (Treiber `sc172`): `_mexec = $3c` zeigt auf die
 Routinentabelle, die die **ersten 14 Codebytes** sind; `_mdata = $114`
@@ -241,11 +251,58 @@ vergleichen byteweise;
 `tools/modcmp.py` benennt bei einer Abweichung das betroffene Kopffeld,
 statt nur einen Offset zu zeigen.
 
+## Der SDK-Korpus
+
+`./test/sdkdiff.sh` holt die `l68`-Kommandozeilen aus den SDK-Makefiles
+selbst — derselbe Hebel wie bei `Q9-qr68`:
+
+```
+MWMAKEOPTS=-u  os9make -nn -u
+```
+
+Anders als beim Assembler braucht der Binder aber seine **Eingaben**: die
+`.r`-Dateien entstehen erst durch die `r68`-Zeilen desselben Trockenlaufs.
+Das Skript fährt deshalb beide Sorten Zeilen der Reihe nach und biegt alle
+Ausgaben in ein Temporärverzeichnis um — in den SDK-Baum wird nichts
+geschrieben.
+
+```
+467 l68-Aufrufe: 227 gleich, 0 abweichend, 230 uebersprungen, 10 doppelt
+```
+
+227 Aufrufe über **88 verschiedene Module**, und alle sechs im Korpus
+vorkommenden Typ/Sprach-Kombinationen sind dabei:
+
+| | Module |
+|---|---|
+| Typ 15 Sprache 0 (Descriptoren) | 155 |
+| Typ 12 Sprache 0 (Init) | 27 |
+| Typ 12 Sprache 1 (Systemmodule) | 17 |
+| Typ 14 Sprache 1 (Treiber) | 12 |
+| Typ 2 Sprache 1 (Unterprogramme) | 6 |
+| Typ 1 Sprache 1 (Programme) | 5 |
+
+Von den 230 Übersprungenen sind 40 `-r=` (rohe Binärausgabe — ein eigener
+Modus, kein Modul); bei den übrigen kommt `l68` selbst nicht durch.
+
+### Der Prüfstand musste selbst erst geprüft werden
+
+Von den vier Abweichungen, die die Läufe meldeten, waren **drei Fehler im
+Skript** und nur eine ein echter Formatbefund:
+
+- Ein angehängter Zähler am Ausgabenamen — und der **Modulname kommt
+  daraus**. `l68` bekam `8-p3`, `ql68` `p3`; acht Module schienen um zwei
+  Byte zu differieren.
+- Alle Ports bildeten ihr `RELS\` auf **dasselbe** Ziel ab und
+  überschrieben sich gegenseitig.
+- Eine **Shell-Umleitung** (`> …/null.map`) wurde als Eingabedatei
+  durchgereicht.
+
+Nur der vierte Befund — Sprache statt Typ — lag am Binder.
+
 ### Was als Nächstes ansteht
 
-1. **Den Prüfstand aus den SDK-Makefiles speisen.** Das ist jetzt der
-   nächste Schritt, nicht mehr der letzte: genug Modularten gehen, um
-   breit zu messen. `os9make -nn -u`
+1. **`-r=`** (rohe Binärausgabe) — 40 Aufrufe im Korpus, der ROM-Code. `os9make -nn -u`
    druckt die `l68`-Aufrufe genauso mit wie die von `r68` — allein in 20
    von 195 Verzeichnissen sind es 148. Bei `qr68` hat genau dieser
    differentielle Prüfstand elf Fehler gefunden, vier davon still.

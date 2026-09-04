@@ -43,6 +43,7 @@ static int outLen;
 #define QL_ROF    256
 
 static int rofN;
+static int rofRoot;          /* Index des Wurzel-psect */
 static int rTyLan[QL_ROF];
 static int rAttRev[QL_ROF];
 static int rEdition[QL_ROF];
@@ -679,8 +680,25 @@ static void emit(void)
 	   Gemessen an sc8x30.a (Treiber sc172): _mexec = $3c zeigt auf die
 	   Routinentabelle, die die ersten 14 Codebytes sind; _mdata = $114
 	   sind die 276 Byte ds; der Name liegt auf $664 = $3c + 1576. */
-	isDesc = ((rTyLan[0] >> 8) & 255) == 15;
-	isDrvr = ((rTyLan[0] >> 8) & 255) == 14;
+	/* Wie gross die Kopferweiterung ist, entscheidet die SPRACHE, nicht
+	   der Typ -- an den gebundenen SDK-Modulen nachgemessen, indem der
+	   Codeanfang aus M$Name minus Codegroesse zurueckgerechnet wurde:
+
+	     Sprache 0  keine Erweiterung, Code auf $30, Name dahinter
+	                (Descriptoren "0f00", aber auch das Init-Modul
+	                "0c00" -- Sprache 0 heisst "nicht ausfuehrbar",
+	                so ein Modul braucht keine Einsprungfelder)
+	     sonst      12 Byte _mexec/_mexcpt/_mdata, Code auf $3c,
+	                Name dahinter (Treiber "0e01", Systemmodule "0c01",
+	                Unterprogramme "0201")
+	     Typ 1      mod_exec mit 24 Byte, Name VOR dem Code, dazu
+	                IData- und IRefs-Abschnitt
+
+	   Die Typliste, die hier zuerst stand, war eine Fehlverallgemeinerung:
+	   Typ 12 kommt in BEIDEN Formen vor, je nach Sprache. */
+	i = (rTyLan[rofRoot] >> 8) & 255;
+	isDesc = (rTyLan[rofRoot] & 255) == 0;
+	isDrvr = !isDesc && i != 1;
 	dataBias = 0;
 	if (!isDesc && !isDrvr)
 		dataBias = 0x8000;
@@ -707,12 +725,12 @@ static void emit(void)
 	put32(optOwner);               /* M$Owner */
 	put32(0);                      /* M$Name, spaeter */
 	put16(optAccess);              /* M$Accs  */
-	put16(rTyLan[0]);
-	put16(rAttRev[0]);
+	put16(rTyLan[rofRoot]);
+	put16(rAttRev[rofRoot]);
 	if (optEdition >= 0)
 		put16(optEdition);
 	else
-		put16(rEdition[0]);
+		put16(rEdition[rofRoot]);
 	put32(0);                      /* M$Usage  */
 	put32(0);                      /* M$Symbol */
 	put16(0);                      /* M$Ident  */
@@ -723,7 +741,7 @@ static void emit(void)
 	put16(0);                      /* M$Parity, spaeter */
 	if (isDrvr) {
 		put32(0);              /* _mexec, spaeter */
-		if (rTrap[0] == -1)
+		if (rTrap[rofRoot] == -1)
 			put32(0);      /* _mexcpt */
 		else
 			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
@@ -732,12 +750,12 @@ static void emit(void)
 		put32(0);              /* M$Exec, spaeter  */
 		/* Fehlt der siebte psect-Parameter, traegt r68 utrap = -1
 		   ein; l68 macht daraus im Modul die 0 (gemessen). */
-		if (rTrap[0] == -1)
+		if (rTrap[rofRoot] == -1)
 			put32(0);
 		else
 			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
 		put32(totalUninit + totalInit);   /* M$Data  */
-		put32(rStk[0]);                   /* M$Stack */
+		put32(rStk[rofRoot]);                   /* M$Stack */
 		put32(0);                         /* M$IData, spaeter */
 		put32(0);                         /* M$IRefs, spaeter */
 	}
@@ -747,14 +765,18 @@ static void emit(void)
 	   dem gemeinsamen Kopf auf $30; danach folgt nur der Name und der
 	   CRC -- weder IData- noch IRefs-Abschnitt. */
 	if (isDesc || isDrvr) {
-		if (rofN != 1)
-			fatal("ein Descriptor oder Treiber aus mehreren ROFs ist noch nicht gemessen", "");
-		if (rIDat[0] != 0)
+		if (totalInit != 0)
 			fatal("initialisierte Daten gibt es bei diesem Modultyp nicht -- l68 braucht dafuer -i", "");
-		bCode[0] = outLen;
-		bIDataMod[0] = 0;
-		for (i = 0; i < rCod[0]; i++)
-			put8(inBuf[rCodeAt[0] + i]);
+		/* Auch hier duerfen es mehrere psects sein -- die Uhrenmodule
+		   des SDK werden aus tickgeneric.r und dem portspezifischen
+		   Teil gebunden. Der Code folgt der Reihenfolge der
+		   Kommandozeile, wie bei mod_exec. */
+		for (k = 0; k < rofN; k++) {
+			bCode[k] = outLen;
+			bIDataMod[k] = 0;
+			for (i = 0; i < rCod[k]; i++)
+				put8(inBuf[rCodeAt[k] + i]);
+		}
 		nameAt = outLen;
 		n = strLen(modName);
 		for (i = 0; i < n; i++)
@@ -762,22 +784,25 @@ static void emit(void)
 		put8(0);
 		if ((outLen % 2) != 0)
 			put8(0);
-		addGlobals(0);
+		for (k = 0; k < rofN; k++)
+			addGlobals(k);
 		symAdd("bname", nameAt, 6);
 		symAdd("_bname", nameAt, 6);
 		symAdd("btext", 0, 6);
 		symAdd("_btext", 0, 6);
 		symAdd("etext", outLen, 6);
 		symAdd("_etext", outLen, 6);
-		applyLocalRefs(0);
-		applyExtRefs(0);
+		for (k = 0; k < rofN; k++) {
+			applyLocalRefs(k);
+			applyExtRefs(k);
+		}
 		if (irefCodeN != 0 || irefDataN != 0)
 			fatal("ein Descriptor mit Datenzeigern ist noch nicht gemessen", "");
 		if (((outLen + 3) % 2) != 0)
 			put8(0);
 		patch32(0x0C, nameAt);
 		if (isDrvr)
-			patch32(0x30, bCode[0] + rEntry[0]);
+			patch32(0x30, bCode[rofRoot] + rEntry[rofRoot]);
 		patch32(0x04, outLen + 3);
 		outBuf[0x2E] = (headerParity() >> 8) & 255;
 		outBuf[0x2F] = headerParity() & 255;
@@ -845,7 +870,7 @@ static void emit(void)
 		put8(0);
 
 	patch32(0x0C, nameAt);
-	patch32(0x30, bCode[0] + rEntry[0]);
+	patch32(0x30, bCode[rofRoot] + rEntry[rofRoot]);
 	patch32(0x40, idataAt);
 	patch32(0x44, irefAt);
 	patch32(0x04, outLen + 3);
@@ -1003,6 +1028,16 @@ int main(int argc, char **argv)
 			optEdition = v;
 			continue;
 		}
+		if (a[0] == '-' && (a[1] == 'm' || a[1] == 's' || a[1] == 'j' ||
+				    a[1] == 'g') && (a[2] == 0 || a[2] == '=')) {
+			/* Listing- und Symbolschalter von l68: -m/-s schreiben
+			   eine Modulkarte, -j die Sprungtabellenrechnung, -g ein
+			   STB-Modul daneben. Keiner davon aendert das Modul --
+			   an "-g" nachgemessen: mit und ohne kommen dieselben
+			   122 Byte heraus. Angenommen und uebergangen, damit die
+			   Aufrufe der SDK-Makefiles unveraendert laufen. */
+			continue;
+		}
 		if (a[0] == '-' && a[1] != 0) {
 			printf("ql68: unbekannte Option %s\n", a);
 			usage();
@@ -1040,14 +1075,21 @@ int main(int argc, char **argv)
 			at = rofParse(at);
 	}
 
-	/* Der Wurzel-psect ist der erste, und nur er hat einen Typ/Sprach-
-	   Wert ungleich null (Handbuch Kap. 9). */
-	if (rTyLan[0] == 0)
-		fatal("die erste Eingabe hat keinen Wurzel-psect (Typ/Sprache ist 0) -- nur daraus entsteht ein Modul", "");
-	for (k = 1; k < rofN; k++) {
-		if (rTyLan[k] != 0)
-			fatal("nur die erste Eingabe darf einen Wurzel-psect haben", "");
+	/* Den Wurzel-psect suchen: er ist der EINZIGE mit einem Typ/Sprach-
+	   Wert ungleich null. Er steht NICHT zwangslaeufig vorn -- die
+	   SDK-Makefiles schreiben etwa
+	     l68 ... ..\..\68000\LIB\scfstat.l RELS\sc172.r -O=...
+	   und reichen damit erst eine reine Symboldatei ein. */
+	rofRoot = -1;
+	for (k = 0; k < rofN; k++) {
+		if (rTyLan[k] != 0) {
+			if (rofRoot >= 0)
+				fatal("mehr als ein Wurzel-psect in den Eingaben", "");
+			rofRoot = k;
+		}
 	}
+	if (rofRoot < 0)
+		fatal("keine der Eingaben hat einen Wurzel-psect (Typ/Sprache ist 0) -- nur daraus entsteht ein Modul", "");
 	emit();
 
 	fp = fopen(outPath, "wb");
