@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **78 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule, Boot- und ROM-Code | **byteidentisch** |
+| **289 Quellen des MWOS-SDK**, mit den Aufrufen aus dessen eigenen Makefiles | **byteidentisch** |
 | **qr68 auf echtem 68030**, gebaut mit der eigenen Kette | **byteidentisch zum Hostlauf** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
@@ -84,12 +84,22 @@ Assemblierung (`ifeq`/`ifne`/`ifgt`/`ifge`/`iflt`/`ifle`/`ifdef`/`ifndef`/
 `else`/`endc`), **Makros** (`\1`…`\9`, `\#`, `\@`) mit `rept`/`endr`, und
 der Systemaufruf `os9`.
 
-Von r68s Schaltern: `-b` (Sprungweiten selbst wählen), `-a<sym>[=<wert>]`,
-`-u=<verz>`. Angenommen und übergangen werden die Listing- und
-Meldungsschalter (`-q -l -g -e -s -n -x -c -f -r -m<n> -d<n>`), damit die
+Von r68s Schaltern: **`-o=<datei>`/`-O=<datei>`** (Ausgabedatei), `-b`
+(Sprungweiten selbst wählen), `-a<sym>[=<wert>]`, `-u=<verz>`. Angenommen
+und übergangen werden die Listing- und Meldungsschalter
+(`-q -l -g -e -s -n -x -c -f -r -m<n> -d<n>`), damit die
 Aufrufe der SDK-Makefiles unverändert laufen; `-y`, `-bt`, `-j` und `-p<n>`
 ändern die Ausgabe und werden **abgelehnt**, statt sie stillschweigend zu
 übergehen.
+
+`-o=` ist nicht Kosmetik: **von den 300 Makefiles des SDK, die `r68`
+aufrufen, benennt keines die Ausgabe über die Stellung** — alle schreiben
+`-o=$(RDIR)/$@` oder `-O=$@`. Ohne den Schalter erzeugt `qr68` zwar
+dieselben Bytes, lässt sich in den Makefiles aber nicht einsetzen. Beide
+Schreibungen kommen vor, und die Stellung relativ zur Quelle ist egal — wie
+bei r68. Ohne Ausgabeangabe schreibt r68 **gar nichts** (es gibt keinen
+Vorgabenamen); `qr68` meldet das als Aufruffehler, statt still nichts zu
+tun. Die eigene Form `qr68 <eingabe.a> <ausgabe.r>` bleibt daneben gültig.
 
 **Alles andere bricht mit Meldung ab.** Das ist Absicht: eine still falsche
 Kodierung wäre schlimmer als eine fehlende.
@@ -290,6 +300,114 @@ legt mit `move.l VectTbl(pc),0(a0)` / `move.l VectTbl+4(pc),4(a0)` die
 ersten beiden Vektoren an, und der zweite kam als `$0000` heraus statt als
 `$0004`. Bei Summand 0 fällt der Fehler nicht auf — deshalb ist er so
 lange durchgerutscht.
+
+### `-m<n>` ändert die Ausgabe — es ist kein Listing-Schalter
+
+Lange als kosmetisch abgetan; gemessen ist es der **Ziel-CPU-Schalter**, und
+er verändert das Objekt an zwei Stellen. Ein psect mit einem einzelnen
+`rts`:
+
+| `-m` | `codsz` | Füllwort |
+|---|---|---|
+| (ohne) | 4 | `$4E71` (`nop`) |
+| `-m0`, `-m1` | **2** | **kein Auffüllen auf 4** |
+| `-m2` … `-m6` | 4 | `$51FC` (`trapf`) |
+
+Ein ungerades Byte wird in allen Fällen zuerst mit `$00` auf gerade
+gebracht; nur der Schritt auf ein Vielfaches von vier hängt an `-m`.
+Dasselbe Füllwort nimmt `align` mitten im Code. Und **ab `-m2` nimmt r68
+den skalierten Index an**, darunter meldet es „illegal addressing mode".
+
+Daran hingen `cache030`/`cache040`/`cache349` in `SYSMODS/SYSCACHE` — drei
+Module aus **derselben** Quelle, gebaut mit `-m3` bzw. `-m4`.
+
+### Skalierter Index
+
+`(An,Xn*1|2|4|8)`, die Skala als Zweierlogarithmus in **Bit 10..9** des
+Erweiterungswortes:
+
+```
+move.l d1,(a5,d0*4)     -> 2b81 0c00
+move.l (a5,d0.l*8),d1   -> 2235 0e00
+```
+
+Die Skalierung steht **hinter** der Breite (`d0.l*4`). Ohne `-m2` lehnt r68
+ab — deshalb tut `qr68` es auch.
+
+### Zeichen: einfache Anführungszeichen sind eine ZAHL
+
+Der Unterschied ist scharf gemessen:
+
+| Quelle | r68 |
+|---|---|
+| `dc.b 'abc'` | **„value out of range"** — es ist der Wert `$616263` |
+| `dc.b "a"+1` | **„bad operand"** — auf einen Text kann man nicht rechnen |
+| `dc.b ')'+$80` | `$a9` |
+| `dc.b 2*'a'` | `$c2` |
+| `dc.b 'a'&$0f` | `$01` |
+| `dc.w 'ab'` / `dc.l 'abcd'` | `$6162` / `$61626364` |
+
+Ein Komma **innerhalb** der Anführungszeichen trennt dabei nicht:
+`dc.b ','+1` ist ein Operand (`$2d`). Genau davon lebt
+`RBF/DRVR/RAMDISK/ram.a:145` — `dc.b "Ram Disk (Caution: Volatile",')'+$80`.
+Als Text gelesen kamen dort zwei Bytes zu viel heraus, und alles dahinter
+verschob sich.
+
+### Makroargumente: die Anführungszeichen fallen weg
+
+`r68` entfernt die **umgebenden doppelten Anführungszeichen** eines
+Arguments. Probe — Makrorumpf `dc.b "\1",0` und `dc.b \L1`, Aufruf
+`M "abc"`:
+
+```
+61 62 63 00     \1 ist abc, OHNE Anführungszeichen
+03              \L1 zählt sie ebenfalls nicht mit
+```
+
+Ohne das entstünde `dc.b ""abc"",0`, was r68 selbst als „bad operand"
+ablehnt. Daran hingen **alle 25 SBF-Descriptoren**: ihr Makro übergibt den
+Treibernamen schon in Anführungszeichen
+(`SBFDesc …,IRQPrior,"sbviper"`) und der Rumpf setzt ihn in `dc.b "\5",0`
+ein.
+
+### Wo das Mnemonic endet
+
+Am Leerzeichen — oder direkt am Operanden, wenn der mit einem Zeichen
+beginnt, das in keinem Mnemonic vorkommt:
+
+| Quelle | |
+|---|---|
+| `ifeq(CPUType-SYS360)` | ja (so steht es im SDK) |
+| `move.l(a0),d0` | ja → `$2010` |
+| `andi.l#^$ff,d7` | ja (`ROM_CBOOT/sysinit.a:726`, MVME172) |
+| `bra.s*+2` | ja |
+| `move.l-(a0),d4` | ja |
+| `move.l$1234.w,d2` | **nein** — `$` gehört noch zum Mnemonic, r68 meldet „bad mnemonic" |
+
+### Das Labelfeld endet am Doppelpunkt
+
+Auch ohne Trennzeichen davor: `DC_GetCluts:do.b 1` (`SRC/DEFS/funcs.a:725`)
+ist Label + Direktive, nicht ein Label namens `DC_GetCluts:do.b`.
+
+### Wann ein `:`-Label global wird
+
+Zwei Regeln, beide gemessen:
+
+- **Nur innerhalb des psect.** Labels davor und nach `ends` stehen nicht in
+  der Globalenliste. Daran hingen sechs `*stat`-Dateien in `SRC/DEFS`, die
+  ihre Feldabstände per `use` noch **vor** der psect-Zeile holen: r68 legt
+  für `scfstat.a` null Globale an, `qr68` legte 21 an.
+- **Ein `set`-Symbol wird nie global** — und ein **neues** mit Doppelpunkt
+  lehnt r68 sogar ganz ab:
+
+  ```
+  Z:  set 2              -> "illegal global symbol", keine Ausgabe
+  X   set 0 / X: set 1   -> angenommen, X ist NICHT global
+  ```
+
+  Der zweite Fall steht im Korpus: `SYSMODS/INIT/init.a:165` setzt
+  `Compat set 0`, und `PORTS/RUSSBOX/systype.d:184` überschreibt es mit
+  `Compat: set $00`.
 
 ### Was sonst noch nur durchs Messen kam
 
@@ -674,17 +792,32 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
   Zeile schreiben**, auch wenn sie über 79 Zeichen gehen. (Zeiger-
   Ausgabeparameter wie `void f(int *p)` kann QCC dagegen sehr wohl —
   nachgemessen, nicht vermutet.)
+
+  **Und kein zweistufiger Index auf ein Zeigerfeld.** `macArgP[i][k]` bei
+  `char *macArgP[9]` meldet QCC als „array is not two-dimensional" (plus
+  „pointer comparison expects char*, got int"). Anders als die
+  Stringverkettung nennt es dafür immerhin Zeile und Grund. Abhilfe ist ein
+  Zwischenzeiger: `ap = macArgP[i]; ap[k] = …`.
 - **Zeilenenden LF, CR+LF und CR** werden alle verstanden. OS-9-Textdateien
   enden mit CR — bei `qcpp` hat genau das im Emulator dafür gesorgt, dass die
   ganze Datei eine Zeile war.
 - **An Modellgrenzen wird abgebrochen**, nicht geraten.
 
-## Wo es beim Treiberkorpus noch klemmt
+## Der Korpus, mit den Aufrufen des SDK selbst
 
-`./test/mwos.sh` fährt Quellen des SDK aus einem Port-Verzeichnis, so wie es
-die SDK-Makefiles tun (`-qb -u=. -u=<DEFS> -u=<MACROS>`). Gezählt wird nur,
-was `r68` selbst übersetzt — die meisten übersprungenen brauchen
-Definitionen anderer Boards:
+**`./test/sdkdiff.sh` ist der Prüfstand, auf den es ankommt:
+289 Quellen byteidentisch, eine einzige Abweichung — und die ist eine
+bewusste Verweigerung** (`sc68990`, s. u.).
+
+Er kommt ohne jede Handkonfiguration aus (s. u.), und genau das war der
+Punkt: die vorherige Zahl von 78 stammte aus geratenen Portverzeichnissen,
+und in den 211 Quellen, die dadurch nie geprüft wurden, steckten **elf
+echte Fehler** — vier davon still, also ohne Abbruch und mit falschen Bytes.
+Wer nur zählt, was durchläuft, misst seine eigene Konfiguration.
+
+Der ältere `./test/mwos.sh` bleibt daneben nützlich, wenn man eine bestimmte
+Gruppe aus einem bestimmten Port fahren will; er bekommt
+`PORTDIR`/`DRVDIR`/`UEXTRA` von Hand:
 
 | Gruppe | Ergebnis |
 |---|---|
@@ -704,6 +837,50 @@ dieselben bewussten Verweigerungen bleibt alles byteidentisch.
 ```
 PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
 ```
+
+### Die Aufrufe aus den Makefiles holen, statt sie zu raten
+
+`./test/sdkdiff.sh` fährt denselben Vergleich, aber **ohne dass die
+Portkonfiguration von Hand gesetzt werden muss**. Der Hebel ist ein
+Trockenlauf des SDK-eigenen Make:
+
+```
+MWMAKEOPTS=-u  os9make -nn -u
+```
+
+`-nn` **druckt** die Kommandos, statt sie auszuführen, und steigt dabei in
+die Untermakes ab; `MWMAKEOPTS=-u` sorgt dafür, dass auch die Untermakes
+alles bauen wollen — sonst schweigen sie, weil die `.r`-Dateien im Baum
+schon liegen. Heraus kommt jede `r68`-Kommandozeile mit ihren echten
+Schaltern, Suchverzeichnissen und `-a`-Definitionen:
+
+```
+r68 -q  -u=. -u=..\..\..\..\SRC\DEFS ..\..\..\..\SRC\IO\SCF\DESC\term.a -o=RELS\term.r
+r68 -qb -u=. -u=..\..\..\..\SRC\DEFS -u=..\..\..\..\SRC\MACROS -aNODATAPORT \
+        ..\..\..\..\SRC\IO\SCF\DRVR\sc8x30.a -o=RELS\sc172.r
+```
+
+In den SDK-Baum wird dabei **nichts** geschrieben: `os9make` führt nichts
+aus, und die `-o=`-Angabe biegt das Skript auf ein Temporärverzeichnis um.
+Damit fällt das Raten weg, das `test/mwos.sh` nötig macht — und mit ihm der
+Verdacht, ein „übersprungen" sei eine Portfrage und kein Befund.
+
+Der Lauf über alle 195 Verzeichnisse mit einem `makefile`:
+
+```
+651 Aufrufe: 289 gleich, 1 abweichend, 130 uebersprungen, 231 doppelt
+```
+
+- **289 gleich** — byteidentisch, Kopf, Code, Globale und Referenzen.
+- **1 abweichend** — `sc68990`, eine der bewussten Verweigerungen.
+- **231 doppelt** — `-nn` steigt in die Untermakes ab und druckt deren
+  Kommandos mit dem Arbeitsverzeichnis **des Kindes**. Da jedes Verzeichnis
+  mit einem `makefile` ohnehin einzeln angefahren wird, sind das
+  Wiederholungen; das Skript weist sie getrennt aus, statt sie als Lücke
+  erscheinen zu lassen.
+- **130 übersprungen** — dieselbe Klasse, nur liegt das Verzeichnis des
+  Untermakes tiefer, als die Suche reicht. Stichprobe: `tickgeneric`,
+  `scsiglue` und `syscalls` stehen sämtlich unter den 289 geprüften.
 
 `UEXTRA` nimmt weitere Suchverzeichnisse auf. Der ROM-Code braucht das:
 `ROM_CBOOT/sysinit.a` holt `systype.d` aus dem **Wurzelverzeichnis** des
@@ -815,15 +992,30 @@ keiner der hier vorhandenen RBF-Portkonfigurationen durch, weil die Makros
 - **Das 1,18-MB-Modul** ist kein qr68-Problem, sondern QCCs Datenmodell
   (s. o.).
 
+### Was der Makefile-Prüfstand gekostet hat — und warum er sich lohnte
+
+Elf Fehler in 211 Quellen, die vorher nie geprüft wurden. **Vier davon
+liefen ohne Abbruch durch und lieferten still falsche Bytes** — die
+Zeichenkonstante in `ram.a`, die überzähligen Globalen der `*stat`-Dateien,
+das Füllwort unter `-m3`/`-m4` und der PC-relative Summand. Genau diese
+Klasse findet ein Testlauf, der nur „bricht ab / bricht nicht ab" prüft,
+grundsätzlich nicht.
+
+Und zweimal war die eigene frühere Messung schuld: „r68 kennt den
+skalierten Index nicht" und „`-m<n>` ist kosmetisch" stimmten beide nur,
+weil die Probe den Schalter nicht gesetzt hatte. **Wer eine Fähigkeit
+ausschließt, muss sie mit den Schaltern prüfen, unter denen sie benutzt
+wird.**
+
 ### Noch nicht geprüfte Korpusteile
 
-Dateimanager, SCSI, der Rest von `ROM/CBOOT` (DISK, NETWORK, SYSBOOT) und
-die Ports, für die hier die Board-Definitionen fehlen. `sysinit.a` aus
-`ROM/CBOOT` ist jetzt aus fünf Ports geprüft und war der ergiebigste Teil:
-drei der oben genannten Lücken kamen von dort. Die übrigen `ROM/CBOOT`-
-Verzeichnisse sind der nächste Kandidat — „ungeprüft" ist nicht „geprüft",
-und die Annahme, die Befundrate sei erschöpft, hat sich hier gerade als
-falsch erwiesen.
+Alles, was **kein Makefile-Ziel** ist, sieht `sdkdiff.sh` nicht: Quellen,
+die nur per `use` eingebunden werden, und Verzeichnisse ohne `makefile`.
+Ebenso die Ports, für die hier die Board-Definitionen fehlen — dort kommt
+`r68` selbst nicht durch, und ohne Orakel gibt es nichts zu vergleichen.
+
+Der nächste Schritt wäre, den Prüfstand um die **Kommandozeilen der
+`*.make`-Dateien** zu erweitern, die kein `makefile` daneben haben.
 
 ## Nächste Schritte
 

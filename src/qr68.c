@@ -255,6 +255,8 @@ static int dtSec = 0;
 
 static int optVerbose;
 static int optBranch;          /* -b: Sprungweiten selbst waehlen */
+static int optMpu;             /* -m<n>: Ziel-CPU */
+static int optMpuSet;          /* 1 = -m<n> war angegeben */
 static int pass;               /* Nummer des Durchlaufs, ab 1 */
 static int emitting;           /* 1 = letzter Durchlauf, Ausgabe in die Puffer */
 static int symMoved;           /* 1 = in diesem Durchlauf hat sich ein Wert bewegt */
@@ -1347,10 +1349,16 @@ static int splitLine(void)
 	if (c == '*' || c == ';')
 		return 0;
 
-	/* Labelfeld */
+	/* Labelfeld. Es endet am Leerzeichen ODER am Doppelpunkt -- und zwar
+	   auch dann, wenn das Mnemonic OHNE Trennzeichen folgt: in
+	   SRC/DEFS/funcs.a:725 steht "DC_GetCluts:do.b 1", und r68 nimmt das
+	   an (gemessen: "lab1:nop" ergibt $4e71 mit dem globalen Label lab1
+	   auf 0). Ohne diese Regel wurde "DC_GetCluts:do.b" zum Label und
+	   "1" zum Mnemonic. */
 	if (!isSpaceCh(c)) {
 		n = 0;
-		while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255)) {
+		while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255) &&
+		       lxTmp[i] != ':') {
 			if (n + 1 >= 256)
 				fatal("Label zu lang", "");
 			lnLabel[n] = lxTmp[i];
@@ -1358,9 +1366,9 @@ static int splitLine(void)
 			i++;
 		}
 		lnLabel[n] = 0;
-		if (n > 0 && lnLabel[n - 1] == ':') {
-			lnLabel[n - 1] = 0;
+		if (lxTmp[i] == ':') {
 			lnGlobal = 1;
+			i++;
 		}
 	}
 
@@ -1368,11 +1376,21 @@ static int splitLine(void)
 	while (lxTmp[i] != 0 && isSpaceCh(lxTmp[i] & 255))
 		i++;
 	n = 0;
-	/* Das Mnemonic endet am Leerzeichen ODER an einer Klammer: im SDK
-	   steht " ifeq(CPUType-SYS360)" ohne Leerzeichen, und r68 nimmt das
-	   an (auch "move.l(a0),d0" -> $2010, gemessen). */
+	/* Das Mnemonic endet am Leerzeichen -- oder direkt am Operanden, wenn
+	   der mit einem Zeichen anfaengt, das in keinem Mnemonic vorkommt.
+	   Gemessen, welche das sind:
+	     "ifeq(CPUType-SYS360)"  ja   (so steht es im SDK)
+	     "move.l(a0),d0"         ja   -> $2010
+	     "andi.l#^$ff,d7"        ja   (ROM_CBOOT/sysinit.a:726, MVME172)
+	     "moveq#7,d3"            ja
+	     "bra.s*+2"              ja   (r68 meldet nur die Sprungweite)
+	     "move.l-(a0),d4"        ja
+	     "move.l$1234.w,d2"      NEIN -- "$" gehoert noch zum Mnemonic,
+	                                    r68 meldet "bad mnemonic"
+	   Das "$" ist also KEIN Trennzeichen, die anderen vier schon. */
 	while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255) &&
-	       lxTmp[i] != '(') {
+	       lxTmp[i] != '(' && lxTmp[i] != '#' && lxTmp[i] != '*' &&
+	       lxTmp[i] != '-') {
 		if (n + 1 >= 64)
 			fatal("Mnemonic zu lang", "");
 		lnOpRaw[n] = lxTmp[i];
@@ -1581,15 +1599,23 @@ static void doDc(int size)
 		fatal("dc ohne Operanden", "");
 
 	while (p[i] != 0) {
-		/* Zeichenkette? */
-		if (p[i] == '"' || p[i] == 39) {
-			q = p[i];
+		/* Zeichenkette -- aber NUR in doppelten Anfuehrungszeichen.
+		   In einfachen steht eine ZAHL, kein Text: an r68 gemessen
+		   lehnt "dc.b 'abc'" mit "value out of range" ab (es ist der
+		   Wert $616263), waehrend "dc.b \"a\"+1" mit "bad operand"
+		   abgelehnt wird -- auf einen Text kann man nicht rechnen.
+		   Werte: 'a' -> $61, 'ab' -> $6162, 'abcd' -> $61626364,
+		   und gerechnet werden darf: ')'+$80 -> $a9, 2*'a' -> $c2,
+		   'a'&$0f -> $01. Genau davon lebt
+		   RBF/DRVR/RAMDISK/ram.a:145 (dc.b "...Volatile",')'+$80) --
+		   als Text gelesen kamen dort zwei Bytes zu viel heraus. */
+		if (p[i] == '"') {
 			i++;
-			while (p[i] != 0 && p[i] != q) {
+			while (p[i] != 0 && p[i] != '"') {
 				emitByte(p[i] & 255);
 				i++;
 			}
-			if (p[i] == q)
+			if (p[i] == '"')
 				i++;
 			if (p[i] == ',')
 				i++;
@@ -1597,13 +1623,22 @@ static void doDc(int size)
 		}
 		start = i;
 		depth = 0;
+		q = 0;
 		while (p[i] != 0) {
-			if (p[i] == '(')
+			if (q != 0) {
+				/* In Anfuehrungszeichen trennt ein Komma nicht --
+				   "dc.b ','+1" ist EIN Operand (gemessen: $2d). */
+				if (p[i] == q)
+					q = 0;
+			} else if (p[i] == '"' || p[i] == 39) {
+				q = p[i];
+			} else if (p[i] == '(') {
 				depth++;
-			else if (p[i] == ')')
+			} else if (p[i] == ')') {
 				depth--;
-			else if (p[i] == ',' && depth == 0)
+			} else if (p[i] == ',' && depth == 0) {
 				break;
+			}
 			i++;
 		}
 		len = i - start;
@@ -1658,11 +1693,23 @@ static void doDs(int size)
 	fatal("ds ohne Abschnitt", "");
 }
 
-/* Gemessen: im CODE fuellt r68 mit NOP ($4E71) auf -- ein einzelnes
-   ungerades Byte davor aber mit 0, denn ein NOP ist ein WORT und braucht
-   selbst eine gerade Adresse. In den initialisierten Daten wird durchgehend
-   mit 0 gefuellt ("d1 dc.b 1 / align 4 / d2 dc.l 7" ergibt
-   "01 00 00 00 00 00 00 07"). */
+/* Gemessen: im CODE fuellt r68 mit einem Leerbefehl auf -- ein einzelnes
+   ungerades Byte davor aber mit 0, denn der Leerbefehl ist ein WORT und
+   braucht selbst eine gerade Adresse. In den initialisierten Daten wird
+   durchgehend mit 0 gefuellt ("d1 dc.b 1 / align 4 / d2 dc.l 7" ergibt
+   "01 00 00 00 00 00 00 07").
+   WELCHER Leerbefehl, haengt an -m<n>: ohne Angabe ist es NOP ($4E71), ab
+   -m2 aber TRAPF ($51FC) -- der 2-Byte-Leerbefehl des 68020. Gemessen an
+   "dc.b 1 / align 4 / rts / rts": ohne -m kommt $4e71, mit -m2 $51fc.
+   Daran hingen cache030/cache040/cache349 in SYSMODS/SYSCACHE, die aus
+   derselben Quelle mit -m3 bzw. -m4 gebaut werden. */
+static int fillWord(void)
+{
+	if (optMpuSet && optMpu >= 2)
+		return 0x51FC;
+	return 0x4E71;
+}
+
 /* "do.b/.w/.l [anzahl]" -- legt einen Namen auf den org-Zaehler und schiebt
    ihn weiter. Liefert die Adresse, die das Label der Zeile bekommt. */
 static int doDo(int size)
@@ -1712,7 +1759,7 @@ static void doAlign(void)
 		if ((curPC % a) != 0 && (curPC % 2) != 0)
 			emitByte(0);
 		while ((curPC % a) != 0)
-			emitWord(0x4E71);
+			emitWord(fillWord());
 		return;
 	}
 	while ((curPC % a) != 0)
@@ -1749,6 +1796,7 @@ static int oSect[2];
 static int oExt[2];
 static int oIdx[2];            /* 0..7 = dN, 8..15 = aN, -1 = keiner */
 static int oIdxL[2];           /* 1 = .l, 0 = .w */
+static int oIdxScale[2];       /* Zweierlogarithmus der Skalierung: 0..3 */
 static int oOpen[2];           /* 1 = Wert im ersten Durchlauf noch offen */
 static int oN;                 /* Zahl der Operanden dieser Zeile */
 
@@ -1912,6 +1960,7 @@ static void parseOperand(const char *s, int k)
 	termN[k] = 0;
 	oIdx[k] = -1;
 	oIdxL[k] = 1;
+	oIdxScale[k] = 0;
 
 	n = strLen(s);
 	if (n == 0)
@@ -2021,6 +2070,28 @@ static void parseOperand(const char *s, int k)
 				int ilen;
 
 				ilen = (ie - 1) - (comma + 1);
+				/* Skalierung mit 1, 2, 4 oder 8 -- sie steht HINTER
+				   der Breite ("d0.l*4"). r68 nimmt sie erst ab
+				   -m2 an, darunter meldet es "illegal addressing
+				   mode" (gemessen ueber -m0..-m6). Im Korpus
+				   steht sie in SRC/IO/SCF/DRVR/sc68360.a und in
+				   den CPU32-Ports, die mit -m2 gebaut werden. */
+				if (ilen >= 2 && s[comma + ilen - 1] == '*') {
+					c = s[comma + 1 + ilen - 1] & 255;
+					if (c == '1')
+						oIdxScale[k] = 0;
+					else if (c == '2')
+						oIdxScale[k] = 1;
+					else if (c == '4')
+						oIdxScale[k] = 2;
+					else if (c == '8')
+						oIdxScale[k] = 3;
+					else
+						fatal("Skalierung weder *1, *2, *4 noch *8: ", s);
+					if (!(optMpuSet && optMpu >= 2))
+						fatal("skalierter Index erst ab -m2 -- r68 V2.9.1 lehnt ihn darunter ab: ", s);
+					ilen = ilen - 2;
+				}
 				if (ilen > 2 && s[comma + 1 + ilen - 2] == '.') {
 					c = lowerCh(s[comma + ilen] & 255);
 					if (c == 'w')
@@ -2178,7 +2249,8 @@ static void emitEa(int k, int size)
 			if (d < -128 || d > 127)
 				fatal("Index-Displacement passt nicht in 8 Bit: ",
 				      lnArg);
-			emitByte(((oIdx[k] & 15) << 4) | (oIdxL[k] << 3));
+			emitByte(((oIdx[k] & 15) << 4) | (oIdxL[k] << 3) |
+				 (oIdxScale[k] << 1));
 			refTerms(k, 1);
 			emitByte(d & 255);
 			return;
@@ -2198,7 +2270,8 @@ static void emitEa(int k, int size)
 		}
 		if (d < -128 || d > 127)
 			fatal("Index-Displacement passt nicht in 8 Bit: ", lnArg);
-		emitWord(((oIdx[k] & 15) << 12) | (oIdxL[k] << 11) | (d & 255));
+		emitWord(((oIdx[k] & 15) << 12) | (oIdxL[k] << 11) |
+			 (oIdxScale[k] << 9) | (d & 255));
 		return;
 	}
 	if (m == AM_PCD) {
@@ -2482,7 +2555,7 @@ static void expPut(int c)
 /* Schreibt den Rumpf [from..to) rueckwaerts in den Ausdehnungsspeicher und
    ersetzt dabei die Platzhalter. Rueckwaerts, weil der Speicher von oben
    nach unten waechst -- das Ergebnis steht danach vorwaerts richtig. */
-static void macSubstitute(int from, int to, const char *argp[], int argN,
+static void macSubstitute(int from, int to, char *argp[], int argN,
 			  int serial)
 {
 	int i;
@@ -2550,7 +2623,7 @@ static void macSubstitute(int from, int to, const char *argp[], int argN,
 }
 
 static char macArgBuf[1024];
-static const char *macArgP[9];
+static char *macArgP[9];
 
 /* Zerlegt das Operandenfeld des Aufrufs in bis zu neun Argumente.
    An r68 gemessen: getrennt wird an JEDEM Komma -- Klammern zaehlen NICHT
@@ -2601,6 +2674,32 @@ static int macSplitArgs(void)
 			fatal("Makroargumente zu lang: ", lnArg);
 		macArgBuf[out] = c;
 		out++;
+	}
+
+	/* r68 entfernt die umgebenden doppelten Anfuehrungszeichen eines
+	   Arguments. Gemessen an einem Makro mit dem Rumpf
+	     dc.b "\1",0 / dc.b \L1
+	   und dem Aufruf M "abc": heraus kommt $61 $62 $63 $00 und die Laenge
+	   $03 -- \1 ist also "abc" OHNE die Anfuehrungszeichen, und \Ln zaehlt
+	   sie ebenfalls nicht mit. Setzte man sie mit ein, entstuende
+	   "dc.b ""abc"",0", was r68 selbst als "bad operand" ablehnt.
+	   Daran haengen alle SBF-Descriptoren: ihr Makro uebergibt den
+	   Treibernamen schon in Anfuehrungszeichen
+	   (SBFDesc ...,IRQPrior,"sbviper") und der Rumpf setzt ihn in
+	   dc.b "\5",0 ein. */
+	/* Der Zwischenzeiger ist Absicht: "macArgP[i][k]" waere ein
+	   zweistufiger Index auf ein Zeigerfeld, und den kann QCC nicht
+	   ("array is not two-dimensional"). */
+	for (i = 0; i < argN; i++) {
+		char *ap;
+		int al;
+
+		ap = macArgP[i];
+		al = strLen(ap);
+		if (al >= 2 && ap[0] == '"' && ap[al - 1] == '"') {
+			ap[al - 1] = 0;
+			macArgP[i] = ap + 1;
+		}
 	}
 	return argN;
 }
@@ -5315,6 +5414,16 @@ static void runPass(void)
 		/* Ab hier steht der Ort der Zeile fest -- das ist "*". */
 		stmtPC = curPC;
 
+		/* Ein ":"-Label wird nur dann GLOBAL, wenn es INNERHALB des
+		   psect steht. Gemessen an einer Probe mit Labels davor, darin
+		   und nach "ends": nur die inneren stehen in r68s
+		   Globalenliste. Daran haengen die *stat-Dateien in SRC/DEFS,
+		   die ihre Feldabstaende per "use" noch VOR der psect-Zeile
+		   holen -- r68 legt fuer scfstat.a null Globale an, qr68 legte
+		   21 an. Der Wert des Symbols gilt in beiden Faellen. */
+		if (curSect == SECT_NONE)
+			lnGlobal = 0;
+
 		/* Label setzen, bevor der Befehl den Ort veraendert. */
 		if (lnLabel[0] != 0) {
 			int name;
@@ -5331,6 +5440,31 @@ static void runPass(void)
 				int v;
 				int sx;
 
+				/* Ein "set"-Symbol wird NIE global -- und ein
+				   NEUES mit Doppelpunkt lehnt r68 sogar ab.
+				   Gemessen (auch aus einer Include-Datei, auch
+				   mit -q, auch in einer ifdef-Klammer):
+				     Z:  set 2                 "illegal global
+				                                symbol", keine
+				                                Ausgabe
+				     X   set 0 / X: set 1      angenommen, X ist
+				                                NICHT global
+				   Genau der zweite Fall steht im Korpus:
+				   SYSMODS/INIT/init.a:165 setzt "Compat set 0",
+				   und PORTS/RUSSBOX/systype.d:184 ueberschreibt
+				   es mit "Compat: set $00". qr68 machte daraus
+				   einen Globalen, den r68 nicht hat.
+				   Bei "X: equ 1" ist der Doppelpunkt dagegen
+				   ganz normal. */
+				if (opIs("set") && lnGlobal) {
+					int si;
+
+					si = symFind(name);
+					if (si < 0 || !symDefined[si])
+						fatal("neues \"set\"-Symbol mit Doppelpunkt -- r68 meldet dafuer \"illegal global symbol\": ",
+						      lnLabel);
+					lnGlobal = 0;
+				}
 				v = evalExpr(lnArg);
 				/* Steht rechts GENAU EIN externer Name, erbt
 				   das Symbol ihn: "IRQCtrl equ u_icr" (so in
@@ -5510,23 +5644,27 @@ static void writeRof(void)
 	int seen;
 
 	/* r68 fuellt den Code auf ein Vielfaches von vier auf: erst ein
-	   NULLBYTE, falls die Laenge ungerade ist, dann NOPs. Beides gemessen
-	   -- ein einzelnes "rts" ergibt codsz=4 mit $4E71 dahinter, und eine
-	   Quelle, die auf einer ungeraden Laenge endet (644475), wird mit
-	   genau EINEM $00 auf 644476 gebracht. Ohne den ersten Schritt kaeme
-	   eine ungerade Laenge nie auf ein Vielfaches von vier. */
-	if ((codeN % 4) != 0 && (codeN % 2) != 0) {
+	   NULLBYTE, falls die Laenge ungerade ist, dann Leerbefehle. Beides
+	   gemessen -- ein einzelnes "rts" ergibt codsz=4 mit $4E71 dahinter,
+	   und eine Quelle, die auf einer ungeraden Laenge endet (644475),
+	   wird mit genau EINEM $00 auf 644476 gebracht. Ohne den ersten
+	   Schritt kaeme eine ungerade Laenge nie auf ein Vielfaches von vier.
+	   Der zweite Schritt haengt an -m<n> (s. fillWord() und die
+	   Optionsauswertung): mit -m0/-m1 unterbleibt er ganz. */
+	if ((codeN % 2) != 0) {
 		if (codeN >= CODE_MAX)
 			fatal("Codespeicher voll (CODE_MAX)", "");
 		codeBuf[codeN] = 0;
 		codeN++;
 	}
-	while ((codeN % 4) != 0) {
-		if (codeN + 1 >= CODE_MAX)
-			fatal("Codespeicher voll (CODE_MAX)", "");
-		codeBuf[codeN] = 0x4E;
-		codeBuf[codeN + 1] = 0x71;
-		codeN = codeN + 2;
+	if (!(optMpuSet && optMpu <= 1)) {
+		while ((codeN % 4) != 0) {
+			if (codeN + 1 >= CODE_MAX)
+				fatal("Codespeicher voll (CODE_MAX)", "");
+			codeBuf[codeN] = (fillWord() >> 8) & 255;
+			codeBuf[codeN + 1] = fillWord() & 255;
+			codeN = codeN + 2;
+		}
 	}
 
 	/* Die beiden Datengroessen werden ebenfalls auf ein Vielfaches von
@@ -5773,6 +5911,9 @@ static void usage(void)
 {
 	printf("qr68 -- 68k-Assembler der Q9-Kette, Ausgabe als OS-9-ROF\n");
 	printf("Aufruf: qr68 [Optionen] <eingabe.a> <ausgabe.r>\n");
+	printf("    oder qr68 [Optionen] -o=<ausgabe.r> <eingabe.a>\n");
+	printf("  -o=<datei>, -O=<datei> Ausgabedatei (wie r68 -- so rufen die\n");
+	printf("                        SDK-Makefiles den Assembler auf)\n");
 	printf("  -v                    gelesene/geschriebene Byteanzahl melden\n");
 	printf("  -u=<verz>             Suchverzeichnis fuer \"use <datei>\"\n");
 	printf("  -a<sym>[=<wert>]      Symbol setzen (ohne Wert: 1)\n");
@@ -5857,10 +5998,33 @@ int main(int argc, char **argv)
 			       a);
 			exit(2);
 		}
-		if (a[0] == '-' && (a[1] == 'm' || a[1] == 'd') && a[2] != 0) {
-			/* -m<n> waehlt bei r68 die Ziel-CPU, -d<n> die
-			   Zeilenzahl je Listenseite. Beides beeinflusst nur
-			   Warnungen und das Listing, nicht die Ausgabe. */
+		if (a[0] == '-' && a[1] == 'm' && a[2] != 0) {
+			/* -m<n> waehlt die Ziel-CPU -- und das AENDERT DIE
+			   AUSGABE, anders als hier lange angenommen. Gemessen
+			   an einem psect mit einem einzelnen "rts":
+			     ohne -m      codsz=4, aufgefuellt mit $4e71 (nop)
+			     -m0 / -m1    codsz=2, GAR NICHT auf 4 aufgefuellt
+			     -m2 .. -m6   codsz=4, aufgefuellt mit $51fc
+			   $51fc ist "trapf", der 2-Byte-Leerbefehl des 68020.
+			   Dasselbe gilt fuer "align" mitten im Code. Ab -m2
+			   nimmt r68 ausserdem den SKALIERTEN INDEX an, darunter
+			   lehnt es ihn ab ("illegal addressing mode").
+			   Daran haengen SYSCACHE (cache030/040/349 werden mit
+			   -m3/-m4 gebaut) und die CPU32-Ports (-m2). */
+			optMpu = 0;
+			k = 2;
+			while (a[k] >= '0' && a[k] <= '9') {
+				optMpu = optMpu * 10 + (a[k] - '0');
+				k++;
+			}
+			if (a[k] != 0)
+				fatal("-m erwartet eine Zahl: ", a);
+			optMpuSet = 1;
+			continue;
+		}
+		if (a[0] == '-' && a[1] == 'd' && a[2] != 0) {
+			/* -d<n> ist die Zeilenzahl je Listenseite -- betrifft
+			   nur das Listing. */
 			continue;
 		}
 		if (argEq(a, "-l") || argEq(a, "-g") || argEq(a, "-e") ||
@@ -5871,10 +6035,17 @@ int main(int argc, char **argv)
 			   unveraendert laufen. */
 			continue;
 		}
-		if (argEq(a, "-q")) {
+		if (a[0] == '-' && a[1] == 'q') {
 			/* r68 unterdrueckt damit Warnungen; qr68 gibt ohnehin
 			   nur Fehler aus. Angenommen, damit die Aufrufe der
-			   SDK-Makefiles unveraendert laufen. */
+			   SDK-Makefiles unveraendert laufen -- und zwar auch
+			   MIT angehaengtem Text: das Makefile von
+			   CPU32/PORTS/QUADS/ROM_CBOOT schreibt "-qQUADS360"
+			   (offenbar ein vertipptes "-a"), und r68 verwirft den
+			   Zusatz stillschweigend. Gemessen: "-qQUADS360"
+			   definiert das Symbol QUADS360 NICHT, es wirkt genau
+			   wie ein nacktes "-q". ("-qb" faengt der Zweig
+			   darueber ab.) */
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'a' && a[2] != 0) {
@@ -5907,6 +6078,25 @@ int main(int argc, char **argv)
 				fatal("zu viele -u=-Verzeichnisse (USEDIR_MAX)", "");
 			useDirs[useDirN] = intern(&a[k]);
 			useDirN++;
+			continue;
+		}
+		k = argStarts(a, "-o=");
+		if (k == 0)
+			k = argStarts(a, "-O=");
+		if (k > 0 && a[k] != 0) {
+			/* So benennen die SDK-Makefiles die Ausgabe -- und zwar
+			   ausnahmslos: von den 300 Makefiles, die r68 aufrufen,
+			   benutzt keines die Stellung. Beide Schreibungen kommen
+			   vor ("-o=$(RDIR)/$@" und "-O=$@"), und die Stellung
+			   relativ zur Quelle ist r68 egal (gemessen). Ohne
+			   Ausgabeangabe schreibt r68 GAR NICHTS -- es gibt keinen
+			   Vorgabenamen; qr68 bleibt dabei, das als Aufruffehler
+			   zu melden, statt still nichts zu tun. */
+			if (outPath != 0) {
+				printf("qr68: Ausgabedatei zweimal angegeben: %s\n", a);
+				exit(2);
+			}
+			outPath = &a[k];
 			continue;
 		}
 		k = argStarts(a, "-fdate=");
