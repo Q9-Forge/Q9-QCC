@@ -117,9 +117,9 @@ beiden Codezeiger), Liste 2 nennt `$000c` (den Datenzeiger), `w1` kommt in
 keiner Liste vor. Beim leeren Modul sind beide Listen leer — daher die acht
 Nullbytes plus ein Füllbyte auf gerade Länge.
 
-### Der A6-Bias von `$8000`
+### Der Datenbias von `$8000` — aber nur bei Programmen
 
-Der Zugriff auf die eigenen Daten läuft über `a6` — und `a6` zeigt **nicht**
+Ein Programm greift über `a6` auf seine Daten zu, und `a6` zeigt **nicht**
 auf den Anfang des Datenbereichs, sondern `$8000` dahinter. So reicht ein
 16-Bit-Displacement ±32K weit statt nur 0…32K.
 
@@ -127,6 +127,53 @@ Gemessen: aus `move.l zeiger(a6),d1` mit `zeiger` auf Datenoffset `$000c`
 macht `l68` das Displacement **`$800c`**. Der Bias gilt nur für dieses
 Displacement im Code — ein 32-Bit-Zeiger *in* den Daten bleibt
 unvorgespannt (`p3 dc.l p1` mit `p1` auf Offset 0 ergibt 0).
+
+**Ein Treiber kennt den Vorspann nicht.** Er bekommt seinen statischen
+Speicher direkt (in `a2`): aus `move.w d2,$001c(a2)` im Treiber `sc172`
+macht `l68` genau `$001c`. Der Bias hängt also am **Modultyp**, nicht am
+Register — eine zu breite Regel hatte hier zunächst ein Byte verdorben.
+
+### Die Zeigerlisten sind nicht sortiert
+
+`l68` stellt jeden neuen Eintrag **vorne an** (LIFO). Bei einem einzelnen
+psect sieht das Ergebnis aufsteigend aus, weil der ROF seine lokalen
+Referenzen absteigend liefert — ein Trugschluss, den erst der zweite psect
+aufdeckt: zwei Codezeiger auf Datenoffset `$10` (Wurzel) und `$18`
+(zweiter psect) ergeben die Liste **`$18, $10`**.
+
+### Der Modulaufbau hängt am Typ
+
+| Typ | Struktur | Erweiterung | Name | IData/IRefs |
+|---|---|---|---|---|
+| 15 Devic | `mod_dev` | keine feste — der ROF-Code liefert sie | **hinter** dem Code | nein |
+| 14 Drivr | `mod_driver` | `_mexec`/`_mexcpt`/`_mdata` (12 Byte), Rest aus dem Code | **hinter** dem Code | nein |
+| sonst | `mod_exec` | 24 Byte mit Stack, IData, IRefs | **vor** dem Code | ja |
+
+Bei Descriptor und Treiber gibt es die Abschnitte nicht, weil die
+Strukturen die Felder nicht haben — ein Treiber mit initialisierten Daten
+braucht bei `l68` eigens `-i`.
+
+Gemessen an `sc8x30.a` (Treiber `sc172`): `_mexec = $3c` zeigt auf die
+Routinentabelle, die die **ersten 14 Codebytes** sind; `_mdata = $114`
+sind die 276 Byte `ds`; der Name liegt auf `$664 = $3c + 1576`.
+
+### Mehrere psects
+
+Code in Reihenfolge der Kommandozeile, ohne Auffüllen dazwischen. Der
+**Datenbereich** dagegen gruppiert: **erst alle reservierten Daten aller
+psects, dann alle initialisierten** (Handbuch Abb. 9-2). Nachgemessen an
+zwei psects: `mvar` landet auf `$0c`, `svar` auf `$14`.
+
+Nur der **erste** ROF darf einen Wurzel-psect haben (Typ/Sprache ≠ 0); aus
+ihm allein entsteht der Modulkopf.
+
+### Abziehende und relative Referenzen
+
+Bit 6 heißt „den Wert **abgezogen** eintragen" — so entsteht die Differenz
+zweier Bezüge in einem Ausdruck (`PD_PAR-PD_OPT+M$DTyp(a1)` legt drei
+Referenzen auf denselben Offset ab, eine davon mit diesem Bit). Bit 7 heißt
+**relativ zur Referenzstelle**: `jsr sub1(pc)` mit `sub1` auf `$5a` und dem
+Erweiterungswort auf `$52` ergibt `$0008`.
 
 ### Zwei Kleinigkeiten, die man sonst sucht
 
@@ -175,8 +222,8 @@ Codebasis `$30`.
 
 ## Stand
 
-**Ein einzelner ROF wird byteidentisch zu `l68` gebunden — auch echte
-SDK-Module.**
+**Programme, Descriptoren und Treiber werden byteidentisch zu `l68`
+gebunden — auch aus mehreren ROFs.**
 
 | Probe | Inhalt | Ergebnis |
 |---|---|---|
@@ -184,7 +231,9 @@ SDK-Module.**
 | `test/dat.a` | Code, `dc`- und `ds`-Daten, ein `a6`-Displacement | **byteidentisch** (118 Byte) |
 | `test/ref.a` | vier Zeiger: zweimal Code, einmal Daten, einer ohne Bezug | **byteidentisch** (130 Byte) |
 
+| `test/multi*.a` | zwei psects, Aufruf über psect-Grenze, Daten beider | **byteidentisch** (142 Byte) |
 | **7 SCF-Descriptoren des SDK** (`term`, `t1`–`t3`, `p1`–`p3`) | mit `sys.l`, `-gu=0.0`, `-p=577`, je ~24 externe Referenzen | **byteidentisch** |
+| **Der SCF-Treiber `sc172`** (aus `sc8x30.a`) | 1576 Byte Code, 276 Byte Daten, abziehende Referenzen | **byteidentisch** (1646 Byte) |
 
 `./test/difftest.sh` fährt die eigenen Proben, `./test/descs.sh` die
 Descriptoren des SDK mit den Aufrufen aus dessen Makefile. Beide
@@ -194,13 +243,9 @@ statt nur einen Offset zu zeigen.
 
 ### Was als Nächstes ansteht
 
-1. **Mehrere ROFs binden** — psects aneinanderreihen, Globale auflösen.
-   Das ist der Schritt zu Treibern und Programmen.
-2. Symbole, die **nicht** absolut sind (Code- und Datenbezüge aus einer
-   Bibliothek), und damit die Zeigerlisten für externe Referenzen.
-3. Die restlichen Schalter der SDK-Makefiles: `-M=`, `-a`/`-j`
-   (Sprungtabelle), `-r` (rohe Ausgabe), `-g` (STB-Modul).
-4. **Den Prüfstand aus den SDK-Makefiles speisen.** `os9make -nn -u`
+1. **Den Prüfstand aus den SDK-Makefiles speisen.** Das ist jetzt der
+   nächste Schritt, nicht mehr der letzte: genug Modularten gehen, um
+   breit zu messen. `os9make -nn -u`
    druckt die `l68`-Aufrufe genauso mit wie die von `r68` — allein in 20
    von 195 Verzeichnissen sind es 148. Bei `qr68` hat genau dieser
    differentielle Prüfstand elf Fehler gefunden, vier davon still.

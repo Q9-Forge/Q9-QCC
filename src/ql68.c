@@ -36,22 +36,46 @@ static char outBuf[QL_OUT];
 static int outLen;
 
 /* ------------------------------------------------------------------ ROF */
-static int rofTyLan;
-static int rofAttRev;
-static int rofEdition;
-static int rofStatStorage;   /* uninitialisierte Daten (ds im vsect) */
-static int rofIDatSz;        /* initialisierte Daten (dc im vsect)   */
-static int rofCodSz;
-static int rofStkSz;
-static int rofEntry;
-static int rofTrap;
-static int rofNameAt;        /* Offset des psect-Namens in inBuf     */
-static int rofCodeAt;        /* Offset des Codes in inBuf            */
-static int rofIDataAt;       /* Offset der init. Daten in inBuf      */
-static int rofLocalAt;       /* Offset der lokalen Referenzliste     */
-static int rofLocalN;
-static int rofExtAt;         /* Offset der externen Referenzliste    */
-static int rofExtN;
+/* Ein Eintrag je psect. Der ERSTE ist der Wurzel-psect -- nur er hat
+   einen Typ/Sprach-Wert ungleich null, und nur aus ihm entsteht der
+   Modulkopf (Handbuch Kap. 9: "mainline is the pathlist of the file
+   containing the root psect"). */
+#define QL_ROF    256
+
+static int rofN;
+static int rTyLan[QL_ROF];
+static int rAttRev[QL_ROF];
+static int rEdition[QL_ROF];
+static int rStat[QL_ROF];    /* uninitialisierte Daten (ds im vsect) */
+static int rIDat[QL_ROF];    /* initialisierte Daten (dc im vsect)   */
+static int rCod[QL_ROF];
+static int rStk[QL_ROF];
+static int rEntry[QL_ROF];
+static int rTrap[QL_ROF];
+static int rNameAt[QL_ROF];  /* Offsets IN inBuf */
+static int rCodeAt[QL_ROF];
+static int rIDataAt[QL_ROF];
+static int rGlobAt[QL_ROF];
+static int rGlobN[QL_ROF];
+static int rExtAt[QL_ROF];
+static int rExtN[QL_ROF];
+static int rLocalAt[QL_ROF];
+static int rLocalN[QL_ROF];
+
+/* Nach dem Auslegen: wo der psect im Modul bzw. im Datenbereich liegt. */
+static int bCode[QL_ROF];    /* Modulabstand des Codes            */
+static int bUninit[QL_ROF];  /* Datenabstand der ds-Daten         */
+static int bInit[QL_ROF];    /* Datenabstand der dc-Daten         */
+static int bIDataMod[QL_ROF];/* Modulabstand der dc-Daten         */
+
+/* Der Vorspann auf den Datenzeiger. Bei einem Programm (mod_exec) zeigt
+   a6 NICHT auf den Anfang des Datenbereichs, sondern $8000 dahinter --
+   so reicht ein 16-Bit-Displacement +-32K weit. Ein TREIBER bekommt
+   seinen statischen Speicher dagegen direkt (in a2) und kennt keinen
+   Vorspann. Gemessen: "move.l zeiger(a6),d1" mit zeiger auf $000c ergibt
+   im Programm $800c, "move.w d2,$001c(a2)" im Treiber sc172 dagegen
+   $001c. */
+static int dataBias;
 
 static char modName[256];
 static int optOwner = 0x00010000;  /* M$Owner, so ohne -gu= (gemessen) */
@@ -166,63 +190,71 @@ static int symFind(const char *name)
    9.1. (Edition 9.0 haette 16-Bit-Zaehler; osk-disasm/rof.c liest die
    und passt deshalb nicht. Bestaetigt durch Microwares rdump, das fuer
    qr68-Ausgaben "CPU/ROF type: 680x0/9.1" meldet.) */
-static void rofParse(void)
+static int rofParse(int at0)
 {
 	int at;
-	int n;
 	int i;
+	int k;
 
-	if (inLen < 56)
+	if (rofN >= QL_ROF)
+		fatal("zu viele ROFs (QL_ROF)", "");
+	k = rofN;
+	rofN++;
+
+	if (at0 + 56 > inLen)
 		fatal("Eingabe ist zu kurz fuer einen ROF-Kopf", "");
-	if ((inBuf[0] & 255) != 0xDE || (inBuf[1] & 255) != 0xAD ||
-	    (inBuf[2] & 255) != 0xFA || (inBuf[3] & 255) != 0xCE)
+	if ((inBuf[at0] & 255) != 0xDE || (inBuf[at0 + 1] & 255) != 0xAD ||
+	    (inBuf[at0 + 2] & 255) != 0xFA || (inBuf[at0 + 3] & 255) != 0xCE)
 		fatal("keine ROF-Datei (Sync ist nicht $DEADFACE)", "");
 
-	rofTyLan = be16(4);
-	rofAttRev = be16(6);
-	if (be16(8) != 0)
+	rTyLan[k] = be16(at0 + 4);
+	rAttRev[k] = be16(at0 + 6);
+	if (be16(at0 + 8) != 0)
 		fatal("der ROF ist als fehlerhaft gekennzeichnet", "");
-	rofEdition = be16(18);
-	rofStatStorage = be32(20);
-	rofIDatSz = be32(24);
-	rofCodSz = be32(28);
-	rofStkSz = be32(32);
-	rofEntry = be32(36);
-	rofTrap = be32(40);
-	if (be32(44) != 0 || be32(48) != 0)
+	rEdition[k] = be16(at0 + 18);
+	rStat[k] = be32(at0 + 20);
+	rIDat[k] = be32(at0 + 24);
+	rCod[k] = be32(at0 + 28);
+	rStk[k] = be32(at0 + 32);
+	rEntry[k] = be32(at0 + 36);
+	rTrap[k] = be32(at0 + 40);
+	if (be32(at0 + 44) != 0 || be32(at0 + 48) != 0)
 		fatal("Remote-Daten sind noch nicht gemessen", "");
-	if (be32(52) != 0)
+	if (be32(at0 + 52) != 0)
 		fatal("Debuginformationen sind noch nicht gemessen", "");
 
-	at = 56;
-	rofNameAt = at;
+	at = at0 + 56;
+	rNameAt[k] = at;
 	at = skipName(at);
 
-	/* Globale Definitionen ueberspringen -- fuer ein einzelnes Modul
-	   werden sie nicht gebraucht (sie dienen dem Aufloesen zwischen
-	   psects). */
-	n = be32(at);
-	at = at + 4;
-	for (i = 0; i < n; i++) {
+	rGlobN[k] = be32(at);
+	rGlobAt[k] = at + 4;
+	at = rGlobAt[k];
+	for (i = 0; i < rGlobN[k]; i++) {
 		at = skipName(at);
 		at = at + 6;               /* Typwort und Wert */
 	}
 
-	rofCodeAt = at;
-	at = at + rofCodSz;
-	rofIDataAt = at;
-	at = at + rofIDatSz;
+	rCodeAt[k] = at;
+	at = at + rCod[k];
+	rIDataAt[k] = at;
+	at = at + rIDat[k];
 
-	rofExtN = be32(at);
-	rofExtAt = at + 4;
-	at = rofExtAt;
-	for (i = 0; i < rofExtN; i++) {
+	rExtN[k] = be32(at);
+	rExtAt[k] = at + 4;
+	at = rExtAt[k];
+	for (i = 0; i < rExtN[k]; i++) {
 		at = skipName(at);
 		at = at + 4 + be32(at) * 6;
 	}
 
-	rofLocalN = be32(at);
-	rofLocalAt = at + 4;
+	rLocalN[k] = be32(at);
+	rLocalAt[k] = at + 4;
+	at = rLocalAt[k] + rLocalN[k] * 6;
+
+	/* Vier abschliessende Langwoerter -- sie sind in allen Proben null.
+	   Sie zaehlen zur Laenge, was beim Lesen einer Bibliothek zaehlt. */
+	return at + 16;
 }
 
 /* Eine Bibliothek ist KEIN Sonderformat, sondern eine Folge von ROFs --
@@ -372,25 +404,20 @@ static int moduleCrc(int len)
 
 /* Eine Zeigerliste des IRefs-Abschnitts ausgeben: Gruppen aus
    <msw><Anzahl><lsw...>, beendet durch eine Gruppe der Anzahl 0.
-   Die Liste ist AUFSTEIGEND nach Offset sortiert -- der ROF liefert seine
-   lokalen Referenzen absteigend, l68 dreht sie also um (gemessen an zwei
-   Codezeigern auf $0000 und $0008). */
+
+   Die Reihenfolge ist NICHT sortiert, sondern umgekehrte
+   Begegnungsreihenfolge: l68 stellt jeden neuen Eintrag VORNE an. Der ROF
+   liefert seine lokalen Referenzen absteigend nach Offset, und bei einem
+   einzelnen psect sieht das Ergebnis deshalb aufsteigend aus -- ein
+   Trugschluss, den erst der zweite psect aufdeckt. Gemessen: zwei psects
+   mit je einem Codezeiger auf Datenoffset $10 (Wurzel) und $18 (zweiter)
+   ergeben die Liste $18, $10. Die Eintraege werden hier beim Sammeln
+   vorangestellt, die Liste steht also schon richtig. */
 static void putIrefList(int *offs, int n)
 {
 	int i;
 	int j;
 	int msw;
-	int t;
-
-	for (i = 0; i < n; i++) {
-		for (j = i + 1; j < n; j++) {
-			if (offs[j] < offs[i]) {
-				t = offs[i];
-				offs[i] = offs[j];
-				offs[j] = t;
-			}
-		}
-	}
 
 	i = 0;
 	while (i < n) {
@@ -409,17 +436,31 @@ static void putIrefList(int *offs, int n)
 	put16(0);
 }
 
-/* Die lokalen Referenzen des ROF durchgehen und dabei zweierlei tun:
-   den Wert an der Referenzstelle um die Basis des Zielabschnitts
-   erhoehen, und -- wenn die Stelle in den initialisierten Daten liegt --
-   ihren Datenoffset in die passende Zeigerliste eintragen.
+/* Voranstellen -- s. putIrefList(). */
+static void irefAdd(int *offs, int *n, int value)
+{
+	int i;
 
-   Das Typwort ist dasselbe wie bei qr68 (dort vollstaendig dokumentiert):
+	if (*n >= QL_IREF)
+		fatal("zu viele Zeiger (QL_IREF)", "");
+	for (i = *n; i > 0; i--)
+		offs[i] = offs[i - 1];
+	offs[0] = value;
+	*n = *n + 1;
+}
+
+/* Die lokalen Referenzen eines psect aufloesen. Zweierlei geschieht:
+   der Wert an der Referenzstelle wird um die Basis des ZIELabschnitts
+   erhoeht, und ein Langwort IN den Daten kommt zusaetzlich in die
+   passende Zeigerliste -- der Lader muss es beim Laden noch einmal
+   anfassen.
+
+   Typwort wie bei qr68 (dort vollstaendig dokumentiert):
      Bit 5     die Referenz LIEGT im Code (sonst in den Daten)
      Bit 3..4  Umfang: 01 = 1, 10 = 2, 11 = 4 Byte
-     Bit 2     das ZIEL ist Code (sonst Daten)
+     Bit 2     das ZIEL ist Code; Bit 0..1 sonst der Datenabschnitt
      Bit 6/7   abziehen / relativ */
-static void applyLocalRefs(int codeBase, int dataInitBase, int idataAt)
+static void applyLocalRefs(int k)
 {
 	int i;
 	int at;
@@ -432,34 +473,41 @@ static void applyLocalRefs(int codeBase, int dataInitBase, int idataAt)
 	int here;
 	int v;
 
-	for (i = 0; i < rofLocalN; i++) {
-		at = rofLocalAt + i * 6;
+	for (i = 0; i < rLocalN[k]; i++) {
+		at = rLocalAt[k] + i * 6;
 		type = be16(at);
 		offs = be32(at + 2);
-		if (type & 0x00C0)
-			fatal("abziehende oder relative lokale Referenz ist noch nicht gemessen", "");
+		if (type & 0x0080)
+			fatal("relative lokale Referenz ist noch nicht gemessen", "");
 		size = (type >> 3) & 3;
 		if (size < 1 || size > 3)
 			fatal("Referenz ohne gemessenen Umfang", "");
 		inCode = (type >> 5) & 1;
 		toCode = (type >> 2) & 1;
-		base = dataInitBase;
 		if (toCode)
-			base = codeBase;
-		/* Der Zugriff auf die eigenen Daten laeuft ueber a6, und a6
-		   zeigt NICHT auf den Anfang des Datenbereichs, sondern
-		   $8000 dahinter -- so reicht ein 16-Bit-Displacement
-		   +-32K weit. Gemessen: aus "move.l zeiger(a6),d1" mit
-		   zeiger auf Datenoffset $000c macht l68 $800c. Der Bias
-		   gilt nur fuer dieses Displacement im Code; ein 32-Bit-
-		   Zeiger IN den Daten bleibt unvorgespannt (p3 dc.l p1 mit
-		   p1 auf 0 ergibt 0). */
-		if (inCode && !toCode && size == 2)
-			base = base + 0x8000;
-		if (inCode)
-			here = codeBase + offs;
+			base = bCode[k];
+		else if (type & 1)
+			base = bInit[k];       /* initialisierte Daten */
 		else
-			here = idataAt + offs;
+			base = bUninit[k];     /* reservierte Daten     */
+		/* Bit 6: der Wert geht ABGEZOGEN ein. So entsteht die
+		   Differenz zweier Bezuege in einem Ausdruck -- r68 legt fuer
+		   "PD_PAR-PD_OPT+M$DTyp(a1)" drei Referenzen auf denselben
+		   Offset ab, eine davon mit diesem Bit. */
+		if (type & 0x0040)
+			base = -base;
+		/* Der Zugriff auf die eigenen Daten laeuft ueber a6, und a6
+		   zeigt NICHT auf den Anfang des Datenbereichs, sondern $8000
+		   dahinter -- so reicht ein 16-Bit-Displacement +-32K weit.
+		   Gemessen: aus "move.l zeiger(a6),d1" mit zeiger auf
+		   Datenoffset $000c macht l68 $800c. Ein 32-Bit-Zeiger IN den
+		   Daten bleibt unvorgespannt. */
+		if (inCode && !toCode && size == 2)
+			base = base + dataBias;
+		if (inCode)
+			here = bCode[k] + offs;
+		else
+			here = bIDataMod[k] + offs;
 		if (size == 1) {
 			v = outBuf[here] & 255;
 			outBuf[here] = (v + base) & 255;
@@ -477,33 +525,30 @@ static void applyLocalRefs(int codeBase, int dataInitBase, int idataAt)
 		}
 		/* Nur ein LANGWORT in den Daten ist ein Zeiger, den der Lader
 		   noch einmal anfassen muss. Ein kuerzeres Feld -- etwa das
-		   16-Bit-Displacement in "move.l zeiger(a6),d1" -- steht im
-		   Code und wird hier endgueltig aufgeloest. */
-		if (!inCode && size == 3) {
-			/* Der Lader muss diesen Zeiger beim Laden noch einmal
-			   anpassen -- deshalb kommt sein Datenoffset in die
-			   Liste. */
-			if (toCode) {
-				if (irefCodeN >= QL_IREF)
-					fatal("zu viele Codezeiger (QL_IREF)", "");
-				irefCode[irefCodeN] = rofStatStorage + offs;
-				irefCodeN++;
-			} else {
-				if (irefDataN >= QL_IREF)
-					fatal("zu viele Datenzeiger (QL_IREF)", "");
-				irefData[irefDataN] = rofStatStorage + offs;
-				irefDataN++;
-			}
+		   16-Bit-Displacement im Code -- ist hier endgueltig. */
+		if (!inCode && size == 3 && !(type & 0x0040)) {
+			if (toCode)
+				irefAdd(irefCode, &irefCodeN, bInit[k] + offs);
+			else
+				irefAdd(irefData, &irefDataN, bInit[k] + offs);
 		}
 	}
 }
 
-/* Die externen Referenzen aufloesen. Der Wert des Symbols wird an der
-   Referenzstelle AUFADDIERT -- der Assembler hat dort schon den konstanten
-   Anteil des Ausdrucks abgelegt (bei qr68 gemessen und dokumentiert).
-   Der Umfang steht wie bei den lokalen Referenzen in Bit 3..4, Bit 5 sagt,
-   ob die Stelle im Code liegt. */
-static void applyExtRefs(int codeBase, int idataAt)
+/* Den Wert eines Symbols aufloesen. Absolute (equ-) Symbole gelten wie
+   sie sind; Code- und Datensymbole bekommen die Basis ihres psect. */
+static int symResolve(int si)
+{
+	return symValue[si];
+}
+
+/* Die externen Referenzen eines psect aufloesen. Der Wert des Symbols
+   wird an der Referenzstelle AUFADDIERT -- der Assembler hat dort schon
+   den konstanten Anteil des Ausdrucks abgelegt (bei qr68 gemessen).
+   Ist Bit 7 gesetzt, ist der Bezug RELATIV zur Referenzstelle: gemessen
+   an "jsr sub1(pc)" -- sub1 liegt auf $5a, das Erweiterungswort auf $52,
+   abgelegt wird $0008. */
+static void applyExtRefs(int k)
 {
 	int i;
 	int j;
@@ -518,9 +563,10 @@ static void applyExtRefs(int codeBase, int idataAt)
 	int here;
 	int v;
 	int val;
+	int rel;
 
-	at = rofExtAt;
-	for (i = 0; i < rofExtN; i++) {
+	at = rExtAt[k];
+	for (i = 0; i < rExtN[k]; i++) {
 		nameAt = at;
 		at = skipName(at);
 		nrefs = be32(at);
@@ -528,21 +574,24 @@ static void applyExtRefs(int codeBase, int idataAt)
 		si = symFind(&inBuf[nameAt]);
 		if (si < 0)
 			fatal("unaufgeloester Name: ", &inBuf[nameAt]);
-		if (symType[si] != 6)
-			fatal("bisher ist nur ein absolutes (equ-) Symbol als externer Bezug gemessen: ", &inBuf[nameAt]);
-		val = symValue[si];
 		for (j = 0; j < nrefs; j++) {
 			type = be16(at);
 			offs = be32(at + 2);
 			at = at + 6;
-			if (type & 0x00C0)
-				fatal("abziehende oder relative externe Referenz ist noch nicht gemessen: ", &inBuf[nameAt]);
+			rel = (type >> 7) & 1;
 			size = (type >> 3) & 3;
 			inCode = (type >> 5) & 1;
 			if (inCode)
-				here = codeBase + offs;
+				here = bCode[k] + offs;
 			else
-				here = idataAt + offs;
+				here = bIDataMod[k] + offs;
+			val = symResolve(si);
+			/* Bit 6: abziehen (Handbuch: "add the negative of the
+			   symbols location"). */
+			if (type & 0x0040)
+				val = -val;
+			if (rel)
+				val = val - here;
 			if (size == 1) {
 				v = outBuf[here] & 255;
 				outBuf[here] = (v + val) & 255;
@@ -557,6 +606,15 @@ static void applyExtRefs(int codeBase, int idataAt)
 				    ((outBuf[here + 2] & 255) << 8) |
 				    (outBuf[here + 3] & 255);
 				patch32(here, v + val);
+				/* Ein Langwort in den Daten, das auf Code oder
+				   Daten zeigt, muss der Lader noch anfassen.
+				   Bei einem absoluten (equ-) Symbol nicht. */
+				if (!inCode && symType[si] != 6 && !(type & 0x0040)) {
+					if (symType[si] == 4)
+						irefAdd(irefCode, &irefCodeN, bInit[k] + offs);
+					else
+						irefAdd(irefData, &irefDataN, bInit[k] + offs);
+				}
 			} else {
 				fatal("externe Referenz ohne gemessenen Umfang: ", &inBuf[nameAt]);
 			}
@@ -564,19 +622,83 @@ static void applyExtRefs(int codeBase, int idataAt)
 	}
 }
 
+/* Die Globalen aller psects eintragen, mit der Basis ihres Abschnitts.
+   Typwoerter nach Handbuch Kap. 6: 0 uninit. Daten, 1 init. Daten,
+   4 Code, 6 equ (5 = set und $0100/$0102 = Common kommen im Korpus nicht
+   vor und werden abgelehnt). */
+static void addGlobals(int k)
+{
+	int at;
+	int i;
+	int nameAt;
+	int t;
+	int v;
+
+	at = rGlobAt[k];
+	for (i = 0; i < rGlobN[k]; i++) {
+		nameAt = at;
+		at = skipName(at);
+		t = be16(at);
+		v = be32(at + 2);
+		at = at + 6;
+		if (t == 4)
+			symAdd(&inBuf[nameAt], bCode[k] + v, t);
+		else if (t == 1)
+			symAdd(&inBuf[nameAt], bInit[k] + v, t);
+		else if (t == 0)
+			symAdd(&inBuf[nameAt], bUninit[k] + v, t);
+		else if (t == 6)
+			symAdd(&inBuf[nameAt], v, t);
+		else
+			fatal("Globales mit ungemessenem Typwort: ", &inBuf[nameAt]);
+	}
+}
+
 static void emit(void)
 {
 	int isDesc;
+	int isDrvr;
 	int nameAt;
-	int codeAt;
 	int idataAt;
 	int irefAt;
+	int totalUninit;
+	int totalInit;
 	int i;
+	int k;
 	int n;
 	int crc;
 
-	/* Typ 15 = Gerraetedescriptor (Devic), s. module.h. */
-	isDesc = ((rofTyLan >> 8) & 255) == 15;
+	/* Der Modulaufbau haengt am TYP (s. module.h):
+	     Typ 15 (Devic)  mod_dev    -- gar keine feste Erweiterung
+	     Typ 14 (Drivr)  mod_driver -- nur _mexec/_mexcpt/_mdata (12 Byte)
+	     sonst           mod_exec   -- 24 Byte mit Stack, IData, IRefs
+	   Bei Descriptor und Treiber liefert der ROF-CODE den Rest der
+	   Erweiterung, und es gibt weder IData- noch IRefs-Abschnitt --
+	   die Strukturen haben diese Felder nicht. Der Name steht dort
+	   HINTER dem Code, bei mod_exec davor.
+	   Gemessen an sc8x30.a (Treiber sc172): _mexec = $3c zeigt auf die
+	   Routinentabelle, die die ersten 14 Codebytes sind; _mdata = $114
+	   sind die 276 Byte ds; der Name liegt auf $664 = $3c + 1576. */
+	isDesc = ((rTyLan[0] >> 8) & 255) == 15;
+	isDrvr = ((rTyLan[0] >> 8) & 255) == 14;
+	dataBias = 0;
+	if (!isDesc && !isDrvr)
+		dataBias = 0x8000;
+
+	/* --- Datenbereich auslegen: ERST alle reservierten, dann alle
+	   initialisierten Daten -- und zwar psect fuer psect in der
+	   Reihenfolge der Kommandozeile (Handbuch Abb. 9-2, an zwei psects
+	   nachgemessen: mvar landet auf $0c, svar auf $14). --- */
+	totalUninit = 0;
+	for (k = 0; k < rofN; k++) {
+		bUninit[k] = totalUninit;
+		totalUninit = totalUninit + rStat[k];
+	}
+	totalInit = 0;
+	for (k = 0; k < rofN; k++) {
+		bInit[k] = totalUninit + totalInit;
+		totalInit = totalInit + rIDat[k];
+	}
 
 	/* --- Kopf. Die Groessenfelder werden spaeter nachgetragen. --- */
 	put16(0x4AFC);                 /* M$ID    */
@@ -584,13 +706,13 @@ static void emit(void)
 	put32(0);                      /* M$Size, spaeter */
 	put32(optOwner);               /* M$Owner */
 	put32(0);                      /* M$Name, spaeter */
-	put16(optAccess);              /* M$Accs */
-	put16(rofTyLan);
-	put16(rofAttRev);
+	put16(optAccess);              /* M$Accs  */
+	put16(rTyLan[0]);
+	put16(rAttRev[0]);
 	if (optEdition >= 0)
 		put16(optEdition);
 	else
-		put16(rofEdition);
+		put16(rEdition[0]);
 	put32(0);                      /* M$Usage  */
 	put32(0);                      /* M$Symbol */
 	put16(0);                      /* M$Ident  */
@@ -599,35 +721,40 @@ static void emit(void)
 	put32(0);                      /* M$HdExt  */
 	put16(0);                      /* M$HdExtSz */
 	put16(0);                      /* M$Parity, spaeter */
-	if (!isDesc)
+	if (isDrvr) {
+		put32(0);              /* _mexec, spaeter */
+		if (rTrap[0] == -1)
+			put32(0);      /* _mexcpt */
+		else
+			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
+		put32(totalUninit + totalInit);   /* _mdata */
+	} else if (!isDesc) {
 		put32(0);              /* M$Exec, spaeter  */
-	if (!isDesc) {
-		/* Fehlt der siebte psect-Parameter, traegt r68 utrap = -1 ein;
-		   l68 macht daraus im Modul die 0 (gemessen). */
-		if (rofTrap == -1)
+		/* Fehlt der siebte psect-Parameter, traegt r68 utrap = -1
+		   ein; l68 macht daraus im Modul die 0 (gemessen). */
+		if (rTrap[0] == -1)
 			put32(0);
 		else
 			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
-		put32(rofStatStorage + rofIDatSz);   /* M$Data */
-		put32(rofStkSz);               /* M$Stack */
-		put32(0);                      /* M$IData, spaeter */
-		put32(0);                      /* M$IRefs, spaeter */
+		put32(totalUninit + totalInit);   /* M$Data  */
+		put32(rStk[0]);                   /* M$Stack */
+		put32(0);                         /* M$IData, spaeter */
+		put32(0);                         /* M$IRefs, spaeter */
 	}
 
 	/* Ein GERAETEDESCRIPTOR (Typ 15) hat keine mod_exec-Erweiterung:
-	   sein ROF-Code IST die Kopferweiterung (Portadresse, Vektor,
-	   IRQ-Ebene, Modus, die Namensoffsets fuer Dateimanager und Treiber)
-	   samt Rumpf, und er liegt unmittelbar hinter dem gemeinsamen Kopf
-	   auf $30. Danach folgt nur noch der Name und der CRC -- KEIN
-	   IData- und kein IRefs-Abschnitt.
-
-	   Gemessen an SRC/IO/SCF/DESC/term.a: die Namensoffsets im Code
-	   springen von $0034/$0038/$003e auf $0064/$0068/$006e, also genau
-	   um die Codebasis $30 weiter. */
-	if (isDesc) {
-		codeAt = outLen;
-		for (i = 0; i < rofCodSz; i++)
-			put8(inBuf[rofCodeAt + i]);
+	   sein ROF-Code IST die Kopferweiterung und liegt unmittelbar hinter
+	   dem gemeinsamen Kopf auf $30; danach folgt nur der Name und der
+	   CRC -- weder IData- noch IRefs-Abschnitt. */
+	if (isDesc || isDrvr) {
+		if (rofN != 1)
+			fatal("ein Descriptor oder Treiber aus mehreren ROFs ist noch nicht gemessen", "");
+		if (rIDat[0] != 0)
+			fatal("initialisierte Daten gibt es bei diesem Modultyp nicht -- l68 braucht dafuer -i", "");
+		bCode[0] = outLen;
+		bIDataMod[0] = 0;
+		for (i = 0; i < rCod[0]; i++)
+			put8(inBuf[rCodeAt[0] + i]);
 		nameAt = outLen;
 		n = strLen(modName);
 		for (i = 0; i < n; i++)
@@ -635,19 +762,22 @@ static void emit(void)
 		put8(0);
 		if ((outLen % 2) != 0)
 			put8(0);
-		applyLocalRefs(codeAt, 0, 0);
+		addGlobals(0);
 		symAdd("bname", nameAt, 6);
 		symAdd("_bname", nameAt, 6);
 		symAdd("btext", 0, 6);
 		symAdd("_btext", 0, 6);
 		symAdd("etext", outLen, 6);
 		symAdd("_etext", outLen, 6);
-		applyExtRefs(codeAt, 0);
+		applyLocalRefs(0);
+		applyExtRefs(0);
 		if (irefCodeN != 0 || irefDataN != 0)
 			fatal("ein Descriptor mit Datenzeigern ist noch nicht gemessen", "");
 		if (((outLen + 3) % 2) != 0)
 			put8(0);
 		patch32(0x0C, nameAt);
+		if (isDrvr)
+			patch32(0x30, bCode[0] + rEntry[0]);
 		patch32(0x04, outLen + 3);
 		outBuf[0x2E] = (headerParity() >> 8) & 255;
 		outBuf[0x2F] = headerParity() & 255;
@@ -667,35 +797,43 @@ static void emit(void)
 	if ((outLen % 2) != 0)
 		put8(0);
 
-	/* --- Code --- */
-	codeAt = outLen;
-	for (i = 0; i < rofCodSz; i++)
-		put8(inBuf[rofCodeAt + i]);
+	/* --- Code aller psects, in Reihenfolge der Kommandozeile --- */
+	for (k = 0; k < rofN; k++) {
+		bCode[k] = outLen;
+		for (i = 0; i < rCod[k]; i++)
+			put8(inBuf[rCodeAt[k] + i]);
+	}
 
 	/* --- Initialisierte Daten: <Offset><Anzahl><Bytes> --- */
 	idataAt = outLen;
-	put32(rofStatStorage);
-	put32(rofIDatSz);
-	for (i = 0; i < rofIDatSz; i++)
-		put8(inBuf[rofIDataAt + i]);
+	put32(totalUninit);
+	put32(totalInit);
+	for (k = 0; k < rofN; k++) {
+		bIDataMod[k] = outLen;
+		for (i = 0; i < rIDat[k]; i++)
+			put8(inBuf[rIDataAt[k] + i]);
+	}
 
-	/* Erst jetzt stehen die Basen fest. Die initialisierten Daten
-	   liegen im Datenbereich HINTER den uninitialisierten -- gemessen. */
-	applyLocalRefs(codeAt, rofStatStorage, idataAt + 8);
+	/* Erst jetzt stehen alle Basen fest. */
+	for (k = 0; k < rofN; k++)
+		addGlobals(k);
 
-	/* Die Symbole, die erst der Binder kennt (Tabelle 9-8/9-9 des
-	   Handbuchs). Sie werden NACH den Bibliotheken eingetragen und
-	   verdecken damit eine gleichnamige Definition von dort. */
+	/* Die Symbole, die erst der Binder kennt (Handbuch Tab. 9-8/9-9).
+	   Sie werden NACH den Bibliotheken und Globalen eingetragen und
+	   verdecken damit eine gleichnamige Definition. */
 	symAdd("bname", nameAt, 6);
 	symAdd("_bname", nameAt, 6);
 	symAdd("btext", 0, 6);
 	symAdd("_btext", 0, 6);
 	symAdd("etext", outLen, 6);
 	symAdd("_etext", outLen, 6);
-	symAdd("end", rofStatStorage + rofIDatSz, 6);
-	symAdd("_enddata", rofStatStorage + rofIDatSz, 6);
+	symAdd("end", totalUninit + totalInit, 6);
+	symAdd("_enddata", totalUninit + totalInit, 6);
 
-	applyExtRefs(codeAt, idataAt + 8);
+	for (k = 0; k < rofN; k++) {
+		applyLocalRefs(k);
+		applyExtRefs(k);
+	}
 
 	/* --- Zeigerlisten --- */
 	irefAt = outLen;
@@ -707,7 +845,7 @@ static void emit(void)
 		put8(0);
 
 	patch32(0x0C, nameAt);
-	patch32(0x30, codeAt + rofEntry);
+	patch32(0x30, bCode[0] + rEntry[0]);
 	patch32(0x40, idataAt);
 	patch32(0x44, irefAt);
 	patch32(0x04, outLen + 3);
@@ -725,7 +863,7 @@ static void emit(void)
 static void usage(void)
 {
 	puts("ql68 -- Binder der Q9-Kette, erzeugt OS-9/68k-Module aus ROF");
-	puts("Aufruf: ql68 [Optionen] <eingabe.r> -O=<modul>");
+	puts("Aufruf: ql68 [Optionen] <wurzel.r> [<weitere.r> ...] -O=<modul>");
 	puts("  -O=<datei>, -o=<datei>  Ausgabemodul (wie l68)");
 	puts("  -n=<name>               Modulname (sonst aus dem Ausgabenamen)");
 	puts("  -l=<datei>              Bibliothek (eine Folge von ROFs)");
@@ -773,13 +911,15 @@ static void nameFromPath(const char *path)
 
 int main(int argc, char **argv)
 {
-	const char *inPath;
+	const char *inPath[QL_ROF];
+	int inPathN;
 	const char *outPath;
 	char *fp;
+	int at;
 	int i;
 	int k;
 
-	inPath = 0;
+	inPathN = 0;
 	outPath = 0;
 	modName[0] = 0;
 	for (i = 1; i < argc; i++) {
@@ -867,28 +1007,47 @@ int main(int argc, char **argv)
 			printf("ql68: unbekannte Option %s\n", a);
 			usage();
 		}
-		if (inPath == 0)
-			inPath = a;
-		else
-			fatal("ql68 bindet bisher nur einen einzelnen ROF: ", a);
+		if (inPathN >= QL_ROF)
+			fatal("zu viele Eingabedateien (QL_ROF): ", a);
+		inPath[inPathN] = a;
+		inPathN++;
 	}
-	if (inPath == 0 || outPath == 0)
+	if (inPathN == 0 || outPath == 0)
 		usage();
 	if (modName[0] == 0)
 		nameFromPath(outPath);
 
-	fp = fopen(inPath, "rb");
-	if (fp == 0)
-		fatal("Eingabe nicht lesbar: ", inPath);
-	inLen = fread(inBuf, 1, QL_IN, fp);
-	fclose(fp);
-
 	for (i = 0; i < libN; i++)
 		libScan(libPath[i]);
 
-	rofParse();
-	if (rofTyLan == 0)
-		fatal("der ROF hat keinen Wurzel-psect (Typ/Sprache ist 0) -- nur daraus entsteht ein Modul", "");
+	/* Alle Eingabedateien hintereinander in denselben Puffer -- eine
+	   Datei kann selbst mehrere ROFs enthalten (so sind die Bibliotheken
+	   aufgebaut), deshalb wird bis zum Dateiende weitergelesen. */
+	inLen = 0;
+	for (i = 0; i < inPathN; i++) {
+		int start;
+		int got;
+
+		fp = fopen(inPath[i], "rb");
+		if (fp == 0)
+			fatal("Eingabe nicht lesbar: ", inPath[i]);
+		start = inLen;
+		got = fread(&inBuf[inLen], 1, QL_IN - inLen, fp);
+		fclose(fp);
+		inLen = inLen + got;
+		at = start;
+		while (at < inLen)
+			at = rofParse(at);
+	}
+
+	/* Der Wurzel-psect ist der erste, und nur er hat einen Typ/Sprach-
+	   Wert ungleich null (Handbuch Kap. 9). */
+	if (rTyLan[0] == 0)
+		fatal("die erste Eingabe hat keinen Wurzel-psect (Typ/Sprache ist 0) -- nur daraus entsteht ein Modul", "");
+	for (k = 1; k < rofN; k++) {
+		if (rTyLan[k] != 0)
+			fatal("nur die erste Eingabe darf einen Wurzel-psect haben", "");
+	}
 	emit();
 
 	fp = fopen(outPath, "wb");
