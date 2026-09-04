@@ -10,10 +10,11 @@ Ziel: Microwares `r68` ersetzen. Präprozessor (`qcpp`) und Compiler-Frontend
 (QCC) laufen bereits auf echtem 68030 — Assembler und Binder sind die letzten
 Fremdteile der Kette.
 
-## Stand (2026-09-04)
+## Stand (2026-09-04) — `qr68` ersetzt `r68`
 
-**Die vom QCC-Backend erzeugten Quellen assembliert `qr68` byteidentisch zu
-`r68`** — ganze Module, nicht Einzelfälle:
+**Der Befehls- und Direktivenvorrat ist vollständig, der Korpus
+byteidentisch, und `qr68` lässt sich in den SDK-Makefiles an die Stelle von
+`r68` setzen.**
 
 | Prüfung | Ergebnis |
 |---|---|
@@ -21,10 +22,13 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **289 Quellen des MWOS-SDK**, mit den Aufrufen aus dessen eigenen Makefiles | **byteidentisch** |
+| **Der MWOS-Korpus** — 290 Aufrufe über 101 Quellen, mit den Schaltern aus den SDK-Makefiles selbst | **byteidentisch**, eine einzige bewusste Verweigerung |
 | **qr68 auf echtem 68030**, gebaut mit der eigenen Kette | **byteidentisch zum Hostlauf** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
+
+Was offen bleibt — Listing, `-z=`, der strömende Leser — bleibt es
+**begründet**; die Tabelle dazu steht am Ende.
 
 Abgedeckt: `psect`/`vsect`/`ends`/`endsect`, `equ`/`set`, `dc.b/.w/.l` (auch
 Zeichenketten), `ds.b/.w/.l`, `align`, `end`, die beschreibenden Direktiven
@@ -805,14 +809,15 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
 
 ## Der Korpus, mit den Aufrufen des SDK selbst
 
-**`./test/sdkdiff.sh` ist der Prüfstand, auf den es ankommt:
-289 Quellen byteidentisch, eine einzige Abweichung — und die ist eine
-bewusste Verweigerung** (`sc68990`, s. u.).
+**`./test/sdkdiff.sh` ist der Prüfstand, auf den es ankommt: 290 Aufrufe
+byteidentisch über 101 Quelldateien, eine einzige Abweichung — und die ist
+eine bewusste Verweigerung** (`sc68990`, s. u.).
 
-Er kommt ohne jede Handkonfiguration aus (s. u.), und genau das war der
-Punkt: die vorherige Zahl von 78 stammte aus geratenen Portverzeichnissen,
-und in den 211 Quellen, die dadurch nie geprüft wurden, steckten **elf
-echte Fehler** — vier davon still, also ohne Abbruch und mit falschen Bytes.
+Er kommt ohne jede Handkonfiguration aus, und genau das war der Punkt: die
+vorherige Abdeckung von 78 Dateien stammte aus geratenen
+Portverzeichnissen. Was dazukam, waren nicht nur 23 weitere Dateien,
+sondern vor allem die **richtigen Schalter** — und darin steckten **elf
+echte Fehler**, vier davon still, also ohne Abbruch und mit falschen Bytes.
 Wer nur zählt, was durchläuft, misst seine eigene Konfiguration.
 
 Der ältere `./test/mwos.sh` bleibt daneben nützlich, wenn man eine bestimmte
@@ -865,22 +870,33 @@ aus, und die `-o=`-Angabe biegt das Skript auf ein Temporärverzeichnis um.
 Damit fällt das Raten weg, das `test/mwos.sh` nötig macht — und mit ihm der
 Verdacht, ein „übersprungen" sei eine Portfrage und kein Befund.
 
-Der Lauf über alle 195 Verzeichnisse mit einem `makefile`:
+Der Lauf über alle 197 Verzeichnisse, die etwas bauen:
 
 ```
-651 Aufrufe: 289 gleich, 1 abweichend, 130 uebersprungen, 231 doppelt
+578 Aufrufe: 290 gleich, 1 abweichend, 56 uebersprungen, 231 doppelt
+101 verschiedene Quelldateien (ein Aufruf = Quelle plus Schalter)
 ```
 
-- **289 gleich** — byteidentisch, Kopf, Code, Globale und Referenzen.
+**Die beiden Zahlen sind verschieden, und der Unterschied ist wichtig.**
+Ein *Aufruf* ist eine Quelle **mit ihren Schaltern** — `syscache.a` mit
+`-m2`, `-m3`, `-m4` und `-m6` sind vier Tests, nicht einer, und genau
+darin steckte der Fehler beim Füllwort. Die *Quelldateien* sagen dagegen,
+wie breit der Korpus abgedeckt ist. Beides zählt das Skript getrennt aus.
+
+- **290 gleich** — byteidentisch: Kopf, Code, Globale und Referenzen.
 - **1 abweichend** — `sc68990`, eine der bewussten Verweigerungen.
 - **231 doppelt** — `-nn` steigt in die Untermakes ab und druckt deren
   Kommandos mit dem Arbeitsverzeichnis **des Kindes**. Da jedes Verzeichnis
-  mit einem `makefile` ohnehin einzeln angefahren wird, sind das
-  Wiederholungen; das Skript weist sie getrennt aus, statt sie als Lücke
-  erscheinen zu lassen.
-- **130 übersprungen** — dieselbe Klasse, nur liegt das Verzeichnis des
+  ohnehin einzeln angefahren wird, sind das Wiederholungen; das Skript
+  weist sie getrennt aus, statt sie als Lücke erscheinen zu lassen.
+- **56 übersprungen** — dieselbe Klasse, nur liegt das Verzeichnis des
   Untermakes tiefer, als die Suche reicht. Stichprobe: `tickgeneric`,
-  `scsiglue` und `syscalls` stehen sämtlich unter den 289 geprüften.
+  `scsiglue` und `syscalls` stehen sämtlich unter den geprüften.
+
+> **Korrektur.** In einer früheren Fassung stand hier „289 Quellen". Das
+> waren die *Aufrufe*; die Zahl der geprüften Quelldateien ist **101**
+> (vorher 78). Die Aufrufzahl ist keine Schönung — jeder Schaltersatz ist
+> ein eigener Test —, aber sie ist eben nicht die Breite des Korpus.
 
 `UEXTRA` nimmt weitere Suchverzeichnisse auf. Der ROM-Code braucht das:
 `ROM_CBOOT/sysinit.a` holt `systype.d` aus dem **Wurzelverzeichnis** des
@@ -974,10 +990,9 @@ durchweg Makro- und Descriptornamen, deren Makrodatei in dieser
 Konfiguration nicht eingebunden ist (`ldbra`, `tpad`, `diskh1pfmt`,
 `t0`…`t33`).
 
-Nur `ram.a` (RAMDISK, `move16`) ließ sich nicht gegenprüfen: r68 kommt in
-keiner der hier vorhandenen RBF-Portkonfigurationen durch, weil die Makros
-`ldbra` und `OS9svc` nicht hereingezogen werden. Die dort benutzte Form
-`move16 (a0)+,(a2)+` ist über `test/insn.a` abgedeckt.
+(`ram.a` galt hier zwischenzeitlich als nicht gegenprüfbar — das lag an
+einer von Hand geratenen Portkonfiguration. Mit dem Aufruf aus dem
+Makefile geht es, und genau dort steckte dann auch ein Fehler.)
 
 ### Strukturelle Grenzen
 
@@ -994,7 +1009,7 @@ keiner der hier vorhandenen RBF-Portkonfigurationen durch, weil die Makros
 
 ### Was der Makefile-Prüfstand gekostet hat — und warum er sich lohnte
 
-Elf Fehler in 211 Quellen, die vorher nie geprüft wurden. **Vier davon
+Elf Fehler in dem, was die Handkonfiguration nie erreicht hatte. **Vier davon
 liefen ohne Abbruch durch und lieferten still falsche Bytes** — die
 Zeichenkonstante in `ram.a`, die überzähligen Globalen der `*stat`-Dateien,
 das Füllwort unter `-m3`/`-m4` und der PC-relative Summand. Genau diese
@@ -1009,22 +1024,40 @@ wird.**
 
 ### Noch nicht geprüfte Korpusteile
 
-Alles, was **kein Makefile-Ziel** ist, sieht `sdkdiff.sh` nicht: Quellen,
-die nur per `use` eingebunden werden, und Verzeichnisse ohne `makefile`.
-Ebenso die Ports, für die hier die Board-Definitionen fehlen — dort kommt
-`r68` selbst nicht durch, und ohne Orakel gibt es nichts zu vergleichen.
+Was `sdkdiff.sh` grundsätzlich nicht sieht, und warum das so bleibt:
 
-Der nächste Schritt wäre, den Prüfstand um die **Kommandozeilen der
-`*.make`-Dateien** zu erweitern, die kein `makefile` daneben haben.
+- **Quellen, die kein Makefile-Ziel sind.** Wer nur per `use` eingebunden
+  wird, hat keine eigene Kommandozeile — er wird aber mit jeder Datei
+  geprüft, die ihn einbindet.
+- **Ports ohne Board-Definitionen.** Dort kommt `r68` selbst nicht durch;
+  ohne Orakel gibt es nichts zu vergleichen. Das ist keine Lücke von
+  `qr68`, sondern eine des Materials.
 
-## Nächste Schritte
+Die `*.make`-Dateien ohne `makefile` daneben sind **abgedeckt** — es sind
+genau zwei Verzeichnisse (`SRC/SYSMODS/GCLOCK` und
+`PORTS/common/RBF/cfide`), und das Skript fährt sie einzeln mit `-f=`.
+
+## Was `qr68` als Ersatz für `r68` noch fehlt
+
+Der Assembler selbst ist fertig: Befehle und Direktiven vollständig, der
+Korpus byteidentisch, in den SDK-Makefiles einsetzbar, läuft selbstgebaut
+auf dem 68030. Was offen bleibt, ist **bewusst** offen:
+
+| Offen | Warum es liegen bleibt |
+|---|---|
+| **Kein Listing** (`-l`/`-s`/`-g` werden übergangen) | Von den 300 Makefiles des SDK, die `r68` aufrufen, braucht es **keines**. Nur ein einziger Aufruf benutzt `-g`, und das ändert die Ausgabe nicht. |
+| **`-z=<datei>`** (Argumentdatei) | Kommt im SDK nur bei `merge` vor (`MRGOPTS`), nicht bei `r68`. |
+| **Arena statt strömendem Leser** (Host 4 MB, Ziel 256 KB) | Die 18-MB-Quellen des Backends bräuchten das. Erledigt sich weitgehend mit QCCs Datenmodell — dann schrumpft die eigene Modulquelle von 2,9 MB auf ~44 KB. |
+| **Vier bewusste Verweigerungen** | `bra.l`, Sprung auf die Folgezeile mit `-b`, unbekannter Name in einer Bedingung, `ptest` mit Erweiterungswörtern. Alle vier sind Defekte in `r68 V2.9.1`; ihnen zu folgen hiesse, falschen Code zu erzeugen. |
+
+## Nächste Schritte in der Kette
 
 1. **QCCs Datenmodell**: genullte Felder gehören in den reservierten
    Bereich, nicht in den initialisierten. Dafür müssen Globals über
    `a6 + 32-Bit-Offset` erreichbar werden statt über `d16(a6)`. Das würde
-   qr68s Modul von 1,18 MB auf ~50 KB bringen, qcpps von 4,3 MB auf ~44 KB
+   qr68s Modul von 1,2 MB auf ~50 KB bringen, qcpps von 4,3 MB auf ~44 KB
    — und qr68 könnte dann seine *eigene* Modulquelle auch auf dem Ziel
-   assemblieren.
-2. Der Rest des Korpus — `ROM/CBOOT`/DISK, NETWORK, SYSBOOT zuerst.
-3. Strömender Leser statt Arena.
-4. `l68` — der Binder, das letzte große Fremdteil neben Microwares `clib`.
+   assemblieren. Der strömende Leser erledigt sich damit gleich mit.
+2. **`l68`** — der Binder, das letzte große Fremdteil neben Microwares
+   `clib`. Für ihn gilt dieselbe Methode: Format messen statt herleiten,
+   und den Prüfstand aus den SDK-Makefiles speisen.

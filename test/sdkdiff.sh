@@ -63,6 +63,16 @@ if [ ${#dirs[@]} -eq 0 ]; then
 		case "$mf" in *"("*) continue;; esac
 		dirs+=("$(dirname "$mf")")
 	done < <(find "$MWOS/OS9" -name makefile -not -path "*/(*" | sort)
+	# Zwei Verzeichnisse des SDK haben nur "*.make" und kein "makefile"
+	# daneben (SRC/SYSMODS/GCLOCK und PORTS/common/RBF/cfide). Ohne sie
+	# fiele die halbe Uhrengruppe unter den Tisch.
+	while IFS= read -r mk; do
+		md="$(dirname "$mk")"
+		[ -f "$md/makefile" ] && continue
+		case " ${dirs[*]} " in *" $md "*) continue;; esac
+		dirs+=("$md")
+	done < <(find "$MWOS/OS9" -name "*.make" -not -path "*/(*" \
+		-not -name "*(*" | sort)
 fi
 
 echo "=== SDK-Differenztest, Aufrufe aus den Makefiles (${#dirs[@]} Verzeichnisse) ==="
@@ -71,17 +81,33 @@ ok=0; bad=0; skip=0; dup=0; ndirs=0; ncmd=0
 : > "$TMP/abweichend"
 : > "$TMP/uebersprungen"
 : > "$TMP/doppelt"
+: > "$TMP/geprueft"
 
 for d in "${dirs[@]}"; do
-	[ -f "$d/makefile" ] || continue
+	# Ohne "makefile" die einzelnen "*.make" fahren.
+	mkfiles=("")
+	if [ ! -f "$d/makefile" ]; then
+		mkfiles=()
+		for mk in "$d"/*.make; do
+			[ -f "$mk" ] || continue
+			case "$mk" in *"("*) continue;; esac
+			mkfiles+=("-f=$(basename "$mk")")
+		done
+		[ ${#mkfiles[@]} -gt 0 ] || continue
+	fi
 	ndirs=$((ndirs + 1))
 	dwin="$(winpath "$d")"
 	# Die Kommandos holen. Fehler des Trockenlaufs sind egal -- was an
 	# r68-Zeilen herauskommt, zaehlt.
-	arch -x86_64 "$WINE_BIN" cmd /c \
-		"${dwin%%:*}: && cd ${dwin#*:} && set PATH=M:\\DOS\\BIN;%PATH% && set MWMAKEOPTS=-u && M:\\DOS\\BIN\\os9make.exe -nn -u" \
-		2>/dev/null | tr -d '\r' | grep -E '^[[:space:]]*r68([[:space:]]|$)' > "$TMP/cmds" || true
+	: > "$TMP/cmds"
+	for mkf in "${mkfiles[@]}"; do
+		arch -x86_64 "$WINE_BIN" cmd /c \
+			"${dwin%%:*}: && cd ${dwin#*:} && set PATH=M:\\DOS\\BIN;%PATH% && set MWMAKEOPTS=-u && M:\\DOS\\BIN\\os9make.exe -nn -u $mkf" \
+			2>/dev/null | tr -d '\r' | grep -E '^[[:space:]]*r68([[:space:]]|$)' >> "$TMP/cmds" || true
+	done
 	[ -s "$TMP/cmds" ] || continue
+	# Dieselbe Zeile kann aus mehreren "*.make" kommen.
+	sort -u "$TMP/cmds" -o "$TMP/cmds"
 
 	while IFS= read -r line; do
 		ncmd=$((ncmd + 1))
@@ -145,6 +171,11 @@ for d in "${dirs[@]}"; do
 		fi
 		if python3 "$TOOLS/rofcmp.py" "$base:$TMP/$tag.r:$TMP/$tag.q" | grep -q "gleich ("; then
 			ok=$((ok + 1))
+			# EIN Aufruf ist Quelle PLUS Schalter -- dieselbe Quelle
+			# mit -m3 und -m4 sind zwei verschiedene Tests. Daneben
+			# wird mitgeschrieben, welche QUELLDATEIEN abgedeckt
+			# sind; die Pfade werden am Ende normalisiert.
+			printf '%s\n' "$d/$usrc" >> "$TMP/geprueft"
 		else
 			{ echo "  x $base ($d) ABWEICHUNG:"
 			  python3 "$TOOLS/rofhunks.py" "$TMP/$tag.r" "$TMP/$tag.q" \
@@ -164,6 +195,12 @@ if [ -s "$TMP/abweichend" ]; then
 fi
 echo
 echo "  $ok gleich, $bad abweichend, $skip uebersprungen, $dup doppelt (aus $ndirs Verzeichnissen)"
+nsrc=$(python3 - "$TMP/geprueft" <<'PYEOF'
+import os, sys
+print(len({os.path.realpath(l.strip()) for l in open(sys.argv[1]) if l.strip()}))
+PYEOF
+)
+echo "  $nsrc verschiedene Quelldateien (ein Aufruf = Quelle plus Schalter)"
 echo "  (\"doppelt\" = Kommandos, die os9make aus einem Untermake gedruckt hat;"
 echo "   ihr Verzeichnis wird eigens angefahren, dort sind sie gezaehlt.)"
 [ -n "${KEEP:-}" ] && echo "  Zwischendateien: $TMP"
