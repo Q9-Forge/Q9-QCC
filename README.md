@@ -136,10 +136,47 @@ unvorgespannt (`p3 dc.l p1` mit `p1` auf Offset 0 ergibt 0).
 - **Die Zeigerlisten sind aufsteigend sortiert.** Der ROF liefert seine
   lokalen Referenzen absteigend nach Offset — `l68` dreht sie um.
 
+### Bibliotheken sind kein Sonderformat
+
+`-l=sys.l` liest **eine Folge von ROF-Dateien**, hintereinander in einer
+Datei — kein libgen-Format. Nachgemessen an
+`MWOS/OS9/68000/LIB/sys.l`: sieben ROFs, 1747 Globale, **alle vom Typ
+`$0006` (equ)**, und die Längenrechnung landet exakt auf dem Dateiende.
+Genau das meint die Dokumentation mit „the `sys.l` library module …
+contains only `equ` symbol definitions".
+
+Die Länge eines ROF ist dabei: 56 + Name + Globale + Code + init. Daten +
+externe Referenzen + lokale Referenzen + **vier abschließende
+Langwörter**.
+
+### Externe Referenzen
+
+Der Wert des Symbols wird an der Referenzstelle **aufaddiert** — der
+Assembler hat dort schon den konstanten Anteil des Ausdrucks abgelegt.
+Umfang und Ort stehen im selben Typwort wie bei den lokalen Referenzen.
+
+Dazu kommen die Symbole, die **erst der Binder kennt** (Tabelle 9-8/9-9
+des Handbuchs): `bname`/`_bname` (Offset auf den Modulnamen),
+`btext`/`_btext`, `etext`/`_etext`, `end`/`_enddata`. Sie werden **nach**
+den Bibliotheken eingetragen und verdecken damit eine gleichnamige
+Definition von dort.
+
+### Gerätedescriptoren haben einen anderen Aufbau
+
+Ein Modul vom **Typ 15 (Devic)** benutzt nicht `mod_exec`, sondern
+`mod_dev`: sein ROF-**Code ist die Kopferweiterung** — Portadresse,
+Vektor, IRQ-Ebene, Modus, die Namensoffsets für Dateimanager und Treiber —
+und liegt unmittelbar hinter dem gemeinsamen Kopf auf `$30`. Danach folgt
+nur der Name und der CRC; **es gibt weder IData- noch IRefs-Abschnitt**.
+
+Gemessen an `SRC/IO/SCF/DESC/term.a`: die Namensoffsets im Code springen
+von `$0034`/`$0038`/`$003e` auf `$0064`/`$0068`/`$006e` — genau um die
+Codebasis `$30`.
+
 ## Stand
 
-**Der einfachste Fall steht: ein einzelner ROF ohne Bibliothek und ohne
-externe Referenzen wird byteidentisch zu `l68` gebunden.**
+**Ein einzelner ROF wird byteidentisch zu `l68` gebunden — auch echte
+SDK-Module.**
 
 | Probe | Inhalt | Ergebnis |
 |---|---|---|
@@ -147,16 +184,22 @@ externe Referenzen wird byteidentisch zu `l68` gebunden.**
 | `test/dat.a` | Code, `dc`- und `ds`-Daten, ein `a6`-Displacement | **byteidentisch** (118 Byte) |
 | `test/ref.a` | vier Zeiger: zweimal Code, einmal Daten, einer ohne Bezug | **byteidentisch** (130 Byte) |
 
-`./test/difftest.sh` fährt beide Binder und vergleicht byteweise;
+| **7 SCF-Descriptoren des SDK** (`term`, `t1`–`t3`, `p1`–`p3`) | mit `sys.l`, `-gu=0.0`, `-p=577`, je ~24 externe Referenzen | **byteidentisch** |
+
+`./test/difftest.sh` fährt die eigenen Proben, `./test/descs.sh` die
+Descriptoren des SDK mit den Aufrufen aus dessen Makefile. Beide
+vergleichen byteweise;
 `tools/modcmp.py` benennt bei einer Abweichung das betroffene Kopffeld,
 statt nur einen Offset zu zeigen.
 
 ### Was als Nächstes ansteht
 
 1. **Mehrere ROFs binden** — psects aneinanderreihen, Globale auflösen.
-2. **Externe Referenzen** und damit **Bibliotheken** (`-l=`, Format 1).
-3. Die Schalter, die die SDK-Makefiles benutzen: `-gu=`, `-p=`, `-M=`,
-   `-e=`, `-n=`, `-a`/`-j` (Sprungtabelle).
+   Das ist der Schritt zu Treibern und Programmen.
+2. Symbole, die **nicht** absolut sind (Code- und Datenbezüge aus einer
+   Bibliothek), und damit die Zeigerlisten für externe Referenzen.
+3. Die restlichen Schalter der SDK-Makefiles: `-M=`, `-a`/`-j`
+   (Sprungtabelle), `-r` (rohe Ausgabe), `-g` (STB-Modul).
 4. **Den Prüfstand aus den SDK-Makefiles speisen.** `os9make -nn -u`
    druckt die `l68`-Aufrufe genauso mit wie die von `r68` — allein in 20
    von 195 Verzeichnissen sind es 148. Bei `qr68` hat genau dieser
