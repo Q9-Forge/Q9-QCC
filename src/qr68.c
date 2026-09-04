@@ -1754,6 +1754,15 @@ static int oN;                 /* Zahl der Operanden dieser Zeile */
 
 static char opTxt0[512];
 static char opTxt1[512];
+/* Den dritten Operanden gibt es nur bei pack/unpk und cas. Er bekommt
+   KEINEN Platz in oMode[]/oReg[]/... -- deren Index 2 gehoert dem
+   Zwischenspeicher des Ausdrucksauswerters (termN[2]). Die drei Befehle
+   kommen ohne aus: bei pack/unpk ist der dritte Operand ein reiner
+   Sofortwert, bei cas sind die ersten beiden blosse Datenregister, sodass
+   der dritte in Fach 0 geparst werden kann. */
+static char opTxt2[512];
+/* Und einen vierten -- nur ptest kennt ihn ("ptestr #0,(a1),#3,a2"). */
+static char opTxt3[512];
 static char exBuf[1024];
 
 /* Kopiert s[from..to) nach exBuf. */
@@ -1802,8 +1811,12 @@ static void putOperand(int k, int from, int to)
 		d = opTxt0;
 	else if (k == 1)
 		d = opTxt1;
+	else if (k == 2)
+		d = opTxt2;
+	else if (k == 3)
+		d = opTxt3;
 	else
-		fatal("mehr als zwei Operanden: ", lnArg);
+		fatal("mehr als vier Operanden: ", lnArg);
 	for (i = 0; i < len; i++)
 		d[i] = lnArg[from + i];
 	d[len] = 0;
@@ -1823,6 +1836,8 @@ static void splitOperands(void)
 	oN = 0;
 	opTxt0[0] = 0;
 	opTxt1[0] = 0;
+	opTxt2[0] = 0;
+	opTxt3[0] = 0;
 	n = strLen(lnArg);
 	if (n == 0)
 		return;
@@ -2898,6 +2913,8 @@ static void dropOps(void)
 	oN = 0;
 	opTxt0[0] = 0;
 	opTxt1[0] = 0;
+	opTxt2[0] = 0;
+	opTxt3[0] = 0;
 }
 
 /* Sonderregister, die als Operandentext auftreten und KEIN Ausdruck sind:
@@ -2932,6 +2949,32 @@ static int specialReg(const char *s)
 	return 0;
 }
 
+/* Wie baseIs(), aber schreibungsunabhaengig. Fuer Schluesselwoerter, die als
+   OPERAND auftreten: Kontrollregister (movec), MMU-Register (pmove),
+   Cachekennungen. r68 nimmt die in jeder Schreibung -- gemessen:
+   "movec d0,DFC" ergibt $4E7B $0001, "pmove (A0),TC" ergibt $f010 $4000,
+   "cinva BC" ergibt $f4d8, alles wie in Kleinschreibung. Im SDK steht
+   beides; "movec d0,DFC" in ROM_CBOOT/sysinit.a zweier Ports.
+   Registernamen (regNum) und ccr/sr/usp (specialReg) waren das schon,
+   diese drei Tabellen nicht -- daher die Funktion.
+   ACHTUNG: fuer SYMBOLnamen gilt das nicht, die sind schreibungsabhaengig
+   (gemessen, s. weiter oben). kwIs() darf deshalb nur auf feste
+   Schluesselwortlisten angewandt werden, nie auf einen Symbolvergleich. */
+static int kwIs(const char *s, const char *lit)
+{
+	int i;
+
+	i = 0;
+	while (lit[i] != 0) {
+		if (lowerCh(s[i] & 255) != lit[i])
+			return 0;
+		i++;
+	}
+	if (s[i] != 0)
+		return 0;
+	return 1;
+}
+
 /* Kontrollregister fuer movec, mit den gemessenen Kennungen (movec d0,vbr
    ergibt $4E7B $0801, movec a0,usp ergibt $8800): sfc 0, dfc 1, cacr 2,
    usp $800, vbr $801, caar $802, msp $803, isp $804.
@@ -2943,41 +2986,41 @@ static int specialReg(const char *s)
    -1 = unbekannt. */
 static int controlReg(const char *s)
 {
-	if (baseIs(s, "sfc"))
+	if (kwIs(s, "sfc"))
 		return 0x000;
-	if (baseIs(s, "dfc"))
+	if (kwIs(s, "dfc"))
 		return 0x001;
-	if (baseIs(s, "cacr"))
+	if (kwIs(s, "cacr"))
 		return 0x002;
-	if (baseIs(s, "tc"))
+	if (kwIs(s, "tc"))
 		return 0x003;
-	if (baseIs(s, "itt0"))
+	if (kwIs(s, "itt0"))
 		return 0x004;
-	if (baseIs(s, "itt1"))
+	if (kwIs(s, "itt1"))
 		return 0x005;
-	if (baseIs(s, "dtt0"))
+	if (kwIs(s, "dtt0"))
 		return 0x006;
-	if (baseIs(s, "dtt1"))
+	if (kwIs(s, "dtt1"))
 		return 0x007;
-	if (baseIs(s, "buscr"))
+	if (kwIs(s, "buscr"))
 		return 0x008;
-	if (baseIs(s, "usp"))
+	if (kwIs(s, "usp"))
 		return 0x800;
-	if (baseIs(s, "vbr"))
+	if (kwIs(s, "vbr"))
 		return 0x801;
-	if (baseIs(s, "caar"))
+	if (kwIs(s, "caar"))
 		return 0x802;
-	if (baseIs(s, "msp"))
+	if (kwIs(s, "msp"))
 		return 0x803;
-	if (baseIs(s, "isp"))
+	if (kwIs(s, "isp"))
 		return 0x804;
-	if (baseIs(s, "mmusr"))
+	if (kwIs(s, "mmusr"))
 		return 0x805;
-	if (baseIs(s, "urp"))
+	if (kwIs(s, "urp"))
 		return 0x806;
-	if (baseIs(s, "srp"))
+	if (kwIs(s, "srp"))
 		return 0x807;
-	if (baseIs(s, "pcr"))
+	if (kwIs(s, "pcr"))
 		return 0x808;
 	return -1;
 }
@@ -2988,21 +3031,68 @@ static int controlReg(const char *s)
    Schreibweise fuer mmusr und lehnt "pcsr" ab. -1 = unbekannt. */
 static int mmuReg(const char *s)
 {
-	if (baseIs(s, "tc"))
+	if (kwIs(s, "tc"))
 		return 0x4000;
-	if (baseIs(s, "srp"))
+	if (kwIs(s, "srp"))
 		return 0x4800;
-	if (baseIs(s, "crp"))
+	if (kwIs(s, "crp"))
 		return 0x4C00;
-	if (baseIs(s, "tt0"))
+	if (kwIs(s, "tt0"))
 		return 0x0800;
-	if (baseIs(s, "tt1"))
+	if (kwIs(s, "tt1"))
 		return 0x0C00;
-	if (baseIs(s, "mmusr"))
+	if (kwIs(s, "mmusr"))
 		return 0x6000;
-	if (baseIs(s, "psr"))
+	if (kwIs(s, "psr"))
 		return 0x6000;
 	return -1;
+}
+
+/* Das Funktionscodefeld von pflush/ptest (Bit 4..0), an r68 gemessen:
+   "#n" wird 1nnnn ("pflush #15,#0" -> $301f), "dN" wird 01nnn
+   ("pflush d7,#0" -> $300f), "sfc" wird 00000 und "dfc" wird 00001. */
+static int pmmuFc(const char *s)
+{
+	int r;
+	int v;
+
+	if (kwIs(s, "sfc"))
+		return 0x00;
+	if (kwIs(s, "dfc"))
+		return 0x01;
+	r = regNum(s, strLen(s));
+	if (r >= 0 && r < 8)
+		return 0x08 | r;
+	if (s[0] != '#')
+		fatal("Funktionscode weder #n noch dN, sfc, dfc: ", lnArg);
+	subStr(s, 1, strLen(s));
+	v = evalExpr(exBuf);
+	if (exOpen)
+		return 0x10;
+	if (exExtern >= 0 || exSect != SECT_ABS)
+		fatal("Funktionscode muss ein fester Wert sein: ", lnArg);
+	if (v < 0 || v > 15)
+		fatal("Funktionscode ausserhalb 0..15: ", lnArg);
+	return 0x10 | v;
+}
+
+/* Ein fester Sofortwert als Operandentext ("#7"), fuer die Befehle, die
+   dort nichts Verschiebbares zulassen. */
+static int immValue(const char *s, int lo, int hi, const char *what)
+{
+	int v;
+
+	if (s[0] != '#')
+		fatal(what, lnArg);
+	subStr(s, 1, strLen(s));
+	v = evalExpr(exBuf);
+	if (exOpen)
+		return lo;
+	if (exExtern >= 0 || exSect != SECT_ABS)
+		fatal(what, lnArg);
+	if (v < lo || v > hi)
+		fatal(what, lnArg);
+	return v;
 }
 
 /* Der Bitfeldzusatz "{offset:breite}". Er muss VOR parseOperand() vom
@@ -3654,10 +3744,8 @@ static void doInstruction(void)
 		return;
 	}
 	if (baseIs(base, "link")) {
-		if (size == 'l')
-			fatal("link.l (68020) ist noch nicht gemessen: ", lnOp);
-		if (size != 0 && size != 'w')
-			fatal("link kennt nur die Wortform: ", lnOp);
+		if (size != 0 && size != 'w' && size != 'l')
+			fatal("link kennt nur .w und .l: ", lnOp);
 		needOps(2);
 		parseOperand(opTxt0, 0);
 		parseOperand(opTxt1, 1);
@@ -3665,6 +3753,12 @@ static void doInstruction(void)
 		if (oMode[1] != AM_IMM)
 			fatal("link braucht einen Sofortwert als Rahmengroesse: ",
 			      lnArg);
+		if (size == 'l') {
+			/* 68020, gemessen: "link.l a5,#4" -> $480d $00000004. */
+			emitWord(0x4808 | v);
+			emitEa(1, 4);
+			return;
+		}
 		emitWord(0x4E50 | v);
 		emitEa(1, 2);
 		return;
@@ -4200,13 +4294,13 @@ static void doInstruction(void)
 		else
 			needOps(2);
 		cache = -1;
-		if (baseIs(opTxt0, "nc"))
+		if (kwIs(opTxt0, "nc"))
 			cache = 0;
-		else if (baseIs(opTxt0, "dc"))
+		else if (kwIs(opTxt0, "dc"))
 			cache = 1;
-		else if (baseIs(opTxt0, "ic"))
+		else if (kwIs(opTxt0, "ic"))
 			cache = 2;
-		else if (baseIs(opTxt0, "bc"))
+		else if (kwIs(opTxt0, "bc"))
 			cache = 3;
 		if (cache < 0)
 			fatal("Cachekennung weder nc/dc/ic noch bc: ", lnArg);
@@ -4219,6 +4313,338 @@ static void doInstruction(void)
 		if (oMode[1] != AM_IND)
 			fatal("Cachebefehl braucht \"(aN)\": ", lnArg);
 		emitWord(op | oReg[1]);
+		return;
+	}
+
+	/* --- Mit Uebertrag und BCD: die Paarform --- */
+	/* Gemessen: das ZIEL steht in Bit 11..9, die Quelle unten, Bit 3
+	   waehlt die Speicherform: "addx.w d2,d3" -> $d742,
+	   "addx.l -(a2),-(a3)" -> $d78a. Grundworte addx $d100, subx $9100,
+	   abcd $c100, sbcd $8100. Ohne Groessenbuchstaben ist es das WORT
+	   ("addx d0,d1" -> $d340); abcd/sbcd rechnen immer mit einem Byte und
+	   tragen gar kein Groessenfeld. */
+	if (baseIs(base, "addx") || baseIs(base, "subx") ||
+	    baseIs(base, "abcd") || baseIs(base, "sbcd")) {
+		int op;
+		int isBcd;
+
+		isBcd = 0;
+		if (baseIs(base, "abcd") || baseIs(base, "sbcd"))
+			isBcd = 1;
+		if (isBcd) {
+			if (size != 0 && size != 'b')
+				fatal("abcd/sbcd rechnen immer mit einem Byte: ", lnOp);
+		} else if (size == 0) {
+			size = 'w';
+		}
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		op = 0xD100;
+		if (baseIs(base, "subx"))
+			op = 0x9100;
+		else if (baseIs(base, "abcd"))
+			op = 0xC100;
+		else if (baseIs(base, "sbcd"))
+			op = 0x8100;
+		if (!isBcd)
+			op = op | (sizeField(size) << 6);
+		if (oMode[0] == AM_DN && oMode[1] == AM_DN) {
+			emitWord(op | (oReg[1] << 9) | oReg[0]);
+			return;
+		}
+		if (oMode[0] == AM_PRE && oMode[1] == AM_PRE) {
+			emitWord(op | (oReg[1] << 9) | 8 | oReg[0]);
+			return;
+		}
+		fatal("nur dN,dM oder -(aN),-(aM): ", lnArg);
+	}
+
+	/* Gemessen: $4800 | ea, immer ein Byte ("nbcd 8(a1)" -> $4829 $0008). */
+	if (baseIs(base, "nbcd")) {
+		if (size != 0 && size != 'b')
+			fatal("nbcd rechnet immer mit einem Byte: ", lnOp);
+		needOps(1);
+		parseOperand(opTxt0, 0);
+		if (oMode[0] == AM_AN)
+			fatal("ein Adressregister ist hier nicht zulaessig: ", lnArg);
+		needAlterable(0);
+		emitWord(0x4800 | eaBits(0));
+		emitEa(0, 1);
+		return;
+	}
+
+	/* --- Bereichspruefung --- */
+	/* Gemessen: die Breite steht in Bit 8..7, und zwar Wort 3, Langwort 2
+	   ("chk.w (a0),d0" -> $4190, "chk.l (a0),d2" -> $4510). Ohne
+	   Groessenbuchstaben ist es das Wort ("chk (a0),d3" -> $4790). Der
+	   Sofortwert hat die Breite des Befehls: "chk.w #7,d1" -> $43bc $0007,
+	   "chk.l #7,d1" -> $433c $00000007. */
+	if (baseIs(base, "chk")) {
+		int sz;
+
+		if (size == 0)
+			size = 'w';
+		sz = 3;
+		if (size == 'l')
+			sz = 2;
+		else if (size != 'w')
+			fatal("chk kennt nur .w und .l: ", lnOp);
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		if (oMode[0] == AM_AN)
+			fatal("ein Adressregister ist hier nicht zulaessig: ", lnArg);
+		emitWord(0x4000 | (needDn(1) << 9) | (sz << 7) | eaBits(0));
+		emitEa(0, sizeBytes(size));
+		return;
+	}
+
+	/* Gemessen: $00C0 | Breite<<9 | ea, dann ein Erweiterungswort -- und
+	   das steht VOR den Erweiterungswoertern des Operanden
+	   ("chk2.w 8(a1),d3" -> $02e9 $3800 $0008). Im Erweiterungswort:
+	   Bit 15 = Adressregister, Bit 14..12 dessen Nummer, Bit 11 = chk2
+	   (ohne das Bit ist es cmp2). Ohne Groessenbuchstaben das Wort. */
+	if (baseIs(base, "chk2") || baseIs(base, "cmp2")) {
+		int ext;
+
+		if (size == 0)
+			size = 'w';
+		if (size != 'b' && size != 'w' && size != 'l')
+			fatal("chk2/cmp2 kennen .b, .w und .l: ", lnOp);
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		needControl(0);
+		if (oMode[1] == AM_AN)
+			ext = 0x8000 | (oReg[1] << 12);
+		else
+			ext = needDn(1) << 12;
+		if (baseIs(base, "chk2"))
+			ext = ext | 0x0800;
+		emitWord(0x00C0 | (sizeField(size) << 9) | eaBits(0));
+		emitWord(ext);
+		emitEa(0, sizeBytes(size));
+		return;
+	}
+
+	/* --- BCD packen und auspacken (68020) --- */
+	/* Dieselbe Paarform wie abcd, dahinter die Korrektur als ganzes Wort:
+	   "pack d2,d3,#$1234" -> $8742 $1234, "unpk -(a2),-(a3),#$3030" ->
+	   $878a $3030. Grundworte pack $8140, unpk $8180. */
+	if (baseIs(base, "pack") || baseIs(base, "unpk")) {
+		int op;
+		int adj;
+
+		needNoSize(size);
+		needOps(3);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		adj = immValue(opTxt2, -32768, 65535,
+			       "pack/unpk brauchen die Korrektur als festen Sofortwert: ");
+		op = 0x8140;
+		if (baseIs(base, "unpk"))
+			op = 0x8180;
+		if (oMode[0] == AM_DN && oMode[1] == AM_DN)
+			emitWord(op | (oReg[1] << 9) | oReg[0]);
+		else if (oMode[0] == AM_PRE && oMode[1] == AM_PRE)
+			emitWord(op | (oReg[1] << 9) | 8 | oReg[0]);
+		else
+			fatal("nur dN,dM oder -(aN),-(aM): ", lnArg);
+		emitWord(adj);
+		return;
+	}
+
+	/* --- Vergleichen und tauschen (68020) --- */
+	/* Gemessen: "cas.w d0,d1,(a2)" -> $0cd2 $0040. Die Breite steht in
+	   Bit 10..9, und zwar Byte 1, Wort 2, Langwort 3 -- eins mehr als das
+	   uebliche Groessenfeld. Im Erweiterungswort Du in Bit 8..6, Dc unten;
+	   es steht VOR den Erweiterungswoertern des Operanden
+	   ("cas.w d0,d1,8(a2)" -> $0cea $0040 $0008). Ohne Groessenbuchstaben
+	   das Wort. */
+	if (baseIs(base, "cas")) {
+		int dc;
+		int du;
+
+		if (size == 0)
+			size = 'w';
+		if (size != 'b' && size != 'w' && size != 'l')
+			fatal("cas kennt .b, .w und .l: ", lnOp);
+		needOps(3);
+		dc = regNum(opTxt0, strLen(opTxt0));
+		du = regNum(opTxt1, strLen(opTxt1));
+		if (dc < 0 || dc > 7 || du < 0 || du > 7)
+			fatal("cas braucht zwei Datenregister: ", lnArg);
+		/* Der dritte Operand kommt in Fach 0 -- die beiden ersten sind
+		   blosse Registernamen und brauchen keines. */
+		parseOperand(opTxt2, 0);
+		needAlterable(0);
+		if (oMode[0] == AM_DN || oMode[0] == AM_AN)
+			fatal("cas braucht eine Speicheradresse: ", lnArg);
+		emitWord(0x08C0 | ((sizeField(size) + 1) << 9) | eaBits(0));
+		emitWord((du << 6) | dc);
+		emitEa(0, sizeBytes(size));
+		return;
+	}
+
+	/* --- Haltepunkt, Rueckkehr mit Abraeumen, Modulaufruf (68020) --- */
+	/* Gemessen: "bkpt #7" -> $484f, "rtd #-4" -> $4e74 $fffc,
+	   "callm #255,8(a1)" -> $06e9 $00ff $0008 (die Argumentzahl steht VOR
+	   der Adresse), "rtm d0" -> $06c0 und "rtm a3" -> $06cb. */
+	if (baseIs(base, "bkpt")) {
+		needNoSize(size);
+		needOps(1);
+		emitWord(0x4848 | immValue(opTxt0, 0, 7,
+			 "bkpt braucht eine feste Nummer 0..7: "));
+		return;
+	}
+	if (baseIs(base, "rtd")) {
+		needNoSize(size);
+		needOps(1);
+		parseOperand(opTxt0, 0);
+		if (oMode[0] != AM_IMM)
+			fatal("rtd braucht einen Sofortwert: ", lnArg);
+		emitWord(0x4E74);
+		emitEa(0, 2);
+		return;
+	}
+	if (baseIs(base, "callm")) {
+		int cnt;
+
+		needNoSize(size);
+		needOps(2);
+		cnt = immValue(opTxt0, 0, 255,
+			       "callm braucht die Argumentzahl als festen Sofortwert 0..255: ");
+		parseOperand(opTxt1, 1);
+		needControl(1);
+		emitWord(0x06C0 | eaBits(1));
+		emitWord(cnt);
+		emitEa(1, 4);
+		return;
+	}
+	if (baseIs(base, "rtm")) {
+		needNoSize(size);
+		needOps(1);
+		parseOperand(opTxt0, 0);
+		if (oMode[0] == AM_DN)
+			emitWord(0x06C0 | oReg[0]);
+		else if (oMode[0] == AM_AN)
+			emitWord(0x06C8 | oReg[0]);
+		else
+			fatal("rtm braucht ein Register: ", lnArg);
+		return;
+	}
+
+	/* --- PMMU: Puffer leeren und pruefen (68030) --- */
+	/* Gemessen. Beide legen $F000 | ea ab und dahinter ein
+	   Erweiterungswort -- vor den Erweiterungswoertern des Operanden
+	   ("ptestr #1,8(a0),#7" -> $f028 $9e11 $0008).
+	   pflush: Bit 15..13 = 001, Bit 12..10 = Betriebsart, Bit 8..5 = Maske
+	   (VIER Bit -- von "#0" bis "#8" waechst das Wort in Schritten von $20,
+	   gemessen), Bit 4..0 = Funktionscode. Betriebsart: pflusha 1, sonst
+	   4 + (pflushs ? 1 : 0) + (Adresse genannt ? 2 : 0) -- gemessen
+	   $3010 / $3410 / $3810 / $3c10.
+	   ptest: Bit 15..13 = 100, Bit 12..10 = Ebene, Bit 9 = lesen,
+	   Bit 8 = ein Adressregister ist genannt, Bit 7..5 dessen Nummer,
+	   Bit 4..0 der Funktionscode ("ptestr #0,(a1),#3,a2" -> $f011 $8f50). */
+	if (baseIs(base, "pflusha")) {
+		needNoSize(size);
+		dropOps();
+		emitWord(0xF000);
+		emitWord(0x2400);
+		return;
+	}
+	if (baseIs(base, "pflush") || baseIs(base, "pflushs")) {
+		int mode;
+		int fc;
+		int mask;
+
+		needNoSize(size);
+		if (oN != 2 && oN != 3)
+			fatal("pflush braucht Funktionscode und Maske: ", lnArg);
+		mode = 4;
+		if (baseIs(base, "pflushs"))
+			mode = mode | 1;
+		fc = pmmuFc(opTxt0);
+		mask = immValue(opTxt1, 0, 15,
+				"pflush braucht die Maske als festen Sofortwert 0..15: ");
+		if (oN == 3) {
+			mode = mode | 2;
+			parseOperand(opTxt2, 0);
+			needControl(0);
+			emitWord(0xF000 | eaBits(0));
+			emitWord(0x2000 | (mode << 10) | (mask << 5) | fc);
+			emitEa(0, 4);
+			return;
+		}
+		emitWord(0xF000);
+		emitWord(0x2000 | (mode << 10) | (mask << 5) | fc);
+		return;
+	}
+	if (baseIs(base, "ptestr") || baseIs(base, "ptestw")) {
+		int lvl;
+		int fc;
+		int ext;
+		int an;
+
+		needNoSize(size);
+		if (oN != 3 && oN != 4)
+			fatal("ptest braucht Funktionscode, Adresse und Ebene: ", lnArg);
+		fc = pmmuFc(opTxt0);
+		lvl = immValue(opTxt2, 0, 7,
+			       "ptest braucht die Ebene als festen Sofortwert 0..7: ");
+		parseOperand(opTxt1, 1);
+		needControl(1);
+		/* r68-DEFEKT: braucht die Adressierungsart Erweiterungswoerter,
+		   legt r68 an deren Stelle die EBENE ab -- die Adresse geht
+		   ganz verloren. Gemessen: "ptestr #1,16(a0),#3" ergibt
+		   $f028 $8e11 $0003 statt $0010, und "ptestr #1,$1234.w,#3"
+		   ergibt $f039 $8e11 $00000003 statt der Adresse. Der erzeugte
+		   Befehl prueft damit eine ganz andere Stelle. qr68 bricht
+		   dafuer ab, statt den Defekt nachzubauen oder still davon
+		   abzuweichen -- dieselbe Entscheidung wie bei bra.l. Heil ist
+		   nur "(aN)", und nur das steht in echtem Code. */
+		if (oMode[1] != AM_IND)
+			fatal("ptest nur mit \"(aN)\" -- r68 V2.9.1 legt sonst die Ebene an die Stelle der Adresse: ", lnArg);
+		ext = 0x8000 | (lvl << 10) | fc;
+		if (baseIs(base, "ptestr"))
+			ext = ext | 0x0200;
+		if (oN == 4) {
+			/* Gemessen: "ptestr #0,(a1),#3,a2" -> $f011 $8f50 --
+			   Bit 8 zeigt an, dass ein Adressregister genannt ist,
+			   Bit 7..5 tragen seine Nummer. */
+			parseOperand(opTxt3, 0);
+			an = needAn(0);
+			ext = ext | 0x0100 | (an << 5);
+		}
+		emitWord(0xF000 | eaBits(1));
+		emitWord(ext);
+		return;
+	}
+	/* Gemessen: "psave -(a7)" -> $f127, "prestore (a7)+" -> $f15f. */
+	if (baseIs(base, "psave") || baseIs(base, "prestore")) {
+		int op;
+
+		needNoSize(size);
+		needOps(1);
+		parseOperand(opTxt0, 0);
+		op = 0xF100;
+		if (baseIs(base, "prestore"))
+			op = 0xF140;
+		emitWord(op | eaBits(0));
+		emitEa(0, 4);
+		return;
+	}
+	/* Gemessen: "lpstop #$2700" -> $f800 $01c0 $2700 (CPU32/68060). */
+	if (baseIs(base, "lpstop")) {
+		needNoSize(size);
+		needOps(1);
+		parseOperand(opTxt0, 0);
+		if (oMode[0] != AM_IMM)
+			fatal("lpstop braucht einen Sofortwert: ", lnArg);
+		emitWord(0xF800);
+		emitWord(0x01C0);
+		emitEa(0, 2);
 		return;
 	}
 
@@ -4660,6 +5086,46 @@ static void doInstruction(void)
 				fatal("Scc kann kein Adressregister setzen: ", lnArg);
 			emitWord(0x50C0 | (cond << 8) | eaBits(0));
 			emitEa(0, 1);
+			return;
+		}
+	}
+
+	/* --- bedingter Ausnahmesprung (trapcc, 68020) --- */
+	/* Gemessen: $50F8 | Bedingung<<8 | Form -- Form 4 ohne Operand
+	   ("trapeq" -> $57fc), 2 mit Wort ("trapeq.w #7" -> $57fa $0007),
+	   3 mit Langwort ("trapeq.l #7" -> $57fb $00000007). "trapt" und
+	   "trapf" sind die Bedingungen 0 und 1; wie bei Scc kennt condOf()
+	   die nicht, weil es zwei Zeichen verlangt. "trap" und "trapv" sind
+	   weiter oben schon abgehandelt und kommen hier nicht mehr an. */
+	if (base[0] == 't' && base[1] == 'r' && base[2] == 'a' &&
+	    base[3] == 'p') {
+		cond = condOf(&base[4]);
+		if (baseIs(base, "trapt"))
+			cond = 0;
+		else if (baseIs(base, "trapf"))
+			cond = 1;
+		if (cond >= 0) {
+			if (size == 0) {
+				/* Ohne Groessenbuchstaben hat trapcc keinen
+				   Operanden -- das dritte Feld ist dann schon
+				   der Kommentar, s. dropOps(). */
+				dropOps();
+				emitWord(0x50FC | (cond << 8));
+				return;
+			}
+			if (size != 'w' && size != 'l')
+				fatal("trapcc kennt nur .w und .l: ", lnOp);
+			needOps(1);
+			parseOperand(opTxt0, 0);
+			if (oMode[0] != AM_IMM)
+				fatal("trapcc braucht einen Sofortwert: ", lnArg);
+			if (size == 'w') {
+				emitWord(0x50FA | (cond << 8));
+				emitEa(0, 2);
+				return;
+			}
+			emitWord(0x50FB | (cond << 8));
+			emitEa(0, 4);
 			return;
 		}
 	}

@@ -336,6 +336,121 @@ mitte    nop
          move.l  fremd(a6),d0
          lea     wert(a6),a0
 
+* ---- Mit Uebertrag und BCD: die Paarform ---------------------------------
+* Das ZIEL steht in Bit 11..9, die Quelle unten; ohne Groessenbuchstaben
+* ist es das Wort. abcd/sbcd tragen gar kein Groessenfeld.
+         addx    d0,d1
+         addx.b  d0,d1
+         addx.w  d2,d3
+         addx.l  d4,d5
+         addx.b  -(a0),-(a1)
+         addx.l  -(a2),-(a3)
+         subx    d0,d1
+         subx.w  d2,d3
+         subx.b  -(a0),-(a1)
+         abcd    d0,d1
+         abcd.b  d0,d1
+         abcd    -(a0),-(a1)
+         sbcd    d0,d1
+         sbcd    -(a0),-(a1)
+         nbcd    d0
+         nbcd    (a0)
+         nbcd    8(a1)
+
+* ---- Bereichspruefung ----------------------------------------------------
+* Die Breite steht in Bit 8..7: Wort 3, Langwort 2. chk2/cmp2 legen ihr
+* Erweiterungswort VOR die Erweiterungswoerter des Operanden.
+         chk     (a0),d3
+         chk.w   (a0),d0
+         chk.w   #7,d1
+         chk.l   (a0),d2
+         chk.l   #7,d1
+         chk2    (a0),d0
+         chk2.b  (a0),d0
+         chk2.l  (a0),a3
+         chk2.w  8(a1),d3
+         cmp2    (a0),d0
+         cmp2.l  (a0),a4
+
+* ---- BCD packen, vergleichen und tauschen (68020) ------------------------
+* Der dritte Operand: bei pack/unpk die Korrektur als ganzes Wort, bei cas
+* das Ziel. cas' Breitenfeld ist eins groesser als das uebliche.
+         pack    d0,d1,#0
+         pack    d2,d3,#$1234
+         pack    -(a0),-(a1),#0
+         unpk    d0,d1,#0
+         unpk    -(a2),-(a3),#$3030
+         cas     d0,d1,(a2)
+         cas.b   d0,d1,(a2)
+         cas.l   d2,d3,(a4)
+         cas.w   d0,d1,8(a2)
+
+* ---- Haltepunkt, Rueckkehr, Modulaufruf, langer Rahmen (68020) -----------
+         bkpt    #0
+         bkpt    #7
+         rtd     #8
+         rtd     #-4
+         callm   #4,(a0)
+         callm   #255,8(a1)
+         rtm     d0
+         rtm     a3
+         link.l  a5,#4
+         link.l  a2,#$12345
+
+* ---- Bedingter Ausnahmesprung (trapcc, 68020) ----------------------------
+* "trapt"/"trapf" sind die Bedingungen 0 und 1.
+         trapeq
+         trapne
+         trapt
+         trapf
+         trapmi
+         trapcc.w #$1234
+         trapcc.l #$12345678
+         trapeq.w #7
+         trapeq.l #7
+
+* ---- PMMU: Puffer leeren und pruefen (68030) -----------------------------
+* pflush: Maske in Bit 8..5 (VIER Bit), Betriebsart 4 + pflushs + Adresse<<1.
+* ptest nur mit "(aN)" -- alles andere ist in r68 kaputt (s. README).
+         pflusha
+         pflush  #0,#0
+         pflush  #1,#4
+         pflush  #15,#0
+         pflush  d0,#8
+         pflush  d7,#0
+         pflush  sfc,#0
+         pflush  dfc,#4
+         pflushs #0,#0
+         pflush  #0,#0,(a0)
+         pflush  #0,#0,16(a0)
+         pflushs #0,#0,(a0)
+         ptestr  #1,(a0),#7
+         ptestw  #1,(a0),#7
+         ptestr  #0,(a1),#3,a2
+         ptestr  d0,(a0),#7
+         ptestr  sfc,(a0),#0
+         psave   (a0)
+         psave   -(a7)
+         psave   8(a0)
+         prestore (a0)
+         prestore (a7)+
+         prestore 16(a1)
+         lpstop  #$2700
+
+* ---- Schluesselwoerter in GROSSschreibung --------------------------------
+* Registernamen nimmt r68 in jeder Schreibung -- Symbolnamen nicht.
+         MOVE.L  D0,D1
+         movec   d0,DFC
+         movec   D0,SFC
+         movec   d0,ITT0
+         pmove   (A0),TC
+         pmove   (A0),SRP
+         cinva   BC
+         cpushl  DC,(a1)
+         move.w  D0,CCR
+         movem.l D0-D3/A0,-(SP)
+         bfextu  (A1,D1.L){D2:1},D7
+
 * ---- Bitfeldbefehle (68020) ----------------------------------------------
 * Das Erweiterungswort steht VOR den Erweiterungswoertern des Operanden;
 * darum zaehlt der PC-Abstand ab dem Wort dahinter. "{0:32}" ergibt Breite

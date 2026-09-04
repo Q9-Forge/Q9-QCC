@@ -41,16 +41,20 @@ gar nicht.
 `add`/`sub`/`and`/`or`/`eor`/`cmp` mit allen Formen, die `r68` daraus macht
 (Grundform, `…a`, `…i`, `…q`), `adda`/`suba`/`cmpa`, `addi`…`cmpi`,
 `addq`/`subq`, `muls`/`mulu`/`divs`/`divu` (Wortform), `clr`/`neg`/`negx`/
-`not`/`tst`/`tas`/`swap`/`ext`/`extb`, alle acht Schiebe- und Rotierbefehle
+`not`/`tst`/`tas`/`swap`/`ext`/`extb`, `addx`/`subx`/`abcd`/`sbcd`/`nbcd`,
+`chk`, alle acht Schiebe- und Rotierbefehle
 (Sofortwert, Register, Speicherform), `Scc` (14 Bedingungen), `bra`/`bsr`/
 `Bcc` (kurz und Wort), `dbra`/`dbcc`, `jsr`/`jmp`, `link`/`unlk`,
 `rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`,
 `cmpm`, `movep`, die 68020-Langformen von `mulu`/`muls`/`divu`/`divs`
 (auch als `dr:dq`) und `divul`/`divsl`, die acht **Bitfeldbefehle**
-`bftst`/`bfextu`/`bfchg`/`bfexts`/`bfclr`/`bfffo`/`bfset`/`bfins`, die
-68040-Cachebefehle `cinva`/`cpusha`/`cinvl`/`cpushl`/`cinvp`/`cpushp` und
-`move16` (alle fünf Formen), das PMMU-`pmove`/`pmovefd` (`tc`, `srp`,
-`crp`, `tt0`, `tt1`, `mmusr`/`psr`), dazu
+`bftst`/`bfextu`/`bfchg`/`bfexts`/`bfclr`/`bfffo`/`bfset`/`bfins`,
+`chk2`/`cmp2`, `pack`/`unpk`, `cas`, `bkpt`, `rtd`, `callm`/`rtm`,
+`link.l` und `trapcc` (alle 16 Bedingungen, ohne Operand und mit `.w`/`.l`),
+die 68040-Cachebefehle `cinva`/`cpusha`/`cinvl`/`cpushl`/`cinvp`/`cpushp`
+und `move16` (alle fünf Formen), vom PMMU `pmove`/`pmovefd` (`tc`, `srp`,
+`crp`, `tt0`, `tt1`, `mmusr`/`psr`), `pflush`/`pflusha`/`pflushs`,
+`ptestr`/`ptestw`, `psave`/`prestore`, dazu `lpstop`, sowie
 `movem` mit Registerlisten (`d0-d7/a0-a6`, bei `-(An)` mit umgekehrter
 Maske), die Bitbefehle `btst`/`bset`/`bclr`/`bchg` (statisch und dynamisch),
 `ori`/`andi`/`eori` nach `ccr`/`sr`, `move` von und nach `sr`/`ccr`/`usp`,
@@ -59,9 +63,16 @@ Kontrollregistern des 68000er-Kerns *und* denen des 68040/68060
 (`tc`, `itt0`, `itt1`, `dtt0`, `dtt1`, `buscr`, `mmusr`, `urp`, `srp`,
 `pcr`).
 
-**Der Integerbestand ist damit vollständig für den Korpus** — die
-Restliste vom 2026-09-04 ist abgearbeitet. FPU kommt in den 207.000 Zeilen
-nirgends vor und bleibt draußen.
+**Der Integerbestand ist damit vollständig** — nicht mehr nur für den
+Korpus: es gibt keinen Integerbefehl mehr, den `r68 V2.9.1` assembliert und
+`qr68` nicht. Nachgemessen, indem jeder Kandidat des 68000/68010/68020/
+68030/68040/68060 einzeln durch **beide** Assembler geschickt wurde. FPU
+kommt in den 207.000 Zeilen nirgends vor und bleibt draußen.
+
+**Schlüsselwörter als Operand sind schreibungsUNabhängig** — Register-,
+Kontrollregister-, MMU- und Cachenamen. `movec d0,DFC` ist dasselbe wie
+`movec d0,dfc` (an r68 gemessen), und im SDK steht beides. **Symbolnamen
+sind es nicht**, die bleiben schreibungsabhängig.
 
 **Adressierungsarten:** alle zwölf des 68000 —  `Dn`, `An`, `(An)`, `(An)+`,
 `-(An)`, `d16(An)`, `d8(An,Xn)`, `abs.w`, `abs.l`, `d16(PC)`, `d8(PC,Xn)`,
@@ -521,9 +532,53 @@ Vorsicht: `tc`, `srp` und `mmusr` heißen bei `pmove` genauso und bezeichnen
 dort etwas anderes — die beiden Tabellen sind in `qr68` absichtlich
 getrennt.
 
+**Die Paarform** (`addx`, `subx`, `abcd`, `sbcd`, `pack`, `unpk`) trägt das
+**Ziel** in Bit 11..9 und die Quelle unten; Bit 3 wählt `-(aN),-(aM)` statt
+`dN,dM`. Grundworte `addx` `$d100`, `subx` `$9100`, `abcd` `$c100`,
+`sbcd` `$8100`, `pack` `$8140`, `unpk` `$8180`. Ohne Größenbuchstaben ist
+`addx`/`subx` das **Wort** (`addx d0,d1` → `$d340`); `abcd`/`sbcd` tragen
+gar kein Größenfeld.
+
+**`chk`** hat die Breite in Bit 8..7, und zwar **Wort 3, Langwort 2**
+(`chk.w (a0),d0` → `$4190`, `chk.l (a0),d2` → `$4510`); ohne Buchstaben das
+Wort. **`chk2`/`cmp2`** legen ihr Erweiterungswort wieder **vor** die des
+Operanden (`chk2.w 8(a1),d3` → `$02e9 $3800 $0008`): Bit 15 = Adress-
+register, Bit 14..12 dessen Nummer, Bit 11 unterscheidet `chk2` von `cmp2`.
+
+**`cas`** hat ein Größenfeld, das **eins größer** ist als das übliche —
+Byte 1, Wort 2, Langwort 3 (`cas.w d0,d1,(a2)` → `$0cd2 $0040`).
+
+**`trapcc`** ist `$50F8 | Bedingung<<8 | Form`, Form 4 ohne Operand
+(`trapeq` → `$57fc`), 2 mit Wort, 3 mit Langwort. `trapt`/`trapf` sind die
+Bedingungen 0 und 1.
+
+**`pflush`.** `$F000 | ea`, Erweiterungswort `001` in Bit 15..13,
+Betriebsart in Bit 12..10, **Maske in Bit 8..5 — vier Bit**, Funktionscode
+in Bit 4..0. Die Maske ist die Falle: von `#0` bis `#8` wächst das Wort in
+Schritten von `$20`, nicht `$40`. Betriebsart `1` für `pflusha`, sonst
+`4 + (pflushs ? 1 : 0) + (Adresse genannt ? 2 : 0)` — gemessen `$3010`,
+`$3410`, `$3810`, `$3c10`. Funktionscode: `#n` → `1nnnn`, `dN` → `01nnn`,
+`sfc` → `00000`, `dfc` → `00001`.
+
 ### Ein Defekt in r68 V2.9.1
 
-Drei Stellen, an denen `qr68` bewusst nicht folgt.
+Vier Stellen, an denen `qr68` bewusst nicht folgt.
+
+**`ptest` verliert die Adresse.** Braucht die Adressierungsart Erweiterungs-
+wörter, legt r68 an deren Stelle die **Ebene** ab:
+
+| Quelle | r68 | richtig wäre |
+|---|---|---|
+| `ptestr #1,16(a0),#3` | `f028 8e11 0003` | `… 0010` |
+| `ptestr #1,32(a0),#5` | `f028 9611 0005` | `… 0020` |
+| `ptestr #1,$1234.w,#3` | `f039 8e11 0000 0003` | `… 1234` |
+
+Das Erweiterungswort selbst stimmt (Ebene, Funktionscode und Richtung sitzen
+richtig) — nur die Adresse geht verloren, und der Befehl prüft danach eine
+ganz andere Stelle. Heil ist allein `(aN)`, und nur das steht in echtem
+Code. `qr68` **bricht für alles andere ab**. `pflush` mit Adresse und
+`psave`/`prestore` sind davon **nicht** betroffen — nachgemessen
+(`pflush #0,#0,16(a0)` → `f028 3810 0010`, korrekt).
 
 Die **lange Sprungform** (`bra.l`, `bsr.l`, `bcc.l`, 68020) ist kaputt: `r68`
 gibt `6000 00000000` aus — ohne das nötige `$FF` im unteren Byte des
@@ -663,7 +718,7 @@ UEXTRA="…/PORTS/Q9 …/SRC/ROM/MVME050" PORTDIR=…/PORTS/Q9/ROM_CBOOT \
 ```
 
 Die verbliebenen Abweichungen sind **alle** bewusste Verweigerungen, und
-zwar von genau drei Arten:
+zwar von genau vier Arten (die vierte, `ptest`, kommt im Korpus nicht vor):
 
 - **`sc68562`** benutzt `bsr.l`/`bcs.l` — die in r68 kaputte lange Sprungform
   (s. u.). `qr68` bricht dort ab.
@@ -675,6 +730,27 @@ zwar von genau drei Arten:
   Zweige — ein Ergebnis, das niemand haben will. `qr68` bricht ab.
 
 ## Was noch offen ist
+
+### Was `r68` selbst nicht kann — und `qr68` deshalb auch nicht
+
+Nachgemessen, damit „`qr68` bricht ab" nicht mit „hier fehlt etwas"
+verwechselt wird. In allen folgenden Fällen lehnt **r68 genauso ab**:
+
+| Konstrukt | r68-Meldung |
+|---|---|
+| **Skalierter Index** `(a0,d0*4)`, `8(a0,d0.l*8)`, `pea (a0,d0*2)` | „illegal addressing mode" |
+| Klammerform `(8,a0,d0.w)`, `(bd,a0,d0.l)` | „parenthesis needed" |
+| Symbol doppelt definiert (`X equ 1` / `X equ 2`) | „redefined label" |
+| Schieben, unäres Nicht, Mal, Geteilt auf einem Abschnittsbezug (`dc.w lab>>2`, `^lab`, `lab*2`, `lab/2`) | „illegal external reference" |
+| Speicherform `asl.b (a0)` | „illegal size" |
+| `pload` | „bad mnemonic" |
+
+Das ist mehr als eine Fußnote: **r68 V2.9.1 kennt das skalierte Indizieren
+gar nicht.** Quellen wie `SRC/IO/SCF/DRVR/sc68360.a` oder
+`CPU32/PORTS/QUADS/ROM_CBOOT/sysinit.a`, die es benutzen, übersetzt r68
+selbst nicht — sie sind kein offener Posten von `qr68`, sondern gar nicht
+erst prüfbar. Auch die 68020-Formen mit Speicherindirektion
+(`([bd,An],Xn,od)`) fehlen r68 vollständig.
 
 ### Der Befehlsvorrat ist zu (2026-09-04)
 
@@ -694,9 +770,32 @@ Der dritte war ein stiller Fehler, kein Abbruch: `move.l VectTbl+4(pc),4(a0)`
 kam als `$0000` statt `$0004` heraus. Bei Summand 0 fällt so etwas nicht auf
 — das ist die Sorte Abweichung, die nur ein byteweiser Vergleich findet.
 
-Damit ist der **Integerbestand für den Korpus vollständig**; die
-**Direktiven** waren es schon. FPU kommt in 207.000 Zeilen nicht vor und
-bleibt draußen.
+Danach wurde nicht mehr nur der Korpus gezählt, sondern **jeder Integer-
+befehl des 68000/68010/68020/68030/68040/68060 einzeln durch beide
+Assembler geschickt**. Das brachte 23 weitere, darunter sechs aus dem
+Grundbestand des 68000:
+
+| | Befehle |
+|---|---|
+| 68000 | `addx`, `subx`, `abcd`, `sbcd`, `nbcd`, `chk` |
+| 68020 | `chk2`, `cmp2`, `pack`, `unpk`, `bkpt`, `rtd`, `cas`, `callm`, `rtm`, `link.l`, `trapcc` |
+| PMMU/68060 | `pflusha`, `pflush`, `ptestr`/`ptestw`, `psave`, `prestore`, `lpstop` |
+
+Dazu die **Schreibungsunabhängigkeit** der Schlüsselwörter: `regNum` und
+`ccr`/`sr`/`usp` waren es schon, die Tabellen für `movec`, `pmove` und die
+Cachekennungen nicht — `movec d0,DFC` brach ab. Betrifft real
+`CPU32/PORTS/QUADS` und `68000/PORTS/RUSSBOX`.
+
+**Damit ist der Integerbestand vollständig**: es gibt keinen Integerbefehl
+mehr, den r68 assembliert und `qr68` nicht. Die **Direktiven** waren es
+schon. FPU kommt in 207.000 Zeilen nicht vor und bleibt draußen.
+
+Der Rundumlauf über alle 355 handgeschriebenen Quellen (`qr68` allein, ohne
+r68-Vergleich, mit einer generischen Konfiguration) meldet danach keinen
+unbekannten **Befehl** mehr — die verbliebenen „nicht kodierbar" sind
+durchweg Makro- und Descriptornamen, deren Makrodatei in dieser
+Konfiguration nicht eingebunden ist (`ldbra`, `tpad`, `diskh1pfmt`,
+`t0`…`t33`).
 
 Nur `ram.a` (RAMDISK, `move16`) ließ sich nicht gegenprüfen: r68 kommt in
 keiner der hier vorhandenen RBF-Portkonfigurationen durch, weil die Makros
