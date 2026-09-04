@@ -10,7 +10,7 @@ Ziel: Microwares `r68` ersetzen. Präprozessor (`qcpp`) und Compiler-Frontend
 (QCC) laufen bereits auf echtem 68030 — Assembler und Binder sind die letzten
 Fremdteile der Kette.
 
-## Stand (2026-09-03)
+## Stand (2026-09-04)
 
 **Die vom QCC-Backend erzeugten Quellen assembliert `qr68` byteidentisch zu
 `r68`** — ganze Module, nicht Einzelfälle:
@@ -21,7 +21,7 @@ Fremdteile der Kette.
 | `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **68 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule, Bootcode | **byteidentisch** |
+| **78 Quellen des MWOS-SDK** — Treiber, Descriptoren, Systemmodule, Boot- und ROM-Code | **byteidentisch** |
 | **qr68 auf echtem 68030**, gebaut mit der eigenen Kette | **byteidentisch zum Hostlauf** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
@@ -46,12 +46,22 @@ gar nicht.
 `Bcc` (kurz und Wort), `dbra`/`dbcc`, `jsr`/`jmp`, `link`/`unlk`,
 `rts`/`rte`/`rtr`/`nop`/`trap`/`trapv`/`reset`/`stop`/`illegal`,
 `cmpm`, `movep`, die 68020-Langformen von `mulu`/`muls`/`divu`/`divs`
-(auch als `dr:dq`), die 68040-Cachebefehle `cinva`/`cpusha`/`cinvl`/
-`cpushl`/`cinvp`/`cpushp`, dazu
+(auch als `dr:dq`) und `divul`/`divsl`, die acht **Bitfeldbefehle**
+`bftst`/`bfextu`/`bfchg`/`bfexts`/`bfclr`/`bfffo`/`bfset`/`bfins`, die
+68040-Cachebefehle `cinva`/`cpusha`/`cinvl`/`cpushl`/`cinvp`/`cpushp` und
+`move16` (alle fünf Formen), das PMMU-`pmove`/`pmovefd` (`tc`, `srp`,
+`crp`, `tt0`, `tt1`, `mmusr`/`psr`), dazu
 `movem` mit Registerlisten (`d0-d7/a0-a6`, bei `-(An)` mit umgekehrter
 Maske), die Bitbefehle `btst`/`bset`/`bclr`/`bchg` (statisch und dynamisch),
 `ori`/`andi`/`eori` nach `ccr`/`sr`, `move` von und nach `sr`/`ccr`/`usp`,
-`exg`, und vom 68010 `movec` und `moves`.
+`exg`, und vom 68010 `movec` und `moves` — `movec` mit den
+Kontrollregistern des 68000er-Kerns *und* denen des 68040/68060
+(`tc`, `itt0`, `itt1`, `dtt0`, `dtt1`, `buscr`, `mmusr`, `urp`, `srp`,
+`pcr`).
+
+**Der Integerbestand ist damit vollständig für den Korpus** — die
+Restliste vom 2026-09-04 ist abgearbeitet. FPU kommt in den 207.000 Zeilen
+nirgends vor und bleibt draußen.
 
 **Adressierungsarten:** alle zwölf des 68000 —  `Dn`, `An`, `(An)`, `(An)+`,
 `-(An)`, `d16(An)`, `d8(An,Xn)`, `abs.w`, `abs.l`, `d16(PC)`, `d8(PC,Xn)`,
@@ -253,6 +263,23 @@ Wer den laufenden Ort nimmt, liegt ab dem zweiten Wert daneben — in
 nicht die Schreibweise: `pc` und `pcr` verhalten sich in beiden Fällen
 gleich. (`SYSMODS/GCLOCK/tickgeneric.a:188`: `jmp 3(pc)`.)
 
+Und bei einem **externen** Namen steht im Displacementwort nicht 0, sondern
+der **konstante Anteil des Ausdrucks** — der Binder addiert ihn nicht
+selbst dazu:
+
+| Quelle | Displacement | Referenztyp |
+|---|---|---|
+| `move.l fremd(pc),d0` | `$0000` | `$00b0` |
+| `move.l fremd+4(pc),d1` | `$0004` | `$00b0` |
+| `move.l fremd-8(pc),d2` | `$fff8` | `$00b0` |
+| `lea fremd+2(pc),a0` | `$0002` | `$00b0` |
+
+Ohne das fehlt genau ein Wort: `ROM_CBOOT/sysinit.a` des Ports MVME147
+legt mit `move.l VectTbl(pc),0(a0)` / `move.l VectTbl+4(pc),4(a0)` die
+ersten beiden Vektoren an, und der zweite kam als `$0000` heraus statt als
+`$0004`. Bei Summand 0 fällt der Fehler nicht auf — deshalb ist er so
+lange durchgerutscht.
+
 ### Was sonst noch nur durchs Messen kam
 
 - **Das Mnemonic endet auch an einer Klammer**, nicht nur am Leerzeichen: im
@@ -418,9 +445,85 @@ Befehl ganz weg. Bei `bra`/`Bcc` ist das gleichbedeutend, bei `bsr` nicht
 (die Rücksprungadresse fehlt dann). `qr68` bricht dort ab, statt eine
 Bedeutungsänderung nachzubauen.
 
+### Die Befehle des 68020/68030/68040, wie r68 sie kodiert
+
+Alles gemessen; in mehr als einem Punkt hätte man es anders geraten.
+
+**Bitfelder.** `$E8C0 | Kennung<<8 | ea`, danach ein Erweiterungswort — und
+das steht **vor** den Erweiterungswörtern des Operanden:
+
+```
+bftst   8(a0){1:2}          -> e8e8 0042 0008
+bfextu  (a1,d1.l){d2:1},d7  -> e9f1 7881 1800
+```
+
+Kennungen der Reihe nach: `bftst` 0, `bfextu` 1, `bfchg` 2, `bfexts` 3,
+`bfclr` 4, `bfffo` 5, `bfset` 6, `bfins` 7. Im Erweiterungswort:
+
+| Bit(s) | Bedeutung |
+|---|---|
+| 14..12 | Datenregister — `bfextu`/`bfexts`/`bfffo` das Ziel, `bfins` die Quelle; die vier ohne Register lassen es 0 |
+| 11 | der Offset steht in einem Datenregister |
+| 10..6 | Offset bzw. dessen Registernummer |
+| 5 | die Breite steht in einem Datenregister |
+| 4..0 | Breite bzw. deren Registernummer |
+
+Weil das Erweiterungswort **vor** der Adresse liegt, zählt ein PC-Abstand ab
+dem Wort dahinter: `bftst lab(pc){1:2}` auf Offset `$2a` ergibt `$ffd2`,
+also den Abstand vom Adresswort auf `$2e`.
+
+Beide Angaben dürfen **Ausdrücke** sein (`d0{WID:WID+1}` mit `WID equ 3` →
+`$00c4`), und r68 **beschneidet sie auf 5 Bit** und warnt dabei nur
+(„offset truncated to 5 bits" — auch wenn es die Breite meint). `{0:32}`
+wird deshalb Breite 0, was in der Kodierung genau 32 bedeutet; genau so
+steht es im Korpus (`bfffo d4{0:32},d4`). Einen **negativen** Wert lehnt
+r68 ab („illegal addressing mode"), `qr68` ebenso.
+
+**`move16`.** Nur die Form mit zwei Postinkrementen hat ein
+Erweiterungswort — dort steckt `Ay` in Bit 14..12, Bit 15 ist gesetzt. Die
+vier Formen mit absoluter Adresse haben keines; dort folgt die Adresse
+direkt:
+
+| Quelle | Bytes |
+|---|---|
+| `move16 (a0)+,(a2)+` | `f620 a000` |
+| `move16 (a0)+,$12345678` | `f600` + Langwort |
+| `move16 $12345678,(a1)+` | `f609` + Langwort |
+| `move16 (a2),$12345678` | `f612` + Langwort |
+| `move16 $12345678,(a3)` | `f61b` + Langwort |
+
+**`pmove`.** `$F000 | ea`, dann ein Erweiterungswort — wieder **vor** der
+Adresse (`pmove 8(a0),tc` → `f028 4000 0008`). Bit 9 gibt die Richtung an
+(0 = in das MMU-Register, 1 = heraus), Bit 8 ist das `FD` von `pmovefd`:
+
+| Register | Wort | mit `pmovefd` |
+|---|---|---|
+| `tc` | `$4000` | `$4100` |
+| `srp` | `$4800` | `$4900` |
+| `crp` | `$4c00` | |
+| `tt0` | `$0800` | |
+| `tt1` | `$0c00` | |
+| `mmusr` (auch `psr`) | `$6000` | |
+
+`pcsr` kennt r68 **nicht** („illegal register usage").
+
+**`divul`/`divsl`.** Dasselbe Befehlswort wie `divu`/`divs`, aber mit
+32-Bit-Dividend: Bit 10 bleibt **frei**, der Rest kommt trotzdem nach `dr`.
+
+```
+divul.l d1,d2:d0  -> 4c41 0002        divu.l d1,d2:d0  -> 4c41 0402
+divsl.l d1,d2:d0  -> 4c41 0802        divs.l d1,d2:d0  -> 4c41 0c02
+```
+
+**`movec` auf 68040/68060.** `tc` 3, `itt0` 4, `itt1` 5, `dtt0` 6, `dtt1` 7,
+`buscr` 8, `mmusr` `$805`, `urp` `$806`, `srp` `$807`, `pcr` `$808`.
+Vorsicht: `tc`, `srp` und `mmusr` heißen bei `pmove` genauso und bezeichnen
+dort etwas anderes — die beiden Tabellen sind in `qr68` absichtlich
+getrennt.
+
 ### Ein Defekt in r68 V2.9.1
 
-Zwei Stellen, an denen `qr68` bewusst nicht folgt.
+Drei Stellen, an denen `qr68` bewusst nicht folgt.
 
 Die **lange Sprungform** (`bra.l`, `bsr.l`, `bcc.l`, 68020) ist kaputt: `r68`
 gibt `6000 00000000` aus — ohne das nötige `$FF` im unteren Byte des
@@ -436,6 +539,29 @@ Schon `delay35 / rept (35-5-9)/2 / nop / endr` — so steht es in
 `MWOS/OS9/SRC/IO/SCF/DRVR/sc8x30.a` — ergibt neun `bad label`-Fehler. Die
 erzeugten Bytes stimmen dabei zwar, als Orakel taugt es aber nicht; `qr68`
 wiederholt genau den Rumpf zwischen `rept` und `endr`.
+
+Und eine **Vorwärtsreferenz in einem Bitfeldzusatz schneidet den psect ab**.
+Die Probe — `SPAET` steht erst hinter `ends`:
+
+```
+         psect   bfa,0,0,1,0,0
+         bftst   d0{SPAET:2}
+         nop
+         nop
+         nop
+         nop
+         ends
+SPAET    equ     5
+```
+
+Das Erweiterungswort stimmt (`$0142`, also Offset 5 und Breite 2), aber r68
+hört nach dieser Zeile auf zu listen und schreibt nur `codsz=8` statt 12 —
+zwei der vier `nop` fehlen im Objekt. Ohne die Vorwärtsreferenz passiert
+das nicht, und mit einem gewöhnlichen Befehl (`move.l #SPAET,d0`) auch
+nicht; es hängt am Bitfeldpfad. Im Korpus kommt der Fall nicht vor — dort
+sind Offset und Breite immer ein Register, `0` oder `32`. `qr68` übersetzt
+solche Quellen **vollständig** und weicht damit an dieser Stelle bewusst
+ab; als Orakel taugt r68 dafür nicht.
 
 ### `set` sieht immer den Stand nach dem ERSTEN Durchlauf
 
@@ -477,6 +603,22 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
 - **Geschrieben im QCC-Subset** wie `qcpp` (keine Unions, kein `->`, kein
   `float`, Arraygrößen als Literale, feste Tabellen statt `malloc`), damit
   `qr68` sich später selbst übersetzen lässt.
+
+  **Dazu gehört auch: keine aneinandergereihten Stringliterale.** Das
+  ANSI-C-übliche
+
+  ```c
+  fatal("ein langer Text, der "
+        "auf zwei Zeilen steht", x);
+  ```
+
+  lässt QCC mit `Schlusswort FAIL, 0 Meldungen` abbrechen — ohne
+  Fehlermeldung und mit einer IR-Zeile, also praktisch ohne Hinweis auf die
+  Ursache. Der Host-`cc` übersetzt es klaglos, `make check` bleibt grün;
+  gefunden hat es erst `make os9`. **Lange Meldungstexte deshalb in eine
+  Zeile schreiben**, auch wenn sie über 79 Zeichen gehen. (Zeiger-
+  Ausgabeparameter wie `void f(int *p)` kann QCC dagegen sehr wohl —
+  nachgemessen, nicht vermutet.)
 - **Zeilenenden LF, CR+LF und CR** werden alle verstanden. OS-9-Textdateien
   enden mit CR — bei `qcpp` hat genau das im Emulator dafür gesorgt, dass die
   ganze Datei eine Zeile war.
@@ -496,42 +638,70 @@ Definitionen anderer Boards:
 | SCF-/RBF-/PCF-Descriptoren | **15 gleich, 0 abweichend** |
 | `SYSMODS/GCLOCK` (Uhren) | **12 gleich, 0 abweichend** |
 | `SYSMODS/SYSGO`, `SYSCACHE`, `INIT` | **7 gleich, 0 abweichend** |
-| `ROM/COMMON`, `ROM/SERIAL` (Bootcode) | **10 gleich, 0 abweichend** |
+| `ROM/COMMON`, `ROM/SERIAL` (Bootcode) | **11 gleich, 0 abweichend** |
+| `ROM_CBOOT/sysinit.a` der Ports Q9, CB030, MVME147, MVME167, MVME177 | **5 gleich, 0 abweichend** |
+| SCF-Treiber des **Q9-Ports** | 4 gleich, 2 abweichend |
 
 Dieselben Gruppen laufen auch aus den Ports **MVME147**, **CB030**,
 **AtariST** und **Q9** heraus — dort greifen andere Bedingungen, und bis auf
-dieselben drei bewussten Verweigerungen bleibt alles byteidentisch.
+dieselben bewussten Verweigerungen bleibt alles byteidentisch.
 
 ```
 PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
 ```
 
-Die drei verbliebenen Abweichungen sind alle drei bewusste Verweigerungen:
+`UEXTRA` nimmt weitere Suchverzeichnisse auf. Der ROM-Code braucht das:
+`ROM_CBOOT/sysinit.a` holt `systype.d` aus dem **Wurzelverzeichnis** des
+Ports (nicht aus dem eigenen) und `iniz050.a` aus `SRC/ROM/MVME050`. Ohne
+den zusätzlichen `-u` fällt r68 auf sein eingebautes
+`\mwos\OS9\SRC\DEFS` zurück und bricht ab — was wie ein fehlender
+Korpusteil aussieht und keiner ist.
+
+```
+UEXTRA="…/PORTS/Q9 …/SRC/ROM/MVME050" PORTDIR=…/PORTS/Q9/ROM_CBOOT \
+    DRVDIR=…/SRC/IO/SCF/DRVR ./test/mwos.sh …/PORTS/Q9/ROM_CBOOT/sysinit.a
+```
+
+Die verbliebenen Abweichungen sind **alle** bewusste Verweigerungen, und
+zwar von genau drei Arten:
 
 - **`sc68562`** benutzt `bsr.l`/`bcs.l` — die in r68 kaputte lange Sprungform
   (s. u.). `qr68` bricht dort ab.
-- **`sc68990`** springt auf die unmittelbar folgende Anweisung; r68 lässt den
-  Befehl mit `-b` weg, was sich nicht stabil nachbilden lässt (s. u.).
+- **`sc68990`**, **`oxc16954`** und **`gdp`** springen auf die unmittelbar
+  folgende Anweisung; r68 lässt den Befehl mit `-b` weg, was sich nicht
+  stabil nachbilden lässt (s. u.).
 - **`sc8251a`** prüft `ifeq CPUType-FM16s` mit einem Namen, den es nicht
   gibt. r68 meldet dort „illegal external reference" und übersetzt **beide**
   Zweige — ein Ergebnis, das niemand haben will. `qr68` bricht ab.
 
 ## Was noch offen ist
 
-Am 2026-09-04 über den ganzen Korpus **nachgemessen**, nicht geschätzt.
+### Der Befehlsvorrat ist zu (2026-09-04)
 
-### Fehlende Befehle — fünf, in acht Dateien
+Die Restliste vom selben Tag — `bfextu`/`bfins`/`bfffo` (23×), `move16`
+(20×) und `pmove` (4×) — ist abgearbeitet und in `test/insn.a` festgehalten.
+Beim Durchmessen kamen **drei weitere Lücken** heraus, die die Restliste
+nicht kannte, weil r68 die betroffenen Dateien ohne die zusätzlichen
+Suchverzeichnisse selbst nicht übersetzte:
 
-| Befehl | Vorkommen | Form im Korpus |
-|---|---|---|
-| `bfextu` / `bfins` / `bfffo` | 23× | `(a1,d1.l){d2:1}`, `d4{0:32}` |
-| `move16` | 20× | nur `(a0)+,(a2)+` |
-| `pmove` | 4× | PMMU |
+| Lücke | Wo sie sich zeigte |
+|---|---|
+| `divul.l` / `divsl.l` | `ROM_CBOOT/sysinit.a`, Ports MVME167 und MVME177 |
+| `movec` mit den Kontrollregistern des 68040/68060 | dieselben zwei Dateien (`movec d0,tc`) |
+| PC-relativ auf einen externen Namen **mit Summand** | `ROM_CBOOT/sysinit.a`, Port MVME147 |
 
-Alle in `boot.a`, `gdp.a`, `mc6845.a`, `ram.a`, `sysinit.a` — ROM- und
-Portcode. Neu daran ist allein die Bitfeldsyntax `{offset:breite}`. Die
-**Direktiven sind vollständig** für den Korpus; FPU kommt in 207.000 Zeilen
-nicht vor und bleibt draußen.
+Der dritte war ein stiller Fehler, kein Abbruch: `move.l VectTbl+4(pc),4(a0)`
+kam als `$0000` statt `$0004` heraus. Bei Summand 0 fällt so etwas nicht auf
+— das ist die Sorte Abweichung, die nur ein byteweiser Vergleich findet.
+
+Damit ist der **Integerbestand für den Korpus vollständig**; die
+**Direktiven** waren es schon. FPU kommt in 207.000 Zeilen nicht vor und
+bleibt draußen.
+
+Nur `ram.a` (RAMDISK, `move16`) ließ sich nicht gegenprüfen: r68 kommt in
+keiner der hier vorhandenen RBF-Portkonfigurationen durch, weil die Makros
+`ldbra` und `OS9svc` nicht hereingezogen werden. Die dort benutzte Form
+`move16 (a0)+,(a2)+` ist über `test/insn.a` abgedeckt.
 
 ### Strukturelle Grenzen
 
@@ -548,10 +718,13 @@ nicht vor und bleibt draußen.
 
 ### Noch nicht geprüfte Korpusteile
 
-Dateimanager, SCSI, `ROM/CBOOT` (DISK/NETWORK/SYSBOOT) und die Ports, für
-die hier die Board-Definitionen fehlen. Die Befundrate ist stark gefallen —
-die letzten drei Gruppen brachten je null neue Abweichungen —, aber
-„ungeprüft" ist nicht „geprüft".
+Dateimanager, SCSI, der Rest von `ROM/CBOOT` (DISK, NETWORK, SYSBOOT) und
+die Ports, für die hier die Board-Definitionen fehlen. `sysinit.a` aus
+`ROM/CBOOT` ist jetzt aus fünf Ports geprüft und war der ergiebigste Teil:
+drei der oben genannten Lücken kamen von dort. Die übrigen `ROM/CBOOT`-
+Verzeichnisse sind der nächste Kandidat — „ungeprüft" ist nicht „geprüft",
+und die Annahme, die Befundrate sei erschöpft, hat sich hier gerade als
+falsch erwiesen.
 
 ## Nächste Schritte
 
@@ -561,7 +734,6 @@ die letzten drei Gruppen brachten je null neue Abweichungen —, aber
    qr68s Modul von 1,18 MB auf ~50 KB bringen, qcpps von 4,3 MB auf ~44 KB
    — und qr68 könnte dann seine *eigene* Modulquelle auch auf dem Ziel
    assemblieren.
-2. Die fünf fehlenden Befehle (s. o.) — überschaubar, die Messmethode steht.
+2. Der Rest des Korpus — `ROM/CBOOT`/DISK, NETWORK, SYSBOOT zuerst.
 3. Strömender Leser statt Arena.
-4. Der Rest des Korpus.
-5. `l68` — der Binder, das letzte große Fremdteil neben Microwares `clib`.
+4. `l68` — der Binder, das letzte große Fremdteil neben Microwares `clib`.

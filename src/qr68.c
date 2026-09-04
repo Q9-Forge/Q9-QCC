@@ -2190,10 +2190,18 @@ static void emitEa(int k, int size)
 		/* PC-relativ auf eine eigene Codestelle: der Abstand steht fest,
 		   der Binder braucht dafuer KEINE Referenz (gemessen an
 		   "lea start(pc),a3" -- im ROF steht dazu nichts). Auf einen
-		   externen Namen dagegen schon, mit dem Wert 0. */
+		   externen Namen dagegen schon -- und im Displacementwort steht
+		   dann der KONSTANTE Anteil des Ausdrucks, nicht 0:
+		   "fremd(pc)" -> $0000, "fremd+4(pc)" -> $0004,
+		   "fremd-8(pc)" -> $fff8, "lea fremd+2(pc),a0" -> $0002 (alle
+		   mit Referenztyp $00b0). Daran hing das zweite Langwort der
+		   Vektortabelle in ROM_CBOOT/sysinit.a des Ports MVME147:
+		   "move.l VectTbl+4(pc),4(a0)". */
 		if (oExt[k] >= 0) {
 			refPcExtern(oExt[k], 2);
-			emitWord(0);
+			if (oVal[k] < -32768 || oVal[k] > 32767)
+				fatal("PC-Abstand passt nicht in 16 Bit: ", lnArg);
+			emitWord(oVal[k]);
 			return;
 		}
 		if (oSect[k] != SECT_CODE && oSect[k] != SECT_ABS)
@@ -2926,7 +2934,13 @@ static int specialReg(const char *s)
 
 /* Kontrollregister fuer movec, mit den gemessenen Kennungen (movec d0,vbr
    ergibt $4E7B $0801, movec a0,usp ergibt $8800): sfc 0, dfc 1, cacr 2,
-   usp $800, vbr $801, caar $802, msp $803, isp $804. -1 = unbekannt. */
+   usp $800, vbr $801, caar $802, msp $803, isp $804.
+   Dazu die des 68040/68060, an denen ROM_CBOOT/sysinit.a der Ports MVME167
+   und MVME177 haengt ("movec d0,tc" -> $4E7B $0003): tc 3, itt0 4, itt1 5,
+   dtt0 6, dtt1 7, mmusr $805, urp $806, srp $807, buscr 8, pcr $808.
+   "srp" und "mmusr" heissen bei pmove dasselbe und bezeichnen dort etwas
+   anderes -- s. mmuReg(); die beiden Tabellen sind absichtlich getrennt.
+   -1 = unbekannt. */
 static int controlReg(const char *s)
 {
 	if (baseIs(s, "sfc"))
@@ -2935,6 +2949,18 @@ static int controlReg(const char *s)
 		return 0x001;
 	if (baseIs(s, "cacr"))
 		return 0x002;
+	if (baseIs(s, "tc"))
+		return 0x003;
+	if (baseIs(s, "itt0"))
+		return 0x004;
+	if (baseIs(s, "itt1"))
+		return 0x005;
+	if (baseIs(s, "dtt0"))
+		return 0x006;
+	if (baseIs(s, "dtt1"))
+		return 0x007;
+	if (baseIs(s, "buscr"))
+		return 0x008;
 	if (baseIs(s, "usp"))
 		return 0x800;
 	if (baseIs(s, "vbr"))
@@ -2945,7 +2971,139 @@ static int controlReg(const char *s)
 		return 0x803;
 	if (baseIs(s, "isp"))
 		return 0x804;
+	if (baseIs(s, "mmusr"))
+		return 0x805;
+	if (baseIs(s, "urp"))
+		return 0x806;
+	if (baseIs(s, "srp"))
+		return 0x807;
+	if (baseIs(s, "pcr"))
+		return 0x808;
 	return -1;
+}
+
+/* MMU-Register fuer pmove, mit den gemessenen Kennungen im
+   Erweiterungswort: "pmove (a0),tc" ergibt $f010 $4000, srp $4800,
+   crp $4c00, tt0 $0800, tt1 $0c00, mmusr $6000. r68 nimmt "psr" als zweite
+   Schreibweise fuer mmusr und lehnt "pcsr" ab. -1 = unbekannt. */
+static int mmuReg(const char *s)
+{
+	if (baseIs(s, "tc"))
+		return 0x4000;
+	if (baseIs(s, "srp"))
+		return 0x4800;
+	if (baseIs(s, "crp"))
+		return 0x4C00;
+	if (baseIs(s, "tt0"))
+		return 0x0800;
+	if (baseIs(s, "tt1"))
+		return 0x0C00;
+	if (baseIs(s, "mmusr"))
+		return 0x6000;
+	if (baseIs(s, "psr"))
+		return 0x6000;
+	return -1;
+}
+
+/* Der Bitfeldzusatz "{offset:breite}". Er muss VOR parseOperand() vom
+   Operandentext abgeschnitten werden -- die geschweiften Klammern kennt es
+   nicht. splitOperands() zaehlt sie nicht mit, das braucht es auch nicht:
+   im Zusatz steht kein Komma. */
+static char bfOffTxt[256];
+static char bfWidTxt[256];
+
+static int bfSplit(char *s)
+{
+	int n;
+	int i;
+	int lb;
+	int colon;
+	int depth;
+	int j;
+	int c;
+
+	n = strLen(s);
+	if (n < 1 || s[n - 1] != '}')
+		return 0;
+	lb = -1;
+	for (i = 0; i < n && lb < 0; i++) {
+		if (s[i] == '{')
+			lb = i;
+	}
+	if (lb < 0)
+		fatal("\"}\" ohne \"{\" im Operanden: ", lnArg);
+	if (lb == 0)
+		fatal("Bitfeldzusatz ohne Operanden davor: ", lnArg);
+	colon = -1;
+	depth = 0;
+	for (i = lb + 1; i < n - 1 && colon < 0; i++) {
+		c = s[i] & 255;
+		if (c == '(')
+			depth++;
+		else if (c == ')')
+			depth--;
+		else if (c == ':' && depth == 0)
+			colon = i;
+	}
+	if (colon < 0)
+		fatal("Bitfeld ohne \":\" zwischen Offset und Breite: ", lnArg);
+	if (colon - (lb + 1) >= 256 || (n - 1) - (colon + 1) >= 256)
+		fatal("Bitfeldangabe zu lang: ", lnArg);
+	j = 0;
+	for (i = lb + 1; i < colon; i++) {
+		bfOffTxt[j] = s[i];
+		j++;
+	}
+	bfOffTxt[j] = 0;
+	j = 0;
+	for (i = colon + 1; i < n - 1; i++) {
+		bfWidTxt[j] = s[i];
+		j++;
+	}
+	bfWidTxt[j] = 0;
+	if (bfOffTxt[0] == 0 || bfWidTxt[0] == 0)
+		fatal("leere Bitfeldangabe: ", lnArg);
+	s[lb] = 0;
+	return 1;
+}
+
+/* Ein Feld des Bitfeldzusatzes. "dN" steht fuer ein Datenregister -- das
+   meldet bfField() ueber bfIsReg, so wie evalExpr() seine Nebenbefunde
+   ueber exSect/exExtern/exOpen meldet. (QCC kann auch einen
+   Zeiger-Ausgabeparameter; die Hausform ist hier nur die einheitlichere.)
+   Sonst ist das Feld ein Ausdruck -- auch ein zusammengesetzter:
+   "d0{WID:WID+1}" mit "WID equ 3" ergibt gemessen $00c4. r68 beschneidet
+   den Wert auf 5 Bit und warnt dabei nur; "{0:32}" wird deshalb Breite 0,
+   was in der Kodierung genau 32 bedeutet. Einen negativen Wert lehnt r68
+   ab ("illegal addressing mode"), qr68 ebenso. */
+static int bfIsReg;
+
+static int bfField(const char *s)
+{
+	int r;
+	int v;
+	int open;
+	int sect;
+	int ext;
+
+	bfIsReg = 0;
+	r = regNum(s, strLen(s));
+	if (r >= 0 && r < 8) {
+		bfIsReg = 1;
+		return r;
+	}
+	subStr(s, 0, strLen(s));
+	v = evalExpr(exBuf);
+	open = exOpen;
+	sect = exSect;
+	ext = exExtern;
+	if (!open) {
+		if (ext >= 0 || sect != SECT_ABS)
+			fatal("Bitfeldangabe muss ein fester Wert sein: ", lnArg);
+		if (v < 0)
+			fatal("negative Bitfeldangabe: ", lnArg);
+	}
+	return v & 31;
 }
 
 /* Registerliste "d0-d7/a0-a6" -> Maske in der NORMALEN Ordnung: Bit 0 = d0
@@ -3884,13 +4042,26 @@ static void doInstruction(void)
 		return;
 	}
 	if (baseIs(base, "muls") || baseIs(base, "mulu") ||
-	    baseIs(base, "divs") || baseIs(base, "divu")) {
+	    baseIs(base, "divs") || baseIs(base, "divu") ||
+	    baseIs(base, "divsl") || baseIs(base, "divul")) {
 		int op;
+		int longDiv;
 
 		/* Die 68020-Langform: "divu.l d1,d0" -> $4c41 $0000,
 		   "divs.l" setzt Bit 11, und "divu.l d1,d2:d0" (Rest in d2)
 		   setzt zusaetzlich Bit 10 und traegt d2 unten ein.
-		   mulu/muls.l liegen bei $4c00. Alles gemessen. */
+		   mulu/muls.l liegen bei $4c00. Alles gemessen.
+		   "divul"/"divsl" sind dasselbe Befehlswort mit 32-Bit-
+		   Dividend: sie lassen Bit 10 FREI und tragen den Rest
+		   trotzdem unten ein -- "divul.l d1,d2:d0" -> $4c41 $0002
+		   gegen "divu.l d1,d2:d0" -> $4c41 $0402, "divsl.l" -> $0802.
+		   Beide stehen in ROM_CBOOT/sysinit.a der Ports MVME167 und
+		   MVME177 ("divul.l d2,d3:d1"). */
+		longDiv = 0;
+		if (baseIs(base, "divsl") || baseIs(base, "divul"))
+			longDiv = 1;
+		if (longDiv && size != 'l')
+			fatal("divul/divsl gibt es nur als Langwort: ", lnOp);
 		if (size == 'l') {
 			int q;
 			int r;
@@ -3923,10 +4094,13 @@ static void doInstruction(void)
 					fatal("Datenregister erwartet: ", lnArg);
 			}
 			ext = q << 12;
-			if (baseIs(base, "divs") || baseIs(base, "muls"))
+			if (baseIs(base, "divs") || baseIs(base, "muls") ||
+			    baseIs(base, "divsl"))
 				ext = ext | 0x0800;
 			if (r >= 0) {
-				ext = ext | 0x0400 | r;
+				ext = ext | r;
+				if (!longDiv)
+					ext = ext | 0x0400;
 			} else {
 				/* Ohne "dr:" traegt r68 in das untere Feld
 				   NICHT 0 ein, sondern noch einmal dq --
@@ -4045,6 +4219,168 @@ static void doInstruction(void)
 		if (oMode[1] != AM_IND)
 			fatal("Cachebefehl braucht \"(aN)\": ", lnArg);
 		emitWord(op | oReg[1]);
+		return;
+	}
+
+	/* --- Bitfeldbefehle (68020) --- */
+	/* Gemessen: $E8C0 | Kennung<<8 | ea, gefolgt von einem
+	   Erweiterungswort -- und das steht VOR den Erweiterungswoertern des
+	   Operanden ("bftst 8(a0){1:2}" -> $e8e8 $0042 $0008, "bfextu
+	   (a1,d1.l){d2:1},d7" -> $e9f1 $7881 $1800). Sein Aufbau:
+	     Bit 14..12  Datenregister (bfextu/bfexts/bfffo das Ziel, bfins
+	                 die Quelle; die vier ohne Register lassen es 0)
+	     Bit 11      1 = der Offset steht in einem Datenregister
+	     Bit 10..6   Offset bzw. dessen Registernummer
+	     Bit 5       1 = die Breite steht in einem Datenregister
+	     Bit 4..0    Breite bzw. deren Registernummer
+	   Kennungen: bftst 0, bfextu 1, bfchg 2, bfexts 3, bfclr 4, bfffo 5,
+	   bfset 6, bfins 7.
+	   Weil das Erweiterungswort vor der Adresse liegt, zaehlt ein
+	   PC-Abstand ab dem Wort DAHINTER -- "bftst lab(pc){1:2}" auf Offset
+	   $2a ergibt $ffd2, also den Abstand vom Adresswort auf $2e. Das
+	   ergibt sich hier von selbst, weil emitEa() mit curPC rechnet. */
+	if (baseIs(base, "bftst") || baseIs(base, "bfextu") ||
+	    baseIs(base, "bfchg") || baseIs(base, "bfexts") ||
+	    baseIs(base, "bfclr") || baseIs(base, "bfffo") ||
+	    baseIs(base, "bfset") || baseIs(base, "bfins")) {
+		int kind;
+		int eak;
+		int dnk;
+		int dn;
+		int off;
+		int wid;
+		int doReg;
+		int dwReg;
+		char *eaTxt;
+
+		needNoSize(size);
+		kind = 0;
+		if (baseIs(base, "bfextu"))
+			kind = 1;
+		else if (baseIs(base, "bfchg"))
+			kind = 2;
+		else if (baseIs(base, "bfexts"))
+			kind = 3;
+		else if (baseIs(base, "bfclr"))
+			kind = 4;
+		else if (baseIs(base, "bfffo"))
+			kind = 5;
+		else if (baseIs(base, "bfset"))
+			kind = 6;
+		else if (baseIs(base, "bfins"))
+			kind = 7;
+		dnk = -1;
+		eak = 0;
+		if (kind == 1 || kind == 3 || kind == 5) {
+			dnk = 1;               /* "<ea>{o:b},dN" */
+		} else if (kind == 7) {
+			dnk = 0;               /* "dN,<ea>{o:b}" */
+			eak = 1;
+		}
+		if (dnk < 0)
+			needOps(1);
+		else
+			needOps(2);
+		eaTxt = opTxt0;
+		if (eak == 1)
+			eaTxt = opTxt1;
+		if (!bfSplit(eaTxt))
+			fatal("Bitfeldbefehl ohne \"{offset:breite}\": ", lnArg);
+		off = bfField(bfOffTxt);
+		doReg = bfIsReg;
+		wid = bfField(bfWidTxt);
+		dwReg = bfIsReg;
+		dn = 0;
+		if (dnk >= 0) {
+			if (dnk == 0)
+				parseOperand(opTxt0, 0);
+			else
+				parseOperand(opTxt1, 1);
+			dn = needDn(dnk);
+		}
+		parseOperand(eaTxt, eak);
+		if (oMode[eak] != AM_DN)
+			needControl(eak);
+		emitWord(0xE8C0 | (kind << 8) | eaBits(eak));
+		emitWord((dn << 12) | (doReg << 11) | (off << 6) |
+			 (dwReg << 5) | wid);
+		emitEa(eak, 4);
+		return;
+	}
+
+	/* --- eine Cachezeile bewegen (move16, 68040) --- */
+	/* Gemessen: die Form mit zwei Postinkrementen hat ein
+	   Erweiterungswort ("move16 (a0)+,(a2)+" -> $f620 $a000: Ax unten im
+	   Befehlswort, Ay in Bit 14..12, Bit 15 gesetzt), die vier Formen mit
+	   absoluter Adresse dagegen keines -- dort steht die Adresse direkt
+	   dahinter: "(a0)+,$12345678" -> $f600, "$12345678,(a1)+" -> $f609,
+	   "(a2),$12345678" -> $f612, "$12345678,(a3)" -> $f61b. */
+	if (baseIs(base, "move16")) {
+		needNoSize(size);
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		parseOperand(opTxt1, 1);
+		if (oMode[0] == AM_POST && oMode[1] == AM_POST) {
+			emitWord(0xF620 | oReg[0]);
+			emitWord(0x8000 | (oReg[1] << 12));
+			return;
+		}
+		if (oMode[0] == AM_POST && oMode[1] == AM_ABSL) {
+			emitWord(0xF600 | oReg[0]);
+			emitEa(1, 4);
+			return;
+		}
+		if (oMode[0] == AM_ABSL && oMode[1] == AM_POST) {
+			emitWord(0xF608 | oReg[1]);
+			emitEa(0, 4);
+			return;
+		}
+		if (oMode[0] == AM_IND && oMode[1] == AM_ABSL) {
+			emitWord(0xF610 | oReg[0]);
+			emitEa(1, 4);
+			return;
+		}
+		if (oMode[0] == AM_ABSL && oMode[1] == AM_IND) {
+			emitWord(0xF618 | oReg[1]);
+			emitEa(0, 4);
+			return;
+		}
+		fatal("move16 kennt nur (aN)+,(aM)+ und die vier Formen mit absoluter Adresse: ", lnArg);
+	}
+
+	/* --- MMU-Register bewegen (pmove, 68030) --- */
+	/* Gemessen: $F000 | ea, dann das Erweiterungswort aus mmuReg(); Bit 9
+	   gibt die Richtung an (0 = in das MMU-Register, 1 = heraus:
+	   "pmove tc,(a0)" -> $f010 $4200), Bit 8 ist das FD von "pmovefd"
+	   ("pmovefd (a0),tc" -> $f010 $4100). Auch hier steht das
+	   Erweiterungswort VOR der Adresse ("pmove 8(a0),tc" -> $f028 $4000
+	   $0008). */
+	if (baseIs(base, "pmove") || baseIs(base, "pmovefd")) {
+		int reg;
+		int eak;
+
+		needNoSize(size);
+		needOps(2);
+		reg = mmuReg(opTxt1);
+		eak = 0;
+		if (reg < 0) {
+			reg = mmuReg(opTxt0);
+			if (reg < 0)
+				fatal("pmove ohne bekanntes MMU-Register: ",
+				      lnArg);
+			reg = reg | 0x0200;
+			eak = 1;
+		}
+		if (baseIs(base, "pmovefd"))
+			reg = reg | 0x0100;
+		if (eak == 0)
+			parseOperand(opTxt0, 0);
+		else
+			parseOperand(opTxt1, 1);
+		needControl(eak);
+		emitWord(0xF000 | eaBits(eak));
+		emitWord(reg);
+		emitEa(eak, 4);
 		return;
 	}
 

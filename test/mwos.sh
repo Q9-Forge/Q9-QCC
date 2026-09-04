@@ -9,6 +9,14 @@
 #
 #   ./test/mwos.sh                 -- alle SCF-Treiber des Beispielports
 #   ./test/mwos.sh datei.a ...     -- bestimmte Quellen
+#
+# UEXTRA nimmt weitere Suchverzeichnisse auf (durch Leerzeichen getrennt).
+# Der ROM-Code braucht das: ROM_CBOOT/sysinit.a holt sich "systype.d" aus
+# dem WURZELverzeichnis des Ports, nicht aus dem eigenen -- ohne den
+# zusaetzlichen -u faellt r68 auf sein eingebautes \mwos\OS9\SRC\DEFS
+# zurueck und bricht ab.
+#
+#   UEXTRA=$MWOS/OS9/68030/PORTS/Q9 PORTDIR=... ./test/mwos.sh .../sysinit.a
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -63,6 +71,15 @@ UDEFS="$(winpath "$MWOS/OS9/SRC/DEFS")"
 UMACS="$(winpath "$MWOS/OS9/SRC/MACROS")"
 TMPWIN="$(winpath "$TMP")"
 
+# Die zusaetzlichen Suchverzeichnisse, einmal fuer r68 (Wine) und einmal
+# fuer qr68 (Unix).
+RXTRA=""
+QXTRA=()
+for d in ${UEXTRA:-}; do
+	RXTRA="$RXTRA -u=$(winpath "$d")"
+	QXTRA+=("-u=$d")
+done
+
 echo "=== MWOS-Treiber gegen r68 (${#files[@]} Quellen) ==="
 ok=0
 bad=0
@@ -71,7 +88,7 @@ for f in "${files[@]}"; do
 	base="$(basename "$f" .a)"
 	src="$(winpath "$f")"
 	arch -x86_64 "$WINE_BIN" cmd /c \
-		"${PORTWIN%%:*}: && cd ${PORTWIN#*:} && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $src -o=$TMPWIN\\$base.r -qb -u=. -u=$UDEFS -u=$UMACS -aNODATAPORT" \
+		"${PORTWIN%%:*}: && cd ${PORTWIN#*:} && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $src -o=$TMPWIN\\$base.r -qb -u=. -u=$UDEFS -u=$UMACS$RXTRA -aNODATAPORT" \
 		> "$TMP/$base.r68" 2>&1
 	if [ ! -f "$TMP/$base.r" ]; then
 		echo "  $(printf '%-20s' "$base") r68 kommt selbst nicht durch -- uebersprungen"
@@ -87,7 +104,8 @@ for f in "${files[@]}"; do
 		continue
 	fi
 	if ! (cd "$PORTDIR" && "$QR68" -qb -u=. "-u=$MWOS/OS9/SRC/DEFS" \
-		"-u=$MWOS/OS9/SRC/MACROS" -aNODATAPORT "-fdate=$stamp" \
+		"-u=$MWOS/OS9/SRC/MACROS" \
+		${QXTRA[@]+"${QXTRA[@]}"} -aNODATAPORT "-fdate=$stamp" \
 		"$f" "$TMP/$base.q") > "$TMP/$base.msg" 2>&1; then
 		echo "  $(printf '%-20s' "$base") qr68 bricht ab:"
 		sed 's/^/      /' "$TMP/$base.msg" | head -2

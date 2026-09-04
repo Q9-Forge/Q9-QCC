@@ -38,7 +38,9 @@ test68k: build/qr68
 	./tools/test_68k.sh
 
 # Der schwerste Korpus: die SCF-Treiber des SDK. Laeuft NICHT in "check",
-# weil dort noch neun der 15 uebersetzbaren Quellen abweichen (s. README).
+# weil drei der 14 uebersetzbaren Quellen bewusst abweichen (s. README) --
+# der Aufruf haette also immer Exitcode 1. PORTDIR=/DRVDIR= waehlen die
+# Gruppe, UEXTRA= zusaetzliche Suchverzeichnisse.
 mwos: build/qr68
 	./test/mwos.sh
 
