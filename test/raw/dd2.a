@@ -1,0 +1,10 @@
+         psect   dd2,$0101,$8000,1,100,start
+start    moveq   #0,d0
+         rts
+         vsect
+t1       dc.l    0
+t2       dc.l    0
+p1       dc.l    t1
+p2       dc.l    t2
+         ends
+         ends

@@ -78,6 +78,14 @@ static int bIDataMod[QL_ROF];/* Modulabstand der dc-Daten         */
    $001c. */
 static int dataBias;
 
+/* -r=<basis>: rohe Binaerausgabe statt eines Moduls. -1 = aus. */
+static int optRaw = -1;
+/* In der rohen Ausgabe bekommt ein Codebezug IM CODE die Basis
+   aufaddiert, ein Zeiger IN DEN DATEN dagegen nicht -- den setzt erst der
+   Startcode ueber die Zeigerliste. Gemessen an einem Label auf Codeoffset
+   6: im Code wird daraus $1006, in den Daten bleibt es $0006. */
+static int rawCodeBias;
+
 static char modName[256];
 static int optOwner = 0x00010000;  /* M$Owner, so ohne -gu= (gemessen) */
 static int optAccess = 0x0555;     /* M$Accs,  so ohne -p=  (gemessen) */
@@ -505,6 +513,8 @@ static void applyLocalRefs(int k)
 		   Daten bleibt unvorgespannt. */
 		if (inCode && !toCode && size == 2)
 			base = base + dataBias;
+		if (inCode && toCode)
+			base = base + rawCodeBias;
 		if (inCode)
 			here = bCode[k] + offs;
 		else
@@ -587,6 +597,8 @@ static void applyExtRefs(int k)
 			else
 				here = bIDataMod[k] + offs;
 			val = symResolve(si);
+			if (inCode && symType[si] == 4)
+				val = val + rawCodeBias;
 			/* Bit 6: abziehen (Handbuch: "add the negative of the
 			   symbols location"). */
 			if (type & 0x0040)
@@ -700,6 +712,7 @@ static void emit(void)
 	isDesc = (rTyLan[rofRoot] & 255) == 0;
 	isDrvr = !isDesc && i != 1;
 	dataBias = 0;
+	rawCodeBias = 0;
 	if (!isDesc && !isDrvr)
 		dataBias = 0x8000;
 
@@ -716,6 +729,59 @@ static void emit(void)
 	for (k = 0; k < rofN; k++) {
 		bInit[k] = totalUninit + totalInit;
 		totalInit = totalInit + rIDat[k];
+	}
+
+	/* --- Rohe Binaerausgabe: kein Kopf, kein Name, kein CRC. Der Code
+	   liegt ab Dateianfang, dahinter IData und IRefs wie sonst auch.
+	   Auch der $8000-Vorspann auf die Daten entfaellt -- den legt in
+	   dieser Betriebsart der Startcode selbst an (Handbuch Kap. 9:
+	   "the appropriate register must also point to the beginning of a
+	   global/static RAM area ... Some processors may require biasing"). */
+	if (optRaw >= 0) {
+		dataBias = 0;
+		rawCodeBias = optRaw;
+		for (k = 0; k < rofN; k++) {
+			bCode[k] = outLen;
+			for (i = 0; i < rCod[k]; i++)
+				put8(inBuf[rCodeAt[k] + i]);
+		}
+		idataAt = outLen;
+		put32(totalUninit);
+		put32(totalInit);
+		for (k = 0; k < rofN; k++) {
+			bIDataMod[k] = outLen;
+			for (i = 0; i < rIDat[k]; i++)
+				put8(inBuf[rIDataAt[k] + i]);
+		}
+		for (k = 0; k < rofN; k++)
+			addGlobals(k);
+		symAdd("bname", 0, 6);
+		symAdd("_bname", 0, 6);
+		symAdd("btext", 0, 6);
+		symAdd("_btext", 0, 6);
+		symAdd("etext", idataAt, 6);
+		symAdd("_bidata", idataAt, 6);
+		symAdd("end", totalUninit + totalInit, 6);
+		symAdd("_enddata", totalUninit + totalInit, 6);
+		for (k = 0; k < rofN; k++) {
+			applyLocalRefs(k);
+			applyExtRefs(k);
+		}
+		irefAt = outLen;
+		putIrefList(irefCode, irefCodeN);
+		putIrefList(irefData, irefDataN);
+		symAdd("edata", irefAt, 6);
+		symAdd("_birefs", irefAt, 6);
+		/* Ist GENAU EINE der beiden Listen leer, haengt l68 vier
+		   Nullbytes an -- an sieben Faellen gemessen (keine, nur
+		   Code-, nur Daten-, beide Zeigerarten, je ein bis drei
+		   Stueck). Sind beide leer oder beide gefuellt, kommt nichts.
+		   Im Modulaufbau gibt es das NICHT; dort wird stattdessen auf
+		   gerade Gesamtlaenge aufgefuellt. Herleiten laesst sich das
+		   nicht, es ist eine Eigenheit von l68. */
+		if ((irefCodeN == 0) != (irefDataN == 0))
+			put32(0);
+		return;
 	}
 
 	/* --- Kopf. Die Groessenfelder werden spaeter nachgetragen. --- */
@@ -895,6 +961,7 @@ static void usage(void)
 	puts("  -gu=<gruppe>.<nutzer>   Eigentuemer des Moduls");
 	puts("  -p=<hex>                Zugriffsrechte im Modulkopf");
 	puts("  -e=<n>                  Editionsnummer");
+	puts("  -r=<hex>                rohe Binaerausgabe ab dieser Adresse");
 	exit(2);
 }
 
@@ -1014,6 +1081,27 @@ int main(int argc, char **argv)
 				k++;
 			}
 			optAccess = v & 0xFFFF;
+			continue;
+		}
+		k = argStarts(a, "-r=");
+		if (k > 0 && a[k] != 0) {
+			int v;
+			int c;
+
+			v = 0;
+			while (a[k] != 0) {
+				c = a[k];
+				if (c >= '0' && c <= '9')
+					v = v * 16 + (c - '0');
+				else if (c >= 'a' && c <= 'f')
+					v = v * 16 + (c - 'a' + 10);
+				else if (c >= 'A' && c <= 'F')
+					v = v * 16 + (c - 'A' + 10);
+				else
+					fatal("-r= erwartet eine Hexzahl: ", a);
+				k++;
+			}
+			optRaw = v;
 			continue;
 		}
 		k = argStarts(a, "-e=");

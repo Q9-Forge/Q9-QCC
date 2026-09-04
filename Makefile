@@ -17,6 +17,7 @@ build/ql68: src/ql68.c
 test: build/ql68
 	./test/difftest.sh
 	./test/multi.sh
+	./test/rawtest.sh
 	./test/descs.sh
 
 check: test

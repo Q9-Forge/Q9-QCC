@@ -300,9 +300,44 @@ Skript** und nur eine ein echter Formatbefund:
 
 Nur der vierte Befund — Sprache statt Typ — lag am Binder.
 
+## Die rohe Binärausgabe (`-r=<basis>`)
+
+Kein Modulkopf, kein Name, kein CRC — der Code liegt ab Dateianfang,
+dahinter IData und IRefs wie sonst. Für den ROM-Code des SDK (40 Aufrufe).
+
+**Die Basis wirkt nur auf Codebezüge im Code.** Ein Label auf Codeoffset 6
+wird im Code zu `$1006`; ein Zeiger darauf *in den Daten* bleibt `$0006` —
+den setzt erst der Startcode über die Zeigerliste. Das deckt sich mit dem,
+was das Handbuch zu `M$IRefs` sagt: „Adjust code pointers by adding the
+absolute starting address of the object code area."
+
+**Der `$8000`-Datenbias entfällt.** In dieser Betriebsart legt ihn der
+Startcode selbst an (Handbuch Kap. 9: „Some processors may require biasing
+and the initialization of a code area data pointer").
+
+> **Eine Eigenheit, die sich nicht herleiten lässt.** Ist **genau eine**
+> der beiden Zeigerlisten leer, hängt `l68` vier Nullbytes an; sind beide
+> leer oder beide gefüllt, kommt nichts. An sieben Fällen durchgemessen —
+> keine Zeiger, nur Code-, nur Daten-, beide Arten, ein bis drei Stück.
+> Im **Modul**aufbau gibt es das nicht, dort steht das Auffüllen auf gerade
+> Länge. `ql68` bildet es nach, weil es sonst keine Byteidentität gibt.
+
+`./test/rawtest.sh` fährt elf Quellen mit je zwei Basisadressen (`0` und
+`$1000`), damit sichtbar bleibt, dass die Basis nur im Code wirkt:
+**22 gleich, 0 abweichend**.
+
+### Nachtrag zum Datenbias
+
+Das technische Handbuch schreibt: *„(a6) is actually biased by `$8000`, but
+this can usually be ignored because the linker biases all data references
+by `-$8000`."* Also ein **Minus** — numerisch dasselbe wie das gemessene
+`+$8000` modulo 16 Bit (`$0c` → `$800c` ist `−$7ff4`), aber die richtige
+Lesart.
+
 ### Was als Nächstes ansteht
 
-1. **`-r=`** (rohe Binärausgabe) — 40 Aufrufe im Korpus, der ROM-Code. `os9make -nn -u`
+1. Die restlichen Schalter der ROM-Aufrufe: `-M=` (Stackzuschlag),
+   `-b=` (Ausrichtung), `-swam`, `-a`/`-j` (Sprungtabelle), `-i`. `os9make -nn -u`
    druckt die `l68`-Aufrufe genauso mit wie die von `r68` — allein in 20
    von 195 Verzeichnissen sind es 148. Bei `qr68` hat genau dieser
    differentielle Prüfstand elf Fehler gefunden, vier davon still.
