@@ -38,14 +38,14 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 	die "OS-9-Toolchain nicht ladbar"
 MWOS="$MWOS_UNIX"
 
-echo "== 1/4 Modul binden (nur gegen qclib) =="
+echo "== 1/4 Modul binden (NUR qclib -- kein clib, kein os_lib, kein sys.l) =="
 cp "$REPO/build/hello.r" "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/" ||
 	die "Eingaben fehlen -- vorher 'make'"
 WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine"
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
 arch -x86_64 "$WINE_BIN" cmd /c \
-	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\hello.r -l=$TW\\qclib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_hello" \
+	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\hello.r -l=$TW\\qclib.l -M=8K -o=$TW\\q9_hello" \
 	>"$WORK/l68.log" 2>&1
 [ -f "$WORK/q9_hello" ] || { sed 's/^/    /' "$WORK/l68.log" | head -10; die "l68"; }
 echo "  ok ($(wc -c < "$WORK/q9_hello" | tr -d ' ') Byte)"

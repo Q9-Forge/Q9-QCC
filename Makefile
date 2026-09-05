@@ -18,7 +18,8 @@ QCCP  ?= $(QCC)/build/qcc_p
 QCCB  ?= $(QCC)/build/qcc_backend
 
 # Reihenfolge = Bindereihenfolge.
-ROFS = build/printf.r build/printf_c.r build/iob.r
+# Blaetter zuletzt: os9call.r ruft nichts mehr auf.
+ROFS = build/printf.r build/printf_c.r build/iob.r build/os9call.r
 
 all: build/qclib.l
 
@@ -42,7 +43,16 @@ build/%.r: src/%.a | build
 build:
 	mkdir -p build
 
-test: all
+# Das Testprogramm ist ein VOLLprogramm (mit main), deshalb ohne -part
+# und mit -largedata -- anders als die Bibliotheksmodule.
+build/hello.r: test/hello.c | build
+	$(QCPP) -I$(QCC)/q9-cpp/include $< build/hello.i
+	$(QCCP) "@build/hello.i" > build/hello.ir 2> build/hello.err
+	@test "$$(tail -1 build/hello.ir)" = OK || { head -5 build/hello.err; exit 1; }
+	$(QCCB) build/hello.ir build/hello.s68 -os9 -largedata
+	$(QR68) build/hello.s68 -o=$@
+
+test: all build/hello.r
 	./test/hello68k.sh
 
 clean:
