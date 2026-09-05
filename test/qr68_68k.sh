@@ -47,17 +47,16 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
 
 echo "== 1/5 qr68 gegen qclib binden =="
-# Mit l68, nicht mit ql68: der Bezug auf QCCs Laufzeitanker
-# (tc_extcall_tmp) ist in einem 1,19-MB-Modul zu weit fuer ein Wort, und
-# ql68s -a kennt bisher nur die Wortform von bsr -- nicht die LEA-Form,
-# die l68 dafuer ebenfalls ueber die Sprungtabelle fuehrt
-# ("Cause distant BSRs and LEAs to access jumptable"). Das ist die
-# naechste Luecke im Binder, nicht eine der Bibliothek.
-arch -x86_64 "$WINE_BIN" cmd /c \
-	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\qr68.r -l=$TW\\qclib.l -M=512K -o=$TW\\q9_qr68" \
-	>"$WORK/link.log" 2>&1
-[ -f "$WORK/q9_qr68" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "l68"; }
-echo "  ok ($(wc -c < "$WORK/q9_qr68" | tr -d ' ') Byte, gegen qclib statt clib)"
+# Mit dem EIGENEN Binder. Bis ql68 die LEA-Form von -a beherrschte, ging
+# das nur mit l68: der Bezug auf QCCs Laufzeitanker (tc_extcall_tmp) ist
+# in einem 1,19-MB-Modul zu weit fuer ein Wort, und es ist ein
+# Datenbezug, kein Sprung.
+QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+[ -x "$QL68" ] || die "ql68 fehlt: $QL68"
+"$QL68" -a "$WORK/q9_cstart.r" "$WORK/qr68.r" -l="$WORK/qclib.l" \
+	-M=512K "-O=$WORK/q9_qr68" >"$WORK/link.log" 2>&1
+[ -f "$WORK/q9_qr68" ] || { sed s/^/ / "$WORK/link.log" | head -10; die "ql68"; }
+echo "  ok ($(wc -c < "$WORK/q9_qr68" | tr -d " ") Byte, mit ql68 gegen qclib)"
 
 echo "== 2/5 Abbild bestuecken =="
 IMAGE_NAME=OS9SYS.qclib-qr68.hda

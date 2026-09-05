@@ -325,12 +325,15 @@ und ein 1913-Byte-Ergebnis — **jedes falsche Byte wäre aufgefallen**. Der
 Emulatorlauf kommt unverändert aus `Q9-qr68` (`test/run_68k.exp`), damit
 ein Unterschied nur an der Bibliothek liegen kann.
 
-> Gebunden wird hier mit `l68`, nicht mit `ql68` — und das ist eine Lücke
-> im **Binder**, nicht in der Bibliothek: der Bezug auf QCCs Laufzeitanker
-> (`tc_extcall_tmp`) ist in einem 1,19-MB-Modul zu weit für ein Wort, und
-> `ql68`s `-a` kennt bisher nur die Wortform von `bsr`. `l68` führt auch
-> ferne **LEAs** über die Sprungtabelle (*„Cause distant BSRs and LEAs to
-> access jumptable"*). Das ist der nächste Schritt am Binder.
+Gebunden wird dabei mit **`ql68`** — seit es auch ferne **LEAs** über die
+Sprungtabelle führt. Das war nötig, weil der Bezug auf QCCs Laufzeitanker
+(`tc_extcall_tmp`) in einem 1,19-MB-Modul außer Reichweite gerät und ein
+*Datenbezug* ist, kein Sprung. Damit steckt in der ganzen Kette kein
+fremdes Werkzeug mehr.
+
+**Auch `qcpp` bindet inzwischen gegen `qclib`** (4,35-MB-Modul) — dafür
+mussten erst drei Puffergrenzen in `qr68` und zwei in `ql68` fallen; seine
+Assemblerquelle allein ist 7,27 MB. Der Emulatorlauf dafür steht noch aus.
 
 ### Was noch fehlt
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
