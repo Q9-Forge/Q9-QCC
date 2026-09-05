@@ -588,6 +588,31 @@ Dazu ein zweiter, verwandter Fund: **`end`** (das Ende des Datenbereichs)
 war als `equ`-Symbol eingetragen und bekam deshalb gar keinen Bias. Es ist
 ein Datensymbol und trägt jetzt Typ 0.
 
+### Beide Formen von `-a`: nicht nur ferne Sprünge
+
+`l68`s eigene Beschreibung lautet *„Cause distant BSRs **and LEAs** to
+access jumptable"* — und die LEA-Form ist keine Randerscheinung: sie tritt
+auf, sobald ein Programm groß genug ist, dass QCCs Laufzeitanker
+(`tc_extcall_tmp`) außer Reichweite gerät. Beim Binden des echten `qr68`
+(1,19 MB) gegen `qclib` war genau das der Fall.
+
+**Beide Formen tragen dasselbe ROF-Typwort `$00b0`** (im Code, 2 Byte,
+relativ) — sie sind nur am Opcode zu unterscheiden:
+
+| Original | wird zu | Displacement |
+|---|---|---|
+| `bsr.w ziel` (`$6100`) | `jsr d16(a6)` (`$4eae`) | Eintragsanfang — läuft durch den `jmp` |
+| `lea d16(pc),An` (`$41fa`) | `movea.l d16(a6),An` (`$206e`) | Eintrag **+2** — lädt die Adresse |
+
+Der Tabelleneintrag ist in beiden Fällen derselbe. Genau dafür führt
+`l68`s `-j`-Karte zwei Spalten: `Indx` den Eintragsanfang und
+`Roff`/`Data Offset` das Adressfeld dahinter. Nachgemessen an den sechs
+Bezügen auf `tc_extcall_tmp`: alle wurden zu `movea.l $8282(a6),a0`,
+während der Eintrag bei `$8280` steht.
+
+Die Zieladresse im Eintrag kommt in die Code- oder in die Datenzeigerliste,
+je nachdem, worauf sie zeigt.
+
 ### Der Trap-Einsprung
 
 Der siebte psect-Parameter (`trapinit` in `q9_cstart.a`) setzt `utrap` im

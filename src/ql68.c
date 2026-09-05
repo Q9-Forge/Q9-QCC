@@ -26,8 +26,14 @@ int fclose(char *fp);
 int fread(char *buf, int size, int n, char *fp);
 int fwrite(const char *buf, int size, int n, char *fp);
 
-#define QL_IN     (4 * 1024 * 1024)   /* Eingabepuffer  */
-#define QL_OUT    (4 * 1024 * 1024)   /* Ausgabepuffer  */
+/* Eingaben UND Bibliotheken liegen zusammen in inBuf; qcpp.r allein ist
+   schon 4,4 MB (QCCs Backend legt genullte Felder in den initialisierten
+   Datenbereich, und qcpp haelt seine Tabellen als feste globale Felder).
+   Am Host kostet der Platz nichts -- einen _Q9OS-Zweig mit Zielmassen
+   gibt es hier noch nicht, weil ql68 selbst noch nicht auf dem 68030
+   laeuft. */
+#define QL_IN     (32 * 1024 * 1024)  /* Eingaben und Bibliotheken */
+#define QL_OUT    (32 * 1024 * 1024)  /* Ausgabepuffer  */
 #define QL_IREF   16384               /* Zeiger je Liste */
 
 static char inBuf[QL_IN];
@@ -454,8 +460,15 @@ static void libScan(const char *path)
 	at = inLen;
 	got = fread(&inBuf[inLen], 1, QL_IN - inLen, fp);
 	fclose(fp);
-	if (got <= 0)
+	if (got <= 0) {
+		/* Zwei ganz verschiedene Faelle, die vorher dieselbe Meldung
+		   bekamen: eine wirklich leere Datei -- und ein voller
+		   Eingabepuffer, bei dem fread gar nichts mehr lesen KANN. */
+		if (inLen >= QL_IN)
+			fatal("Eingabepuffer voll (QL_IN), Bibliothek passt"
+			      " nicht mehr hinein: ", path);
 		fatal("Bibliothek ist leer: ", path);
+	}
 	inLen = inLen + got;
 
 	while (at + 56 <= inLen) {
@@ -794,9 +807,33 @@ static int symResolve(int si)
    ql68 tut dasselbe, statt still ein falsches Displacement abzulegen.
    Mit -a bekommt das Symbol einen Tabelleneintrag, und der Aufruf wird
    umgeschrieben. */
+/* Die Eintraege fuellen: "jmp $xxxxxxxx" auf das aufgeloeste Symbol.
+   Beide Formen von -a teilen sich denselben Eintrag -- der Sprung laeuft
+   durch den jmp, der Adresszugriff liest das Feld dahinter (s. farCall). */
+static void putJumpTable(void)
+{
+	int i;
+
+	for (i = 0; i < jtN; i++) {
+		outBuf[jtAt + i * 6] = 0x4e;
+		outBuf[jtAt + i * 6 + 1] = 0xf9;
+		patch32(jtAt + i * 6 + 2, symResolve(jtSym[i]));
+		/* Die Zieladresse steht in den DATEN und muss vom Lader
+		   angepasst werden -- als Code- oder als Datenzeiger, je
+		   nachdem, worauf sie zeigt. */
+		if (symType[jtSym[i]] == 4)
+			irefAdd(irefCode, &irefCodeN, jtBase + i * 6 + 2);
+		else
+			irefAdd(irefData, &irefDataN, jtBase + i * 6 + 2);
+	}
+}
+
 static void farCall(int si, int here, const char *name)
 {
 	int e;
+	int op;
+	int disp;
+	int reg;
 
 	if (!optJumpTab)
 		fatal("Bezug zu weit fuer ein Wort, l68 braucht dafuer -a: ",
@@ -811,32 +848,46 @@ static void farCall(int si, int here, const char *name)
 	}
 	if (jtPlan)
 		return;
-	/* Nur die WORTFORM von bsr wird umgeschrieben. Das Handbuch nennt
-	   fuer -a auch ferne LEAs; die kommen weder im Korpus noch in der
-	   eigenen Kette vor, und geraten waere hier falscher Code. */
-	if ((outBuf[here - 2] & 255) != 0x61 || (outBuf[here - 1] & 255) != 0x00)
-		fatal("-a kennt bisher nur die Wortform von bsr, hier steht"
+
+	/* ZWEI Formen, beide an l68 gemessen -- und beide tragen dasselbe
+	   ROF-Typwort $00b0 (im Code, 2 Byte, relativ). Sie sind also nur am
+	   OPCODE zu unterscheiden:
+
+	     bsr.w ziel        $6100  ->  jsr d16(a6)         $4eae
+	     lea d16(pc),An    $41fa  ->  movea.l d16(a6),An  $206e | reg<<9
+
+	   Der Tabelleneintrag ist in beiden Faellen derselbe
+	   ("jmp $xxxxxxxx"), nur das Displacement zeigt woandershin: der
+	   SPRUNG geht auf den Eintragsanfang und laeuft durch den jmp, die
+	   ADRESSE dagegen wird aus dem Adressfeld dahinter geladen
+	   (Eintrag + 2). Genau dafuer fuehrt l68s "-j"-Karte zwei Spalten --
+	   "Indx" den Eintragsanfang, "Roff"/"Data Offset" das Adressfeld.
+
+	   Nachgemessen an qr68 gegen qclib: die sechs Bezuege auf
+	   tc_extcall_tmp wurden alle zu "movea.l $8282(a6),a0", waehrend der
+	   Eintrag selbst bei $8280 steht. */
+	op = ((outBuf[here - 2] & 255) << 8) | (outBuf[here - 1] & 255);
+	if (op == 0x6100) {
+		outBuf[here - 2] = 0x4E;
+		outBuf[here - 1] = 0xAE;
+		disp = jtBase + e * 6;
+	} else if ((op & 0xF1FF) == 0x41FA) {
+		reg = (op >> 9) & 7;
+		op = 0x206E | (reg << 9);
+		outBuf[here - 2] = (op >> 8) & 255;
+		outBuf[here - 1] = op & 255;
+		disp = jtBase + e * 6 + 2;
+	} else {
+		/* Das Handbuch nennt fuer -a nur "distant BSRs and LEAs".
+		   Alles andere waere ungemessen -- lieber abbrechen als
+		   raten. */
+		fatal("-a kennt bisher bsr.w und lea d16(pc); hier steht"
 		      " etwas anderes: ", name);
-	outBuf[here - 2] = 0x4e;          /* jsr d16(a6) */
-	outBuf[here - 1] = 0xae;
-	e = jtBase + e * 6 + 0x8000;      /* Datenabstand mit $8000-Bias */
-	outBuf[here] = (e >> 8) & 255;
-	outBuf[here + 1] = e & 255;
-}
-
-/* Die Eintraege fuellen: `jmp $xxxxxxxx` auf das aufgeloeste Symbol. Die
-   Zieladresse ist ein CODEzeiger, der in den Daten steht -- der Lader
-   muss ihn anpassen, also gehoert er in die Code-Zeigerliste. */
-static void putJumpTable(void)
-{
-	int i;
-
-	for (i = 0; i < jtN; i++) {
-		outBuf[jtAt + i * 6] = 0x4e;
-		outBuf[jtAt + i * 6 + 1] = 0xf9;
-		patch32(jtAt + i * 6 + 2, symResolve(jtSym[i]));
-		irefAdd(irefCode, &irefCodeN, jtBase + i * 6 + 2);
+		return;
 	}
+	disp = disp + 0x8000;             /* Datenabstand mit dem a6-Vorspann */
+	outBuf[here] = (disp >> 8) & 255;
+	outBuf[here + 1] = disp & 255;
 }
 
 static void applyExtRefs(int k)
