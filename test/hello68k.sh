@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# Der Pruefstein von qclib: ein Programm, das NUR gegen qclib gebunden
+# ist, muss auf echtem 68030 dasselbe ausgeben wie gegen Microwares clib.
+#
+# Byteidentitaet taugt hier nicht als Pruefstein -- fuer clib gibt es
+# keine Quellen, also auch keine gemeinsame Eingabe (s. README). Es zaehlt
+# das VERHALTEN, und das laesst sich nur im Emulator messen.
+#
+# Fallen, die hier Zeit gekostet haben (aus der QCC-Arbeit uebernommen):
+#   - auf einer Image-KOPIE arbeiten; ToolShed schreibt an einem laufenden
+#     Emulator vorbei direkt in die Imagedatei, und auf dem Mac laufen oft
+#     mehrere Emulatoren.
+#   - "copy -r" setzt KEIN e-Attribut -> OS-9 startet das Modul nicht
+#     (Fehler 214). Danach os9 attr -e noetig.
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+REPO="$PWD"
+: "${FORGE:=$(cd .. && pwd)}"
+: "${QCC:=$FORGE/Q9-QCC}"
+: "${FLUX:=$FORGE/Q9-Flux}"
+: "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+: "${IMG_SRC:=$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
+
+die() { echo "FEHLER: $*" >&2; exit 2; }
+[ -f "$REPO/build/qclib.l" ] || die "build/qclib.l fehlt -- vorher 'make'"
+[ -f "$IMG_SRC" ]            || die "Image fehlt: $IMG_SRC"
+[ -x "$FLUX/build/macos/q9.exe" ] || die "Emulator fehlt (in Q9-Flux 'make host')"
+
+WORK=/tmp/qclib-68k
+rm -rf "$WORK"; mkdir -p "$WORK"
+# CoW-Klon: kostenlos, und der Lauf fasst das Originalimage nicht an.
+cp -c "$IMG_SRC" "$WORK/img.hda" 2>/dev/null || cp "$IMG_SRC" "$WORK/img.hda"
+
+MWOS_UNIX="$MWOS"
+# shellcheck disable=SC1091
+source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
+	die "OS-9-Toolchain nicht ladbar"
+MWOS="$MWOS_UNIX"
+
+echo "== 1/4 Modul binden (nur gegen qclib) =="
+cp "$REPO/build/hello.r" "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/" ||
+	die "Eingaben fehlen -- vorher 'make'"
+WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine"
+export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
+TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
+arch -x86_64 "$WINE_BIN" cmd /c \
+	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\hello.r -l=$TW\\qclib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_hello" \
+	>"$WORK/l68.log" 2>&1
+[ -f "$WORK/q9_hello" ] || { sed 's/^/    /' "$WORK/l68.log" | head -10; die "l68"; }
+echo "  ok ($(wc -c < "$WORK/q9_hello" | tr -d ' ') Byte)"
+
+echo "== 2/4 ins Image =="
+"$MWOS_TOOLSHED_OS9" copy -r "$WORK/q9_hello" "$WORK/img.hda,/CMDS/q9_hello" >/dev/null 2>&1 ||
+	die "ToolShed-copy"
+# Ohne e-Attribut startet OS-9 das Modul nicht (Fehler 214).
+"$MWOS_TOOLSHED_OS9" attr "$WORK/img.hda,/CMDS/q9_hello" -e -w -r -pe -pr >/dev/null 2>&1
+echo "  ok"
+
+echo "== 3/4 im Emulator ausfuehren =="
+cat > "$WORK/run.exp" <<'EOF'
+log_file -a LOGFILE
+set timeout 240
+set send_slow {1 .003}
+set prompt {[#$] ?$}
+spawn ./build/macos/q9.exe --rom MWOSDIR/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf IMAGE
+expect "devices online"
+send "\r"
+set li 0
+for {set i 0} {$i < 10 && !$li} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re $prompt { set li 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$li} { send_log "\nTEST: LOGIN FAILED\n"; exit 1 }
+send -s "/dd/CMDS/q9_hello\r"
+expect {
+    -re $prompt          { }
+    -re {Stack Overflow} { send_log "\nTEST: STACK OVERFLOW\n" }
+    -re {PMMU}           { send_log "\nTEST: PMMU\n" }
+    timeout              { send_log "\nTEST: TIMEOUT\n"; exit 1 }
+}
+send "\x1d"
+expect eof
+EOF
+sed -i.bak -e "s|LOGFILE|$WORK/run.log|" -e "s|IMAGE|$WORK/img.hda|" \
+	-e "s|MWOSDIR|$MWOS|" "$WORK/run.exp" && rm -f "$WORK/run.exp.bak"
+( cd "$FLUX" && expect -f "$WORK/run.exp" >/dev/null 2>&1 )
+[ -f "$WORK/run.log" ] || die "kein Emulator-Log"
+echo "  ok"
+
+echo "== 4/4 Ausgabe pruefen =="
+ok=0
+bad=0
+pruefe() {
+	if grep -qF "$1" "$WORK/run.log"; then
+		echo "  ok      $1"
+		ok=$((ok + 1))
+	else
+		echo "  FEHLT   $1"
+		bad=$((bad + 1))
+	fi
+}
+pruefe "Hallo Welt"
+pruefe "42 -7 0"
+pruefe "hex ff, Zeichen A, Prozent %"
+if grep -q "TEST: " "$WORK/run.log"; then
+	echo "  Abbruch im Emulator:"
+	grep "TEST: " "$WORK/run.log" | sed 's/^/    /'
+	bad=$((bad + 1))
+fi
+echo
+echo "  $ok von 3 Zeilen richtig"
+[ "$bad" -eq 0 ] || echo "  (Log: $WORK/run.log)"
+exit $([ "$bad" -eq 0 ] && echo 0 || echo 1)
