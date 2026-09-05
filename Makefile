@@ -20,6 +20,7 @@ test: build/ql68
 	./test/rawtest.sh
 	./test/descs.sh
 	./test/optstest.sh
+	./test/jumptest.sh
 
 check: test
 

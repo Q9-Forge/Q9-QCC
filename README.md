@@ -467,9 +467,84 @@ Antwortdatei muss im Modulkopf ankommen (`M$Stack` `$64` → `$2064`).
 Sonst wären die `-z=`-Fälle nur deshalb grün, weil beide Binder die Datei
 gleichermaßen ignorieren.
 
+## Die Sprungtabelle (`-a`)
+
+Ein `bsr.w` reicht nur ±32K weit. Liegt das Ziel weiter, bricht `l68` ohne
+`-a` ab:
+
+```
+error - operand size error.
+The value of symbol _os_write ($1256e8) is too large for a word operand.
+```
+
+**Im SDK-Korpus tritt dieser Fall nie ein** — er ist Assembler und bleibt
+unter 64K. **Die eigene Kette kommt ohne ihn nicht aus**: `qr68` als
+OS-9-Modul ist über 1 MB groß, und ihr Bindeschritt benutzt `-a`.
+
+`l68 -a -j` druckt seine Rechnung selbst — das war das Orakel:
+
+```
+Jumptable information: guess=11 Actual=7
+  Name      Offset  Indx Roff Count Data Offset
+  exit     0012329c 9184 0002     1 ffff9186
+  ...
+```
+
+Gemessen daran:
+
+- Der Aufruf `bsr.w ziel` (ROF-Typwort **`$00b0`** = im Code, 2 Byte,
+  relativ; Bytes `6100 xxxx`) wird zu **`jsr d16(a6)`** = `4eae <disp>`.
+- Das Displacement ist der Datenabstand des Eintrags **mit dem
+  `$8000`-Bias** (`$1184` → `$9184`).
+- Ein Eintrag ist **6 Byte: `4ef9 <32-Bit-Zieladresse>`** (`jmp abs.l`).
+- Die Tabelle liegt **am Ende der initialisierten Daten**; ihr Ende fiel
+  genau auf `M$Data`.
+- Die Zieladresse ist ein Codezeiger in den Daten und steht deshalb in der
+  **Code-Zeigerliste**.
+
+### `l68` schätzt, `ql68` rechnet
+
+`guess=11 Actual=7` heißt: im Modul stehen **elf** Einträge, vier davon
+leer als `4ef9 00000000`. `l68` legt die Tabelle nach seiner **Schätzung**
+an, nicht nach dem Bedarf — es muss ihre Größe festlegen, bevor die
+Bibliothekssuche entschieden hat, welche Module dazukommen und wo sie
+liegen. Nachgemessen:
+
+| Fall | guess | Actual |
+|---|---|---|
+| gewöhnliche ROF-Eingaben, 1 / 2 / 3 / 5 ferne Aufrufe | **= N** | **= N** |
+| Bibliothek + Startcode, 1 / 2 / 4 Aufrufe | **6** (konstant!) | **1** |
+| die echte Kette (`qr68`) | 11 | 7 |
+
+Ohne Bibliotheken rechnet `l68` also exakt; mit ihnen schätzt es hoch, und
+die Schätzung reagiert nicht einmal auf die Zahl der Aufrufe.
+
+`ql68` kennt beim Layout alle Eingaben und Bibliotheken und **rechnet
+exakt**. Damit bleibt die Byteidentität überall prüfbar, wo `l68` selbst
+exakt ist — `test/jumptest.sh` vergleicht vier Fälle, alle byteidentisch.
+Bei Bibliotheksfällen weicht `ql68` bewusst ab: die Tabelle ist kleiner,
+das Modul aber richtig.
+
+**Zwei Durchläufe genügen**, und das ist keine Faustregel: die Tabelle
+liegt in den *Daten* und verschiebt den Code nicht, also ändert ihre Größe
+die Distanzen nicht. Einer zählt, einer schreibt.
+
+### Wo der Wächter hingehört
+
+Ein früherer Zwischenstand prüfte die Feldbreite beim **Verrechnen jeder
+einzelnen Referenz** und zerlegte damit acht byteidentische SDK-Module
+(siehe oben). Die Sorge war berechtigt, die Stelle falsch: geprüft werden
+darf erst der **fertig aufaddierte** Wert. Genau dort steht die Prüfung
+jetzt — ohne `-a` bricht `ql68` mit derselben Diagnose ab wie `l68`, statt
+still ein falsches Displacement abzulegen.
+
 ## Was als Nächstes ansteht
 
-1. **Die Schalter sind abgearbeitet** — gegen `l68 -?` durchgezählt,
+1. **`-a` steht** (Abschnitt oben). Offen bleibt am Binder nur noch das
+   **libgen-Archivformat**: `ql68` liest Bibliotheken als ROF-Folgen, und
+   `clib.l` ist ein libgen-Archiv (Format 1.1). Das erledigt sich mit
+   `Q9-qclib`, das als schlichte ROF-Folge entsteht.
+2. **Die Schalter sind abgearbeitet** — gegen `l68 -?` durchgezählt,
    gegen den Korpus gemessen. Bewusst offen bleiben genau zwei Dinge:
    die Sprungtabelle von `-a` (kommt im Korpus nirgends vor) und `-z`
    ohne `=` von der Standardeingabe (setzt `stdin` voraus, das `ql68`

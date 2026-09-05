@@ -120,6 +120,49 @@ static int irefDataN;
 #define QL_LIB    16
 #define QL_ARGS   1024              /* Argumente nach dem Aufloesen von -z= */
 #define QL_ZBUF   (64 * 1024)       /* Text der -z=-Dateien */
+#define QL_JT     1024              /* Eintraege der Sprungtabelle */
+
+/* --- Die Sprungtabelle von -a ------------------------------------------
+   Ein `bsr.w ziel` reicht nur +-32K weit. Liegt das Ziel weiter, legt l68
+   mit -a einen 6 Byte langen Eintrag `jmp $xxxxxxxx` ($4ef9) in den
+   INITIALISIERTEN DATEN an und macht aus dem Aufruf `jsr d16(a6)`
+   ($4eae); das Displacement ist der Datenabstand des Eintrags MIT dem
+   $8000-Bias. Alles an `l68 -a -j` nachgemessen, das seine Rechnung
+   selbst druckt.
+
+   ql68 legt nur die WIRKLICH gebrauchten Eintraege an. l68 dagegen
+   schaetzt: `-j` meldet etwa "guess=11 Actual=7", und die vier
+   ueberzaehligen bleiben als `4ef9 00000000` stehen und vergroessern den
+   Datenbereich. Der Grund ist strukturell -- l68 muss die Tabellengroesse
+   festlegen, BEVOR die Bibliothekssuche entschieden hat, welche Module
+   dazukommen und wo sie liegen. Gemessen: bei gewoehnlichen ROF-Eingaben
+   rechnet l68 exakt (guess == Actual bei 1, 2, 3 und 5 fernen Aufrufen),
+   nur mit Bibliotheken schaetzt es hoch (dort blieb guess=6 stehen,
+   gleich ob 1, 2 oder 4 Aufrufe -- die Schaetzung reagiert gar nicht auf
+   ihre Zahl). ql68 kennt beim Layout alle Eingaben und Bibliotheken und
+   braucht deshalb nicht zu schaetzen. Byteidentitaet bleibt damit ueberall
+   pruefbar, wo l68 selbst exakt ist; bei Bibliotheksfaellen weicht ql68
+   bewusst ab -- die Tabelle ist dann kleiner, das Modul aber richtig.
+
+   Die Tabelle verschiebt den CODE nicht (sie liegt in den Daten), deshalb
+   genuegen zwei Durchlaeufe: einer zaehlt, einer schreibt. */
+static int optJumpTab;         /* -a */
+static int jtPlan;             /* 1 = Zaehllauf */
+static int jtSym[QL_JT];       /* je SYMBOL ein Eintrag, nicht je Aufruf */
+static int jtN;
+static int jtBase;             /* Datenabstand der Tabelle */
+static int jtAt;               /* Dateioffset der Tabelle */
+
+static int jtFind(int si)
+{
+	int i;
+
+	for (i = 0; i < jtN; i++) {
+		if (jtSym[i] == si)
+			return i;
+	}
+	return -1;
+}
 
 /* Symboltabelle fuer alles, was externe Referenzen aufloesen kann: die
    Globalen der Bibliotheken und die vom Binder selbst gesetzten Symbole. */
@@ -614,6 +657,56 @@ static int symResolve(int si)
    Ist Bit 7 gesetzt, ist der Bezug RELATIV zur Referenzstelle: gemessen
    an "jsr sub1(pc)" -- sub1 liegt auf $5a, das Erweiterungswort auf $52,
    abgelegt wird $0008. */
+/* Ein Aufruf, der nicht mehr in sein Wort passt. Ohne -a bricht l68 hier
+   ab ("The value of symbol 'x' ($...) is too large for a word operand") --
+   ql68 tut dasselbe, statt still ein falsches Displacement abzulegen.
+   Mit -a bekommt das Symbol einen Tabelleneintrag, und der Aufruf wird
+   umgeschrieben. */
+static void farCall(int si, int here, const char *name)
+{
+	int e;
+
+	if (!optJumpTab)
+		fatal("Bezug zu weit fuer ein Wort, l68 braucht dafuer -a: ",
+		      name);
+	e = jtFind(si);
+	if (e < 0) {
+		if (jtN >= QL_JT)
+			fatal("zu viele Sprungtabelleneintraege (QL_JT)", "");
+		e = jtN;
+		jtSym[jtN] = si;
+		jtN++;
+	}
+	if (jtPlan)
+		return;
+	/* Nur die WORTFORM von bsr wird umgeschrieben. Das Handbuch nennt
+	   fuer -a auch ferne LEAs; die kommen weder im Korpus noch in der
+	   eigenen Kette vor, und geraten waere hier falscher Code. */
+	if ((outBuf[here - 2] & 255) != 0x61 || (outBuf[here - 1] & 255) != 0x00)
+		fatal("-a kennt bisher nur die Wortform von bsr, hier steht"
+		      " etwas anderes: ", name);
+	outBuf[here - 2] = 0x4e;          /* jsr d16(a6) */
+	outBuf[here - 1] = 0xae;
+	e = jtBase + e * 6 + 0x8000;      /* Datenabstand mit $8000-Bias */
+	outBuf[here] = (e >> 8) & 255;
+	outBuf[here + 1] = e & 255;
+}
+
+/* Die Eintraege fuellen: `jmp $xxxxxxxx` auf das aufgeloeste Symbol. Die
+   Zieladresse ist ein CODEzeiger, der in den Daten steht -- der Lader
+   muss ihn anpassen, also gehoert er in die Code-Zeigerliste. */
+static void putJumpTable(void)
+{
+	int i;
+
+	for (i = 0; i < jtN; i++) {
+		outBuf[jtAt + i * 6] = 0x4e;
+		outBuf[jtAt + i * 6 + 1] = 0xf9;
+		patch32(jtAt + i * 6 + 2, symResolve(jtSym[i]));
+		irefAdd(irefCode, &irefCodeN, jtBase + i * 6 + 2);
+	}
+}
+
 static void applyExtRefs(int k)
 {
 	int i;
@@ -666,6 +759,16 @@ static void applyExtRefs(int k)
 			} else if (size == 2) {
 				v = ((outBuf[here] & 255) << 8) | (outBuf[here + 1] & 255);
 				v = v + val;
+				/* Ein PC-relativer Codebezug, der nicht mehr in
+				   das Wort passt: das ist der Fall, fuer den es
+				   -a gibt. HIER ist die richtige Pruefstelle --
+				   nach dem Aufaddieren ALLER Anteile. Ein
+				   Waechter auf den Zwischenwert waere falsch
+				   (s. den Messbefund ueber applyLocalRefs). */
+				if (rel && inCode && (v < -32768 || v > 32767)) {
+					farCall(si, here, &inBuf[nameAt]);
+					continue;
+				}
 				outBuf[here] = (v >> 8) & 255;
 				outBuf[here + 1] = v & 255;
 			} else if (size == 3) {
@@ -790,6 +893,13 @@ static void emit(void)
 		bInit[k] = totalUninit + totalInit;
 		totalInit = totalInit + alignUp(rIDat[k], optAlign);
 	}
+	/* Die Sprungtabelle liegt am ENDE der initialisierten Daten -- an
+	   l68 gemessen: dort endete sie genau auf M$Data. Im Zaehllauf ist
+	   jtN noch 0; das macht nichts, weil die Tabelle in den DATEN liegt
+	   und die Codelagen nicht verschiebt. Genau deshalb genuegen zwei
+	   Durchlaeufe. */
+	jtBase = totalUninit + totalInit;
+	totalInit = totalInit + jtN * 6;
 
 	/* --- Rohe Binaerausgabe: kein Kopf, kein Name, kein CRC. Der Code
 	   liegt ab Dateianfang, dahinter IData und IRefs wie sonst auch.
@@ -978,6 +1088,11 @@ static void emit(void)
 		for (i = rIDat[k]; i < alignUp(rIDat[k], optAlign); i++)
 			put8(0);
 	}
+	/* Platz fuer die Sprungtabelle; gefuellt wird sie erst, wenn die
+	   Referenzen abgearbeitet sind und die Zielwerte feststehen. */
+	jtAt = outLen;
+	for (i = 0; i < jtN * 6; i++)
+		put8(0);
 
 	/* Erst jetzt stehen alle Basen fest. */
 	for (k = 0; k < rofN; k++)
@@ -1002,6 +1117,7 @@ static void emit(void)
 
 	/* --- Zeigerlisten --- */
 	irefAt = outLen;
+	putJumpTable();
 	putIrefList(irefCode, irefCodeN);
 	putIrefList(irefData, irefDataN);
 
@@ -1040,6 +1156,7 @@ static void usage(void)
 	puts("  -M=<n>[K]               Stackzuschlag, die Zahl zaehlt in K");
 	puts("  -b=<n>                  Code und Daten auf n ausrichten (2/4/8/16)");
 	puts("  -x=<n>                  nur den Codeanfang ausrichten (2/4/8/16)");
+	puts("  -a                      Sprungtabelle fuer zu weite Aufrufe");
 	puts("  -S                      Modul bleibt im Speicher (sticky)");
 	puts("  -R=<n>                  Revisionsnummer (unter 256)");
 	exit(2);
@@ -1064,9 +1181,10 @@ static int argStarts(const char *a, const char *p);
    l68 nimmt die Einzelbuchstaben auch als BUENDEL: "-swam" der
    ROM-Makefiles ist -s -w -a -m, "-gwj" druckt die Sprungtabellenkarte
    (an l68 nachgemessen).
-   -a steht bewusst mit in der Liste: es wirkt nur, wenn ein Bezug nicht
-   in sein Feld passt, und dieser Fall kommt im SDK-Korpus nirgends vor
-   (s. den Messbefund ueber applyLocalRefs). */
+   -a bleibt als BUCHSTABE in der Liste, weil "-swam" der ROM-Makefiles
+   sonst nicht mehr durchlaeuft -- es wird beim Auswerten aber eigens
+   herausgegriffen und schaltet die Sprungtabelle ein (s. farCall).
+   Im SDK-Korpus wirkt es nie; die eigene Kette kommt ohne es nicht aus. */
 static int harmlessOpt(const char *a)
 {
 	int i;
@@ -1390,8 +1508,22 @@ int main(int argc, char **argv)
 			optSticky = 1;
 			continue;
 		}
-		if (a[0] == '-' && harmlessOpt(a))
+		if (a[0] == '-' && harmlessOpt(a)) {
+			/* -a schaltet die Sprungtabelle ein, auch als
+			   Buchstabe in einem Buendel ("-swam"). Nur bei den
+			   reinen Buchstabenformen nachsehen -- in "-m=pfad_a"
+			   oder "-f=..." waere ein 'a' blosser Text. */
+			if (argStarts(a, "-m=") == 0 && argStarts(a, "-s=") == 0 &&
+			    argStarts(a, "-f=") == 0 && argStarts(a, "-mt") == 0) {
+				int b;
+
+				for (b = 1; a[b] != 0; b++) {
+					if (a[b] == 'a')
+						optJumpTab = 1;
+				}
+			}
 			continue;
+		}
 		if (a[0] == '-' && a[1] != 0) {
 			printf("ql68: unbekannte Option %s\n", a);
 			usage();
@@ -1444,7 +1576,30 @@ int main(int argc, char **argv)
 	}
 	if (rofRoot < 0)
 		fatal("keine der Eingaben hat einen Wurzel-psect (Typ/Sprache ist 0) -- nur daraus entsteht ein Modul", "");
-	emit();
+	/* Erst zaehlen, dann schreiben. Der Zaehllauf stellt fest, wie viele
+	   Aufrufe zu weit sind; die Tabelle liegt in den DATEN und verschiebt
+	   den Code nicht, deshalb ist der zweite Lauf endgueltig. Ohne -a
+	   bricht farCall schon im ersten Lauf ab. */
+	if (optJumpTab) {
+		int symKeep;
+		int poolKeep;
+
+		symKeep = symN;
+		poolKeep = symPoolTop;
+		jtPlan = 1;
+		emit();
+		jtPlan = 0;
+		if (jtN > 0) {
+			outLen = 0;
+			symN = symKeep;
+			symPoolTop = poolKeep;
+			irefCodeN = 0;
+			irefDataN = 0;
+			emit();
+		}
+	} else {
+		emit();
+	}
 
 	fp = fopen(outPath, "wb");
 	if (fp == 0)
