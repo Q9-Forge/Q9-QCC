@@ -625,6 +625,36 @@ ROF; `ql68` brach daran bisher ab. Gemessen: `M$Excpt` = Codebasis +
 **`ql68` bindet ein Programm gegen `qclib.l` byteidentisch zu `l68`**
 (4034 Byte) — Startcode, Programm und vier Bibliotheksmodule.
 
+## ql68 laeuft auf echtem 68030
+
+Der Binder bindet auf dem Ziel: `Q9-qclib/test/ql68_68k.sh` baut `ql68`
+mit der eigenen Kette, laesst es **sich selbst** binden (1,70 MB Modul,
+gegen `qclib`) und dann auf dem 68030 ein Programm binden — dieselbe
+Aufgabe wie am Host, **byteidentisches** Ergebnis (8078 Byte).
+
+Damit sind alle drei Werkzeuge der Kette auf dem Ziel nachgewiesen:
+`qr68` assembliert, `qcpp` praeprozessiert, `ql68` bindet.
+
+### Was dafür an der Quelle nötig war
+
+`ql68` scheiterte an QCC **viermal — jedes Mal mit Schlusswort `FAIL` und
+ohne eine einzige Meldung**:
+
+| Ursache | Befund |
+|---|---|
+| `int printf(char*, ...)` ohne `extern` | mit `extern` nimmt QCC es an, ohne nicht |
+| `static char b[(32*1024*1024)]` | `constSize` kennt nur **Zahlen**, keine Ausdrücke |
+| `static int x = 0x00010000;` | eine **globale** Variable verträgt kein Hex-Literal |
+| mehrzeilige Meldungstexte | **Zeichenkettenverkettung** |
+
+Gefunden durch Bisektion über das Präprozessat. Der erste Anlauf war
+falsch: er schnitt mitten in Funktionen und sah deshalb überall `FAIL` —
+erst das Schneiden **an Funktionsgrenzen** hat gestimmt.
+
+Daraus folgte auch der `_Q9OS`-Zweig mit Zielmaßen (512 KB statt 32 MB):
+QCCs Backend legt genullte Felder in den *initialisierten* Datenbereich,
+ein 32-MB-Puffer wäre also ein 32-MB-Modul.
+
 ## Was als Nächstes ansteht
 
 1. **`-a` und die Bibliothekssuche stehen** (Abschnitte oben). Offen

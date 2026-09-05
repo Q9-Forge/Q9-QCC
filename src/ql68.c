@@ -18,13 +18,13 @@
  * Zeigerfeld (beides kann QCC nicht).
  */
 
-int printf(const char *fmt, ...);
-int puts(const char *s);
-void exit(int code);
-char *fopen(const char *path, const char *mode);
-int fclose(char *fp);
-int fread(char *buf, int size, int n, char *fp);
-int fwrite(const char *buf, int size, int n, char *fp);
+extern int printf(const char *fmt, ...);
+extern int puts(const char *s);
+extern void exit(int code);
+extern char *fopen(const char *path, const char *mode);
+extern int fclose(char *fp);
+extern int fread(char *buf, int size, int n, char *fp);
+extern int fwrite(const char *buf, int size, int n, char *fp);
 
 /* Eingaben UND Bibliotheken liegen zusammen in inBuf; qcpp.r allein ist
    schon 4,4 MB (QCCs Backend legt genullte Felder in den initialisierten
@@ -32,8 +32,22 @@ int fwrite(const char *buf, int size, int n, char *fp);
    Am Host kostet der Platz nichts -- einen _Q9OS-Zweig mit Zielmassen
    gibt es hier noch nicht, weil ql68 selbst noch nicht auf dem 68030
    laeuft. */
-#define QL_IN     (32 * 1024 * 1024)  /* Eingaben und Bibliotheken */
-#define QL_OUT    (32 * 1024 * 1024)  /* Ausgabepuffer  */
+/* Groessen als LITERALE, nicht als Ausdruecke: QCCs constSize kennt nur
+   Zahlen -- "(32 * 1024 * 1024)" laesst den Compiler still abbrechen
+   (Schlusswort FAIL, keine Meldung). Dieselbe Einschraenkung steht in
+   qr68.c.
+
+   Am Host darf es grosszuegig sein (qcpp.r allein ist 4,4 MB), auf dem
+   Ziel nicht: QCCs Backend legt genullte Felder in den INITIALISIERTEN
+   Datenbereich, und der wandert vollstaendig ins Modul -- ein 32-MB-Puffer
+   waere ein 32-MB-Modul. */
+#ifdef _Q9OS
+#define QL_IN       524288            /* Eingaben und Bibliotheken */
+#define QL_OUT      524288            /* Ausgabepuffer  */
+#else
+#define QL_IN     33554432            /* Eingaben und Bibliotheken */
+#define QL_OUT    33554432            /* Ausgabepuffer  */
+#endif
 #define QL_IREF   16384               /* Zeiger je Liste */
 
 static char inBuf[QL_IN];
@@ -93,8 +107,8 @@ static int optRaw = -1;
 static int rawCodeBias;
 
 static char modName[256];
-static int optOwner = 0x00010000;  /* M$Owner, so ohne -gu= (gemessen) */
-static int optAccess = 0x0555;     /* M$Accs,  so ohne -p=  (gemessen) */
+static int optOwner = 65536;       /* M$Owner $00010000, ohne -gu= (gemessen) */
+static int optAccess = 1365;       /* M$Accs  $0555,     ohne -p=  (gemessen) */
 static int optEdition = -1;        /* -e=: ueberschreibt den psect-Wert */
 /* -M=<n>[K]: Zuschlag auf den Stack. Die Zahl zaehlt IMMER in K --
    "-M=1" und "-M=1K" ergeben beide 1024 dazu, "-M=100" ganze 102400
@@ -122,10 +136,10 @@ static int irefData[QL_IREF];
 static int irefDataN;
 
 #define QL_SYM    8192
-#define QL_POOL   (256 * 1024)
+#define QL_POOL   262144
 #define QL_LIB    16
 #define QL_ARGS   1024              /* Argumente nach dem Aufloesen von -z= */
-#define QL_ZBUF   (64 * 1024)       /* Text der -z=-Dateien */
+#define QL_ZBUF    65536            /* Text der -z=-Dateien */
 #define QL_JT     1024              /* Eintraege der Sprungtabelle */
 
 /* --- Die Sprungtabelle von -a ------------------------------------------
@@ -465,8 +479,7 @@ static void libScan(const char *path)
 		   bekamen: eine wirklich leere Datei -- und ein voller
 		   Eingabepuffer, bei dem fread gar nichts mehr lesen KANN. */
 		if (inLen >= QL_IN)
-			fatal("Eingabepuffer voll (QL_IN), Bibliothek passt"
-			      " nicht mehr hinein: ", path);
+			fatal("Eingabepuffer voll (QL_IN): ", path);
 		fatal("Bibliothek ist leer: ", path);
 	}
 	inLen = inLen + got;
@@ -881,8 +894,7 @@ static void farCall(int si, int here, const char *name)
 		/* Das Handbuch nennt fuer -a nur "distant BSRs and LEAs".
 		   Alles andere waere ungemessen -- lieber abbrechen als
 		   raten. */
-		fatal("-a kennt bisher bsr.w und lea d16(pc); hier steht"
-		      " etwas anderes: ", name);
+		fatal("-a kennt bisher nur bsr.w und lea d16(pc): ", name);
 		return;
 	}
 	disp = disp + 0x8000;             /* Datenabstand mit dem a6-Vorspann */
@@ -1490,9 +1502,7 @@ static void argAdd(char *a)
 			return;
 		}
 		if (a[2] == 0)
-			fatal("-z ohne Datei liest bei l68 die Standardeingabe."
-			      " ql68 hat darauf keinen Zugriff (es kennt nur"
-			      " fopen) -- bitte -z=<datei>", "");
+			fatal("-z ohne Datei liest die Standardeingabe; ql68 kennt nur fopen -- bitte -z=<datei>", "");
 	}
 	if (argN >= QL_ARGS)
 		fatal("zu viele Argumente (QL_ARGS)", "");
