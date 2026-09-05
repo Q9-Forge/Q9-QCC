@@ -101,7 +101,86 @@ gerechnete Datum stimmt auf die Sekunde mit `libgen -li`.
 > Zu beachten ist nur die Reihenfolge: in einer einfachen Bibliothek muss
 > ein psect **vor** jedem stehen, der ihn braucht.
 
+## Wie printf an seine Argumente kommt
+
+Zwei Grenzen von QCC bestimmen die Bauform, beide gemessen:
+
+1. **QCC kann variadische Funktionen nicht definieren.** `int f(char*, ...)`
+   ergibt Schlusswort `FAIL` — und zwar **still, ohne Meldung**. In der
+   *Deklaration* geht `...` dagegen; deshalb kann `qr68` printf aufrufen.
+2. **Die Aufrufkonvention ist Microwares**, nicht die reine Stack-Form. An
+   einem echten Fünf-Argument-Aufruf gemessen, liegt beim Eintritt:
+
+   | | |
+   |---|---|
+   | `d0` | Formatzeichenkette |
+   | `d1` | erstes variadisches Argument |
+   | `4(a7)`, `8(a7)`, … | die weiteren, aufsteigend |
+   | `(a7)` | die Rücksprungadresse — **mitten darin** |
+
+   Der Aufrufer räumt die Stack-Argumente selbst ab.
+
+`src/printf.a` löst das in zehn Befehlen: es schreibt `d1` auf den Platz der
+Rücksprungadresse und `d0` darüber. Danach hängen fmt, arg1, arg2 …
+**lückenlos** zusammen, und der C-Rumpf ist ein gewöhnliches
+`int printf_a(int *args)` — ohne varargs, ohne `&param`, also ganz im
+QCC-Subset. Die Rücksprungadresse wird dabei über den **Stack** gerettet
+und nicht in einem Register: welche Register den Aufruf überleben, wäre
+eine eigene Messung, und diese Fassung braucht sie nicht.
+
+Ausgegeben wird direkt über den Systemaufruf — `error_code
+_os_write(path_id, const void*, u_int32 *count)`, wobei `count` ein
+IN/OUT-**Zeiger** ist und Pfad 1 die Standardausgabe. Für den Aufruf aus C
+erzeugt QCC von sich aus genau diese Konvention.
+
+## `_iob` ist freier, als der Header vermuten lässt
+
+`q9_cstart.a` liest `_iob` **nicht** als FILE-Feld — es schreibt im
+Fehlerpfad eine Meldung als rohe Bytes hinein (`movea.l #_iob,a1` /
+`adda.l a6,a1` / `mover`), und `_fcbs` zeigt darauf. Weil nur eigener Code
+darauf zugreift, ist Microwares 13-Feld-Struktur (`_ptr/_base/_end/_flag/
+_fd/…`, `FOPEN_MAX 32`) hier **nicht bindend**. `src/iob.a` stellt vorerst
+nur den Platz bereit; sobald `fopen` dazukommt, bekommt qclib ein eigenes,
+dann hier dokumentiertes Layout.
+
+`_iobinit`, `_initarg` und `_utinit` sind bewusst **leer**. Das ist kein
+Platzhalter, sondern der gemessene Bedarf: der Startcode ruft sie, aber für
+die Ausgabe über `_os_write` ist nichts einzurichten.
+
 ## Stand
 
-Angelegt am 2026-09-05. Bisher steht die Bestandsaufnahme oben; Code
-folgt.
+**Ein Programm, dessen printf-Ausgabe ganz aus qclib kommt, läuft auf
+echtem 68030** (2026-09-05). `test/hello68k.sh` bindet `test/hello.c` gegen
+`qclib.l` — **ohne ein einziges clib-Modul** — und prüft die Ausgabe im
+Emulator:
+
+```
+Hallo Welt
+42 -7 0
+hex ff, Zeichen A, Prozent %
+```
+
+3 von 3 Zeilen richtig. Modul: 4054 Byte. `printf` kann `%d %i %u %x %c %s
+%%`; eine unbekannte Angabe wird unverändert durchgereicht, statt still
+verschluckt zu werden.
+
+`make` baut `build/qclib.l` (3 ROFs, 5157 Byte) mit der **eigenen Kette**:
+`qcpp` → `qcc_p` → `qcc_backend -os9 -part` → `qr68`. Jede Quelldatei wird
+ein eigener psect und damit ein eigener ROF — so bindet der Linker nur ein,
+was wirklich gebraucht wird.
+
+### Was noch fehlt
+
+- **`os_lib.l` ist ebenfalls ein libgen-Archiv.** Für `_os_write` und
+  `_os_exit` hängt die Kette noch daran, und `ql68` kann es nicht lesen.
+  Es sind nur zwei Systemaufrufe (`I$Write`, `F$Exit`) — bringt qclib sie
+  selbst mit, fällt os_lib weg und `ql68` kann das Modul binden.
+- **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
+  `tc_extcall_tmp`) für die Ziffernzerlegung. Ein QCC-Programm bringt ihn
+  mit, deshalb löst es sich beim Binden auf; für eine Bibliothek, die auch
+  ohne QCC-Programme taugt, ist das noch zu klären.
+- Der Gegenlauf **gegen clib** als Vergleich steht noch aus: bisher wird die
+  Ausgabe gegen erwartete Zeilen geprüft, nicht gegen die von Microwares
+  printf.
+- `fopen`/`fclose`/`fread`/`fwrite` — die restlichen sechs Symbole des
+  Zielkorpus.
