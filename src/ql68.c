@@ -173,8 +173,7 @@ static int symValue[QL_SYM];
 static int symType[QL_SYM];    /* Typwort wie im ROF: 6 = equ, 4 = Code ... */
 static int symN;
 
-static char libBuf[QL_IN];
-static int libLen;
+#define QL_LIBROF 2048          /* Module in allen Bibliotheken zusammen */
 static const char *libPath[QL_LIB];
 static int libN;
 
@@ -338,71 +337,204 @@ static int rofParse(int at0)
    Die Laenge eines ROF ist: 56 + Name + Globale + Code + init. Daten +
    externe Referenzen + lokale Referenzen + VIER abschliessende
    Langwoerter. */
-static int libAt;            /* Lesezeiger, waehrend libBuf geparst wird */
+/* Beim Verzeichnen einer Bibliothek gelesene Groessen. */
+static int libRofAt[QL_LIBROF];   /* Offset des ROF in inBuf */
+static int libRofN;
 
-static int libBe32(int at)
+/* Ueberspringt einen ROF ab at und liefert den Offset dahinter. Der
+   Aufbau steht im README ("Kopf, Name, Globale, Code, init. Daten,
+   externe Referenzen, lokale Referenzen, vier Langwoerter"). */
+static int rofSkip(int at)
 {
-	return ((libBuf[at] & 255) << 24) | ((libBuf[at + 1] & 255) << 16) |
-	       ((libBuf[at + 2] & 255) << 8) | (libBuf[at + 3] & 255);
+	int n;
+	int i;
+	int cods;
+	int idat;
+
+	idat = be32(at + 24);
+	cods = be32(at + 28);
+	at = skipName(at + 56);
+	n = be32(at);
+	at = at + 4;
+	for (i = 0; i < n; i++) {
+		at = skipName(at);
+		at = at + 6;
+	}
+	at = at + cods + idat;
+	n = be32(at);
+	at = at + 4;
+	for (i = 0; i < n; i++) {
+		at = skipName(at);
+		at = at + 4 + be32(at) * 6;
+	}
+	n = be32(at);
+	return at + 4 + n * 6 + 16;
 }
 
-static int libSkipName(int at)
+/* Wird der Name von einem schon eingebundenen ROF GEBRAUCHT und ist er
+   dort noch NICHT definiert? Genau dann holt der Binder das Modul, das
+   ihn definiert, aus der Bibliothek. */
+static int nameIsOpen(const char *name)
 {
-	while (at < libLen && libBuf[at] != 0)
-		at++;
-	return at + 1;
+	int k;
+	int i;
+	int at;
+	int gebraucht;
+
+	gebraucht = 0;
+	for (k = 0; k < rofN && !gebraucht; k++) {
+		at = rExtAt[k];
+		for (i = 0; i < rExtN[k]; i++) {
+			if (strEq(&inBuf[at], name)) {
+				gebraucht = 1;
+				break;
+			}
+			at = skipName(at);
+			at = at + 4 + be32(at) * 6;
+		}
+	}
+	if (!gebraucht)
+		return 0;
+	for (k = 0; k < rofN; k++) {
+		at = rGlobAt[k];
+		for (i = 0; i < rGlobN[k]; i++) {
+			if (strEq(&inBuf[at], name))
+				return 0;
+			at = skipName(at);
+			at = at + 6;
+		}
+	}
+	return 1;
 }
 
+/* Definiert der ROF an at genau diesen Namen? equ-Symbole zaehlen
+   NICHT: sie stehen schon in der Symboltabelle, und ihretwegen soll kein
+   Modul eingebunden werden -- sonst braechte jede Konstantendatei ihren
+   psect mit ins Modul (sys.l hat 1747 solcher Globalen). */
+static int rofDefines(int at, const char *name)
+{
+	int n;
+	int i;
+	int t;
+
+	at = skipName(at + 56);
+	n = be32(at);
+	at = at + 4;
+	for (i = 0; i < n; i++) {
+		int nameAt;
+
+		nameAt = at;
+		at = skipName(at);
+		t = be16(at);
+		at = at + 6;
+		if (t != 6 && strEq(&inBuf[nameAt], name))
+			return 1;
+	}
+	return 0;
+}
+
+/* Eine Bibliothek einlesen und VERZEICHNEN -- eingebunden wird erst in
+   libLink(), und nur was gebraucht wird.
+   Die Bibliothek landet in demselben Puffer wie die Eingaben, damit
+   rofParse() sie unveraendert parsen kann.
+   Die equ-Symbole werden sofort eingetragen: eine reine Konstantendatei
+   wie sys.l (1747 Globale, alle equ) traegt nichts zum Modul bei, ihre
+   Werte muessen aber verfuegbar sein. */
 static void libScan(const char *path)
 {
 	char *fp;
 	int at;
 	int n;
 	int i;
-	int cods;
-	int idat;
+	int got;
 
 	fp = fopen(path, "rb");
 	if (fp == 0)
 		fatal("Bibliothek nicht lesbar: ", path);
-	libLen = fread(libBuf, 1, QL_IN, fp);
+	at = inLen;
+	got = fread(&inBuf[inLen], 1, QL_IN - inLen, fp);
 	fclose(fp);
+	if (got <= 0)
+		fatal("Bibliothek ist leer: ", path);
+	inLen = inLen + got;
 
-	at = 0;
-	while (at + 56 <= libLen) {
-		if ((libBuf[at] & 255) != 0xDE || (libBuf[at + 1] & 255) != 0xAD ||
-		    (libBuf[at + 2] & 255) != 0xFA || (libBuf[at + 3] & 255) != 0xCE)
+	while (at + 56 <= inLen) {
+		if ((inBuf[at] & 255) != 0xDE || (inBuf[at + 1] & 255) != 0xAD ||
+		    (inBuf[at + 2] & 255) != 0xFA || (inBuf[at + 3] & 255) != 0xCE)
 			fatal("in der Bibliothek steht kein ROF-Sync: ", path);
-		idat = libBe32(at + 24);
-		cods = libBe32(at + 28);
-		libAt = at + 56;
-		libAt = libSkipName(libAt);
-		n = libBe32(libAt);
-		libAt = libAt + 4;
-		for (i = 0; i < n; i++) {
+		if (libRofN >= QL_LIBROF)
+			fatal("zu viele Module in den Bibliotheken (QL_LIBROF)", "");
+		libRofAt[libRofN] = at;
+		libRofN++;
+
+		n = be32(skipName(at + 56));
+		i = skipName(at + 56) + 4;
+		while (n > 0) {
 			int nameAt;
 			int t;
 			int v;
 
-			nameAt = libAt;
-			libAt = libSkipName(libAt);
-			t = ((libBuf[libAt] & 255) << 8) | (libBuf[libAt + 1] & 255);
-			v = libBe32(libAt + 2);
-			libAt = libAt + 6;
-			if (t != 6)
-				fatal("in einer Bibliothek ist bisher nur ein equ-Symbol gemessen: ", &libBuf[nameAt]);
-			symAdd(&libBuf[nameAt], v, t);
+			nameAt = i;
+			i = skipName(i);
+			t = be16(i);
+			v = be32(i + 2);
+			i = i + 6;
+			if (t == 6)
+				symAdd(&inBuf[nameAt], v, t);
+			n--;
 		}
-		libAt = libAt + cods + idat;
-		n = libBe32(libAt);
-		libAt = libAt + 4;
-		for (i = 0; i < n; i++) {
-			libAt = libSkipName(libAt);
-			libAt = libAt + 4 + libBe32(libAt) * 6;
+		at = rofSkip(at);
+	}
+}
+
+/* Die Bibliothekssuche -- BEDARFSGESTEUERT, nicht in
+   Bibliotheksreihenfolge. An l68 nachgemessen: bei einer Bibliothek in
+   der Reihenfolge (qprintf, printf_p, qiob, qos9) bindet l68
+   qiob, qos9, qprintf, printf_p ein. Es arbeitet also die offenen
+   Referenzen der Reihe nach ab und holt zu jeder das Modul, das sie
+   definiert: _initarg (aus dem Startcode) holt qiob, dessen _os_exit
+   holt qos9, dann printf aus dem Programm qprintf, dessen tc_printf_a
+   printf_p.
+   Wer in Bibliotheksreihenfolge einbindet, bekommt dieselbe Groesse,
+   aber andere Adressen -- und damit ein anderes Modul.
+   Die Ordnungsregel des Handbuchs ("the order in which the psects appear
+   in a simple library file is important") bleibt davon unberuehrt: sie
+   sagt, welche Module GEFUNDEN werden, nicht in welcher Folge sie
+   eingebunden werden. */
+static void libLink(void)
+{
+	int fortschritt;
+	int k;
+	int i;
+	int j;
+	int at;
+
+	fortschritt = 1;
+	while (fortschritt) {
+		fortschritt = 0;
+		/* Den ERSTEN offenen Namen suchen: in der Reihenfolge der schon
+		   eingebundenen ROFs und darin in ROF-Reihenfolge. */
+		for (k = 0; k < rofN && !fortschritt; k++) {
+			at = rExtAt[k];
+			for (i = 0; i < rExtN[k]; i++) {
+				int nameAt;
+
+				nameAt = at;
+				at = skipName(at);
+				at = at + 4 + be32(at) * 6;
+				if (!nameIsOpen(&inBuf[nameAt]))
+					continue;
+				for (j = 0; j < libRofN; j++) {
+					if (rofDefines(libRofAt[j], &inBuf[nameAt])) {
+						rofParse(libRofAt[j]);
+						fortschritt = 1;
+						break;
+					}
+				}
+				if (fortschritt)
+					break;
+			}
 		}
-		n = libBe32(libAt);
-		libAt = libAt + 4 + n * 6;
-		at = libAt + 16;
 	}
 }
 
@@ -609,7 +741,7 @@ static void applyLocalRefs(int k)
 		   Gemessen: aus "move.l zeiger(a6),d1" mit zeiger auf
 		   Datenoffset $000c macht l68 $800c. Ein 32-Bit-Zeiger IN den
 		   Daten bleibt unvorgespannt. */
-		if (inCode && !toCode && size == 2)
+		if (inCode && !toCode && (size == 2 || size == 3))
 			base = base + dataBias;
 		if (inCode && toCode)
 			base = base + rawCodeBias;
@@ -747,6 +879,9 @@ static void applyExtRefs(int k)
 			val = symResolve(si);
 			if (inCode && symType[si] == 4)
 				val = val + rawCodeBias;
+			else if (inCode && symType[si] != 6 &&
+				 (size == 2 || size == 3))
+				val = val + dataBias;
 			/* Bit 6: abziehen (Handbuch: "add the negative of the
 			   symbols location"). */
 			if (type & 0x0040)
@@ -872,7 +1007,7 @@ static void emit(void)
 	dataBias = 0;
 	rawCodeBias = 0;
 	if (!isDesc && !isDrvr)
-		dataBias = 0x8000;
+		dataBias = -0x8000;
 
 	/* --- Datenbereich auslegen: ERST alle reservierten, dann alle
 	   initialisierten Daten -- und zwar psect fuer psect in der
@@ -935,8 +1070,12 @@ static void emit(void)
 		symAdd("_btext", 0, 6);
 		symAdd("etext", idataAt, 6);
 		symAdd("_bidata", idataAt, 6);
-		symAdd("end", totalUninit + totalInit, 6);
-		symAdd("_enddata", totalUninit + totalInit, 6);
+		/* Typ 0 (Daten), nicht 6 (equ): "end" bezeichnet das Ende des
+		   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
+		   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
+		   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
+		symAdd("end", totalUninit + totalInit, 0);
+		symAdd("_enddata", totalUninit + totalInit, 0);
 		for (k = 0; k < rofN; k++) {
 			applyLocalRefs(k);
 			applyExtRefs(k);
@@ -986,19 +1125,16 @@ static void emit(void)
 	put16(0);                      /* M$Parity, spaeter */
 	if (isDrvr) {
 		put32(0);              /* _mexec, spaeter */
-		if (rTrap[rofRoot] == -1)
-			put32(0);      /* _mexcpt */
-		else
-			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
+		put32(0);              /* _mexcpt, ggf. spaeter */
 		put32(totalUninit + totalInit);   /* _mdata */
 	} else if (!isDesc) {
 		put32(0);              /* M$Exec, spaeter  */
-		/* Fehlt der siebte psect-Parameter, traegt r68 utrap = -1
-		   ein; l68 macht daraus im Modul die 0 (gemessen). */
-		if (rTrap[rofRoot] == -1)
-			put32(0);
-		else
-			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
+		/* M$Excpt, spaeter. Fehlt der siebte psect-Parameter, traegt
+		   r68 utrap = -1 ein und l68 macht daraus im Modul die 0
+		   (gemessen). Ist er gesetzt, gilt dieselbe Rechnung wie fuer
+		   M$Exec: Codebasis + utrap. An q9_cstart.a nachgemessen --
+		   utrap $180 im ROF, Codebasis $54, M$Excpt $1d4 im Modul. */
+		put32(0);
 		put32(totalUninit + totalInit);   /* M$Data  */
 		put32(rStk[rofRoot] + optStackAdd);      /* M$Stack */
 		put32(0);                         /* M$IData, spaeter */
@@ -1046,8 +1182,11 @@ static void emit(void)
 		if (((outLen + 3) % 2) != 0)
 			put8(0);
 		patch32(0x0C, nameAt);
-		if (isDrvr)
+		if (isDrvr) {
 			patch32(0x30, bCode[rofRoot] + rEntry[rofRoot]);
+			if (rTrap[rofRoot] != -1)
+				patch32(0x34, bCode[rofRoot] + rTrap[rofRoot]);
+		}
 		patch32(0x04, outLen + 3);
 		outBuf[0x2E] = (headerParity() >> 8) & 255;
 		outBuf[0x2F] = headerParity() & 255;
@@ -1107,8 +1246,12 @@ static void emit(void)
 	symAdd("_btext", 0, 6);
 	symAdd("etext", outLen, 6);
 	symAdd("_etext", outLen, 6);
-	symAdd("end", totalUninit + totalInit, 6);
-	symAdd("_enddata", totalUninit + totalInit, 6);
+	/* Typ 0 (Daten), nicht 6 (equ): "end" bezeichnet das Ende des
+	   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
+	   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
+	   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
+	symAdd("end", totalUninit + totalInit, 0);
+	symAdd("_enddata", totalUninit + totalInit, 0);
 
 	for (k = 0; k < rofN; k++) {
 		applyLocalRefs(k);
@@ -1127,6 +1270,8 @@ static void emit(void)
 
 	patch32(0x0C, nameAt);
 	patch32(0x30, bCode[rofRoot] + rEntry[rofRoot]);
+	if (rTrap[rofRoot] != -1)
+		patch32(0x34, bCode[rofRoot] + rTrap[rofRoot]);
 	patch32(0x40, idataAt);
 	patch32(0x44, irefAt);
 	patch32(0x04, outLen + 3);
@@ -1538,9 +1683,6 @@ int main(int argc, char **argv)
 	if (modName[0] == 0)
 		nameFromPath(outPath);
 
-	for (i = 0; i < libN; i++)
-		libScan(libPath[i]);
-
 	/* Alle Eingabedateien hintereinander in denselben Puffer -- eine
 	   Datei kann selbst mehrere ROFs enthalten (so sind die Bibliotheken
 	   aufgebaut), deshalb wird bis zum Dateiende weitergelesen. */
@@ -1560,6 +1702,13 @@ int main(int argc, char **argv)
 		while (at < inLen)
 			at = rofParse(at);
 	}
+
+	/* Erst jetzt die Bibliotheken: verzeichnen, dann in EINEM Durchgang
+	   einbinden, was gebraucht wird. Vorher war das umgekehrt -- das ging
+	   nur, solange eine Bibliothek blosse Konstanten lieferte. */
+	for (i = 0; i < libN; i++)
+		libScan(libPath[i]);
+	libLink();
 
 	/* Den Wurzel-psect suchen: er ist der EINZIGE mit einem Typ/Sprach-
 	   Wert ungleich null. Er steht NICHT zwangslaeufig vorn -- die
