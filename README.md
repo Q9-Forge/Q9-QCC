@@ -538,12 +538,75 @@ darf erst der **fertig aufaddierte** Wert. Genau dort steht die Prüfung
 jetzt — ohne `-a` bricht `ql68` mit derselben Diagnose ab wie `l68`, statt
 still ein falsches Displacement abzulegen.
 
+## Die Bibliothekssuche
+
+Bis hierher konnte `ql68` Bibliotheken nur als **Symbolsammlungen** lesen:
+`sys.l` hat 1747 Globale, **alle `equ`**, und trägt selbst nichts zum
+Modul bei. `qclib.l` ist die erste Bibliothek mit echtem Code — sie
+verlangt die eigentliche Bibliotheksfunktion: welche Module werden
+gebraucht, und in welcher Reihenfolge kommen sie ins Modul.
+
+`libScan()` liest eine Bibliothek jetzt in denselben Puffer wie die
+Eingaben und **verzeichnet** ihre ROFs, statt sie einzubinden; `equ`-Werte
+kommen wie bisher sofort in die Symboltabelle. `libLink()` holt danach,
+was gebraucht wird. Der 4-MB-Puffer `libBuf` entfällt dabei.
+
+### `l68` bindet bedarfsgesteuert, nicht in Bibliotheksreihenfolge
+
+Der wichtigste Messbefund dieser Runde. Bei einer Bibliothek in der
+Reihenfolge `qprintf, printf_p, qiob, qos9` bindet `l68` ein:
+
+```
+q9_cstart_a, hello_p, qiob, qos9, qprintf, printf_p
+```
+
+Es arbeitet die **offenen Referenzen** der Reihe nach ab: `_initarg` aus
+dem Startcode holt `qiob`, dessen `_os_exit` holt `qos9`, dann `printf`
+aus dem Programm holt `qprintf`, dessen `tc_printf_a` holt `printf_p`.
+Wer stattdessen die Bibliotheksdatei von vorn nach hinten durchläuft,
+bekommt dieselbe Modulgröße, aber **andere Adressen** — und damit ein
+anderes Modul.
+
+Die Ordnungsregel des Handbuchs — *„the order in which the psects appear
+in a simple library file is important"* — bleibt davon unberührt: sie
+sagt, welche Module **gefunden** werden, nicht in welcher Folge sie
+eingebunden werden.
+
+### Der Datenbias ist wirklich ein Minus
+
+Das Handbuch schreibt, der Linker biase Datenbezüge um `-$8000`. Bei
+16-Bit-Feldern ist das von `+$8000` nicht zu unterscheiden — bei **32 Bit**
+schon. Gemessen an `movea.l #_iob,a0`: aus dem Datenoffset `$250` macht
+`l68` im Code `$ffff8250`, nicht `$00008250`.
+
+`ql68` rechnete `+$8000` und traf die 16-Bit-Fälle deshalb zufällig
+richtig. Jetzt steht `dataBias = -0x8000`, und der Bias gilt für 16- **und**
+32-Bit-Datenbezüge, lokale wie externe. Alle 227 Korpusmodule bleiben
+byteidentisch — dort kommt der 32-Bit-Fall nicht vor.
+
+Dazu ein zweiter, verwandter Fund: **`end`** (das Ende des Datenbereichs)
+war als `equ`-Symbol eingetragen und bekam deshalb gar keinen Bias. Es ist
+ein Datensymbol und trägt jetzt Typ 0.
+
+### Der Trap-Einsprung
+
+Der siebte psect-Parameter (`trapinit` in `q9_cstart.a`) setzt `utrap` im
+ROF; `ql68` brach daran bisher ab. Gemessen: `M$Excpt` = Codebasis +
+`utrap`, dieselbe Rechnung wie `M$Exec`. An `q9_cstart.a` nachgerechnet:
+`utrap $180`, Codebasis `$54`, `M$Excpt $1d4`.
+
+### Ergebnis
+
+**`ql68` bindet ein Programm gegen `qclib.l` byteidentisch zu `l68`**
+(4034 Byte) — Startcode, Programm und vier Bibliotheksmodule.
+
 ## Was als Nächstes ansteht
 
-1. **`-a` steht** (Abschnitt oben). Offen bleibt am Binder nur noch das
-   **libgen-Archivformat**: `ql68` liest Bibliotheken als ROF-Folgen, und
-   `clib.l` ist ein libgen-Archiv (Format 1.1). Das erledigt sich mit
-   `Q9-qclib`, das als schlichte ROF-Folge entsteht.
+1. **`-a` und die Bibliothekssuche stehen** (Abschnitte oben). Offen
+   bleibt am Binder nur das **libgen-Archivformat**: `clib.l` und
+   `os_lib.l` sind libgen-Archive (Format 1.1) und für `ql68` unlesbar.
+   Das erledigt sich mit `Q9-qclib` — es entsteht als schlichte ROF-Folge
+   und bringt die Systemaufrufe selbst mit.
 2. **Die Schalter sind abgearbeitet** — gegen `l68 -?` durchgezählt,
    gegen den Korpus gemessen. Bewusst offen bleiben genau zwei Dinge:
    die Sprungtabelle von `-a` (kommt im Korpus nirgends vor) und `-z`
