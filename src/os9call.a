@@ -1,0 +1,60 @@
+* _os_write und _os_exit -- die beiden Systemaufrufe, die die Kette
+* braucht. Damit faellt Microwares os_lib.l weg.
+*
+* WARUM DAS HIER STEHT: os_lib.l ist wie clib.l ein libgen-Archiv
+* (Kennung $2d00d5bc) und damit fuer ql68 unlesbar. Solange die Kette
+* daran haengt, muss mit l68 gebunden werden. Es sind aber nur zwei
+* Aufrufe -- und ein Systemaufruf ist unter OS-9/68000 nichts weiter als
+* TRAP #0 mit dem Servicewort dahinter.
+*
+* GEMESSEN, nicht geraten:
+*   - Das Trap-Muster steht in Q9-QCC/runtime/os9/q9defs.d
+*     ("Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0").
+*   - Die Servicenummern stehen ausgeschrieben in
+*     MWOS/OS9/SRC/DEFS/funcs.h: I_WRITE 0x8a, F_EXIT 0x06.
+*   - Die Registerbelegung ist aus laufendem Code abgelesen (PrtMsg in
+*     q9_cstart.a): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
+*
+* Die Konstanten stehen bewusst HIER und nicht in einem "use" auf die
+* MWOS-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
+
+Q9I_Write      equ     $8a                      * I$Write, Daten schreiben
+Q9F_Exit       equ     $06                      * F$Exit, Prozess beenden
+
+         psect   qos9,0,0,0,0,0
+
+* error_code _os_write(path_id path, const void *buffer, u_int32 *count)
+*
+* C-Seite (Microware-Konvention): d0 = path, d1 = buffer, 4(a7) = &count.
+* count ist ein IN/OUT-Zeiger: hinein die gewuenschte Anzahl, heraus die
+* tatsaechlich geschriebene.
+* OS-9 meldet einen Fehler ueber das Uebertragsbit, der Code steht in d1.
+
+_os_write:
+         movea.l d1,a0                           * Puffer nach a0
+         movea.l 4(a7),a1                        * &count
+         move.l  (a1),d1                         * gewuenschte Anzahl
+         trap    #0
+         dc.w    Q9I_Write
+         bcs.s   ow_err
+         move.l  d1,(a1)                         * tatsaechlich geschrieben
+         moveq   #0,d0                           * kein Fehler
+         rts
+ow_err
+         moveq   #0,d0
+         move.w  d1,d0                           * Fehlercode zurueckgeben
+         rts
+
+* void _os_exit(int status) -- kehrt nicht zurueck.
+* Der zweite Aufruf ist die Sicherung fuer den Fall, dass ein Debugger den
+* ersten abfaengt; genauso macht es q9_cstart.a.
+
+_os_exit:
+         move.l  d0,d1                           * Status nach d1
+         trap    #0
+         dc.w    Q9F_Exit
+         trap    #0
+         dc.w    Q9F_Exit
+         rts
+
+         ends

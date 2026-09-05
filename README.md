@@ -169,12 +169,44 @@ verschluckt zu werden.
 ein eigener psect und damit ein eigener ROF — so bindet der Linker nur ein,
 was wirklich gebraucht wird.
 
+## Die Systemaufrufe bringt qclib selbst mit
+
+`os_lib.l` ist wie `clib.l` ein libgen-Archiv. Statt dessen Format
+nachzubauen, liefert `src/os9call.a` die zwei gebrauchten Aufrufe selbst —
+unter OS-9/68000 ist ein Systemaufruf nichts weiter als `TRAP #0` mit dem
+Servicewort dahinter. Alles daran ist gemessen, nichts geraten:
+
+| | Quelle |
+|---|---|
+| Trap-Muster | `Q9-QCC/runtime/os9/q9defs.d`: „Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0" |
+| `I$Write` = `$8a`, `F$Exit` = `$06` | `MWOS/OS9/SRC/DEFS/funcs.h` (dort ausgeschrieben; in `funcs.a` sind es `do.b`-Zähler) |
+| `d0` = Pfad, `d1` = Anzahl, `a0` = Puffer | aus laufendem Code abgelesen: `PrtMsg` in `q9_cstart.a` |
+
+Die Servicenummern stehen bewusst **in der Datei** und nicht in einem `use`
+auf die MWOS-Definitionen: qclib soll ohne fremden Baum übersetzbar sein.
+
+**Damit bindet das Testprogramm gegen genau drei Dinge** — sich selbst, den
+eigenen Startcode und `qclib.l`. `sys.l` wird nicht einmal mehr berührt,
+`os_lib` und `clib` gar nicht:
+
+```
+== 1/4 Modul binden (NUR qclib -- kein clib, kein os_lib, kein sys.l) ==
+  ok (4038 Byte)
+  ok      Hallo Welt
+  ok      42 -7 0
+  ok      hex ff, Zeichen A, Prozent %
+  3 von 3 Zeilen richtig
+```
+
 ### Was noch fehlt
 
-- **`os_lib.l` ist ebenfalls ein libgen-Archiv.** Für `_os_write` und
-  `_os_exit` hängt die Kette noch daran, und `ql68` kann es nicht lesen.
-  Es sind nur zwei Systemaufrufe (`I$Write`, `F$Exit`) — bringt qclib sie
-  selbst mit, fällt os_lib weg und `ql68` kann das Modul binden.
+- **`ql68` kann Bibliotheken bisher nur als Symbolsammlungen lesen.**
+  `qclib.l -l=` bricht ab mit *„in einer Bibliothek ist bisher nur ein
+  equ-Symbol gemessen"*. Das ist folgerichtig: die einzige bisher benutzte
+  Bibliothek war `sys.l` mit 1747 Globalen, **allen `equ`**. `qclib.l` ist
+  die erste mit echtem Code — dem Binder fehlt also noch die eigentliche
+  Bibliothekssuche (welche Module werden gebraucht, iterativ bis alle
+  Referenzen aufgelöst sind). Bis dahin wird mit `l68` gebunden.
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
   `tc_extcall_tmp`) für die Ziffernzerlegung. Ein QCC-Programm bringt ihn
   mit, deshalb löst es sich beim Binden auf; für eine Bibliothek, die auch
