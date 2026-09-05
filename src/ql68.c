@@ -118,6 +118,8 @@ static int irefDataN;
 #define QL_SYM    8192
 #define QL_POOL   (256 * 1024)
 #define QL_LIB    16
+#define QL_ARGS   1024              /* Argumente nach dem Aufloesen von -z= */
+#define QL_ZBUF   (64 * 1024)       /* Text der -z=-Dateien */
 
 /* Symboltabelle fuer alles, was externe Referenzen aufloesen kann: die
    Globalen der Bibliotheken und die vom Binder selbst gesetzten Symbole. */
@@ -1033,7 +1035,8 @@ static void usage(void)
 	puts("  -gu=<gruppe>.<nutzer>   Eigentuemer des Moduls");
 	puts("  -p=<hex>                Zugriffsrechte im Modulkopf");
 	puts("  -e=<n>                  Editionsnummer");
-	puts("  -r=<hex>                rohe Binaerausgabe ab dieser Adresse");
+	puts("  -r[=<hex>]              rohe Binaerausgabe ab dieser Adresse (Vorgabe 0)");
+	puts("  -z=<datei>              Dateinamen und Optionen daraus lesen, je Zeile eine");
 	puts("  -M=<n>[K]               Stackzuschlag, die Zahl zaehlt in K");
 	puts("  -b=<n>                  Code und Daten auf n ausrichten (2/4/8/16)");
 	puts("  -x=<n>                  nur den Codeanfang ausrichten (2/4/8/16)");
@@ -1118,6 +1121,71 @@ static void nameFromPath(const char *path)
 	modName[i] = 0;
 }
 
+/* --- Die Argumentliste, in der -z= schon aufgeloest ist --- */
+static char *argList[QL_ARGS];
+static int argN;
+static char zBuf[QL_ZBUF];
+static int zLen;
+
+static void argAdd(char *a);
+
+/* -z=<datei>: JEDE ZEILE ist EIN Eintrag. An l68 gemessen -- steht
+   "od.r -M=8K" in einer Zeile, sucht l68 eine Datei dieses Namens
+   ("can't open file, od.r -M=8K"). Dateinamen und Optionen duerfen sich
+   mischen, und die Reihenfolge ist egal: zwei Laeufe mit vertauschten
+   Zeilen ergaben dieselben Bytes. Die Zeilen treten an die Stelle des
+   -z=, ein -z= darin wird wieder aufgeloest. */
+static void loadZ(const char *path)
+{
+	char *fp;
+	int got;
+	int start;
+	int i;
+
+	fp = fopen(path, "rb");
+	if (fp == 0)
+		fatal("-z=: Datei nicht lesbar: ", path);
+	got = fread(&zBuf[zLen], 1, QL_ZBUF - zLen - 1, fp);
+	fclose(fp);
+	if (got <= 0)
+		return;
+	i = zLen;
+	start = i;
+	zLen = zLen + got;
+	zBuf[zLen] = 0;
+	zLen++;
+	while (i < zLen) {
+		if (zBuf[i] == '\r' || zBuf[i] == '\n' || zBuf[i] == 0) {
+			zBuf[i] = 0;
+			if (i > start)
+				argAdd(&zBuf[start]);
+			start = i + 1;
+		}
+		i++;
+	}
+}
+
+static void argAdd(char *a)
+{
+	int k;
+
+	if (a[0] == '-' && a[1] == 'z') {
+		k = argStarts(a, "-z=");
+		if (k > 0 && a[k] != 0) {
+			loadZ(&a[k]);
+			return;
+		}
+		if (a[2] == 0)
+			fatal("-z ohne Datei liest bei l68 die Standardeingabe."
+			      " ql68 hat darauf keinen Zugriff (es kennt nur"
+			      " fopen) -- bitte -z=<datei>", "");
+	}
+	if (argN >= QL_ARGS)
+		fatal("zu viele Argumente (QL_ARGS)", "");
+	argList[argN] = a;
+	argN++;
+}
+
 int main(int argc, char **argv)
 {
 	const char *inPath[QL_ROF];
@@ -1131,10 +1199,17 @@ int main(int argc, char **argv)
 	inPathN = 0;
 	outPath = 0;
 	modName[0] = 0;
-	for (i = 1; i < argc; i++) {
+	/* Erst die Argumentliste aufbauen -- dabei loest argAdd jedes -z=
+	   an Ort und Stelle auf. Danach unterscheidet sich eine Zeile aus
+	   der Datei in nichts mehr von einem Wort der Kommandozeile. */
+	argN = 0;
+	zLen = 0;
+	for (i = 1; i < argc; i++)
+		argAdd(argv[i]);
+	for (i = 0; i < argN; i++) {
 		char *a;
 
-		a = argv[i];
+		a = argList[i];
 		k = argStarts(a, "-O=");
 		if (k == 0)
 			k = argStarts(a, "-o=");
@@ -1251,6 +1326,13 @@ int main(int argc, char **argv)
 				k++;
 			}
 			optRaw = v;
+			continue;
+		}
+		if (a[0] == '-' && a[1] == 'r' && a[2] == 0) {
+			/* l68 schreibt "-r[=<base>] ... default=0". An l68
+			   gemessen: "-r" und "-r=0" liefern dieselben 54
+			   Byte. */
+			optRaw = 0;
 			continue;
 		}
 		k = argStarts(a, "-e=");
