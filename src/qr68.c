@@ -111,11 +111,11 @@ extern void exit(int code);
 #define QR_POOL    524288
 #define QR_POOLHASH  4096
 #define QR_PENT     32768
-#define QR_SRC    4194304
+#define QR_SRC   16777216
 #define QR_SYM      16384
 #define QR_SYMHASH   4096
-#define QR_CODE   4194304
-#define QR_IDATA   524288
+#define QR_CODE  16777216
+#define QR_IDATA  8388608
 #define QR_REF      65536
 #define QR_MACTEXT 131072
 #endif
