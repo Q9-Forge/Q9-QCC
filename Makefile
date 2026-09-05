@@ -19,7 +19,7 @@ QCCB  ?= $(QCC)/build/qcc_backend
 
 # Reihenfolge = Bindereihenfolge.
 # Blaetter zuletzt: os9call.r ruft nichts mehr auf.
-ROFS = build/printf.r build/printf_c.r build/iob.r build/os9call.r
+ROFS = build/printf.r build/printf_c.r build/file.r build/file_c.r build/iob.r build/os9call.r
 
 all: build/qclib.l
 

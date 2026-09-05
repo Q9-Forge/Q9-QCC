@@ -18,7 +18,11 @@
 * Die Konstanten stehen bewusst HIER und nicht in einem "use" auf die
 * MWOS-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
 
+Q9I_Create     equ     $83                      * I$Create, Datei anlegen
+Q9I_Open       equ     $84                      * I$Open, Datei oeffnen
+Q9I_Read       equ     $89                      * I$Read, Daten lesen
 Q9I_Write      equ     $8a                      * I$Write, Daten schreiben
+Q9I_Close      equ     $8f                      * I$Close, Pfad schliessen
 Q9F_Exit       equ     $06                      * F$Exit, Prozess beenden
 
          psect   qos9,0,0,0,0,0
@@ -55,6 +59,84 @@ _os_exit:
          dc.w    Q9F_Exit
          trap    #0
          dc.w    Q9F_Exit
+         rts
+
+
+* error_code _os_open(const char *name, u_int32 mode, path_id *path)
+*
+* C-Seite: d0 = name, d1 = mode, 4(a7) = &path.
+* OS-9-Seite (am Original aus os_lib.l abgelesen): d0.w = Zugriffsmodus,
+* a0 = Pfadname; zurueck kommt die Pfadnummer in d0. Microwares Fassung
+* maskiert sie auf 16 Bit -- das tut diese auch, sonst stehen im oberen
+* Wort Reste.
+
+_os_open:
+         movea.l d0,a0                           * Name nach a0
+         move.l  d1,d0                           * Modus nach d0
+         trap    #0
+         dc.w    Q9I_Open
+         bcs.s   oo_err
+         andi.l  #$0000ffff,d0                   * nur die Pfadnummer
+         movea.l 4(a7),a1                        * &path
+         move.l  d0,(a1)
+         moveq   #0,d0
+         rts
+oo_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_close(path_id path) -- d0 traegt den Pfad schon.
+
+_os_close:
+         trap    #0
+         dc.w    Q9I_Close
+         bcs.s   oc_err
+         moveq   #0,d0
+         rts
+oc_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_read(path_id, void *buffer, u_int32 *count)
+* Spiegelbild von _os_write: d0 = Pfad, d1 = Puffer, 4(a7) = &count.
+
+_os_read:
+         movea.l d1,a0                           * Puffer nach a0
+         movea.l 4(a7),a1                        * &count
+         move.l  (a1),d1                         * gewuenschte Anzahl
+         trap    #0
+         dc.w    Q9I_Read
+         bcs.s   or_err
+         move.l  d1,(a1)                         * tatsaechlich gelesen
+         moveq   #0,d0
+         rts
+or_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_create(const char *name, u_int32 mode, path_id *path,
+*                       u_int32 perms)
+* Wie _os_open, zusaetzlich die Dateirechte in d1.w (I$Create erwartet
+* den Zugriffsmodus in d0.b und die Attribute in d1.w).
+
+_os_create:
+         movea.l d0,a0                           * Name nach a0
+         move.l  d1,d0                           * Modus nach d0
+         move.l  8(a7),d1                        * Rechte nach d1
+         trap    #0
+         dc.w    Q9I_Create
+         bcs.s   ocr_err
+         andi.l  #$0000ffff,d0
+         movea.l 4(a7),a1
+         move.l  d0,(a1)
+         moveq   #0,d0
+         rts
+ocr_err
+         moveq   #0,d0
+         move.w  d1,d0
          rts
 
          ends
