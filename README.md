@@ -411,8 +411,66 @@ dessen Adresse in der Code-Zeigerliste mitgeführt wird. Das ist bewusst
 nicht nachgebaut: im ganzen SDK-Korpus kommt der Fall nirgends vor, alle
 227 Aufrufe sind ohne Sprungtabelle byteidentisch.
 
+### Welche Schalter der Korpus überhaupt benutzt
+
+`tools/optcensus.sh` fährt denselben Trockenlauf wie `sdkdiff.sh`, bindet
+aber nichts, sondern **zählt die Schalter**. Über alle 467 `l68`-Aufrufe:
+
+| Schalter | Aufrufe | | Schalter | Aufrufe |
+|---|---|---|---|---|
+| `-l=` | 559 | | `-r=` | 40 |
+| `-O=` | 467 | | `-w` `-s` `-a` `-m` (aus `-swam`) | je 20 |
+| `-gu=` | 429 | | `-M=` | 20 |
+| `-n=` | 178 | | `-b=` | 20 |
+| `-g` | 88 | | `-s` | 1 |
+| `-p=` | 84 | | | |
+
+Mehr ist es nicht. `-x=`, `-S`, `-R=`, `-e=`, `-t=`, `-c`, `-i`, `-f=`,
+`-mt<x>`, `-z` kommen im ganzen SDK **nicht vor** — sie sind trotzdem
+gebaut und gemessen, denn „kommt im Korpus nicht vor" heißt nicht „gibt es
+nicht".
+
+### Die harmlosen Schalter sind nachgemessen, nicht behauptet
+
+Dass `-m -s -w -j -g -v -c -i -q -f= -mt<x>` das Modul nicht verändern,
+stand lange nur als Kommentar im Code. Teil 2 von `optstest.sh` misst es
+mit **umgekehrter Erwartung**: `l68` *muss* mit dem Schalter dieselben
+Bytes liefern wie ohne ihn. Täte es das nicht, würde `ql68` ihn zu Unrecht
+übergehen. **16 Formen geprüft — darunter die Bündel `-swam` und `-gwj` —
+keine wirkt.**
+
+### `-r` ohne Basis und die Antwortdatei `-z=`
+
+Zwei Formen aus `l68`s Liste, die im Korpus nicht vorkommen und trotzdem
+zum Sprachumfang gehören:
+
+`-r` ohne `=` ist die rohe Ausgabe mit Basis 0 — an `l68` gemessen liefern
+`-r` und `-r=0` dieselben 54 Byte.
+
+`-z=<datei>` liest Dateinamen und Optionen aus einer Datei. **Jede Zeile
+ist genau ein Eintrag**, und das ist der Befund, den man nicht raten kann:
+steht `od.r -M=8K` in *einer* Zeile, sucht `l68` eine Datei dieses Namens
+(`can't open file, od.r -M=8K`). Dateinamen und Optionen dürfen sich
+mischen, die Reihenfolge ist egal — zwei Läufe mit vertauschten Zeilen
+ergaben dieselben Bytes. `ql68` löst `-z=` beim Aufbau der Argumentliste
+auf, an Ort und Stelle; ein `-z=` innerhalb der Datei wird wieder
+aufgelöst.
+
+> **`-z` ohne `=` liest bei `l68` die Standardeingabe — das baut `ql68`
+> nicht nach.** Es kennt nur `fopen`; eine `stdin`-Deklaration wäre
+> plattformabhängig und stünde der Übersetzbarkeit durch QCC im Weg.
+> `ql68` bricht mit genau dieser Begründung ab, statt still etwas anderes
+> zu tun.
+
+Der Wirkungsnachweis steckt mit im Prüfstand: `-M=8K` aus der
+Antwortdatei muss im Modulkopf ankommen (`M$Stack` `$64` → `$2064`).
+Sonst wären die `-z=`-Fälle nur deshalb grün, weil beide Binder die Datei
+gleichermaßen ignorieren.
+
 ## Was als Nächstes ansteht
 
-1. Die Schalter der ROM-Aufrufe sind abgearbeitet (Abschnitt oben).
-   Offen bleibt allein die Sprungtabelle von `-a`, und die bewusst:
-   im Korpus kommt sie nirgends vor.
+1. **Die Schalter sind abgearbeitet** — gegen `l68 -?` durchgezählt,
+   gegen den Korpus gemessen. Bewusst offen bleiben genau zwei Dinge:
+   die Sprungtabelle von `-a` (kommt im Korpus nirgends vor) und `-z`
+   ohne `=` von der Standardeingabe (setzt `stdin` voraus, das `ql68`
+   nicht hat). Beide sind oben begründet.

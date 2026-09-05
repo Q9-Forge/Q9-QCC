@@ -150,4 +150,140 @@ echo
 echo "  $ok gleich, $bad abweichend, $inert ohne Wirkung, $lfail von l68 verweigert"
 # "Ohne Wirkung" ist kein Fehlschlag des Binders, aber ein ungeprueftes
 # Stueck -- es soll auffallen, statt in einer gruenen Zahl zu verschwinden.
-exit $([ "$bad" -eq 0 ] && [ "$lfail" -eq 0 ] && echo 0 || echo 1)
+
+# --- Teil 2: die Schalter, die das Modul NICHT veraendern sollen ---
+#
+# ql68 nimmt sie an und uebergeht sie. Bisher stand das nur als Behauptung
+# im Kommentar -- hier wird es gemessen, und zwar mit UMGEKEHRTER
+# Erwartung: l68 MUSS dieselben Bytes liefern wie ohne den Schalter.
+# Tut es das nicht, wirkt der Schalter doch, und ql68 uebergeht ihn zu
+# Unrecht. Zusaetzlich muss ql68 selbst denselben Lauf schaffen.
+INERT="
+-a
+-c
+-i
+-g
+-j
+-v
+-w
+-m
+-s
+-q
+-f=pr
+-mte
+-mtw
+-mtq
+-swam
+-gwj
+"
+
+echo
+echo "=== Schalter, die das Modul nicht veraendern duerfen ==="
+iok=0
+iwirkt=0
+ibad=0
+
+# Grundlauf ohne Schalter, unter demselben Namen.
+wrun "M:\\DOS\\BIN\\l68.exe od.r -O=base\\omod" >/dev/null
+if [ ! -s "$TMP/base/omod" ]; then
+	echo "  FEHLER: der Grundlauf selbst kommt nicht durch"
+	exit 2
+fi
+
+while IFS= read -r sw; do
+	[ -n "$sw" ] || continue
+	label="$(printf '%-8s' "$sw")"
+
+	wrun "M:\\DOS\\BIN\\l68.exe $sw od.r -O=l\\omod" >/dev/null
+	if [ ! -s "$TMP/l/omod" ]; then
+		echo "  $label   l68 kommt damit nicht durch"
+		ibad=$((ibad + 1))
+		continue
+	fi
+	if ! cmp -s "$TMP/l/omod" "$TMP/base/omod"; then
+		echo "  $label   WIRKT DOCH -- l68 liefert andere Bytes als ohne"
+		iwirkt=$((iwirkt + 1))
+		continue
+	fi
+	if ! "$QL68" $sw "$TMP/od.r" "-O=$TMP/q/omod" > "$TMP/msg" 2>&1; then
+		echo "  $label   ql68 bricht ab:"
+		sed 's/^/      /' "$TMP/msg" | head -2
+		ibad=$((ibad + 1))
+		continue
+	fi
+	if ! cmp -s "$TMP/l/omod" "$TMP/q/omod"; then
+		echo "  $label   ABWEICHUNG gegen l68"
+		ibad=$((ibad + 1))
+		continue
+	fi
+	iok=$((iok + 1))
+done <<< "$INERT"
+
+echo
+echo "  $iok wirkungslos wie erwartet, $iwirkt wirken doch, $ibad Fehler"
+
+
+# --- Teil 3: -r ohne Basis und die Antwortdatei -z= ---
+#
+# Beide Formen kommen im SDK-Korpus NICHT vor -- l68 kennt sie trotzdem,
+# und ein Binder, der sie nicht kennt, waere nicht vollstaendig.
+echo
+echo "=== -r ohne Basis und -z= (Antwortdatei) ==="
+printf 'od.r\n'          > "$TMP/z1.txt"
+printf 'od.r\n-M=8K\n'   > "$TMP/z2.txt"
+printf -- '-M=8K\nod.r\n' > "$TMP/z3.txt"
+
+zok=0
+zbad=0
+zcase() {
+	label="$1"
+	shift
+	rm -f "$TMP/l/omod" "$TMP/q/omod"
+	wrun "M:\\DOS\\BIN\\l68.exe $* -O=l\\omod" >/dev/null
+	if [ ! -s "$TMP/l/omod" ]; then
+		echo "  $(printf '%-22s' "$label") l68 kommt nicht durch"
+		zbad=$((zbad + 1))
+		return
+	fi
+	if ! (cd "$TMP" && "$QL68" $* "-O=$TMP/q/omod") > "$TMP/msg" 2>&1; then
+		echo "  $(printf '%-22s' "$label") ql68 bricht ab:"
+		sed 's/^/      /' "$TMP/msg" | head -2
+		zbad=$((zbad + 1))
+		return
+	fi
+	if cmp -s "$TMP/l/omod" "$TMP/q/omod"; then
+		echo "  $(printf '%-22s' "$label") gleich ($(wc -c < "$TMP/l/omod" | tr -d ' ') Byte)"
+		zok=$((zok + 1))
+	else
+		echo "  $(printf '%-22s' "$label") ABWEICHUNG"
+		zbad=$((zbad + 1))
+	fi
+}
+
+# "-r" muss dasselbe sein wie "-r=0" (an l68 gemessen: beide 54 Byte).
+zcase "-r (Vorgabe 0)"      -r od.r
+zcase "-r=0"                -r=0 od.r
+zcase "-z= nur die Datei"   -z=z1.txt
+zcase "-z= Datei + Option"  -z=z2.txt
+zcase "-z= Option zuerst"   -z=z3.txt
+
+# Wirkungsnachweis: die Option AUS der Antwortdatei muss ankommen. Sonst
+# waeren die drei -z=-Faelle nur deshalb gruen, weil beide Binder die
+# Datei gleichermassen ignorieren.
+rm -f "$TMP/q/za" "$TMP/q/zb"
+(cd "$TMP" && "$QL68" -z=z1.txt "-O=$TMP/q/za") >/dev/null 2>&1
+(cd "$TMP" && "$QL68" -z=z2.txt "-O=$TMP/q/zb") >/dev/null 2>&1
+if cmp -s "$TMP/q/za" "$TMP/q/zb"; then
+	echo "  -M=8K aus der Antwortdatei: OHNE WIRKUNG -- die Datei wird nicht gelesen"
+	zbad=$((zbad + 1))
+else
+	echo "  -M=8K aus der Antwortdatei: wirkt (M\$Stack \$64 -> \$2064)"
+	zok=$((zok + 1))
+fi
+
+echo
+echo "  $zok gleich, $zbad abweichend"
+
+exit $([ "$bad" -eq 0 ] && [ "$lfail" -eq 0 ] &&
+       [ "$iwirkt" -eq 0 ] && [ "$ibad" -eq 0 ] &&
+       [ "$zbad" -eq 0 ] && echo 0 || echo 1)
