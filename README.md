@@ -331,9 +331,42 @@ Sprungtabelle führt. Das war nötig, weil der Bezug auf QCCs Laufzeitanker
 *Datenbezug* ist, kein Sprung. Damit steckt in der ganzen Kette kein
 fremdes Werkzeug mehr.
 
-**Auch `qcpp` bindet inzwischen gegen `qclib`** (4,35-MB-Modul) — dafür
-mussten erst drei Puffergrenzen in `qr68` und zwei in `ql68` fallen; seine
-Assemblerquelle allein ist 7,27 MB. Der Emulatorlauf dafür steht noch aus.
+## Alle drei Werkzeuge laufen auf echtem 68030
+
+| Werkzeug | Modul | Test | Nachweis |
+|---|---|---|---|
+| **qr68** | 1,19 MB | `test/qr68_68k.sh` | assembliert eine 153-KB-Quelle, byteidentisch |
+| **qcpp** | 4,35 MB | `test/qcpp_68k.sh` | präprozessiert, byteidentisch |
+| **ql68** | 1,70 MB | `test/ql68_68k.sh` | **bindet auf dem Ziel**, byteidentisch |
+
+Alle drei gegen `qclib` gebunden, alle drei mit `ql68` gebunden. Beim
+letzten Schritt bindet `ql68` sich selbst und bindet dann auf dem 68030 ein
+Programm gegen `qclib` — dieselbe Aufgabe wie am Host, dasselbe Ergebnis
+Byte für Byte.
+
+Bis dahin waren Grenzen zu weiten: drei Puffer in `qr68` (qcpps
+Assemblerquelle ist 7,27 MB) und zwei in `ql68`.
+
+### Wie ql68 überhaupt übersetzbar wurde
+
+`ql68` scheiterte an QCC zunächst **viermal — jedes Mal mit Schlusswort
+`FAIL` und ohne eine einzige Meldung**:
+
+| Ursache | Befund |
+|---|---|
+| `int printf(char*, ...)` ohne `extern` | mit `extern` nimmt QCC es an, ohne nicht |
+| `static char b[(32*1024*1024)]` | `constSize` kennt nur **Zahlen**, keine Ausdrücke |
+| `static int x = 0x00010000;` | eine **globale** Variable verträgt kein Hex-Literal (dezimal geht) |
+| mehrzeilige Meldungstexte | **Zeichenkettenverkettung** — die bekannteste QCC-Grenze überhaupt |
+
+Dass QCC dabei **schweigt**, ist der eigentliche Befund. Gefunden wurden
+alle vier durch Bisektion über das Präprozessat — wobei der erste Anlauf
+falsch war, weil er mitten in Funktionen schnitt und deshalb überall `FAIL`
+sah. Erst das Schneiden **an Funktionsgrenzen** hat gestimmt.
+
+Nebenbei bekam `ql68` dadurch einen `_Q9OS`-Zweig mit Zielmaßen (512 KB
+statt 32 MB): QCCs Backend legt genullte Felder in den *initialisierten*
+Datenbereich, ein 32-MB-Puffer wäre also ein 32-MB-Modul.
 
 ### Was noch fehlt
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
