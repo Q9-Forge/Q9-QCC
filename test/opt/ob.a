@@ -1,0 +1,13 @@
+* Zweiter psect, wieder krumm: 3 Byte dc, 1 Byte ds.
+         psect   ob,0,0,0,0,0
+sub1:    moveq   #2,d0
+         move.b  bklein(a6),d1
+         move.l  bptr(a6),d2
+         move.b  bbuf(a6),d3
+         rts
+         vsect
+bklein   dc.b    $88
+bptr     dc.l    sub1
+bbuf     ds.b    1
+         ends
+         ends

@@ -334,10 +334,85 @@ by `-$8000`."* Also ein **Minus** — numerisch dasselbe wie das gemessene
 `+$8000` modulo 16 Bit (`$0c` → `$800c` ist `−$7ff4`), aber die richtige
 Lesart.
 
-### Was als Nächstes ansteht
+## Die Schalter, die das Modul verändern
 
-1. Die restlichen Schalter der ROM-Aufrufe: `-M=` (Stackzuschlag),
-   `-b=` (Ausrichtung), `-swam`, `-a`/`-j` (Sprungtabelle), `-i`. `os9make -nn -u`
-   druckt die `l68`-Aufrufe genauso mit wie die von `r68` — allein in 20
-   von 195 Verzeichnissen sind es 148. Bei `qr68` hat genau dieser
-   differentielle Prüfstand elf Fehler gefunden, vier davon still.
+`l68` hat rund zwanzig Schalter. Die meisten schreiben nur eine Karte oder
+eine Nebendatei; sieben verändern das Modul selbst. Jeder einzelne ist
+gegen den Lauf **ohne** ihn gemessen — `./test/optstest.sh`.
+
+| Schalter | Wirkung, gemessen |
+|---|---|
+| `-M=<n>[K]` | Zuschlag auf `M$Stack`. **Die Zahl zählt immer in K**: `-M=1` und `-M=1K` ergeben beide 1024 dazu, `-M=100` volle 102400. Das `K` ist schmückend. |
+| `-b=<n>` | Richtet Codeanfang **und** Datenblöcke auf `n` aus (2, 4, 8, 16). |
+| `-x=<n>` | Richtet **nur** den Codeanfang aus. |
+| `-S` | Modul bleibt im Speicher: im Attributwort kommt `$4000` dazu (`$8000` → `$c000`). |
+| `-R=<n>` | Revisionsnummer, das untere Byte desselben Wortes. |
+| `-e=<n>` | Editionsnummer (war schon da). |
+| `-p=<hex>`, `-gu=` | Zugriffsrechte und Eigentümer im Kopf (waren schon da). |
+
+### `-b=` und `-x=` richten den Codeanfang aus, nicht den Einsprung
+
+Die Probe `test/opt/od.a` hat ihren Einsprung bewusst auf Codeabstand 4.
+Ohne Schalter beginnt der Code auf `$4e`, `M$Exec` steht auf `$52`. Mit
+`-b=4` rückt der **Code** auf `$50` und `M$Exec` auf `$54` — ausgerichtet
+wird also der Codeanfang, der Einsprung wandert mit. `-b=16` verschiebt
+zusätzlich die Datenblöcke: `M$Data` wächst von `$10` auf `$20`, weil
+jeder der beiden Blöcke einzeln auf 16 aufgerundet wird.
+
+> **`-b=2` und `-x=2` bleiben wirkungslos, und das ist kein Testloch.**
+> `r68` liefert die vsect-Größen bereits auf ein Vielfaches von 4
+> gerundet (`ds.b 5` → 8, `ds.b 1` → 4, 6 Byte `dc` → 8), und der
+> Codeanfang steht ohnehin auf gerader Adresse. Erst ab `-b=4` gibt es
+> etwas auszurichten. `optstest.sh` meldet solche Fälle eigens als „ohne
+> Wirkung" und zählt sie getrennt — ein Fall, bei dem beide Binder den
+> Schalter ignorieren, ist kein Nachweis, und er soll nicht in einer
+> grünen Zahl verschwinden.
+
+### Die harmlosen Schalter — und dass `l68` sie bündelt
+
+`-m`, `-s`, `-w`, `-j`, `-g`, `-v`, `-c`, `-i`, `-q`, `-f=`, `-mt<x>`
+ändern das Modul nicht; `ql68` nimmt sie an und übergeht sie, damit die
+Aufrufe der SDK-Makefiles unverändert durchlaufen. **`l68` nimmt die
+Einzelbuchstaben auch als Bündel**: das `-swam` der ROM-Makefiles ist
+`-s -w -a -m`.
+
+`-t=` nimmt `ql68` nur als `-t=os9_68k` an. Die übrigen Ziele von `l68`
+sind ganz andere Modulformate — da ist ein Abbruch besser, als still das
+falsche Format zu schreiben.
+
+### Der Wächter, der acht grüne Module zerlegt hat
+
+Ein Zwischenstand hatte einen Wächter, der abbricht, wenn ein Bezug nicht
+in sein Feld passt — mit der Begründung, `l68` brauche dafür `-a`. Er hat
+im SDK-Korpus **acht zuvor byteidentische Module zerlegt** (`sc68990`,
+`sc147`, `sc162`, `sc167`, `sc172`, `sc177`, `sc68360`, `ram`).
+
+Der Grund steht wörtlich in den SCF-Treibern:
+
+```
+    move.b  PD_PAR-PD_OPT+M$DTyp(a1),d0
+```
+
+Das erzeugt **drei Referenzen auf dasselbe Byte-Displacement**. `ql68`
+verrechnet sie nacheinander und kappt dabei jedes Mal auf die Feldbreite.
+Das ist kein Verlust, sondern Rechnen modulo 256: `(a−b+c) mod 256` kommt
+richtig heraus, gleich an welcher Stelle gekappt wird. `PD_PAR` allein ist
+`$1005c` — erst der Abzug von `PD_OPT` macht daraus ein kleines
+Displacement. `l68` rechnet genauso und meldet nichts.
+
+**Der Endwert eines Feldes steht erst fest, wenn alle Referenzen darauf
+abgearbeitet sind.** Eine Einzelreferenz taugt nicht als Prüfstelle. Der
+Wächter ist wieder draußen.
+
+Für einen wirklich zu weiten Bezug legt `l68` mit `-a` eine Sprungtabelle
+an — gemessen: aus `bsr sub1` wird `jsr d16(a6)`, und in den
+initialisierten Daten steht ein 6 Byte langer Eintrag `jmp $xxxxxxxx`,
+dessen Adresse in der Code-Zeigerliste mitgeführt wird. Das ist bewusst
+nicht nachgebaut: im ganzen SDK-Korpus kommt der Fall nirgends vor, alle
+227 Aufrufe sind ohne Sprungtabelle byteidentisch.
+
+## Was als Nächstes ansteht
+
+1. Die Schalter der ROM-Aufrufe sind abgearbeitet (Abschnitt oben).
+   Offen bleibt allein die Sprungtabelle von `-a`, und die bewusst:
+   im Korpus kommt sie nirgends vor.
