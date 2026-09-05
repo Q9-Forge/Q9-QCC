@@ -256,6 +256,54 @@ und `%s` benutzt.
 > ein Stück Messaufbau mit. Wer Ausgaben aus einem Terminal-Log schneidet,
 > muss die Schnittmarken selbst wieder herausnehmen.
 
+## Die Dateifunktionen
+
+`fopen`, `fclose`, `fread`, `fwrite` und `puts` — damit ist der gemessene
+Zielkorpus vollständig. Drei Dinge waren dafür zu klären:
+
+**Die Registerkonvention der Systemaufrufe steht in keinem der
+vorhandenen Handbücher.** Also am Original abgelesen: ein Testprogramm
+gegen `os_lib.l` gebunden und die eingebundenen Routinen mit
+`tools/dis.py` disassembliert.
+
+| Aufruf | | Register |
+|---|---|---|
+| `I$Open` | `$84` | `d0.w` = Zugriffsmodus, `a0` = Name → Pfadnummer in `d0`, auf 16 Bit maskiert |
+| `I$Read` | `$89` | `d0.w` = Pfad, `d1.l` = Anzahl, `a0` = Puffer → `d1` = gelesen |
+| `I$Close` | `$8f` | `d0.w` = Pfad |
+| `I$Create` | `$83` | wie `I$Open`, dazu die Dateirechte in `d1.w` |
+
+Das bestätigte zugleich das schon gebaute `I$Write`. Der Fehlerpfad ist
+überall gleich: Übertragsbit gesetzt, Code in `d1`.
+
+**Ein `FILE*` ist hier die Adresse eines Tabelleneintrags**, der die
+OS-9-Pfadnummer enthält. Microwares dreizehnfeldrige Struktur wäre nur
+bindend, wenn fremder Code sie läse — der einzige fremde Leser wäre
+Microwares eigene clib, gegen die niemand gleichzeitig bindet. Bewusst
+**ungepuffert**: die Werkzeuge der Kette holen ihre Eingabe mit einem
+einzigen `fread`, da trägt eine Pufferschicht nichts bei.
+
+**Fünf Adapter statt fünf Sonderfälle.** QCC benennt eine Definition
+`tc_fopen`, während der Aufrufer den nackten Namen sucht — und seine
+Aufrufkonvention ist der Microware-ABI genau entgegengesetzt, weil es von
+links nach rechts pusht. Statt das je Funktion nachzubilden, legt jeder
+Adapter in `src/file.a` ein zusammenhängendes Argumentfeld an und
+übergibt dessen Adresse; der C-Rumpf ist dann immer `qf_xxx(int *a)`.
+Dieselbe Bauform wie bei printf.
+
+### Was der Gegenlauf gefunden hat
+
+`puts` hängte `$0d` an statt `$0a`. Der Wert war aus `q9_cstart.a`
+**abgeleitet** (`move.b #CR,-1(a1)`), nicht gemessen — und falsch: auf dem
+Terminal erschien `puts gehtgeschrieben 11` statt zweier Zeilen.
+
+Durchgerutscht war das, weil der eigene Test mit `grep -F` arbeitete und
+der gesuchte Text auch **mitten in einer Zeile** steht. Er prüft jetzt auf
+die ganze Zeile (`grep -qxF`).
+
+> Genau dafür gibt es den Vergleich gegen das Original: eigene
+> Erwartungswerte können denselben Denkfehler enthalten wie der Code.
+
 ### Was noch fehlt
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
   `tc_extcall_tmp`) für die Ziffernzerlegung. Ein QCC-Programm bringt ihn

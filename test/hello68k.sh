@@ -96,8 +96,13 @@ echo "  ok"
 echo "== 4/4 Ausgabe pruefen =="
 ok=0
 bad=0
+# WICHTIG: auf die GANZE Zeile pruefen, nicht auf ein Vorkommen. Ein
+# blosses "grep -F" findet den Text auch mitten in einer Zeile -- daran
+# ist der fehlende Zeilenumbruch von puts durchgerutscht, denn
+# "puts gehtgeschrieben 11" enthaelt beide gesuchten Texte. Der Gegenlauf
+# gegen clib hat es gefunden, dieser Test nicht.
 pruefe() {
-	if grep -qF "$1" "$WORK/run.log"; then
+	if tr -d "\r" < "$WORK/run.log" | grep -qxF "$1"; then
 		echo "  ok      $1"
 		ok=$((ok + 1))
 	else
@@ -108,12 +113,15 @@ pruefe() {
 pruefe "Hallo Welt"
 pruefe "42 -7 0"
 pruefe "hex ff, Zeichen A, Prozent %"
+pruefe "puts geht"
+pruefe "geschrieben 11"
+pruefe "gelesen 11: Hallo Datei"
 if grep -q "TEST: " "$WORK/run.log"; then
 	echo "  Abbruch im Emulator:"
 	grep "TEST: " "$WORK/run.log" | sed 's/^/    /'
 	bad=$((bad + 1))
 fi
 echo
-echo "  $ok von 3 Zeilen richtig"
+echo "  $ok von 6 Zeilen richtig"
 [ "$bad" -eq 0 ] || echo "  (Log: $WORK/run.log)"
 exit $([ "$bad" -eq 0 ] && echo 0 || echo 1)
