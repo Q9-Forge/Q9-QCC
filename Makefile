@@ -19,6 +19,7 @@ test: build/ql68
 	./test/multi.sh
 	./test/rawtest.sh
 	./test/descs.sh
+	./test/optstest.sh
 
 check: test
 

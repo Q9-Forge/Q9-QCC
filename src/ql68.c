@@ -90,6 +90,24 @@ static char modName[256];
 static int optOwner = 0x00010000;  /* M$Owner, so ohne -gu= (gemessen) */
 static int optAccess = 0x0555;     /* M$Accs,  so ohne -p=  (gemessen) */
 static int optEdition = -1;        /* -e=: ueberschreibt den psect-Wert */
+/* -M=<n>[K]: Zuschlag auf den Stack. Die Zahl zaehlt IMMER in K --
+   "-M=1" und "-M=1K" ergeben beide 1024 dazu, "-M=100" ganze 102400
+   (gemessen). Das Suffix ist schmueckend. */
+static int optStackAdd;
+/* -b=<n>: Code- und Datenanfang auf n ausrichten (n = 2, 4, 8, 16).
+   Gemessen: bei zwei psects wird JEDER Codeabschnitt ausgerichtet, mit
+   Nullbytes aufgefuellt; die Zeigerlisten dagegen nicht. */
+static int optAlign = 1;
+/* -x=<n>: NUR den Anfang des Codebereichs ausrichten -- gemessen an einem
+   psect mit Einsprung auf Codeabstand 4: mit -x=8 beginnt der Code auf
+   $50, der Einsprung steht auf $54. Ausgerichtet wird also der CODE, nicht
+   der Einsprung, und auch nur der erste psect. */
+static int optXAlign = 1;
+/* -S: das Modul bleibt im Speicher. Gemessen: im Attributwort kommt Bit
+   $4000 dazu ($8000 -> $c000). */
+static int optSticky = 0;
+/* -R=<n>: Revisionsnummer, das untere Byte desselben Wortes. */
+static int optRevision = -1;
 
 /* Zeigerlisten fuer den IRefs-Abschnitt. */
 static int irefCode[QL_IREF];
@@ -358,6 +376,21 @@ static void put16(int v)
 	put8(v);
 }
 
+/* Bis zur naechsten Grenze mit Nullbytes auffuellen (Dateiabstand). */
+static void alignTo(int n)
+{
+	while ((outLen % n) != 0)
+		put8(0);
+}
+
+/* Auf das naechste Vielfache von n aufrunden. */
+static int alignUp(int v, int n)
+{
+	while ((v % n) != 0)
+		v++;
+	return v;
+}
+
 static void put32(int v)
 {
 	put8(v >> 24);
@@ -469,6 +502,26 @@ static void irefAdd(int *offs, int *n, int value)
      Bit 3..4  Umfang: 01 = 1, 10 = 2, 11 = 4 Byte
      Bit 2     das ZIEL ist Code; Bit 0..1 sonst der Datenabschnitt
      Bit 6/7   abziehen / relativ */
+/* KEIN Waechter auf die Feldbreite -- gemessen, nicht angenommen.
+   Ein Ausdruck wie "move.b PD_PAR-PD_OPT+M$DTyp(a1),d0" (so woertlich in
+   den SCF-Treibern) erzeugt DREI Referenzen auf DASSELBE
+   Byte-Displacement. ql68 verrechnet sie nacheinander und kappt dabei
+   jedes Mal auf die Feldbreite. Das ist kein Verlust, sondern Rechnen
+   modulo 256: (a-b+c) mod 256 kommt richtig heraus, gleich an welcher
+   Stelle gekappt wird -- und l68 rechnet genauso, ohne etwas zu melden.
+   Ein Waechter auf den ZWISCHENwert schlaegt hier falsch an. Der Versuch
+   hat acht zuvor byteidentische SDK-Module zerlegt (sc68990, sc147,
+   sc162, sc167, sc172, sc177, sc68360, ram): PD_PAR allein ist $1005c,
+   erst der Abzug von PD_OPT macht daraus ein kleines Displacement.
+   Der Endwert eines Feldes steht erst fest, wenn ALLE Referenzen darauf
+   abgearbeitet sind -- eine Einzelreferenz taugt nicht als Pruefstelle.
+
+   Fuer einen wirklich zu weiten Bezug legt l68 mit -a eine Sprungtabelle
+   an (gemessen: aus "bsr sub1" wird "jsr d16(a6)", und in den
+   initialisierten Daten steht ein 6 Byte langer Eintrag "jmp $xxxxxxxx",
+   dessen Adresse in der Code-Zeigerliste mitgefuehrt wird). Das bleibt
+   bewusst nicht nachgebaut: im ganzen SDK-Korpus kommt der Fall nicht
+   vor, alle 227 Aufrufe sind ohne Sprungtabelle byteidentisch. */
 static void applyLocalRefs(int k)
 {
 	int i;
@@ -720,15 +773,20 @@ static void emit(void)
 	   initialisierten Daten -- und zwar psect fuer psect in der
 	   Reihenfolge der Kommandozeile (Handbuch Abb. 9-2, an zwei psects
 	   nachgemessen: mvar landet auf $0c, svar auf $14). --- */
+	/* Mit -b=<n> bekommt JEDER psect-Block seine eigene Grenze -- und
+	   zwar im DATENbereich gezaehlt, nicht im Dateiabstand (gemessen:
+	   bei -b=16 stehen die dc-Daten auf Dateiabstand $78, jeder Block
+	   ist trotzdem 16 lang). Ohne -b= ist optAlign 1 und alignUp
+	   aendert nichts. */
 	totalUninit = 0;
 	for (k = 0; k < rofN; k++) {
 		bUninit[k] = totalUninit;
-		totalUninit = totalUninit + rStat[k];
+		totalUninit = totalUninit + alignUp(rStat[k], optAlign);
 	}
 	totalInit = 0;
 	for (k = 0; k < rofN; k++) {
 		bInit[k] = totalUninit + totalInit;
-		totalInit = totalInit + rIDat[k];
+		totalInit = totalInit + alignUp(rIDat[k], optAlign);
 	}
 
 	/* --- Rohe Binaerausgabe: kein Kopf, kein Name, kein CRC. Der Code
@@ -741,10 +799,12 @@ static void emit(void)
 		dataBias = 0;
 		rawCodeBias = optRaw;
 		for (k = 0; k < rofN; k++) {
+			alignTo(optAlign);
 			bCode[k] = outLen;
 			for (i = 0; i < rCod[k]; i++)
 				put8(inBuf[rCodeAt[k] + i]);
 		}
+		alignTo(optAlign);
 		idataAt = outLen;
 		put32(totalUninit);
 		put32(totalInit);
@@ -752,6 +812,8 @@ static void emit(void)
 			bIDataMod[k] = outLen;
 			for (i = 0; i < rIDat[k]; i++)
 				put8(inBuf[rIDataAt[k] + i]);
+			for (i = rIDat[k]; i < alignUp(rIDat[k], optAlign); i++)
+				put8(0);
 		}
 		for (k = 0; k < rofN; k++)
 			addGlobals(k);
@@ -792,7 +854,12 @@ static void emit(void)
 	put32(0);                      /* M$Name, spaeter */
 	put16(optAccess);              /* M$Accs  */
 	put16(rTyLan[rofRoot]);
-	put16(rAttRev[rofRoot]);
+	n = rAttRev[rofRoot];
+	if (optSticky)
+		n = n | 0x4000;
+	if (optRevision >= 0)
+		n = (n & 0xFF00) | (optRevision & 255);
+	put16(n);
 	if (optEdition >= 0)
 		put16(optEdition);
 	else
@@ -821,7 +888,7 @@ static void emit(void)
 		else
 			fatal("ein gesetzter Trap-Einsprung ist noch nicht gemessen", "");
 		put32(totalUninit + totalInit);   /* M$Data  */
-		put32(rStk[rofRoot]);                   /* M$Stack */
+		put32(rStk[rofRoot] + optStackAdd);      /* M$Stack */
 		put32(0);                         /* M$IData, spaeter */
 		put32(0);                         /* M$IRefs, spaeter */
 	}
@@ -889,13 +956,16 @@ static void emit(void)
 		put8(0);
 
 	/* --- Code aller psects, in Reihenfolge der Kommandozeile --- */
+	alignTo(optXAlign);
 	for (k = 0; k < rofN; k++) {
+		alignTo(optAlign);
 		bCode[k] = outLen;
 		for (i = 0; i < rCod[k]; i++)
 			put8(inBuf[rCodeAt[k] + i]);
 	}
 
 	/* --- Initialisierte Daten: <Offset><Anzahl><Bytes> --- */
+	alignTo(optAlign);
 	idataAt = outLen;
 	put32(totalUninit);
 	put32(totalInit);
@@ -903,6 +973,8 @@ static void emit(void)
 		bIDataMod[k] = outLen;
 		for (i = 0; i < rIDat[k]; i++)
 			put8(inBuf[rIDataAt[k] + i]);
+		for (i = rIDat[k]; i < alignUp(rIDat[k], optAlign); i++)
+			put8(0);
 	}
 
 	/* Erst jetzt stehen alle Basen fest. */
@@ -962,7 +1034,52 @@ static void usage(void)
 	puts("  -p=<hex>                Zugriffsrechte im Modulkopf");
 	puts("  -e=<n>                  Editionsnummer");
 	puts("  -r=<hex>                rohe Binaerausgabe ab dieser Adresse");
+	puts("  -M=<n>[K]               Stackzuschlag, die Zahl zaehlt in K");
+	puts("  -b=<n>                  Code und Daten auf n ausrichten (2/4/8/16)");
+	puts("  -x=<n>                  nur den Codeanfang ausrichten (2/4/8/16)");
+	puts("  -S                      Modul bleibt im Speicher (sticky)");
+	puts("  -R=<n>                  Revisionsnummer (unter 256)");
 	exit(2);
+}
+
+static int argStarts(const char *a, const char *p);
+
+/* Schalter, die das Modul NICHT veraendern -- angenommen und uebergangen,
+   damit die Aufrufe der SDK-Makefiles unveraendert durchlaufen. Jeder
+   einzelne ist gegen den Lauf OHNE ihn nachgemessen (test/optstest.sh):
+     -m[=]  Modulkarte, wahlweise in eine Datei
+     -s[=]  dieselbe Karte mit Symbolen
+     -w     Karte alphabetisch statt nach Adressen
+     -j     Sprungtabellenrechnung drucken
+     -g     STB-Modul fuer den Debugger daneben (eigene Datei)
+     -v     geschwaetzig
+     -c     ANSI-treues Verhalten
+     -i     initialisierte Daten im Systemmodul zulassen
+     -q     still
+     -f=    zusaetzliche DATEIrechte -- nicht der Modulkopf, dafuer -p=
+     -mt<x> Umgang mit thread-fremdem Code
+   l68 nimmt die Einzelbuchstaben auch als BUENDEL: "-swam" der
+   ROM-Makefiles ist -s -w -a -m, "-gwj" druckt die Sprungtabellenkarte
+   (an l68 nachgemessen).
+   -a steht bewusst mit in der Liste: es wirkt nur, wenn ein Bezug nicht
+   in sein Feld passt, und dieser Fall kommt im SDK-Korpus nirgends vor
+   (s. den Messbefund ueber applyLocalRefs). */
+static int harmlessOpt(const char *a)
+{
+	int i;
+
+	if (a[1] == 0)
+		return 0;
+	if (argStarts(a, "-m=") || argStarts(a, "-s=") ||
+	    argStarts(a, "-f=") || argStarts(a, "-mt"))
+		return 1;
+	for (i = 1; a[i] != 0; i++) {
+		if (a[i] != 's' && a[i] != 'w' && a[i] != 'a' && a[i] != 'm' &&
+		    a[i] != 'j' && a[i] != 'g' && a[i] != 'v' && a[i] != 'c' &&
+		    a[i] != 'i' && a[i] != 'q')
+			return 0;
+	}
+	return 1;
 }
 
 static int argStarts(const char *a, const char *p)
@@ -1083,6 +1200,38 @@ int main(int argc, char **argv)
 			optAccess = v & 0xFFFF;
 			continue;
 		}
+		k = argStarts(a, "-M=");
+		if (k > 0 && a[k] != 0) {
+			int v;
+
+			v = 0;
+			while (a[k] >= '0' && a[k] <= '9') {
+				v = v * 10 + (a[k] - '0');
+				k++;
+			}
+			if (a[k] == 'K' || a[k] == 'k')
+				k++;
+			if (a[k] != 0)
+				fatal("-M= erwartet eine Zahl, wahlweise mit K: ", a);
+			optStackAdd = v * 1024;
+			continue;
+		}
+		k = argStarts(a, "-b=");
+		if (k > 0 && a[k] != 0) {
+			int v;
+
+			v = 0;
+			while (a[k] >= '0' && a[k] <= '9') {
+				v = v * 10 + (a[k] - '0');
+				k++;
+			}
+			if (a[k] != 0)
+				fatal("-b= erwartet eine Zahl: ", a);
+			if (v != 2 && v != 4 && v != 8 && v != 16)
+				fatal("-b= kennt nur 2, 4, 8 und 16: ", a);
+			optAlign = v;
+			continue;
+		}
 		k = argStarts(a, "-r=");
 		if (k > 0 && a[k] != 0) {
 			int v;
@@ -1116,16 +1265,51 @@ int main(int argc, char **argv)
 			optEdition = v;
 			continue;
 		}
-		if (a[0] == '-' && (a[1] == 'm' || a[1] == 's' || a[1] == 'j' ||
-				    a[1] == 'g') && (a[2] == 0 || a[2] == '=')) {
-			/* Listing- und Symbolschalter von l68: -m/-s schreiben
-			   eine Modulkarte, -j die Sprungtabellenrechnung, -g ein
-			   STB-Modul daneben. Keiner davon aendert das Modul --
-			   an "-g" nachgemessen: mit und ohne kommen dieselben
-			   122 Byte heraus. Angenommen und uebergangen, damit die
-			   Aufrufe der SDK-Makefiles unveraendert laufen. */
+		k = argStarts(a, "-R=");
+		if (k > 0 && a[k] != 0) {
+			int v;
+
+			v = 0;
+			while (a[k] >= '0' && a[k] <= '9') {
+				v = v * 10 + (a[k] - '0');
+				k++;
+			}
+			if (a[k] != 0 || v > 255)
+				fatal("-R= erwartet eine Zahl unter 256: ", a);
+			optRevision = v;
 			continue;
 		}
+		k = argStarts(a, "-x=");
+		if (k > 0 && a[k] != 0) {
+			int v;
+
+			v = 0;
+			while (a[k] >= '0' && a[k] <= '9') {
+				v = v * 10 + (a[k] - '0');
+				k++;
+			}
+			if (a[k] != 0)
+				fatal("-x= erwartet eine Zahl: ", a);
+			if (v != 2 && v != 4 && v != 8 && v != 16)
+				fatal("-x= kennt nur 2, 4, 8 und 16: ", a);
+			optXAlign = v;
+			continue;
+		}
+		k = argStarts(a, "-t=");
+		if (k > 0 && a[k] != 0) {
+			/* Nur OS-9/68k. Die uebrigen Ziele von l68 sind ganz
+			   andere Modulformate -- lieber abbrechen als still das
+			   falsche Format schreiben. */
+			if (!argStarts(&a[k], "os9_68k"))
+				fatal("ql68 kennt nur -t=os9_68k: ", a);
+			continue;
+		}
+		if (a[0] == '-' && a[1] == 'S' && a[2] == 0) {
+			optSticky = 1;
+			continue;
+		}
+		if (a[0] == '-' && harmlessOpt(a))
+			continue;
 		if (a[0] == '-' && a[1] != 0) {
 			printf("ql68: unbekannte Option %s\n", a);
 			usage();
