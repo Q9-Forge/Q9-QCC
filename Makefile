@@ -54,6 +54,7 @@ build/hello.r: test/hello.c | build
 
 test: all build/hello.r
 	./test/hello68k.sh
+	./test/vsclib.sh
 
 clean:
 	rm -rf build

@@ -226,6 +226,36 @@ Bibliotheksreihenfolge, und der `$8000`-Datenbias ist wirklich ein
 
 Gegengeprüft: dasselbe Programm, mit `l68` gebunden, ist **byteidentisch**.
 
+## Der Gegenlauf gegen clib
+
+`test/vsclib.sh` bindet **dasselbe** Programm zweimal — einmal gegen
+`qclib.l` (mit `ql68`) und einmal gegen Microwares `clib.l` (mit `l68`,
+denn das libgen-Archiv liest nur der) — und lässt **beide Module im selben
+Emulatorlauf** nacheinander laufen. Dass es derselbe Lauf ist, schließt
+aus, dass ein Unterschied bloß der Umgebung geschuldet wäre.
+
+```
+  qclib: 4034 Byte, clib: 16064 Byte
+  qclib:                          clib:
+      Hallo Welt                      Hallo Welt
+      42 -7 0                         42 -7 0
+      hex ff, Zeichen A, Prozent %    hex ff, Zeichen A, Prozent %
+
+  *** ZEICHENGLEICH -- qclib verhaelt sich wie Microwares clib ***
+```
+
+**Gleiches Verhalten bei einem Viertel der Größe.** Der Unterschied ist
+kein Kunststück, sondern die Folge dessen, was oben gemessen wurde:
+Microwares `printf` zieht die Gleitkomma-Formatierung und die
+Multibyte-/Kanji-Behandlung mit herein, auch wenn das Programm nur `%d`
+und `%s` benutzt.
+
+> **Eine Falle beim Bauen dieses Tests**, die fast durchgerutscht wäre: der
+> erste Lauf meldete einen Unterschied — es war die eigene Marker-Zeile,
+> mit der das Skript die beiden Ausgaben im Log trennt. Der Filter verglich
+> ein Stück Messaufbau mit. Wer Ausgaben aus einem Terminal-Log schneidet,
+> muss die Schnittmarken selbst wieder herausnehmen.
+
 ### Was noch fehlt
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
   `tc_extcall_tmp`) für die Ziffernzerlegung. Ein QCC-Programm bringt ihn
