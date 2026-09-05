@@ -38,17 +38,18 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 	die "OS-9-Toolchain nicht ladbar"
 MWOS="$MWOS_UNIX"
 
-echo "== 1/4 Modul binden (NUR qclib -- kein clib, kein os_lib, kein sys.l) =="
+echo "== 1/4 Modul binden (eigener Binder, nur gegen qclib) =="
 cp "$REPO/build/hello.r" "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/" ||
 	die "Eingaben fehlen -- vorher 'make'"
-WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine"
-export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
-TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
-arch -x86_64 "$WINE_BIN" cmd /c \
-	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\hello.r -l=$TW\\qclib.l -M=8K -o=$TW\\q9_hello" \
-	>"$WORK/l68.log" 2>&1
-[ -f "$WORK/q9_hello" ] || { sed 's/^/    /' "$WORK/l68.log" | head -10; die "l68"; }
-echo "  ok ($(wc -c < "$WORK/q9_hello" | tr -d ' ') Byte)"
+# Gebunden wird mit dem EIGENEN Binder. Seit ql68 die Bibliothekssuche
+# beherrscht, braucht es dafuer kein l68 mehr -- und damit steckt in der
+# Kette vom Praeprozessor bis zum Modul kein fremdes Werkzeug mehr.
+QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+[ -x "$QL68" ] || die "ql68 fehlt: $QL68"
+"$QL68" -a "$WORK/q9_cstart.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
+	-M=8K "-O=$WORK/q9_hello" >"$WORK/link.log" 2>&1
+[ -f "$WORK/q9_hello" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
+echo "  ok ($(wc -c < "$WORK/q9_hello" | tr -d ' ') Byte, gebunden mit ql68)"
 
 echo "== 2/4 ins Image =="
 "$MWOS_TOOLSHED_OS9" copy -r "$WORK/q9_hello" "$WORK/img.hda,/CMDS/q9_hello" >/dev/null 2>&1 ||

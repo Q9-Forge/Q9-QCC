@@ -198,15 +198,35 @@ eigenen Startcode und `qclib.l`. `sys.l` wird nicht einmal mehr berührt,
   3 von 3 Zeilen richtig
 ```
 
-### Was noch fehlt
+## Die Kette ist geschlossen
 
-- **`ql68` kann Bibliotheken bisher nur als Symbolsammlungen lesen.**
-  `qclib.l -l=` bricht ab mit *„in einer Bibliothek ist bisher nur ein
-  equ-Symbol gemessen"*. Das ist folgerichtig: die einzige bisher benutzte
-  Bibliothek war `sys.l` mit 1747 Globalen, **allen `equ`**. `qclib.l` ist
-  die erste mit echtem Code — dem Binder fehlt also noch die eigentliche
-  Bibliothekssuche (welche Module werden gebraucht, iterativ bis alle
-  Referenzen aufgelöst sind). Bis dahin wird mit `l68` gebunden.
+`test/hello68k.sh` bindet jetzt mit dem **eigenen Binder**. Damit steckt
+vom Präprozessor bis zum fertigen Modul kein fremdes Werkzeug mehr darin:
+
+```
+qcpp -> qcc_p -> qcc_backend -> qr68 -> ql68   gegen qclib.l
+```
+
+```
+== 1/4 Modul binden (eigener Binder, nur gegen qclib) ==
+  ok (4038 Byte, gebunden mit ql68)
+  ok      Hallo Welt
+  ok      42 -7 0
+  ok      hex ff, Zeichen A, Prozent %
+  3 von 3 Zeilen richtig
+```
+
+Dass `ql68` das kann, hat diese Runde erst gebracht: es konnte
+Bibliotheken bislang nur als Symbolsammlungen lesen (`sys.l` hat 1747
+Globale, alle `equ`). `qclib.l` war die erste Bibliothek mit echtem Code.
+Die Einzelheiten stehen im README von `Q9-ql68` — samt zweier Befunde, die
+dabei herauskamen: `l68` bindet **bedarfsgesteuert** statt in
+Bibliotheksreihenfolge, und der `$8000`-Datenbias ist wirklich ein
+**Minus** (bei 32-Bit-Bezügen sichtbar, bei 16-Bit-Feldern nicht).
+
+Gegengeprüft: dasselbe Programm, mit `l68` gebunden, ist **byteidentisch**.
+
+### Was noch fehlt
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
   `tc_extcall_tmp`) für die Ziffernzerlegung. Ein QCC-Programm bringt ihn
   mit, deshalb löst es sich beim Binden auf; für eine Bibliothek, die auch
