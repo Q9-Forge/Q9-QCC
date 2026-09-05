@@ -304,6 +304,34 @@ die ganze Zeile (`grep -qxF`).
 > Genau dafür gibt es den Vergleich gegen das Original: eigene
 > Erwartungswerte können denselben Denkfehler enthalten wie der Code.
 
+## Traegt die Bibliothek ein ECHTES Werkzeug?
+
+`hello.c` beweist wenig — ein paar Zeilen Ausgabe und eine kleine Datei.
+Der belastbare Test ist **qr68 selbst**: 1,19 MB Modul, gegen `qclib`
+statt gegen Microwares `clib` gebunden, das auf echtem 68030 eine Quelle
+assembliert. `test/qr68_68k.sh`:
+
+```
+== 1/5 qr68 gegen qclib binden ==
+  ok (1197368 Byte, gegen qclib statt clib)
+== 4/5 Emulator ==
+  <<< QR68 LIEF AUF 68K DURCH, 1540 Byte Code >>>
+== 5/5 Ergebnis vergleichen ==
+  BYTEIDENTISCH (1913 Byte)
+```
+
+Hier laufen `fopen`, `fread`, `fwrite` und `fclose` über eine 153-KB-Quelle
+und ein 1913-Byte-Ergebnis — **jedes falsche Byte wäre aufgefallen**. Der
+Emulatorlauf kommt unverändert aus `Q9-qr68` (`test/run_68k.exp`), damit
+ein Unterschied nur an der Bibliothek liegen kann.
+
+> Gebunden wird hier mit `l68`, nicht mit `ql68` — und das ist eine Lücke
+> im **Binder**, nicht in der Bibliothek: der Bezug auf QCCs Laufzeitanker
+> (`tc_extcall_tmp`) ist in einem 1,19-MB-Modul zu weit für ein Wort, und
+> `ql68`s `-a` kennt bisher nur die Wortform von `bsr`. `l68` führt auch
+> ferne **LEAs** über die Sprungtabelle (*„Cause distant BSRs and LEAs to
+> access jumptable"*). Das ist der nächste Schritt am Binder.
+
 ### Was noch fehlt
 - **`printf_c.r` braucht QCCs Laufzeitkern** (`tc_udiv_u32`, `tc_umod_u32`,
   `tc_extcall_tmp`) für die Ziffernzerlegung. Ein QCC-Programm bringt ihn
