@@ -205,5 +205,14 @@ int main()
 	buf[i] = 0;
 	printf("zurueck %d: %s\n", n, buf);
 	fclose(fp);
+	/* EINE SCHLUSSMARKE, an der die Emulatorlaeufe erkennen, dass das
+	   Programm durch ist. Ohne sie warteten sie auf den PROMPT -- und der
+	   steht nach dem Login noch im Puffer, trifft also sofort und der
+	   Escape killt das Modul, bevor es etwas ausgibt. Das ist am
+	   2026-09-07 einmal passiert (0 von 14 Zeilen), war beim naechsten
+	   Lauf wieder gruen und damit ein WACKLER -- schlimmer als ein
+	   Fehlschlag. Dieselbe Falle steht in Q9-QCC/q9-cpp/test/
+	   run_selfhost_68k.exp ausgeschrieben. */
+	printf("hello fertig\n");
 	return 0;
 }
