@@ -4,6 +4,62 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Datenmodell: was gemessen ist und was der Umbau wirklich braucht (2026-09-07)
+
+Der Umbau "genullte Globals in den vsect statt als `dc.l 0,0,...` in den
+Code" wurde am **2026-09-06 versucht und zurueckgerollt**. Der Gewinn war
+gross und gemessen: qr68s Modul fiel von 1.197.334 auf 204.292 Byte,
+Faktor 5,9. Gescheitert ist er an zwei Dingen -- l68 lehnte die grossen
+nicht-remote Daten ab, und qr68 lief mit 1 MB Datenbereich auf dem 68030
+nicht mehr (Modul startet, kehrt stumm zum Prompt zurueck, keine
+OS-9-Meldung). Als Ursache stand "ungeklaert" im Raum, und eine Probe mit
+400 KB lief scheinbar.
+
+**Am 2026-09-07 nachgemessen -- beide Annahmen von damals waren falsch:**
+
+1. **OS-9 NULLT den Datenbereich.** Ein Modul mit einem 32-KB-`vsect`
+   liest ihn dreimal hintereinander als komplett null, obwohl es ihn
+   zwischen den Laeufen ganz mit `$55aa55aa` faerbt. Die Annahme des
+   Umbaus (Nullen ohne `dc.l 0`) war also richtig. Das technische Handbuch
+   sagt darueber nichts -- es beschreibt nur, dass OS-9 den Bereich belegt
+   und INITIALISIERTE Werte hineinkopiert.
+2. **Ein grosser Datenbereich laeuft.** 400 KB, 1 MB und 1,5 MB, jeweils
+   ganz beschrieben und zurueckgelesen, kein falsches Langwort -- solange
+   die Globals mit 32 Bit adressiert werden
+   (`movea.l #sym,reg / adda.l a6,reg`, genau das Muster des Umbaus).
+
+**Damit war "1 MB laeuft nicht" kein Plattformlimit, sondern ein
+Codeerzeugungsfehler im Umbau selbst.** Die naechste Spur sind die
+Stellen, die noch `d16(a6)` oder die PC-relativen Kurzformen von
+`LOADG`/`LOADGC`/`LOADGP` benutzten -- letztere sind damals schon
+aufgefallen, weil qr68 sie gemeldet hat ("PC-Bezug auf einen anderen
+Abschnitt").
+
+**Warum die 400-KB-Probe getaeuscht hat:** sie war mit `ql68` gebunden,
+und ql68 fehlte die 64-KB-Pruefung fuer nicht-remote Daten -- es baute
+klaglos ein Modul mit korrektem Kopf und unerreichbaren Daten. Mit l68
+waere sie sofort abgebrochen. **Eine Machbarkeitsprobe muss durch BEIDE
+Binder.** Die Pruefung ist seit 2026-09-07 in ql68
+(`Q9-ql68/test/datalimit.sh`).
+
+**Die Grundlage fuer einen zweiten Anlauf ist gelegt:** beide eigenen
+Werkzeuge beherrschen `vsect remote` und sind darin byteidentisch zu r68
+bzw. l68 (`Q9-qr68/test/remotetest.sh`, `Q9-ql68/test/remotetest.sh`).
+Gemessen wurde dafuer auch das Layout, das der Umbau treffen muss:
+
+| | |
+|---|---|
+| Reihenfolge im Datenbereich | nicht-remote uninitialisiert, dann initialisiert, dann remote |
+| `M$Mem` | Summe aller drei -- `remote` aendert die Groesse NICHT |
+| `end`/`_enddata` | Ende des ganzen Bereichs, Ferndaten eingeschlossen |
+| Sprungtabelle (`-a`) | bleibt am Ende der INITIALISIERTEN Daten, auch mit Ferndaten |
+| ROF | Groesse in `remotestatsiz` (Offset 44), Symboltypwort `$0002` |
+
+**Was fuer den Umbau noch fehlt, ist damit nur das Backend:** genullte
+Globals in einen `vsect remote` legen und Globals durchgaengig mit 32 Bit
+adressieren. Remote *initialisierte* Daten (`remoteidatsiz`) sind bewusst
+in keinem der beiden Werkzeuge umgesetzt -- es gibt keinen Aufrufer.
+
 ## Komma-Operator; semantische Fehler sind toedlich (2026-08-11/12)
 
 **Komma-Operator**, bewusst nur INNERHALB von Klammern
