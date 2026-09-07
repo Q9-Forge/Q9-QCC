@@ -11,7 +11,8 @@
 *   - Das Trap-Muster steht in Q9-QCC/runtime/os9/q9defs.d
 *     ("Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0").
 *   - Die Servicenummern stehen ausgeschrieben in
-*     MWOS/OS9/SRC/DEFS/funcs.h: I_WRITE 0x8a, F_EXIT 0x06.
+*     MWOS/OS9/SRC/DEFS/funcs.h: I_WRITE 0x8a, F_EXIT 0x06,
+*     F_SRQMEM 0x28, F_SRTMEM 0x29.
 *   - Die Registerbelegung ist aus laufendem Code abgelesen (PrtMsg in
 *     q9_cstart.a): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
 *
@@ -24,6 +25,8 @@ Q9I_Read       equ     $89                      * I$Read, Daten lesen
 Q9I_Write      equ     $8a                      * I$Write, Daten schreiben
 Q9I_Close      equ     $8f                      * I$Close, Pfad schliessen
 Q9F_Exit       equ     $06                      * F$Exit, Prozess beenden
+Q9F_SRqMem     equ     $28                      * F$SRqMem, Speicher holen
+Q9F_SRtMem     equ     $29                      * F$SRtMem, Speicher zurueck
 
          psect   qos9,0,0,0,0,0
 
@@ -137,6 +140,74 @@ _os_create:
 ocr_err
          moveq   #0,d0
          move.w  d1,d0
+         rts
+
+
+* error_code _os_srqmem(u_int32 want, u_int32 *granted, void **addr)
+*
+* Speicher beim System holen. 0 = geholt, sonst der OS-9-Fehlercode.
+*
+* DREIFACH BELEGT, weil hier nichts abgeleitet werden durfte:
+*   1. Das technische Handbuch (68k_tech.pdf, "F$SRqMem System Memory
+*      Request"): d0.l ein = Byteanzahl, d0.l aus = gewaehrte Anzahl,
+*      (a2) = Zeiger auf den Block, Fehler ueber das Uebertragsbit mit
+*      dem Code in d1.w. Die Anzahl wird auf ein Vielfaches der
+*      Systemblockgroesse aufgerundet (derzeit 16), die Adresse ist
+*      immer gerade. Mit -1 in d0.l kommt der GROESSTE freie Block --
+*      damit laesst sich die Obergrenze der Maschine messen.
+*   2. Microwares eigener Rumpf in os_lib.l, disassembliert: derselbe
+*      Registersatz, aber TRAP $5c (F$SRqCMem, die Farbvariante) mit der
+*      Farbe als drittem Argument. Das Handbuch dazu: "F$SRqMem is
+*      equivalent to a F$SRqCMem request with a color of 0." Auch clibs
+*      eigene Speicherverwaltung nimmt $5c und $29 -- die Quelle des
+*      Speichers ist also dieselbe wie hier.
+*   3. Der eigene Kernel (Q9-OS, q9kernel_entry.a) dokumentiert fuer
+*      F$SRqMem genau diese Belegung -- und er kennt $28, nicht $5c.
+*      Deshalb steht hier $28: qclib soll auch auf dem eigenen System
+*      laufen.
+*
+* a2 wird gerettet: der Aufruf gibt darin sein Ergebnis zurueck, und ob
+* der Aufrufer a2 fuer erhalten haelt, waere eine eigene Messung. Der
+* Microware-Rumpf rettet es ebenfalls.
+*
+* ACHTUNG BEIM DRITTEN ARGUMENT: es liegt bei 4(a7), aber das a2 auf dem
+* Stack schiebt es auf 8(a7). Wer hier 4(a7) liest, bekommt die
+* Ruecksprungadresse und schreibt den Zeiger dorthin.
+
+_os_srqmem:
+         move.l  a2,-(a7)                        * a2 retten
+         movea.l d1,a1                           * &granted
+         trap    #0                              * d0.l = gewuenschte Anzahl
+         dc.w    Q9F_SRqMem
+         bcs.s   sq_err
+         move.l  d0,(a1)                         * gewaehrte Anzahl
+         movea.l 8(a7),a1                        * &addr (4(a7) + das a2)
+         move.l  a2,(a1)                         * der Blockanfang
+         moveq   #0,d0                           * kein Fehler
+         movea.l (a7)+,a2
+         rts
+sq_err
+         moveq   #0,d0
+         move.w  d1,d0                           * Fehlercode zurueckgeben
+         movea.l (a7)+,a2
+         rts
+
+* error_code _os_srtmem(u_int32 size, void *addr)
+* d0 = Groesse (wie geholt), d1 = Zeiger; OS-9 erwartet den Zeiger in a2.
+
+_os_srtmem:
+         move.l  a2,-(a7)
+         movea.l d1,a2                           * Blockadresse
+         trap    #0                              * d0.l = Groesse
+         dc.w    Q9F_SRtMem
+         bcs.s   st_err
+         moveq   #0,d0
+         movea.l (a7)+,a2
+         rts
+st_err
+         moveq   #0,d0
+         move.w  d1,d0                           * Fehlercode zurueckgeben
+         movea.l (a7)+,a2
          rts
 
          ends

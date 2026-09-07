@@ -110,18 +110,31 @@ pruefe() {
 		bad=$((bad + 1))
 	fi
 }
+# DIESE ERWARTUNGSWERTE SIND NICHT AUSGEDACHT, sondern aus dem Gegenlauf
+# gegen Microwares clib uebernommen (test/vsclib.sh, alle Zeilen
+# zeichengleich). Von Hand hingeschriebene Sollwerte koennen denselben
+# Denkfehler enthalten wie der Code -- so ist der fehlende Zeilenumbruch
+# von puts durchgerutscht. Neue Faelle also erst dort pruefen.
 pruefe "Hallo Welt"
 pruefe "42 -7 0"
 pruefe "hex ff, Zeichen A, Prozent %"
 pruefe "puts geht"
 pruefe "geschrieben 11"
 pruefe "gelesen 11: Hallo Datei"
+pruefe "str 11 Datei 0 -1 1"
+pruefe "strchr0 1"
+pruefe "sprintf 42|xy|A|abc"
+pruefe "langzahl -123456"
+pruefe "realloc 1 7"
+pruefe "rueckgaben 1 33"
+pruefe "zurueck 33: fp 7 sieben 7"
+pruefe "fputs ohne Umbruch!"
 if grep -q "TEST: " "$WORK/run.log"; then
 	echo "  Abbruch im Emulator:"
 	grep "TEST: " "$WORK/run.log" | sed 's/^/    /'
 	bad=$((bad + 1))
 fi
 echo
-echo "  $ok von 6 Zeilen richtig"
+echo "  $ok von 14 Zeilen richtig"
 [ "$bad" -eq 0 ] || echo "  (Log: $WORK/run.log)"
 exit $([ "$bad" -eq 0 ] && echo 0 || echo 1)

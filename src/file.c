@@ -1,4 +1,4 @@
-/* fopen, fclose, fread, fwrite, puts fuer qclib.
+/* fopen, fclose, fread, fwrite, puts, fputc, fputs fuer qclib.
  *
  * Der FILE* der C-Ebene ist hier die ADRESSE eines Tabelleneintrags, und
  * der Eintrag enthaelt die OS-9-Pfadnummer. Microwares FILE-Struktur mit
@@ -151,6 +151,76 @@ int qf_write(int *a)
 	if (rc != 0 || done <= 0)
 		return 0;
 	return done / size;
+}
+
+/* Die Pfadnummer hinter einem FILE*. FILE* == 0 geht auf Pfad 2, den
+   Fehlerkanal -- QCCs Bootstrap-Quelle erklaert "stderr" als nie
+   zugewiesenen Zeiger und ruft damit fprintf/fputs/fputc darauf. Ein
+   Eintrag mit 0 ist eine GESCHLOSSENE Datei und gibt -1.
+
+   Dieselben Zeilen stehen in printf.c. Sie sind bewusst DOPPELT: QCC
+   benennt eine Definition "tc_<name>", ein Aufruf sucht aber den nackten
+   Namen -- ein Aufruf ueber die Uebersetzungseinheit hinweg findet sein
+   Ziel also nicht. Eine gemeinsame Fassung muesste in Assembler stehen
+   und waere laenger als die Wiederholung. */
+int qf_pathof(int fp)
+{
+	int *slot;
+
+	if (fp == 0)
+		return 2;
+	slot = (int *) fp;
+	if (*slot == 0)
+		return -1;
+	return *slot;
+}
+
+/* fputc gibt das geschriebene Zeichen zurueck, so steht es in C89 --
+   nicht 0. Geschrieben wird EIN Byte ungepuffert; die Kette ruft fputc
+   nur in Diagnosen, wo es auf Geschwindigkeit nicht ankommt. */
+int qf_putc(int *a)
+{
+	char eins[4];
+	int p;
+	int n;
+	int rc;
+
+	p = qf_pathof(a[1]);
+	if (p < 0)
+		return -1;
+	eins[0] = a[0];
+	n = 1;
+	rc = _os_write(p, eins, &n);
+	if (rc != 0)
+		return -1;
+	return a[0] & 255;
+}
+
+/* fputs haengt KEINEN Zeilenumbruch an -- anders als puts. Geschrieben
+   wird direkt aus der uebergebenen Zeichenkette, ohne Umkopieren: die
+   Laenge steht ja fest, und _os_write nimmt jeden Puffer. */
+int qf_puts_f(int *a)
+{
+	char *s;
+	int p;
+	int n;
+	int rc;
+
+	s = (char *) a[0];
+	if (s == 0)
+		return -1;
+	p = qf_pathof(a[1]);
+	if (p < 0)
+		return -1;
+	n = 0;
+	while (s[n] != 0)
+		n++;
+	if (n == 0)
+		return 0;
+	rc = _os_write(p, s, &n);
+	if (rc != 0)
+		return -1;
+	return 0;
 }
 
 /* puts haengt einen Zeilenumbruch an -- anders als fputs. Geschrieben
