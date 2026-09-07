@@ -47,11 +47,19 @@ structName  = ident .
    Namen rueckwaerts in seiner Spanne und nimmt den Typ aus tcCurrentType --
    beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
    umfasst statt der ganzen Zeile. */
-/* fieldConstKw ist eine AKTIONSLOSE Kopie von constKw (wie retConstKw bei
-   funcHead): ein "const" am Feldtyp wird geparst und verworfen. Ein Verweis
-   auf constKw selbst wuerde tc_const ausloesen, dessen tcPendingConst erst
-   beim naechsten Parameter oder Lokalen konsumiert wird und dort
-   faelschlich Konstantheit erzwaenge. */
+/* fieldConstKw war bis 2026-09-07 eine AKTIONSLOSE Kopie von constKw (wie
+   retConstKw bei funcHead): ein "const" am Feldtyp wurde geparst und
+   VERWORFEN. Der Grund war richtig -- ein Verweis auf constKw selbst wuerde
+   tc_const ausloesen, dessen tcPendingConst erst beim naechsten Parameter
+   oder Lokalen konsumiert wird und dort faelschlich Konstantheit erzwaenge.
+   Die FOLGE war es nicht: "struct P { const char *cp; }" mit
+   "p.cp[0] = ..." lief STILL durch, und "const int n" mit "s.n = 1" auch,
+   waehrend beides bei einer VARIABLEN korrekt gemeldet wird.
+   Jetzt hat fieldConstKw eine EIGENE Aktion mit einer EIGENEN Flagge, die
+   nur Felder betrifft: tc_fieldconst setzt sie, die Deklaratoren der Zeile
+   verbrauchen sie ("const int a, b;" trifft beide), und tc_fieldconstend
+   loescht sie nach der ganzen structField-Zeile. tcPendingConst bleibt
+   davon unberuehrt. */
 structField = [ fieldConstKw ] type pointerDecl structDeclarator { "," structDeclarator } ";" .
 fieldConstKw = "const" .
 /* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert

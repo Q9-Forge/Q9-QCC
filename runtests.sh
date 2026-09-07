@@ -1100,6 +1100,53 @@ if command -v python3 >/dev/null 2>&1; then
 		# Der ZEILENzugriff auf ein 2D-Feld geht dagegen und muss es bleiben:
 		# "sp->t[i]" liefert den Zeiger auf Zeile i.
 		tc_check 'struct S{char t[4][8]; int n;}; static struct S g; int main(){ struct S *sp; char *z; int i; i=2; sp=&g; z=sp->t[i]; z[3]=66; z=sp->t[2]; putchar(z[3]); }' 'B'
+		# 2026-09-07: const AM STRUKTURFELD. Bis heute wurde die Kennung
+		# geparst und WEGGEWORFEN -- fieldConstKw war eine aktionslose Kopie
+		# von constKw, weil ein Verweis darauf tc_const ausgeloest haette,
+		# dessen tcPendingConst erst beim naechsten Parameter oder Lokalen
+		# konsumiert wird (und dort faelschlich Konstantheit erzwaenge).
+		# Vier Formen liefen damit STILL durch, waehrend dasselbe bei einer
+		# Variablen gemeldet wird. Jetzt hat fieldConstKw eine eigene Aktion
+		# mit einer eigenen Flagge, die nur Felder betrifft.
+		if build/qcc_p 'struct P{const int n; int m;}; int main(){ struct P p; p.n=1; }' 2>&1 | grep -q 'cannot assign to const struct field'; then
+			echo "ok    qcc: const-Feld beschreiben wird gemeldet"
+		else
+			echo "FAIL  qcc: const-Feld beschreiben laeuft still durch"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct P{const int n; int m;}; static struct P g; int main(){ struct P *sp; sp=&g; sp->n=1; }' 2>&1 | grep -q 'cannot assign to const struct field'; then
+			echo "ok    qcc: const-Feld ueber -> beschreiben wird gemeldet"
+		else
+			echo "FAIL  qcc: const-Feld ueber -> laeuft still durch"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct P{const int a, b; int m;}; int main(){ struct P p; p.a=1; }' 2>&1 | grep -q 'cannot assign to const struct field'; then
+			echo "ok    qcc: bei \"const int a, b\" ist a konstant"
+		else
+			echo "FAIL  qcc: bei \"const int a, b\" bleibt a schreibbar"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct P{const int a, b; int m;}; int main(){ struct P p; p.b=1; }' 2>&1 | grep -q 'cannot assign to const struct field'; then
+			echo "ok    qcc: bei \"const int a, b\" ist auch b konstant"
+		else
+			echo "FAIL  qcc: bei \"const int a, b\" bleibt b schreibbar"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct P{const char* cp;}; int main(){ struct P p; char b[4]; p.cp=b; p.cp[0]=65; }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    qcc: Schreiben DURCH ein const-Zeigerfeld wird gemeldet"
+		else
+			echo "FAIL  qcc: Schreiben durch ein const-Zeigerfeld laeuft still durch"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct P{const char* cp;}; static struct P g; int main(){ struct P *sp; char b[4]; sp=&g; sp->cp=b; sp->cp[0]=65; }' 2>&1 | grep -q 'cannot assign through pointer to const'; then
+			echo "ok    qcc: dito ueber -> wird gemeldet"
+		else
+			echo "FAIL  qcc: dito ueber -> laeuft still durch"; tcfail=1; fail=1
+		fi
+		# Und was ERLAUBT bleiben MUSS -- eine zu scharfe Pruefung faellt
+		# sonst erst beim Selbsthost auf (QCCs eigener Parser haengt an
+		# "actionLog[i].start = start" bei "const char* start"):
+		# der ZEIGER selbst ist nicht konstant, nur der Pointee; Lesen geht;
+		# das Nicht-const-Nachbarfeld bleibt schreibbar.
+		tc_check 'struct P{const char* cp; int m;}; int main(){ struct P p; char b[4]; b[0]=65; p.cp=b; p.m=7; putchar(p.cp[0]); putint(p.m); }' 'A7'
+		tc_check 'struct P{const int n; int m;}; int main(){ struct P p; p.m=9; putint(p.m); }' '9'
+		# Die naechste struct darf nicht angesteckt werden:
+		tc_check 'struct P{const int a;}; struct Q{int b;}; int main(){ struct Q q; q.b=5; putint(q.b); }' '5'
 		# Ein SKALARES Feld ohne Zeigertyp bleibt undiskutierbar -- die
 		# Diagnose dafuer steht weiter oben und muss erhalten bleiben.
 		# arr[i].feld (2026-07-25): ein ARRAY von structs, per Laufzeit-Index adressiert,
