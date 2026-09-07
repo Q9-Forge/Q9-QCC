@@ -106,6 +106,23 @@ static int  tcStructFieldArrayLen[MAX_STRUCTS][MAX_STRUCT_FIELDS]; /* 0=Skalar, 
 /* Nur bei zweidimensionalen Feldern != 0: Laenge EINER Zeile. "x.feld[i]"
    liefert dann base + i*Zeilenlaenge als ZEIGER statt eines Elementwerts. */
 static int  tcStructFieldRowLen[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+
+/* "const" AM FELDTYP -- bis 2026-09-07 geparst und VERWORFEN.
+ *
+ * Die Grammatik hatte dafuer `fieldConstKw` als AKTIONSLOSE Kopie von
+ * `constKw`: ein Verweis auf constKw haette tc_const ausgeloest, und dessen
+ * tcPendingConst wird erst beim NAECHSTEN Parameter oder Lokalen konsumiert
+ * -- dort haette es faelschlich Konstantheit erzwungen. Der Ausweg war
+ * richtig, die Folge war es nicht: "struct P { const char *cp; }" mit
+ * "p.cp[0] = 'x'" lief STILL durch, waehrend dasselbe bei einer VARIABLEN
+ * korrekt gemeldet wird. Genauso "const int n" mit "s.n = 1".
+ *
+ * Jetzt hat fieldConstKw eine EIGENE Flagge, die nur Felder betrifft und am
+ * Ende jeder structField-Zeile geloescht wird. Unterschieden wird wie bei
+ * Variablen (tc_local): bei einem ZEIGER ist der Pointee konstant
+ * (pointeeConst im Feldtyp), bei allem anderen das FELD selbst. */
+static char tcStructFieldConst[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+static int  tcFieldConst = 0;
 static int  tcStructByteSize[MAX_STRUCTS];
 static int  tcStructCount = 0;
 static char tcStructBuildName[32];
@@ -114,6 +131,7 @@ static char tcStructBuildFieldNames[MAX_STRUCT_FIELDS][32];
 static TCType tcStructBuildFieldTypes[MAX_STRUCT_FIELDS];
 static int  tcStructBuildFieldArrayLen[MAX_STRUCT_FIELDS];
 static int  tcStructBuildFieldRowLen[MAX_STRUCT_FIELDS];
+static char tcStructBuildFieldConst[MAX_STRUCT_FIELDS];
 /* anonymes struct inline im typedef (2026-07-24, siehe tc_anonstructbegin/tc_typedefend):
    der Zielname ("Name" in typedef struct {...} Name;) kommt in der Grammatik erst NACH
    dem Feld-Body -- die Felder werden wie gewohnt gesammelt, die Registrierung (mit dem
@@ -653,6 +671,17 @@ static void tcEmitElemIndexStep(TCType t) {
 static TCType tcEmitPtrFieldIndex(int sid, int fi, int laden) {
 	TCType el = tcPointee(tcStructFieldTypes[sid][fi]);
 
+	/* Beim SCHREIBEN durch ein "const char *"-Feld: verboten. Die
+	   Qualifikation liegt seit 2026-09-07 wirklich im Feldtyp (siehe
+	   tcStructFieldConst), vorher stand hier eine wirkungslose Pruefung.
+	   Beim LESEN ist alles erlaubt. Verankert wird an der Aktionsspanne,
+	   weil der Helfer die Quellstelle nicht kennt. */
+	if (!laden && tcStructFieldTypes[sid][fi].pointeeConst
+	    && tcStructFieldTypes[sid][fi].pointers == 1) {
+		tcErrAt(parserActionAt);
+		fprintf(stderr, "cannot assign through pointer to const\n");
+		actionErrors++;
+	}
 	printf("LOADIND p\n");
 	if (el.base == 's' && !el.pointers) {
 		printf("IPADDN %d\n", tcStructByteSize[el.structId - 1]);
@@ -1345,6 +1374,18 @@ void tc_defname(const char* start, const char* end) {
 void tc_const(const char* start, const char* end) {
 	(void)start; (void)end;
 	tcPendingConst = 1;
+}
+
+void tc_fieldconst(const char* start, const char* end) {
+	(void)start; (void)end;
+	tcFieldConst = 1;
+}
+
+void tc_fieldconstend(const char* start, const char* end) {
+	/* Nach der ganzen Zeile, nicht nach jedem Deklarator: sonst waere bei
+	   "const int a, b;" nur a konstant. */
+	(void)start; (void)end;
+	tcFieldConst = 0;
 }
 
 void tc_static(const char* start, const char* end) {
@@ -2971,6 +3012,18 @@ void tc_target(const char* start, const char* end) {
 		sid = pt.structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+		/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+		   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+		   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+		   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+		   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+		   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+		   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+		   wird. */
+		if (tcStructFieldConst[sid][fi]) {
+			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+			actionErrors++;
+		}
 		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
 		if (tcTargetSlot >= 0) printf("LOADP %d\n", tcTargetSlot); else printf("LOADGP %s\n", tcGlobalNames[gslot]);
 		printf("IPADD c\n");
@@ -3017,6 +3070,18 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+			   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+			   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+			   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+			   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+			   wird. */
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3037,6 +3102,18 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+			   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+			   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+			   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+			   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+			   wird. */
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3056,6 +3133,18 @@ void tc_target(const char* start, const char* end) {
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+		/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+		   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+		   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+		   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+		   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+		   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+		   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+		   wird. */
+		if (tcStructFieldConst[sid][fi]) {
+			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+			actionErrors++;
+		}
 		/* Wie tc_varref: IPADD poppt Pointer ZUERST, daher PUSH vor PUSHADDR. tcTargetIndirect=1
 		   laesst tc_assign/tcLoadTarget denselben STOREIND/DUPP+LOADIND-Pfad wie bei einer
 		   echten Pointer-Dereferenz nehmen -- die Feldadresse liegt bereits auf dem Stack. */
@@ -3119,6 +3208,18 @@ void tc_target(const char* start, const char* end) {
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+			   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+			   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+			   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+			   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+			   wird. */
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3139,6 +3240,18 @@ void tc_target(const char* start, const char* end) {
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+			   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+			   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+			   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+			   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+			   wird. */
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3160,6 +3273,18 @@ void tc_target(const char* start, const char* end) {
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		tcCopy(gname, start, nameEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+		/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
+		   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
+		   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
+		   DURCH den Zeiger prueft tcEmitPtrFieldIndex. Hier geht es um
+		   das Feld selbst: "const int n" mit "s.n = 1", und ebenso ein
+		   Arrayfeld aus const-Elementen. Beides lief bis 2026-09-07
+		   STILL durch, waehrend dasselbe bei einer Variablen gemeldet
+		   wird. */
+		if (tcStructFieldConst[sid][fi]) {
+			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+			actionErrors++;
+		}
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			/* VERKETTETE Indizierung eines Strukturfelds (feld[i][j]) --
@@ -3951,6 +4076,12 @@ void tc_structfield(const char* start, const char* end) {
 	}
 	if (tcStructBuildFieldCount < MAX_STRUCT_FIELDS) {
 		tcStructBuildFieldTypes[tcStructBuildFieldCount] = tcCurrentType;
+		/* Wie bei Variablen (tc_local): bei einem ZEIGER macht const den
+		   Pointee konstant, sonst das Feld selbst. */
+		if (tcFieldConst && tcIsPointer(tcCurrentType))
+			tcStructBuildFieldTypes[tcStructBuildFieldCount].pointeeConst = 1;
+		tcStructBuildFieldConst[tcStructBuildFieldCount] =
+			(char)(tcFieldConst && !tcIsPointer(tcCurrentType));
 		tcStructBuildFieldArrayLen[tcStructBuildFieldCount] = arrayLen;
 		tcStructBuildFieldRowLen[tcStructBuildFieldCount] = rowLen;
 		tcCopy(tcStructBuildFieldNames[tcStructBuildFieldCount], fieldStart, fieldEnd);
@@ -4010,6 +4141,7 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	tcStructFieldCount[tcStructCount] = tcStructBuildFieldCount;
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
 		tcStructFieldTypes[tcStructCount][i] = tcStructBuildFieldTypes[i];
+		tcStructFieldConst[tcStructCount][i] = tcStructBuildFieldConst[i];
 		tcStructFieldArrayLen[tcStructCount][i] = tcStructBuildFieldArrayLen[i];
 		tcStructFieldRowLen[tcStructCount][i] = tcStructBuildFieldRowLen[i];
 		tcCopy(tcStructFieldNames[tcStructCount][i], tcStructBuildFieldNames[i], tcStructBuildFieldNames[i] + strlen(tcStructBuildFieldNames[i]));
@@ -4461,6 +4593,8 @@ static void actionLogDispatch(int id, const char* start, const char* end) {
 	if (id == 6) { tc_enumdecl(start, end); return; }
 	if (id == 7) { tc_structend(start, end); return; }
 	if (id == 8) { tc_structbegin(start, end); return; }
+	if (id == 9) { tc_fieldconstend(start, end); return; }
+	if (id == 10) { tc_fieldconst(start, end); return; }
 	if (id == 11) { tc_structfield(start, end); return; }
 	if (id == 13) { tc_typedefend(start, end); return; }
 	if (id == 14) { tc_fnptrtypedef(start, end); return; }
@@ -5060,6 +5194,7 @@ L36:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L32;
 	p += 1;
+	actionLogPush(9, entry, p);	/* ACTION AFTER structField */
 	return 1;
 L32:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5076,6 +5211,7 @@ static int p_fieldConstKw(void) {
 	if (strncmp(p, "const", 5) != 0) goto L37;
 	if (idch((unsigned char)p[5])) goto L37;
 	p += 5;
+	actionLogPush(10, entry, p);	/* ACTION AFTER fieldConstKw */
 	return 1;
 L37:	p = entry; actionLogLen = entryLog;
 	return 0;
