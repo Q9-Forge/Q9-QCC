@@ -21,6 +21,8 @@ test: build/ql68
 	./test/descs.sh
 	./test/optstest.sh
 	./test/jumptest.sh
+	./test/datalimit.sh
+	./test/remotetest.sh
 
 check: test
 

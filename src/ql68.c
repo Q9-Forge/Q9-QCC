@@ -69,6 +69,7 @@ static int rAttRev[QL_ROF];
 static int rEdition[QL_ROF];
 static int rStat[QL_ROF];    /* uninitialisierte Daten (ds im vsect) */
 static int rIDat[QL_ROF];    /* initialisierte Daten (dc im vsect)   */
+static int rRem[QL_ROF];     /* reservierte FERNdaten (ds im vsect remote) */
 static int rCod[QL_ROF];
 static int rStk[QL_ROF];
 static int rEntry[QL_ROF];
@@ -87,6 +88,7 @@ static int rLocalN[QL_ROF];
 static int bCode[QL_ROF];    /* Modulabstand des Codes            */
 static int bUninit[QL_ROF];  /* Datenabstand der ds-Daten         */
 static int bInit[QL_ROF];    /* Datenabstand der dc-Daten         */
+static int bRemote[QL_ROF];  /* Datenabstand der Ferndaten        */
 static int bIDataMod[QL_ROF];/* Modulabstand der dc-Daten         */
 
 /* Der Vorspann auf den Datenzeiger. Bei einem Programm (mod_exec) zeigt
@@ -325,8 +327,14 @@ static int rofParse(int at0)
 	rStk[k] = be32(at0 + 32);
 	rEntry[k] = be32(at0 + 36);
 	rTrap[k] = be32(at0 + 40);
-	if (be32(at0 + 44) != 0 || be32(at0 + 48) != 0)
-		fatal("Remote-Daten sind noch nicht gemessen", "");
+	/* remotestatsiz -- reservierte FERNdaten. Sie zaehlen nicht gegen die
+	   64-KB-Grenze und liegen im Datenbereich HINTER den initialisierten
+	   Daten (an l68 gemessen, s. das Layout weiter unten).
+	   remoteidatsiz (Offset 48) bleibt ungemessen: dafuer gibt es in
+	   dieser Kette keinen Aufrufer, und qr68 erzeugt es nicht. */
+	rRem[k] = be32(at0 + 44);
+	if (be32(at0 + 48) != 0)
+		fatal("remote INITIALISIERTE Daten sind noch nicht gemessen", "");
 	if (be32(at0 + 52) != 0)
 		fatal("Debuginformationen sind noch nicht gemessen", "");
 
@@ -769,6 +777,8 @@ static void applyLocalRefs(int k)
 			base = bCode[k];
 		else if (type & 1)
 			base = bInit[k];       /* initialisierte Daten */
+		else if (type & 2)
+			base = bRemote[k];     /* reservierte FERNdaten */
 		else
 			base = bUninit[k];     /* reservierte Daten     */
 		/* Bit 6: der Wert geht ABGEZOGEN ein. So entsteht die
@@ -1032,6 +1042,8 @@ static void addGlobals(int k)
 			symAdd(&inBuf[nameAt], bInit[k] + v, t);
 		else if (t == 0)
 			symAdd(&inBuf[nameAt], bUninit[k] + v, t);
+		else if (t == 2)
+			symAdd(&inBuf[nameAt], bRemote[k] + v, t);
 		else if (t == 6)
 			symAdd(&inBuf[nameAt], v, t);
 		else
@@ -1048,6 +1060,7 @@ static void emit(void)
 	int irefAt;
 	int totalUninit;
 	int totalInit;
+	int totalRemote;
 	int i;
 	int k;
 	int n;
@@ -1115,6 +1128,61 @@ static void emit(void)
 	jtBase = totalUninit + totalInit;
 	totalInit = totalInit + jtN * 6;
 
+	/* --- DIE FERNDATEN, hinter allem anderen -------------------------
+	   An l68 gemessen (ein psect mit 8000 nicht-remote, 8 Byte
+	   initialisiert, 70000 remote):
+	     blk  (nicht remote)  -> Datenoffset     0
+	     iblk (initialisiert) -> Datenoffset  8000
+	     rblk (remote)        -> Datenoffset  8008
+	     M$Mem = 78008
+	   Die Reihenfolge ist also: nicht-remote uninitialisiert,
+	   initialisiert, remote. Der Datenbereich ist derselbe wie ohne
+	   remote -- "remote" schaltet nur die 64-KB-Pruefung ab und schiebt
+	   die Ferndaten aus dem 16-Bit-Fenster heraus.
+
+	   DIE SPRUNGTABELLE BLEIBT AM ENDE DER INITIALISIERTEN DATEN, auch
+	   mit Ferndaten -- ebenfalls gemessen (zwei Eintraege, mit remote bei
+	   Datenoffset 4 und 10 direkt hinter 4 Byte initialisierten Daten,
+	   ohne remote bei 8004 und 8010). Deshalb steht dieser Block HINTER
+	   der Tabellengroesse. Im Zaehllauf ist jtN noch 0 und die Fernbasen
+	   sitzen zu tief; das macht nichts, weil nur der zweite Durchlauf
+	   schreibt und jtN dann feststeht. */
+	totalRemote = 0;
+	for (k = 0; k < rofN; k++) {
+		bRemote[k] = totalUninit + totalInit + totalRemote;
+		totalRemote = totalRemote + alignUp(rRem[k], optAlign);
+	}
+
+	/* --- DIE 64-KB-GRENZE DER NICHT-REMOTE-DATEN ------------------------
+	   Ein nicht-remoter vsect wird ueber "d16(a6)" angesprochen. Mit dem
+	   $8000-Vorspann deckt ein 16-Bit-Displacement genau die Offsets
+	   0..65535 ab (0 wird -$8000, 65535 wird $7fff) -- deshalb liegt die
+	   Grenze bei 64 KB und nicht bei 32.
+
+	   AN l68 GEMESSEN, nicht abgeleitet:
+	     65536 Byte  -> Modul, 65540 Byte -> Abbruch
+	     65000 + 400 initialisiert -> Modul
+	     65400 + 400 initialisiert -> Abbruch
+	   Es zaehlt also die SUMME aus reservierten und initialisierten Daten,
+	   und erlaubt ist "kleiner oder gleich 65536". Die Sprungtabelle liegt
+	   in den initialisierten Daten und zaehlt mit; deshalb steht die
+	   Pruefung HINTER ihrer Groesse. Die Grenze gilt auch bei -r= und ist
+	   von -M= unabhaengig (beides an l68 nachgemessen). l68 meldet
+	   "**** fatal - non-remote data allocation exceeds 64k bytes".
+
+	   WARUM DAS HIER FEHLTE UND WAS ES ANRICHTETE: ql68 hat den Fall
+	   klaglos gebaut -- 102 Byte Modul mit M$Mem = 70000, also ein Kopf,
+	   der stimmt, und Code, der seine Daten nicht erreichen kann. Genau
+	   diese Luecke hat beim Datenmodell-Versuch (2026-09-06) eine
+	   Machbarkeitsprobe gruen aussehen lassen, die mit l68 sofort
+	   aufgefallen waere. Eine Machbarkeitsprobe muss durch BEIDE Binder.
+
+	   REMOTE-Daten waeren ausgenommen ("non-remote" bei l68) -- ql68
+	   bricht bei ihnen ohnehin schon vorher ab, alles hier ist also
+	   nicht-remote. */
+	if (totalUninit + totalInit > 65536)
+		fatal("mehr als 64 KB nicht-remote Daten -- ein d16(a6) reicht nicht so weit", "");
+
 	/* --- Rohe Binaerausgabe: kein Kopf, kein Name, kein CRC. Der Code
 	   liegt ab Dateianfang, dahinter IData und IRefs wie sonst auch.
 	   Auch der $8000-Vorspann auf die Daten entfaellt -- den legt in
@@ -1153,8 +1221,11 @@ static void emit(void)
 		   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
 		   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
 		   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
-		symAdd("end", totalUninit + totalInit, 0);
-		symAdd("_enddata", totalUninit + totalInit, 0);
+		/* "end" bezeichnet das Ende des GANZEN Datenbereichs, Ferndaten
+		   eingeschlossen -- an l68 gemessen: mit 4 Byte initialisiert und
+		   8000 Byte remote steht end auf 8004. */
+		symAdd("end", totalUninit + totalInit + totalRemote, 0);
+		symAdd("_enddata", totalUninit + totalInit + totalRemote, 0);
 		for (k = 0; k < rofN; k++) {
 			applyLocalRefs(k);
 			applyExtRefs(k);
@@ -1205,7 +1276,7 @@ static void emit(void)
 	if (isDrvr) {
 		put32(0);              /* _mexec, spaeter */
 		put32(0);              /* _mexcpt, ggf. spaeter */
-		put32(totalUninit + totalInit);   /* _mdata */
+		put32(totalUninit + totalInit + totalRemote);   /* _mdata */
 	} else if (!isDesc) {
 		put32(0);              /* M$Exec, spaeter  */
 		/* M$Excpt, spaeter. Fehlt der siebte psect-Parameter, traegt
@@ -1214,7 +1285,7 @@ static void emit(void)
 		   M$Exec: Codebasis + utrap. An q9_cstart.a nachgemessen --
 		   utrap $180 im ROF, Codebasis $54, M$Excpt $1d4 im Modul. */
 		put32(0);
-		put32(totalUninit + totalInit);   /* M$Data  */
+		put32(totalUninit + totalInit + totalRemote);   /* M$Data  */
 		put32(rStk[rofRoot] + optStackAdd);      /* M$Stack */
 		put32(0);                         /* M$IData, spaeter */
 		put32(0);                         /* M$IRefs, spaeter */
@@ -1329,8 +1400,8 @@ static void emit(void)
 	   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
 	   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
 	   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
-	symAdd("end", totalUninit + totalInit, 0);
-	symAdd("_enddata", totalUninit + totalInit, 0);
+	symAdd("end", totalUninit + totalInit + totalRemote, 0);
+	symAdd("_enddata", totalUninit + totalInit + totalRemote, 0);
 
 	for (k = 0; k < rofN; k++) {
 		applyLocalRefs(k);

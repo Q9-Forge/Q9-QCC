@@ -696,3 +696,60 @@ dort begrenzt schon `QL_IN` das Ganze auf 512-KB-Eingaben, und jedes
 zusätzliche Feld wächst 1:1 ins Modul, weil QCCs Backend genullte Felder in
 den *initialisierten* Datenbereich legt. Dasselbe Muster hatten `QL_IN` und
 `QL_OUT` schon.
+
+## Die 64-KB-Grenze der nicht-remote-Daten — vorher gefehlt
+
+**2026-09-07.** l68 lehnt mehr als 64 KB nicht-remote Daten ab
+(`**** fatal - non-remote data allocation exceeds 64k bytes`). **ql68 hat
+den Fall klaglos gebaut**: 102 Byte Modul mit `M$Mem = 70000` — ein Kopf,
+der stimmt, und Code, der seine Daten nicht erreichen kann.
+
+Der Grund für die Grenze ist die Adressierung: ein nicht-remoter `vsect`
+wird über `d16(a6)` angesprochen, und mit dem `$8000`-Vorspann deckt ein
+16-Bit-Displacement genau die Offsets 0…65 535 ab. Deshalb **64 KB und
+nicht 32**.
+
+An l68 gemessen, nicht übernommen:
+
+| reserviert | initialisiert | l68 |
+|---:|---:|---|
+| 65 536 | 0 | Modul |
+| 65 540 | 0 | Abbruch |
+| 65 000 | 400 | Modul |
+| 65 400 | 400 | Abbruch |
+
+Es zählt also die **Summe**, und erlaubt ist „kleiner oder gleich 65 536".
+Die Sprungtabelle liegt in den initialisierten Daten und zählt mit. Die
+Grenze gilt auch bei `-r=` und ist von `-M=` unabhängig — beides
+nachgemessen.
+
+**Diese Lücke hat den Datenmodell-Versuch vom 2026-09-06 in die Irre
+geführt:** eine 400-KB-Machbarkeitsprobe sah grün aus, weil sie mit ql68
+gebunden wurde. Mit l68 wäre sie sofort aufgefallen. Eine
+Machbarkeitsprobe muss durch **beide** Binder. `test/datalimit.sh` prüft
+jetzt genau an der Grenze — 65 536 muss byteidentisch durchgehen, 65 540
+muss auf beiden Seiten abbrechen.
+
+## Ferndaten (`vsect remote`) — jetzt gebunden
+
+Vorher lehnte ql68 sie mit „noch nicht gemessen" ab. Gemessen ist jetzt
+alles, was dafür gebraucht wird:
+
+| | an l68 gemessen |
+|---|---|
+| Reihenfolge im Datenbereich | nicht-remote uninitialisiert, **dann** initialisiert, **dann** remote |
+| Beispiel 8000 / 8 / 70 000 | Offsets 0 / 8000 / 8008, `M$Mem` 78 008 |
+| `M$Mem` | Summe aller drei — `remote` ändert die Größe **nicht** |
+| `end` / `_enddata` | Ende des **ganzen** Bereichs, Ferndaten eingeschlossen |
+| Sprungtabelle (`-a`) | bleibt am Ende der **initialisierten** Daten, auch mit Ferndaten (Einträge bei Offset 4 und 10 hinter 4 Byte initialisierten Daten) |
+| Typworte | Symbol `$0002`, Referenz Bit 1 |
+
+`remote` schaltet also nur die 64-KB-Prüfung ab und schiebt die Ferndaten
+aus dem 16-Bit-Fenster heraus; der Datenbereich bleibt derselbe.
+
+Remote **initialisierte** Daten (`remoteidatsiz`) bleiben abgelehnt — kein
+Aufrufer, und qr68 erzeugt sie nicht.
+
+`test/remotetest.sh` hält vier Fälle gegen l68, darunter einen 70-KB-
+Fernblock (ohne `remote` unmöglich) und einen Fall **ohne** Ferndaten, der
+unverändert byteidentisch bleiben muss. Alle vier gleich.
