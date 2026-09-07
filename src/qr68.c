@@ -111,7 +111,11 @@ extern void exit(int code);
 #define QR_POOL    524288
 #define QR_POOLHASH  4096
 #define QR_PENT     32768
-#define QR_SRC   16777216
+/* 2026-09-07 von 16 auf 32 MB: QCCs Backend als 68k-Modul zu bauen erzeugt
+   eine Assemblerquelle von 20,7 MB (277.744 Zeilen) -- das ist die groesste
+   Quelle, die diese Kette bisher durch qr68 schickt. Gemessen, nicht
+   geschaetzt. Die Zielgroessen darunter bleiben unberuehrt. */
+#define QR_SRC   33554432
 #define QR_SYM      16384
 #define QR_SYMHASH   4096
 #define QR_CODE  16777216
