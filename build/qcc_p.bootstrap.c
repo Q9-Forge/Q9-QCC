@@ -93,6 +93,15 @@ static int  tcStructFieldCount[16];
 static char tcStructFieldNames[16][16][32];
 static TCType tcStructFieldTypes[16][16];
 static int  tcStructFieldOffset[16][16];
+
+
+
+
+
+
+
+ 
+
 static int  tcStructFieldArrayLen[16][16];  
 
  
@@ -320,11 +329,27 @@ static int  tcGotoLabel[512];
 static char tcGotoDefined[512];   
 static char tcGotoUsed[512];      
 static int  tcGotoCount = 0;
-static int tcCtrlTop[64];
-static int tcCtrlEnd[64];
-static int tcCtrlCont[64];
-static int tcCtrlExtra[64];
-static char tcCtrlKind[64];                
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+static int tcCtrlTop[128];
+static int tcCtrlEnd[128];
+static int tcCtrlCont[128];
+static int tcCtrlExtra[128];
+static char tcCtrlKind[128];       
 static int  tcCtrlDepth = 0;
 
 
@@ -383,7 +408,7 @@ static void tcErrAt(const char* at) {
 	fprintf(stderr, "qcc: %d:%d: ", line, (int)(at - lineStart) + 1);
 }
 static void tcPushCtrl(char kind, int top, int cont, int end, int extra) {
-	if (tcCtrlDepth >= 64) { actionErrors++; tcErrAt(parserActionAt); fprintf(stderr, "control nesting too deep\n"); return; }
+	if (tcCtrlDepth >= 128) { actionErrors++; tcErrAt(parserActionAt); fprintf(stderr, "control nesting too deep\n"); return; }
 	tcCtrlKind[tcCtrlDepth] = kind;
 	tcCtrlTop[tcCtrlDepth] = top;
 	tcCtrlCont[tcCtrlDepth] = cont;
@@ -546,6 +571,42 @@ static int tcIsTruthy(TCType t) { return t.pointers != 0 || t.base == 'b' || t.b
 static TCType tcPointerTo(TCType t) { if (t.pointers < 255) t.pointers++; else actionErrors++; return t; }
 static TCType tcPointee(TCType t) { if (t.pointers) t.pointers--; else actionErrors++; return t; }
 static char tcTypeTag(TCType t) { return t.pointers ? 'p' : (t.base == 'c' || t.base == 'b') ? t.base : 'i'; }
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+static void tcEmitElemIndexStep(TCType t) {
+	if (t.base == 's' && !t.pointers)
+		printf("IPADDN %d\n", tcStructByteSize[t.structId - 1]);
+	else
+		printf("PTRINDEX %c\n", tcTypeTag(t));
+}
+
+static void tcEmitFieldIndexStep(int sid, int fi) {
+	if (tcIsPointer(tcStructFieldTypes[sid][fi])) printf("IPADDN %d\n", 8);
+	else printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+}
 static TCType tcPromoteInteger(TCType a, TCType b) { return tcMakeType(a.base == 'u' || b.base == 'u' ? 'u' : 'i', 0); }
 static TCType tcLocalType(int slot) { return slot >= 0 && slot < tcLocalCount ? tcLocalTypes[slot] : tcMakeType('i', 0); }
 static TCType tcGlobalType(int slot) { return slot >= 0 && slot < tcGlobalCount ? tcGlobalTypes[slot] : tcMakeType('i', 0); }
@@ -2170,7 +2231,8 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
@@ -2206,7 +2268,8 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
@@ -2281,7 +2344,8 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
@@ -2393,7 +2457,7 @@ void tc_addressref(const char* start, const char* end) {
 			if (tcLocalArrayLen[slot]) { tcCheckConstIndex(name, end, tcLocalArrayLen[slot]); printf("PUSHADDR L %d\n", slot); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADP %d\n", slot); }
 			else { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; return; }
-			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
+			tcEmitElemIndexStep(valueType); tcTypePush(tcPointerTo(valueType)); return;
 		}
 		
 
@@ -2410,7 +2474,7 @@ void tc_addressref(const char* start, const char* end) {
 			if (tcGlobalArrayLen[global]) { tcCheckConstIndex(name, end, tcGlobalArrayLen[global]); printf("PUSHADDR G %s\n", globalName); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADGP %s\n", globalName); }
 			else { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; return; }
-			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
+			tcEmitElemIndexStep(valueType); tcTypePush(tcPointerTo(valueType)); return;
 		}
 		printf("ADDRG %s\n", globalName); tcTypePush(tcPointerTo(valueType)); return;
 	}
@@ -2756,7 +2820,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
 		} else if (tcStructFieldArrayLen[sid][fi] > 0) {
 			tcErrAt(start); fprintf(stderr, "cannot assign to array field\n"); actionErrors++;
 		}
@@ -2826,7 +2890,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -2901,7 +2965,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -3700,8 +3764,17 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		if (ft.base == 's' || ft.base == 'v') {
 			tcErrAt(parserActionAt); fprintf(stderr, "struct field type not supported in this version\n"); actionErrors++; return -1;
 		}
-		if (tcIsPointer(ft) && tcStructBuildFieldArrayLen[i] > 0) {
-			tcErrAt(parserActionAt); fprintf(stderr, "pointer arrays as struct field not supported in this version\n"); actionErrors++; return -1;
+		
+
+
+
+
+
+
+
+ 
+		if (tcIsPointer(ft) && tcStructBuildFieldRowLen[i] > 0) {
+			tcErrAt(parserActionAt); fprintf(stderr, "two-dimensional pointer arrays as struct field not supported in this version\n"); actionErrors++; return -1;
 		}
 		elemSize = tcIsPointer(ft) ? 8 : (ft.base == 'c' || ft.base == 'b') ? 1 : 4;
 		align = elemSize;

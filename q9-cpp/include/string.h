@@ -15,4 +15,16 @@ extern size_t strlen(const char*);
 extern char* strchr(const char*, int);
 extern int strncmp(const char*, const char*, size_t);
 
+/* Dazu, was qcc_backend_c.cpp ruft (2026-09-07 nachgezaehlt: strcmp
+   154-mal, strncpy 9-mal, memset 6-mal, strtok und strrchr je zweimal,
+   strcat und memcpy je einmal). Damit ist das Backend das erste Werkzeug
+   der Kette, das mehr als die drei Parser-Funktionen braucht. */
+extern int strcmp(const char*, const char*);
+extern char* strcat(char*, const char*);
+extern char* strncpy(char*, const char*, size_t);
+extern char* strrchr(const char*, int);
+extern char* strtok(char*, const char*);
+extern void* memset(void*, int, size_t);
+extern void* memcpy(void*, const void*, size_t);
+
 #endif

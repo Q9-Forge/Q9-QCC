@@ -52,6 +52,56 @@ QCC currently covers only a small, executable core of area 1.
 | Function pointers | open | high |
 | `void` and `void *` | open | high |
 | `struct`, `union`, `enum` | partial (struct with mixed scalar field types done 2026-07-24, `enum` done; `union`, array/pointer fields, and nested structs open) | very high |
+
+**Addendum 2026-09-07 — pointer arrays as struct fields now work.**
+`char* args[6]` inside a struct used to be rejected ("pointer arrays as
+struct field not supported in this version"). `qcc_backend_c.cpp` needs it:
+its `Instr` structure holds an IR instruction's arguments that way, across
+106 access sites. While that was missing, the backend was not
+self-compilable and therefore **could never run on the 68030** — the only
+link in the chain with that gap.
+
+The crux was the **stride**: `IPADD` scales by the size of the type tag,
+and a pointer is four bytes on the 68k — but occupies eight inside a struct
+(`TC_PTR_SLOT`, so the same offset stays valid for ARM64). Pointer arrays
+therefore get their step in **bytes** (`IPADDN 8`), the same device the 2D
+rows already used. The rule lives in *one* function
+(`tcEmitFieldIndexStep`) instead of at the six emission sites — three
+reading, three writing.
+
+**Still rejected, with a proper diagnostic** (the chain needs none of it,
+and a message beats a wrong stride): `arr[i].field[j]`, indexing *through*
+a scalar pointer field (`s.ptr[j]`), and two-dimensional pointer arrays as
+a field.
+
+**Addendum 2026-09-07 — a SILENT wrong-code bug in `&arr[i]`, fixed.**
+`tc_addressref` emitted `PTRINDEX` with the type tag for the address of a
+struct array element, and `tcTypeTag` yields `'i'` for a struct — a stride
+of **four bytes** instead of the struct size. For an 80-byte struct,
+`&arr[1]` pointed four bytes past `arr[0]`. It only surfaced with the
+backend on the 68030, which fetches instructions via
+`insP = &ir[irCount]`: they all landed on top of each other, visible as an
+`op` field reading `FUNCLOADPUSHCMPLJZ` in four-character steps. The test
+corpus contained **no `&arr[i]` on a struct array at all**; cases 27 and 28
+in `tools/test_struct_68k.sh` now cover it, with discriminating expected
+values (a wrong stride leaves them at 0).
+
+**STILL OPEN, found 2026-09-07 and NOT fixed:** copying a whole struct
+through a **pointer** (`struct S *p; v = p[i];`) emits
+`LOADP / PTRINDEX i / LOADIND i` — a four-byte stride *and* a `LOADIND`
+where the address is wanted. This is the same shape that was repaired for
+the ARRAY case (`v = arr[i]`) on 2026-09-01; the pointer case was left
+behind. The correct form is `LOADP / IPADDN <size>` without `LOADIND`. The
+chain does not use the pattern (the backend accesses via `insP->…`), so it
+is recorded here only. `p[i].field` for reading and writing is correct
+(`IPADDN 8`), as is `v = arr[i]`.
+
+**Addendum 2026-09-07 — the nesting limit was four too small.**
+`TC_MAX_CTRL` (previously the literal 64 at six places) is now 128.
+Measured: `qcc_backend_c.cpp` needs **68** — its opcode dispatch is a long
+`else if` chain, and every link is one level deeper in the model. It fails
+at 67 and passes at 68. Nesting too deeply remains a real limit *with a
+diagnostic*.
 | `typedef` | done (scalar/pointer aliases, `typedef struct Name Alias;`, `typedef struct { ... } Name;` inline anonymous since 2026-07-24) | — |
 | Bitfields and `_Alignas`/`_Alignof` | open | medium |
 | Variable length arrays | open | medium |

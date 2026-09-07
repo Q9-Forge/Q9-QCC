@@ -50,6 +50,58 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
 | `struct`, `union`, `enum` | teilweise (struct mit gemischten skalaren Feldtypen erledigt 2026-07-24, `enum` erledigt; `union`, Array-/Pointer-Felder und verschachtelte structs offen) | sehr hoch |
+
+**Nachtrag 2026-09-07 — Zeigerarrays als Strukturfeld gehen jetzt.**
+`char* args[6]` in einer Struct war bis dahin abgelehnt („pointer arrays as
+struct field not supported in this version"). Gebraucht hat es
+`qcc_backend_c.cpp`: seine `Instr`-Struktur hält die Argumente einer
+IR-Anweisung so, mit 106 Zugriffsstellen. Solange das fehlte, war das
+Backend nicht selbst übersetzbar und konnte deshalb **nie auf dem 68030
+laufen** — das einzige Glied der Kette mit dieser Lücke.
+
+Der Kern war die **Schrittweite**: `IPADD` skaliert mit der Größe des
+Typtags, und ein Zeiger ist auf dem 68k vier Byte — im Struct belegt er
+aber acht (`TC_PTR_SLOT`, damit dasselbe Offset auch für ARM64 stimmt).
+Für Zeigerarrays wird der Schritt deshalb in **Byte** angegeben
+(`IPADDN 8`), dasselbe Mittel, das die 2D-Zeilen schon nutzten. Die Regel
+steht in *einer* Funktion (`tcEmitFieldIndexStep`) statt an den sechs
+Emissionsstellen — drei lesend, drei schreibend.
+
+**Weiterhin abgelehnt und sauber gemeldet** (die Kette braucht nichts
+davon, und eine Meldung ist besser als eine falsche Schrittweite):
+`arr[i].feld[j]` (Structschritt und Feldschritt in einem Ausdruck),
+Indizierung *durch* ein skalares Zeigerfeld (`s.ptr[j]`), und
+zweidimensionale Zeigerarrays als Feld.
+
+**Nachtrag 2026-09-07 — ein STILLER Falschcode-Fehler bei `&arr[i]`,
+behoben.** `tc_addressref` emittierte für die Adresse eines
+Struct-Array-Elements `PTRINDEX` mit dem Typtag, und `tcTypeTag` gibt für
+eine Struct `'i'` — also **vier Byte Schrittweite** statt der
+Strukturgröße. Bei einer 80 Byte großen Struct zeigte `&arr[1]` vier Byte
+hinter `arr[0]`. Aufgefallen ist es erst am Backend auf dem 68030: es holt
+seine Anweisungen mit `insP = &ir[irCount]`, und alle landeten
+übereinander — sichtbar als ein `op`-Feld `FUNCLOADPUSHCMPLJZ` aus je vier
+Zeichen. Im Testbestand kam **kein einziges `&arr[i]` auf ein
+Struct-Array** vor; jetzt prüfen es die Fälle 27 und 28 in
+`tools/test_struct_68k.sh`, und ihre Sollwerte diskriminieren (mit falscher
+Schrittweite bleiben sie auf 0).
+
+**NOCH OFFEN, gefunden am 2026-09-07 und NICHT behoben:** eine ganze Struct
+über einen **Zeiger** zu kopieren (`struct S *p; v = p[i];`) erzeugt
+`LOADP / PTRINDEX i / LOADIND i` — vier Byte Schrittweite *und* ein
+`LOADIND`, wo die Adresse gebraucht wird. Das ist dieselbe Bauform, die für
+den ARRAY-Fall (`v = arr[i]`) am 2026-09-01 repariert wurde; der
+Zeiger-Fall blieb dabei stehen. Richtig wäre `LOADP / IPADDN <Größe>` ohne
+`LOADIND`. Die Kette benutzt das Muster nicht (das Backend greift über
+`insP->…` zu), deshalb ist es hier nur notiert. `p[i].feld` lesend und
+schreibend ist dagegen korrekt (`IPADDN 8`), ebenso `v = arr[i]`.
+
+**Nachtrag 2026-09-07 — die Verschachtelungsgrenze war um vier zu knapp.**
+`TC_MAX_CTRL` (vorher das Literal 64 an sechs Stellen) ist jetzt 128.
+Gemessen: `qcc_backend_c.cpp` braucht **68** — seine Opcode-Verteilung ist
+eine lange `else if`-Kette, und jedes Glied ist im Modell eine Ebene tiefer.
+Mit 67 kippt es, mit 68 läuft es durch. Zu tief zu schachteln bleibt eine
+echte Grenze *mit Meldung*.
 | `typedef` | erledigt (Skalar-/Pointer-Aliase, `typedef struct Name Alias;`, `typedef struct { ... } Name;` anonym inline seit 2026-07-24) | — |
 | Bitfelder und `_Alignas`/`_Alignof` | offen | mittel |
 | variable length arrays | offen | mittel |
