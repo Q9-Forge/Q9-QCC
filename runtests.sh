@@ -361,7 +361,14 @@ if command -v python3 >/dev/null 2>&1; then
 	fi
 	if cc -w -o build/qcc_p Data/qcc_p.c 2>/dev/null; then
 		tcfail=0
+		# Die Zahl der geprueften Programme wird GEZAEHLT, nicht eingetippt.
+		# Vorher stand in der Erfolgsmeldung eine feste "150", waehrend
+		# tatsaechlich 192 Programme liefen -- die Beschriftung war um 39
+		# auseinandergelaufen und haette es weiter getan. Eine Zahl im
+		# Testbericht, die niemand nachrechnet, ist schlimmer als keine.
+		tccount=0
 		tc_check() {
+			tccount=$((tccount + 1))
 			got=$(build/qcc_p "$1" 2>/dev/null | python3 tools/qccvm.py 2>/dev/null)
 			exp=$(printf '%b' "$2")
 			if [ "$got" != "$exp" ]; then
@@ -1059,15 +1066,23 @@ if command -v python3 >/dev/null 2>&1; then
 		# 2026-07-25 (Selfhosting L2): Pointer-Felder in struct -- IMMER 8 Byte
 		# Groesse/Ausrichtung (siehe tcRegisterStruct-Kommentar), damit dasselbe
 		# frontend-berechnete Offset fuer 68k (4-Byte-Pointer) UND ARM64 (8-Byte-
-		# Pointer) gueltig bleibt. Direkte Indizierung DURCH ein Pointer-Feld
-		# (p.field[i]) ist bewusst NICHT Teil dieser Version (wie zuvor bei
-		# Array-Feldern) -- Zugriff nur ueber eine Pointer-Zwischenvariable.
+		# Pointer) gueltig bleibt.
 		tc_check 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; char* t; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; t=p.text; putchar(t[0]); putchar(t[1]); putint(p.len); }' 'Hi2'
-		if build/qcc_p 'struct P{char* text;}; int main(){ struct P p; putint(p.text[0]); }' 2>&1 | grep -q 'scalar struct field cannot be indexed'; then
-			echo "ok    qcc: direkte Indizierung durch ein Pointer-Feld wird diagnostiziert (wie bei Array-Feldern zuvor)"
-		else
-			echo "FAIL  qcc: Diagnose fuer Indizierung eines Pointer-Felds fehlt"; tcfail=1; fail=1
-		fi
+		# 2026-09-07: DIREKTE Indizierung DURCH ein Pointer-Feld geht jetzt --
+		# vorher stand hier ein Test, der die Diagnose "scalar struct field
+		# cannot be indexed" VERLANGTE. Er hielt damit eine Grenze als
+		# Sollverhalten fest; mit der Umsetzung musste er umgedreht werden.
+		# Der Kern der Aenderung: die Aufrufer haben nur die ADRESSE des
+		# Feldes auf dem Stapel, gebraucht wird der Zeiger DARIN -- also erst
+		# LOADIND p, dann der Indexschritt (tcEmitPtrFieldIndex, eine
+		# Funktion fuer alle sechs Emissionsstellen). Auf echtem 68k prueft
+		# das tools/test_struct_68k.sh in den Faellen 29-34, lesend und
+		# schreibend, lokal und global, ueber "." und "->".
+		tc_check 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; putchar(p.text[0]); putchar(p.text[1]); putint(p.len); }' 'Hi2'
+		tc_check 'struct P{char* text;}; int main(){ struct P p; char msg[4]; p.text=msg; p.text[0]=74; p.text[1]=75; putchar(msg[0]); putchar(msg[1]); }' 'JK'
+		tc_check 'struct P{int* v;}; int main(){ struct P p; int a[3]; int i; i=2; a[2]=41; p.v=a; putint(p.v[i]); p.v[i]=42; putint(a[2]); }' '41\n42'
+		# Ein SKALARES Feld ohne Zeigertyp bleibt undiskutierbar -- die
+		# Diagnose dafuer steht weiter oben und muss erhalten bleiben.
 		# arr[i].feld (2026-07-25): ein ARRAY von structs, per Laufzeit-Index adressiert,
 		# DANN Feldzugriff. Setzt den Allokations-Fix in tc_local/tc_localdecl voraus
 		# (frueher wurde fuer "struct Rec arr[N];" IMMER nur Platz fuer EIN Element
@@ -1157,7 +1172,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# Session) nie aufgefallen, da kein Test eine Indizierung/einen Aufruf als
 		# rechten Vergleichsoperanden hatte (nur links, z.B. "arr[i] != 0").
 		tc_check 'int main(){ char a[2]; char b[2]; a[0]=65; b[0]=65; if (a[0] != b[0]) { putint(0); } else { putint(1); } b[0]=66; if (a[0] != b[0]) { putint(2); } else { putint(3); } }' '1\n2'
-		[ $tcfail -eq 0 ] && echo "ok    qcc: 150 Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
+		[ $tcfail -eq 0 ] && echo "ok    qcc: $tccount Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder inkl. direkter Indizierung DURCH sie, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
 	else
 		echo "FAIL  qcc: Data/qcc_p.c kompiliert nicht"; fail=1
 	fi
