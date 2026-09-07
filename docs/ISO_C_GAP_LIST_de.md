@@ -137,6 +137,29 @@ stattdessen bei `tcEmitPtrFieldIndex`. Wer es angeht, fängt bei
 Deklarator angewandt und am Zeilenende gelöscht werden (`const int a, b;`
 soll beide treffen).
 
+**Nachtrag 2026-09-07 — ein 2D-Array als Strukturfeld scheiterte STILL.**
+Gewöhnliche 2D- und 3D-Arrays gehen; ein 2D-Array *im struct*
+(`struct S { char t[4][8]; }`) verhielt sich so:
+
+| Form | vorher | jetzt |
+|---|---|---|
+| Deklaration, `sizeof` | geht | geht |
+| `z = sp->t[i]` (Zeiger auf Zeile i) | geht | geht |
+| `s.t[i]` über den Punkt | gemeldet („only supported via `->`") | unverändert |
+| **`s.t[i][j]` / `sp->t[i][j]`** | **stilles `FAIL`, keine Meldung** | **gemeldet** |
+
+Die Ursache war die Grammatik: `member [ index ]` — also genau **ein**
+optionaler Index nach dem Feld. Zwei Indizes konnte sie nicht lesen, und
+ein Parse-Abbruch hat keine Meldung. Jetzt steht dort
+`member [ index { index } ]`, **nicht** um die Form zu können, sondern um
+sie ablehnen zu können: `chained indexing of a struct field (field[i][j])
+not supported in this version`.
+
+**Umgesetzt ist sie weiterhin nicht** — dafür bräuchte es zwei Indizes in
+*einem* Ausdruck, also einen zweiten Index-Scratch nach dem Muster von
+`tcEmitPointerIndexChain`. Das ist **dieselbe Maschinerie**, die auch
+`arr[i].feld[j]` braucht: ein Umbau würde beide Lücken schließen.
+
 **Nachtrag 2026-09-07 — die Verschachtelungsgrenze war um vier zu knapp.**
 `TC_MAX_CTRL` (vorher das Literal 64 an sechs Stellen) ist jetzt 128.
 Gemessen: `qcc_backend_c.cpp` braucht **68** — seine Opcode-Verteilung ist
