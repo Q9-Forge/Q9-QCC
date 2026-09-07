@@ -28,5 +28,9 @@ extern int printf(const char*, ...);
 extern int fputc(int, FILE*);
 extern int fputs(const char*, FILE*);
 extern int sprintf(char*, const char*, ...);
+/* fgets braucht das Backend fuer seine IR-Eingabe (eine Zeile je
+   Anweisung), ferror fuer die Kontrolle nach dem Schreiben. */
+extern char* fgets(char*, int, FILE*);
+extern int ferror(FILE*);
 
 #endif

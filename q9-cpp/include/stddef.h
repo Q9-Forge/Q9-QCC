@@ -19,4 +19,11 @@
    Bootstrap-Teilmenge kennt kein eigenes vorzeichenloses Groessenmodell. */
 typedef unsigned int size_t;
 
+/* NULL fehlte hier und ist 2026-09-07 dazugekommen: qcc_backend_c.cpp
+   braucht es (strtok(NULL, ...)), und ohne die Definition meldet QCC
+   "unknown variable NULL" -- richtig gemeldet, aber an der falschen
+   Stelle gesucht. Die 0 genuegt: die Teilmenge kennt kein (void*)0, und
+   auf dem 68k wie am Host ist ein Nullzeiger die Null. */
+#define NULL 0
+
 #endif

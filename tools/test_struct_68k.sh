@@ -22,8 +22,8 @@ KEEP=0
 [ "${1:-}" = "-k" ] && KEEP=1
 
 # id -> erwarteter Wert. Reihenfolge = Reihenfolge im Testprogramm.
-EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
-EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1)
+EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28)
+EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 60 55 56)
 EXPECT_WHAT=(
 	"Zuweisung lokal -> lokal"
 	"Initialisierung aus Variable"
@@ -45,6 +45,14 @@ EXPECT_WHAT=(
 	"&& (tcTypePop4-Pfad)"
 	"Struct aus 2D-Array lesen"
 	"2D-Array-Struct als Argument"
+	"Zeigerarray-Feld, fester Index"
+	"Zeigerarray-Feld, variabler Index"
+	"Zeigerarray-Feld, Schreiben mit variablem Index"
+	"Zeigerarray-Feld ueber -> (Zeiger auf Struct)"
+	"Zeigerarray-Feld einer globalen Struct"
+	"Groesse mit Zeigerarray-Feld (Layout)"
+	"&arr[i] auf Struct-Array, global (Schrittweite)"
+	"&arr[i] auf Struct-Array, lokal (Schrittweite)"
 )
 
 die() { echo "FEHLER: $*" >&2; exit 2; }

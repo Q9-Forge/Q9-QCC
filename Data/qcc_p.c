@@ -92,6 +92,16 @@ static int  tcStructFieldCount[MAX_STRUCTS];
 static char tcStructFieldNames[MAX_STRUCTS][MAX_STRUCT_FIELDS][32];
 static TCType tcStructFieldTypes[MAX_STRUCTS][MAX_STRUCT_FIELDS];
 static int  tcStructFieldOffset[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+/* EIN Zeiger belegt in einer Struct IMMER acht Byte -- unabhaengig vom
+   Ziel-Backend (68k 4, ARM64 8), damit ein einzelnes frontend-berechnetes
+   Offset fuer beide gueltig bleibt; die ausfuehrliche Begruendung steht im
+   Layout-Kommentar bei tc_structend. Die Zahl steht HIER, weil sie an zwei
+   voneinander abhaengigen Stellen gebraucht wird: beim Layout und bei der
+   Indexschrittweite (tcEmitFieldIndexStep). Als zwei getrennte Literale
+   waere das eine Invariante an zwei Orten -- genau die Sorte Fehler, die
+   sich hier schon einmal eingeschlichen hat. */
+#define TC_PTR_SLOT 8
+
 static int  tcStructFieldArrayLen[MAX_STRUCTS][MAX_STRUCT_FIELDS]; /* 0=Skalar, sonst Elementzahl (bei 2D: GESAMT) */
 /* Nur bei zweidimensionalen Feldern != 0: Laenge EINER Zeile. "x.feld[i]"
    liefert dann base + i*Zeilenlaenge als ZEIGER statt eines Elementwerts. */
@@ -330,11 +340,28 @@ static int  tcGotoLabel[MAX_GOTO_LABELS];    /* zugeordnete IR-Labelnummer */
 static char tcGotoDefined[MAX_GOTO_LABELS];  /* Marke "name:" gesehen */
 static char tcGotoUsed[MAX_GOTO_LABELS];     /* "goto name;" gesehen */
 static int  tcGotoCount = 0;
-static int tcCtrlTop[64];
-static int tcCtrlEnd[64];
-static int tcCtrlCont[64];
-static int tcCtrlExtra[64];
-static char tcCtrlKind[64];               /* 'i'=if, 'w'=while, 'f'=for, 'd'=do-while, 's'=switch */
+/* Die Verschachtelungstiefe der Kontrollstrukturen. Die Zahl stand vorher
+   als Literal 64 an SECHS Stellen (fuenf Felder und die Pruefung) -- eine
+   Invariante an sechs Orten. Angehoben 2026-09-07, weil
+   qcc_backend_c.cpp daran scheiterte: seine Opcode-Verteilung ist eine
+   lange "else if"-Kette, und jedes Glied ist im Modell eine Ebene tiefer.
+
+   DIE ZAHL IST GEMESSEN, nicht geschaetzt: mit 67 kippt qcc_backend_c.cpp,
+   mit 68 laeuft es durch -- die alten 64 waren um VIER zu knapp. Gesucht
+   wurde binaer zwischen 64 und 256. Hier steht 128, also nicht der
+   Grenzwert: eine Grenze auf dem gemessenen Bedarf reisst beim naechsten
+   zusaetzlichen else-if. Der Platz kostet 128 * 17 = 2176 Byte, und da
+   QCC sich selbst uebersetzt, wandert das in sein Modul.
+
+   Zu tief zu schachteln bleibt eine echte Grenze mit Meldung -- das ist
+   Absicht: an einer Modellgrenze abzubrechen ist besser als zu raten. */
+#define TC_MAX_CTRL 128
+
+static int tcCtrlTop[TC_MAX_CTRL];
+static int tcCtrlEnd[TC_MAX_CTRL];
+static int tcCtrlCont[TC_MAX_CTRL];
+static int tcCtrlExtra[TC_MAX_CTRL];
+static char tcCtrlKind[TC_MAX_CTRL];      /* 'i'=if, 'w'=while, 'f'=for, 'd'=do-while, 's'=switch */
 static int  tcCtrlDepth = 0;
 /* switch/case: gestapelte Case-Label (case A: case B: body) unterstuetzt, aber KEIN
    Fallthrough MIT Code zwischen verschiedenen Bodies (jeder Body endet implizit wie mit
@@ -394,7 +421,7 @@ static void tcErrAt(const char* at) {
 	fprintf(stderr, "qcc: %d:%d: ", line, (int)(at - lineStart) + 1);
 }
 static void tcPushCtrl(char kind, int top, int cont, int end, int extra) {
-	if (tcCtrlDepth >= 64) { actionErrors++; tcErrAt(parserActionAt); fprintf(stderr, "control nesting too deep\n"); return; }
+	if (tcCtrlDepth >= TC_MAX_CTRL) { actionErrors++; tcErrAt(parserActionAt); fprintf(stderr, "control nesting too deep\n"); return; }
 	tcCtrlKind[tcCtrlDepth] = kind;
 	tcCtrlTop[tcCtrlDepth] = top;
 	tcCtrlCont[tcCtrlDepth] = cont;
@@ -557,6 +584,42 @@ static int tcIsTruthy(TCType t) { return t.pointers != 0 || t.base == 'b' || t.b
 static TCType tcPointerTo(TCType t) { if (t.pointers < 255) t.pointers++; else actionErrors++; return t; }
 static TCType tcPointee(TCType t) { if (t.pointers) t.pointers--; else actionErrors++; return t; }
 static char tcTypeTag(TCType t) { return t.pointers ? 'p' : (t.base == 'c' || t.base == 'b') ? t.base : 'i'; }
+/* Der Indexschritt fuer ein ARRAY-FELD einer Struct.
+ *
+ * IPADD skaliert den Index mit der Groesse des TYPTAGS -- fuer 'p' sind das
+ * auf dem 68k vier Byte. Im Struct belegt ein Zeiger aber TC_PTR_SLOT (acht),
+ * damit dasselbe Offset auch fuer ARM64 stimmt. Fuer Zeigerarrays muss die
+ * Schrittweite deshalb in BYTE angegeben werden: IPADDN, dasselbe Mittel, das
+ * die 2D-Zeilen schon nutzen.
+ *
+ * Das steht als EINE Funktion und nicht sechsmal ausgeschrieben: die Regel
+ * gilt an drei lesenden und drei schreibenden Emissionsstellen, und eine
+ * Invariante, die an sechs Orten wiederholt wird, geht bei der naechsten
+ * Aenderung an einem davon verloren. */
+/* Der Indexschritt fuer "&arr[i]" auf ein ARRAY VON STRUCTS.
+ *
+ * PTRINDEX skaliert mit der Groesse des TYPTAGS, und tcTypeTag gibt fuer eine
+ * Struct 'i' -- also VIER Byte. Bei einer 80 Byte grossen Struct zeigt
+ * &arr[1] damit vier Byte hinter arr[0] statt achtzig. Das war ein STILLER
+ * Falschcode-Fehler (2026-09-07 gefunden): QCCs Backend legt seine
+ * IR-Anweisungen als "Instr ir[98304]" ab und holt sie mit
+ * "insP = &ir[irCount]" -- auf dem 68030 schrieben dadurch alle Anweisungen
+ * uebereinander, sichtbar als ein op-Feld "FUNCLOADPUSHCMPLJZ" aus je vier
+ * Zeichen. Im Korpus kam der Fall nie vor.
+ *
+ * Deshalb hier IPADDN mit der wirklichen Elementgroesse -- dasselbe Mittel
+ * wie bei den 2D-Zeilen und den Zeigerarray-Feldern. */
+static void tcEmitElemIndexStep(TCType t) {
+	if (t.base == 's' && !t.pointers)
+		printf("IPADDN %d\n", tcStructByteSize[t.structId - 1]);
+	else
+		printf("PTRINDEX %c\n", tcTypeTag(t));
+}
+
+static void tcEmitFieldIndexStep(int sid, int fi) {
+	if (tcIsPointer(tcStructFieldTypes[sid][fi])) printf("IPADDN %d\n", TC_PTR_SLOT);
+	else printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+}
 static TCType tcPromoteInteger(TCType a, TCType b) { return tcMakeType(a.base == 'u' || b.base == 'u' ? 'u' : 'i', 0); }
 static TCType tcLocalType(int slot) { return slot >= 0 && slot < tcLocalCount ? tcLocalTypes[slot] : tcMakeType('i', 0); }
 static TCType tcGlobalType(int slot) { return slot >= 0 && slot < tcGlobalCount ? tcGlobalTypes[slot] : tcMakeType('i', 0); }
@@ -2195,7 +2258,8 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
@@ -2231,7 +2295,8 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
@@ -2306,7 +2371,8 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\nLOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]), tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
+			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
 		}
 		if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
@@ -2423,7 +2489,7 @@ void tc_addressref(const char* start, const char* end) {
 			if (tcLocalArrayLen[slot]) { tcCheckConstIndex(name, end, tcLocalArrayLen[slot]); printf("PUSHADDR L %d\n", slot); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADP %d\n", slot); }
 			else { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; return; }
-			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
+			tcEmitElemIndexStep(valueType); tcTypePush(tcPointerTo(valueType)); return;
 		}
 		/* Eine skalare Struct liegt ebenfalls als Block vor (LARRAY, s.
 		   tc_localdecl), hat aber tcLocalArrayLen 0 -- ohne die zweite
@@ -2440,7 +2506,7 @@ void tc_addressref(const char* start, const char* end) {
 			if (tcGlobalArrayLen[global]) { tcCheckConstIndex(name, end, tcGlobalArrayLen[global]); printf("PUSHADDR G %s\n", globalName); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADGP %s\n", globalName); }
 			else { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; return; }
-			printf("PTRINDEX %c\n", tcTypeTag(valueType)); tcTypePush(tcPointerTo(valueType)); return;
+			tcEmitElemIndexStep(valueType); tcTypePush(tcPointerTo(valueType)); return;
 		}
 		printf("ADDRG %s\n", globalName); tcTypePush(tcPointerTo(valueType)); return;
 	}
@@ -2786,7 +2852,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
 		} else if (tcStructFieldArrayLen[sid][fi] > 0) {
 			tcErrAt(start); fprintf(stderr, "cannot assign to array field\n"); actionErrors++;
 		}
@@ -2856,7 +2922,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -2931,7 +2997,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
-			printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+			tcEmitFieldIndexStep(sid, fi);
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -3730,10 +3796,19 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		if (ft.base == 's' || ft.base == 'v') {
 			tcErrAt(parserActionAt); fprintf(stderr, "struct field type not supported in this version\n"); actionErrors++; return -1;
 		}
-		if (tcIsPointer(ft) && tcStructBuildFieldArrayLen[i] > 0) {
-			tcErrAt(parserActionAt); fprintf(stderr, "pointer arrays as struct field not supported in this version\n"); actionErrors++; return -1;
+		/* ZEIGERARRAYS ALS FELD gehen seit 2026-09-07 (vorher abgelehnt).
+		   Gebraucht hat sie qcc_backend_c.cpp: "char* args[6]" in seiner
+		   Instr-Struktur -- daran ist das Backend bis dahin gescheitert und
+		   konnte deshalb nie auf dem 68030 laufen. Ein Element belegt
+		   TC_PTR_SLOT Byte wie ein einzelnes Zeigerfeld; die Schrittweite
+		   beim Indizieren kommt aus tcEmitFieldIndexStep.
+		   ZWEIDIMENSIONAL bleibt abgelehnt: der 2D-Zweig der Zugriffe rechnet
+		   die Zeilengroesse mit 1 oder 4 Byte je Element aus, und lieber eine
+		   Meldung als still eine falsche Schrittweite. */
+		if (tcIsPointer(ft) && tcStructBuildFieldRowLen[i] > 0) {
+			tcErrAt(parserActionAt); fprintf(stderr, "two-dimensional pointer arrays as struct field not supported in this version\n"); actionErrors++; return -1;
 		}
-		elemSize = tcIsPointer(ft) ? 8 : (ft.base == 'c' || ft.base == 'b') ? 1 : 4;
+		elemSize = tcIsPointer(ft) ? TC_PTR_SLOT : (ft.base == 'c' || ft.base == 'b') ? 1 : 4;
 		align = elemSize;
 		size = tcStructBuildFieldArrayLen[i] > 0 ? elemSize * tcStructBuildFieldArrayLen[i] : elemSize;
 		offset = (offset + align - 1) & ~(align - 1);
