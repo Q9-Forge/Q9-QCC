@@ -85,6 +85,15 @@ foreach {marke modul} {QMARK q9_hq CMARK q9_hc EMARK -} {
         send -s "echo $marke\r"
         expect -re $prompt
         send -s "/dd/CMDS/$modul\r"
+        # Auf die SCHLUSSMARKE des Programms warten, nicht auf den Prompt
+        # (siehe hello68k.sh): ein Prompt aus dem Puffer trifft sofort.
+        expect {
+            -re {hello fertig}   { }
+            -re {Stack Overflow} { send_log "\nTEST: STACK OVERFLOW\n" }
+            -re {PMMU}           { send_log "\nTEST: PMMU\n" }
+            eof                  { send_log "\nTEST: EMULATOR WEG\n"; exit 1 }
+            timeout              { send_log "\nTEST: TIMEOUT\n"; exit 1 }
+        }
     }
     expect {
         -re $prompt          { }

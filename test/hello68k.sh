@@ -78,10 +78,16 @@ for {set i 0} {$i < 10 && !$li} {incr i} {
 }
 if {!$li} { send_log "\nTEST: LOGIN FAILED\n"; exit 1 }
 send -s "/dd/CMDS/q9_hello\r"
+# AUF DIE EIGENE AUSGABE WARTEN, NICHT AUF DEN PROMPT: der steht nach dem
+# Login noch im Puffer und trifft sofort -- dann killt der Escape das Modul,
+# bevor es etwas ausgibt. Genau das ist am 2026-09-07 einmal passiert (0 von
+# 14 Zeilen, beim Wiederholen wieder gruen). Die Schlussmarke kommt aus
+# hello.c.
 expect {
-    -re $prompt          { }
+    -re {hello fertig}   { }
     -re {Stack Overflow} { send_log "\nTEST: STACK OVERFLOW\n" }
     -re {PMMU}           { send_log "\nTEST: PMMU\n" }
+    eof                  { send_log "\nTEST: EMULATOR WEG\n"; exit 1 }
     timeout              { send_log "\nTEST: TIMEOUT\n"; exit 1 }
 }
 send "\x1d"
@@ -129,12 +135,13 @@ pruefe "realloc 1 7"
 pruefe "rueckgaben 1 33"
 pruefe "zurueck 33: fp 7 sieben 7"
 pruefe "fputs ohne Umbruch!"
+pruefe "hello fertig"
 if grep -q "TEST: " "$WORK/run.log"; then
 	echo "  Abbruch im Emulator:"
 	grep "TEST: " "$WORK/run.log" | sed 's/^/    /'
 	bad=$((bad + 1))
 fi
 echo
-echo "  $ok von 14 Zeilen richtig"
+echo "  $ok von 15 Zeilen richtig"
 [ "$bad" -eq 0 ] || echo "  (Log: $WORK/run.log)"
 exit $([ "$bad" -eq 0 ] && echo 0 || echo 1)
