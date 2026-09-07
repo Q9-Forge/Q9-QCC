@@ -106,6 +106,23 @@ static int  tcStructFieldArrayLen[16][16];
 
  
 static int  tcStructFieldRowLen[16][16];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+static char tcStructFieldConst[16][16];
+static int  tcFieldConst = 0;
 static int  tcStructByteSize[16];
 static int  tcStructCount = 0;
 static char tcStructBuildName[32];
@@ -114,6 +131,7 @@ static char tcStructBuildFieldNames[16][32];
 static TCType tcStructBuildFieldTypes[16];
 static int  tcStructBuildFieldArrayLen[16];
 static int  tcStructBuildFieldRowLen[16];
+static char tcStructBuildFieldConst[16];
 
 
 
@@ -640,6 +658,17 @@ static void tcEmitElemIndexStep(TCType t) {
 static TCType tcEmitPtrFieldIndex(int sid, int fi, int laden) {
 	TCType el = tcPointee(tcStructFieldTypes[sid][fi]);
 
+	
+
+
+
+ 
+	if (!laden && tcStructFieldTypes[sid][fi].pointeeConst
+	    && tcStructFieldTypes[sid][fi].pointers == 1) {
+		tcErrAt(parserActionAt);
+		fprintf(stderr, "cannot assign through pointer to const\n");
+		actionErrors++;
+	}
 	printf("LOADIND p\n");
 	if (el.base == 's' && !el.pointers) {
 		printf("IPADDN %d\n", tcStructByteSize[el.structId - 1]);
@@ -1318,6 +1347,18 @@ void tc_defname(const char* start, const char* end) {
 void tc_const(const char* start, const char* end) {
 	(void)start; (void)end;
 	tcPendingConst = 1;
+}
+
+void tc_fieldconst(const char* start, const char* end) {
+	(void)start; (void)end;
+	tcFieldConst = 1;
+}
+
+void tc_fieldconstend(const char* start, const char* end) {
+	
+ 
+	(void)start; (void)end;
+	tcFieldConst = 0;
 }
 
 void tc_static(const char* start, const char* end) {
@@ -2939,6 +2980,18 @@ void tc_target(const char* start, const char* end) {
 		sid = pt.structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+		
+
+
+
+
+
+
+ 
+		if (tcStructFieldConst[sid][fi]) {
+			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+			actionErrors++;
+		}
 		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
 		if (tcTargetSlot >= 0) printf("LOADP %d\n", tcTargetSlot); else printf("LOADGP %s\n", tcGlobalNames[gslot]);
 		printf("IPADD c\n");
@@ -2985,6 +3038,18 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			
+
+
+
+
+
+
+ 
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3005,6 +3070,18 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			
+
+
+
+
+
+
+ 
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3024,6 +3101,18 @@ void tc_target(const char* start, const char* end) {
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+		
+
+
+
+
+
+
+ 
+		if (tcStructFieldConst[sid][fi]) {
+			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+			actionErrors++;
+		}
 		
 
  
@@ -3087,6 +3176,18 @@ void tc_target(const char* start, const char* end) {
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			
+
+
+
+
+
+
+ 
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3107,6 +3208,18 @@ void tc_target(const char* start, const char* end) {
 			int structSize = tcStructByteSize[sid];
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+			
+
+
+
+
+
+
+ 
+			if (tcStructFieldConst[sid][fi]) {
+				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+				actionErrors++;
+			}
 			if (fieldEnd < end && *fieldEnd == '[') {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
@@ -3128,6 +3241,18 @@ void tc_target(const char* start, const char* end) {
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		tcCopy(gname, start, nameEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
+		
+
+
+
+
+
+
+ 
+		if (tcStructFieldConst[sid][fi]) {
+			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
+			actionErrors++;
+		}
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			
@@ -3919,6 +4044,12 @@ void tc_structfield(const char* start, const char* end) {
 	}
 	if (tcStructBuildFieldCount < 16) {
 		tcStructBuildFieldTypes[tcStructBuildFieldCount] = tcCurrentType;
+		
+ 
+		if (tcFieldConst && tcIsPointer(tcCurrentType))
+			tcStructBuildFieldTypes[tcStructBuildFieldCount].pointeeConst = 1;
+		tcStructBuildFieldConst[tcStructBuildFieldCount] =
+			(char)(tcFieldConst && !tcIsPointer(tcCurrentType));
 		tcStructBuildFieldArrayLen[tcStructBuildFieldCount] = arrayLen;
 		tcStructBuildFieldRowLen[tcStructBuildFieldCount] = rowLen;
 		tcCopy(tcStructBuildFieldNames[tcStructBuildFieldCount], fieldStart, fieldEnd);
@@ -3978,6 +4109,7 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	tcStructFieldCount[tcStructCount] = tcStructBuildFieldCount;
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
 		tcStructFieldTypes[tcStructCount][i] = tcStructBuildFieldTypes[i];
+		tcStructFieldConst[tcStructCount][i] = tcStructBuildFieldConst[i];
 		tcStructFieldArrayLen[tcStructCount][i] = tcStructBuildFieldArrayLen[i];
 		tcStructFieldRowLen[tcStructCount][i] = tcStructBuildFieldRowLen[i];
 		tcCopy(tcStructFieldNames[tcStructCount][i], tcStructBuildFieldNames[i], tcStructBuildFieldNames[i] + strlen(tcStructBuildFieldNames[i]));
@@ -4429,6 +4561,8 @@ static void actionLogDispatch(int id, const char* start, const char* end) {
 	if (id == 6) { tc_enumdecl(start, end); return; }
 	if (id == 7) { tc_structend(start, end); return; }
 	if (id == 8) { tc_structbegin(start, end); return; }
+	if (id == 9) { tc_fieldconstend(start, end); return; }
+	if (id == 10) { tc_fieldconst(start, end); return; }
 	if (id == 11) { tc_structfield(start, end); return; }
 	if (id == 13) { tc_typedefend(start, end); return; }
 	if (id == 14) { tc_fnptrtypedef(start, end); return; }
@@ -5028,6 +5162,7 @@ L36:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	ws();
 	if (strncmp(p, ";", 1) != 0) goto L32;
 	p += 1;
+	actionLogPush(9, entry, p);	 
 	return 1;
 L32:	p = entry; actionLogLen = entryLog;
 	return 0;
@@ -5044,6 +5179,7 @@ static int p_fieldConstKw(void) {
 	if (strncmp(p, "const", 5) != 0) goto L37;
 	if (idch((unsigned char)p[5])) goto L37;
 	p += 5;
+	actionLogPush(10, entry, p);	 
 	return 1;
 L37:	p = entry; actionLogLen = entryLog;
 	return 0;

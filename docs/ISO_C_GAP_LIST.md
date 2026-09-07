@@ -116,24 +116,42 @@ pointer arrays six, indexing through a pointer field another six — and the
 pointer variant of `v = p[i]` is exactly the array variant from six days
 earlier. Whoever touches such a site should hunt down its siblings.
 
-**Addendum 2026-09-07 — `const` on a struct field is parsed and
-discarded.** Noticed while implementing indexing through a pointer field:
-`struct P { const char *cp; }` with `p.cp[0] = 'x'` goes **through**,
-whereas the same is correctly reported for a *variable*
-(`cannot assign through pointer to const`). The grammar states the reason
-itself: `fieldConstKw` is an **action-less** copy of `constKw`, because
-referring to `constKw` would trigger `tc_const`, whose `tcPendingConst` is
-only consumed by the next parameter or local — where it would wrongly
-enforce constness. So it is a deliberate way around a state carry-over,
-not sloppiness.
+**Addendum 2026-09-07 — `const` on a struct field was parsed and
+discarded; FIXED the same day.** Four forms went through **silently**,
+while the same is correctly reported for a *variable*:
 
-A `pointeeConst` check at the three write sites was in the code for a
-while and was **inert**, because the field never carries the
-qualification; it has been removed and the fact is recorded at
-`tcEmitPtrFieldIndex` instead. Whoever tackles it starts at
-`fieldConstKw`: the flag would have to be set there, applied per
-declarator in `tc_structfield`, and cleared at the end of the line
-(`const int a, b;` should cover both).
+| | before | now |
+|---|---|---|
+| `s.cp[0] = …` with `const char *cp` | silent | `cannot assign through pointer to const` |
+| `p->cp[0] = …` | silent | same |
+| `s.n = 1` with `const int n` | silent | `cannot assign to const struct field` |
+| `p->n = 1` | silent | same |
+
+The grammar named the reason itself: `fieldConstKw` was an **action-less**
+copy of `constKw`, because referring to `constKw` triggers `tc_const`,
+whose `tcPendingConst` is only consumed by the next parameter or local —
+where it would wrongly enforce constness. The way around it was right; the
+consequence was not.
+
+`fieldConstKw` now has its **own** action with its **own** flag that only
+concerns fields: `tc_fieldconst` sets it, the declarators of the line
+consume it (`const int a, b;` covers **both**, measured), and
+`tc_fieldconstend` clears it after the whole `structField` line.
+`tcPendingConst` is untouched.
+
+The distinction mirrors variables (`tc_local`): for a **pointer**, `const`
+makes the *pointee* constant (`pointeeConst` in the field type, checked in
+`tcEmitPtrFieldIndex` and only on writes); for anything else the **field**
+itself (`tcStructFieldConst`, checked at the **seven** write sites in
+`tc_target` — not three; the three with an index branch are only a subset).
+
+**What explicitly stays legal** (all measured): `s.cp = b` — only the
+pointee is const, not the pointer itself; reading a const field; reading
+*through* a const pointer field; the non-const neighbouring field; and
+neither the next line nor the next `struct` is infected. QCC's own parser
+depends on exactly one of these forms (`actionLog[i].start = start` with
+`const char* start`), which is why it was checked separately before the
+self-host run.
 
 **Addendum 2026-09-07 — a 2D array as a struct field failed SILENTLY.**
 Ordinary 2D and 3D arrays work; a 2D array *inside a struct*

@@ -118,24 +118,43 @@ durch ein Zeigerfeld wieder sechs — und der Zeigerfall von `v = p[i]` ist
 1:1 der Array-Fall von vor sechs Tagen. Wer eine solche Stelle anfasst,
 sucht die Geschwister mit.
 
-**Nachtrag 2026-09-07 — `const` am Strukturfeld wird geparst und
-verworfen.** Aufgefallen beim Umsetzen der Indizierung durch ein
-Zeigerfeld: `struct P { const char *cp; }` mit `p.cp[0] = 'x'` läuft
-**durch**, während dasselbe bei einer *Variablen* korrekt gemeldet wird
-(`cannot assign through pointer to const`). Die Grammatik sagt den Grund
-selbst: `fieldConstKw` ist eine **aktionslose** Kopie von `constKw`, denn
-ein Verweis auf `constKw` würde `tc_const` auslösen, dessen
-`tcPendingConst` erst beim nächsten Parameter oder Lokalen konsumiert wird
-— dort erzwänge es fälschlich Konstantheit. Das ist also ein bewusst
-gewählter Ausweg um einen Zustandsübertrag, keine Nachlässigkeit.
+**Nachtrag 2026-09-07 — `const` am Strukturfeld wurde geparst und
+verworfen; BEHOBEN am selben Tag.** Vier Formen liefen **still** durch,
+während dasselbe bei einer *Variablen* korrekt gemeldet wird:
 
-Eine Prüfung auf `pointeeConst` an den drei Schreibstellen stand
-zwischenzeitlich im Code und war **wirkungslos**, weil das Feld die
-Qualifikation nie trägt; sie ist wieder heraus und die Tatsache steht
-stattdessen bei `tcEmitPtrFieldIndex`. Wer es angeht, fängt bei
-`fieldConstKw` an: die Kennung müsste dort gesetzt, in `tc_structfield` je
-Deklarator angewandt und am Zeilenende gelöscht werden (`const int a, b;`
-soll beide treffen).
+| | vorher | jetzt |
+|---|---|---|
+| `s.cp[0] = …` bei `const char *cp` | still durch | `cannot assign through pointer to const` |
+| `p->cp[0] = …` | still durch | dito |
+| `s.n = 1` bei `const int n` | still durch | `cannot assign to const struct field` |
+| `p->n = 1` | still durch | dito |
+
+Die Grammatik nannte den Grund selbst: `fieldConstKw` war eine
+**aktionslose** Kopie von `constKw`, denn ein Verweis auf `constKw` löst
+`tc_const` aus, dessen `tcPendingConst` erst beim nächsten Parameter oder
+Lokalen konsumiert wird — dort erzwänge es fälschlich Konstantheit. Der
+Ausweg war richtig, die Folge nicht.
+
+Jetzt hat `fieldConstKw` eine **eigene** Aktion mit einer **eigenen**
+Flagge, die nur Felder betrifft: `tc_fieldconst` setzt sie, die
+Deklaratoren der Zeile verbrauchen sie (`const int a, b;` trifft **beide**,
+nachgemessen), und `tc_fieldconstend` löscht sie nach der ganzen
+`structField`-Zeile. `tcPendingConst` bleibt unberührt.
+
+Unterschieden wird wie bei Variablen (`tc_local`): bei einem **Zeiger**
+macht `const` den *Pointee* konstant (`pointeeConst` im Feldtyp, geprüft in
+`tcEmitPtrFieldIndex` und nur beim Schreiben), bei allem anderen das
+**Feld** selbst (`tcStructFieldConst`, geprüft an den **sieben**
+Schreibstellen in `tc_target` — nicht drei; die drei mit Index-Zweig sind
+nur eine Teilmenge).
+
+**Was ausdrücklich erlaubt bleibt** (alles nachgemessen): `s.cp = b` — nur
+der Pointee ist konstant, der Zeiger selbst nicht; Lesen eines
+const-Felds; Lesen *durch* ein const-Zeigerfeld; das Nicht-const-Nachbar­
+feld; und die nächste Zeile bzw. die nächste `struct` werden nicht
+angesteckt. QCCs eigener Parser hängt an genau einer dieser Formen
+(`actionLog[i].start = start` bei `const char* start`) — deshalb vor dem
+Selbsthost einzeln geprüft.
 
 **Nachtrag 2026-09-07 — ein 2D-Array als Strukturfeld scheiterte STILL.**
 Gewöhnliche 2D- und 3D-Arrays gehen; ein 2D-Array *im struct*
