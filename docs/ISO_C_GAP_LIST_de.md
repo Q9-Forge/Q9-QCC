@@ -67,20 +67,35 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Casts und implizite Konversionen | teilweise (nur int/unsigned/char/bool, kein Pointer/typedef als Cast-Ziel) | sehr hoch |
 | `sizeof` und `_Alignof` | teilweise (`sizeof` auf int/char/bool/unsigned/struct, keine Pointer, kein `_Alignof`) | hoch |
 
-**Nachtrag 2026-09-07, gemessen:** die Lücke bei Zeigern kostet auf dem
-68k-Ziel echten Speicher. `sizeof(char *)` ergibt **1** (`PUSH 1` im IR),
-und ein `struct { int id; const char *start; const char *end; }` ergibt
-**24** statt der auf einem 32-Bit-Ziel richtigen **12** — QCC rechnet
-offenbar mit acht Byte je Strukturglied. Aufgefallen ist es beim Ziellauf
-von QCC gegen `qclib`: das Aktions-Log des erzeugten Parsers fragte
-6 291 456 Byte für 262 144 Einträge an und lief damit in `E$NoRAM`. Der
-Parser läuft trotzdem richtig — die Struktur ist in sich stimmig belegt —,
-aber **sein Speicherbedarf ist doppelt so hoch wie nötig**. Wer das
-angeht, prüft danach den Selbsthost-Fixpunkt: die Struct-Größe steckt in
-den Emissionsstellen für Struct-Kopien mit drin.
-| Kommaoperator | offen | mittel |
-| vollständige Constant Expressions | offen | hoch |
-| Sequenzierungs- und Undefined-Behavior-Regeln | offen | sehr hoch |
+**Nachtrag 2026-09-07, gemessen.** Zwei Dinge, die auseinanderzuhalten sind:
+
+**1. Das 8-Byte-Layout für Zeigerfelder ist ABSICHT, kein Mangel.**
+`Data/qcc.lextab` begründet es an der Stelle selbst (2026-07-25): ein
+Zeigerfeld belegt *immer* 8 Byte, damit **ein einzelnes
+frontend-berechnetes Offset für beide Backends gültig bleibt** — 68k-Zeiger
+sind 4 Byte, ARM64-Zeiger 8, und dieselbe IR wird von beiden verarbeitet
+(`Source/qcc_arm64_backend.cpp` ist verzeichnet). Folge: ein
+`struct { int id; const char *start; const char *end; }` ist **24** Byte
+groß, nicht 12, und `sizeof` liefert konsequenterweise 24. Das *nur* in
+`sizeof` auf 12 zu ändern wäre schlimmer als der Status quo — ein
+`n * sizeof(eintrag)` würde dann zu wenig anfordern.
+
+Der Preis ist messbar: QCCs erzeugter Parser braucht für sein Aktions-Log
+**6 291 456 statt 3 145 728 Byte** (262 144 Einträge). Aufgefallen beim
+Ziellauf gegen `qclib`, wo diese Anforderung in `E$NoRAM` lief. Wer den
+Speicher halbieren will, muss das **Frontend zielabhängig** machen (etwa
+ein `-m32`), und dann ist die IR nicht mehr für beide Backends dieselbe.
+Das ist eine Architekturentscheidung, keine Fehlerbehebung.
+
+**2. `sizeof` auf einen Zeigertyp log SCHWEIGEND — behoben 2026-09-07.**
+`sizeof(char *)` ergab `PUSH 1`, also die Größe von `char`, mit
+Schlusswort `OK` und **ohne jede Meldung**. Die Unterstützung fehlt
+bewusst (siehe Zeile oben), aber `tc_sizeof` *wollte* das melden — der
+Zweig war nur nie erreichbar: `tc_sizeof` ruft `tc_type` für dieselbe
+Spanne noch einmal auf, und `TC_SET_CURRENT` setzt `pointers` dabei auf 0
+zurück, obwohl die Aktion an `pointerDecl` vorher schon gezählt hatte.
+`tc_sizeof` zählt den Zeigergrad jetzt selbst. Ein
+`malloc(n * sizeof(char*))` bekam vorher ein Viertel des Nötigen.
 
 ## 4. Anweisungen und Funktionen
 

@@ -3821,7 +3821,28 @@ void tc_enumdecl(const char* start, const char* end) {
 
 void tc_sizeof(const char* start, const char* end) {
 	int size;
+	const char* q;
+	int ptrs;
 	tc_type(start, end);
+	/* DEN ZEIGERGRAD HIER SELBST ZAEHLEN. tc_type setzt tcCurrentType NEU
+	   (TC_SET_CURRENT) und loescht damit, was tc_pointerdecl fuer dieselbe
+	   Spanne schon gezaehlt hat -- die Aktion an pointerDecl laeuft VOR
+	   dieser hier, sizeofType ist "sizeofBaseType pointerDecl". Ohne diese
+	   Schleife lieferte sizeof(char *) STILL die 1, also die Groesse von
+	   char: der Zweig unten ist eigens fuer Zeiger da, wurde aber nie
+	   erreicht. Der Mangel war nicht die fehlende Unterstuetzung -- die
+	   ist bewusst und in docs/ISO_C_GAP_LIST_de.md vermerkt -- sondern
+	   dass sie SCHWEIGEND ein falsches Ergebnis lieferte. Ein
+	   malloc(n * sizeof(char*)) bekam so ein Viertel des Noetigen.
+	   Additiv, damit ein zeigerwertiges typedef mit weiteren Sternen
+	   (sizeof(TCPtr *)) richtig zaehlt -- dieselbe Zaehlschleife wie in
+	   tc_pointerdecl. */
+	ptrs = 0;
+	for (q = start; q < end; q++) if (*q == '*') ptrs++;
+	while (ptrs > 0 && tcCurrentType.pointers < 255) {
+		tcCurrentType.pointers++;
+		ptrs--;
+	}
 	if (tcCurrentType.pointers) {
 		tcErrAt(start); fprintf(stderr, "sizeof of pointer types not supported in this version\n");
 		actionErrors++; size = 4;
