@@ -3791,7 +3791,28 @@ void tc_enumdecl(const char* start, const char* end) {
 
 void tc_sizeof(const char* start, const char* end) {
 	int size;
+	const char* q;
+	int ptrs;
 	tc_type(start, end);
+	
+
+
+
+
+
+
+
+
+
+
+
+ 
+	ptrs = 0;
+	for (q = start; q < end; q++) if (*q == '*') ptrs++;
+	while (ptrs > 0 && tcCurrentType.pointers < 255) {
+		tcCurrentType.pointers++;
+		ptrs--;
+	}
 	if (tcCurrentType.pointers) {
 		tcErrAt(start); fprintf(stderr, "sizeof of pointer types not supported in this version\n");
 		actionErrors++; size = 4;

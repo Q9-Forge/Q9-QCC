@@ -68,6 +68,36 @@ QCC currently covers only a small, executable core of area 1.
 | Pre-/post-increment and -decrement | done (simple int/unsigned/char scalars only) | — |
 | Casts and implicit conversions | partial (int/unsigned/char/bool only, no pointer/typedef as cast target) | very high |
 | `sizeof` and `_Alignof` | partial (`sizeof` on int/char/bool/unsigned/struct, no pointers, no `_Alignof`) | high |
+
+**Addendum 2026-09-07, measured.** Two things that must be kept apart:
+
+**1. The 8-byte layout for pointer fields is DELIBERATE, not a defect.**
+`Data/qcc.lextab` states the reason on the spot (2026-07-25): a pointer
+field always occupies 8 bytes so that **a single offset computed by the
+frontend stays valid for both backends** — 68k pointers are 4 bytes,
+ARM64 pointers 8, and the same IR is consumed by both
+(`Source/qcc_arm64_backend.cpp` is tracked). Consequence: a
+`struct { int id; const char *start; const char *end; }` is **24** bytes,
+not 12, and `sizeof` consistently reports 24. Changing *only* `sizeof` to
+12 would be worse than the status quo — an `n * sizeof(entry)` would then
+under-allocate.
+
+The price is measurable: QCC's generated parser needs **6,291,456 instead
+of 3,145,728 bytes** for its action log (262,144 entries). This surfaced
+during the target run against `qclib`, where that request hit `E$NoRAM`.
+Halving it requires making the **frontend target-aware** (an `-m32`, say),
+and then the IR is no longer the same for both backends. That is an
+architectural decision, not a bug fix.
+
+**2. `sizeof` on a pointer type used to LIE SILENTLY — fixed 2026-09-07.**
+`sizeof(char *)` produced `PUSH 1`, i.e. the size of `char`, with final
+word `OK` and **no diagnostic at all**. The lack of support is deliberate
+(see above), but `tc_sizeof` *meant* to report it — the branch was simply
+unreachable: `tc_sizeof` calls `tc_type` again for the same span, and
+`TC_SET_CURRENT` resets `pointers` to 0 even though the action on
+`pointerDecl` had already counted them. `tc_sizeof` now counts the
+pointer level itself. A `malloc(n * sizeof(char*))` previously got a
+quarter of what it needed.
 | Comma operator | open | medium |
 | Full constant expressions | open | high |
 | Sequencing and undefined-behavior rules | open | very high |
