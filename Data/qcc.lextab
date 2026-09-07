@@ -2217,6 +2217,54 @@ static void tcEmitElemIndexStep(TCType t) {
 		printf("PTRINDEX %c\n", tcTypeTag(t));
 }
 
+/* "s.p[j]" bzw. "sp->p[j]" -- Indizierung DURCH ein skalares ZEIGERfeld.
+ *
+ * Auf dem Stapel liegt der Index UNTEN und die ADRESSE DES FELDES oben; die
+ * Aufrufer haben dafuer schon PUSH <offset> / LOADP|LOADGP|PUSHADDR /
+ * IPADD c emittiert (die Ordnung ist bei tc_varref beschrieben: "der
+ * Index-Ausdruck hat seinen Wert bereits VOR uns gepusht").
+ *
+ * Gebraucht wird aber der Zeiger IM Feld, nicht die Adresse des Feldes --
+ * deshalb erst LOADIND p. Danach skaliert der Indexschritt um die Groesse
+ * des ZIELtyps.
+ *
+ * laden = 1 fuer einen Lesezugriff, 0 fuer ein Zuweisungsziel (dort setzt
+ * der Aufrufer tcTargetIndirect und der Store kommt spaeter). Zeigt das
+ * Feld auf eine STRUCT, wird nie geladen: dort IST die Adresse der Wert --
+ * dieselbe Regel wie in tcEmitPointerIndexChain.
+ *
+ * KEIN const-SCHUTZ HIER, und das ist nicht vergessen: ein "const" am
+ * Feldtyp wird von der Grammatik geparst und VERWORFEN
+ * (Data/qcc.ebnf: "fieldConstKw ist eine AKTIONSLOSE Kopie von constKw"),
+ * weil ein Verweis auf constKw tc_const ausloesen wuerde und dessen
+ * tcPendingConst erst beim naechsten Parameter oder Lokalen konsumiert
+ * wird -- dort erzwaenge es faelschlich Konstantheit. Folge:
+ * "struct P { const char *cp; }" mit "p.cp[0] = 'x'" laeuft durch. Bei
+ * einer VARIABLEN wird dasselbe korrekt gemeldet. Eine Pruefung auf
+ * pointeeConst stand hier zwischenzeitlich und war WIRKUNGSLOS, weil das
+ * Feld die Qualifikation nie traegt; eine Pruefung, die Schutz
+ * vortaeuscht, ist schlechter als diese Notiz. Wer es angeht, faengt bei
+ * fieldConstKw an, nicht hier.
+ *
+ * Vorher war der Fall an sechs Stellen abgelehnt ("scalar struct field
+ * cannot be indexed"). Eine SIEBTE bleibt abgelehnt: nach einem
+ * Funktionsaufruf (f().feld[i]) gilt eine andere Stapelordnung -- dort
+ * steht PADD mit vertauschten Operanden statt IPADD --, und dafuer gibt es
+ * keinen Aufrufer. Lieber eine Meldung als eine zweite Ordnung nebenher. */
+static TCType tcEmitPtrFieldIndex(int sid, int fi, int laden) {
+	TCType el = tcPointee(tcStructFieldTypes[sid][fi]);
+
+	printf("LOADIND p\n");
+	if (el.base == 's' && !el.pointers) {
+		printf("IPADDN %d\n", tcStructByteSize[el.structId - 1]);
+		return el;
+	}
+	printf("IPADD %c\n", tcTypeTag(el));
+	if (laden)
+		printf("LOADIND %c\n", tcTypeTag(el));
+	return el;
+}
+
 static void tcEmitFieldIndexStep(int sid, int fi) {
 	if (tcIsPointer(tcStructFieldTypes[sid][fi])) printf("IPADDN %d\n", TC_PTR_SLOT);
 	else printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -2833,7 +2881,23 @@ static TCType tcEmitPointerIndexChain(int slot, const char* globalName, char bas
 			sprintf(name, "__ptrIdx_%d", level);
 			printf("LOADG %s\nSWAP\n", name);
 		}
-		printf("PTRINDEX %c\nLOADIND %c\n", tcTypeTag(value), tcTypeTag(value));
+		if (value.base == 's' && !value.pointers) {
+			/* EINE STRUCT IST KEIN REGISTERWERT: "p[i]" liefert ihre
+			   ADRESSE, und der Schritt geht um ihre BYTE-Groesse.
+			   Vorher stand hier PTRINDEX/LOADIND mit dem Typtag, und
+			   tcTypeTag('s') gibt 'i' -- also vier Byte Schrittweite UND
+			   ein Ladebefehl, der vier Byte der Struct als Zahl liest und
+			   sie als Quelladresse weitergibt. Auf dem 68k landet damit
+			   ein Datenwert in A0 (2026-09-07 gefunden).
+			   Fuer den ARRAY-Fall "v = arr[i]" ist dieselbe Bauform am
+			   2026-09-01 repariert worden; der Zeigerfall blieb stehen.
+			   Eine Struct kann nur die LETZTE Ebene sein -- struct-in-
+			   struct ist abgelehnt --, der naechste Durchlauf faellt
+			   deshalb in "too many pointer indexes". */
+			printf("IPADDN %d\n", tcStructByteSize[value.structId - 1]);
+		} else {
+			printf("PTRINDEX %c\nLOADIND %c\n", tcTypeTag(value), tcTypeTag(value));
+		}
 		pointer = value;
 	}
 	return pointer;
@@ -3867,6 +3931,12 @@ void tc_varref(const char* start, const char* end) {
 		printf("IPADD c\n");
 		if (fieldEnd < end && *fieldEnd == '[') {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				/* Ein ZEIGERfeld laesst sich indizieren -- durch den Zeiger
+				   hindurch (2026-09-07). Ein Feld ohne Arraylaenge und ohne
+				   Zeigertyp bleibt ein Skalar und wird gemeldet. */
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+					tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			if (tcStructFieldRowLen[sid][fi] > 0) {
@@ -3913,6 +3983,12 @@ void tc_varref(const char* start, const char* end) {
 			   eben on top gepusht durch das IPADD oben), exakt die Reihenfolge, die ein
 			   zweites IPADD braucht. */
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				/* Ein ZEIGERfeld laesst sich indizieren -- durch den Zeiger
+				   hindurch (2026-09-07). Ein Feld ohne Arraylaenge und ohne
+				   Zeigertyp bleibt ein Skalar und wird gemeldet. */
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+					tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++;
 				tcTypePush(tcBadType()); return;
 			}
@@ -3989,6 +4065,12 @@ void tc_varref(const char* start, const char* end) {
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				/* Ein ZEIGERfeld laesst sich indizieren -- durch den Zeiger
+				   hindurch (2026-09-07). Ein Feld ohne Arraylaenge und ohne
+				   Zeigertyp bleibt ein Skalar und wird gemeldet. */
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+					tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++;
 				tcTypePush(tcBadType()); return;
 			}
@@ -4494,6 +4576,12 @@ void tc_target(const char* start, const char* end) {
 		printf("IPADD c\n");
 		if (fieldEnd < end && *fieldEnd == '[') {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				/* Zuweisungsziel durch ein ZEIGERfeld hindurch (2026-09-07). */
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+								tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
+					tcTargetIndirect = 1;
+					return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
@@ -4564,6 +4652,12 @@ void tc_target(const char* start, const char* end) {
 			/* p.field[i] = .. (2026-07-24): siehe tc_varref -- der Index-Ausdruck hat seinen
 			   Wert bereits VOR uns gepusht, ein zweites IPADD kombiniert Feldadresse+Index. */
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				/* Zuweisungsziel durch ein ZEIGERfeld hindurch (2026-09-07). */
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+								tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
+					tcTargetIndirect = 1;
+					return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
@@ -4639,6 +4733,12 @@ void tc_target(const char* start, const char* end) {
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				/* Zuweisungsziel durch ein ZEIGERfeld hindurch (2026-09-07). */
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+								tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
+					tcTargetIndirect = 1;
+					return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
