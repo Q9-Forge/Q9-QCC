@@ -619,3 +619,42 @@ und `qcc_backend` prüft genau das. Bei Überlauf wird gekappt und weiter
 gezählt, damit `end` stimmt; C89 will zusätzlich `errno = ERANGE`, und
 qclib hat kein `errno` — das steht im Quelltext ausgeschrieben statt
 verschwiegen.
+
+## Der Ringschluss: die ganze Kette läuft auf dem 68030
+
+**2026-09-07.** `test/kette_68k.sh` schaltet die fünf Werkzeuge auf dem Ziel
+hintereinander — von der C-Quelle bis zum laufenden Modul, ohne dass
+zwischendurch etwas am Host passiert:
+
+| Stufe | auf dem 68030 | |
+|---|---|---|
+| 1 | `q9_qcpp hello.c hello.i` | 4 359 028 Byte Modul |
+| 2 | `q9_qcc @hello.i >hello.ir` | 868 396 |
+| 3 | `q9_qccb hello.ir hello.s68 -os9 -largedata` | 9 608 244 |
+| 4 | `q9_qr68 hello.s68 -o=hello.r` | 1 204 644 |
+| 5 | `q9_ql68 -a q9_cstart.r hello.r -l=qclib.l -M=8K -O=q9_hk` | 1 709 620 |
+| 6 | `attr q9_hk -e -pe` | |
+| 7 | `/dd/HOME/ROOT/q9_hk` | 12 von 12 Ausgabezeilen richtig |
+
+**Das auf dem Ziel gebaute Modul ist byteidentisch zu dem, was der Host aus
+derselben Quelle baut** (27 054 Byte). Alle fünf Werkzeugmodule sind selbst
+mit der eigenen Kette gebaut und gegen `qclib` gebunden.
+
+Zwei Stufen sehen wie Beiwerk aus und sind es nicht — beide standen im
+Handbuch, und beide hätten sonst Zeit gekostet:
+
+- **Ein frisch geschriebenes Modul hat nur Besitzer-Lesen/Schreiben**, OS-9
+  startet es nicht. `attr <datei> -e -pe`, und ein vorangestelltes `n`
+  *entfernt* eine Berechtigung (`68k_use.pdf`, „Examining File Attributes
+  with attr"). Am Host tut ToolShed dasselbe; in allen Prüfständen steht
+  es als Kommentar.
+- **Die OS-9-Shell sucht Kommandos im Ausführungsverzeichnis** `/dd/CMDS`.
+  Ein Modul im Datenverzeichnis braucht einen Pfad, sonst kommt
+  `q9_hk: command not found` — eine Meldung, die nichts über das Modul
+  sagt. Genau das ist im ersten Anlauf passiert, nachdem die fünf
+  Baustufen schon durch waren.
+
+Die Namen müssen auf beiden Seiten gleich sein: `qcc_backend` leitet bei
+`-os9` den psect-Namen aus dem Ausgabenamen ab, `ql68` den Modulnamen aus
+`-O=`. Beide Läufe schreiben deshalb `hello.i`, `hello.ir`, `hello.s68`,
+`hello.r`, `q9_hk`.
