@@ -603,6 +603,54 @@ static void tcEmitElemIndexStep(TCType t) {
 		printf("PTRINDEX %c\n", tcTypeTag(t));
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+static TCType tcEmitPtrFieldIndex(int sid, int fi, int laden) {
+	TCType el = tcPointee(tcStructFieldTypes[sid][fi]);
+
+	printf("LOADIND p\n");
+	if (el.base == 's' && !el.pointers) {
+		printf("IPADDN %d\n", tcStructByteSize[el.structId - 1]);
+		return el;
+	}
+	printf("IPADD %c\n", tcTypeTag(el));
+	if (laden)
+		printf("LOADIND %c\n", tcTypeTag(el));
+	return el;
+}
+
 static void tcEmitFieldIndexStep(int sid, int fi) {
 	if (tcIsPointer(tcStructFieldTypes[sid][fi])) printf("IPADDN %d\n", 8);
 	else printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -1205,7 +1253,23 @@ static TCType tcEmitPointerIndexChain(int slot, const char* globalName, char bas
 			sprintf(name, "__ptrIdx_%d", level);
 			printf("LOADG %s\nSWAP\n", name);
 		}
-		printf("PTRINDEX %c\nLOADIND %c\n", tcTypeTag(value), tcTypeTag(value));
+		if (value.base == 's' && !value.pointers) {
+			
+
+
+
+
+
+
+
+
+
+
+ 
+			printf("IPADDN %d\n", tcStructByteSize[value.structId - 1]);
+		} else {
+			printf("PTRINDEX %c\nLOADIND %c\n", tcTypeTag(value), tcTypeTag(value));
+		}
 		pointer = value;
 	}
 	return pointer;
@@ -2212,6 +2276,12 @@ void tc_varref(const char* start, const char* end) {
 		printf("IPADD c\n");
 		if (fieldEnd < end && *fieldEnd == '[') {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				
+
+ 
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+					tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			if (tcStructFieldRowLen[sid][fi] > 0) {
@@ -2258,6 +2328,12 @@ void tc_varref(const char* start, const char* end) {
 
  
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				
+
+ 
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+					tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++;
 				tcTypePush(tcBadType()); return;
 			}
@@ -2334,6 +2410,12 @@ void tc_varref(const char* start, const char* end) {
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				
+
+ 
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+					tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++;
 				tcTypePush(tcBadType()); return;
 			}
@@ -2817,6 +2899,12 @@ void tc_target(const char* start, const char* end) {
 		printf("IPADD c\n");
 		if (fieldEnd < end && *fieldEnd == '[') {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				 
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+								tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
+					tcTargetIndirect = 1;
+					return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
@@ -2887,6 +2975,12 @@ void tc_target(const char* start, const char* end) {
 			
  
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				 
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+								tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
+					tcTargetIndirect = 1;
+					return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);
@@ -2962,6 +3056,12 @@ void tc_target(const char* start, const char* end) {
 		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
 		if (hasIndex) {
 			if (!tcStructFieldArrayLen[sid][fi]) {
+				 
+				if (tcIsPointer(tcStructFieldTypes[sid][fi])) {
+								tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
+					tcTargetIndirect = 1;
+					return;
+				}
 				tcErrAt(start); fprintf(stderr, "scalar struct field cannot be indexed\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi]);

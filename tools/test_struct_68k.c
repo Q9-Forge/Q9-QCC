@@ -45,6 +45,13 @@ static int      same(struct P a, struct P b) { return a.base == b.base && a.poin
    waere tab[i][k] auf einem Zeigerfeld, und das kann QCC nicht. */
 struct A { char op[4]; char* args[6]; int argc; };
 static struct A ga;
+
+/* Fuer die Faelle 29-35: ein skalares ZEIGERfeld (nicht Zeigerarray) und
+   eine Struct, die ueber einen Zeiger indiziert wird. */
+struct Z { int *ip; char *cp; int n; };
+static struct Z gz;
+static int zfeld[8];
+static char ztxt[8];
 static char txt[8];
 
 static void mark(int id) { putint(id); putchar(58); }
@@ -164,6 +171,45 @@ int main(void)
 	mark(28); { struct I loc[3]; struct I *ip; int k; k = 2;
 	            loc[2].a = 0; ip = &loc[k]; ip->a = 56;
 	            val(loc[2].a); }
+
+	/* 29-34 INDIZIERUNG DURCH EIN SKALARES ZEIGERFELD (2026-09-07).
+	      Vorher an sechs Emissionsstellen abgelehnt ("scalar struct field
+	      cannot be indexed"). Der Witz ist, dass erst der Zeiger IM Feld
+	      geholt werden muss (LOADIND p) -- die Aufrufer haben nur die
+	      ADRESSE des Feldes auf dem Stapel. Jeder Fall indiziert ungleich
+	      null, sonst faellt eine falsche Schrittweite nicht auf. */
+	/* 29 globale Struct, lesen ueber ein int*-Feld */
+	mark(29); { int k; k = 3; zfeld[3] = 81; gz.ip = zfeld;
+	            val(gz.ip[k]); }
+	/* 30 globale Struct, schreiben */
+	mark(30); { int k; k = 3; zfeld[3] = 0; gz.ip = zfeld;
+	            gz.ip[k] = 82; val(zfeld[3]); }
+	/* 31 ueber einen Structzeiger lesen, char*-Feld (Schrittweite 1) */
+	mark(31); { struct Z *zp; int k; k = 2; ztxt[2] = 83;
+	            zp = &gz; zp->cp = ztxt;
+	            val(zp->cp[k] & 255); }
+	/* 32 ueber einen Structzeiger schreiben */
+	mark(32); { struct Z *zp; int k; k = 2; zfeld[2] = 0;
+	            zp = &gz; zp->ip = zfeld;
+	            zp->ip[k] = 84; val(zfeld[2]); }
+	/* 33 LOKALE Struct, lesen -- wieder eine eigene Stelle */
+	mark(33); { struct Z lz; int k; k = 5; zfeld[5] = 85; lz.ip = zfeld;
+	            val(lz.ip[k]); }
+	/* 34 LOKALE Struct, schreiben */
+	mark(34); { struct Z lz; int k; k = 5; zfeld[5] = 0; lz.ip = zfeld;
+	            lz.ip[k] = 86; val(zfeld[5]); }
+
+	/* 35 GANZE STRUCT UEBER EINEN ZEIGER KOPIEREN (v = p[i]).
+	      Das war ein STILLER Falschcode-Fehler (2026-09-07):
+	      LOADP/PTRINDEX i/LOADIND i -- vier Byte Schrittweite UND ein
+	      Ladebefehl, der vier Byte der Struct als Zahl liest und als
+	      Quelladresse weitergibt. Fuer den ARRAY-Fall (v = arr[i]) war
+	      dieselbe Bauform am 2026-09-01 repariert worden, der Zeigerfall
+	      blieb stehen. Mit k=3 und acht Byte je Struct diskriminiert der
+	      Sollwert. */
+	mark(35); { struct I *ip2; struct I cv; int k; k = 3;
+	            tab[3].a = 87; tab[3].b = 0;
+	            ip2 = &tab[0]; cv = ip2[k]; val(cv.a); }
 
 	return 0;
 }
