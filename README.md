@@ -667,3 +667,32 @@ ein 32-MB-Puffer wäre also ein 32-MB-Modul.
    die Sprungtabelle von `-a` (kommt im Korpus nirgends vor) und `-z`
    ohne `=` von der Standardeingabe (setzt `stdin` voraus, das `ql68`
    nicht hat). Beide sind oben begründet.
+
+## ql68 bindet QCC — die Symbolgrenzen waren zu eng
+
+**2026-09-07.** `ql68` bindet jetzt QCCs eigenen Parser gegen `qclib`:
+1 258 734 Byte ROF → 859 682 Byte Modul, in 0,42 Sekunden. Das Modul
+übersetzt auf echtem 68030 seinen eigenen Quelltext zu byteidentischem IR
+(Prüfstand: `Q9-qclib/test/qcc_68k.sh`). Damit ist `l68` aus der letzten
+Stelle der Kette verschwunden.
+
+Der erste Anlauf brach ab mit `ql68: zu viele Symbole (QL_SYM)`. Der Bedarf
+ist **gemessen, nicht geschätzt**:
+
+| Eingabe | Namen | Namenstext |
+|---|---|---|
+| `stage2.r` (QCCs Parser) | 14 193 | 325 828 Byte |
+| `q9_cstart.r` | 55 | 455 Byte |
+| `qclib.l` | 433 | 7 736 Byte |
+| **zusammen** | **14 681** | **334 019 Byte** |
+
+Gegen `QL_SYM 8192` und `QL_POOL 262144`. Dass es so viele sind, liegt an
+QCC: **es macht aus jeder Sprungmarke ein Globalsymbol** (`tc_L…`,
+`tc_cmp_done_…`). Für das SDK — Assembler, Module unter 64 K — haben die
+alten Maße gereicht.
+
+Neu am Host **32 768 / 1 048 576**, am Ziel **unverändert 8 192 / 262 144**:
+dort begrenzt schon `QL_IN` das Ganze auf 512-KB-Eingaben, und jedes
+zusätzliche Feld wächst 1:1 ins Modul, weil QCCs Backend genullte Felder in
+den *initialisierten* Datenbereich legt. Dasselbe Muster hatten `QL_IN` und
+`QL_OUT` schon.

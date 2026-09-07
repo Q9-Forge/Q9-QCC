@@ -135,8 +135,24 @@ static int irefCodeN;
 static int irefData[QL_IREF];
 static int irefDataN;
 
+/* Symboltabelle. Der Bedarf ist GEMESSEN, nicht geschaetzt: QCCs eigener
+   Parser (stage2.r aus qcc_backend -os9 -largedata) bringt 14.193
+   Globale mit 325.828 Byte Namenstext -- QCC macht aus jeder Sprungmarke
+   ein Globalsymbol. Dazu q9_cstart.r (55) und qclib.l (433), zusammen
+   14.681 Namen und 334.019 Byte. Die alten 8.192/262.144 reichten fuer
+   das SDK (Assembler, kleine Module), aber nicht fuer die eigene Kette.
+
+   Am ZIEL bleibt es bei den alten Massen: dort begrenzt schon QL_IN das
+   Ganze auf 512-KB-Eingaben, und jedes zusaetzliche Feld waechst 1:1 ins
+   Modul (QCCs Backend legt genullte Felder in den INITIALISIERTEN
+   Datenbereich). Ein grosszuegiges QL_SYM waere dort nur Ballast. */
+#ifdef _Q9OS
 #define QL_SYM    8192
 #define QL_POOL   262144
+#else
+#define QL_SYM    32768
+#define QL_POOL  1048576
+#endif
 #define QL_LIB    16
 #define QL_ARGS   1024              /* Argumente nach dem Aufloesen von -z= */
 #define QL_ZBUF    65536            /* Text der -z=-Dateien */
