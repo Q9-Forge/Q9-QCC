@@ -1,4 +1,5 @@
-* printf -- Adapter von Microwares Aufrufkonvention auf ein Feld.
+* printf, fprintf, sprintf -- Adapter von Microwares Aufrufkonvention
+* auf ein zusammenhaengendes Argumentfeld.
 *
 * Beim Eintritt liegen die Argumente NICHT zusammenhaengend (an einem
 * echten Fuenf-Argument-Aufruf nachgemessen, siehe README):
@@ -34,5 +35,37 @@ printf:
          addq.l  #4,a7                   * fmt weg
          move.l  a1,(a7)                 * sie an den arg1-Platz
          rts                             * d0 traegt den Rueckgabewert
+
+
+* fprintf(FILE*, fmt, ...) und sprintf(char*, fmt, ...) brauchen keinen
+* eigenen Handgriff: der Adapter macht aus d0/d1/Stack immer dasselbe
+* lueckenlose Feld, und welcher Eintrag die Formatzeichenkette ist,
+* entscheidet allein der C-Rumpf (qp_run mit fi = 0 oder 1).
+
+fprintf:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_fprintf_a
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+sprintf:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_sprintf_a
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
 
          ends

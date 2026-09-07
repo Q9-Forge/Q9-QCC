@@ -378,3 +378,168 @@ Datenbereich, ein 32-MB-Puffer wäre also ein 32-MB-Modul.
   printf.
 - `fopen`/`fclose`/`fread`/`fwrite` — die restlichen sechs Symbole des
   Zielkorpus.
+
+## QCC selbst läuft gegen qclib — die Kette ist frei von fremden Teilen
+
+**2026-09-07.** `test/qcc_68k.sh`: QCCs eigener Parser, gebunden mit
+`qr68` + `ql68` gegen `qclib` — **ohne Wine, ohne `clib.l`, ohne
+`os_lib.l`, ohne `sys.l`** — übersetzt auf echtem 68030 seinen eigenen
+Quelltext zu **byteidentischem IR** (89 769 Zeilen, 1 123 692 Byte),
+Schlusswort `OK`, null Fehlermeldungen. Modul 859 682 Byte.
+
+Bis hierher band QCCs Selbsthost-Test (`Q9-QCC/tools/test_selfhost_68k.sh`)
+über Wine mit `r68` und `l68` gegen Microwares drei Bibliotheken. **Er ist
+das letzte Fremdteil gewesen**; qr68, qcpp und ql68 waren seit 2026-09-06
+frei.
+
+Der Emulatorlauf ist dabei **derselbe** wie beim clib-Weg: er steht als
+`Q9-QCC/test/expect/selfhost_68k.exp` und wird von beiden Prüfständen über
+die Umgebung parametrisiert. Nur so kann ein Unterschied zwischen den
+Ergebnissen an der Bibliothek liegen und nicht daran, dass zwei Kopien des
+Laufs auseinandergelaufen sind.
+
+### Der Zielkorpus ist voll: acht Funktionen dazu
+
+Gemessen an `stage2.r`, nicht geschätzt — die *deklarierten* libc-Namen der
+Bootstrap-Quelle sind 13, die *referenzierten* 14:
+
+```
+fprintf  fputc  fputs  sprintf  strlen  strchr  strncmp  realloc
+```
+
+`fwrite` wird von QCC gar nicht gebraucht (aber von den anderen
+Werkzeugen). Damit definiert `qclib.l` **15 öffentliche Namen** — gegen
+**140** in Microwares `clib.l` (mit `libgen -ln` ausgezählt: 214 definierte
+Codesymbole, davon 140 ohne führenden Unterstrich). Die 333 clib-Module
+sind also zu elf Prozent überhaupt gebraucht.
+
+### Was die Formatangaben verlangten — abgezählt, nicht angenommen
+
+An QCCs Bootstrap-Quelle: **203 `%d`, 155 `%s`, 67 `%c`, 30 `%.*s`,
+7 `%ld`**. Die beiden letzten waren nicht selbstverständlich:
+
+- **`%ld` steht in den `printf`-Aufrufen, die das IR erzeugen** — also auf
+  dem byteidentischen Pfad. Die Längenangabe `l` wird übergangen, und das
+  ist keine Nachlässigkeit: auf dem 68k sind `int` und `long` beide 32 Bit.
+- **`%.*s`** (Genauigkeit aus dem Argument) kommt nur in Diagnosen vor,
+  musste aber trotzdem stimmen.
+
+Eine Genauigkeit an einer *Zahl* (`%.3d`, in C89 die Mindestziffernzahl)
+fällt bewusst in den Durchreichzweig, statt stillschweigend zu
+verschwinden — genauso eine Breitenangabe wie `%20s`.
+
+### `stderr` ist ein Nullzeiger — und das ist eine Freiheit
+
+QCCs Bootstrap-Quelle erklärt `stderr` als **nie zugewiesenen** statischen
+Zeiger („a private null stream keeps the successful compiler path
+independent of that internal stdio object") und ruft damit 217-mal
+`fprintf(stderr, ...)`. Gegen clib läuft das ins Ungewisse. qclib legt
+`FILE* == 0` auf **Pfad 2**, den Fehlerkanal.
+
+**Diese Entscheidung hat sich sofort bezahlt:** der erste Ziellauf brach mit
+`qcc: kein Speicher fuer Aktions-Log` ab — einer Meldung, die genau über
+diesen Weg kam. Gegen clib wäre der Lauf stumm gescheitert.
+
+### realloc: die erste Fassung war falsch, und die Messung hat es gezeigt
+
+`realloc` ist die einzige der acht Funktionen, die echte Arbeit ist: das
+Aktions-Log des erzeugten Parsers wächst durch **Verdoppeln**, der Inhalt
+muss also mitwandern.
+
+Die **erste Fassung** holte jeden neuen Block frisch mit `F$SRqMem` und gab
+den alten danach zurück. Damit leben beim Umschichten kurz der alte **und**
+der neue Block — Spitzenbedarf also das Dreifache. Auf dem Ziel scheiterte
+das:
+
+```
+QM: 6291464 Byte angefragt, rc=237
+```
+
+`237` = `$ed` = **`E$NoRAM`** (`MWOS/SRC/DEFS/errno.h`).
+
+Der Weg zur Ursache lief über **`test/mem68k.sh` und `test/memprobe.c`**,
+eine Messsonde, die in *einem* Emulatorlauf vier Dinge feststellt: den
+größten freien Block, die echte Leiter des Parsers, den größten Block
+*danach* und wie weit es darüber hinaus trägt. Gemessen:
+
+| | |
+|---|---|
+| RAM der Maschine | 16 MB, davon 14 348 K frei |
+| größter freier Block | 14 622 720 Byte |
+| Leiter des Aktions-Logs | 12 288 → 6 291 456 Byte |
+| nach dem Abgeben wieder frei | 14 622 720 Byte |
+
+Die letzte Zeile war die wichtige: sie hat **ein Leck ausgeschlossen** und
+damit auf den Spitzenbedarf gezeigt. Ohne sie hätte ich geraten. Und
+`groesster()` misst den größten **zusammenhängenden** Block — deshalb fällt
+er um mehr als das Gehaltene, das ist Fragmentierung und kein Verlust.
+
+**Die zweite Fassung hält eine Arena** (größter freier Block minus 2 MB
+Reserve) und unterteilt sie mit einem Belegungszeiger — und der **zuletzt
+ausgegebene Block wächst an der Stelle**. Damit kostet die
+Verdopplungsleiter des Parsers **keine einzige Kopie und keinen
+Spitzenbedarf**: 512 KB Eingabepuffer plus 6 MB Log, fertig. Das ist genau
+das Muster der Kette (ein fester Puffer, ein wachsender Block).
+
+Microwares clib macht es im Grundsatz genauso: ihr `memory.c` führt eine
+eigene Segmentverwaltung (`_cmem_base`, `_cmem_segs`, `_cmem_allocp`) über
+Systemspeicher, den es in großen Stücken holt — disassembliert sind dort
+`TRAP $5c` (`F$SRqCMem`) und `$29` (`F$SRtMem`), also **dieselbe Quelle**
+wie hier.
+
+Was diese Fassung **nicht** kann: Speicher wieder hergeben. Es gibt keine
+Freigabeliste, qclib hat kein `free` — die Kette ruft keines — und beim
+Prozessende gibt OS-9 die Arena ohnehin zurück.
+
+### `F$SRqMem`: dreifach belegt, weil hier nichts abgeleitet werden durfte
+
+1. **Handbuch** (`68k_tech.pdf`, „F$SRqMem System Memory Request"):
+   `d0.l` ein = Byteanzahl, `d0.l` aus = gewährte Anzahl, `(a2)` = Zeiger,
+   Fehler über das Übertragsbit mit dem Code in `d1.w`. Mit **`-1`** in
+   `d0.l` kommt der *größte freie Block* — damit lässt sich die Obergrenze
+   der Maschine messen.
+2. **Microwares eigener Rumpf** in `os_lib.l`, disassembliert: derselbe
+   Registersatz, aber `TRAP $5c` (`F$SRqCMem`) mit der Farbe als drittem
+   Argument. Das Handbuch dazu: „F$SRqMem is equivalent to a F$SRqCMem
+   request with a color of 0."
+3. **Der eigene Kernel** (`Q9-OS/src/kernel/q9kernel_entry.a`) dokumentiert
+   für `F$SRqMem` genau diese Belegung — und kennt `$28`, nicht `$5c`.
+   Deshalb steht in `os9call.a` `$28`: qclib soll auch auf dem eigenen
+   System laufen.
+
+Eine Falle steckt im dritten Argument: es liegt bei `4(a7)`, aber das
+gerettete `a2` auf dem Stack schiebt es auf `8(a7)`. Wer dort `4(a7)` liest,
+bekommt die Rücksprungadresse und schreibt den Zeiger dorthin.
+
+### Nebenbefund: QCCs `sizeof` ist auf einem 32-Bit-Ziel zu groß
+
+Beim Nachrechnen der 6 291 456 Byte fiel auf: das sind 262 144 Einträge à
+**24** Byte. Ein `struct { int id; const char *start; const char *end; }`
+ist auf dem 68k aber **12** Byte groß. Gemessen an QCCs eigener Ausgabe:
+
+```c
+a = sizeof(ActionLogEntry);   /* PUSH 24  -- richtig waere 12 */
+b = sizeof(char *);           /* PUSH 1   -- richtig waere 4  */
+```
+
+QCC rechnet also mit acht Byte je Strukturglied und hält einen Zeiger für
+ein Byte groß. Der Parser läuft damit richtig — sein Speicherbedarf ist
+aber **doppelt so hoch wie nötig**. Das ist ein Befund für Q9-QCC, kein
+Bibliotheksproblem, und deshalb hier nur notiert.
+
+### Der Prüfstand von qclib
+
+| Test | was er prüft |
+|---|---|
+| `test/hello68k.sh` | 14 Ausgabezeilen aller 15 Funktionen auf echtem 68030 |
+| `test/vsclib.sh` | **dasselbe Programm gegen clib** im selben Emulatorlauf, zeichengleich |
+| `test/qr68_68k.sh` | qr68 assembliert auf dem Ziel, byteidentisch |
+| `test/qcpp_68k.sh` | qcpp präprozessiert auf dem Ziel, byteidentisch |
+| `test/ql68_68k.sh` | ql68 bindet auf dem Ziel, byteidentisch |
+| `test/qcc_68k.sh` | **QCC übersetzt sich auf dem Ziel, IR byteidentisch** |
+| `test/mem68k.sh` | Messung, kein Soll-Ist: was die Maschine an Speicher hergibt |
+
+Die Erwartungswerte in `hello68k.sh` sind **nicht ausgedacht**, sondern aus
+dem Gegenlauf gegen clib übernommen. Das ist die Lehre aus dem
+`puts`-Fehler: von Hand hingeschriebene Sollwerte können denselben
+Denkfehler enthalten wie der Code.
