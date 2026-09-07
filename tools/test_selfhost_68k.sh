@@ -103,57 +103,19 @@ cp -c "$SRCIMG" "$IMG" 2>/dev/null || cp "$SRCIMG" "$IMG" || die "Image-Kopie"
 echo "  ok"
 
 echo "== 5/6 im Emulator: Rauchprobe, dann der eigene Parser =="
-cat > run.exp <<'EOF'
-log_file -a WORKDIR/run.log
-set timeout 1800
-set send_slow {1 .003}
-set prompt {[#$] ?$}
-spawn ./build/macos/q9.exe --rom MWOSDIR/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf IMAGE
-expect "devices online"
-send "\r"
-set li 0
-for {set i 0} {$i < 10 && !$li} {incr i} {
-    expect {
-        "User name?:" { send "super\r"; exp_continue }
-        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
-        -re $prompt { set li 1 }
-        timeout { send "\r" }
-    }
-}
-if {!$li} { send_log "\nSELFHOST: LOGIN FAILED\n"; exit 1 }
-
-# Erst ein kleiner Quelltext.  Scheitert der schon, ist das Modul defekt und
-# der grosse Lauf sagt nichts aus.
-send -s "/dd/CMDS/q9_qcc_stage2 @/dd/bootstrap_probe.c\r"
-expect {
-    -re {FUNC}           { send_log "\nSELFHOST: SMOKE OK\n" }
-    -re {PMMU}           { send_log "\nSELFHOST: SMOKE PMMU\n"; exit 1 }
-    -re {Stack Overflow} { send_log "\nSELFHOST: SMOKE STACK OVERFLOW\n"; exit 1 }
-    timeout              { send_log "\nSELFHOST: SMOKE TIMEOUT\n"; exit 1 }
-}
-expect -re $prompt
-
-# Der eigentliche Lauf.  IR in eine Datei -- 1 MB durch die Konsole waere
-# unnoetig langsam.  Fehlermeldungen bleiben auf dem Terminal und landen so im
-# Log, wo dieses Skript sie zaehlt.
-send_log "\nSELFHOST: LAUF BEGINNT\n"
-send -s "/dd/CMDS/q9_qcc_stage2 @/dd/selfhost_src.c >/dd/stage2.ir\r"
-# WICHTIG: nach diesem Block NICHT noch einmal auf den Prompt warten -- der
-# Prompt ist hier schon verbraucht, ein zweites 'expect prompt' haengt bis zum
-# Timeout.
-expect {
-    -re $prompt          { send_log "\nSELFHOST: LAUF ZU ENDE\n" }
-    -re {PMMU}           { send_log "\nSELFHOST: PMMU FAULT\n" }
-    -re {Stack Overflow} { send_log "\nSELFHOST: STACK OVERFLOW\n" }
-    timeout              { send_log "\nSELFHOST: TIMEOUT\n" }
-}
-send "\x1d"
-expect eof
-EOF
-sed -i.bak -e "s|WORKDIR|$WORK|" -e "s|IMAGE|$IMG|" \
-	-e "s|MWOSDIR|/Volumes/SSD1TB/projects/MWOS|" run.exp && rm -f run.exp.bak
+# DER EMULATORLAUF STEHT IN EINER EIGENEN DATEI (test/expect/selfhost_68k.exp).
+# Ausgelagert wurde er, damit der qclib-Pruefstand (Q9-qclib/test/qcc_68k.sh)
+# GENAU DENSELBEN Lauf fahren kann -- gebunden mit qr68/ql68 gegen qclib
+# statt mit r68/l68 gegen clib. Nur dann kann ein Unterschied zwischen den
+# beiden Ergebnissen an der Bibliothek liegen und nicht daran, dass zwei
+# Kopien des Emulatorlaufs auseinandergelaufen sind.
 rm -f run.log
-( cd "$FLUX" && expect -f "$WORK/run.exp" >/dev/null 2>&1 )
+Q9FLUX="$FLUX" MWOS=/Volumes/SSD1TB/projects/MWOS QCC_IMAGE="$IMG" \
+	QCC_MODULE=q9_qcc_stage2 QCC_PROBE=/dd/bootstrap_probe.c \
+	QCC_SRC=/dd/selfhost_src.c QCC_OUT=/dd/stage2.ir \
+	QCC_LOG="$WORK/run.log" \
+	expect -f "$REPO/test/expect/selfhost_68k.exp" >/dev/null 2>&1
+
 [ -f run.log ] || die "kein Emulator-Log -- lief der Emulator?"
 
 grep -q 'SELFHOST: SMOKE OK'   run.log || { echo "  Rauchprobe rot"; tail -20 run.log; exit 1; }
