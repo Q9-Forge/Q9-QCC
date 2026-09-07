@@ -205,6 +205,21 @@ quarter of what it needed.
 | Prototypes and separate declarations | partial | very high |
 | `inline`, `_Noreturn`, variadic functions | open | medium |
 
+**Addendum 2026-09-07 — `(void)` as a parameter list works in a DEFINITION
+but not in an `extern` declaration.** Measured:
+
+| | |
+|---|---|
+| `extern int f(void); f();` | `wrong argument count (expected 1, got 0)` |
+| `extern int f(); f();` | works |
+| `int f(void){ … }` (definition) | works |
+
+So the declaration reads `(void)` as **one** parameter. Noticed while
+building a measurement probe (`extern int *vsectbase(void);`), and it costs
+exactly as long as it takes to try the empty parentheses. At least it is
+**reported** rather than silently misread. In this subset the empty
+parenthesis is the correct form.
+
 ## 5. Translation units and semantics
 
 | Topic | Status | Priority |
