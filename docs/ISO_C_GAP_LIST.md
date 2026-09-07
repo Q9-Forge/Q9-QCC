@@ -69,10 +69,24 @@ rows already used. The rule lives in *one* function
 (`tcEmitFieldIndexStep`) instead of at the six emission sites — three
 reading, three writing.
 
-**Still rejected, with a proper diagnostic** (the chain needs none of it,
-and a message beats a wrong stride): `arr[i].field[j]`, indexing *through*
-a scalar pointer field (`s.ptr[j]`), and two-dimensional pointer arrays as
-a field.
+**Addendum 2026-09-07, second round — indexing *through* a scalar pointer
+field now works too** (`s.ptr[j]`, `sp->ptr[j]`, reading and writing, local
+and global). Previously rejected at six emission sites. The crux: the
+callers only have the **address of the field** on the stack, but the
+pointer *inside* the field is what's needed — hence `LOADIND p` first, then
+the index step. The rule lives in `tcEmitPtrFieldIndex`, one function for
+all six sites.
+
+**A seventh site stays rejected:** after a function call (`f().field[i]`) a
+different stack discipline applies — `PADD` with swapped operands instead
+of `IPADD` — and there is no caller for it. A second discipline alongside
+would be the next source of error.
+
+**Still rejected, with a proper diagnostic** (the chain does not need it,
+and a message beats a wrong stride): `arr[i].field[j]` — struct step and
+field step in *one* expression; that needs a second index scratch like
+`tcEmitPointerIndexChain` and is a project of its own. Likewise
+two-dimensional pointer arrays as a field (no caller).
 
 **Addendum 2026-09-07 — a SILENT wrong-code bug in `&arr[i]`, fixed.**
 `tc_addressref` emitted `PTRINDEX` with the type tag for the address of a
@@ -86,15 +100,40 @@ corpus contained **no `&arr[i]` on a struct array at all**; cases 27 and 28
 in `tools/test_struct_68k.sh` now cover it, with discriminating expected
 values (a wrong stride leaves them at 0).
 
-**STILL OPEN, found 2026-09-07 and NOT fixed:** copying a whole struct
-through a **pointer** (`struct S *p; v = p[i];`) emits
+**Addendum 2026-09-07 — a second silent wrong-code bug, fixed:** copying a
+whole struct through a **pointer** (`struct S *p; v = p[i];`) emitted
 `LOADP / PTRINDEX i / LOADIND i` — a four-byte stride *and* a `LOADIND`
-where the address is wanted. This is the same shape that was repaired for
-the ARRAY case (`v = arr[i]`) on 2026-09-01; the pointer case was left
-behind. The correct form is `LOADP / IPADDN <size>` without `LOADIND`. The
-chain does not use the pattern (the backend accesses via `insP->…`), so it
-is recorded here only. `p[i].field` for reading and writing is correct
-(`IPADDN 8`), as is `v = arr[i]`.
+where the address is wanted, so a data value ended up in A0 as the source
+address. The same shape had been repaired for the ARRAY case
+(`v = arr[i]`) on 2026-09-01; the pointer case was left behind, and it only
+turned up when the neighbouring sites were checked while measuring the
+`&arr[i]` bug. Now `LOADP / IPADDN <size>` without `LOADIND`: for a struct
+the address **is** the value. Case 35 in `tools/test_struct_68k.sh`.
+
+**Lesson for the next change of this kind:** a rule about strides never
+applies at just *one* site. The `&arr[i]` bug had two emission sites, the
+pointer arrays six, indexing through a pointer field another six — and the
+pointer variant of `v = p[i]` is exactly the array variant from six days
+earlier. Whoever touches such a site should hunt down its siblings.
+
+**Addendum 2026-09-07 — `const` on a struct field is parsed and
+discarded.** Noticed while implementing indexing through a pointer field:
+`struct P { const char *cp; }` with `p.cp[0] = 'x'` goes **through**,
+whereas the same is correctly reported for a *variable*
+(`cannot assign through pointer to const`). The grammar states the reason
+itself: `fieldConstKw` is an **action-less** copy of `constKw`, because
+referring to `constKw` would trigger `tc_const`, whose `tcPendingConst` is
+only consumed by the next parameter or local — where it would wrongly
+enforce constness. So it is a deliberate way around a state carry-over,
+not sloppiness.
+
+A `pointeeConst` check at the three write sites was in the code for a
+while and was **inert**, because the field never carries the
+qualification; it has been removed and the fact is recorded at
+`tcEmitPtrFieldIndex` instead. Whoever tackles it starts at
+`fieldConstKw`: the flag would have to be set there, applied per
+declarator in `tc_structfield`, and cleared at the end of the line
+(`const int a, b;` should cover both).
 
 **Addendum 2026-09-07 — the nesting limit was four too small.**
 `TC_MAX_CTRL` (previously the literal 64 at six places) is now 128.

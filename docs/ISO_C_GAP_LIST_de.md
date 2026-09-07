@@ -67,11 +67,25 @@ Für Zeigerarrays wird der Schritt deshalb in **Byte** angegeben
 steht in *einer* Funktion (`tcEmitFieldIndexStep`) statt an den sechs
 Emissionsstellen — drei lesend, drei schreibend.
 
-**Weiterhin abgelehnt und sauber gemeldet** (die Kette braucht nichts
-davon, und eine Meldung ist besser als eine falsche Schrittweite):
-`arr[i].feld[j]` (Structschritt und Feldschritt in einem Ausdruck),
-Indizierung *durch* ein skalares Zeigerfeld (`s.ptr[j]`), und
-zweidimensionale Zeigerarrays als Feld.
+**Nachtrag 2026-09-07, zweite Runde — Indizierung *durch* ein skalares
+Zeigerfeld geht jetzt auch** (`s.ptr[j]`, `sp->ptr[j]`, lesend und
+schreibend, lokal und global). Vorher an sechs Emissionsstellen abgelehnt.
+Der Kern: die Aufrufer haben nur die **Adresse des Feldes** auf dem
+Stapel, gebraucht wird aber der Zeiger *im* Feld — also erst `LOADIND p`,
+dann der Indexschritt. Die Regel steht in `tcEmitPtrFieldIndex`, einer
+Funktion für alle sechs Stellen.
+
+**Eine siebte Stelle bleibt abgelehnt:** nach einem Funktionsaufruf
+(`f().feld[i]`) gilt eine andere Stapelordnung — dort steht `PADD` mit
+vertauschten Operanden statt `IPADD` —, und dafür gibt es keinen Aufrufer.
+Eine zweite Ordnung nebenher wäre die nächste Fehlerquelle.
+
+**Weiterhin abgelehnt und sauber gemeldet** (die Kette braucht es nicht,
+und eine Meldung ist besser als eine falsche Schrittweite):
+`arr[i].feld[j]` — Structschritt und Feldschritt in *einem* Ausdruck; das
+braucht einen zweiten Index-Scratch wie `tcEmitPointerIndexChain` und ist
+damit ein eigenes Vorhaben. Ebenso zweidimensionale Zeigerarrays als Feld
+(kein Aufrufer).
 
 **Nachtrag 2026-09-07 — ein STILLER Falschcode-Fehler bei `&arr[i]`,
 behoben.** `tc_addressref` emittierte für die Adresse eines
@@ -86,15 +100,42 @@ Struct-Array** vor; jetzt prüfen es die Fälle 27 und 28 in
 `tools/test_struct_68k.sh`, und ihre Sollwerte diskriminieren (mit falscher
 Schrittweite bleiben sie auf 0).
 
-**NOCH OFFEN, gefunden am 2026-09-07 und NICHT behoben:** eine ganze Struct
-über einen **Zeiger** zu kopieren (`struct S *p; v = p[i];`) erzeugt
-`LOADP / PTRINDEX i / LOADIND i` — vier Byte Schrittweite *und* ein
-`LOADIND`, wo die Adresse gebraucht wird. Das ist dieselbe Bauform, die für
-den ARRAY-Fall (`v = arr[i]`) am 2026-09-01 repariert wurde; der
-Zeiger-Fall blieb dabei stehen. Richtig wäre `LOADP / IPADDN <Größe>` ohne
-`LOADIND`. Die Kette benutzt das Muster nicht (das Backend greift über
-`insP->…` zu), deshalb ist es hier nur notiert. `p[i].feld` lesend und
-schreibend ist dagegen korrekt (`IPADDN 8`), ebenso `v = arr[i]`.
+**Nachtrag 2026-09-07 — ein zweiter stiller Falschcode-Fehler, behoben:**
+eine ganze Struct über einen **Zeiger** zu kopieren
+(`struct S *p; v = p[i];`) erzeugte `LOADP / PTRINDEX i / LOADIND i` —
+vier Byte Schrittweite *und* ein `LOADIND`, wo die Adresse gebraucht wird;
+damit landete ein Datenwert als Quelladresse in A0. Dieselbe Bauform war
+für den ARRAY-Fall (`v = arr[i]`) am 2026-09-01 repariert worden, der
+Zeigerfall blieb dabei stehen — gefunden erst, als beim Nachmessen der
+`&arr[i]`-Sache auch die Nachbarstellen geprüft wurden. Jetzt
+`LOADP / IPADDN <Größe>` ohne `LOADIND`: bei einer Struct **ist** die
+Adresse der Wert. Fall 35 in `tools/test_struct_68k.sh`.
+
+**Lehre daraus, für die nächste Änderung dieser Art:** eine Regel über
+Schrittweiten gilt nie nur an *einer* Stelle. Beim `&arr[i]`-Fund waren es
+zwei Emissionsstellen, bei den Zeigerarrays sechs, bei der Indizierung
+durch ein Zeigerfeld wieder sechs — und der Zeigerfall von `v = p[i]` ist
+1:1 der Array-Fall von vor sechs Tagen. Wer eine solche Stelle anfasst,
+sucht die Geschwister mit.
+
+**Nachtrag 2026-09-07 — `const` am Strukturfeld wird geparst und
+verworfen.** Aufgefallen beim Umsetzen der Indizierung durch ein
+Zeigerfeld: `struct P { const char *cp; }` mit `p.cp[0] = 'x'` läuft
+**durch**, während dasselbe bei einer *Variablen* korrekt gemeldet wird
+(`cannot assign through pointer to const`). Die Grammatik sagt den Grund
+selbst: `fieldConstKw` ist eine **aktionslose** Kopie von `constKw`, denn
+ein Verweis auf `constKw` würde `tc_const` auslösen, dessen
+`tcPendingConst` erst beim nächsten Parameter oder Lokalen konsumiert wird
+— dort erzwänge es fälschlich Konstantheit. Das ist also ein bewusst
+gewählter Ausweg um einen Zustandsübertrag, keine Nachlässigkeit.
+
+Eine Prüfung auf `pointeeConst` an den drei Schreibstellen stand
+zwischenzeitlich im Code und war **wirkungslos**, weil das Feld die
+Qualifikation nie trägt; sie ist wieder heraus und die Tatsache steht
+stattdessen bei `tcEmitPtrFieldIndex`. Wer es angeht, fängt bei
+`fieldConstKw` an: die Kennung müsste dort gesetzt, in `tc_structfield` je
+Deklarator angewandt und am Zeilenende gelöscht werden (`const int a, b;`
+soll beide treffen).
 
 **Nachtrag 2026-09-07 — die Verschachtelungsgrenze war um vier zu knapp.**
 `TC_MAX_CTRL` (vorher das Literal 64 an sechs Stellen) ist jetzt 128.
