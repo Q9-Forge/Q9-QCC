@@ -106,3 +106,26 @@ split (or a submodule is set up), the table above is no substitute for
 automation. For the record: until 2026-08-11 these files had drifted apart
 **unnoticed in five cases**, among them two competing fixes for the same
 big-endian bug.
+
+## Der Selbsthost-Test läuft jetzt auf zwei Wegen
+
+**2026-09-07.** Der Emulatorlauf des Selbsthost-Tests steht als eigene
+Datei `test/expect/selfhost_68k.exp` und nimmt alles über die Umgebung
+(`QCC_MODULE`, `QCC_SRC`, `QCC_OUT`, `QCC_IMAGE`, `QCC_LOG`, `Q9FLUX`,
+`MWOS`). Zwei Prüfstände fahren **denselben** Lauf:
+
+| Prüfstand | Kette |
+|---|---|
+| `tools/test_selfhost_68k.sh` | `r68` + `l68` über Wine, gegen `clib.l`, `os_lib.l`, `sys.l` |
+| `Q9-qclib/test/qcc_68k.sh` | `qr68` + `ql68`, gegen `qclib.l` — kein fremdes Teil |
+
+Nur so kann ein Unterschied zwischen den beiden Ergebnissen an Bibliothek
+und Binder liegen und nicht daran, dass zwei Kopien des Laufs
+auseinandergelaufen sind. Beide erreichen denselben Fixpunkt: 89 769
+IR-Zeilen, 1 123 692 Byte, byteidentisch zum Hostlauf.
+
+Beim Auslagern kam ein `eof`-Zweig dazu. Stirbt der **Emulator** (nicht das
+Programm), lief das Skript vorher in einen Tcl-Fehler beim Escape
+(`spawn id exp6 not open`) und meldete **gar nichts** — der Prüfstand sah
+nur eine fehlende Marke und konnte „Programm hängt" nicht von „Emulator
+weg" unterscheiden. Genau das ist einmal passiert.

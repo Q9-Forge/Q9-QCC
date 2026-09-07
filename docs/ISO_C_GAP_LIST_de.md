@@ -66,6 +66,18 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Prä-/Postinkrement und -dekrement | erledigt (nur einfache int/unsigned/char-Skalare) | — |
 | Casts und implizite Konversionen | teilweise (nur int/unsigned/char/bool, kein Pointer/typedef als Cast-Ziel) | sehr hoch |
 | `sizeof` und `_Alignof` | teilweise (`sizeof` auf int/char/bool/unsigned/struct, keine Pointer, kein `_Alignof`) | hoch |
+
+**Nachtrag 2026-09-07, gemessen:** die Lücke bei Zeigern kostet auf dem
+68k-Ziel echten Speicher. `sizeof(char *)` ergibt **1** (`PUSH 1` im IR),
+und ein `struct { int id; const char *start; const char *end; }` ergibt
+**24** statt der auf einem 32-Bit-Ziel richtigen **12** — QCC rechnet
+offenbar mit acht Byte je Strukturglied. Aufgefallen ist es beim Ziellauf
+von QCC gegen `qclib`: das Aktions-Log des erzeugten Parsers fragte
+6 291 456 Byte für 262 144 Einträge an und lief damit in `E$NoRAM`. Der
+Parser läuft trotzdem richtig — die Struktur ist in sich stimmig belegt —,
+aber **sein Speicherbedarf ist doppelt so hoch wie nötig**. Wer das
+angeht, prüft danach den Selbsthost-Fixpunkt: die Struct-Größe steckt in
+den Emissionsstellen für Struct-Kopien mit drin.
 | Kommaoperator | offen | mittel |
 | vollständige Constant Expressions | offen | hoch |
 | Sequenzierungs- und Undefined-Behavior-Regeln | offen | sehr hoch |

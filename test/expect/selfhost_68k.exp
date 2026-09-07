@@ -1,0 +1,90 @@
+#!/usr/bin/expect -f
+# Der Emulatorlauf des Selbsthost-Tests: ein QCC-Modul auf echtem 68030
+# seinen eigenen Parser uebersetzen lassen.
+#
+# DIESE DATEI IST BEWUSST AUSGELAGERT und nimmt alles ueber die Umgebung.
+# Sie wird von ZWEI Pruefstaenden benutzt:
+#
+#   tools/test_selfhost_68k.sh   -- gebunden mit r68/l68 gegen Microwares
+#                                   clib (der fremde Weg)
+#   Q9-qclib/test/qcc_68k.sh     -- gebunden mit qr68/ql68 gegen qclib
+#                                   (die eigene Kette)
+#
+# Nur so kann ein Unterschied zwischen den beiden Laeufen ausschliesslich
+# an der Bibliothek und am Binder liegen -- und nicht daran, dass zwei
+# Kopien des Emulatorlaufs auseinandergelaufen sind.
+#
+# Umgebung:
+#   Q9FLUX       Wurzel des Emulatorbaums (Arbeitsverzeichnis fuer q9.exe)
+#   MWOS         MWOS-Wurzel (fuer das ROM-Abbild)
+#   QCC_IMAGE    CF-Abbild, absolut
+#   QCC_MODULE   Modulname in /dd/CMDS
+#   QCC_PROBE    kleine Quelle fuer die Rauchprobe (im Abbild)
+#   QCC_SRC      die grosse Quelle (im Abbild)
+#   QCC_OUT      Ausgabedatei im Abbild
+#   QCC_LOG      Logdatei am Host
+
+log_file -a $env(QCC_LOG)
+set timeout 1800
+set send_slow {1 .003}
+set prompt {[#$] ?$}
+
+set flux   $env(Q9FLUX)
+set mwos   $env(MWOS)
+set image  $env(QCC_IMAGE)
+set modul  $env(QCC_MODULE)
+set probe  $env(QCC_PROBE)
+set quelle $env(QCC_SRC)
+set aus    $env(QCC_OUT)
+
+cd $flux
+spawn ./build/macos/q9.exe --rom $mwos/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf $image
+expect "devices online"
+send "\r"
+set li 0
+for {set i 0} {$i < 10 && !$li} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re $prompt { set li 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$li} { send_log "\nSELFHOST: LOGIN FAILED\n"; exit 1 }
+
+# Erst ein kleiner Quelltext. Scheitert der schon, ist das Modul defekt und
+# der grosse Lauf sagt nichts aus.
+send -s "/dd/CMDS/$modul @$probe\r"
+expect {
+    -re {FUNC}           { send_log "\nSELFHOST: SMOKE OK\n" }
+    -re {PMMU}           { send_log "\nSELFHOST: SMOKE PMMU\n"; exit 1 }
+    -re {Stack Overflow} { send_log "\nSELFHOST: SMOKE STACK OVERFLOW\n"; exit 1 }
+    eof                  { send_log "\nSELFHOST: EMULATOR WEG (Rauchprobe)\n"; exit 1 }
+    timeout              { send_log "\nSELFHOST: SMOKE TIMEOUT\n"; exit 1 }
+}
+expect -re $prompt
+
+# Der eigentliche Lauf. IR in eine Datei -- 1 MB durch die Konsole waere
+# unnoetig langsam. Fehlermeldungen bleiben auf dem Terminal und landen so im
+# Log, wo der aufrufende Pruefstand sie zaehlt.
+send_log "\nSELFHOST: LAUF BEGINNT\n"
+send -s "/dd/CMDS/$modul @$quelle >$aus\r"
+# WICHTIG: nach diesem Block NICHT noch einmal auf den Prompt warten -- der
+# Prompt ist hier schon verbraucht, ein zweites "expect prompt" haengt bis zum
+# Timeout.
+#
+# DER eof-ZWEIG IST WICHTIG: stirbt der EMULATOR (nicht das Programm), lief
+# das Skript vorher in einen Tcl-Fehler ("spawn id exp6 not open" beim
+# Escape) und meldete GAR NICHTS -- der Pruefstand sah nur eine fehlende
+# Marke und konnte den Unterschied zwischen "Programm haengt" und
+# "Emulator weg" nicht benennen.
+expect {
+    -re $prompt          { send_log "\nSELFHOST: LAUF ZU ENDE\n" }
+    -re {PMMU}           { send_log "\nSELFHOST: PMMU FAULT\n" }
+    -re {Stack Overflow} { send_log "\nSELFHOST: STACK OVERFLOW\n" }
+    eof                  { send_log "\nSELFHOST: EMULATOR WEG\n"; exit 1 }
+    timeout              { send_log "\nSELFHOST: TIMEOUT\n" }
+}
+# Der Escape darf nicht scheitern, wenn der Emulator schon weg ist.
+catch { send "\x1d" }
+catch { expect eof }
