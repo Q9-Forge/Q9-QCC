@@ -32,6 +32,14 @@ extern int strlen(const char *s);
 extern char *strchr(const char *s, int c);
 extern int strncmp(const char *a, const char *b, int n);
 extern char *realloc(char *p, int n);
+extern int strcmp(const char *a, const char *b);
+extern char *strcat(char *d, const char *s);
+extern char *strncpy(char *d, const char *s, int n);
+extern char *strrchr(const char *s, int c);
+extern char *strtok(char *s, const char *delim);
+extern long strtol(const char *s, char **end, int base);
+extern char *memset(char *d, int c, int n);
+extern char *memcpy(char *d, const char *s, int n);
 
 int vorz(int v)
 {
@@ -49,6 +57,8 @@ int main()
 	char *q;
 	char buf[64];
 	char sbuf[64];
+	char tbuf[20];
+	char *ende;
 	int n;
 	int i;
 	int gut;
@@ -139,6 +149,49 @@ int main()
 	i = fputc(33, fp);
 	fclose(fp);
 	printf("rueckgaben %d %d\n", n >= 0, i);
+
+	/* Die acht Funktionen, die qcc_backend_c.cpp braucht. fgets und ferror
+	   stehen NICHT hier: fuer fgets ist clib kein gueltiges Orakel (es
+	   trennt an $0d, siehe test/lineend68k.sh), und ferror liesse sich
+	   ohne einen echten Schreibfehler nicht vergleichen. */
+	printf("strcmp %d %d %d\n", vorz(strcmp("ab", "ab")),
+	       vorz(strcmp("ab", "ac")), vorz(strcmp("b", "a")));
+
+	sbuf[0] = 0;
+	strcat(sbuf, "abc");
+	strcat(sbuf, "de");
+	printf("strcat %s\n", sbuf);
+
+	/* strncpy fuellt eine kuerzere Quelle mit Nullen AUF -- bis n, nicht
+	   weiter. Das '#' an Stelle 5 muss also stehen bleiben. */
+	memset(sbuf, 35, 8);
+	strncpy(sbuf, "xy", 5);
+	printf("strncpy %d %d %d %d %d %d\n", sbuf[0] & 255, sbuf[1] & 255,
+	       sbuf[2] & 255, sbuf[3] & 255, sbuf[4] & 255, sbuf[5] & 255);
+
+	printf("strrchr %s\n", strrchr("a/b/c", 47));
+
+	/* strtok SCHREIBT in seinen Puffer, deshalb ein eigenes Feld und kein
+	   Zeichenkettenliteral. Zwei Trenner hintereinander duerfen kein
+	   leeres Feld ergeben. */
+	strncpy(tbuf, "eins zwei  drei", 19);
+	tbuf[19] = 0;
+	p = strtok(tbuf, " ");
+	n = 0;
+	while (p != 0) {
+		printf("tok %d %s\n", n, p);
+		n++;
+		p = strtok(0, " ");
+	}
+
+	printf("strtol %d %d %d\n", strtol("42", &ende, 10),
+	       strtol("-7", &ende, 10), strtol("ff", &ende, 16));
+	i = strtol("123abc", &ende, 10);
+	printf("strtol-ende %d %s\n", i, ende);
+
+	memset(sbuf, 46, 6);
+	memcpy(sbuf, "AB", 2);
+	printf("memcpy %d %d %d\n", sbuf[0] & 255, sbuf[1] & 255, sbuf[2] & 255);
 
 	fp = fopen("/dd/qftest2.txt", "r");
 	if (fp == 0) {

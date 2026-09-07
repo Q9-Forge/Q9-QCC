@@ -543,3 +543,79 @@ Die Erwartungswerte in `hello68k.sh` sind **nicht ausgedacht**, sondern aus
 dem Gegenlauf gegen clib übernommen. Das ist die Lehre aus dem
 `puts`-Fehler: von Hand hingeschriebene Sollwerte können denselben
 Denkfehler enthalten wie der Code.
+
+## Zehn Funktionen mehr — für QCCs Backend
+
+**2026-09-07.** `qcc_backend` war das einzige Glied der Kette, das nie auf
+dem 68030 gelaufen ist. Was es dafür an Bibliothek brauchte, ist gemessen
+und nicht geschätzt: `strcmp` 154-mal, `fputs` 141-mal, `fprintf` 126-mal,
+`sprintf` 32-mal, dazu `strncpy`, `memset`, `strtok`, `strrchr`, `strtol`,
+`strcat`, `memcpy`, `fgets`, `ferror`. Zehn davon fehlten.
+
+Damit definiert `qclib.l` **25 öffentliche Namen** gegen clibs 140.
+
+### `fgets` weicht bewusst von clib ab — gemessen, nicht entschieden
+
+Vor der ersten Zeile Code stand die Frage, welches Byte eine Zeile beendet.
+OS-9 nutzt herkömmlich CR (`$0d`), C schreibt LF (`$0a`) vor. Statt zu
+wählen, hat `test/lineend68k.sh` clib gefragt: eine Datei mit
+`A $0d B $0a C $0d $0a D`, gelesen mit clibs `fgets`:
+
+```
+zeile 1 laenge 2: 65 13          A + CR
+zeile 2 laenge 4: 66 10 67 13    B + LF + C + CR   <- LF hat NICHT getrennt
+zeile 3 laenge 2: 10 68          LF + D
+```
+
+**Microwares `fgets` trennt an `$0d`.** Das ist bei Microware in sich
+stimmig — deren C bildet `n` auf CR ab. QCC bildet es auf `$0a` ab, und
+alle Dateien dieser Kette entstehen damit (an `printf` nachgemessen). Also
+trennt qclibs `fgets` an `$0a`, und **für diese eine Funktion ist der
+Gegenlauf gegen clib kein gültiges Orakel**. Es ist stattdessen die
+Host-libc: `test/fgets68k.sh` übersetzt dieselbe Quelle mit `clang` und
+vergleicht byteweise — inklusive Abschneiden bei `n-1` und letzter Zeile
+ohne Umbruch.
+
+Operative Folge, die einmal Zeit gekostet hätte: **IR-Dateien mit ToolShed
+`copy -r` ins Abbild bringen, nicht mit `copy -l`** — das setzt
+OS-9-Zeilenenden.
+
+### `fgets` puffert, `fread` nicht
+
+Zeilenweise Lesen ohne Puffer wäre ein Systemaufruf je **Byte**, und das
+Backend liest eine IR-Datei von über einem Megabyte — rund eine Million
+`I$Read` auf einem 68030. Deshalb holt `fgets` einen Block von 1 KB und
+gibt die Zeilen daraus heraus; der Puffer entsteht erst beim ersten `fgets`
+und nur für die Dateien, die ihn brauchen (über `realloc`, also aus der
+Arena).
+
+`fread` bleibt unverändert ungepuffert — die Werkzeuge holen ihre Eingabe
+in *einem* `fread`. Die Folge davon steht im Quelltext: `fgets` und `fread`
+auf derselben Datei zu mischen geht schief, weil `fread` die schon
+gepufferten Bytes überspringt. Die Kette tut es nicht.
+
+### `ferror` brauchte eine Fehlerkennung, die es vorher nicht gab
+
+`qcc_backend` prüft nach dem Schreiben `if (ferror(out))`. Dafür merken
+sich `qf_write` und `qf_read` jetzt einen Fehlschlag je offener Datei —
+vorher war ein Schreibfehler nur am kleineren Rückgabewert erkennbar, und
+den prüft kaum ein Aufrufer. Das Dateiende (`E$EOF` = 211) zählt dabei
+ausdrücklich **nicht** als Fehler.
+
+### `strncpy` genau nach C89
+
+Ist die Quelle kürzer als `n`, wird mit Nullen **aufgefüllt**; ist sie es
+nicht, steht am Ende **keine** Null. Deshalb schreibt `qcc_backend` hinter
+jedem `strncpy` die Null selbst. Wer sie in der Bibliothek immer setzt,
+wäre bequemer und falsch — der Gegenlauf gegen clib prüft genau das
+(`strncpy 120 121 0 0 0 35`: die `#` an Stelle 5 bleibt stehen).
+
+### `strtol` kappt bei Überlauf und sagt es
+
+Basis 2..36 und 0 (Präfix entscheidet), führender Leerraum und Vorzeichen
+werden überlesen, `end` zeigt danach auf das erste nicht verbrauchte
+Zeichen — ohne eine einzige Ziffer auf den **Anfang**, so verlangt es C89,
+und `qcc_backend` prüft genau das. Bei Überlauf wird gekappt und weiter
+gezählt, damit `end` stimmt; C89 will zusätzlich `errno = ERANGE`, und
+qclib hat kein `errno` — das steht im Quelltext ausgeschrieben statt
+verschwiegen.

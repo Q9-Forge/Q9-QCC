@@ -1,4 +1,5 @@
-* Die Adapter fuer fopen, fclose, fread, fwrite, puts, fputc und fputs.
+* Die Adapter fuer fopen, fclose, fread, fwrite, puts, fputc, fputs,
+* fgets und ferror.
 *
 * WARUM ES SIE BRAUCHT -- zwei gemessene Gruende:
 *
@@ -120,6 +121,33 @@ fputs:
          move.l  a1,-(a7)
          pea     4(a7)
          bsr     tc_qf_puts_f
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+
+fgets:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qf_gets
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+ferror:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qf_error
          addq.l  #4,a7
          move.l  (a7)+,a1
          addq.l  #8,a7
