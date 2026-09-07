@@ -228,6 +228,7 @@ static int SECT_IDATA = 2;     /* vsect: initialisierte Daten */
 static int SECT_UDATA = 3;     /* vsect: reservierte Daten (ds) */
 static int SECT_ABS = 4;       /* equ/set: absoluter Wert */
 static int SECT_EXTERN = 5;
+static int SECT_RDATA = 6;     /* vsect remote: reservierte FERNdaten (ds) */
 
 /* Psect-Angaben */
 static int psName;
@@ -246,6 +247,32 @@ static int psSeen;
 static int idataPC;
 static int udataPC;
 static int statStorage;        /* reservierte Groesse im vsect */
+
+/* "vsect remote" -- ein DRITTER Adressraum, ebenfalls ab 0.
+ *
+ * WOFUER: ein nicht-remoter vsect wird ueber d16(a6) angesprochen und passt
+ * damit in 64 KB; l68 lehnt mehr ab ("non-remote data allocation exceeds 64k
+ * bytes"). Remote-Daten zaehlen dort nicht mit, und l68 legt sie im
+ * Datenbereich HINTER die initialisierten Daten -- aus dem 16-Bit-Fenster
+ * heraus. Gemessen an l68 (ein psect mit 8000 nicht-remote, 8 Byte
+ * initialisiert, 70000 remote):
+ *     blk  (nicht remote)  -> Datenoffset     0
+ *     iblk (initialisiert) -> Datenoffset  8000
+ *     rblk (remote)        -> Datenoffset  8008
+ *     M$Mem = 78008
+ * Der Datenbereich ist also derselbe; remote aendert die REIHENFOLGE und
+ * schaltet die 64-KB-Pruefung ab.
+ *
+ * qr68 hat "remote" bis 2026-09-07 STILLSCHWEIGEND VERWORFEN: die ROFs mit
+ * und ohne remote waren byteidentisch, remotestatsiz blieb 0. Genau die
+ * Fehlerklasse, die dieses Projekt sonst bekaempft -- und sie hat den
+ * Datenmodell-Umbau blockiert, denn ohne remote kommt er nicht durch l68.
+ *
+ * Im ROF: Groesse in remotestatsiz (Offset 44), Symbole tragen das Typwort
+ * $0002 (gemessen: nicht-remote $0000, initialisiert $0001, remote $0002). */
+static int rdataPC;
+static int remoteStatStorage;  /* reservierte Groesse im vsect remote */
+static int inRemoteVsect;      /* 1, solange ein "vsect remote" offen ist */
 
 /* Zeitstempel: fest, damit die Ausgabe reproduzierbar ist. Mit -fdate=
    setzbar, damit der Differenztest gegen r68 dessen Stempel nachbilden
@@ -934,7 +961,7 @@ static int exPrimary(void)
 		if (exSect == SECT_NONE)
 			exSect = SECT_ABS;
 		if (exSect == SECT_CODE || exSect == SECT_IDATA ||
-		    exSect == SECT_UDATA) {
+		    exSect == SECT_UDATA || exSect == SECT_RDATA) {
 			termAdd(exSect, -1);
 		} else if (exSect == SECT_EXTERN && symExt[s] >= 0) {
 			exExtern = symExt[s];
@@ -1172,7 +1199,7 @@ static void emitByte(int b)
 		idataPC++;
 		curPC = idataPC;
 		return;
-	} else if (curSect == SECT_UDATA) {
+	} else if (curSect == SECT_UDATA || curSect == SECT_RDATA) {
 		fatal("Daten in einem reservierten Abschnitt", "");
 	} else {
 		fatal("Code oder Daten ohne psect/vsect", "");
@@ -1236,6 +1263,8 @@ static int refTypeFor(int size, int target)
 		t = t | 4;
 	else if (target == SECT_IDATA)
 		t = t | 1;
+	else if (target == SECT_RDATA)
+		t = t | 2;
 	else if (target != SECT_UDATA && target != SECT_EXTERN)
 		fatal("innerer Fehler: Referenzziel", "");
 	return t;
@@ -1569,6 +1598,15 @@ static void doPsect(void)
    das Fuellbyte auf 3. Das gilt fuer Befehle wie fuer dc.w/dc.l. */
 static void alignEven(void)
 {
+	if (curSect == SECT_RDATA) {
+		if ((rdataPC % 2) != 0) {
+			rdataPC++;
+			if (rdataPC > remoteStatStorage)
+				remoteStatStorage = rdataPC;
+			curPC = rdataPC;
+		}
+		return;
+	}
 	if (curSect == SECT_UDATA) {
 		/* Im reservierten Bereich wird nichts abgelegt, nur gezaehlt
 		   (gemessen: "u1 ds.b 1 / u2 ds.w 1" ergibt u2 = 2). */
@@ -1680,6 +1718,13 @@ static void doDs(int size)
 	else if (size == 'l')
 		bytes = count * 4;
 
+	if (curSect == SECT_RDATA) {
+		rdataPC = rdataPC + bytes;
+		if (rdataPC > remoteStatStorage)
+			remoteStatStorage = rdataPC;
+		curPC = rdataPC;
+		return;
+	}
 	if (curSect == SECT_UDATA) {
 		udataPC = udataPC + bytes;
 		if (udataPC > statStorage)
@@ -1750,6 +1795,14 @@ static void doAlign(void)
 		a = evalExpr(lnArg);
 	if (a < 1)
 		fatal("align mit ungueltiger Groesse", "");
+	if (curSect == SECT_RDATA) {
+		while ((rdataPC % a) != 0)
+			rdataPC++;
+		if (rdataPC > remoteStatStorage)
+			remoteStatStorage = rdataPC;
+		curPC = rdataPC;
+		return;
+	}
 	if (curSect == SECT_UDATA) {
 		/* Dort wird nichts abgelegt, nur gezaehlt. */
 		while ((udataPC % a) != 0)
@@ -5308,6 +5361,13 @@ static void runPass(void)
 			symDefine(argDefName[i], argDefVal[i], SECT_ABS, 0, 0);
 	}
 	statStorage = 0;
+	/* Die FERNdaten genauso zuruecksetzen wie die nahen -- sonst wachsen
+	   sie ueber die Durchlaeufe weiter und qr68 meldet zu Recht
+	   "Adressen werden nicht stabil". Genau das ist beim ersten Anlauf
+	   passiert. */
+	remoteStatStorage = 0;
+	rdataPC = 0;
+	inRemoteVsect = 0;
 	idataPC = 0;
 	udataPC = 0;
 	symMoved = 0;
@@ -5388,10 +5448,21 @@ static void runPass(void)
 		   welchen Adressraum ein Label gehoert: "dc" in die
 		   initialisierten Daten, "ds" in die reservierten. Deshalb
 		   wird der Abschnitt VOR dem Label festgelegt. */
-		if (curSect == SECT_IDATA || curSect == SECT_UDATA) {
+		if (curSect == SECT_IDATA || curSect == SECT_UDATA ||
+		    curSect == SECT_RDATA) {
 			if (baseIs(base, "ds")) {
-				curSect = SECT_UDATA;
-				curPC = udataPC;
+				/* In einem "vsect remote" geht ds in den FERNbereich.
+				   dc bleibt in den initialisierten Daten -- fuer
+				   remote-INITIALISIERTE Daten (remoteidatsiz) gibt es
+				   in dieser Kette keinen Aufrufer, und lieber nur der
+				   gemessene Fall als ein geratener. */
+				if (inRemoteVsect) {
+					curSect = SECT_RDATA;
+					curPC = rdataPC;
+				} else {
+					curSect = SECT_UDATA;
+					curPC = udataPC;
+				}
 			} else if (baseIs(base, "dc") || baseIs(base, "dcb")) {
 				curSect = SECT_IDATA;
 				curPC = idataPC;
@@ -5510,12 +5581,24 @@ static void runPass(void)
 			continue;
 		}
 		if (baseIs(base, "vsect")) {
+			/* "vsect remote" -- alles andere hinter vsect waere ein
+			   Tippfehler, und den zu verschweigen waere genau der
+			   Mangel, der hier behoben wird. */
+			inRemoteVsect = 0;
+			if (lnArg[0] != 0) {
+				if (baseIs(lnArg, "remote"))
+					inRemoteVsect = 1;
+				else
+					fatal("vsect kennt nur \"remote\": ", lnArg);
+			}
 			curSect = SECT_IDATA;
 			curPC = idataPC;
 			continue;
 		}
 		if (baseIs(base, "ends") || baseIs(base, "endsect")) {
-			if (curSect == SECT_IDATA || curSect == SECT_UDATA) {
+			inRemoteVsect = 0;
+			if (curSect == SECT_IDATA || curSect == SECT_UDATA ||
+			    curSect == SECT_RDATA) {
 				curSect = SECT_CODE;
 				curPC = codeN;
 			} else {
@@ -5708,8 +5791,8 @@ static void writeRof(void)
 	outLong(psStack);
 	outLong(psEntry);
 	outLong(psTrap);
-	outLong(0);                    /* remotestatsiz */
-	outLong(0);                    /* remoteidatsiz */
+	outLong(remoteStatStorage);    /* remotestatsiz */
+	outLong(0);                    /* remoteidatsiz -- kein Aufrufer */
 	outLong(0);                    /* debugsiz */
 	outStrZ(poolAt(psName));
 
@@ -5719,7 +5802,7 @@ static void writeRof(void)
 	   dieselbe Reihenfolge gibt es keine Byteidentitaet. Sortiert wird
 	   ueber die Bytewerte des Namens.
 	   Typwoerter, ebenfalls gemessen: Code $0004, initialisierte Daten
-	   $0001, reservierte Daten $0000. */
+	   $0001, reservierte Daten $0000, reservierte FERNdaten $0002. */
 	outLong(nGlob);
 	{
 		int done;
@@ -5750,6 +5833,8 @@ static void writeRof(void)
 				outWord(0x0001);
 			else if (symSect[best] == SECT_UDATA)
 				outWord(0x0000);
+			else if (symSect[best] == SECT_RDATA)
+				outWord(0x0002);
 			else if (symSect[best] == SECT_ABS)
 				/* Ein globales equ auf einen festen Wert --
 				   gemessen: Typ $0006, und in der Adresse

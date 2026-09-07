@@ -1074,3 +1074,42 @@ auf dem 68030. Was offen bleibt, ist **bewusst** offen:
    dazu dokumentiert — ROF-Format, Modulformat, Linkeralgorithmus,
    Bibliotheksformat — ist in `docs/ROF_UND_LINKER_QUELLEN.md`
    zusammengetragen**, samt Abgleich gegen unsere Messungen.
+
+## `vsect remote` — vorher stillschweigend verworfen
+
+**2026-09-07.** qr68 hat `remote` bis dahin **ignoriert, ohne es zu sagen**:
+die ROFs mit und ohne `remote` waren byteidentisch, `remotestatsiz` blieb 0.
+Genau die Fehlerklasse, die dieses Projekt sonst bekämpft — und sie hat
+QCCs Datenmodell-Umbau blockiert, ohne sich zu zeigen.
+
+Wozu es gebraucht wird: ein **nicht**-remoter `vsect` wird über `d16(a6)`
+angesprochen und passt damit in 64 KB; darüber bricht l68 ab
+(`non-remote data allocation exceeds 64k bytes`). Ferndaten zählen dort
+nicht mit — l68 legt sie im Datenbereich **hinter** die initialisierten
+Daten, also aus dem 16-Bit-Fenster heraus. Das ist der Weg, auf dem der
+Umbau (genullte Globals in den `vsect`, Faktor ~6 kleinere Module)
+überhaupt durch die Binder kommen kann.
+
+Umgesetzt ist der gemessene Fall: **reservierte** Ferndaten (`ds` in einem
+`vsect remote`) bekommen einen eigenen Adressraum ab 0, ihre Größe geht
+nach `remotestatsiz` (Offset 44), und ihre Symbole tragen das Typwort
+`$0002`. Gemessen an r68: nicht-remote `$0000`, initialisiert `$0001`,
+remote `$0002`.
+
+**Nicht** umgesetzt: remote *initialisierte* Daten (`remoteidatsiz`,
+Offset 48). Dafür gibt es in dieser Kette keinen Aufrufer, und ein
+geratener Fall wäre schlechter als keiner.
+
+`vsect` mit irgendetwas anderem als `remote` **bricht jetzt ab**. Vorher
+wäre ein Tippfehler dort genauso stillschweigend verschwunden.
+
+`test/remotetest.sh` hält vier Fälle gegen r68 — nur ein Fernblock,
+gemischt (nicht-remote + initialisiert + remote), remote mit `align` und
+mehreren Marken, und **einen Fall ohne `remote`**, der unverändert
+byteidentisch bleiben muss. Alle vier gleich.
+
+Ein Fehler beim Bauen ist erwähnenswert, weil qr68 ihn selbst gefunden
+hat: die neuen Zähler wurden zwischen den Durchläufen nicht
+zurückgesetzt, und der Assembler meldete sofort **„Adressen werden nicht
+stabil (mehr als 12 Durchläufe)"**. Der Wächter, der für fremde Quellen
+gedacht war, hat den eigenen Fehler gefangen.
