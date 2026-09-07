@@ -1,4 +1,4 @@
-/* fopen, fclose, fread, fwrite, puts, fputc, fputs fuer qclib.
+/* fopen, fclose, fread, fwrite, puts, fputc, fputs, fgets, ferror fuer qclib.
  *
  * Der FILE* der C-Ebene ist hier die ADRESSE eines Tabelleneintrags, und
  * der Eintrag enthaelt die OS-9-Pfadnummer. Microwares FILE-Struktur mit
@@ -34,6 +34,89 @@ extern int _os_write(int path, char *buf, int *count);
    Pfad 0 ist die Standardeingabe und kann hier nicht vorkommen, weil
    fopen sie nie liefert -- die 0 ist also als "frei" eindeutig. */
 int qf_path[QF_MAX];
+
+/* Begleitfelder je offener Datei -- gleicher Index wie qf_path.
+ *
+ * WARUM ES SIE GIBT: fgets liest ZEILENweise. Ohne Puffer waere das ein
+ * Systemaufruf je BYTE, und das Backend liest eine IR-Datei von ueber einem
+ * Megabyte -- rund eine Million I$Read auf einem 68030. Deshalb holt fgets
+ * einen Block und gibt die Zeilen daraus heraus.
+ *
+ * Der Puffer entsteht erst beim ersten fgets (ueber realloc, also aus der
+ * Arena in mem.c) und nur fuer die Dateien, die zeilenweise gelesen werden.
+ * fread bleibt davon unberuehrt und geht weiter direkt zum System -- die
+ * Werkzeuge der Kette holen ihre Eingabe in EINEM fread, da traegt eine
+ * Pufferschicht nichts bei.
+ *
+ * ACHTUNG, die Folge daraus: fgets und fread auf DERSELBEN Datei zu mischen
+ * geht schief, weil fread die schon gepufferten Bytes ueberspringt. Die
+ * Kette tut es nicht, und lieber diese Zeile hier als eine stille
+ * Fehlerquelle. */
+char *qf_rbuf[QF_MAX];          /* Lesepuffer, 0 = noch keiner */
+int qf_rlen[QF_MAX];            /* gueltige Bytes darin */
+int qf_rpos[QF_MAX];            /* Leseposition darin */
+int qf_err[QF_MAX];             /* Fehlerkennung fuer ferror */
+
+#define QF_RBUF 1024
+
+extern char *realloc(char *p, int n);
+
+/* Der Tabellenindex hinter einem FILE*.
+   Ein FILE* IST die Adresse von qf_path[i]; gesucht wird durch Vergleich
+   statt durch Zeigerarithmetik -- QF_MAX ist 16, und ein "(fp - &qf_path[0])
+   / 4" waere eine Annahme ueber die Feldgroesse mehr. -1 = kein gueltiger
+   Eintrag. */
+int qf_index(char *fp)
+{
+	int i;
+
+	if (fp == 0)
+		return -1;
+	i = 0;
+	while (i < QF_MAX) {
+		if ((char *) &qf_path[i] == fp)
+			return i;
+		i++;
+	}
+	return -1;
+}
+
+/* Den Lesepuffer nachfuellen. 1 = es gibt Bytes, 0 = Ende oder Fehler. */
+int qf_fill(int i)
+{
+	char *buf;
+	int n;
+	int rc;
+
+	buf = qf_rbuf[i];
+	if (buf == 0) {
+		buf = realloc(0, QF_RBUF);
+		if (buf == 0) {
+			qf_err[i] = 1;
+			return 0;
+		}
+		qf_rbuf[i] = buf;
+	}
+	n = QF_RBUF;
+	rc = _os_read(qf_path[i], buf, &n);
+	if (rc != 0) {
+		/* Dateiende ist KEIN Fehler: OS-9 meldet es als E$EOF (211), und
+		   ferror darf danach nicht anschlagen. Jeder andere Code ist einer. */
+		if (rc != 211)
+			qf_err[i] = 1;
+		qf_rlen[i] = 0;
+		qf_rpos[i] = 0;
+		return 0;
+	}
+	if (n <= 0) {
+		qf_rlen[i] = 0;
+		qf_rpos[i] = 0;
+		return 0;
+	}
+	qf_rlen[i] = n;
+	qf_rpos[i] = 0;
+	return 1;
+}
 
 char *qf_open(int *a)
 {
@@ -73,6 +156,13 @@ char *qf_open(int *a)
 	if (rc != 0 || p == 0)
 		return 0;
 	qf_path[frei] = p;
+	qf_rlen[frei] = 0;
+	qf_rpos[frei] = 0;
+	qf_err[frei] = 0;
+	/* qf_rbuf bleibt stehen: ein einmal geholter Puffer wird beim naechsten
+	   fopen desselben Platzes wiederverwendet. Freigeben kann qclib nicht
+	   (mem.c hat keine Freigabeliste), und ihn liegen zu lassen ist besser
+	   als bei jedem fopen einen neuen zu holen. */
 	return (char *) &qf_path[frei];
 }
 
@@ -107,6 +197,7 @@ int qf_read(int *a)
 	int want;
 	int got;
 	int rc;
+	int i;
 
 	buf = (char *) a[0];
 	size = a[1];
@@ -120,7 +211,16 @@ int qf_read(int *a)
 	want = size * n;
 	got = want;
 	rc = _os_read(*slot, buf, &got);
-	if (rc != 0 || got <= 0)
+	if (rc != 0) {
+		/* 211 ist E$EOF und kein Fehler (MWOS/SRC/DEFS/errno.h). */
+		if (rc != 211) {
+			i = qf_index(fp);
+			if (i >= 0)
+				qf_err[i] = 1;
+		}
+		return 0;
+	}
+	if (got <= 0)
 		return 0;
 	return got / size;
 }
@@ -135,6 +235,7 @@ int qf_write(int *a)
 	int want;
 	int done;
 	int rc;
+	int i;
 
 	buf = (char *) a[0];
 	size = a[1];
@@ -148,9 +249,81 @@ int qf_write(int *a)
 	want = size * n;
 	done = want;
 	rc = _os_write(*slot, buf, &done);
-	if (rc != 0 || done <= 0)
+	if (rc != 0) {
+		/* Den Fehler MERKEN, sonst hat ferror nichts zu melden: ein
+		   Schreibfehler waere allein am kleineren Rueckgabewert erkennbar,
+		   und den prueft kaum ein Aufrufer. qcc_backend_c.cpp fragt nach
+		   dem Schreiben genau danach. */
+		i = qf_index(fp);
+		if (i >= 0)
+			qf_err[i] = 1;
+		return 0;
+	}
+	if (done <= 0)
 		return 0;
 	return done / size;
+}
+
+/* fgets: bis zum Zeilenumbruch EINSCHLIESSLICH, hoechstens n-1 Zeichen, immer
+   mit abschliessender Null. Liefert 0, wenn nichts mehr kommt.
+ *
+ * DAS ZEILENENDE IST $0a, UND DAS WEICHT VON clib AB -- gemessen mit
+ * test/lineend68k.sh: Microwares fgets trennt an $0d und laesst $0a
+ * durchlaufen. Beides ist in sich stimmig, denn der Unterschied steckt im
+ * COMPILER: Microwares C bildet '\n' auf CR ab, QCC auf LF. Alle Dateien
+ * dieser Kette entstehen mit $0a (an printf nachgemessen), also muss fgets
+ * hier an $0a trennen. Fuer DIESE Funktion ist der Gegenlauf gegen clib
+ * deshalb kein gueltiges Orakel.
+ *
+ * Folge fuer die Pruefstaende: IR-Dateien mit ToolShed "copy -r" (roh) ins
+ * Abbild bringen, nicht mit "copy -l" -- das setzt OS-9-Zeilenenden. */
+char *qf_gets(int *a)
+{
+	char *dst;
+	int n;
+	char *fp;
+	int i;
+	int k;
+	char *buf;
+	int c;
+
+	dst = (char *) a[0];
+	n = a[1];
+	fp = (char *) a[2];
+	i = qf_index(fp);
+	if (dst == 0 || n <= 1 || i < 0 || qf_path[i] == 0)
+		return 0;
+	k = 0;
+	while (k < n - 1) {
+		if (qf_rpos[i] >= qf_rlen[i]) {
+			if (qf_fill(i) == 0)
+				break;
+		}
+		buf = qf_rbuf[i];
+		c = buf[qf_rpos[i]] & 255;
+		qf_rpos[i] = qf_rpos[i] + 1;
+		dst[k] = c;
+		k++;
+		if (c == 10)
+			break;
+	}
+	if (k == 0)
+		return 0;               /* nichts gelesen: Ende */
+	dst[k] = 0;
+	return dst;
+}
+
+/* ferror: die Fehlerkennung der Datei. Gesetzt wird sie dort, wo ein
+   Systemaufruf fehlschlaegt -- ohne diese Kennung waere ein Schreibfehler
+   nur ein kleinerer Rueckgabewert, den kein Aufrufer prueft. */
+int qf_error(int *a)
+{
+	int i;
+
+	i = qf_index((char *) a[0]);
+	if (i < 0)
+		return 1;               /* kein gueltiger Strom ist selbst ein Fehler */
+	return qf_err[i];
 }
 
 /* Die Pfadnummer hinter einem FILE*. FILE* == 0 geht auf Pfad 2, den
