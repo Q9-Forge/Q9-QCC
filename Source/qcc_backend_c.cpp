@@ -391,12 +391,22 @@ static int findGlobal(const char* name) {
    (Puffer-Zeiger, siehe deren Definition) -- a2 ist an JEDER betroffenen
    Aufrufstelle nachweislich frei. */
 static int helperTableOffset(const char* rawName) {
-	static const char* helperNames[8] = {
-		"tc_mul_i32", "tc_div_i32", "tc_udiv_u32", "tc_mod_i32", "tc_umod_u32",
-		"tc_putint", "tc_putuint", "tc_putchar"
-	};
-	int i;
-	for (i = 0; i < 8; i++) if (strcmp(helperNames[i], rawName) == 0) return i * 4;
+	/* AUSGESCHRIEBEN STATT TABELLE, damit QCC diese Datei uebersetzen kann
+	   (2026-09-07): ein Zeigerarray MIT Initialisierungsliste kennt QCCs
+	   Teilmenge nicht, und ein "static" im Funktionsrumpf davor auch nicht --
+	   beides bricht dort still ab (Schlusswort FAIL, keine Meldung). Das
+	   Backend muss selbst uebersetzbar sein, sonst kann es nie auf dem 68030
+	   laufen. Die Reihenfolge ist die Tabellenordnung und traegt den
+	   Rueckgabewert i * 4; wer hier etwas einfuegt, verschiebt die Offsets
+	   der -largedata-Funktionstabelle. */
+	if (strcmp(rawName, "tc_mul_i32")  == 0) return 0;
+	if (strcmp(rawName, "tc_div_i32")  == 0) return 4;
+	if (strcmp(rawName, "tc_udiv_u32") == 0) return 8;
+	if (strcmp(rawName, "tc_mod_i32")  == 0) return 12;
+	if (strcmp(rawName, "tc_umod_u32") == 0) return 16;
+	if (strcmp(rawName, "tc_putint")   == 0) return 20;
+	if (strcmp(rawName, "tc_putuint")  == 0) return 24;
+	if (strcmp(rawName, "tc_putchar")  == 0) return 28;
 	fatal("interner Fehler: unbekannter Laufzeit-Helfer fuer -largedata-Funktionstabelle");
 	return -1;
 }
@@ -554,8 +564,16 @@ static void collectGlobals(void) {
 						globals[gi].init = initAlloc(want, insP->line);
 						globals[gi].initLen = want;
 					}
-					globals[gi].init[idx] = number(insP->args[2], insP->line);
-					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
+					/* UEBER EINEN ZWISCHENZEIGER, damit QCC diese Datei
+					   uebersetzen kann (2026-09-07): "globals[gi].init[idx]"
+					   verlangt zweierlei, was die Teilmenge ablehnt --
+					   "arr[i].field[j] not supported" und "scalar struct
+					   field cannot be indexed". Beides ist sauber gemeldet
+					   und dokumentiert; der Zwischenzeiger ist das Idiom,
+					   das diese Datei ohnehin ueberall benutzt. */
+					int* initP = globals[gi].init;
+					initP[idx] = number(insP->args[2], insP->line);
+					if (globals[gi].isChar) initP[idx] &= 255;
 					globals[gi].hasGinit = 1;
 					found = 1;
 					break;
@@ -1793,7 +1811,11 @@ static void emitIR(FILE* out) {
 						   Indizes ab initLen sind logisch null (GINIT lehnt sie ab), werden
 						   also als 0 ausgegeben. */
 						for (e = 0; e < g->length; e++) {
-							int v = e < g->initLen ? g->init[e] : 0;
+							/* Zwischenzeiger wie oben: durch ein skalares
+							   Zeigerfeld hindurch zu indizieren kann QCCs
+							   Teilmenge nicht. */
+							int* gi2 = g->init;
+							int v = e < g->initLen ? gi2[e] : 0;
 							fprintf(out, "\tdc.%s\t%d\n", g->isChar ? "b" : "l", v);
 						}
 					}
