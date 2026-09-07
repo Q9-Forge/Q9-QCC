@@ -204,6 +204,21 @@ zurück, obwohl die Aktion an `pointerDecl` vorher schon gezählt hatte.
 | Prototypen und separate Deklarationen | teilweise | sehr hoch |
 | `inline`, `_Noreturn`, variadische Funktionen | offen | mittel |
 
+**Nachtrag 2026-09-07 — `(void)` als Parameterliste geht in der DEFINITION,
+aber nicht in einer `extern`-Deklaration.** Gemessen:
+
+| | |
+|---|---|
+| `extern int f(void); f();` | `wrong argument count (expected 1, got 0)` |
+| `extern int f(); f();` | geht |
+| `int f(void){ … }` (Definition) | geht |
+
+Die Deklaration liest `(void)` also als **einen** Parameter. Aufgefallen beim
+Bau einer Messsonde (`extern int *vsectbase(void);`), und es kostet genau so
+lange, wie man braucht, um die leere Klammer zu probieren. Immerhin wird es
+**gemeldet** und nicht verschwiegen. Die leere Klammer ist in dieser
+Teilmenge die richtige Form.
+
 ## 5. Übersetzungseinheiten und Semantik
 
 | Thema | Status | Priorität |
