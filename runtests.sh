@@ -469,6 +469,23 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: sizeof-Pointer-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		# DIE TYPFORM war ungetestet -- und genau dort schwieg QCC
+		# (2026-09-07): sizeof(char *) lieferte PUSH 1, also die Groesse von
+		# char, mit Schlusswort OK und ohne jede Meldung. Ursache: tc_sizeof
+		# ruft tc_type fuer dieselbe Spanne noch einmal auf, und
+		# TC_SET_CURRENT setzt pointers dabei auf 0 zurueck, obwohl die
+		# Aktion an pointerDecl vorher schon gezaehlt hatte. Der Test oben
+		# lief ueber tc_sizeofvar und war deshalb immer gruen.
+		if build/qcc_p 'int main(){ putint(sizeof(char *)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
+			echo "ok    qcc: sizeof auf einen Pointer-TYP wird diagnostiziert"
+		else
+			echo "FAIL  qcc: sizeof(char *) schweigt (liefert still 1)"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct S { int a; }; int main(){ putint(sizeof(struct S *)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
+			echo "ok    qcc: sizeof auf einen struct-Pointer-Typ wird diagnostiziert"
+		else
+			echo "FAIL  qcc: sizeof(struct S *) schweigt"; tcfail=1; fail=1
+		fi
 		if build/qcc_p 'int main(){ enum Nope x; }' 2>&1 | grep -q 'unknown enum'; then
 			echo "ok    qcc: unbekannter enum-Typ wird diagnostiziert"
 		else
