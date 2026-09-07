@@ -1081,6 +1081,25 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; putchar(p.text[0]); putchar(p.text[1]); putint(p.len); }' 'Hi2'
 		tc_check 'struct P{char* text;}; int main(){ struct P p; char msg[4]; p.text=msg; p.text[0]=74; p.text[1]=75; putchar(msg[0]); putchar(msg[1]); }' 'JK'
 		tc_check 'struct P{int* v;}; int main(){ struct P p; int a[3]; int i; i=2; a[2]=41; p.v=a; putint(p.v[i]); p.v[i]=42; putint(a[2]); }' '41\n42'
+		# 2026-09-07: VERKETTETE Indizierung eines Strukturfelds
+		# (feld[i][j]) ist weiterhin nicht umgesetzt -- aber sie wird jetzt
+		# GEMELDET. Vorher nahm die Grammatik die Form gar nicht an
+		# (member hatte nur EINEN optionalen index), und ein Parse-Abbruch
+		# hat keine Meldung: bei einem 2D-Feld im struct ("char t[4][8]")
+		# war damit die NATUERLICHSTE Zugriffsform ein stilles FAIL.
+		if build/qcc_p 'struct S{char t[4][8];}; int main(){ struct S s; putint(s.t[1][2]); }' 2>&1 | grep -q 'chained indexing of a struct field'; then
+			echo "ok    qcc: verkettete Indizierung eines Strukturfelds wird diagnostiziert"
+		else
+			echo "FAIL  qcc: feld[i][j] im struct scheitert still"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct S{char t[4][8];}; static struct S g; int main(){ struct S *sp; sp=&g; sp->t[1][2]=7; }' 2>&1 | grep -q 'chained indexing of a struct field'; then
+			echo "ok    qcc: verkettete Indizierung SCHREIBEND wird diagnostiziert"
+		else
+			echo "FAIL  qcc: feld[i][j] schreibend scheitert still"; tcfail=1; fail=1
+		fi
+		# Der ZEILENzugriff auf ein 2D-Feld geht dagegen und muss es bleiben:
+		# "sp->t[i]" liefert den Zeiger auf Zeile i.
+		tc_check 'struct S{char t[4][8]; int n;}; static struct S g; int main(){ struct S *sp; char *z; int i; i=2; sp=&g; z=sp->t[i]; z[3]=66; z=sp->t[2]; putchar(z[3]); }' 'B'
 		# Ein SKALARES Feld ohne Zeigertyp bleibt undiskutierbar -- die
 		# Diagnose dafuer steht weiter oben und muss erhalten bleiben.
 		# arr[i].feld (2026-07-25): ein ARRAY von structs, per Laufzeit-Index adressiert,

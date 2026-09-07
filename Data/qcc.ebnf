@@ -558,9 +558,15 @@ target    = directTarget | indirectTarget .
    (hier: tcStructByteSize des Element-Structs), waehrend das bestehende
    IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
    struct-Arrays ist aber beliebig. */
-directTarget = ident [ index { index } ] [ member [ index ] ] .
+/* member bekommt "{ index }" dazu (2026-09-07): NICHT um verkettete
+   Indizierung zu koennen, sondern um sie MELDEN zu koennen. Vorher nahm die
+   Grammatik "s.t[i][j]" gar nicht an, und ein Parse-Abbruch hat keine
+   Meldung -- bei einem 2D-Feld im struct ("char t[4][8]") war die
+   natuerlichste Zugriffsform damit ein stilles FAIL. Jetzt liest die
+   Grammatik es und tc_varref/tc_target lehnen es benannt ab. */
+directTarget = ident [ index { index } ] [ member [ index { index } ] ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index { index } ] [ member [ index ] ] .
+varRef    = ident [ index { index } ] [ member [ index { index } ] ] .
 index     = indexOpen expr "]" .
 indexOpen = "[" .
 /* "->" ist in C nur Kurzschreibweise: "p->f" == "(*p).f". Die Aktionen
