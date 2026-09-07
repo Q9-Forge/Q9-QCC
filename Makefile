@@ -21,6 +21,7 @@ test: build/qr68
 	./test/insndiff.sh
 	RFLAGS=-b ./test/insndiff.sh test/bopt.a
 	./test/usetest.sh
+	./test/remotetest.sh
 
 # Zusaetzlich an echtem Material: den Quellen des QCC-Backends und den
 # handgeschriebenen Kernelquellen von Q9-OS.
