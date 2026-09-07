@@ -135,6 +135,29 @@ qualification; it has been removed and the fact is recorded at
 declarator in `tc_structfield`, and cleared at the end of the line
 (`const int a, b;` should cover both).
 
+**Addendum 2026-09-07 — a 2D array as a struct field failed SILENTLY.**
+Ordinary 2D and 3D arrays work; a 2D array *inside a struct*
+(`struct S { char t[4][8]; }`) behaved like this:
+
+| Form | before | now |
+|---|---|---|
+| declaration, `sizeof` | works | works |
+| `z = sp->t[i]` (pointer to row i) | works | works |
+| `s.t[i]` via the dot | reported ("only supported via `->`") | unchanged |
+| **`s.t[i][j]` / `sp->t[i][j]`** | **silent `FAIL`, no message** | **reported** |
+
+The cause was the grammar: `member [ index ]` — exactly **one** optional
+index after the field. Two indices could not be parsed, and a parse abort
+carries no message. It now reads `member [ index { index } ]`, **not** in
+order to support the form but in order to be able to reject it:
+`chained indexing of a struct field (field[i][j]) not supported in this
+version`.
+
+**It is still not implemented** — that would need two indices in *one*
+expression, i.e. a second index scratch along the lines of
+`tcEmitPointerIndexChain`. That is the **same machinery** `arr[i].field[j]`
+needs: one rework would close both gaps.
+
 **Addendum 2026-09-07 — the nesting limit was four too small.**
 `TC_MAX_CTRL` (previously the literal 64 at six places) is now 128.
 Measured: `qcc_backend_c.cpp` needs **68** — its opcode dispatch is a long
