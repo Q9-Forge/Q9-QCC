@@ -58,6 +58,16 @@
  * werden, auch wenn ihr Wert verworfen wird -- nur ein reines Register
  * oder ein Sofortwert ist wirklich folgenlos zu streichen.
  *
+ * VERFEINERUNG zu Muster eins/drei (08.09.2026, 776 Vorkommen bereits im
+ * Ergebnis der ersten vier Muster gemessen): faellt SRC mit DST zusammen
+ * ("move.l d0,-(a7)" gefolgt von "move.l (a7)+,d0", DIESELBE Nummer beide
+ * Male), waere die Verschmelzung "move.l d0,d0" -- eine echte, aber
+ * wirkungslose Instruktion. Sicherer und kleiner: BEIDE Zeilen verschwinden
+ * ersatzlos, genau wie bei Muster vier. NUR wenn KEIN Label auf der ersten
+ * Zeile haengt -- sonst ginge das Sprungziel verloren; in dem (seltenen)
+ * Fall bleibt die alte Verschmelzung zu "label:\tmove.l\tDn,Dn" bestehen,
+ * harmlos, nur nicht ideal.
+ *
  * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
  * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
  * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
@@ -173,6 +183,12 @@ static int phMatchPop(const char* line, const char** dstStart) {
 	return 1;
 }
 
+/* Vergleicht ein laengenbegrenztes SRC mit einem nullterminierten DST auf
+ * Textgleichheit -- fuer die SRC==DST-Verfeinerung von Muster eins/drei. */
+static int phSameText(const char* a, int aLen, const char* b) {
+	return (int)strlen(b) == aLen && strncmp(a, b, aLen) == 0;
+}
+
 static const char* phEmitFused(const char* labelStart, int labelLen,
                                 const char* srcStart, int srcLen, const char* dst) {
 	char* p = phSynth + phSynthUsed;
@@ -206,6 +222,14 @@ static int phFoldPushPop(void) {
 		if (j < 0) continue;
 		if (!phMatchPop(phLines[j], &dst)) continue;
 		if (!phMatchPush(phLines[i], &labelStart, &labelLen, &srcStart, &srcLen)) continue;
+		if (labelLen == 0 && phSameText(srcStart, srcLen, dst)) {
+			/* SRC==DST: Push und Pop heben sich vollstaendig auf, s.
+			   Verfeinerung oben -- kein Ersatzbau noetig. */
+			phRemoved[i] = 1;
+			phRemoved[j] = 1;
+			folded++;
+			continue;
+		}
 		phLines[i] = phEmitFused(labelStart, labelLen, srcStart, srcLen, dst);
 		phRemoved[j] = 1;
 		folded++;
@@ -304,6 +328,13 @@ static int phFoldLoadThenMove(void) {
 		j = phNextKept(i);
 		if (j < 0) continue;
 		if (!phMatchMoveFromDataReg(phLines[j], regStart, regLen, &dstStart)) continue;
+		if (labelLen == 0 && phSameText(srcStart, srcLen, dstStart)) {
+			/* SRC==DST, s. Verfeinerung am Dateianfang. */
+			phRemoved[i] = 1;
+			phRemoved[j] = 1;
+			folded++;
+			continue;
+		}
 		phLines[i] = phEmitFused(labelStart, labelLen, srcStart, srcLen, dstStart);
 		phRemoved[j] = 1;
 		folded++;

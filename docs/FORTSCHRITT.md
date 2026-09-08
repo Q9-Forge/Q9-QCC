@@ -4,6 +4,46 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Peephole, Verfeinerung: Selbst-Zuweisungen vermeiden (2026-09-08, spaeter)
+
+Nach den vier Mustern gefragt: gibt es noch ein paar ergiebige Regeln?
+Zwei Kandidaten waeren tiefere Datenflussanalyse gewesen (`adda.l`-Ketten,
+mehrwertiges Pop) -- bewusst auf Anweisung zurueckgestellt: erst die
+einfachen, haeufigen Faelle, nicht uebertreiben.
+
+Ein einfacher Fall lag aber noch in den ERSTEN beiden Mustern selbst:
+`phFoldPushPop` und `phFoldLoadThenMove` verschmelzen zwei Zeilen zu einer
+`move.l SRC,DST` -- steht SRC zufaellig textgleich mit DST (z. B.
+`move.l d0,-(a7)` gefolgt von `move.l (a7)+,d0`), entsteht daraus ein
+sinnloses `move.l d0,d0`. Mit `grep` auf qr68s eigenem IR nachgesehen statt
+vermutet: der alte Vier-Muster-Stand erzeugte davon mehrere hundert Stueck.
+
+**Fix:** `phSameText()` vergleicht SRC- und DST-Text. Ist die verschmolzene
+Zeile label-los und SRC==DST, werden beide Originalzeilen ersatzlos
+gestrichen (kein `phEmitFused`-Aufruf) statt der wertlosen Kopie.
+
+**Auf qr68 gemessen:** 8.858 Optimierungen in 2 Durchlaeufen, 75.273 ->
+64.686 Zeilen (vorher, vier Muster: 65.063) -- 0 Selbst-Zuweisungen im
+Ergebnis (per `grep -cE '^\tmove\.l\t(d[0-7]|a[0-6]),\1'` bestaetigt). ROF
+394.043 Byte (vorher 394.799), Modul (l68/clib) 194.726 Byte (vorher
+195.482).
+
+**Vollstaendig verifiziert** (derselbe Ablauf wie bei allen vier Mustern):
+assembliert, gebunden, auf dem 68030 gelaufen -- `insn.a` byteidentisch zum
+Host. `qcc_backend_c.cpp` selbst-hostet weiterhin byteidentisch
+(`qccb_68k.sh`, 36.132 Byte, unveraendert -- ohne `-peephole` ruehrt die
+Verfeinerung den Pfad nicht an). `-peephole` DIREKT AUF DEM ZIEL ausgefuehrt
+(208 Optimierungen an `build/hello.ir`, 2.340 -> 2.087 Zeilen -- 3 weniger
+als vorher, dieselben Selbst-Zuweisungen auch in diesem kleineren Programm)
+liefert ein Ergebnis, das byteidentisch zum Host-Lauf ist. Volle
+Regressionssuite (dreizehn geteilte Dateien) und kompletter
+Fuenf-Werkzeuge-Ringschluss unveraendert gruen.
+
+**Zwischenstand aller Muster zusammen (qr68, `-remotedata`):** 75.273 ->
+64.686 Zeilen, **14,1 % weniger**. Assembler-Byte 2.892.723 (Ausgangswert
+ohne jede Optimierung dieser Session) -> ROF 394.043 -> Modul 194.726 Byte.
+
+
 ## Peephole, viertes Muster: Push-und-sofort-Verwerfen (2026-09-08, spaeter)
 
 Dieselbe Haeufigkeitsliste, naechster Eintrag: `move.l d0,-(a7)` gefolgt
