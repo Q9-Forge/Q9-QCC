@@ -65,7 +65,7 @@ echo "  ok ($(wc -l < "$WORK/stage1.ir" | tr -d " ") IR-Zeilen, $(wc -c < "$WORK
 # Zustand, ohne die Indirektionstabelle reicht die PC-relative
 # Adressierung des 68000 nicht.
 echo "== 2/6 die eigene Kette: Backend, qr68, ql68 =="
-"$QCC/build/qcc_backend" "$WORK/stage1.ir" "$WORK/stage2.s68" -os9 -largedata \
+"$QCC/build/qcc_backend" "$WORK/stage1.ir" "$WORK/stage2.s68" -os9 -largedata -remotedata \
 	>/dev/null || die "qcc_backend"
 "$QR68" "$WORK/stage2.s68" "-o=$WORK/stage2.r" >"$WORK/asm.log" 2>&1 || {
 	head -10 "$WORK/asm.log"; die "qr68"; }

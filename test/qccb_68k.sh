@@ -51,7 +51,7 @@ echo "== 1/5 das Backend mit der eigenen Kette zum 68k-Modul =="
 	"$WORK/b.i" || die "qcpp"
 "$QCC/build/qcc_p" "@$WORK/b.i" > "$WORK/b.ir" 2> "$WORK/b.err"
 [ "$(tail -1 "$WORK/b.ir")" = OK ] || { head -5 "$WORK/b.err"; die "qcc_p auf das Backend"; }
-"$QCC/build/qcc_backend" "$WORK/b.ir" "$WORK/qccb.s68" -os9 -largedata >/dev/null ||
+"$QCC/build/qcc_backend" "$WORK/b.ir" "$WORK/qccb.s68" -os9 -largedata -remotedata >/dev/null ||
 	die "Backend uebersetzt sich selbst nicht"
 "$FORGE/Q9-qr68/build/qr68" "$WORK/qccb.s68" "-o=$WORK/qccb.r" || die "qr68"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
