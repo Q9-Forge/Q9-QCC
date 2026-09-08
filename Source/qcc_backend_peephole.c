@@ -18,6 +18,27 @@
  * aendert A7 zwischenzeitlich, aber nichts sonst beobachtet das -- der Wert
  * geht unveraendert von SRC nach DST, in einem Schritt statt zwei.
  *
+ * ZWEITES MUSTER (08.09.2026, an der echten Haeufigkeitsverteilung von
+ * qr68s eigener Ausgabe gefunden -- 2064 Vorkommen, der mit Abstand groesste
+ * Einzelfund): "move.l SRC,Dn" unmittelbar gefolgt von "tst.l Dn" (DIESELBE
+ * Nummer, ein DATENregister d0-d7). MOVE.L setzt N/Z auf 68000-Hardwareebene
+ * bereits GENAUSO wie TST.L es fuer denselben Wert taete (V/C werden bei
+ * beiden auf 0 geloescht) -- das TST ist also niemals mehr als eine
+ * Wiederholung, die Zeile faellt komplett weg. BEWUSST NUR d0-d7, NIE
+ * a0-a6: "move.l SRC,An" wird von r68/qr68 als MOVEA assembliert (die
+ * einzige Opcode-Form fuer ein Adressregister-Ziel, unabhaengig vom
+ * geschriebenen Mnemonic), und MOVEA setzt KEINE Flags -- ein TST danach
+ * waere dort echt gebraucht.
+ *
+ * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
+ * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
+ * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
+ * wiederholt deshalb beide Muster, bis ein Durchlauf nichts mehr aendert
+ * (klassisches Peephole-Verhalten, dieselbe Erwartung wie bei o68). Die
+ * Fold-Funktionen duerfen sich deshalb NICHT auf physische Nachbarschaft
+ * verlassen (phLines[i+1]) -- eine schon gestrichene Zeile liegt weiterhin
+ * im Array, phNextKept() ueberspringt sie.
+ *
  * ARCHITEKTUR fuer weitere Muster (o68-Lehre): reines LESEN der Originalzeilen
  * (keine Mutation), Ersetzungen landen in einem eigenen Synthesepuffer, eine
  * Zeile wird durch Streichen markiert statt physisch verschoben (o68s remins-
@@ -77,6 +98,15 @@ static void phLoad(const char* path) {
 	for (i = 0; i < phLineCount; i++) phRemoved[i] = 0;
 }
 
+/* Naechste NICHT gestrichene Zeile nach i, oder -1. Siehe Kommentar am
+ * Dateianfang zu "mehrere Durchlaeufe": nach einer Faltung liegt die
+ * logisch naechste Zeile nicht mehr zwingend bei i+1. */
+static int phNextKept(int i) {
+	int j = i + 1;
+	while (j < phLineCount && phRemoved[j]) j++;
+	return j < phLineCount ? j : -1;
+}
+
 /* Erkennt "move.l SRC,-(a7)", optional mit einem "label:\t"-Vorspann auf
  * DERSELBEN Zeile (dieses Backend haengt Labels so an, siehe emitIR()).
  * Liest NUR -- schreibt nichts in die Zeile, damit ein Fehlschlag hier
@@ -133,7 +163,7 @@ static const char* phEmitFused(const char* labelStart, int labelLen,
  * er passt, lohnt sich die genauere Pruefung des Push davor. */
 static int phFoldPushPop(void) {
 	int i, folded = 0;
-	for (i = 0; i + 1 < phLineCount; i++) {
+	for (i = 0; i < phLineCount; i++) {
 		/* NICHT "const char *a, *b, *c;" -- mehrere Zeiger-Deklaratoren in
 		   EINER Anweisung sind ein stiller QCC-Abbruch (FAIL, 0 Meldungen,
 		   08.09.2026 gefunden; unabhaengig von "const", "char *a, *b;"
@@ -142,11 +172,55 @@ static int phFoldPushPop(void) {
 		const char* srcStart;
 		const char* dst;
 		int labelLen, srcLen;
-		if (phRemoved[i] || phRemoved[i + 1]) continue;
-		if (!phMatchPop(phLines[i + 1], &dst)) continue;
+		int j;
+		if (phRemoved[i]) continue;
+		j = phNextKept(i);
+		if (j < 0) continue;
+		if (!phMatchPop(phLines[j], &dst)) continue;
 		if (!phMatchPush(phLines[i], &labelStart, &labelLen, &srcStart, &srcLen)) continue;
 		phLines[i] = phEmitFused(labelStart, labelLen, srcStart, srcLen, dst);
-		phRemoved[i + 1] = 1;
+		phRemoved[j] = 1;
+		folded++;
+	}
+	return folded;
+}
+
+/* ZWEITES MUSTER, s. Kommentar am Dateianfang: "move.l SRC,Dn" gefolgt von
+ * "tst.l Dn" -- nur d0-d7, MOVEA (Adressregister-Ziel) setzt keine Flags. */
+static int phMatchMoveToDataReg(const char* line, const char** dstStart, int* dstLen) {
+	const char* p;
+	const char* comma;
+	if (line[0] != '\t') return 0;
+	if (strncmp(line + 1, "move.l\t", 7) != 0) return 0;
+	p = line + 8;
+	comma = strrchr(p, ',');
+	if (comma == 0) return 0;
+	if (comma[1] != 'd' || comma[2] < '0' || comma[2] > '7' || comma[3] != '\0') return 0;
+	*dstStart = comma + 1;
+	*dstLen = 2;
+	return 1;
+}
+
+static int phMatchTst(const char* line, const char* regStart, int regLen) {
+	if (line[0] != '\t') return 0;
+	if (strncmp(line + 1, "tst.l\t", 6) != 0) return 0;
+	if ((int)strlen(line + 7) != regLen) return 0;
+	return strncmp(line + 7, regStart, regLen) == 0;
+}
+
+/* Kein Ersatzbau noetig -- die Move-Zeile bleibt UNVERAENDERT stehen, nur
+ * das ueberfluessige TST verschwindet. */
+static int phFoldMoveTst(void) {
+	int i, folded = 0;
+	for (i = 0; i < phLineCount; i++) {
+		const char* regStart;
+		int regLen, j;
+		if (phRemoved[i]) continue;
+		if (!phMatchMoveToDataReg(phLines[i], &regStart, &regLen)) continue;
+		j = phNextKept(i);
+		if (j < 0) continue;
+		if (!phMatchTst(phLines[j], regStart, regLen)) continue;
+		phRemoved[j] = 1;
 		folded++;
 	}
 	return folded;
@@ -173,12 +247,19 @@ static void phWrite(const char* path) {
    Datei). srcPath bleibt als .tmp-Datei liegen -- kein Aufrufer in
    dieser Kette raeumt Zwischendateien auf, s. .i/.ir ueberall sonst. */
 static void peepholeRun(const char* srcPath, const char* dstPath) {
-	int folded, kept, i;
+	int total, roundTotal, kept, i, rounds;
 	phLoad(srcPath);
-	folded = phFoldPushPop();
+	total = 0;
+	rounds = 0;
+	do {
+		roundTotal = phFoldPushPop();
+		roundTotal += phFoldMoveTst();
+		total += roundTotal;
+		rounds++;
+	} while (roundTotal > 0);
 	kept = 0;
 	for (i = 0; i < phLineCount; i++) if (!phRemoved[i]) kept++;
 	phWrite(dstPath);
-	fprintf(stderr, "qcc_backend: peephole: %d Push/Pop-Paare zusammengefasst (%d von %d Zeilen)\n",
-		folded, kept, phLineCount);
+	fprintf(stderr, "qcc_backend: peephole: %d Optimierungen in %d Durchlaeufen (%d von %d Zeilen)\n",
+		total, rounds, kept, phLineCount);
 }
