@@ -68,6 +68,31 @@
  * Fall bleibt die alte Verschmelzung zu "label:\tmove.l\tDn,Dn" bestehen,
  * harmlos, nur nicht ideal.
  *
+ * FUENFTES MUSTER (09.09.2026, ueber Haeufigkeit gegen Aufwand entschieden,
+ * nicht geraten): "move.l #IMM,Dn" mit IMM im Bereich -128..127 wird zu
+ * "moveq #IMM,Dn" -- 1928 Vorkommen in qr68s eigener Ausgabe (gegen 76 fuer
+ * Sprungketten-Verkuerzung und 0 fuer bra-auf-naechste-Zeile, beide
+ * verworfen: seltener UND nur mit datei-weiter Label-Verfolgung zu haben,
+ * waere keine Ein-Zeilen-Regel mehr). MOVEQ ist die einzige Opcode-Form
+ * fuer ein Sofortwert-MOVE.L in ein Datenregister mit demselben
+ * Bytemuster-Effekt: 2 statt 6 Byte, UND setzt N/Z/V/C exakt wie MOVE.L
+ * mit dieser Quelle (V/C beide auf 0). BEWUSST NUR Dn (nie An -- MOVEQ
+ * kennt kein Adressregister-Ziel) und NUR wenn IMM eine reine Dezimalzahl
+ * ist (optional ein fuehrendes "-", sonst nur Ziffern) -- diese Kette hat
+ * an dieser Stelle nie etwas anderes emittiert (alle 2046 "move.l #...,dN"
+ * in qr68s Ausgabe sind reine Dezimalzahlen), aber ein Symbol- oder
+ * Ausdruckstext an dieser Stelle wuerde die Pruefung einfach durchfallen
+ * lassen statt ihn falsch zu deuten.
+ *
+ * MUSS ALS LETZTES laufen, NICHT im Konvergenz-Durchlauf mit den anderen
+ * vier: phMatchMoveIntoDataReg (Muster zwei/drei) sucht wortwoertlich den
+ * Text "move.l\t" als Ausloeser. Liefe die MOVEQ-Umwandlung VORHER, saehe
+ * ein anschliessendes "tst.l Dn" oder "move.l Dn,DST" sein Gegenstueck
+ * nicht mehr -- die Faltungschance ginge verloren. MOVEQ-Zeilen selbst
+ * bieten dafuer keine neue Faltungschance (die Quelle ist ein Sofortwert,
+ * nie textgleich mit einem Zielregister), ein einzelner Durchlauf am Ende
+ * reicht deshalb aus.
+ *
  * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
  * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
  * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
@@ -383,6 +408,83 @@ static int phFoldDropPush(void) {
 	return folded;
 }
 
+/* Liest s[0..len) als reine Dezimalzahl (optional ein fuehrendes "-"),
+ * kein Zeichen ausser Ziffern erlaubt. Bricht frueh ab, sobald der Wert
+ * den MOVEQ-Bereich sicher verlassen hat -- kein Ueberlaufrisiko in v. */
+static int phParseSmallImm(const char* s, int len, int* value) {
+	int i;
+	int neg;
+	int v;
+	i = 0;
+	neg = 0;
+	if (len == 0) return 0;
+	if (s[0] == '-') { neg = 1; i = 1; }
+	if (i >= len) return 0;
+	v = 0;
+	for (; i < len; i++) {
+		if (s[i] < '0' || s[i] > '9') return 0;
+		v = v * 10 + (s[i] - '0');
+		if (v > 128) return 0;
+	}
+	if (neg) v = -v;
+	if (v < -128 || v > 127) return 0;
+	*value = v;
+	return 1;
+}
+
+/* FUENFTES MUSTER, s. Kommentar am Dateianfang: "move.l #IMM,Dn" mit IMM
+ * im MOVEQ-Bereich, optional mit Label-Vorspann (das Label bleibt beim
+ * Umbau erhalten -- anders als bei Mustern eins/drei/vier wird hier
+ * nichts gestrichen, nur der Mnemonic-Text derselben Zeile ersetzt, das
+ * Sprungziel ist also nie in Gefahr). */
+static int phMatchMoveqCandidate(const char* line, const char** labelStart, int* labelLen,
+                                   int* value, char* reg) {
+	const char* p;
+	const char* comma;
+	const char* colon = strchr(line, ':');
+	*labelLen = 0;
+	if (colon != 0 && colon[1] == '\t') {
+		*labelStart = line;
+		*labelLen = (int)(colon - line);
+		p = colon + 2;
+	} else {
+		if (line[0] != '\t') return 0;
+		p = line + 1;
+	}
+	if (strncmp(p, "move.l\t#", 8) != 0) return 0;
+	p += 8;
+	comma = strchr(p, ',');
+	if (comma == 0) return 0;
+	if (comma[1] != 'd' || comma[2] < '0' || comma[2] > '7' || comma[3] != '\0') return 0;
+	if (!phParseSmallImm(p, (int)(comma - p), value)) return 0;
+	*reg = comma[2];
+	return 1;
+}
+
+static int phFoldMoveq(void) {
+	int i, folded = 0;
+	for (i = 0; i < phLineCount; i++) {
+		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		const char* labelStart;
+		int labelLen, value;
+		char reg;
+		char* p;
+		int n;
+		if (phRemoved[i]) continue;
+		if (!phMatchMoveqCandidate(phLines[i], &labelStart, &labelLen, &value, &reg)) continue;
+		p = phSynth + phSynthUsed;
+		if (labelLen > 0)
+			n = sprintf(p, "%.*s:\tmoveq\t#%d,d%c", labelLen, labelStart, value, reg);
+		else
+			n = sprintf(p, "\tmoveq\t#%d,d%c", value, reg);
+		phSynthUsed += n + 1;
+		if (phSynthUsed >= PH_SYNTH_BYTES) fatal("peephole: Synthesepuffer zu klein");
+		phLines[i] = p;
+		folded++;
+	}
+	return folded;
+}
+
 static void phWrite(const char* path) {
 	FILE* fp;
 	int i;
@@ -404,7 +506,7 @@ static void phWrite(const char* path) {
    Datei). srcPath bleibt als .tmp-Datei liegen -- kein Aufrufer in
    dieser Kette raeumt Zwischendateien auf, s. .i/.ir ueberall sonst. */
 static void peepholeRun(const char* srcPath, const char* dstPath) {
-	int total, roundTotal, kept, i, rounds;
+	int total, roundTotal, kept, i, rounds, moveqCount;
 	phLoad(srcPath);
 	total = 0;
 	rounds = 0;
@@ -416,9 +518,14 @@ static void peepholeRun(const char* srcPath, const char* dstPath) {
 		total += roundTotal;
 		rounds++;
 	} while (roundTotal > 0);
+	/* ERST NACH der Konvergenz, s. Kommentar am Dateianfang zum fuenften
+	   Muster: MOVEQ-Zeilen wuerden Muster zwei/drei ihren Ausloesertext
+	   "move.l\t" entziehen. */
+	moveqCount = phFoldMoveq();
+	total += moveqCount;
 	kept = 0;
 	for (i = 0; i < phLineCount; i++) if (!phRemoved[i]) kept++;
 	phWrite(dstPath);
-	fprintf(stderr, "qcc_backend: peephole: %d Optimierungen in %d Durchlaeufen (%d von %d Zeilen)\n",
-		total, rounds, kept, phLineCount);
+	fprintf(stderr, "qcc_backend: peephole: %d Optimierungen in %d Durchlaeufen (%d von %d Zeilen, davon %d MOVEQ)\n",
+		total, rounds, kept, phLineCount, moveqCount);
 }
