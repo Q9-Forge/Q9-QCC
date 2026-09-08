@@ -47,11 +47,20 @@ QCC currently covers only a small, executable core of area 1.
 | `short`, `long`, `long long` | open | high |
 | `_Bool` and qualifiers | partial/open | high |
 | `float`, `double`, `long double` | open | high |
-| Pointers and pointer arithmetic | done | — |
+| Pointers and pointer arithmetic | done, ONE exception (see 2026-09-08 addendum) | — |
 | Arrays and array decay | partial | very high |
 | Function pointers | open | high |
 | `void` and `void *` | open | high |
 | `struct`, `union`, `enum` | partial (struct with mixed scalar field types done 2026-07-24, `enum` done; `union`, array/pointer fields, and nested structs open) | very high |
+
+**Addendum 2026-09-08 — multiple pointer declarators in ONE statement are
+a SILENT abort.** `char *a, *b;` (with or without `const`, three or more
+declarators, always the same picture) gives `FAIL` with no message at
+all -- `const char *a;` (one pointer) works, `int a, b;` (multiple
+non-pointer declarators) works, only the combination breaks. Found while
+building the peephole optimizer (`Source/qcc_backend_peephole.c`);
+worked around there with one declarator per line rather than a shared
+statement -- NOT fixed in the frontend, that is a separate project.
 
 **Addendum 2026-09-07 — pointer arrays as struct fields now work.**
 `char* args[6]` inside a struct used to be rejected ("pointer arrays as
