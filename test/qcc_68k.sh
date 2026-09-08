@@ -22,7 +22,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
 : "${FORGE:=$(cd .. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
-: "${FLUX:=$FORGE/Q9-Flux}"
+: "${FLUX:=$FORGE/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 # Dieses Abbild traegt /dd/bootstrap_probe.c fuer die Rauchprobe.
 : "${IMG_SRC:=$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
