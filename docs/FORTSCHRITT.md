@@ -4,6 +4,67 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Datenmodell, zweiter Anlauf: `-remotedata` im Backend umgesetzt (2026-09-08)
+
+Der Umbau vom 2026-09-06 (zurueckgerollt, s. Eintrag oben) und die Messung
+vom 2026-09-07 ("das 1-MB-Raetsel war ein Codeerzeugungsfehler") sind jetzt
+zu Ende gefuehrt. `qcc_backend_c.cpp` hat einen neuen Schalter `-remotedata`
+(nur mit `-os9`): ein Globales, das VOLLSTAENDIG null ist (Array ohne jedes
+GINIT, Skalar mit Initialwert 0), wandert in einen `vsect remote` statt als
+`dc.l 0,0,0,...` in den psect. OS-9 legt den Bereich an und nullt ihn selbst
+(genau wie am 07.09. gemessen) -- das Modul traegt dafuer kein einziges Byte
+mit sich. Der Zugriff ist a6-relativ mit vollen 32 Bit
+(`movea.l #sym,reg` / `adda.l a6,reg`), also weder von der 32-KB-Grenze der
+PC-relativen Adressierung noch von der 64-KB-Grenze eines nicht-remoten
+vsects betroffen -- dasselbe Muster, das `runtime/os9/q9_cstart.a` in
+Produktion schon nutzt.
+
+**Zwei Tautologie-Hacks aufgeloest, die seit der `HANDOVER_2026-08-20.md`
+offen standen:** `hasData |= 1` und `if (g->isArray || !g->isArray)` waren
+konstant wahr und erzwangen DATA, obwohl der Kommentar daneben "gehoert in
+einen vsect" sagte -- der `hasBss`-Zweig war seither toter Code (nie
+gesetzt). Jetzt entscheidet `globalRemote(gidx)` je Globaler.
+
+**Ohne `-remotedata` byteidentisch zum alten Backend** (an qr68s eigenem IR
+geprueft, gleicher Ausgabedateiname wegen der psect-Namensfalle) -- der
+Umbau aendert an der bestehenden Kette nichts.
+
+**Machbarkeitsprobe durch BEIDE Assembler und BEIDE Binder** (die Lehre vom
+2026-09-07, dass eine Probe nur mit ql68 taeuschen kann):
+
+| | Assembler | Groesse |
+|---|---|---|
+| qr68 vs. r68 | Ausgabe ab Byte 18 identisch (davor nur `rdate`-Zeitstempel) | Assembler 2.892.723 -> **1.481.895 Byte** |
+| l68 + echte Microware-Libs | Modul 215.902 Byte, Kopf ok | |
+| ql68 + `qclib.l` | Modul 211.606 Byte, Kopf ok, `remotestatsiz` 997.980 | |
+
+Baseline (nicht-remote, `l68`/`clib`): Modul 1.210.478 Byte. **Faktor ~5,7**
+-- nah am ersten (zurueckgerollten) Versuch vom 06.09. (Faktor 5,9), diesmal
+aber durch beide Werkzeugpaare bestaetigt statt nur durch ql68.
+
+**Echtlauf auf dem 68030:** das mit `ql68` gegen `qclib.l` gebundene Modul
+(vsect remote, 211.606 Byte) assembliert `Q9-qr68/test/insn.a` korrekt --
+drei Durchgaenge, `geschrieben: 1540 Byte Code, 8 Byte Daten`, Ergebnis
+**byteidentisch** zum Host. Der genullte Datenbereich wird also nicht nur
+gebunden, sondern beim Zugriff auch tatsaechlich richtig gelesen/geschrieben.
+
+**Regression: unveraendert gruen.** `Q9-Parsec/runtests.sh` (Abgleich der
+zwoelf geteilten Dateien inklusive), `Q9-qclib/test/qccb_68k.sh`
+(`qcc_backend` uebersetzt sich selbst auf dem Ziel), `Q9-qclib/test/kette_68k.sh`
+(alle fuenf Werkzeuge hintereinander von `hello.c` bis zum laufenden Modul)
+-- alle mit dem neu gebauten Backend, alle wie vorher.
+
+**Was fuer den vollen Umbau noch fehlt:** `-remotedata` ist ein Schalter,
+kein neues Verhalten des Standardpfads -- qr68 selbst (das Werkzeug, an dem
+gemessen wurde) laeuft weiterhin mit `-largedata` ohne `-remotedata`. Ob der
+Schalter in `tools/build_os9.sh`/den `Makefile`s der Werkzeugkette
+standardmaessig gesetzt wird, ist Andreas' Entscheidung -- ebenso, ob
+`-largedata` und `-remotedata` gemeinsam auf QCCs eigenen Bootstrap
+(6.291.456-Byte-Aktionslog, s. `docs/ISO_C_GAP_LIST_de.md` Abschnitt 3, das
+8-Byte-Zeigerfeld) angesetzt werden -- dort waeren fast alle Globale
+Kandidaten fuer den vsect remote.
+
+
 ## Datenmodell: was gemessen ist und was der Umbau wirklich braucht (2026-09-07)
 
 Der Umbau "genullte Globals in den vsect statt als `dc.l 0,0,...` in den
