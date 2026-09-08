@@ -22,7 +22,7 @@
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FLUX="${FLUX:-$REPO/../Q9-Flux}"
+FLUX="${FLUX:-$REPO/../Q9-Flux-68k}"
 SRCIMG="${SRCIMG:-$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
 WORK="${WORK:-/tmp/qcc-selfhost}"
 STACK_KB="${STACK_KB:-1024}"
