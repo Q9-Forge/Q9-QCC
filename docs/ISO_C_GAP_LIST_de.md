@@ -80,12 +80,14 @@ Funktion für alle sechs Stellen.
 vertauschten Operanden statt `IPADD` —, und dafür gibt es keinen Aufrufer.
 Eine zweite Ordnung nebenher wäre die nächste Fehlerquelle.
 
-**Weiterhin abgelehnt und sauber gemeldet** (die Kette braucht es nicht,
-und eine Meldung ist besser als eine falsche Schrittweite):
-`arr[i].feld[j]` — Structschritt und Feldschritt in *einem* Ausdruck; das
-braucht einen zweiten Index-Scratch wie `tcEmitPointerIndexChain` und ist
-damit ein eigenes Vorhaben. Ebenso zweidimensionale Zeigerarrays als Feld
-(kein Aufrufer).
+**`arr[i].feld[j]`/`ptr[i].feld[j]` BEHOBEN (08.09.2026).** Structschritt
+und Feldschritt in einem Ausdruck brauchten genau den zweiten
+Index-Scratch, der hier vorher als offenes Vorhaben stand —
+`tcStashChainedIndex`/`tcEmitStashedFieldIndex`, acht Emissionsstellen
+(lokal/global x Array-von-structs/Pointer-auf-struct x lesend/
+schreibend). Einzelheiten im Nachtrag weiter unten bei `s.t[i][j]`.
+Weiterhin kein Aufrufer, also weiterhin nicht umgesetzt: zweidimensionale
+Zeigerarrays als Feld.
 
 **Nachtrag 2026-09-07 — ein STILLER Falschcode-Fehler bei `&arr[i]`,
 behoben.** `tc_addressref` emittierte für die Adresse eines
@@ -156,7 +158,10 @@ angesteckt. QCCs eigener Parser hängt an genau einer dieser Formen
 (`actionLog[i].start = start` bei `const char* start`) — deshalb vor dem
 Selbsthost einzeln geprüft.
 
-**Nachtrag 2026-09-07 — ein 2D-Array als Strukturfeld scheiterte STILL.**
+**Nachtrag 2026-09-07 — ein 2D-Array als Strukturfeld scheiterte STILL.
+Der Zugriff `feld[i][j]` selbst ist seit 08.09.2026 UMGESETZT** (s.
+Nachtrag am Ende dieses Absatzes; die Deklaration/Meldung unten war der
+erste Schritt davon).
 Gewöhnliche 2D- und 3D-Arrays gehen; ein 2D-Array *im struct*
 (`struct S { char t[4][8]; }`) verhielt sich so:
 
@@ -178,6 +183,26 @@ not supported in this version`.
 *einem* Ausdruck, also einen zweiten Index-Scratch nach dem Muster von
 `tcEmitPointerIndexChain`. Das ist **dieselbe Maschinerie**, die auch
 `arr[i].feld[j]` braucht: ein Umbau würde beide Lücken schließen.
+
+**Nachtrag 2026-09-08 — UMGESETZT.** Der Umbau von oben schließt jetzt
+beide Lücken: `feld[i][j]` (zweidimensionales Array-Feld, sechs
+Emissionsstellen — Punkt lokal/global, Pfeil) und `arr[i].feld[j]`/
+`ptr[i].feld[j]` (eindimensionales Array-Feld hinter einer
+Array-von-structs- bzw. Pointer-Indizierung, acht Emissionsstellen).
+Kern: der ZWEITE (zuletzt gepushte) Indexwert wird mit
+`tcStashChainedIndex()` in einen Scratch-Global zwischengelagert,
+während dazwischenliegender Code (Feld- bzw. Array-Elementadresse) den
+ERSTEN konsumiert — dieselbe Technik wie `tcEmitPointerIndexChain`
+(Scratch-Global statt Stack-Rotation, die die IR nicht kennt), hier auf
+genau einen gemerkten Wert vereinfacht, weil an beiden Stellen nie mehr
+als zwei Indexebenen vorkommen können (ein Feld ist höchstens 2D,
+structs schachteln nicht). Zwei neue Hilfsfunktionen tragen die Regel:
+`tcEmitFieldRowColIndex` (2D-Feld, Zeilen- dann Spaltenschritt) und
+`tcEmitStashedFieldIndex` (1D-Feld hinter arr[i]/ptr[i]). Verifiziert
+über QCCVM mit echten Werten (lesend und schreibend, lokal/global, alle
+acht bzw. sechs Stellen), volle Regressionssuite grün, BEIDE
+Selbsthost-Fixpunkte (r68/l68 und qr68/ql68/qclib) unverändert
+byteidentisch nach der Änderung an `tc_varref`/`tc_target`.
 
 **Nachtrag 2026-09-07 — die Verschachtelungsgrenze war um vier zu knapp.**
 `TC_MAX_CTRL` (vorher das Literal 64 an sechs Stellen) ist jetzt 128.
