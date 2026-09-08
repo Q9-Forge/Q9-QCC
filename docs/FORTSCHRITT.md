@@ -4,6 +4,95 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Peephole-Optimierer fuer den 68k-Codegen (`-peephole`, 2026-09-08)
+
+Erster Schritt gegen den 4,6x-Restabstand zu xcc, der nach `-remotedata`
+bei QCCs eigenem Selbsthost-Bau blieb (s. Eintrag oben zum Rollout):
+QCCs Backend ist eine reine Stack-Machine, jeder Zwischenwert geht ueber
+`move.l X,-(a7)` / `move.l (a7)+,Y`. Vor einer vollstaendigen Umstellung
+auf Registerhaltung (grosses, eigenes Vorhaben -- betrifft die IR selbst,
+also Frontend UND alle drei Backends gleichzeitig) zuerst der kleine,
+risikoarme Schritt: ein Nachlauf, der genau dieses Muster in der bereits
+erzeugten Assemblerausgabe erkennt und zusammenfaltet.
+
+**Vorbild recherchiert: Microwares eigener Optimierer `o68`.** Sitzt in
+der klassischen Kette an genau dieser Stelle (`cc -> cpp -> c68 -> o68 ->
+r68 -> l68`, aus `Q9-Flux-68k/docs/OS9SYS_BOOT.md` und einem echten
+`CMDS`-Listing bestaetigt). Die Original-PDF-Doku bringt nichts (alle 264
+PDFs sind gescannte Bilder ohne Textebene), aber eine echte OS9/68K-Binaerdatei
+liess sich auf einem alten Festplatten-Image finden und mit `strings`
+durchleuchten: Label-/Sprungziel-Korrektur nach dem Entfernen einer
+Instruktion ist dort ein EIGENER, separat protokollierter Durchlauf
+(`fix (label search):`, `fix (branch search):`), nicht ins Entfernen
+selbst gemischt -- die uebernommene Lehre fuer das eigene Modul.
+
+**Architektur: eigenes, eingebundenes Modul, Assembler-Ebene, nicht IR.**
+`Source/qcc_backend_peephole.c`, per `#include` in `qcc_backend_c.cpp`
+eingebunden (kein zusaetzlicher Compile-/Link-Schritt in irgendeinem
+Bauskript noetig -- am Ende wird weiterhin nur eine Datei kompiliert).
+Assembler-Ebene bewusst statt IR: die Verschwendung ist eine Eigenschaft
+der UMSETZUNG der abstrakten Stack-IR in echte 68k-Speicherzugriffe, in
+der IR selbst ist ein PUSH/POP-Paar keine ueberfluessige Sequenz, sondern
+die Opcode-Semantik. Ein IR-Peephole wuerde die Stelle gar nicht sehen;
+das ARM64-Backend braeuchte fuer dieselbe Klasse Optimierung ohnehin sein
+eigenes Muster.
+
+**Erstes Muster:** `move.l SRC,-(a7)` unmittelbar gefolgt von
+`move.l (a7)+,DST` wird zu `move.l SRC,DST`. Sicher unabhaengig vom
+Kontext: ein Push, dem SOFORT und AUSSCHLIESSLICH sein eigener Pop folgt,
+aendert A7 zwischenzeitlich, sonst beobachtet nichts den Zwischenzustand.
+Reines Lesen der Originalzeilen (keine Mutation), Ersetzungen landen in
+einem eigenen Synthesepuffer, eine Zeile wird durch Markieren gestrichen
+statt physisch verschoben (o68s `remins`-Idee) -- weitere Muster kommen
+als eigene `phFold*`-Funktionen dazu.
+
+**Speichergroessen gemessen:** qr68s eigene Assemblerausgabe mit
+`-remotedata` (75.273 Zeilen / 1.588.771 Byte) ist der groesste bisher auf
+dem Ziel gelaufene Fall ausserhalb des Selbsthosts -- die Puffer geben
+darauf ~35 % Kopfraum (2 MB Text, 100.000 Zeilen). QCCs eigener
+Selbsthost-Bau (222.832 Zeilen / 4,59 MB) sprengt das bewusst; `-peephole`
+ist dafuer noch nicht verdrahtet, das waere eine eigene, spaetere
+Speicherbudget-Entscheidung. Ueberschreitung bricht mit `fatal()` ab wie
+jede andere Kapazitaetsgrenze in diesem Backend.
+
+**Auf qr68 gemessen:** 6.025 Paare zusammengefasst, 75.273 -> 69.248
+Zeilen (-8 %). Assembliert (qr68), gebunden (l68/clib), auf dem 68030
+gelaufen: die Testquelle `insn.a` wird korrekt assembliert, Ergebnis
+**byteidentisch** sowohl zum Lauf ohne `-peephole` als auch zum Host-Lauf
+-- das erste Muster ist beweisbar verhaltenserhaltend, nicht nur
+"kompiliert durch".
+
+**Zwei echte Fallen auf dem ZIEL gefunden, beide behoben:**
+
+1. **Stiller Frontend-Abbruch: mehrere Zeiger-Deklaratoren in EINER
+   Anweisung.** `const char *labelStart, *srcStart, *dst;` gab `FAIL` ohne
+   jede Meldung -- nachgemessen unabhaengig von `const` (`char *a, *b;`
+   bricht ebenso), nur die MEHRZAHL an `*`-Deklaratoren in einer Zeile ist
+   das Problem (`int a, b;` und `const char *a;` gehen je einzeln). Neuer
+   Eintrag in `docs/ISO_C_GAP_LIST_de.md`. NICHT im Frontend behoben --
+   im eigenen Modul umgangen (je ein Deklarator pro Zeile), die Grammatik-
+   Reparatur ist ein eigenes, spaeteres Vorhaben.
+2. **`fopen(...,"w")` ein zweites Mal auf dieselbe Datei scheitert auf
+   OS-9.** `qclib`s `qf_open` geht im Schreibmodus ueber `I$Create`
+   (Datei NEU anlegen), nicht ueber ein Ueberschreiben-Semantik wie am
+   Host -- eine zweite `fopen(...,"w")` auf einen bereits existierenden
+   Pfad schlaegt fehl ("kann Ausgabedatei nicht neu schreiben", auf dem
+   68030 gemessen). Betraf den naiven Plan "erst normal schreiben, dann
+   denselben Pfad fuer die optimierte Fassung neu anlegen". Loesung:
+   `emitIR()` schreibt bei `-peephole` in eine TEMPORAERE Datei
+   (`<ziel>.tmp`), `peepholeRun()` legt die eigentliche Zieldatei zum
+   ERSTEN und einzigen Mal an. Die `.tmp`-Datei bleibt liegen (wie jede
+   andere Zwischendatei in dieser Kette, kein Aufrufer raeumt sie auf).
+
+**Vollstaendig verifiziert nach beiden Fixes:** `qcc_backend_c.cpp` (mit
+dem neuen `#include`) uebersetzt sich weiterhin ueber die eigene Kette
+(`Q9-qclib/test/qccb_68k.sh`, byteidentisch zum Host, 36.132 Byte). `qcc_backend`
+mit `-peephole` DIREKT AUF DEM ZIEL ausgefuehrt liefert ein Ergebnis, das
+**byteidentisch** zum Host-Lauf mit denselben Optionen ist (149
+Paare, 2.340 -> 2.191 Zeilen an `build/hello.ir`). Volle Regressionssuite
+(`Q9-Parsec/runtests.sh`, inkl. Zwoelf-Dateien-Abgleich -- jetzt dreizehn,
+`qcc_backend_peephole.c` mitgezaehlt) unveraendert gruen.
+
 ## `-remotedata` in der Kette fest eingetragen (2026-09-08, spaeter)
 
 Der Schalter vom Vormittag ist jetzt Standard in allen Bauskripten der

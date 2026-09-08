@@ -45,11 +45,22 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | `short`, `long`, `long long` | offen | hoch |
 | `_Bool` und Qualifizierer | teilweise/offen | hoch |
 | `float`, `double`, `long double` | offen | hoch |
-| Pointer und Pointerarithmetik | erledigt | — |
+| Pointer und Pointerarithmetik | erledigt, EINE Ausnahme (s. Nachtrag 2026-09-08) | — |
 | Arrays und Array-Decay | teilweise | sehr hoch |
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
 | `struct`, `union`, `enum` | teilweise (struct mit gemischten skalaren Feldtypen erledigt 2026-07-24, `enum` erledigt; `union`, Array-/Pointer-Felder und verschachtelte structs offen) | sehr hoch |
+
+**Nachtrag 2026-09-08 — mehrere Zeiger-Deklaratoren in EINER Anweisung
+sind ein STILLER Abbruch.** `char *a, *b;` (mit oder ohne `const`, dritter
+oder mehr Deklaratoren, immer dasselbe Bild) gibt `FAIL` ohne jede
+Meldung — `const char *a;` (EIN Zeiger) geht, `int a, b;` (mehrere
+NICHT-Zeiger-Deklaratoren) geht, nur die Kombination bricht. Gefunden
+beim Bau des Peephole-Optimierers (`Source/qcc_backend_peephole.c`),
+Umgehung dort: je ein eigener Deklarator pro Zeile statt einer
+gemeinsamen Anweisung — NICHT im Frontend behoben, das ist ein eigenes
+Vorhaben. Bisektionsmethode wie ueblich: `build/qcc_p '<schnipsel>'`
+einzeln, an Funktionsgrenzen schneiden.
 
 **Nachtrag 2026-09-07 — Zeigerarrays als Strukturfeld gehen jetzt.**
 `char* args[6]` in einer Struct war bis dahin abgelehnt („pointer arrays as
