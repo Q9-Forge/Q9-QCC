@@ -239,6 +239,15 @@ static int runtimeMode = 0;
    Globale erreichbar macht -- auf Kosten eines zusaetzlichen Speicherzugriffs
    pro Zugriff. */
 static int largeDataMode = 0;
+/* -remotedata (2026-09-08): genullte Globals kommen nicht mehr als dc.l 0 in
+   den psect, sondern in einen "vsect remote" -- OS-9 nullt den Datenbereich
+   selbst (2026-09-07 gemessen, im Handbuch steht es nicht), also braucht das
+   Modul die Nullen nicht mitzuschleppen. Der Zugriff wird a6-relativ mit
+   VOLLEN 32 Bit (movea.l #sym,reg / adda.l a6,reg -- dasselbe Muster, das
+   runtime/os9/q9_cstart.a in Produktion benutzt), kennt also weder die
+   32-KB-Grenze der PC-relativen Adressierung noch die 64-KB-Grenze eines
+   nicht-remoten vsects. Siehe docs/FORTSCHRITT.md. */
+static int remoteDataMode = 0;
 /* Experimenteller Fernaufrufpfad; ohne -trampolines bleibt der getestete
    Tabellenpfad unveraendert. */
 static int trampolineMode = 0;
@@ -344,8 +353,33 @@ static void emitAlign(FILE* out) {
    selbst (kurze Distanz, nie ueber 32 KB). emitLeaGlobal()/emitCall() selbst
    bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
    aufgefrischten Wert). */
+/* Ein Globales ist GANZ null, wenn kein Initialisierer einen Wert setzt: ein
+   Array ohne jedes GINIT, ein Skalar mit Initialwert 0. Genau diese gehoeren
+   in den vsect remote -- Arrays MIT GINIT bleiben im psect, sonst waeren ihre
+   Werte weg. */
+static int globalAllZero(Global* g) {
+	if (g->isArray) return !g->hasGinit;
+	return g->initialValue == 0;
+}
+/* Liegt dieses Globale im vsect remote? EINE Stelle beantwortet das, weil die
+   Antwort an mehreren Emissionsstellen gebraucht wird (Datenausgabe, Tabelle,
+   acht Zugriffsformen) -- eine Regel ueber Adressierung gilt nie nur an einer. */
+static int globalRemote(int gidx) {
+	if (!remoteDataMode) return 0;
+	if (globals[gidx].declOnly) return 0;
+	return globalAllZero(&globals[gidx]);
+}
 static void emitLeaGlobal(FILE* out, int gidx, const char* reg) {
-	if (largeDataMode) {
+	if (globalRemote(gidx)) {
+		/* a6 = Prozessdatenbasis (Ultra-C-Handbuch: Static Storage Pointer; im
+		   -os9-Modus ist a5 der Frame-Pointer, a6 bleibt unangetastet). Der
+		   Symbolwert eines vsect-Symbols ist ein Offset IN diesem Bereich, den
+		   l68/ql68 zur Bindezeit einsetzen -- keine Laufzeitrelokation, und weil
+		   das Immediate 32 Bit breit ist, auch keine Distanzgrenze. */
+		char gAsmName[NAME_LEN + 40];
+		mangledName(gAsmName, "tc_g_", globals[gidx].name, globals[gidx].isStatic);
+		fprintf(out, "\tmovea.l\t#%s,%s\n\tadda.l\ta6,%s\n", gAsmName, reg, reg);
+	} else if (largeDataMode) {
 		fprintf(out, "\tmove.l\t%d(a3),%s\n\tadda.l\ta3,%s\n", gidx * 4, reg, reg);
 	} else {
 		char gAsmName[NAME_LEN + 40];
@@ -1020,7 +1054,13 @@ static void emitIR(FILE* out) {
 		for (gi = 0; gi < globalCount; gi++) {
 			char gAsmName[NAME_LEN + 40];
 			mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
-			fprintf(out, "\tdc.l\t%s-tc_gadata__%s\n", gAsmName, psectName);
+			/* Ein Globales im vsect remote ist ueber DIESE Tabelle nicht erreichbar:
+			   sein Symbolwert ist ein Offset im DATENbereich, die Tabelle haelt
+			   Offsets im psect -- die Differenz waere zweierlei Mass. Der Platz
+			   bleibt aber belegt, damit gidx*4 und der tc_extcall_tmp-Eintrag am
+			   Ende (globalCount*4) weiter stimmen. */
+			if (globalRemote(gi)) fprintf(out, "\tdc.l\t0\n");
+			else fprintf(out, "\tdc.l\t%s-tc_gadata__%s\n", gAsmName, psectName);
 		}
 		fprintf(out, "\tdc.l\ttc_extcall_tmp-tc_gadata__%s\n", psectName);
 		/* 2026-07-26 (siehe registerExtern()-Kommentar oben): ein Wrapper-Stub pro
@@ -1418,7 +1458,7 @@ static void emitIR(FILE* out) {
 				/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
 				   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
 				   siehe emitLeaGlobal()-Kommentar. */
-				if (largeDataMode) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+				if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 				else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
@@ -1431,7 +1471,7 @@ static void emitIR(FILE* out) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				if (largeDataMode) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+				if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
 				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
 			} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
 				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
@@ -1445,7 +1485,7 @@ static void emitIR(FILE* out) {
 				if (gidx < 0) fatal("unbekannte globale Variable");
 				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
 				if (strcmp(op, "LOADGP") == 0) {
-					if (largeDataMode) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+					if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 					else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 				} else {
 					fputs("\tmove.l\t(a7)+,d0\n", out);
@@ -1766,10 +1806,13 @@ static void emitIR(FILE* out) {
 		   bleiben. */
 		for (gi = 0; gi < globalCount; gi++) {
 			if (globals[gi].declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
-			/* Microware l68 limits one non-remote vsect to 64 KB.  The
-			   bootstrap's static parser tables are much larger, whereas the
-			   dynamic action log itself is only scalar pointer state. */
-			hasData |= 1;
+			/* Ein NICHT-remoter vsect ist auf 64 KB begrenzt (l68 lehnt mehr ab),
+			   deshalb bleiben die initialisierten Globals im psect; nur die ganz
+			   genullten gehen in einen vsect remote, der diese Grenze nicht hat.
+			   Ohne -remotedata ist globalRemote() immer 0 -- die Ausgabe bleibt
+			   dann Byte fuer Byte die alte. */
+			if (globalRemote(gi)) hasBss = 1;
+			else hasData = 1;
 		}
 		/* Die -largedata-Datenindirektionstabelle (tc_gadata) wird NICHT mehr
 		   hier emittiert (siehe emitLeaGlobal()-Kommentar) -- sie sitzt jetzt
@@ -1783,7 +1826,7 @@ static void emitIR(FILE* out) {
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->declOnly) continue;
-				if (g->isArray || !g->isArray) {
+				if (!globalRemote(gi)) {
 					int e; char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
 					if (!g->isChar) emitAlign(out);
@@ -1823,15 +1866,19 @@ static void emitIR(FILE* out) {
 			}
 		}
 		if (hasBss) {
-			fprintf(out, "\n%s VSECT: uninitialisierte, vom OS-9-Lader auf null gesetzte Globals\n", fullCommentPrefix());
-			if (os9Mode) fputs("\tvsect\n", out);
+			fprintf(out, "\n%s VSECT REMOTE: genullte Globals -- OS-9 legt den Bereich an und nullt ihn (gemessen), das Modul traegt kein einziges Nullbyte dafuer\n", fullCommentPrefix());
+			if (os9Mode) fputs("\tvsect\tremote\n", out);
 			else fputs("\tsection .bss\n", out);
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->declOnly) continue;
-				if (!g->isArray && g->initialValue == 0) {
+				if (globalRemote(gi)) {
 					char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
+					/* ds.b richtet nicht aus; ein folgendes ds.l braucht die
+					   Langwortgrenze, sonst liest der 68000 ein ungerades Langwort.
+					   align im vsect ist gegen r68 geprueft (Q9-qr68/test/remotetest.sh). */
+					if (!g->isChar) emitAlign(out);
 					fprintf(out, "%s:\tds.%s\t%d\n", gAsmName, g->isChar ? "b" : "l",
 					        g->isArray ? g->length : 1);
 				}
@@ -1862,6 +1909,10 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "              PC-relative Adressierung reicht nur +-32 KB) -- Standard (ohne\n");
 		fprintf(stderr, "              diese Option) ist schneller/kompakter, reicht aber nur fuer\n");
 		fprintf(stderr, "              kleinere Programme mit wenig globalem Zustand.\n");
+		fprintf(stderr, "  -remotedata: genullte Globals in einen vsect remote statt als dc.l 0 in den\n");
+		fprintf(stderr, "              psect. OS-9 nullt den Datenbereich selbst, das Modul wird dadurch\n");
+		fprintf(stderr, "              erheblich kleiner; der Zugriff ist a6-relativ mit 32 Bit und kennt\n");
+		fprintf(stderr, "              damit weder die 32-KB- noch die 64-KB-Grenze. Nur mit -os9.\n");
 		fprintf(stderr, "  -trampolines: optionaler relokierbarer Fernaufrufpfad; nur mit -largedata.\n");
 		fprintf(stderr, "  -unit=name: gemeinsamer static-Namensraum fuer kuenstlich gesplittete Teile.\n");
 		fprintf(stderr, "                Zusammen mit r68 -j und l68 -a verwenden; erzeugt eine\n");
@@ -1873,6 +1924,7 @@ int main(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "-part") == 0) partMode = 1;
 		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
 		else if (strcmp(argv[i], "-largedata") == 0) largeDataMode = 1;
+		else if (strcmp(argv[i], "-remotedata") == 0) remoteDataMode = 1;
 		else if (strcmp(argv[i], "-trampolines") == 0) trampolineMode = 1;
 		else if (strncmp(argv[i], "-unit=", 6) == 0 && argv[i][6] != '\0') {
 			strncpy(staticUnit, argv[i] + 6, NAME_LEN - 1);
@@ -1884,6 +1936,22 @@ int main(int argc, char* argv[]) {
 	collectGlobals();
 	collectFunctions();
 	collectExterns();
+	if (remoteDataMode) {
+		int gi;
+		/* a6 ist nur im -os9-Modus frei. Im vasm-Format IST a6 der Frame-Pointer
+		   (siehe framePtr()) -- ein adda.l a6,reg zeigte dort auf den Stackframe. */
+		if (!os9Mode) fatal("-remotedata braucht -os9: nur dort ist a6 der Datenbereichszeiger und nicht der Frame-Pointer");
+		/* Dateiuebergreifende Globals: diese Datei kann NICHT wissen, ob die
+		   DEFINIERENDE Datei das Symbol in den psect oder in den vsect remote
+		   gelegt hat -- der Zugriffsweg unterscheidet sich aber (PC-relativ oder
+		   Tabelle gegen a6-relativ). Lieber melden als still falsch adressieren. */
+		for (gi = 0; gi < globalCount; gi++) {
+			if (globals[gi].declOnly) {
+				sprintf(msg, "-remotedata und dateiuebergreifendes Globales %s: der Zugriffsweg haengt von der definierenden Datei ab", globals[gi].name);
+				fatal(msg);
+			}
+		}
+	}
 	if (!largeDataMode) {
 		/* Heuristik-Warnung (2026-07-25, siehe -largedata/emitLeaGlobal()): wir koennen
 		   NICHT wissen, ob r68 die PC-relative Reichweite tatsaechlich ueberschreiten
@@ -1896,6 +1964,7 @@ int main(int argc, char* argv[]) {
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue;
+			if (globalRemote(gi)) continue; /* liegt im Datenbereich, nicht im psect -- keine PC-relative Distanz */
 			totalGlobalBytes += (long)(g->isChar ? 1 : 4) * (g->isArray ? g->length : 1);
 		}
 		if (totalGlobalBytes > 16000) {
