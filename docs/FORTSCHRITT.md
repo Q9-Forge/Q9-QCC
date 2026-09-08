@@ -4,6 +4,51 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Peephole, drittes Muster: `move.l`+`move.l` (2026-09-08, spaeter)
+
+Dieselbe Haeufigkeitsliste wie beim zweiten Muster, naechster Eintrag:
+`move.l (a0),d0` gefolgt von `move.l d0,-(a7)` — 385 Vorkommen fuer genau
+diese eine SRC/DST-Kombination. Verallgemeinert: `move.l SRC,Dn`
+unmittelbar gefolgt von `move.l Dn,DST` (dasselbe Datenregister) wird zu
+`move.l SRC,DST` — SRC und DST duerfen dabei beliebig sein (auch DST als
+`-(a7)`, dann ist es dasselbe Ergebnis wie das erste Muster, nur ueber
+diesen Matcher gefunden). Sicher aus demselben Grund wie das erste
+Muster: der Registerinhalt wird zwischen den beiden Zeilen von nichts
+sonst beobachtet. Geprueft, nicht angenommen: alle 23.387 `move.l`-Zeilen
+in qr68s eigener Ausgabe haben genau EIN Komma — keine indizierte
+Adressierung mit eingebettetem Komma in diesem Backend, das rechteste
+Komma trennt SRC von DST also immer sauber.
+
+Der bestehende Matcher fuer Muster zwei (`move.l SRC,Dn` erkennen) wurde
+dafuer verallgemeinert (`phMatchMoveIntoDataReg`, liefert jetzt SOWOHL SRC
+ALS AUCH das Zielregister) statt eine zweite, fast identische Funktion zu
+schreiben — beide Muster teilen sich ihn jetzt.
+
+**Denselben Fehler ein zweites Mal gemacht und sofort wieder gefunden:**
+beim Umbau auf den gemeinsamen Matcher sind erneut mehrere Zeiger-
+Deklaratoren in einer Anweisung hineingerutscht
+(`const char *labelStart, *srcStart, *regStart;`) — genau die Luecke, die
+beim ersten Muster schon einmal stumm FAIL gab (s. Eintrag oben, noch
+nicht im Frontend behoben). Bisektion mit dem echten Dateikopf fand die
+Stelle in Sekunden; behoben wie zuvor (je ein eigener Deklarator).
+**Lehre: diese Falle lauert bei JEDER neuen Funktion mit mehreren
+Zeiger-Rueckgaben, nicht nur beim ersten Mal — beim Schreiben aktiv
+danach schauen, nicht erst beim FAIL.**
+
+**Auf qr68 gemessen:** 8.476 Optimierungen in 2 Durchlaeufen, 75.273 ->
+66.797 Zeilen (vorher, zwei Muster: 68.241). ROF 398.267 Byte, Modul
+(l68/clib) 198.950 Byte.
+
+**Vollstaendig erneut verifiziert** (derselbe Ablauf wie bei den ersten
+beiden Mustern): assembliert, gebunden, auf dem 68030 gelaufen — `insn.a`
+byteidentisch zum Host. `qcc_backend_c.cpp` selbst-hostet weiterhin
+byteidentisch (`qccb_68k.sh`, 36.132 Byte). `-peephole` DIREKT AUF DEM
+ZIEL ausgefuehrt (166 Optimierungen an `build/hello.ir`, 2.340 -> 2.174
+Zeilen) liefert ein Ergebnis, das byteidentisch zum Host-Lauf ist. Volle
+Regressionssuite (dreizehn geteilte Dateien) und kompletter
+Fuenf-Werkzeuge-Ringschluss unveraendert gruen.
+
+
 ## Peephole, zweites Muster: `move.l`+`tst.l` (2026-09-08, spaeter)
 
 Datengetrieben statt geraten: Haeufigkeitsverteilung aller Zeilenpaare in
