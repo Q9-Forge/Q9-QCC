@@ -4,6 +4,49 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Peephole, zweites Muster: `move.l`+`tst.l` (2026-09-08, spaeter)
+
+Datengetrieben statt geraten: Haeufigkeitsverteilung aller Zeilenpaare in
+qr68s eigener `-remotedata`-Ausgabe gebildet (`awk` ueber aufeinander-
+folgende Zeilen, `sort | uniq -c | sort -rn`). Mit Abstand groesster
+Einzelfund: `move.l (a7)+,d0` gefolgt von `tst.l d0` — **2.064 Vorkommen**.
+
+**Warum sicher:** `MOVE.L` setzt N/Z auf 68000-Hardwareebene bereits
+GENAUSO wie `TST.L` es fuer denselben Wert taete (V/C bei beiden auf 0),
+das `tst.l` danach ist also niemals mehr als eine Wiederholung — die
+Zeile faellt komplett weg, kein Ersatzbau noetig (anders als beim ersten
+Muster). **Bewusst nur `d0`-`d7`, nie `a0`-`a6`:** `move.l SRC,An` wird
+von r68/qr68 als MOVEA assembliert (die einzige Opcode-Form fuer ein
+Adressregister-Ziel, unabhaengig vom geschriebenen Mnemonic), und MOVEA
+setzt KEINE Flags — dort waere ein TST danach echt gebraucht.
+
+**Design-Korrektur unterwegs, bevor das zweite Muster ueberhaupt lief:**
+die urspruengliche `phFoldPushPop`-Schleife nahm physische Nachbarschaft
+an (`phLines[i+1]`). Das ist falsch, sobald VOR ihr schon etwas gestrichen
+wurde — und genau das tritt jetzt ein: `PUSH x / POP d0 / TST d0` faltet
+zuerst zu `move.l x,d0`, und ERST DANACH steht `tst.l d0` logisch daneben
+(physisch aber zwei Zeilen entfernt, die gestrichene POP-Zeile liegt noch
+im Array). Neuer Helfer `phNextKept()` ueberspringt gestrichene Zeilen;
+beide Fold-Funktionen nutzen ihn jetzt. `peepholeRun()` wiederholt beide
+Muster, bis ein Durchlauf nichts mehr aendert (klassisches
+Peephole-Verhalten, dieselbe Erwartung wie bei o68) — ohne diese
+Korrektur haette das zweite Muster die durch das erste neu entstandenen
+Gelegenheiten stillschweigend uebersehen.
+
+**Auf qr68 gemessen:** 7.032 Optimierungen in 2 Durchlaeufen, 75.273 ->
+68.241 Zeilen (vorher, nur erstes Muster: 69.248). ROF 401.155 Byte
+(vorher 426.429), Modul (l68/clib) 201.838 Byte (vorher 215.902).
+
+**Vollstaendig erneut verifiziert:** assembliert (qr68), gebunden
+(l68/clib), auf dem 68030 gelaufen — `insn.a` byteidentisch zum
+Host-Lauf. `qcc_backend_c.cpp` selbst-hostet weiterhin byteidentisch
+(`qccb_68k.sh`, 36.132 Byte). `-peephole` DIREKT AUF DEM ZIEL ausgefuehrt
+(151 Optimierungen an `build/hello.ir`, 2.340 -> 2.189 Zeilen) liefert
+ein Ergebnis, das byteidentisch zum Host-Lauf ist. Volle Regressionssuite
+(dreizehn geteilte Dateien) und kompletter Fuenf-Werkzeuge-Ringschluss
+unveraendert gruen.
+
+
 ## Peephole-Optimierer fuer den 68k-Codegen (`-peephole`, 2026-09-08)
 
 Erster Schritt gegen den 4,6x-Restabstand zu xcc, der nach `-remotedata`
