@@ -82,11 +82,13 @@ different stack discipline applies — `PADD` with swapped operands instead
 of `IPADD` — and there is no caller for it. A second discipline alongside
 would be the next source of error.
 
-**Still rejected, with a proper diagnostic** (the chain does not need it,
-and a message beats a wrong stride): `arr[i].field[j]` — struct step and
-field step in *one* expression; that needs a second index scratch like
-`tcEmitPointerIndexChain` and is a project of its own. Likewise
-two-dimensional pointer arrays as a field (no caller).
+**`arr[i].field[j]`/`ptr[i].field[j]` FIXED (2026-09-08).** Struct step and
+field step in one expression needed exactly the second index scratch that
+used to be an open item here — `tcStashChainedIndex`/
+`tcEmitStashedFieldIndex`, eight emission sites (local/global x
+array-of-structs/pointer-to-struct x read/write). Details in the
+addendum below at `s.t[i][j]`. Still no caller, so still not
+implemented: two-dimensional pointer arrays as a field.
 
 **Addendum 2026-09-07 — a SILENT wrong-code bug in `&arr[i]`, fixed.**
 `tc_addressref` emitted `PTRINDEX` with the type tag for the address of a
@@ -175,6 +177,25 @@ version`.
 expression, i.e. a second index scratch along the lines of
 `tcEmitPointerIndexChain`. That is the **same machinery** `arr[i].field[j]`
 needs: one rework would close both gaps.
+
+**Addendum 2026-09-08 — IMPLEMENTED.** The rework above now closes both
+gaps: `field[i][j]` (two-dimensional array field, six emission sites —
+dot local/global, arrow) and `arr[i].field[j]`/`ptr[i].field[j]`
+(one-dimensional array field behind an array-of-structs or
+pointer-to-struct index, eight emission sites). Core idea: the SECOND
+(last-pushed) index value is stashed into a scratch global with
+`tcStashChainedIndex()` while intervening code (field or array-element
+address) consumes the FIRST — the same technique as
+`tcEmitPointerIndexChain` (scratch global instead of stack rotation,
+which the IR does not have), simplified here to exactly one remembered
+value since neither site ever needs more than two index levels (a field
+is at most 2D, structs do not nest). Two new helpers carry the rule:
+`tcEmitFieldRowColIndex` (2D field, row then column step) and
+`tcEmitStashedFieldIndex` (1D field behind arr[i]/ptr[i]). Verified via
+QCCVM with real values (read and write, local/global, all eight/six
+sites), full regression suite green, BOTH self-hosting fixpoints
+(r68/l68 and qr68/ql68/qclib) unchanged and byte-identical after the
+change to `tc_varref`/`tc_target`.
 
 **Addendum 2026-09-07 — the nesting limit was four too small.**
 `TC_MAX_CTRL` (previously the literal 64 at six places) is now 128.

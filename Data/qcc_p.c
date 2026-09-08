@@ -697,6 +697,44 @@ static void tcEmitFieldIndexStep(int sid, int fi) {
 	if (tcIsPointer(tcStructFieldTypes[sid][fi])) printf("IPADDN %d\n", TC_PTR_SLOT);
 	else printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 }
+/* feld[i][j] (2D-Array-FELD) und arr[i].feld[j]/ptr[i].feld[j] (1D-Array-FELD
+   hinter einer Array-von-structs- bzw. Pointer-auf-struct-Indizierung)
+   brauchen beide einen ZWEITEN Indexwert, waehrend dazwischenliegender Code
+   (Feldadress- bzw. Element-von-arr-Adressberechnung) den ERSTEN konsumiert.
+   Dieselbe Technik wie tcEmitPointerIndexChain (Scratch-Global statt
+   Stack-Rotation, die die IR nicht kennt) -- hier auf GENAU EINEN gemerkten
+   Wert vereinfacht, weil an beiden Stellen nie mehr als zwei Indexebenen
+   vorkommen koennen (ein Feld ist hoechstens 2D, structs schachteln nicht). */
+static void tcStashChainedIndex(void) {
+	if (!tcPtrIdxScratchDeclared[2]) { printf("GLOBAL __ptrIdx_2 0 i 1\n"); tcPtrIdxScratchDeclared[2] = 1; }
+	printf("STOREG __ptrIdx_2\n");
+}
+static void tcUnstashChainedIndex(void) {
+	printf("LOADG __ptrIdx_2\nSWAP\n");
+}
+/* feld[i][j] eines zweidimensionalen Array-Felds (tcStructFieldRowLen>0).
+   Stack bei Aufruf: [ersterIndex, Feldadresse] -- der zweite Index wurde
+   vorher mit tcStashChainedIndex() zwischengelagert. laden=1: Lesekontext
+   (haengt LOADIND an); laden=0: Zuweisungsziel (Adresse bleibt liegen,
+   Aufrufer setzt tcTargetIndirect). */
+static TCType tcEmitFieldRowColIndex(int sid, int fi, int laden) {
+	int elemSize = tcTypeTag(tcStructFieldTypes[sid][fi]) == 'c' ? 1 : 4;
+	printf("IPADDN %d\n", tcStructFieldRowLen[sid][fi] * elemSize);
+	tcUnstashChainedIndex();
+	tcEmitFieldIndexStep(sid, fi);
+	if (laden) printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+	return tcStructFieldTypes[sid][fi];
+}
+/* arr[i].feld[j] / ptr[i].feld[j] eines EINDIMENSIONALEN Array-Felds: arr[i]s
+   eigener Index verbraucht sich in der Adressberechnung DAZWISCHEN, hier wird
+   nur noch der zwischengelagerte Feldindex entnommen und der bestehende
+   Einzel-Indexschritt angewandt. */
+static TCType tcEmitStashedFieldIndex(int sid, int fi, int laden) {
+	tcUnstashChainedIndex();
+	tcEmitFieldIndexStep(sid, fi);
+	if (laden) printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
+	return tcStructFieldTypes[sid][fi];
+}
 static TCType tcPromoteInteger(TCType a, TCType b) { return tcMakeType(a.base == 'u' || b.base == 'u' ? 'u' : 'i', 0); }
 static TCType tcLocalType(int slot) { return slot >= 0 && slot < tcLocalCount ? tcLocalTypes[slot] : tcMakeType('i', 0); }
 static TCType tcGlobalType(int slot) { return slot >= 0 && slot < tcGlobalCount ? tcGlobalTypes[slot] : tcMakeType('i', 0); }
@@ -2276,12 +2314,16 @@ void tc_varref(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
+			if (chain) tcStashChainedIndex();
 			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
 			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
@@ -2299,8 +2341,10 @@ void tc_varref(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
@@ -2308,12 +2352,14 @@ void tc_varref(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "member access requires a complete struct-array index\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[slot]);
+			if (chain) tcStashChainedIndex();
 			/* Index bereits gepusht (vor uns, durch die index-ACTION). PUSHADDR liefert die
 			   Blockadresse des GESAMTEN Arrays; IPADDN skaliert den Index um die LAUFZEIT-
 			   Byte-Groesse eines Elements (structSize, beliebig -- anders als IPADD, das nur
 			   feste Typtag-Groessen kennt); danach PUSH+PADD c addiert den (konstanten,
 			   byte-genauen) Feldoffset, exakt wie beim bestehenden Skalar-Feldzugriff oben. */
 			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
 			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
@@ -2339,9 +2385,14 @@ void tc_varref(const char* start, const char* end) {
 		sid = pt.structId - 1;
 		fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
-		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
-		if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]);
-		printf("IPADD c\n");
+		{
+			int chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
+			if (chain) tcStashChainedIndex();
+			printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+			if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]);
+			printf("IPADD c\n");
+			if (chain) { tcTypePush(tcEmitFieldRowColIndex(sid, fi, 1)); return; }
+		}
 		if (fieldEnd < end && *fieldEnd == '[') {
 			/* VERKETTETE Indizierung eines Strukturfelds (feld[i][j]) --
 			   seit 2026-09-07 GEMELDET statt still. Vorher nahm die Grammatik
@@ -2400,10 +2451,15 @@ void tc_varref(const char* start, const char* end) {
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
 		/* IPADD poppt Pointer ZUERST (muss oben liegen), dann Count -- daher PUSH vor PUSHADDR. */
-		if (tcLocalStructByAddr[slot])
-			printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
-		else
-			printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+		{
+			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
+			if (chain) tcStashChainedIndex();
+			if (tcLocalStructByAddr[slot])
+				printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+			else
+				printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+			if (chain) { tcTypePush(tcEmitFieldRowColIndex(sid, fi, 1)); return; }
+		}
 		if (hasIndex) {
 			/* p.field[i] (2026-07-24): der Index-Ausdruck hat seinen Wert bereits VOR uns
 			   gepusht (ACTION AFTER index CALL tc_arg feuert vor dem umschliessenden
@@ -2463,13 +2519,17 @@ void tc_varref(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
+			if (chain) tcStashChainedIndex();
 			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
 			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
@@ -2482,9 +2542,11 @@ void tc_varref(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
@@ -2492,7 +2554,9 @@ void tc_varref(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "member access requires a complete struct-array index\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
+			if (chain) tcStashChainedIndex();
 			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
 			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 			tcTypePush(tcStructFieldTypes[sid][fi]); return;
@@ -2505,7 +2569,12 @@ void tc_varref(const char* start, const char* end) {
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		tcCopy(gname, start, nameEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
-		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+		{
+			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
+			if (chain) tcStashChainedIndex();
+			printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+			if (chain) { tcTypePush(tcEmitFieldRowColIndex(sid, fi, 1)); return; }
+		}
 		if (hasIndex) {
 			/* VERKETTETE Indizierung eines Strukturfelds (feld[i][j]) --
 			   seit 2026-09-07 GEMELDET statt still. Vorher nahm die Grammatik
@@ -3024,9 +3093,14 @@ void tc_target(const char* start, const char* end) {
 			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
 			actionErrors++;
 		}
-		printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
-		if (tcTargetSlot >= 0) printf("LOADP %d\n", tcTargetSlot); else printf("LOADGP %s\n", tcGlobalNames[gslot]);
-		printf("IPADD c\n");
+		{
+			int chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
+			if (chain) tcStashChainedIndex();
+			printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+			if (tcTargetSlot >= 0) printf("LOADP %d\n", tcTargetSlot); else printf("LOADGP %s\n", tcGlobalNames[gslot]);
+			printf("IPADD c\n");
+			if (chain) { tcTargetType = tcEmitFieldRowColIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
+		}
 		if (fieldEnd < end && *fieldEnd == '[') {
 			/* VERKETTETE Indizierung eines Strukturfelds (feld[i][j]) --
 			   seit 2026-09-07 GEMELDET statt still. Vorher nahm die Grammatik
@@ -3069,6 +3143,7 @@ void tc_target(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
@@ -3082,10 +3157,13 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
 				actionErrors++;
 			}
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
+			if (chain) tcStashChainedIndex();
 			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -3101,6 +3179,7 @@ void tc_target(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
@@ -3114,14 +3193,17 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
 				actionErrors++;
 			}
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
 			if (tcCheckNDIndex(tcLocalArrayNDims[tcTargetSlot], tcLocalArrayDims[tcTargetSlot], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
 				tcErrAt(start); fprintf(stderr, "member access requires a complete struct-array index\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[tcTargetSlot]);
+			if (chain) tcStashChainedIndex();
 			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -3148,10 +3230,15 @@ void tc_target(const char* start, const char* end) {
 		/* Wie tc_varref: IPADD poppt Pointer ZUERST, daher PUSH vor PUSHADDR. tcTargetIndirect=1
 		   laesst tc_assign/tcLoadTarget denselben STOREIND/DUPP+LOADIND-Pfad wie bei einer
 		   echten Pointer-Dereferenz nehmen -- die Feldadresse liegt bereits auf dem Stack. */
-		if (tcLocalStructByAddr[tcTargetSlot])
-			printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
-		else
-			printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+		{
+			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
+			if (chain) tcStashChainedIndex();
+			if (tcLocalStructByAddr[tcTargetSlot])
+				printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+			else
+				printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+			if (chain) { tcTargetType = tcEmitFieldRowColIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
+		}
 		if (hasIndex) {
 			/* p.field[i] = .. (2026-07-24): siehe tc_varref -- der Index-Ausdruck hat seinen
 			   Wert bereits VOR uns gepusht, ein zweites IPADD kombiniert Feldadresse+Index. */
@@ -3206,6 +3293,7 @@ void tc_target(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
@@ -3220,10 +3308,13 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
 				actionErrors++;
 			}
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
+			if (chain) tcStashChainedIndex();
 			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -3238,6 +3329,7 @@ void tc_target(const char* start, const char* end) {
 			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
+			int chain;
 			tcCopy(gname, start, nameEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
@@ -3252,14 +3344,17 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
 				actionErrors++;
 			}
-			if (fieldEnd < end && *fieldEnd == '[') {
+			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
+			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
 			if (tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
 				tcErrAt(start); fprintf(stderr, "member access requires a complete struct-array index\n"); actionErrors++; return;
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
+			if (chain) tcStashChainedIndex();
 			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			if (chain) { tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
 			return;
@@ -3285,7 +3380,12 @@ void tc_target(const char* start, const char* end) {
 			tcErrAt(start); fprintf(stderr, "cannot assign to const struct field\n");
 			actionErrors++;
 		}
-		printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+		{
+			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
+			if (chain) tcStashChainedIndex();
+			printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+			if (chain) { tcTargetType = tcEmitFieldRowColIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
+		}
 		if (hasIndex) {
 			/* VERKETTETE Indizierung eines Strukturfelds (feld[i][j]) --
 			   seit 2026-09-07 GEMELDET statt still. Vorher nahm die Grammatik
