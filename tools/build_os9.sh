@@ -59,10 +59,10 @@ echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 [ "$last" = OK ] || { head -10 "$WORK/qr68.err"; die "QCC lehnt qr68 ab"; }
 [ "$msgs" = 0 ]  || { head -10 "$WORK/qr68.err"; die "Semantikmeldungen"; }
 
-echo "== 3/6 Backend (-os9 -largedata) =="
+echo "== 3/6 Backend (-os9 -largedata -remotedata) =="
 # -largedata ist Pflicht: qr68 haelt weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet der Assembler "value out of range".
-"$QCC/build/qcc_backend" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata \
+"$QCC/build/qcc_backend" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
 	>/dev/null || die "qcc_backend"
 echo "  $(wc -c < "$WORK/qr68.s68" | tr -d ' ') Byte Assembler"
 
