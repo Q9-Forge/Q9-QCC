@@ -18,7 +18,7 @@ set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${QCC:=$REPO/../Q9-QCC}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
-: "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux}"
+: "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.stock-stargate.hda}"
 : "${ROMIMG:=$MWOS/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN}"
 : "${QUELLE:=$REPO/test/insn.a}"
