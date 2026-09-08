@@ -30,14 +30,29 @@
  * geschriebenen Mnemonic), und MOVEA setzt KEINE Flags -- ein TST danach
  * waere dort echt gebraucht.
  *
+ * DRITTES MUSTER (dieselbe Haeufigkeitsliste): "move.l SRC,Dn" unmittelbar
+ * gefolgt von "move.l Dn,DST" (dasselbe Datenregister) wird zu
+ * "move.l SRC,DST" -- 385 Vorkommen allein fuer den Fall SRC="(a0)"/
+ * DST="-(a7)". Sicher aus demselben Grund wie das erste Muster: der
+ * Registerinhalt wird zwischen den beiden Zeilen von nichts sonst
+ * beobachtet. DST darf ALLES sein (auch "-(a7)" -- dann ist es dasselbe
+ * Ergebnis wie Muster eins, nur ueber diesen Matcher gefunden), SRC
+ * ebenso: 68k erlaubt Speicher-zu-Speicher-MOVE, und eine Adressierung
+ * mit Seiteneffekt (Post-/Praedekrement) wertet ihre effektive Adresse in
+ * einem wie in zwei Schritten exakt einmal aus -- die Verschmelzung
+ * aendert daran nichts. Geprueft: alle 23.387 move.l-Zeilen in qr68s
+ * eigener Ausgabe haben genau EIN Komma (keine indizierte Adressierung
+ * mit eingebettetem Komma in diesem Backend), das rechteste Komma trennt
+ * also immer sauber SRC von DST.
+ *
  * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
  * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
  * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
- * wiederholt deshalb beide Muster, bis ein Durchlauf nichts mehr aendert
- * (klassisches Peephole-Verhalten, dieselbe Erwartung wie bei o68). Die
- * Fold-Funktionen duerfen sich deshalb NICHT auf physische Nachbarschaft
- * verlassen (phLines[i+1]) -- eine schon gestrichene Zeile liegt weiterhin
- * im Array, phNextKept() ueberspringt sie.
+ * wiederholt deshalb alle drei Muster, bis ein Durchlauf nichts mehr
+ * aendert (klassisches Peephole-Verhalten, dieselbe Erwartung wie bei
+ * o68). Die Fold-Funktionen duerfen sich deshalb NICHT auf physische
+ * Nachbarschaft verlassen (phLines[i+1]) -- eine schon gestrichene Zeile
+ * liegt weiterhin im Array, phNextKept() ueberspringt sie.
  *
  * ARCHITEKTUR fuer weitere Muster (o68-Lehre): reines LESEN der Originalzeilen
  * (keine Mutation), Ersetzungen landen in einem eigenen Synthesepuffer, eine
@@ -185,19 +200,34 @@ static int phFoldPushPop(void) {
 	return folded;
 }
 
-/* ZWEITES MUSTER, s. Kommentar am Dateianfang: "move.l SRC,Dn" gefolgt von
- * "tst.l Dn" -- nur d0-d7, MOVEA (Adressregister-Ziel) setzt keine Flags. */
-static int phMatchMoveToDataReg(const char* line, const char** dstStart, int* dstLen) {
+/* Erkennt "move.l SRC,Dn" (Dn eines von d0-d7 -- NIE a0-a6, s. Kommentar
+ * am Dateianfang zu Muster zwei/drei), optional mit Label-Vorspann.
+ * Liefert SOWOHL SRC (fuer Muster drei) ALS AUCH nur das Zielregister
+ * (fuer Muster zwei) -- eine Funktion statt zwei fast identischer. */
+static int phMatchMoveIntoDataReg(const char* line, const char** labelStart, int* labelLen,
+                                   const char** srcStart, int* srcLen,
+                                   const char** regStart, int* regLen) {
 	const char* p;
 	const char* comma;
-	if (line[0] != '\t') return 0;
-	if (strncmp(line + 1, "move.l\t", 7) != 0) return 0;
-	p = line + 8;
+	const char* colon = strchr(line, ':');
+	*labelLen = 0;
+	if (colon != 0 && colon[1] == '\t') {
+		*labelStart = line;
+		*labelLen = (int)(colon - line);
+		p = colon + 2;
+	} else {
+		if (line[0] != '\t') return 0;
+		p = line + 1;
+	}
+	if (strncmp(p, "move.l\t", 7) != 0) return 0;
+	p += 7;
 	comma = strrchr(p, ',');
 	if (comma == 0) return 0;
 	if (comma[1] != 'd' || comma[2] < '0' || comma[2] > '7' || comma[3] != '\0') return 0;
-	*dstStart = comma + 1;
-	*dstLen = 2;
+	*srcStart = p;
+	*srcLen = (int)(comma - p);
+	*regStart = comma + 1;
+	*regLen = 2;
 	return 1;
 }
 
@@ -213,13 +243,55 @@ static int phMatchTst(const char* line, const char* regStart, int regLen) {
 static int phFoldMoveTst(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
+		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		const char* labelStart;
+		const char* srcStart;
 		const char* regStart;
-		int regLen, j;
+		int labelLen, srcLen, regLen, j;
 		if (phRemoved[i]) continue;
-		if (!phMatchMoveToDataReg(phLines[i], &regStart, &regLen)) continue;
+		if (!phMatchMoveIntoDataReg(phLines[i], &labelStart, &labelLen, &srcStart, &srcLen, &regStart, &regLen)) continue;
 		j = phNextKept(i);
 		if (j < 0) continue;
 		if (!phMatchTst(phLines[j], regStart, regLen)) continue;
+		phRemoved[j] = 1;
+		folded++;
+	}
+	return folded;
+}
+
+/* DRITTES MUSTER, s. Kommentar am Dateianfang: "move.l Dn,DST" -- dasselbe
+ * Datenregister, das die vorherige Zeile (phMatchMoveIntoDataReg) gerade
+ * gefuellt hat. KEIN Label davor zugelassen (koennte Sprungziel sein,
+ * dieselbe Vorsicht wie bei phMatchPop). DST reicht bis zum Zeilenende --
+ * derselbe Aufbau wie phMatchPop, deshalb direkt an phEmitFused
+ * uebergebbar, keine eigene Ersatzbau-Funktion noetig. */
+static int phMatchMoveFromDataReg(const char* line, const char* regStart, int regLen,
+                                   const char** dstStart) {
+	const char* p;
+	if (line[0] != '\t') return 0;
+	if (strncmp(line + 1, "move.l\t", 7) != 0) return 0;
+	p = line + 8;
+	if (strncmp(p, regStart, regLen) != 0) return 0;
+	if (p[regLen] != ',') return 0;
+	*dstStart = p + regLen + 1;
+	return 1;
+}
+
+static int phFoldLoadThenMove(void) {
+	int i, folded = 0;
+	for (i = 0; i < phLineCount; i++) {
+		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		const char* labelStart;
+		const char* srcStart;
+		const char* regStart;
+		const char* dstStart;
+		int labelLen, srcLen, regLen, j;
+		if (phRemoved[i]) continue;
+		if (!phMatchMoveIntoDataReg(phLines[i], &labelStart, &labelLen, &srcStart, &srcLen, &regStart, &regLen)) continue;
+		j = phNextKept(i);
+		if (j < 0) continue;
+		if (!phMatchMoveFromDataReg(phLines[j], regStart, regLen, &dstStart)) continue;
+		phLines[i] = phEmitFused(labelStart, labelLen, srcStart, srcLen, dstStart);
 		phRemoved[j] = 1;
 		folded++;
 	}
@@ -254,6 +326,7 @@ static void peepholeRun(const char* srcPath, const char* dstPath) {
 	do {
 		roundTotal = phFoldPushPop();
 		roundTotal += phFoldMoveTst();
+		roundTotal += phFoldLoadThenMove();
 		total += roundTotal;
 		rounds++;
 	} while (roundTotal > 0);
