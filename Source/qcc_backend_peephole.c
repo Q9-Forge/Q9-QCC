@@ -45,6 +45,19 @@
  * mit eingebettetem Komma in diesem Backend), das rechteste Komma trennt
  * also immer sauber SRC von DST.
  *
+ * VIERTES MUSTER (dieselbe Haeufigkeitsliste, 867 Vorkommen): "move.l
+ * Dn,-(a7)" unmittelbar gefolgt von "addq.l #4,a7" (oder "lea 4(a7),a7").
+ * Der IR-Opcode DROP emittiert genau diese addq.l-Zeile ("Ausdruckswert
+ * berechnen, Ergebnis verwerfen" -- z.B. eine Anweisung "f();", deren
+ * Rueckgabewert niemand liest). Ein Push, dem SOFORT sein eigenes
+ * Verwerfen folgt, hat auf A7 keinen Nettoeffekt und sein Wert wird von
+ * NICHTS gelesen -- ANDERS als bei den ersten drei Mustern wird hier
+ * NICHTS ersetzt, BEIDE Zeilen verschwinden ersatzlos. BEWUSST NUR SRC
+ * OHNE Klammer (kein "(a0)", "(a0)+" o.ae.): eine Adressierung mit
+ * Seiteneffekt (Post-/Praedekrement) MUESSTE weiterhin ausgewertet
+ * werden, auch wenn ihr Wert verworfen wird -- nur ein reines Register
+ * oder ein Sofortwert ist wirklich folgenlos zu streichen.
+ *
  * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
  * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
  * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
@@ -298,6 +311,47 @@ static int phFoldLoadThenMove(void) {
 	return folded;
 }
 
+/* VIERTES MUSTER, s. Kommentar am Dateianfang: "move.l SRC,-(a7)" OHNE
+ * Klammer in SRC (kein Seiteneffekt) und OHNE Label (koennte Sprungziel
+ * sein). Reine Existenzprobe -- die Zeile wird ersatzlos gestrichen, kein
+ * SRC-Ruecktransport noetig. */
+static int phMatchDroppablePush(const char* line) {
+	const char* p;
+	const char* comma;
+	int i, n;
+	if (line[0] != '\t') return 0;
+	if (strncmp(line + 1, "move.l\t", 7) != 0) return 0;
+	p = line + 8;
+	comma = strrchr(p, ',');
+	if (comma == 0 || strcmp(comma, ",-(a7)") != 0) return 0;
+	n = (int)(comma - p);
+	for (i = 0; i < n; i++) if (p[i] == '(') return 0;
+	return 1;
+}
+
+static int phMatchSingleSlotDrop(const char* line) {
+	if (line[0] != '\t') return 0;
+	if (strcmp(line + 1, "addq.l\t#4,a7") == 0) return 1;
+	if (strcmp(line + 1, "lea\t4(a7),a7") == 0) return 1;
+	return 0;
+}
+
+static int phFoldDropPush(void) {
+	int i, folded = 0;
+	for (i = 0; i < phLineCount; i++) {
+		int j;
+		if (phRemoved[i]) continue;
+		if (!phMatchDroppablePush(phLines[i])) continue;
+		j = phNextKept(i);
+		if (j < 0) continue;
+		if (!phMatchSingleSlotDrop(phLines[j])) continue;
+		phRemoved[i] = 1;
+		phRemoved[j] = 1;
+		folded++;
+	}
+	return folded;
+}
+
 static void phWrite(const char* path) {
 	FILE* fp;
 	int i;
@@ -327,6 +381,7 @@ static void peepholeRun(const char* srcPath, const char* dstPath) {
 		roundTotal = phFoldPushPop();
 		roundTotal += phFoldMoveTst();
 		roundTotal += phFoldLoadThenMove();
+		roundTotal += phFoldDropPush();
 		total += roundTotal;
 		rounds++;
 	} while (roundTotal > 0);
