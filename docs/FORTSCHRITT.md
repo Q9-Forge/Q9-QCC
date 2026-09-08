@@ -4,6 +4,46 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Peephole, viertes Muster: Push-und-sofort-Verwerfen (2026-09-08, spaeter)
+
+Dieselbe Haeufigkeitsliste, naechster Eintrag: `move.l d0,-(a7)` gefolgt
+von `addq.l #4,a7` — 867 Vorkommen. Nachgesehen statt vermutet, WOHER das
+kommt: der IR-Opcode `DROP` emittiert genau `addq.l #4,a7` — die IR-
+Semantik "Ausdruckswert berechnen, Ergebnis verwerfen" (z. B. eine
+Anweisung `f();`, deren Rueckgabewert niemand liest). Ein Push, dem SOFORT
+sein eigenes Verwerfen folgt, hat auf A7 keinen Nettoeffekt, und sein Wert
+wird von nichts gelesen.
+
+**Anders als die ersten drei Muster: hier wird NICHTS ersetzt, beide
+Zeilen verschwinden ersatzlos** (`phMatchDroppablePush`/
+`phMatchSingleSlotDrop`/`phFoldDropPush`, ohne `phEmitFused`). Bewusst NUR
+SRC ohne Klammer (kein `(a0)`, `(a0)+` o. Ae.) zugelassen: eine
+Adressierung mit Seiteneffekt (Post-/Praedekrement) muesste weiterhin
+ausgewertet werden, auch wenn ihr Wert verworfen wird -- nur ein reines
+Register oder ein Sofortwert ist wirklich folgenlos zu streichen.
+
+**Diesmal KEINE neue Deklarator-Falle** — nach den zwei vorherigen Funden
+bewusst beim Schreiben darauf geachtet.
+
+**Auf qr68 gemessen:** 9.343 Optimierungen in 2 Durchlaeufen, 75.273 ->
+65.063 Zeilen (vorher, drei Muster: 66.797). ROF 394.799 Byte, Modul
+(l68/clib) 195.482 Byte.
+
+**Vollstaendig erneut verifiziert** (derselbe Ablauf wie bei den ersten
+drei Mustern): assembliert, gebunden, auf dem 68030 gelaufen -- `insn.a`
+byteidentisch zum Host. `qcc_backend_c.cpp` selbst-hostet weiterhin
+byteidentisch (`qccb_68k.sh`, 36.132 Byte). `-peephole` DIREKT AUF DEM
+ZIEL ausgefuehrt (208 Optimierungen an `build/hello.ir`, 2.340 -> 2.090
+Zeilen) liefert ein Ergebnis, das byteidentisch zum Host-Lauf ist. Volle
+Regressionssuite (dreizehn geteilte Dateien) und kompletter
+Fuenf-Werkzeuge-Ringschluss unveraendert gruen.
+
+**Zwischenstand aller vier Muster zusammen (qr68, `-remotedata`):**
+75.273 -> 65.063 Zeilen, **13,6 % weniger**. Assembler-Byte 2.892.723
+(Ausgangswert ohne jede Optimierung dieser Session) -> ROF 394.799 ->
+Modul 195.482 Byte.
+
+
 ## Peephole, drittes Muster: `move.l`+`move.l` (2026-09-08, spaeter)
 
 Dieselbe Haeufigkeitsliste wie beim zweiten Muster, naechster Eintrag:
