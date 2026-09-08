@@ -764,12 +764,15 @@ if command -v python3 >/dev/null 2>&1; then
 		# gewonnene Deklaration wieder verschwindet noch der fehlende Zugriff
 		# unbemerkt "irgendwie" durchgeht.
 		if build/qcc_p 'struct R{ int m[2][3]; int x; }; int main(){ struct R r; r.x=99; putint(sizeof(struct R)); putint(r.x); }' 2>/dev/null \
-			| grep -q 'GLOBAL\|FUNC' \
-			&& ! build/qcc_p 'struct R{ int m[2][3]; }; int main(){ struct R r; r.m[0][0]=7; putint(r.m[0][0]); }' >/dev/null 2>&1; then
-			echo "ok    qcc: 2D-struct-Feld wird flach korrekt belegt, der Zugriff r.m[i][j] bleibt diagnostiziert (eigener Folgeschritt)"
+			| grep -q 'GLOBAL\|FUNC'; then
+			echo "ok    qcc: 2D-struct-Feld wird flach korrekt belegt"
 		else
-			echo "FAIL  qcc: 2D-struct-Feld -- Deklaration oder Zugriffsdiagnose verhaelt sich anders als erwartet"; tcfail=1; fail=1
+			echo "FAIL  qcc: 2D-struct-Feld -- Deklaration verhaelt sich anders als erwartet"; tcfail=1; fail=1
 		fi
+		# 2026-09-08: der Zugriff r.m[i][j] ist jetzt umgesetzt (zweiter Index-
+		# Scratch, s. tcEmitFieldRowColIndex) -- der "eigene Folgeschritt", auf
+		# den die Notiz oben verweist, ist damit erledigt.
+		tc_check 'struct R{ int m[2][3]; }; int main(){ struct R r; r.m[0][0]=7; putint(r.m[0][0]); }' '7'
 		if build/qcc_p 'int f(int m[][3]){ return 0; } int main(){ putint(1); }' >/dev/null 2>&1; then
 			echo "FAIL  qcc: 2D-Array-Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
 		else
@@ -1116,22 +1119,14 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct P{char* text; int len;}; int main(){ struct P p; char msg[4]; msg[0]=72; msg[1]=105; msg[2]=0; p.text=msg; p.len=2; putchar(p.text[0]); putchar(p.text[1]); putint(p.len); }' 'Hi2'
 		tc_check 'struct P{char* text;}; int main(){ struct P p; char msg[4]; p.text=msg; p.text[0]=74; p.text[1]=75; putchar(msg[0]); putchar(msg[1]); }' 'JK'
 		tc_check 'struct P{int* v;}; int main(){ struct P p; int a[3]; int i; i=2; a[2]=41; p.v=a; putint(p.v[i]); p.v[i]=42; putint(a[2]); }' '41\n42'
-		# 2026-09-07: VERKETTETE Indizierung eines Strukturfelds
-		# (feld[i][j]) ist weiterhin nicht umgesetzt -- aber sie wird jetzt
-		# GEMELDET. Vorher nahm die Grammatik die Form gar nicht an
-		# (member hatte nur EINEN optionalen index), und ein Parse-Abbruch
-		# hat keine Meldung: bei einem 2D-Feld im struct ("char t[4][8]")
-		# war damit die NATUERLICHSTE Zugriffsform ein stilles FAIL.
-		if build/qcc_p 'struct S{char t[4][8];}; int main(){ struct S s; putint(s.t[1][2]); }' 2>&1 | grep -q 'chained indexing of a struct field'; then
-			echo "ok    qcc: verkettete Indizierung eines Strukturfelds wird diagnostiziert"
-		else
-			echo "FAIL  qcc: feld[i][j] im struct scheitert still"; tcfail=1; fail=1
-		fi
-		if build/qcc_p 'struct S{char t[4][8];}; static struct S g; int main(){ struct S *sp; sp=&g; sp->t[1][2]=7; }' 2>&1 | grep -q 'chained indexing of a struct field'; then
-			echo "ok    qcc: verkettete Indizierung SCHREIBEND wird diagnostiziert"
-		else
-			echo "FAIL  qcc: feld[i][j] schreibend scheitert still"; tcfail=1; fail=1
-		fi
+		# 2026-09-07: VERKETTETE Indizierung eines Strukturfelds (feld[i][j])
+		# wurde zuerst nur GEMELDET (die Grammatik nahm die Form vorher gar
+		# nicht an -- stiller Parse-Abbruch ohne Meldung). 2026-09-08
+		# UMGESETZT: zweiter Index-Scratch (tcEmitFieldRowColIndex), dieselbe
+		# Technik wie tcEmitPointerIndexChain, hier auf einen gemerkten Wert
+		# vereinfacht (ein Feld ist hoechstens 2D, structs schachteln nicht).
+		tc_check 'struct S{char t[4][8];}; int main(){ struct S s; s.t[1][2]=9; putint(s.t[1][2]); }' '9'
+		tc_check 'struct S{char t[4][8];}; static struct S g; int main(){ struct S *sp; sp=&g; sp->t[1][2]=7; putint(sp->t[1][2]); }' '7'
 		# Der ZEILENzugriff auf ein 2D-Feld geht dagegen und muss es bleiben:
 		# "sp->t[i]" liefert den Zeiger auf Zeile i.
 		tc_check 'struct S{char t[4][8]; int n;}; static struct S g; int main(){ struct S *sp; char *z; int i; i=2; sp=&g; z=sp->t[i]; z[3]=66; z=sp->t[2]; putchar(z[3]); }' 'B'
@@ -1198,24 +1193,20 @@ if command -v python3 >/dev/null 2>&1; then
 		# Zugriff bewusst nur ueber Pointer-Zwischenvariable (wie bei p.field[i] oben,
 		# arr[i].feld[j] direkt bleibt diagnostiziert, siehe naechster Test).
 		tc_check 'struct Rec { char name[8]; char* text; }; int main(){ struct Rec arr[3]; char* n; n = arr[0].name; n[0]=65; n = arr[1].name; n[0]=66; n = arr[2].name; n[0]=67; n = arr[1].name; n[0] = 88; n = arr[0].name; putchar(n[0]); n = arr[1].name; putchar(n[0]); n = arr[2].name; putchar(n[0]); }' 'AXC'
-		if build/qcc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[3]; putint(arr[0].name[0]); }' 2>&1 | grep -q 'arr\[i\].field\[j\] not supported in this version'; then
-			echo "ok    qcc: arr[i].feld[j] (Index nach Feldzugriff) wird diagnostiziert"
-		else
-			echo "FAIL  qcc: Diagnose fuer arr[i].feld[j] fehlt"; tcfail=1; fail=1
-		fi
+		# 2026-09-08: arr[i].feld[j] (feld eindimensional) ist jetzt umgesetzt --
+		# derselbe zweite Index-Scratch wie bei feld[i][j] oben, hier stasht er
+		# den Feldindex j, waehrend arr[i]s eigener Index sich in der
+		# Adressberechnung dazwischen verbraucht (tcEmitStashedFieldIndex).
+		tc_check 'struct Rec { char name[8]; }; int main(){ struct Rec arr[3]; arr[0].name[3]=8; putint(arr[0].name[3]); }' '8'
 		# ptr[i].feld (2026-07-25, Milestone B): eine LOKALE Pointer-auf-struct-Variable,
 		# indiziert, dann Feldzugriff -- braucht der Selfhosting-Pilot fuer routinesC[i].name/
 		# .text (ActionRoutine*, ein malloc/realloc-gewachsenes Array, kein festes lokales
 		# Array wie arr[i].feld oben). LOADP statt PUSHADDR, sonst dieselbe IPADDN-Idee.
 		tc_check 'struct Rec { int a; int b; }; int main(){ struct Rec arr[3]; struct Rec* p; arr[0].a=10; arr[1].a=20; arr[2].a=30; p = arr; putint(p[0].a); putint(p[1].a); putint(p[2].a); p[1].a = 99; putint(arr[1].a); }' '10\n20\n30\n99'
-		if build/qcc_p 'struct Rec { char name[8]; }; int main(){ struct Rec arr[2]; struct Rec* p; p = arr; putint(p[0].name[0]); }' 2>&1 | grep -q 'ptr\[i\].field\[j\] not supported in this version'; then
-			echo "ok    qcc: ptr[i].feld[j] (Index nach Feldzugriff durch Pointer) wird diagnostiziert"
-		else
-			echo "FAIL  qcc: Diagnose fuer ptr[i].feld[j] fehlt"; tcfail=1; fail=1
-		fi
+		tc_check 'struct Rec { char name[8]; }; int main(){ struct Rec arr[2]; struct Rec* p; p = arr; p[1].name[2]=6; putint(p[1].name[2]); }' '6'
 		# Die Grammatik-Erweiterung fuer arr[i].feld (Sequenz statt Alternation) macht generell
-		# jede "indiziert-dann-Member"-Kombination parsebar -- nur die ZWEI oben gebauten Faelle
-		# (festes lokales struct-Array, lokale Pointer-auf-struct-Variable) haben Codegen.
+		# jede "indiziert-dann-Member"-Kombination parsebar. 2026-09-08: lokal/global x
+		# Array-von-structs/Pointer-auf-struct x mit/ohne Feld-Index haben jetzt alle Codegen.
 		# Alles andere (hier: Pointer auf einen NICHT-struct-Typ) muss weiterhin sauber
 		# diagnostiziert werden statt die "."-Fortsetzung stillschweigend zu ignorieren.
 		if build/qcc_p 'int main(){ int x=1; int* p=&x; putint(p[0].a); }' 2>&1 | grep -q 'indexed variable followed by a member access is only supported for a fixed array of structs, or a pointer to struct'; then
