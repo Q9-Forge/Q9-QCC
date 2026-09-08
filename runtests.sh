@@ -877,6 +877,41 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: extern-Argumentanzahl-Diagnose fehlt"; tcfail=1; fail=1
 		fi
+		# 2026-09-08: "(void)" in einer extern-Deklaration/einem Funktionszeiger-
+		# typedef las bis dahin als EIN Parameter statt null (Data/qcc.ebnf las
+		# "void" ueber den normalen type-Zweig von externParam). funcParams kannte
+		# das Muster schon (voidParams | normalParams); externParams/fnPtrParams
+		# nutzen jetzt dieselbe zwei-Alternativen-Form (siehe Kommentar dort zur
+		# Backtracking-Falle). QCCVM kennt CALLEXT nicht (s. Kommentar oben) --
+		# pruefbar ist hier nur die Aufrufpruefung am Frontend, per Schlusswort.
+		if [ "$(build/qcc_p 'extern int f(void); int main(){ f(); putint(1); }' 2>&1 | tail -1)" = OK ]; then
+			echo "ok    qcc: extern int f(void), Aufruf ohne Argumente wird angenommen"
+		else
+			echo "FAIL  qcc: extern int f(void) lehnt den korrekten Aufruf f() ab"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'extern int f(void); int main(){ putint(f(1)); }' 2>&1 | grep -q 'wrong argument count'; then
+			echo "ok    qcc: extern int f(void) registriert null Parameter (f(1) wird abgelehnt)"
+		else
+			echo "FAIL  qcc: extern int f(void) schluckt weiterhin ein Argument"; tcfail=1; fail=1
+		fi
+		if [ "$(build/qcc_p 'typedef int (*fp)(void); int main(){ fp p; p(); putint(1); }' 2>&1 | tail -1)" = OK ]; then
+			echo "ok    qcc: Funktionszeiger-typedef (void), Aufruf ohne Argumente wird angenommen"
+		else
+			echo "FAIL  qcc: Funktionszeiger-typedef (void) lehnt den korrekten Aufruf p() ab"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'typedef int (*fp)(void); int main(){ fp p; putint(p(1)); }' 2>&1 | grep -q 'wrong argument count'; then
+			echo "ok    qcc: Funktionszeiger-typedef (void) registriert null Parameter"
+		else
+			echo "FAIL  qcc: Funktionszeiger-typedef (void) schluckt weiterhin ein Argument"; tcfail=1; fail=1
+		fi
+		# Die Falle, die die zwei-Alternativen-Form vermeiden soll: "void" als
+		# ERSTES Token eines echten Parametertyps ("void* p") darf nicht von der
+		# voidParams-Alternative verschluckt werden.
+		if [ "$(build/qcc_p 'extern int f(void* p); int main(){ int x; f(&x); putint(1); }' 2>&1 | tail -1)" = OK ]; then
+			echo "ok    qcc: extern int f(void* p) bleibt EIN Parameter (void wird nicht verschluckt)"
+		else
+			echo "FAIL  qcc: extern int f(void* p) ist an der voidParams-Falle zerbrochen"; tcfail=1; fail=1
+		fi
 		if build/qcc_p 'extern int f(...); int main(){ putint(1); }' >/dev/null 2>&1; then
 			echo "FAIL  qcc: \"...\" ohne benannten Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
 		else
