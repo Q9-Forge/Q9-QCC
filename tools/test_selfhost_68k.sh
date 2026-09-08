@@ -68,8 +68,8 @@ echo "  ok ($(wc -l < stage1.ir | tr -d ' ') IR-Zeilen, $(wc -c < stage1.ir | tr
 
 # -largedata ist Pflicht: der Parser hat weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet r68 "value out of range".
-echo "== 2/6 Backend (-os9 -largedata) =="
-"$REPO/build/qcc_backend" stage1.ir stage2.s68 -os9 -largedata >/dev/null \
+echo "== 2/6 Backend (-os9 -largedata -remotedata) =="
+"$REPO/build/qcc_backend" stage1.ir stage2.s68 -os9 -largedata -remotedata >/dev/null \
 	|| die "qcc_backend"
 echo "  ok ($(wc -l < stage2.s68 | tr -d ' ') Assemblerzeilen)"
 

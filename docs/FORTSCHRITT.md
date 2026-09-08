@@ -4,6 +4,54 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## `-remotedata` in der Kette fest eingetragen (2026-09-08, spaeter)
+
+Der Schalter vom Vormittag ist jetzt Standard in allen Bauskripten der
+eigenen Kette, nicht mehr nur ein Testfall: `Q9-qr68/tools/build_os9.sh`,
+`Q9-qclib/test/kette_68k.sh` (alle fuenf Werkzeuge, plus die Host- UND
+Ziel-Laufzeitaufrufe von `q9_qccb` auf `hello.ir`, damit der Byte-Vergleich
+konsistent bleibt), `Q9-qclib/test/qcc_68k.sh`, `Q9-qclib/test/qccb_68k.sh`,
+`Q9-QCC/tools/test_selfhost_68k.sh`. Bewusst NICHT angefasst:
+`Q9-qclib/Makefile` (die Bibliotheksmodule selbst, `-part`-gebaut -- der
+`-remotedata`-Backend bricht dort kontrolliert ab, sobald ein
+dateiuebergreifendes Globales vorkommt, und ein Bruch ist dort nicht
+gewuenscht ohne genauere Pruefung).
+
+**Alle sieben Pruefstaende danach neu gelaufen, alle gruen:**
+
+| Pruefstand | vorher | mit `-remotedata` |
+|---|---|---|
+| `Q9-qr68 make os9` (qr68 baut sich selbst, l68/clib) | 1.210.478 Byte | 215.902 Byte |
+| `kette_68k.sh` q9_qcpp | 4.359.028 | 104.728 |
+| `kette_68k.sh` q9_qcc | 882.508 | 631.028 |
+| `kette_68k.sh` q9_qccb | **9.610.720** | **121.416** |
+| `kette_68k.sh` q9_qr68 | 1.206.180 | 211.604 |
+| `kette_68k.sh` q9_ql68 | 1.712.296 | 66.120 |
+| `kette_68k.sh` hello.c Ende-zu-Ende | -- | byteidentisch zum Host |
+| `qcc_68k.sh` (Selbsthost gegen qclib) | -- | Fixpunkt, 92.189 IR-Zeilen byteidentisch |
+| `qccb_68k.sh` (Backend baut sich selbst) | -- | byteidentisch, 36.132 Byte |
+| `test_selfhost_68k.sh` (r68/l68 gegen echte clib) | -- | Fixpunkt, 92.189 IR-Zeilen byteidentisch |
+
+`q9_qccb` (das Backend selbst als 68k-Modul) hatte den groessten Einzel-
+gewinn: Faktor **79** (9,6 MB auf 121 KB). Vorher war das noch nicht
+gegen xcc vermessen worden (nicht xcc-baubar, s. unten) -- die Groessen-
+ordnung war also unbekannt, bis dieser Lauf sie zeigte.
+
+**Warum als Standard in den Bauskripten und nicht als Default im Backend
+selbst:** der Schalter bricht kontrolliert ab, sobald unter `-part`
+(Mehrdatei-Bau, z. B. `Q9-qclib`s eigene Bibliotheksmodule) ein
+dateiuebergreifendes Globales vorkommt -- der Zugriffsweg haengt dann von
+der DEFINIERENDEN Datei ab, die dieser Aufruf nicht kennt. Ein
+unconditional Default unter `-os9` haette also `Q9-qclib`s Makefile ohne
+Vorwarnung brechen koennen. Die Kette selbst besteht nur aus
+Einzeldatei-Bauten (kein `-part`), dort ist die Aktivierung also gefahrlos.
+
+**Vergleich gegen xcc (vom Vormittag) bleibt gueltig, nur `qcc_backend`
+war darin nicht enthalten** (nicht xcc-baubar, C11-Stil). Mit dem jetzt
+gemessenen Faktor 79 ist es der mit Abstand groesste Einzelgewinn der
+ganzen Kette -- deutlich vor `qcpp` (Faktor 41,6, vorher gegen xcc 95,4x
+->2,3x gemessen) und `ql68` (Faktor 25,9).
+
 ## Datenmodell, zweiter Anlauf: `-remotedata` im Backend umgesetzt (2026-09-08)
 
 Der Umbau vom 2026-09-06 (zurueckgerollt, s. Eintrag oben) und die Messung
