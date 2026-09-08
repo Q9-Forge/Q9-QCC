@@ -247,19 +247,26 @@ zurück, obwohl die Aktion an `pointerDecl` vorher schon gezählt hatte.
 | `inline`, `_Noreturn`, variadische Funktionen | offen | mittel |
 
 **Nachtrag 2026-09-07 — `(void)` als Parameterliste geht in der DEFINITION,
-aber nicht in einer `extern`-Deklaration.** Gemessen:
+aber nicht in einer `extern`-Deklaration. BEHOBEN 2026-09-08.** Gemessen:
 
-| | |
-|---|---|
-| `extern int f(void); f();` | `wrong argument count (expected 1, got 0)` |
-| `extern int f(); f();` | geht |
-| `int f(void){ … }` (Definition) | geht |
+| | vorher | jetzt |
+|---|---|---|
+| `extern int f(void); f();` | `wrong argument count (expected 1, got 0)` | geht |
+| `extern int f(); f();` | geht | geht |
+| `int f(void){ … }` (Definition) | geht | geht |
+| `typedef int (*fp)(void); fp p; p();` | dieselbe Luecke | geht |
 
-Die Deklaration liest `(void)` also als **einen** Parameter. Aufgefallen beim
-Bau einer Messsonde (`extern int *vsectbase(void);`), und es kostet genau so
-lange, wie man braucht, um die leere Klammer zu probieren. Immerhin wird es
-**gemeldet** und nicht verschwiegen. Die leere Klammer ist in dieser
-Teilmenge die richtige Form.
+Ursache: `type` (in `externParam`) schliesst `"void"` als eigenen Typ ein,
+also las `(void)` als EIN Parameter vom Typ `void`. `funcParams` kannte das
+Problem schon und loeste es mit zwei echten NTS-Alternativen
+(`voidParams | normalParams`, Klammern JEWEILS im Zweig, s. Kommentar dort
+zur Backtracking-Falle bei `"void* p"`). `externDecl` und `fnPtrTypedef`
+teilten sich bis dahin nur `externParamList` OHNE diese Absicherung — beide
+haengen an derselben Regel und hatten deshalb dieselbe Luecke (Geschwister-
+Suche, s. `feedback_schrittweiten`). Fix: neue `externParams`/`fnPtrParams`
+mit `voidParams | externRealParams`, `voidParams` dabei aus `funcParams`
+WIEDERVERWENDET (deren Aktion ist bereits leer). Sechs neue Faelle in
+`runtests.sh` (Q9-Parsec), inkl. der `void*`-Backtracking-Probe.
 
 ## 5. Übersetzungseinheiten und Semantik
 
