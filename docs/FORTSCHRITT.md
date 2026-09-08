@@ -4,6 +4,64 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Peephole, fuenftes Muster: MOVEQ statt MOVE.L (2026-09-09)
+
+Frage: gibt es ausser Peephole noch andere Optimierungsarten, die hier
+greifen wuerden? Antwort ueberschlagen statt geraten: Konstantenfaltung/
+Staerkereduktion braeuchten IR-Aenderungen (eigenes, spaeteres Vorhaben),
+Registerhaltung ueber Anweisungen bleibt der grosse, zurueckgestellte
+Brocken. Im Peephole-Rahmen selbst gab es aber noch echte Kandidaten --
+per `grep` auf qr68s eigener Ausgabe gegen Aufwand abgewogen:
+
+- Sprungketten (`bra` auf ein Label, das seinerseits nur `bra` enthaelt):
+  76 Vorkommen, braucht aber eine datei-weite Label-Tabelle statt einer
+  einfachen Zeilenregel -- verworfen, Aufwand zu hoch fuer den Ertrag.
+- `bra` auf die unmittelbar folgende Zeile: 0 Vorkommen -- verworfen.
+- `add.l`/`sub.l` mit kleinem Sofortwert (ADDQ/SUBQ-Bereich): 0
+  Vorkommen -- der Codegen emittiert an dieser Stelle offenbar bereits
+  ADDQ/SUBQ direkt (z. B. der DROP-Opcode aus dem vierten Muster).
+- `move.l #IMM,Dn` mit IMM im MOVEQ-Bereich (-128..127): **1.928
+  Vorkommen** -- der mit Abstand ergiebigste Kandidat, umgesetzt.
+
+**MOVEQ ist die einzige Opcode-Form fuer ein Sofortwert-MOVE.L in ein
+Datenregister mit gleichem Flageffekt** (N/Z wie MOVE.L, V/C beide auf 0)
+UND kleinerem Bytemuster: 2 statt 6 Byte. Bewusst nur `Dn` (nie `An` --
+MOVEQ kennt kein Adressregister-Ziel) und nur bei einer reinen
+Dezimalzahl als Quelltext (optional ein fuehrendes "-"); alle 2.046
+`move.l #...,dN`-Zeilen in qr68s Ausgabe sind das, aber die Pruefung
+faellt fuer alles andere einfach durch statt es falsch zu deuten.
+
+**Muss als LETZTER Durchlauf laufen, nicht im Konvergenz-Durchlauf mit
+den ersten vier Mustern:** die Faltungsregeln fuer Muster zwei/drei
+suchen woertlich den Text "move.l\t" als Ausloeser -- liefe die
+MOVEQ-Umwandlung vorher, saehe ein anschliessendes `tst.l Dn` oder
+`move.l Dn,DST` sein Gegenstueck nicht mehr. `moveq`-Zeilen selbst
+bieten keine neue Faltungschance (Quelle ist immer ein Sofortwert), ein
+einzelner Durchlauf am Ende reicht deshalb aus.
+
+**Auf qr68 gemessen:** 10.786 Optimierungen (8.858 wie zuvor + 1.928
+MOVEQ) in 2 Durchlaeufen + einem MOVEQ-Nachlauf, weiterhin 64.686
+Zeilen (MOVEQ tauscht nur den Mnemonic, entfernt keine Zeile). ROF
+386.331 Byte (vorher 394.043, **-7.712 Byte**, exakt 1.928 x 4 Byte).
+Modul (l68/clib) 187.014 Byte (vorher 194.726).
+
+**Vollstaendig verifiziert** (derselbe Ablauf wie bei allen vorherigen
+Mustern): assembliert, gebunden, auf dem 68030 gelaufen -- `insn.a`
+byteidentisch zum Host. `qcc_backend_c.cpp` selbst-hostet weiterhin
+byteidentisch (`qccb_68k.sh`, 36.132 Byte, unveraendert -- ohne
+`-peephole` ruehrt das neue Muster den Pfad nicht an). `-peephole`
+DIREKT AUF DEM ZIEL ausgefuehrt (258 Optimierungen an `build/hello.ir`,
+davon 50 MOVEQ, 2.340 -> 2.087 Zeilen) liefert ein Ergebnis, das
+byteidentisch zum Host-Lauf ist. Volle Regressionssuite (dreizehn
+geteilte Dateien) und kompletter Fuenf-Werkzeuge-Ringschluss unveraendert
+gruen.
+
+**Zwischenstand aller Muster zusammen (qr68, `-remotedata`):** 75.273 ->
+64.686 Zeilen (**14,1 % weniger**). Assembler-Byte 2.892.723 (Ausgangswert
+ohne jede Optimierung dieser Session) -> ROF 386.331 -> Modul 187.014
+Byte (Ausgangsmodul vor jeder Peephole-Optimierung: 215.902 Byte).
+
+
 ## Peephole, Verfeinerung: Selbst-Zuweisungen vermeiden (2026-09-08, spaeter)
 
 Nach den vier Mustern gefragt: gibt es noch ein paar ergiebige Regeln?
