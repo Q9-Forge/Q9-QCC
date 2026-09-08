@@ -247,19 +247,26 @@ quarter of what it needed.
 | `inline`, `_Noreturn`, variadic functions | open | medium |
 
 **Addendum 2026-09-07 — `(void)` as a parameter list works in a DEFINITION
-but not in an `extern` declaration.** Measured:
+but not in an `extern` declaration. FIXED 2026-09-08.** Measured:
 
-| | |
-|---|---|
-| `extern int f(void); f();` | `wrong argument count (expected 1, got 0)` |
-| `extern int f(); f();` | works |
-| `int f(void){ … }` (definition) | works |
+| | before | now |
+|---|---|---|
+| `extern int f(void); f();` | `wrong argument count (expected 1, got 0)` | works |
+| `extern int f(); f();` | works | works |
+| `int f(void){ … }` (definition) | works | works |
+| `typedef int (*fp)(void); fp p; p();` | same gap | works |
 
-So the declaration reads `(void)` as **one** parameter. Noticed while
-building a measurement probe (`extern int *vsectbase(void);`), and it costs
-exactly as long as it takes to try the empty parentheses. At least it is
-**reported** rather than silently misread. In this subset the empty
-parenthesis is the correct form.
+Cause: `type` (inside `externParam`) includes `"void"` as a plain type, so
+`(void)` parsed as ONE parameter of type `void`. `funcParams` already had
+this figured out via two real NTS alternatives (`voidParams | normalParams`,
+parens inside EACH branch — see the comment there about the backtracking
+trap with `"void* p"`). `externDecl` and `fnPtrTypedef` shared only
+`externParamList` without that safeguard — both hang off the same rule and
+thus had the same gap (sibling-hunting, see `feedback_schrittweiten`). Fix:
+new `externParams`/`fnPtrParams` with `voidParams | externRealParams`,
+reusing `voidParams` from `funcParams` (its action is already empty). Six
+new regression cases in `runtests.sh` (Q9-Parsec), including the `void*`
+backtracking probe.
 
 ## 5. Translation units and semantics
 

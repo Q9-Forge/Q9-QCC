@@ -16,8 +16,18 @@ program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl | fu
    1./2. Argument in d0/d1, Rest auf dem Stack; bei variadisch ALLES auf dem
    Stack). Erfordert mindestens einen benannten Parameter vor "...", wie in
    echtem ISO C. */
-externDecl      = "extern" type pointerDecl externName "(" externParamList ")" ";" .
+externDecl      = "extern" type pointerDecl externName externParams ";" .
 externName      = ident .
+/* "(void)" braucht dieselbe Zwei-Alternativen-Form wie funcParams
+   (siehe dort) -- eine Alternation, deren zweiter Zweig mit einer
+   optionalen Gruppe beginnt, backtrackt nicht: stuende hier nur
+   "void" gegen externParamList, wuerde die erste Alternative bei
+   "extern int f(void* p);" das "void" schlucken. voidParams wird
+   bewusst WIEDERVERWENDET (dieselbe NTS wie bei funcParams), ihre
+   Aktion ist ohnehin leer -- keine Parameter heisst schlicht: die
+   Aktion von externParam feuert nie. */
+externParams    = voidParams | externRealParams .
+externRealParams = "(" externParamList ")" .
 externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
 /* optionaler Parametername wird NUR geparst und verworfen (rein dokumentarisch,
    wie in echten C-Prototypen "int strcmp(const char *a, const char *b);") --
@@ -83,7 +93,10 @@ typedefDecl = "typedef" typedefType typedefTargetName ";"
    optionalem Parameternamen), und ihre Aktion tc_externparam sammelt die
    Typen im gemeinsamen Puffer, den tc_fnptrbegin vorher zuruecksetzt
    (Deklarationen schachteln nicht). */
-fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" "(" externParamList ")" ";" .
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" fnPtrParams ";" .
+/* Dieselbe (void)-Falle wie bei externDecl -- und dieselbe Loesung:
+   voidParams/externRealParams sind bereits genau das Gebrauchte. */
+fnPtrParams  = voidParams | externRealParams .
 fnPtrOpen    = "(" .
 fnPtrName    = ident .
 typedefType = anonStructType | type pointerDecl .
