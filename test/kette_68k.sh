@@ -71,7 +71,7 @@ baue_modul() {
 	"$QCCP" "@$d/x.i" > "$d/x.ir" 2> "$d/x.err"
 	[ "$(tail -1 "$d/x.ir")" = OK ] || { head -6 "$d/x.err"; die "$name: qcc"; }
 	[ ! -s "$d/x.err" ] || { head -6 "$d/x.err"; die "$name: Semantikmeldungen"; }
-	"$QCCB" "$d/x.ir" "$d/x.s68" -os9 -largedata >/dev/null || die "$name: Backend"
+	"$QCCB" "$d/x.ir" "$d/x.s68" -os9 -largedata -remotedata >/dev/null || die "$name: Backend"
 	"$QR68" "$d/x.s68" "-o=$d/x.r" >/dev/null || die "$name: qr68"
 	cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$d/"
 	"$QL68" -a "$d/q9_cstart.r" "$d/x.r" -l="$d/qclib.l" -M="${stack}K" \
@@ -113,7 +113,7 @@ cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/host/"
   "$QCPP_H" hello.c hello.i &&
   "$QCCP" "@hello.i" > hello.ir 2> hello.err &&
   [ "$(tail -1 hello.ir)" = OK ] &&
-  "$QCCB" hello.ir hello.s68 -os9 -largedata >/dev/null &&
+  "$QCCB" hello.ir hello.s68 -os9 -largedata -remotedata >/dev/null &&
   "$QR68" hello.s68 -o=hello.r >/dev/null &&
   "$QL68" -a q9_cstart.r hello.r -l=qclib.l -M=8K -O=q9_hk > link.log 2>&1
 ) || die "Hostlauf"
@@ -174,7 +174,7 @@ proc stufe {nr cmd} {
 
 stufe 1 "/dd/CMDS/q9_qcpp hello.c hello.i"
 stufe 2 "/dd/CMDS/q9_qcc @hello.i >hello.ir"
-stufe 3 "/dd/CMDS/q9_qccb hello.ir hello.s68 -os9 -largedata"
+stufe 3 "/dd/CMDS/q9_qccb hello.ir hello.s68 -os9 -largedata -remotedata"
 stufe 4 "/dd/CMDS/q9_qr68 hello.s68 -o=hello.r"
 stufe 5 "/dd/CMDS/q9_ql68 -a q9_cstart.r hello.r -l=qclib.l -M=8K -O=q9_hk"
 # Ein frisch geschriebenes Modul hat NUR Besitzer-Lesen/Schreiben -- OS-9
