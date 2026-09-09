@@ -502,6 +502,21 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
+        case OP_LARRAY:
+        case OP_GARRAY:
+        case OP_LOADIDX:
+        case OP_STOREIDX:
+        case OP_ADDRL:
+        case OP_ADDRG:
+        case OP_LOADP:
+        case OP_STOREP:
+        case OP_LOADIND:
+        case OP_STOREIND:
+            /* TODO: Phase 5 (Arrays & Pointers) */
+            fprintf(stderr, "Array/Pointer opcode not yet implemented: %d\n", op);
+            vm->halted = 1;
+            break;
+        
         case OP_HALT:
             vm->halted = 1;
             break;
