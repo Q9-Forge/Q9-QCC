@@ -750,16 +750,129 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
-        case OP_ADDRL:
-        case OP_ADDRG:
-        case OP_LOADP:
-        case OP_STOREP:
-        case OP_LOADIND:
-        case OP_STOREIND:
-            /* TODO: Phase 5 (Pointers) */
-            fprintf(stderr, "Pointer opcode not yet implemented: %d\n", op);
+        case OP_ADDRL: {
+            /* Push address of local variable */
+            int slot = instr->arg.i;
+            if (vm->fp == 0) {
+                fprintf(stderr, "ADDRL: no active frame\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            /* Address = negative to distinguish from normal values */
+            qrun_value_t addr = -(1000 + slot);
+            qrun_push_value(vm, addr);
+            break;
+        }
+        
+        case OP_ADDRG: {
+            /* Push address of global named variable */
+            const char* name = instr->arg.s;
+            
+            /* Search named globals */
+            for (size_t i = 0; i < vm->nglobals; i++) {
+                if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
+                    qrun_value_t addr = -(2000 + i);
+                    qrun_push_value(vm, addr);
+                    return 0;
+                }
+            }
+            
+            fprintf(stderr, "ADDRG: global '%s' not found\n", name);
             vm->halted = 1;
             break;
+        }
+        
+        case OP_LOADP: {
+            /* Pop pointer-slot index, load pointer value from that local slot */
+            int slot = instr->arg.i;
+            if (vm->fp == 0) {
+                fprintf(stderr, "LOADP: no active frame\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            qrun_value_t ptr = qrun_load_local(vm, slot);
+            qrun_push_value(vm, ptr);
+            break;
+        }
+        
+        case OP_STOREP: {
+            /* Pop pointer value, store in local slot */
+            qrun_value_t ptr = qrun_pop_value(vm);
+            int slot = instr->arg.i;
+            if (vm->fp == 0) {
+                fprintf(stderr, "STOREP: no active frame\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            qrun_store_local(vm, slot, ptr);
+            break;
+        }
+        
+        case OP_LOADIND: {
+            /* Pop address, load value from that address, push value */
+            qrun_value_t addr = qrun_pop_value(vm);
+            const char* type = instr->arg.s;
+            
+            /* Decode address */
+            if (addr < -2000) {
+                /* Global named variable */
+                int global_idx = -(addr + 2000);
+                if (global_idx >= 0 && global_idx < (int)vm->nglobals) {
+                    qrun_push_value(vm, vm->named_globals[global_idx].value);
+                } else {
+                    fprintf(stderr, "LOADIND: invalid global address\n");
+                    vm->halted = 1;
+                }
+            } else if (addr < -1000) {
+                /* Local variable */
+                int slot = -(addr + 1000);
+                if (vm->fp > 0) {
+                    qrun_value_t val = qrun_load_local(vm, slot);
+                    qrun_push_value(vm, val);
+                } else {
+                    fprintf(stderr, "LOADIND: no active frame\n");
+                    vm->halted = 1;
+                }
+            } else {
+                fprintf(stderr, "LOADIND: invalid address %d\n", (int)addr);
+                vm->halted = 1;
+            }
+            break;
+        }
+        
+        case OP_STOREIND: {
+            /* Pop address, pop value, store value to address */
+            qrun_value_t addr = qrun_pop_value(vm);
+            qrun_value_t value = qrun_pop_value(vm);
+            
+            /* Decode address */
+            if (addr < -2000) {
+                /* Global named variable */
+                int global_idx = -(addr + 2000);
+                if (global_idx >= 0 && global_idx < (int)vm->nglobals) {
+                    vm->named_globals[global_idx].value = value;
+                } else {
+                    fprintf(stderr, "STOREIND: invalid global address\n");
+                    vm->halted = 1;
+                }
+            } else if (addr < -1000) {
+                /* Local variable */
+                int slot = -(addr + 1000);
+                if (vm->fp > 0) {
+                    qrun_store_local(vm, slot, value);
+                } else {
+                    fprintf(stderr, "STOREIND: no active frame\n");
+                    vm->halted = 1;
+                }
+            } else {
+                fprintf(stderr, "STOREIND: invalid address %d\n", (int)addr);
+                vm->halted = 1;
+            }
+            break;
+        }
         
         case OP_HALT:
             vm->halted = 1;
