@@ -53,13 +53,19 @@ typedef enum {
     OP_MOD,         /* MOD */
     OP_NEG,         /* NEG */
     
-    /* Comparisons */
-    OP_EQ,          /* EQ (==) */
-    OP_NE,          /* NE (!=) */
-    OP_LT,          /* LT (<) */
-    OP_LE,          /* LE (<=) */
-    OP_GT,          /* GT (>) */
-    OP_GE,          /* GE (>=) */
+    /* Comparisons (signed) */
+    OP_CMPEQ,       /* CMPEQ */
+    OP_CMPNE,       /* CMPNE */
+    OP_CMPLT,       /* CMPLT */
+    OP_CMPLE,       /* CMPLE */
+    OP_CMPGT,       /* CMPGT */
+    OP_CMPGE,       /* CMPGE */
+    
+    /* Comparisons (unsigned) */
+    OP_CMPULT,      /* CMPULT */
+    OP_CMPUGE,      /* CMPUGE */
+    OP_CMPULE,      /* CMPULE */
+    OP_CMPUGT,      /* CMPUGT */
     
     /* Conditional branches */
     OP_BEQ,         /* BEQ <label> - branch if top == 0 */

@@ -86,7 +86,28 @@ Opcodes implemented:
 
 **Tested**: Simple arithmetic, printing, local variables
 
-### Phase 2: Arithmetik & Logik (not started)
+### Phase 2: Arithmetik & Logik (COMPLETE ✅)
+
+**Status**: Fully implemented and tested
+
+Opcodes implemented:
+- Arithmetic: `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `NEG`
+- Comparisons (signed): `CMPEQ`, `CMPNE`, `CMPLT`, `CMPLE`, `CMPGT`, `CMPGE`
+- Comparisons (unsigned): `CMPULT`, `CMPUGE`, `CMPULE`, `CMPUGT` (not yet used)
+- Stack ops: `DUP`, `SWAP` (from Phase 1, still working)
+
+**Technical features**:
+- Integer arithmetic with proper overflow/underflow semantics
+- Division by zero detection
+- Comparison results as 0/1 (boolean)
+- Legacy aliases (EQ/NE/LT/etc.) for backward compatibility
+
+**Tested**:
+- Arithmetic: 10+5=15, 20-3=17, 7×6=42, 30÷4=7, 17%5=2, -42 ✓
+- Comparisons: All 6 signed comparisons with equality/inequality cases ✓
+- Matches qccvm.py reference output exactly ✓
+
+**Deferred to Phase 3**: Bit operations (NOTBIT, BAND, BOR, BXOR), narrowing (NARROWC)
 
 ### Phase 3: Control Flow (not started)
 
@@ -179,7 +200,7 @@ Phase 1: IR-Parser & Basic Stack
 
 ## Autoren & Status
 
-- **Status**: 🎯 Phase 4 (Functions) COMPLETE ✅, working on Phase 2 (Arithmetic) next
+- **Status**: 🎯 Phase 2 (Arithmetic & Logic) COMPLETE ✅, Phase 4 (Functions) COMPLETE ✅
 - **Zielplattform**: 68k (später auch ARM64, x86_32)
 - **Ziel-OS**: OS-9
-- **Latest Test**: 01_basic.ir (FUNC/CALL/RET) ✅ PASSING
+- **Latest Tests**: 01_basic.ir (FUNC/CALL) ✅, Arithmetic/Comparisons ✅

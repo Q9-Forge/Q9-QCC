@@ -284,6 +284,57 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
+        case OP_CMPEQ: {
+            qrun_value_t b = qrun_pop_value(vm);
+            qrun_value_t a = qrun_pop_value(vm);
+            qrun_push_value(vm, (a == b) ? 1 : 0);
+            break;
+        }
+        
+        case OP_CMPNE: {
+            qrun_value_t b = qrun_pop_value(vm);
+            qrun_value_t a = qrun_pop_value(vm);
+            qrun_push_value(vm, (a != b) ? 1 : 0);
+            break;
+        }
+        
+        case OP_CMPLT: {
+            qrun_value_t b = qrun_pop_value(vm);
+            qrun_value_t a = qrun_pop_value(vm);
+            qrun_push_value(vm, (a < b) ? 1 : 0);
+            break;
+        }
+        
+        case OP_CMPLE: {
+            qrun_value_t b = qrun_pop_value(vm);
+            qrun_value_t a = qrun_pop_value(vm);
+            qrun_push_value(vm, (a <= b) ? 1 : 0);
+            break;
+        }
+        
+        case OP_CMPGT: {
+            qrun_value_t b = qrun_pop_value(vm);
+            qrun_value_t a = qrun_pop_value(vm);
+            qrun_push_value(vm, (a > b) ? 1 : 0);
+            break;
+        }
+        
+        case OP_CMPGE: {
+            qrun_value_t b = qrun_pop_value(vm);
+            qrun_value_t a = qrun_pop_value(vm);
+            qrun_push_value(vm, (a >= b) ? 1 : 0);
+            break;
+        }
+        
+        case OP_CMPULT:
+        case OP_CMPUGE:
+        case OP_CMPULE:
+        case OP_CMPUGT:
+            /* Unsigned comparisons - treat as signed for now */
+            fprintf(stderr, "Unsigned comparisons not yet implemented\n");
+            vm->halted = 1;
+            break;
+        
         case OP_PRINT: {
             qrun_value_t v = qrun_pop_value(vm);
             printf("%d\n", v);
