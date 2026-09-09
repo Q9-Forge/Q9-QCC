@@ -102,6 +102,8 @@ typedef enum {
     /* Declarations */
     OP_GLOBAL,      /* GLOBAL <name> [init] */
     OP_GINIT,       /* GINIT <name> <index> <value> - initialize global array element */
+    OP_GLOBALDECL,  /* GLOBALDECL <name> <type> - external global declaration (no-op) */
+    OP_FUNCDECL,    /* FUNCDECL <name> <nargs> - external function declaration (no-op) */
     
     /* Sentinel */
     OP_HALT
@@ -134,6 +136,12 @@ typedef struct {
             int index;                  /* array index */
             int32_t value;              /* value to initialize */
         } ginit;                        /* GINIT - global array initialization */
+        struct {
+            char* name;                 /* global variable name */
+            int scope;                  /* 0=global */
+            char* type;                 /* type tag (i, c, h, etc.) */
+            int32_t init;               /* initial value */
+        } global;                       /* GLOBAL - global variable definition */
     } arg;
 } qrun_instruction_t;
 
@@ -189,6 +197,7 @@ typedef struct {
     /* Global array handle pointers (for PUSHADDR to reference with offset arithmetic)
        Maps handle index to actual data pointer in garrays */
     qrun_value_t** garray_handles;
+    int* garray_handle_indices;  /* Parallel array: garray_handle_indices[i] = garray_idx */
     size_t ngarray_handles;
     size_t garray_handles_capacity;
     
