@@ -173,6 +173,8 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "GE") == 0)        return OP_CMPGE;
     if (strcmp(s, "BEQ") == 0)       return OP_BEQ;
     if (strcmp(s, "BNE") == 0)       return OP_BNE;
+    /* Legacy alias */
+    if (strcmp(s, "JZ") == 0)        return OP_BEQ;  /* Jump if Zero = BEQ */
     if (strcmp(s, "CALL") == 0)      return OP_CALL;
     if (strcmp(s, "PRINT") == 0)     return OP_PRINT;
     if (strcmp(s, "PRINTC") == 0)    return OP_PRINTC;
@@ -245,6 +247,8 @@ int qrun_ir_parse(const char* filename,
         case OP_STOREG:
         case OP_LABEL:
         case OP_JMP:
+        case OP_BEQ:
+        case OP_BNE:
             if (arg_str) {
                 code[code_idx].arg.s = qrun_string_pool_intern(lex->pool, arg_str);
             }
