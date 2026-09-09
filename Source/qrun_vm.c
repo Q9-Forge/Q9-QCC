@@ -32,6 +32,11 @@ qrun_vm_t* qrun_vm_create(void)
     memset(vm->funcs, 0, 256 * sizeof(vm->funcs[0]));
     vm->fp = 0;
     
+    /* Allocate labels */
+    vm->labels = malloc(512 * sizeof(vm->labels[0]));
+    vm->nlabels = 0;
+    vm->labels_capacity = 512;
+    
     vm->string_pool = NULL;  /* Will be set by qrun_vm_load_ir */
     
     vm->halted = 0;
@@ -53,6 +58,7 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     }
     free(vm->frames);
     free(vm->funcs);
+    free(vm->labels);
     
     /* Destroy string pool */
     if (vm->string_pool) {
@@ -70,7 +76,7 @@ int qrun_vm_load_ir(qrun_vm_t* vm, const char* filename)
         return -1;
     }
     
-    /* Build function lookup table */
+    /* Build function and label lookup tables */
     for (size_t i = 0; i < vm->code_size; i++) {
         if (vm->code[i].op == OP_FUNC) {
             if (vm->nfuncs >= 256) {
@@ -82,6 +88,14 @@ int qrun_vm_load_ir(qrun_vm_t* vm, const char* filename)
             vm->funcs[vm->nfuncs].nargs = vm->code[i].arg.func.nargs;
             vm->funcs[vm->nfuncs].nlocals = vm->code[i].arg.func.nlocals;
             vm->nfuncs++;
+        } else if (vm->code[i].op == OP_LABEL) {
+            if (vm->nlabels >= vm->labels_capacity) {
+                fprintf(stderr, "Too many labels\n");
+                return -1;
+            }
+            vm->labels[vm->nlabels].name = vm->code[i].arg.s;
+            vm->labels[vm->nlabels].addr = i;
+            vm->nlabels++;
         }
     }
     
@@ -193,10 +207,9 @@ int qrun_vm_run(qrun_vm_t* vm)
         qrun_instruction_t* instr = &vm->code[vm->pc];
         qrun_opcode_t op = instr->op;
         
-        /* Fetch next instruction */
-        vm->pc++;
-        
         /* Decode & Execute */
+        int should_increment = 1;  /* Most opcodes auto-increment, jumps set to 0 */
+        
         switch (op) {
         case OP_PUSH:
             qrun_push_value(vm, instr->arg.i);
@@ -362,6 +375,7 @@ int qrun_vm_run(qrun_vm_t* vm)
                 
                 vm->pc = ret_addr;
                 qrun_push_value(vm, ret_val);
+                should_increment = 0;  /* PC already set */
             }
             break;
         }
@@ -412,7 +426,7 @@ int qrun_vm_run(qrun_vm_t* vm)
                 break;
             }
             
-            vm->frames[vm->fp].code_addr = vm->pc;
+            vm->frames[vm->fp].code_addr = vm->pc + 1;  /* +1 because PC is already incremented in the loop */
             vm->frames[vm->fp].nlocals_allocated = 256;  /* Allocate max slots */
             vm->frames[vm->fp].locals = calloc(256, sizeof(qrun_value_t));
             
@@ -426,15 +440,67 @@ int qrun_vm_run(qrun_vm_t* vm)
             
             /* Jump to function */
             vm->pc = vm->funcs[func_idx].addr + 1;  /* Skip FUNC opcode */
+            should_increment = 0;  /* PC already set */
             break;
         }
         
         case OP_LABEL:
-        case OP_JMP:
-        case OP_BEQ:
-        case OP_BNE:
-            /* TODO: Phase 3 (Control flow) */
+            /* Labels are no-ops at runtime (used for lookup) */
             break;
+        
+        case OP_JMP: {
+            const char* label_name = instr->arg.s;
+            for (size_t i = 0; i < vm->nlabels; i++) {
+                if (vm->labels[i].name && strcmp(vm->labels[i].name, label_name) == 0) {
+                    vm->pc = vm->labels[i].addr;
+                    should_increment = 0;
+                    break;
+                }
+            }
+            if (should_increment) {  /* Label not found */
+                fprintf(stderr, "Error: label '%s' not found\n", label_name);
+                vm->halted = 1;
+            }
+            break;
+        }
+        
+        case OP_BEQ: {
+            qrun_value_t val = qrun_pop_value(vm);
+            if (val == 0) {
+                const char* label_name = instr->arg.s;
+                for (size_t i = 0; i < vm->nlabels; i++) {
+                    if (vm->labels[i].name && strcmp(vm->labels[i].name, label_name) == 0) {
+                        vm->pc = vm->labels[i].addr;
+                        should_increment = 0;
+                        break;
+                    }
+                }
+                if (should_increment) {  /* Label not found */
+                    fprintf(stderr, "Error: label '%s' not found\n", label_name);
+                    vm->halted = 1;
+                }
+            }
+            break;
+        }
+        
+        case OP_BNE: {
+            qrun_value_t val = qrun_pop_value(vm);
+            if (val != 0) {
+                const char* label_name = instr->arg.s;
+                for (size_t i = 0; i < vm->nlabels; i++) {
+                    if (vm->labels[i].name && strcmp(vm->labels[i].name, label_name) == 0) {
+                        vm->pc = vm->labels[i].addr;
+                        should_increment = 0;
+                        break;
+                    }
+                }
+                if (should_increment) {  /* Label not found */
+                    fprintf(stderr, "Error: label '%s' not found\n", label_name);
+                    vm->halted = 1;
+                }
+            }
+            break;
+        }
         
         case OP_HALT:
             vm->halted = 1;
@@ -444,6 +510,11 @@ int qrun_vm_run(qrun_vm_t* vm)
             fprintf(stderr, "Unknown opcode: %d\n", op);
             vm->halted = 1;
             break;
+        }
+        
+        /* Increment PC unless a jump set it explicitly */
+        if (should_increment) {
+            vm->pc++;
         }
     }
     

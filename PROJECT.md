@@ -109,7 +109,31 @@ Opcodes implemented:
 
 **Deferred to Phase 3**: Bit operations (NOTBIT, BAND, BOR, BXOR), narrowing (NARROWC)
 
-### Phase 3: Control Flow (not started)
+### Phase 3: Control Flow (COMPLETE ✅)
+
+**Status**: Fully implemented and tested
+
+Opcodes implemented:
+- `LABEL <name>` — Define jump target
+- `JMP <label>` — Unconditional jump
+- `BEQ <label>` / `JZ <label>` — Jump if stack-top == 0
+- `BNE <label>` — Jump if stack-top != 0
+
+**Technical features**:
+- Label lookup table (built on IR load)
+- PC management with conditional increment (jumps set should_increment=0)
+- Proper return address tracking for nested calls
+- Return address saved AFTER opcode fetch but BEFORE PC increment
+
+**Tested**:
+- Simple jumps (JMP, forward/backward)
+- Conditional jumps (BEQ/JZ with true/false conditions)
+- Nested function calls with control flow (02_control_flow.ir)
+- max() function with conditional return
+- sum_below() function with loops
+- Output: 7, 10 matches qccvm.py reference exactly ✓
+
+**Key fix**: Return address calculation (code_addr = pc + 1) due to PC being fetched then used for dispatch
 
 ### Phase 4: Funktionen (COMPLETE ✅)
 
@@ -200,7 +224,7 @@ Phase 1: IR-Parser & Basic Stack
 
 ## Autoren & Status
 
-- **Status**: 🎯 Phase 2 (Arithmetic & Logic) COMPLETE ✅, Phase 4 (Functions) COMPLETE ✅
+- **Status**: 🎯 Phase 3 (Control Flow) COMPLETE ✅, Phases 1-4 DONE ✅✅✅✅
 - **Zielplattform**: 68k (später auch ARM64, x86_32)
 - **Ziel-OS**: OS-9
-- **Latest Tests**: 01_basic.ir (FUNC/CALL) ✅, Arithmetic/Comparisons ✅
+- **Latest Tests**: 02_control_flow.ir (max/sum_below) ✅, Jump/Branch logic ✅

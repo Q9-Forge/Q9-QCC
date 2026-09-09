@@ -120,6 +120,14 @@ typedef struct {
     }* funcs;
     size_t nfuncs;
     
+    /* Label lookup table */
+    struct {
+        char* name;
+        size_t addr;        /* instruction index */
+    }* labels;
+    size_t nlabels;
+    size_t labels_capacity;
+    
     /* Value stack */
     qrun_stackval_t* stack;
     size_t stack_size;
