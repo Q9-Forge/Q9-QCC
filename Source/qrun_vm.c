@@ -634,8 +634,24 @@ int qrun_vm_run(qrun_vm_t* vm)
                 vm->frames[frame_idx].narrays = new_size;
             }
             
-            /* Allocate array */
-            arrays[slot].data = calloc(size, sizeof(qrun_value_t));
+            /* Allocate array on heap instead of via calloc
+               This allows PUSHADDR L slot to return a valid heap pointer
+               and STOREIND/LOADIND to work with local arrays */
+            if (vm->heap_size + size > vm->heap_capacity) {
+                fprintf(stderr, "LARRAY: heap overflow (need %zu, have %zu)\n", 
+                        vm->heap_size + size, vm->heap_capacity);
+                vm->halted = 1;
+                break;
+            }
+            
+            /* Allocate space on heap and zero-initialize */
+            size_t heap_start = vm->heap_size;
+            for (size_t i = 0; i < size; i++) {
+                vm->heap[vm->heap_size++] = 0;
+            }
+            
+            /* Point array.data to this heap space */
+            arrays[slot].data = &vm->heap[heap_start];
             arrays[slot].size = size;
             arrays[slot].type_size = tsize;
             break;
@@ -757,7 +773,9 @@ int qrun_vm_run(qrun_vm_t* vm)
         }
         
         case OP_ADDRL: {
-            /* Allocate heap space, push negative address */
+            /* Allocate heap space for taking address of local, push address
+               Encoding: block_id=2 (pointer-to-locals)
+            */
             int slot = instr->arg.i;
             if (vm->fp == 0) {
                 fprintf(stderr, "ADDRL: no active frame\n");
@@ -773,10 +791,12 @@ int qrun_vm_run(qrun_vm_t* vm)
                 break;
             }
             
+            size_t heap_idx = vm->heap_size;
             vm->heap[vm->heap_size] = val;
-            qrun_value_t addr = -(vm->heap_size + 1000);  /* Negative address */
             vm->heap_size++;
             
+            /* block_id=2 for ADDRL pointers */
+            qrun_value_t addr = -(2 * 100000 + heap_idx + 1000);
             qrun_push_value(vm, addr);
             break;
         }
@@ -843,10 +863,11 @@ int qrun_vm_run(qrun_vm_t* vm)
             int offset = encoded % 100000;
             
             if (block_id == 0) {
-                /* Local array access - offset is into heap */
+                /* Local array access - offset is into heap (from LARRAY) */
                 int heap_idx = offset;
                 if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
-                    fprintf(stderr, "LOADIND: heap pointer out of bounds (idx=%d)\n", heap_idx);
+                    fprintf(stderr, "LOADIND: heap pointer out of bounds (idx=%d, heap_size=%zu)\n", 
+                            heap_idx, vm->heap_size);
                     vm->halted = 1;
                     break;
                 }
@@ -864,6 +885,18 @@ int qrun_vm_run(qrun_vm_t* vm)
                 } else {
                     qrun_push_value(vm, 0);
                 }
+            } else if (block_id == 2) {
+                /* Pointer to local (from ADDRL) - offset is heap index */
+                int heap_idx = offset;
+                if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
+                    fprintf(stderr, "LOADIND: ADDRL pointer out of bounds (idx=%d)\n", heap_idx);
+                    vm->halted = 1;
+                    break;
+                }
+                qrun_push_value(vm, vm->heap[heap_idx]);
+            } else {
+                fprintf(stderr, "LOADIND: unknown block_id %d\n", block_id);
+                vm->halted = 1;
             }
             break;
         }
@@ -885,7 +918,7 @@ int qrun_vm_run(qrun_vm_t* vm)
             int offset = encoded % 100000;
             
             if (block_id == 0) {
-                /* Local array access - offset is into heap */
+                /* Local array access - offset is into heap (from LARRAY) */
                 int heap_idx = offset;
                 if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
                     fprintf(stderr, "STOREIND: heap pointer out of bounds (idx=%d)\n", heap_idx);
@@ -901,11 +934,21 @@ int qrun_vm_run(qrun_vm_t* vm)
                     vm->halted = 1;
                     break;
                 }
-                /* offset into global array is stored in heap... but we don't have secondary offset */
-                /* For now, assume offset=0 for global arrays */
                 if (vm->garrays[garr_idx].size > 0) {
                     vm->garrays[garr_idx].data[0] = value;
                 }
+            } else if (block_id == 2) {
+                /* Pointer to local (from ADDRL) - offset is heap index */
+                int heap_idx = offset;
+                if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
+                    fprintf(stderr, "STOREIND: ADDRL pointer out of bounds (idx=%d)\n", heap_idx);
+                    vm->halted = 1;
+                    break;
+                }
+                vm->heap[heap_idx] = value;
+            } else {
+                fprintf(stderr, "STOREIND: unknown block_id %d\n", block_id);
+                vm->halted = 1;
             }
             break;
         }
@@ -937,17 +980,29 @@ int qrun_vm_run(qrun_vm_t* vm)
         }
         
         case OP_PADD: {
-            /* Pop two pointers, push sum (for offset arithmetic) */
-            qrun_value_t ptr2 = qrun_pop_value(vm);
-            qrun_value_t ptr1 = qrun_pop_value(vm);
+            /* Pop integer, pop pointer, push (ptr + int*size)
+               Stack order: [..., ptr, int] -> pop int, pop ptr
+               Similar to IPADD but for pointer+pointer (encoded as ptr+int offset) */
+            qrun_value_t int_val = qrun_pop_value(vm);
+            qrun_value_t ptr_val = qrun_pop_value(vm);
             
-            if (ptr1 >= 0 || ptr2 >= 0) {
-                fprintf(stderr, "PADD: pointer operands required\n");
+            if (ptr_val >= 0) {
+                fprintf(stderr, "PADD: pointer operand required\n");
                 vm->halted = 1;
                 break;
             }
             
-            qrun_value_t result = ptr1 + ptr2;
+            /* Decode pointer: ptr_val = -(block_id*100000 + offset + 1000) */
+            qrun_value_t encoded = -ptr_val - 1000;
+            int block_id = encoded / 100000;
+            int offset = encoded % 100000;
+            
+            /* Get type size from instruction argument */
+            int tsize = qrun_type_size(instr->arg.array.type);
+            offset += (int_val * tsize);
+            
+            /* Re-encode with new offset */
+            qrun_value_t result = -(block_id * 100000 + offset + 1000);
             qrun_push_value(vm, result);
             break;
         }
@@ -970,7 +1025,7 @@ int qrun_vm_run(qrun_vm_t* vm)
         case OP_PUSHADDR: {
             /* PUSHADDR <scope> <name/slot>: push address of local or global
                Encoding: -(block_id*100000 + offset + 1000)
-               Local arrays: block_id=0, offset=0 initially
+               Local arrays: block_id=0, offset=heap_start (index into heap)
                Global arrays: block_id=1, offset=global_idx
             */
             int is_local = (instr->arg.array.size == 1);  /* size=1 means local, 0 means global */
@@ -982,7 +1037,37 @@ int qrun_vm_run(qrun_vm_t* vm)
                     vm->halted = 1;
                     break;
                 }
-                qrun_value_t addr = -(0 * 100000 + 0 + 1000);  /* block_id=0, offset=0 */
+                
+                if (vm->fp == 0) {
+                    fprintf(stderr, "PUSHADDR: no active frame\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                size_t frame_idx = vm->fp - 1;
+                if (slot >= (int)vm->frames[frame_idx].narrays) {
+                    fprintf(stderr, "PUSHADDR: local slot %d not allocated\n", slot);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                /* Get the heap index from array.data pointer
+                   heap_start = arrays[slot].data - vm->heap */
+                qrun_value_t* array_ptr = vm->frames[frame_idx].arrays[slot].data;
+                if (array_ptr == NULL) {
+                    fprintf(stderr, "PUSHADDR: local array at slot %d is NULL\n", slot);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                int heap_start = array_ptr - vm->heap;
+                if (heap_start < 0 || heap_start >= (int)vm->heap_size) {
+                    fprintf(stderr, "PUSHADDR: local array pointer out of heap range\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                qrun_value_t addr = -(0 * 100000 + heap_start + 1000);  /* block_id=0, offset=heap_start */
                 qrun_push_value(vm, addr);
             } else {
                 /* Address of global array */
