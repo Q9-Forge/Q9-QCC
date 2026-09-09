@@ -1280,6 +1280,20 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct P { char *a, *b; }; int main(){ struct P p; char ca=65; char cb=66; p.a=&ca; p.b=&cb; putchar(*p.a); putchar(*p.b); }' 'AB'
 		tc_check 'char ca=65; char cb=66; char *a, *b; int main(){ a=&ca; b=&cb; putchar(*a); putchar(*b); }' 'AB'
 		tc_check 'int x=5; int *a, b=3; int main(){ a=&x; putint(*a); putint(b); }' '5\n3'
+		# Gefundener und behobener Bug (2026-09-09, beim Q9-Tools-Uebersetzungsversuch
+		# gegen Microwares echten SDK-Header module.h entdeckt): derselbe Mehrfach-
+		# deklaratoren-Fehler wie oben, aber in typedefDecl -- "typedef struct modhcom
+		# mh_com, *Mh_com;" scheiterte still, weil typedefTargetName nur EINEN Namen
+		# erlaubte. pointerDecl wanderte aus typedefType in eine neue typedefDeclarator
+		# (ein eigener Zeigergrad pro Deklarator, wie ueberall sonst). Je ein Test:
+		# benannter Struct-Typ (das reale module.h-Muster), Skalartyp, anonymer Struct
+		# im typedef (die tcAnonStructPending/tcBasePointers-Falle -- nur der ERSTE
+		# Deklarator registriert die Struktur, weitere muessen sie wiederverwenden),
+		# und drei Deklaratoren gemischten Grades (keine Akkumulation ueber die Liste).
+		tc_check 'struct M { int a; }; typedef struct M mh_com, *Mh_com; int main(){ mh_com x; Mh_com p; x.a=42; p=&x; putint(p->a); }' '42'
+		tc_check 'typedef int I, *IP; int main(){ I x=7; IP p; p=&x; putint(*p); putint(x); }' '7\n7'
+		tc_check 'typedef struct { int a; } S, *SP; int main(){ S s; SP p; s.a=9; p=&s; putint(p->a); putint(s.a); }' '9\n9'
+		tc_check 'typedef int A, *B, **C; int main(){ int x=5; A a=x; B b=&x; C c=&b; putint(a); putint(*b); putint(**c); }' '5\n5\n5'
 		[ $tcfail -eq 0 ] && echo "ok    qcc: $tccount Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder inkl. direkter Indizierung DURCH sie, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
 	else
 		echo "FAIL  qcc: Data/qcc_p.c kompiliert nicht"; fail=1
