@@ -48,6 +48,11 @@ qrun_vm_t* qrun_vm_create(void)
     vm->nlabels = 0;
     vm->labels_capacity = 512;
     
+    /* Allocate pointer heap */
+    vm->heap = malloc(256 * sizeof(qrun_value_t));
+    vm->heap_size = 0;
+    vm->heap_capacity = 256;
+    
     /* Allocate global arrays */
     vm->garrays = malloc(64 * sizeof(vm->garrays[0]));
     vm->ngarrays = 0;
@@ -69,6 +74,7 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     free(vm->stack);
     free(vm->globals);
     free(vm->named_globals);
+    free(vm->heap);
     
     /* Destroy frame local arrays */
     for (size_t i = 0; i < vm->fp; i++) {
@@ -751,7 +757,7 @@ int qrun_vm_run(qrun_vm_t* vm)
         }
         
         case OP_ADDRL: {
-            /* Push address of local variable */
+            /* Allocate heap space, push negative address */
             int slot = instr->arg.i;
             if (vm->fp == 0) {
                 fprintf(stderr, "ADDRL: no active frame\n");
@@ -759,8 +765,18 @@ int qrun_vm_run(qrun_vm_t* vm)
                 break;
             }
             
-            /* Address = negative to distinguish from normal values */
-            qrun_value_t addr = -(1000 + slot);
+            /* Load local value, put on heap */
+            qrun_value_t val = qrun_load_local(vm, slot);
+            if (vm->heap_size >= vm->heap_capacity) {
+                fprintf(stderr, "Heap overflow\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            vm->heap[vm->heap_size] = val;
+            qrun_value_t addr = -(vm->heap_size + 1000);  /* Negative address */
+            vm->heap_size++;
+            
             qrun_push_value(vm, addr);
             break;
         }
@@ -812,65 +828,45 @@ int qrun_vm_run(qrun_vm_t* vm)
         }
         
         case OP_LOADIND: {
-            /* Pop address, load value from that address, push value */
+            /* Pop address, load value from heap, push value */
             qrun_value_t addr = qrun_pop_value(vm);
-            const char* type = instr->arg.s;
             
-            /* Decode address */
-            if (addr < -2000) {
-                /* Global named variable */
-                int global_idx = -(addr + 2000);
-                if (global_idx >= 0 && global_idx < (int)vm->nglobals) {
-                    qrun_push_value(vm, vm->named_globals[global_idx].value);
-                } else {
-                    fprintf(stderr, "LOADIND: invalid global address\n");
-                    vm->halted = 1;
-                }
-            } else if (addr < -1000) {
-                /* Local variable */
-                int slot = -(addr + 1000);
-                if (vm->fp > 0) {
-                    qrun_value_t val = qrun_load_local(vm, slot);
-                    qrun_push_value(vm, val);
-                } else {
-                    fprintf(stderr, "LOADIND: no active frame\n");
-                    vm->halted = 1;
-                }
-            } else {
-                fprintf(stderr, "LOADIND: invalid address %d\n", (int)addr);
+            if (addr >= 0) {
+                fprintf(stderr, "LOADIND: invalid pointer (not negative)\n");
                 vm->halted = 1;
+                break;
             }
+            
+            int heap_idx = -(addr + 1000);
+            if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
+                fprintf(stderr, "LOADIND: pointer out of bounds\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            qrun_push_value(vm, vm->heap[heap_idx]);
             break;
         }
         
         case OP_STOREIND: {
-            /* Pop address, pop value, store value to address */
+            /* Pop address, pop value, store value to heap at address */
             qrun_value_t addr = qrun_pop_value(vm);
             qrun_value_t value = qrun_pop_value(vm);
             
-            /* Decode address */
-            if (addr < -2000) {
-                /* Global named variable */
-                int global_idx = -(addr + 2000);
-                if (global_idx >= 0 && global_idx < (int)vm->nglobals) {
-                    vm->named_globals[global_idx].value = value;
-                } else {
-                    fprintf(stderr, "STOREIND: invalid global address\n");
-                    vm->halted = 1;
-                }
-            } else if (addr < -1000) {
-                /* Local variable */
-                int slot = -(addr + 1000);
-                if (vm->fp > 0) {
-                    qrun_store_local(vm, slot, value);
-                } else {
-                    fprintf(stderr, "STOREIND: no active frame\n");
-                    vm->halted = 1;
-                }
-            } else {
-                fprintf(stderr, "STOREIND: invalid address %d\n", (int)addr);
+            if (addr >= 0) {
+                fprintf(stderr, "STOREIND: invalid pointer (not negative)\n");
                 vm->halted = 1;
+                break;
             }
+            
+            int heap_idx = -(addr + 1000);
+            if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
+                fprintf(stderr, "STOREIND: pointer out of bounds\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            vm->heap[heap_idx] = value;
             break;
         }
         
