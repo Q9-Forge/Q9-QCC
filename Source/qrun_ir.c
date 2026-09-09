@@ -176,6 +176,16 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     /* Legacy alias */
     if (strcmp(s, "JZ") == 0)        return OP_BEQ;  /* Jump if Zero = BEQ */
     if (strcmp(s, "CALL") == 0)      return OP_CALL;
+    if (strcmp(s, "LARRAY") == 0)    return OP_LARRAY;
+    if (strcmp(s, "GARRAY") == 0)    return OP_GARRAY;
+    if (strcmp(s, "LOADIDX") == 0)   return OP_LOADIDX;
+    if (strcmp(s, "STOREIDX") == 0)  return OP_STOREIDX;
+    if (strcmp(s, "ADDRL") == 0)     return OP_ADDRL;
+    if (strcmp(s, "ADDRG") == 0)     return OP_ADDRG;
+    if (strcmp(s, "LOADP") == 0)     return OP_LOADP;
+    if (strcmp(s, "STOREP") == 0)    return OP_STOREP;
+    if (strcmp(s, "LOADIND") == 0)   return OP_LOADIND;
+    if (strcmp(s, "STOREIND") == 0)  return OP_STOREIND;
     if (strcmp(s, "PRINT") == 0)     return OP_PRINT;
     if (strcmp(s, "PRINTC") == 0)    return OP_PRINTC;
     if (strcmp(s, "GLOBAL") == 0)    return OP_GLOBAL;

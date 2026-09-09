@@ -74,6 +74,20 @@ typedef enum {
     /* Function calls */
     OP_CALL,        /* CALL <name> <nargs> */
     
+    /* Arrays & Locals */
+    OP_LARRAY,      /* LARRAY <slot> <type> <size> */
+    OP_GARRAY,      /* GARRAY <name> <type> <size> <init> */
+    OP_LOADIDX,     /* LOADIDX <scope> <name> <type> */
+    OP_STOREIDX,    /* STOREIDX <scope> <name> <type> */
+    
+    /* Pointers */
+    OP_ADDRL,       /* ADDRL <slot> - address of local */
+    OP_ADDRG,       /* ADDRG <name> - address of global */
+    OP_LOADP,       /* LOADP <slot> - load pointer from local */
+    OP_STOREP,      /* STOREP <slot> - store pointer to local */
+    OP_LOADIND,     /* LOADIND <type> - dereference and load */
+    OP_STOREIND,    /* STOREIND <type> - dereference and store */
+    
     /* IO/Debug */
     OP_PRINT,       /* PRINT - pop and print top value */
     OP_PRINTC,      /* PRINTC - pop and print as char */
