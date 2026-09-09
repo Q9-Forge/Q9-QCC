@@ -139,6 +139,7 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "FUNC") == 0)      return OP_FUNC;
     if (strcmp(s, "ENDFUNC") == 0)   return OP_ENDFUNC;
     if (strcmp(s, "RET") == 0)       return OP_RET;
+    if (strcmp(s, "RETP") == 0)      return OP_RET;  /* Pointer version, same semantics */
     if (strcmp(s, "LABEL") == 0)     return OP_LABEL;
     if (strcmp(s, "JMP") == 0)       return OP_JMP;
     if (strcmp(s, "PUSH") == 0)      return OP_PUSH;
@@ -178,6 +179,7 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     /* Legacy alias */
     if (strcmp(s, "JZ") == 0)        return OP_BEQ;  /* Jump if Zero = BEQ */
     if (strcmp(s, "CALL") == 0)      return OP_CALL;
+    if (strcmp(s, "CALLP") == 0)     return OP_CALL;  /* Pointer version, same semantics */
     if (strcmp(s, "LARRAY") == 0)    return OP_LARRAY;
     if (strcmp(s, "GARRAY") == 0)    return OP_GARRAY;
     if (strcmp(s, "LOADIDX") == 0)   return OP_LOADIDX;
@@ -196,6 +198,7 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "PRINT") == 0)     return OP_PRINT;
     if (strcmp(s, "PRINTC") == 0)    return OP_PRINTC;
     if (strcmp(s, "GLOBAL") == 0)    return OP_GLOBAL;
+    if (strcmp(s, "GINIT") == 0)     return OP_GINIT;
     if (strcmp(s, "OK") == 0)        return OP_HALT;
     
     return -1;
@@ -356,10 +359,27 @@ int qrun_ir_parse(const char* filename,
             break;
         }
         
+        case OP_GINIT: {
+            /* GINIT <name> <index> <value> */
+            if (arg_str) {
+                char* name = qrun_string_pool_intern(lex->pool, arg_str);
+                char* index_str = qrun_next_token(lex);
+                int index = index_str ? atoi(index_str) : 0;
+                char* value_str = qrun_next_token(lex);
+                int32_t value = value_str ? (int32_t)atoi(value_str) : 0;
+                
+                code[code_idx].arg.ginit.name = name;
+                code[code_idx].arg.ginit.index = index;
+                code[code_idx].arg.ginit.value = value;
+            }
+            break;
+        }
+        
         case OP_LOADG:
         case OP_STOREG:
         case OP_LOADGP:
         case OP_STOREGP:
+        case OP_ADDRG:
         case OP_LABEL:
         case OP_JMP:
         case OP_BEQ:

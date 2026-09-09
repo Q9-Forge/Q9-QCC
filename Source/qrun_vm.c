@@ -845,20 +845,53 @@ int qrun_vm_run(qrun_vm_t* vm)
         }
         
         case OP_ADDRG: {
-            /* Push address of global named variable */
+            /* Push address of global named variable (searches both named_globals and garrays) */
             const char* name = instr->arg.s;
             
-            /* Search named globals */
-            for (size_t i = 0; i < vm->nglobals; i++) {
-                if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
-                    qrun_value_t addr = -(2000 + i);
+            /* Search global arrays first */
+            for (size_t i = 0; i < vm->ngarrays; i++) {
+                if (vm->garrays[i].name && strcmp(vm->garrays[i].name, name) == 0) {
+                    /* Create handle pointer for global array */
+                    if (vm->ngarray_handles >= vm->garray_handles_capacity) {
+                        fprintf(stderr, "ADDRG: too many global array handles\n");
+                        vm->halted = 1;
+                        break;
+                    }
+                    vm->garray_handles[vm->ngarray_handles] = vm->garrays[i].data;
+                    int handle_idx = (int)vm->ngarray_handles;
+                    vm->ngarray_handles++;
+                    
+                    /* Encode as: block_id = 256 + handle_idx, offset = 0 */
+                    qrun_value_t addr = -((256 + handle_idx) * 100000 + 1000);
                     qrun_push_value(vm, addr);
-                    return 0;
+                    break;
                 }
             }
             
-            fprintf(stderr, "ADDRG: global '%s' not found\n", name);
-            vm->halted = 1;
+            /* If not found in garrays, search named globals */
+            int found = 0;
+            for (size_t i = 0; i < vm->ngarrays; i++) {
+                if (vm->garrays[i].name && strcmp(vm->garrays[i].name, name) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                for (size_t i = 0; i < vm->nglobals; i++) {
+                    if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
+                        qrun_value_t addr = -(2000 + i);
+                        qrun_push_value(vm, addr);
+                        found = 1;
+                        break;
+                    }
+                }
+            }
+            
+            if (!found) {
+                fprintf(stderr, "ADDRG: global '%s' not found\n", name);
+                vm->halted = 1;
+            }
             break;
         }
         
@@ -1209,6 +1242,39 @@ int qrun_vm_run(qrun_vm_t* vm)
         case OP_GLOBAL:
             /* GLOBAL <name> [init] - Global variable declaration (no-op at runtime) */
             break;
+        
+        case OP_GINIT: {
+            /* GINIT <name> <index> <value> - Initialize global array element */
+            const char* garray_name = instr->arg.ginit.name;
+            int index = instr->arg.ginit.index;
+            int32_t value = instr->arg.ginit.value;
+            
+            /* Find global array by name */
+            int garray_idx = -1;
+            for (size_t i = 0; i < vm->ngarrays; i++) {
+                if (vm->garrays[i].name && strcmp(vm->garrays[i].name, garray_name) == 0) {
+                    garray_idx = (int)i;
+                    break;
+                }
+            }
+            
+            if (garray_idx < 0) {
+                fprintf(stderr, "GINIT: global array '%s' not found\n", garray_name);
+                vm->halted = 1;
+                break;
+            }
+            
+            if (index < 0 || index >= (int)vm->garrays[garray_idx].size) {
+                fprintf(stderr, "GINIT: array index %d out of bounds for '%s' (size %zu)\n", 
+                        index, garray_name, vm->garrays[garray_idx].size);
+                vm->halted = 1;
+                break;
+            }
+            
+            /* Store value in array */
+            vm->garrays[garray_idx].data[index] = value;
+            break;
+        }
         
         case OP_HALT:
             vm->halted = 1;
