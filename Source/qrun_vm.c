@@ -829,60 +829,111 @@ int qrun_vm_run(qrun_vm_t* vm)
         
         case OP_LOADIND: {
             /* Pop address, load value from heap, push value */
-            qrun_value_t addr = qrun_pop_value(vm);
+            qrun_value_t addr_val = qrun_pop_value(vm);
             
-            if (addr >= 0) {
+            if (addr_val >= 0) {
                 fprintf(stderr, "LOADIND: invalid pointer (not negative)\n");
                 vm->halted = 1;
                 break;
             }
             
-            int heap_idx = -(addr + 1000);
-            if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
-                fprintf(stderr, "LOADIND: pointer out of bounds\n");
-                vm->halted = 1;
-                break;
-            }
+            /* Decode pointer: addr_val = -(block_id*100000 + offset + 1000) */
+            qrun_value_t encoded = -addr_val - 1000;
+            int block_id = encoded / 100000;
+            int offset = encoded % 100000;
             
-            qrun_push_value(vm, vm->heap[heap_idx]);
+            if (block_id == 0) {
+                /* Local array access - offset is into heap */
+                int heap_idx = offset;
+                if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
+                    fprintf(stderr, "LOADIND: heap pointer out of bounds (idx=%d)\n", heap_idx);
+                    vm->halted = 1;
+                    break;
+                }
+                qrun_push_value(vm, vm->heap[heap_idx]);
+            } else if (block_id == 1) {
+                /* Global array access */
+                int garr_idx = offset;
+                if (garr_idx < 0 || garr_idx >= (int)vm->ngarrays) {
+                    fprintf(stderr, "LOADIND: global array index out of range\n");
+                    vm->halted = 1;
+                    break;
+                }
+                if (vm->garrays[garr_idx].size > 0) {
+                    qrun_push_value(vm, vm->garrays[garr_idx].data[0]);
+                } else {
+                    qrun_push_value(vm, 0);
+                }
+            }
             break;
         }
         
         case OP_STOREIND: {
-            /* Pop address, pop value, store value to heap at address */
-            qrun_value_t addr = qrun_pop_value(vm);
+            /* Pop value, pop address, store value to heap at address */
             qrun_value_t value = qrun_pop_value(vm);
+            qrun_value_t addr_val = qrun_pop_value(vm);
             
-            if (addr >= 0) {
+            if (addr_val >= 0) {
                 fprintf(stderr, "STOREIND: invalid pointer (not negative)\n");
                 vm->halted = 1;
                 break;
             }
             
-            int heap_idx = -(addr + 1000);
-            if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
-                fprintf(stderr, "STOREIND: pointer out of bounds\n");
-                vm->halted = 1;
-                break;
-            }
+            /* Decode pointer: addr_val = -(block_id*100000 + offset + 1000) */
+            qrun_value_t encoded = -addr_val - 1000;
+            int block_id = encoded / 100000;
+            int offset = encoded % 100000;
             
-            vm->heap[heap_idx] = value;
+            if (block_id == 0) {
+                /* Local array access - offset is into heap */
+                int heap_idx = offset;
+                if (heap_idx < 0 || heap_idx >= (int)vm->heap_size) {
+                    fprintf(stderr, "STOREIND: heap pointer out of bounds (idx=%d)\n", heap_idx);
+                    vm->halted = 1;
+                    break;
+                }
+                vm->heap[heap_idx] = value;
+            } else if (block_id == 1) {
+                /* Global array access */
+                int garr_idx = offset;
+                if (garr_idx < 0 || garr_idx >= (int)vm->ngarrays) {
+                    fprintf(stderr, "STOREIND: global array index out of range\n");
+                    vm->halted = 1;
+                    break;
+                }
+                /* offset into global array is stored in heap... but we don't have secondary offset */
+                /* For now, assume offset=0 for global arrays */
+                if (vm->garrays[garr_idx].size > 0) {
+                    vm->garrays[garr_idx].data[0] = value;
+                }
+            }
             break;
         }
         
         case OP_IPADD: {
-            /* Pop integer, pop pointer, push (ptr + int*size) */
+            /* Pop pointer, pop integer, push (ptr + int*size) */
+            qrun_value_t ptr_val = qrun_pop_value(vm);
             qrun_value_t int_val = qrun_pop_value(vm);
-            qrun_value_t ptr = qrun_pop_value(vm);
             
-            if (ptr >= 0) {
+            fprintf(stderr, "DEBUG IPADD: ptr_val=%d, int_val=%d\n", ptr_val, int_val);
+            
+            if (ptr_val >= 0) {
                 fprintf(stderr, "IPADD: pointer operand required\n");
                 vm->halted = 1;
                 break;
             }
             
-            /* Simple model: just add to heap index */
-            qrun_value_t result = ptr + int_val;
+            /* Decode pointer: ptr_val = -(block_id*100000 + offset + 1000) */
+            qrun_value_t encoded = -ptr_val - 1000;
+            int block_id = encoded / 100000;
+            int offset = encoded % 100000;
+            
+            /* Get type size from instruction argument */
+            int tsize = qrun_type_size(instr->arg.array.type);
+            offset += (int_val * tsize);
+            
+            /* Re-encode with new offset */
+            qrun_value_t result = -(block_id * 100000 + offset + 1000);
             qrun_push_value(vm, result);
             break;
         }
@@ -919,9 +970,50 @@ int qrun_vm_run(qrun_vm_t* vm)
         }
         
         case OP_PUSHADDR: {
-            /* Direct address push (not yet implemented) */
-            fprintf(stderr, "PUSHADDR not yet implemented\n");
-            vm->halted = 1;
+            /* PUSHADDR <scope> <name/slot>: push address of local or global
+               Encoding: -(block_id*100000 + offset + 1000)
+               Local arrays: block_id=0, offset=0 initially
+               Global arrays: block_id=1, offset=global_idx
+            */
+            int is_local = (instr->arg.array.size == 1);  /* size=1 means local, 0 means global */
+            
+            if (is_local) {
+                int slot = instr->arg.array.slot;
+                if (slot < 0 || slot >= 256) {
+                    fprintf(stderr, "PUSHADDR: invalid local slot %d\n", slot);
+                    vm->halted = 1;
+                    break;
+                }
+                qrun_value_t addr = -(0 * 100000 + 0 + 1000);  /* block_id=0, offset=0 */
+                qrun_push_value(vm, addr);
+            } else {
+                /* Address of global array */
+                const char* name = instr->arg.array.name;
+                if (!name) {
+                    fprintf(stderr, "PUSHADDR: missing global name\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                /* Look up in global arrays */
+                int global_idx = -1;
+                for (size_t i = 0; i < vm->ngarrays; i++) {
+                    if (vm->garrays[i].name && strcmp(vm->garrays[i].name, name) == 0) {
+                        global_idx = i;
+                        break;
+                    }
+                }
+                
+                if (global_idx == -1) {
+                    fprintf(stderr, "PUSHADDR: global '%s' not found\n", name);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                /* Push with block_id=1 to indicate global array */
+                qrun_value_t addr = -(1 * 100000 + global_idx + 1000);
+                qrun_push_value(vm, addr);
+            }
             break;
         }
         

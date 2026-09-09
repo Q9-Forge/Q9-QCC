@@ -312,6 +312,36 @@ int qrun_ir_parse(const char* filename,
             break;
         }
         
+        case OP_PUSHADDR: {
+            /* PUSHADDR <scope> <name/slot> */
+            if (arg_str) {
+                int is_local = (arg_str[0] == 'L');
+                char* name_or_slot = qrun_next_token(lex);
+                
+                if (is_local) {
+                    code[code_idx].arg.array.slot = name_or_slot ? atoi(name_or_slot) : 0;
+                } else {
+                    code[code_idx].arg.array.name = name_or_slot ? qrun_string_pool_intern(lex->pool, name_or_slot) : NULL;
+                }
+                code[code_idx].arg.array.size = is_local ? 1 : 0;  /* Repurpose: size=0 means global */
+            }
+            break;
+        }
+        
+        case OP_IPADD:
+        case OP_PADD: {
+            /* IPADD <type> or PADD <type>: type for size calculation */
+            if (arg_str) {
+                code[code_idx].arg.array.type = qrun_string_pool_intern(lex->pool, arg_str);
+            }
+            break;
+        }
+        
+        case OP_PCMPNE: {
+            /* PCMPNE has no args */
+            break;
+        }
+        
         case OP_LOADG:
         case OP_STOREG:
         case OP_LABEL:
