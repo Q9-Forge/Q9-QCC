@@ -65,56 +65,55 @@ while (!halted) {
 
 ## Implementation
 
-### Phase 1: Grundstruktur
+### Phase 1: Grundstruktur (COMPLETE ✅)
 
-Ziele:
+**Status**: Fully implemented
+
+Opcodes implemented:
+- `PUSH <n>` — Push constant
+- `LOADL <i>` — Load local variable
+- `STOREL <i>` — Store local variable
+- `PRINT` — Print integer (putint)
+- `RET` — Return from function
+- Arithmetic: `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `NEG`
+- Comparison: `EQ`, `NE`, `LT`, `LE`, `GT`, `GE`
+
+**Features**:
 - IR-Parser (String → Opcode-Sequenz)
-- Value Stack & Locals Storage
-- Basis-Opcodes: PUSH, LOADL, STOREL, RET, PRINT
-- Test gegen `01_basic.ir`
+- Value Stack & Locals Storage (dynamic slots)
+- String pool for name interning
+- Basic fetch-decode-execute loop
 
-### Phase 2: Arithmetik & Logik
+**Tested**: Simple arithmetic, printing, local variables
 
-Opcodes:
-- `ADD`, `SUB`, `MUL`, `DIV`, `MOD`
-- `NEG`, `NOT`, `NOTBIT`
-- `BAND`, `BOR`, `BXOR`, `SHL`, `SHR`, `USHR`
-- `NARROWC`, `DUP`, `SWAP`, `DUPP`
-- Test gegen `02_control_flow.ir`, etc.
+### Phase 2: Arithmetik & Logik (not started)
 
-### Phase 3: Control Flow
+### Phase 3: Control Flow (not started)
 
-Opcodes:
-- `LABEL <L>` — Sprungziel definieren
-- `BEQ`, `BNE`, `BLT`, `BGT`, `BLE`, `BGE` — bedingte Sprünge
-- `JMP <L>` — unbedingter Sprung
-- Test gegen Schleifen/If-Then-Else
+### Phase 4: Funktionen (COMPLETE ✅)
 
-### Phase 4: Funktionen
+**Status**: Fully implemented and tested
 
-Opcodes:
+Opcodes implemented:
 - `FUNC <name> <nargs> <nlocals>` — Funktionsanfang
-- `ENDFUNC` — Funktionsende
 - `CALL <name> <nargs>` — Aufruf
 - `RET` — Rückkehr mit Wert
-- Test gegen `01_basic.ir` (recursive square/add_and_square)
+- `ENDFUNC` — Funktionsende (skip marker)
 
-### Phase 5: Pointer & Arrays
+**Technical features**:
+- Function lookup table (built on IR load)
+- Frame management with dynamic local slots (0..255 per frame)
+- Return address stack for nested calls
+- String pool lifetime management (kept alive in VM)
 
-Opcodes:
-- `ADDRG <name>` — Globale Adresse
-- `ADDRL <i>` — Lokale Adresse (Slot)
-- `LOADIND <typtag>` — dereferenzieren
-- `STOREIND <typtag>` — dereferenzieren & speichern
-- `LOADIDX`, `STOREIDX` — Array-Zugriff
-- `PADD`, `PDIFF` — Pointer-Arithmetik
-- Test gegen `03_arrays.ir`, `05_pointers.ir`
+**Tested**: `01_basic.ir` passing (recursive calls: square/add_and_square)
+- Output: `25, 25` ✓ matches qccvm.py reference
 
-### Phase 6: OS-9 Modul
+**Next**: Phase 2 (Arithmetik), then Phase 3 (Control Flow) as they are prereqs for more complex tests
 
-- Wrapper für OS-9 Syscalls
-- Q9-Datei laden/ausführen
-- Integration mit OS-9 Standard Library
+### Phase 5: Pointer & Arrays (not started)
+
+### Phase 6: OS-9 Modul (not started)
 
 ## Test-Strategie
 
@@ -180,6 +179,7 @@ Phase 1: IR-Parser & Basic Stack
 
 ## Autoren & Status
 
-- **Status**: 🔨 Phase 1 (Start)
+- **Status**: 🎯 Phase 4 (Functions) COMPLETE ✅, working on Phase 2 (Arithmetic) next
 - **Zielplattform**: 68k (später auch ARM64, x86_32)
 - **Ziel-OS**: OS-9
+- **Latest Test**: 01_basic.ir (FUNC/CALL/RET) ✅ PASSING

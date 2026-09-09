@@ -90,7 +90,7 @@ static void qrun_lexer_destroy(qrun_lexer_t* lex)
 {
     if (!lex) return;
     fclose(lex->f);
-    qrun_string_pool_destroy(lex->pool);
+    /* Don't destroy pool here - it will be destroyed by VM */
     free(lex);
 }
 
@@ -173,7 +173,8 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
 
 int qrun_ir_parse(const char* filename, 
                   qrun_instruction_t** out_code, 
-                  size_t* out_size)
+                  size_t* out_size,
+                  void** out_pool)
 {
     if (!filename || !out_code || !out_size) {
         return -1;
@@ -209,11 +210,30 @@ int qrun_ir_parse(const char* filename,
             }
             break;
         
+        case OP_FUNC: {
+            if (arg_str) {
+                code[code_idx].arg.func.name = qrun_string_pool_intern(lex->pool, arg_str);
+                char* nargs_str = qrun_next_token(lex);
+                char* nlocals_str = qrun_next_token(lex);
+                code[code_idx].arg.func.nargs = nargs_str ? atoi(nargs_str) : 0;
+                code[code_idx].arg.func.nlocals = nlocals_str ? atoi(nlocals_str) : 0;
+            }
+            break;
+        }
+        
+        case OP_CALL: {
+            if (arg_str) {
+                code[code_idx].arg.call.name = qrun_string_pool_intern(lex->pool, arg_str);
+                char* nargs_str = qrun_next_token(lex);
+                code[code_idx].arg.call.nargs = nargs_str ? atoi(nargs_str) : 0;
+            }
+            break;
+        }
+        
         case OP_LOADG:
         case OP_STOREG:
         case OP_LABEL:
         case OP_JMP:
-        case OP_FUNC:
             if (arg_str) {
                 code[code_idx].arg.s = qrun_string_pool_intern(lex->pool, arg_str);
             }
@@ -230,6 +250,7 @@ int qrun_ir_parse(const char* filename,
     
     *out_code = code;
     *out_size = code_idx;
+    if (out_pool) *out_pool = lex->pool;  /* Would be NULL after destroy */
     return 0;
 
 error:

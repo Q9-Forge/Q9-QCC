@@ -16,7 +16,8 @@ typedef struct {
 /* Parse IR file into instruction stream */
 int qrun_ir_parse(const char* filename, 
                   qrun_instruction_t** out_code, 
-                  size_t* out_size);
+                  size_t* out_size,
+                  void** out_pool);
 
 /* String pool for name interning */
 qrun_string_pool_t* qrun_string_pool_create(void);
