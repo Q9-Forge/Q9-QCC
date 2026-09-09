@@ -70,14 +70,24 @@ structName  = ident .
    verbrauchen sie ("const int a, b;" trifft beide), und tc_fieldconstend
    loescht sie nach der ganzen structField-Zeile. tcPendingConst bleibt
    davon unberuehrt. */
-structField = [ fieldConstKw ] type pointerDecl structDeclarator { "," structDeclarator } ";" .
+structField = [ fieldConstKw ] type structDeclarator { "," structDeclarator } ";" .
 fieldConstKw = "const" .
 /* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
    dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
    siehe tcStructFieldRowLen. Echte 2D-Zugriffe "x.args[i][j]" sind bewusst
    NICHT umgesetzt (kommen im Bootstrap-Ziel nicht vor) und werden
    diagnostiziert statt still falsch gerechnet. */
-structDeclarator = fieldName [ arraySize [ arraySizeN ] ] .
+/* NACHTRAG 2026-09-09 -- Zeiger-Bugfix: pointerDecl stand bis eben VOR der
+   ganzen Deklaratorliste (einmal fuer die gesamte Zeile), nicht pro
+   Deklarator. "char *a, *b;" scheiterte damit still ("*" nach dem Komma
+   passte auf keine Regel), und ein gemischtes "char* a, b;" haette (waere
+   es ueberhaupt geparst worden) faelschlich BEIDE zu Zeigern gemacht --
+   in echtem C ist bei mehreren Deklaratoren pro Zeile jeder Stern SEIN
+   EIGENER, nicht ein gemeinsames Typ-Merkmal. Jetzt bei jedem Deklarator
+   einzeln, siehe tc_pointerdecl (Data/qcc.lextab) fuer die dazugehoerige
+   Aktionsaenderung (Zeigergrad wird pro Aufruf neu gesetzt, nicht
+   aufaddiert). */
+structDeclarator = pointerDecl fieldName [ arraySize [ arraySizeN ] ] .
 fieldName   = ident .
 
 typedefDecl = "typedef" typedefType typedefTargetName ";"
@@ -126,8 +136,17 @@ globalDecl       = externGlobalDecl | plainGlobalDecl .
 externGlobalDecl = "extern" type pointerDecl globalName ";" .
 /* Mehrere Deklaratoren pro Zeile ("static TCType a[512], b[512][64];").
    Die Aufteilung macht tc_globalend selbst am Rohtext -- siehe dort. */
-plainGlobalDecl  = [ staticKw ] [ constKw ] type pointerDecl globalDeclarator { "," globalDeclarator } ";" .
-globalDeclarator = globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
+/* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei varDeclarator/
+   structDeclarator: pointerDecl gehoert VOR jeden einzelnen Deklarator.
+   Anders als dort haengt hier KEINE eigene Aktion an globalDeclarator --
+   tc_globalend (an plainGlobalDecl) liest die ganze Zeile ohnehin aus dem
+   Rohtext neu (s. dort, tcGlobalOne); die Aktion an pointerDecl feuert bei
+   jedem Vorkommen trotzdem mit (tcCurrentType.pointers wird dabei
+   mitgepflegt, aber fuer Globale nirgends gelesen -- unschaedlich). Ohne
+   diese Grammatikaenderung waere "char *a, *b;" schon hier ein Parse-Fehler
+   gewesen, BEVOR tc_globalend je zum Zug kaeme. */
+plainGlobalDecl  = [ staticKw ] [ constKw ] type globalDeclarator { "," globalDeclarator } ";" .
+globalDeclarator = pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
 constKw   = "const" .
 staticKw  = "static" .
 /* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
@@ -281,8 +300,11 @@ defaultLabel = "default" ":" .
    square = 0;") -- das ist die C-Regel; die vorherige Fassung erlaubte ihn
    nur beim letzten. varDeclarator buendelt Name und Initialisierer, damit
    die Wiederholung beide zusammen erfasst. */
-varDecl   = [ constKw ] type pointerDecl varDeclarator { "," varDeclarator } ";" .
-varDeclarator = localDecl [ "=" varInit ] .
+/* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei structDeclarator
+   oben: pointerDecl gehoert VOR jeden einzelnen Deklarator, nicht einmal
+   vor die ganze Liste ("char *a, *b;" war ein stiller Parse-Fehler). */
+varDecl   = [ constKw ] type varDeclarator { "," varDeclarator } ";" .
+varDeclarator = pointerDecl localDecl [ "=" varInit ] .
 /* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
    2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
    struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein

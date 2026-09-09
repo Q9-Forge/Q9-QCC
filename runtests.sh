@@ -1264,6 +1264,22 @@ if command -v python3 >/dev/null 2>&1; then
 		# Session) nie aufgefallen, da kein Test eine Indizierung/einen Aufruf als
 		# rechten Vergleichsoperanden hatte (nur links, z.B. "arr[i] != 0").
 		tc_check 'int main(){ char a[2]; char b[2]; a[0]=65; b[0]=65; if (a[0] != b[0]) { putint(0); } else { putint(1); } b[0]=66; if (a[0] != b[0]) { putint(2); } else { putint(3); } }' '1\n2'
+		# Gefundener und behobener Bug (2026-09-09, docs/ISO_C_GAP_LIST_de.md-Nachtrag
+		# vom Peephole-Bau): mehrere Zeiger-Deklaratoren in EINER Anweisung
+		# ("char *a, *b;") -- pointerDecl stand in varDecl/structField/plainGlobalDecl
+		# nur EINMAL vor der ganzen Deklaratorliste statt pro Deklarator. Bei Lokalen/
+		# Struct-Feldern ein STILLER Parse-Fehler ("*" nach dem Komma passte auf keine
+		# Regel); bei Globalen (eigener Rohtext-Mechanismus in tc_globalend) sogar noch
+		# schlimmer -- STILL FALSCHER Code, weil der wiederverwendete Typ-Praefix den
+		# Stern des ERSTEN Deklarators mitschleppte ("char *a, *b;" wurde zu
+		# "char **b" verdoppelt, "char* a, b;" machte "b" faelschlich zum Zeiger).
+		# Je ein Test pro betroffener Stelle, inkl. GEMISCHTER Deklaratoren (nur der
+		# Name MIT eigenem Stern ist ein Zeiger, wie in echtem C).
+		tc_check 'int main(){ int x=5; int y=9; int *a, *b; a=&x; b=&y; putint(*a); putint(*b); }' '5\n9'
+		tc_check 'int main(){ int x=7; int *a, y=3; a=&x; putint(*a); putint(y); }' '7\n3'
+		tc_check 'struct P { char *a, *b; }; int main(){ struct P p; char ca=65; char cb=66; p.a=&ca; p.b=&cb; putchar(*p.a); putchar(*p.b); }' 'AB'
+		tc_check 'char ca=65; char cb=66; char *a, *b; int main(){ a=&ca; b=&cb; putchar(*a); putchar(*b); }' 'AB'
+		tc_check 'int x=5; int *a, b=3; int main(){ a=&x; putint(*a); putint(b); }' '5\n3'
 		[ $tcfail -eq 0 ] && echo "ok    qcc: $tccount Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder inkl. direkter Indizierung DURCH sie, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
 	else
 		echo "FAIL  qcc: Data/qcc_p.c kompiliert nicht"; fail=1
