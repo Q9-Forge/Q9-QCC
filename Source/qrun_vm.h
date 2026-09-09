@@ -177,6 +177,12 @@ typedef struct {
     size_t heap_size;
     size_t heap_capacity;
     
+    /* Global array handle pointers (for PUSHADDR to reference with offset arithmetic)
+       Maps handle index to actual data pointer in garrays */
+    qrun_value_t** garray_handles;
+    size_t ngarray_handles;
+    size_t garray_handles_capacity;
+    
     /* Global arrays */
     struct {
         char* name;
