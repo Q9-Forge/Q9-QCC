@@ -232,6 +232,9 @@ int qrun_ir_parse(const char* filename,
         case OP_PUSH:
         case OP_LOADL:
         case OP_STOREL:
+        case OP_LOADP:
+        case OP_STOREP:
+        case OP_ADDRL:
             if (arg_str) {
                 code[code_idx].arg.i = atoi(arg_str);
             }
