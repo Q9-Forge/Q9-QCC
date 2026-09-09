@@ -389,3 +389,18 @@ char *qs_cpy(int *a)
 	}
 	return d;
 }
+
+/* --------------------------------------------------------------- tolower */
+/* Fuer Q9-Tools/System/grep -i (Gross-/Kleinschreibung ignorieren, s.
+   ctype.h). Nur der lateinische ASCII-Bereich -- reicht fuer die Kette, wie
+   ueberall sonst kein Vorratsbau. Alles ausserhalb A-Z kommt unveraendert
+   zurueck, wie es C89 fuer tolower() vorschreibt. */
+int qs_lower(int *a)
+{
+	int c;
+
+	c = a[0];
+	if (c >= 'A' && c <= 'Z')
+		return c + 32;
+	return c;
+}

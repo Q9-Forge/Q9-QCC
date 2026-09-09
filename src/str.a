@@ -160,4 +160,17 @@ memcpy:
          move.l  a1,-(a7)
          rts
 
+tolower:
+         move.l  (a7),a1                 * Ruecksprungadresse merken
+         move.l  d1,(a7)                 * Argument 2 an ihren Platz
+         move.l  d0,-(a7)                * Argument 1 darueber
+         move.l  a1,-(a7)                * Ruecksprungadresse sichern
+         pea     4(a7)                   * &args
+         bsr     tc_qs_lower
+         addq.l  #4,a7                   * &args weg
+         move.l  (a7)+,a1                * Ruecksprungadresse zurueck
+         addq.l  #8,a7                   * Argument 1 und 2 weg
+         move.l  a1,-(a7)
+         rts
+
          ends
