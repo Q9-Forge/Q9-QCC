@@ -1221,8 +1221,23 @@ static long tcNum(const char* s, const char* e) {
 static const char* tcNameEnd(const char* s, const char* e) {
 	const char* p = s;
 	/* auch am "-" anhalten: "p->f" (das "-" kann hier nur der Pfeil sein --
-	   ein Minus innerhalb eines Index steht hinter "[", wo schon abgebrochen wird). */
-	while (p < e && *p != '[' && *p != '.' && *p != '-') p++;
+	   ein Minus innerhalb eines Index steht hinter "[", wo schon abgebrochen wird).
+	   Und am Leerraum anhalten (2026-09-09): ISO C erlaubt Leerraum zwischen
+	   JEDEM Token, auch "s . a"/"s. a"/"a [0]" -- ohne diesen Stopp haette die
+	   Namensspanne den Leerraum mitgeschleppt und die Variable waere unter dem
+	   falschen (leerraumbehafteten) Namen gesucht worden. Das eigentliche
+	   Ueberspringen bis zum naechsten Zeichen macht tcSkipWs() an den
+	   Aufrufstellen, die WISSEN wollen was NACH dem Namen kommt. */
+	while (p < e && *p != '[' && *p != '.' && *p != '-' &&
+	       *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') p++;
+	return p;
+}
+/* Leerraum zwischen zwei Token ist in C stets bedeutungslos (s. tcNameEnd oben).
+   Wird nach tcNameEnd() gebraucht, um das Zeichen NACH einem Namen zu pruefen
+   (".", "[", "->"), und nach einem "."/"->"/Index-Ende, um den Feldnamen bzw.
+   die naechste Klammer zu finden. */
+static const char* tcSkipWs(const char* p, const char* e) {
+	while (p < e && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
 	return p;
 }
 static int tcConstIndex(const char* s, const char* e, int* value) {
@@ -2308,8 +2323,14 @@ void tc_neg(const char* start, const char* end) {
 }
 
 void tc_varref(const char* start, const char* end) {
-	const char* nameEnd = tcNameEnd(start, end); int indexed = nameEnd < end;
-	int slot = tcLookupLocal(start, nameEnd), global;
+	/* identEnd = genaues Namensende (fuer Lookup/Diagnose), nameEnd = danach bis
+	   zum naechsten Nicht-Leerraum vorgespult (fuer alle "was kommt als Naechstes"-
+	   Pruefungen unten, s. tcNameEnd/tcSkipWs). "s . a"/"s[ 0]" etc. brauchen beide
+	   getrennt: der Name darf den Leerraum nicht enthalten, die Fortsetzung muss ihn
+	   ueberspringen koennen. */
+	const char* identEnd = tcNameEnd(start, end);
+	const char* nameEnd = tcSkipWs(identEnd, end); int indexed = nameEnd < end;
+	int slot = tcLookupLocal(start, identEnd), global;
 	TCType globalType, globalPointee;
 	tcCopy(tcDiagVarRef, start, end);
 	/* Die Grammatik erlaubt seit 2026-07-25 "ident [index...] [.member...]" als SEQUENZ
@@ -2324,7 +2345,7 @@ void tc_varref(const char* start, const char* end) {
 	   spezifischen Zweig ablehnen, ausser fuer die ZWEI Kombinationen, die tatsaechlich
 	   gebaut sind (lokales, als Array deklariertes struct; lokale Pointer-auf-struct-
 	   Variable, siehe naechster Block -- Letzteres seit 2026-07-25 fuer Milestone B). */
-	global = slot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
+	global = slot < 0 ? tcLookupGlobal(start, identEnd) : -1;
 	/* TCType ist ein 4-Byte-Wert. Nicht einen structwertigen Funktionsrueckgabewert
 	   direkt als Argument an tcPointee weiterreichen: der Bootstrap-68k-Pfad kann
 	   diese verschachtelte Uebergabe nicht korrekt materialisieren. */
@@ -2352,7 +2373,7 @@ void tc_varref(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcLocalTypes[slot].structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
@@ -2379,7 +2400,7 @@ void tc_varref(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcLocalTypes[slot].structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
@@ -2412,7 +2433,7 @@ void tc_varref(const char* start, const char* end) {
 	   Ein Array-Feld liefert wie ueberall dessen ADRESSE statt eines Wertes. */
 	if (indexed && *nameEnd == '-' && nameEnd + 1 < end && nameEnd[1] == '>') {
 		TCType pt;
-		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		const char* fieldStart = tcSkipWs(nameEnd + 2, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int sid, fi;
 		/* Kein Fehler, wenn die Basis nicht passt: der Zweig wird allein am
 		   Rohtext ("-" gefolgt von ">") erkannt, und ein Fehlalarm darf keine
@@ -2487,7 +2508,7 @@ void tc_varref(const char* start, const char* end) {
 	tcArrowSkip: ;
 	if (slot >= 0 && indexed && *nameEnd == '.' && tcLocalTypes[slot].base == 's') {
 		int sid = tcLocalTypes[slot].structId - 1;
-		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		const char* fieldStart = tcSkipWs(nameEnd + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
@@ -2557,11 +2578,11 @@ void tc_varref(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = globalPointee.structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
-			tcCopy(gname, start, nameEnd);
+			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
 			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
 			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
@@ -2580,11 +2601,11 @@ void tc_varref(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
-			tcCopy(gname, start, nameEnd);
+			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
 			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 && tcStructFieldArrayLen[sid][fi] > 0;
 			if (fieldEnd < end && *fieldEnd == '[' && !chain) {
@@ -2605,10 +2626,10 @@ void tc_varref(const char* start, const char* end) {
 	}
 	if (global >= 0 && indexed && *nameEnd == '.' && tcGlobalTypes[global].base == 's') {
 		char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
-		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		const char* fieldStart = tcSkipWs(nameEnd + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
-		tcCopy(gname, start, nameEnd);
+		tcCopy(gname, start, identEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
 		{
 			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
@@ -2698,8 +2719,8 @@ void tc_varref(const char* start, const char* end) {
 			TC_TYPE_PUSH(tcLocalTypes[slot].base, tcLocalTypes[slot].pointers,
 			             tcLocalTypes[slot].structId, tcLocalTypes[slot].pointeeConst);
 		}
-	} else if ((global = tcLookupGlobal(start, nameEnd)) >= 0) {
-		char name[32]; TCType globalValueType = tcGlobalTypes[global]; tcCopy(name, start, nameEnd);
+	} else if ((global = tcLookupGlobal(start, identEnd)) >= 0) {
+		char name[32]; TCType globalValueType = tcGlobalTypes[global]; tcCopy(name, start, identEnd);
 		if (tcGlobalArrayLen[global]) {
 			if (!indexed) {
 				globalValueType.pointers++; printf("PUSHADDR G %s\n", name); tcTypePush(globalValueType); return;
@@ -2738,7 +2759,7 @@ void tc_varref(const char* start, const char* end) {
 		else { printf("LOADG%s %s\n", tcIsPointer(globalValueType) ? "P" : tcTypeTag(globalValueType) == 'i' ? "" : "C", name); tcTypePush(globalValueType); }
 	}
 	else {
-		int ec = tcLookupEnumConst(start, nameEnd);
+		int ec = tcLookupEnumConst(start, identEnd);
 		int fnv;
 		if (ec >= 0 && !indexed) { printf("PUSH %ld\n", tcEnumConstValues[ec]); tcTypePush(tcMakeType('i', 0)); }
 		/* Ein blosser Funktionsname AUSSERHALB eines Aufrufs ist sein eigener
@@ -2749,18 +2770,21 @@ void tc_varref(const char* start, const char* end) {
 		   Funktionszeiger mit der Signatur der Funktion; sie wird bei Bedarf
 		   angelegt, damit auch Funktionen ohne passendes typedef zuweisbar
 		   bleiben. */
-		else if (!indexed && (fnv = tcLookupFunction2(start, nameEnd)) >= 0) {
+		else if (!indexed && (fnv = tcLookupFunction2(start, identEnd)) >= 0) {
 			int sig = tcFnSigForFunction(fnv);
 			printf("PUSHFN %s\n", tcFunctionNames[fnv]);
 			tcTypePush(sig >= 0 ? tcMakeFnPtr(sig) : tcBadType());
 		}
-		else { tcErrAt(start); fprintf(stderr, "unknown variable '%.*s'\n", (int)(nameEnd - start), start); actionErrors++; }
+		else { tcErrAt(start); fprintf(stderr, "unknown variable '%.*s'\n", (int)(identEnd - start), start); actionErrors++; }
 	}
 }
 
 void tc_addressref(const char* start, const char* end) {
-	const char* name = start + 1; const char* nameEnd = tcNameEnd(name, end); int indexed = nameEnd < end;
-	int slot = tcLookupLocal(name, nameEnd), global = tcLookupGlobal(name, nameEnd); TCType valueType;
+	const char* name = start + 1;
+	/* identEnd/nameEnd: siehe tc_varref -- derselbe Leerraum-Grund ("& a [0]"). */
+	const char* identEnd = tcNameEnd(name, end);
+	const char* nameEnd = tcSkipWs(identEnd, end); int indexed = nameEnd < end;
+	int slot = tcLookupLocal(name, identEnd), global = tcLookupGlobal(name, identEnd); TCType valueType;
 	if (slot >= 0) {
 		valueType = tcLocalType(slot);
 		if (indexed) {
@@ -2779,7 +2803,7 @@ void tc_addressref(const char* start, const char* end) {
 		tcTypePush(tcPointerTo(valueType)); return;
 	}
 	if (global >= 0) {
-		char globalName[32]; valueType = tcGlobalType(global); tcCopy(globalName, name, nameEnd);
+		char globalName[32]; valueType = tcGlobalType(global); tcCopy(globalName, name, identEnd);
 		if (indexed) {
 			if (tcGlobalArrayLen[global]) { tcCheckConstIndex(name, end, tcGlobalArrayLen[global]); printf("PUSHADDR G %s\n", globalName); }
 			else if (tcIsPointer(valueType)) { valueType = tcPointee(valueType); printf("LOADGP %s\n", globalName); }
@@ -2788,7 +2812,7 @@ void tc_addressref(const char* start, const char* end) {
 		}
 		printf("ADDRG %s\n", globalName); tcTypePush(tcPointerTo(valueType)); return;
 	}
-	tcErrAt(start); fprintf(stderr, "unknown variable in address expression: '%.*s'\n", (int)(nameEnd - name), name); actionErrors++;
+	tcErrAt(start); fprintf(stderr, "unknown variable in address expression: '%.*s'\n", (int)(identEnd - name), name); actionErrors++;
 }
 
 void tc_derefref(const char* start, const char* end) {
@@ -3062,6 +3086,7 @@ void tc_expr(const char* start, const char* end) {
 
 void tc_target(const char* start, const char* end) {
 	const char* nameEnd;
+	const char* identEnd;
 	int global;
 	/* bisheriges Ziel retten -- die Kettenzuweisung braucht beide (siehe tc_chainassign) */
 	tcPrevTargetSlot = tcTargetSlot;
@@ -3071,9 +3096,11 @@ void tc_target(const char* start, const char* end) {
 	tcPrevTargetIndirect = tcTargetIndirect;
 	tcCopy(tcPrevTargetGlobal, tcTargetGlobal, tcTargetGlobal + strlen(tcTargetGlobal));
 
-	nameEnd = tcNameEnd(start, end);
+	/* identEnd/nameEnd: siehe tc_varref -- derselbe Leerraum-Grund ("s .a"/"s. a"/"a [0]"). */
+	identEnd = tcNameEnd(start, end);
+	nameEnd = tcSkipWs(identEnd, end);
 	tcTargetIsArray = nameEnd < end;
-	tcTargetSlot = tcLookupLocal(start, nameEnd);
+	tcTargetSlot = tcLookupLocal(start, identEnd);
 	tcTargetIsGlobal = 0; tcTargetIndirect = 0;
 	tcTargetType = tcTargetSlot >= 0 ? tcLocalType(tcTargetSlot) : tcMakeType('i', 0);
 	if (tcTargetSlot >= 0 && tcLocalConst[tcTargetSlot]) {
@@ -3084,7 +3111,7 @@ void tc_target(const char* start, const char* end) {
 	   Schutz wuerden die Index-Zweige weiter unten die "."-Fortsetzung stillschweigend
 	   ignorieren statt sauber zu diagnostizieren. */
 	{
-		int targetGlobal = tcTargetSlot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
+		int targetGlobal = tcTargetSlot < 0 ? tcLookupGlobal(start, identEnd) : -1;
 		TCType targetGlobalType = targetGlobal >= 0 ? tcGlobalTypes[targetGlobal] : tcMakeType('i', 0);
 		TCType targetGlobalPointee = targetGlobalType;
 		if (targetGlobalPointee.pointers) targetGlobalPointee.pointers--; else targetGlobalPointee = tcMakeType('i', 0);
@@ -3108,9 +3135,9 @@ void tc_target(const char* start, const char* end) {
 	   Feldadresse = Zeigerwert + Feldoffset, ohne Index; tcTargetIndirect=1
 	   laesst tc_assign daraus ein STOREIND machen. */
 	if (tcTargetIsArray && *nameEnd == '-' && nameEnd + 1 < end && nameEnd[1] == '>') {
-		int gslot = tcTargetSlot < 0 ? tcLookupGlobal(start, nameEnd) : -1;
+		int gslot = tcTargetSlot < 0 ? tcLookupGlobal(start, identEnd) : -1;
 		TCType pt;
-		const char* fieldStart = nameEnd + 2; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		const char* fieldStart = tcSkipWs(nameEnd + 2, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int sid, fi;
 		/* siehe tc_varref: bei nicht passender Basis nicht melden, durchfallen.
 		   Kein tcPointee(pt): der Bootstrap kann dessen Struct-Rueckgabe nicht
@@ -3181,7 +3208,7 @@ void tc_target(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcTargetType.structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
@@ -3217,7 +3244,7 @@ void tc_target(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			int sid = tcTargetType.structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
@@ -3252,7 +3279,7 @@ void tc_target(const char* start, const char* end) {
 	}
 	if (tcTargetSlot >= 0 && tcTargetIsArray && *nameEnd == '.' && tcTargetType.base == 's') {
 		int sid = tcTargetType.structId - 1;
-		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		const char* fieldStart = tcSkipWs(nameEnd + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
@@ -3323,7 +3350,7 @@ void tc_target(const char* start, const char* end) {
 	/* Globale structs (2026-07-25): dieselben drei Muster wie in tc_varref, schreibend --
 	   siehe dort fuer die vollstaendige Erklaerung. tcTargetIndirect=1 laesst tc_assign
 	   denselben STOREIND-Pfad nehmen wie bei den bereits vorhandenen lokalen Faellen. */
-	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
+	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, identEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
 	    tcGlobalTypes[global].pointers) {
 		TCType globalPointee = tcGlobalTypes[global];
 		globalPointee.pointers--;
@@ -3331,11 +3358,11 @@ void tc_target(const char* start, const char* end) {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = globalPointee.structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
-			tcCopy(gname, start, nameEnd);
+			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
@@ -3362,16 +3389,16 @@ void tc_target(const char* start, const char* end) {
 		}
 		}
 	}
-	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
+	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, identEnd)) >= 0 && tcTargetIsArray && *nameEnd == '[' &&
 	    tcGlobalArrayLen[global] > 0 && tcGlobalTypes[global].base == 's') {
 		const char* afterIdx = tcSkipAllIndexes(nameEnd, end);
 		if (afterIdx < end && *afterIdx == '.') {
 			char gname[32]; int sid = tcGlobalType(global).structId - 1;
-			const char* fieldStart = afterIdx + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int structSize = tcStructByteSize[sid];
 			int chain;
-			tcCopy(gname, start, nameEnd);
+			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
@@ -3401,13 +3428,13 @@ void tc_target(const char* start, const char* end) {
 			return;
 		}
 	}
-	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, nameEnd)) >= 0 && tcTargetIsArray && *nameEnd == '.' &&
+	if (tcTargetSlot < 0 && (global = tcLookupGlobal(start, identEnd)) >= 0 && tcTargetIsArray && *nameEnd == '.' &&
 	    tcGlobalTypes[global].base == 's') {
 		char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
-		const char* fieldStart = nameEnd + 1; const char* fieldEnd = tcWordEnd(fieldStart, end);
+		const char* fieldStart = tcSkipWs(nameEnd + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 		int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 		int hasIndex = fieldEnd < end && *fieldEnd == '[';
-		tcCopy(gname, start, nameEnd);
+		tcCopy(gname, start, identEnd);
 		if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 		/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 		   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
@@ -3465,9 +3492,9 @@ void tc_target(const char* start, const char* end) {
 		tcTargetIndirect = 1;
 		return;
 	}
-	if (tcTargetSlot < 0 && tcLookupGlobal(start, nameEnd) >= 0) {
-		int global = tcLookupGlobal(start, nameEnd);
-		tcCopy(tcTargetGlobal, start, nameEnd);
+	if (tcTargetSlot < 0 && tcLookupGlobal(start, identEnd) >= 0) {
+		int global = tcLookupGlobal(start, identEnd);
+		tcCopy(tcTargetGlobal, start, identEnd);
 		tcTargetIsGlobal = 1;
 		tcTargetType = tcGlobalTypes[global];
 		if (tcGlobalConst[global]) { tcErrAt(start); fprintf(stderr, "cannot assign to const variable\n"); actionErrors++; }
