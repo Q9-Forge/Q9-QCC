@@ -84,8 +84,17 @@ typedef struct {
     qrun_opcode_t op;
     
     union {
-        int32_t   i;        /* integer argument */
-        char*     s;        /* string argument (name, label) */
+        int32_t   i;                    /* integer argument */
+        char*     s;                    /* string argument (name, label) */
+        struct {
+            char* name;
+            int nargs;
+            int nlocals;
+        } func;                         /* FUNC arguments */
+        struct {
+            char* name;
+            int nargs;
+        } call;                         /* CALL arguments */
     } arg;
 } qrun_instruction_t;
 
@@ -96,10 +105,22 @@ typedef struct {
     size_t code_size;
     size_t pc;              /* Program counter */
     
+    /* Function lookup table */
+    struct {
+        char* name;
+        size_t addr;        /* instruction index */
+        int nargs;
+        int nlocals;
+    }* funcs;
+    size_t nfuncs;
+    
     /* Value stack */
     qrun_stackval_t* stack;
     size_t stack_size;
     size_t sp;              /* Stack pointer (next free) */
+    
+    /* String pool (for IR strings, kept alive) */
+    void* string_pool;      /* qrun_string_pool_t* */
     
     /* Globals storage (flat memory) */
     qrun_value_t* globals;
@@ -108,8 +129,8 @@ typedef struct {
     /* Call stack / local frames */
     struct {
         size_t code_addr;   /* return address (instruction index) */
-        qrun_value_t* locals;  /* local variables for this frame */
-        size_t nlocals;
+        qrun_value_t* locals;  /* local variables for this frame (sparse, up to 256) */
+        size_t nlocals_allocated;  /* size of locals array */
     }* frames;
     size_t frame_size;
     size_t fp;              /* Frame pointer (next free) */
