@@ -55,6 +55,7 @@ qrun_vm_t* qrun_vm_create(void)
     
     /* Allocate global array handles */
     vm->garray_handles = malloc(64 * sizeof(vm->garray_handles[0]));
+    vm->garray_handle_indices = malloc(64 * sizeof(vm->garray_handle_indices[0]));
     vm->ngarray_handles = 0;
     vm->garray_handles_capacity = 64;
     
@@ -81,6 +82,7 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     free(vm->named_globals);
     free(vm->heap);
     free(vm->garray_handles);
+    free(vm->garray_handle_indices);
     
     /* Destroy frame local arrays */
     for (size_t i = 0; i < vm->fp; i++) {
@@ -153,11 +155,31 @@ int qrun_vm_load_ir(qrun_vm_t* vm, const char* filename)
                 return -1;
             }
             
+            /* Allocate array with proper size accounting for element type
+               size = number of elements
+               total_bytes = size * tsize
+               We store data as qrun_value_t* but account for byte alignment */
+            size_t total_bytes = size * tsize;
+            size_t nvalues = (total_bytes + sizeof(qrun_value_t) - 1) / sizeof(qrun_value_t);
+            
             vm->garrays[vm->ngarrays].name = (char*)name;
-            vm->garrays[vm->ngarrays].data = calloc(size, sizeof(qrun_value_t));
-            vm->garrays[vm->ngarrays].size = size;
+            vm->garrays[vm->ngarrays].data = calloc(nvalues, sizeof(qrun_value_t));
+            vm->garrays[vm->ngarrays].size = size;  /* Keep size as element count */
             vm->garrays[vm->ngarrays].type_size = tsize;
             vm->ngarrays++;
+        } else if (vm->code[i].op == OP_GLOBAL) {
+            /* Register global variable at load time */
+            const char* name = vm->code[i].arg.global.name;
+            int32_t init_val = vm->code[i].arg.global.init;
+            
+            if (vm->nglobals >= 64) {
+                fprintf(stderr, "Too many global variables\n");
+                return -1;
+            }
+            
+            vm->named_globals[vm->nglobals].name = name;
+            vm->named_globals[vm->nglobals].value = init_val;
+            vm->nglobals++;
         }
     }
     
@@ -320,35 +342,43 @@ int qrun_vm_run(qrun_vm_t* vm)
         case OP_LOADG: {
             const char* name = instr->arg.s;
             qrun_value_t value = 0;
+            int found = 0;
             
-            /* Search named globals first (__ptrsize, etc.) */
+            /* Search named globals */
             for (size_t i = 0; i < vm->nglobals; i++) {
                 if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
                     value = vm->named_globals[i].value;
                     qrun_push_value(vm, value);
+                    found = 1;
                     break;
                 }
             }
             
-            fprintf(stderr, "LOADG: '%s' not found in named globals\n", name);
-            vm->halted = 1;
+            if (!found) {
+                fprintf(stderr, "LOADG: '%s' not found in named globals\n", name);
+                vm->halted = 1;
+            }
             break;
         }
         
         case OP_STOREG: {
             const char* name = instr->arg.s;
             qrun_value_t v = qrun_pop_value(vm);
+            int found = 0;
             
             /* Search named globals */
             for (size_t i = 0; i < vm->nglobals; i++) {
                 if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
                     vm->named_globals[i].value = v;
+                    found = 1;
                     break;
                 }
             }
             
-            fprintf(stderr, "STOREG: '%s' not found in named globals\n", name);
-            vm->halted = 1;
+            if (!found) {
+                fprintf(stderr, "STOREG: '%s' not found in named globals\n", name);
+                vm->halted = 1;
+            }
             break;
         }
         
@@ -356,18 +386,22 @@ int qrun_vm_run(qrun_vm_t* vm)
             /* Load global pointer - same as LOADG (values are just ints) */
             const char* name = instr->arg.s;
             qrun_value_t value = 0;
+            int found = 0;
             
             /* Search named globals first */
             for (size_t i = 0; i < vm->nglobals; i++) {
                 if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
                     value = vm->named_globals[i].value;
                     qrun_push_value(vm, value);
+                    found = 1;
                     break;
                 }
             }
             
-            fprintf(stderr, "LOADGP: '%s' not found in named globals\n", name);
-            vm->halted = 1;
+            if (!found) {
+                fprintf(stderr, "LOADGP: '%s' not found in named globals\n", name);
+                vm->halted = 1;
+            }
             break;
         }
         
@@ -375,17 +409,21 @@ int qrun_vm_run(qrun_vm_t* vm)
             /* Store global pointer - same as STOREG (values are just ints) */
             const char* name = instr->arg.s;
             qrun_value_t v = qrun_pop_value(vm);
+            int found = 0;
             
             /* Search named globals */
             for (size_t i = 0; i < vm->nglobals; i++) {
                 if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
                     vm->named_globals[i].value = v;
+                    found = 1;
                     break;
                 }
             }
             
-            fprintf(stderr, "STOREGP: '%s' not found in named globals\n", name);
-            vm->halted = 1;
+            if (!found) {
+                fprintf(stderr, "STOREGP: '%s' not found in named globals\n", name);
+                vm->halted = 1;
+            }
             break;
         }
         
@@ -847,6 +885,7 @@ int qrun_vm_run(qrun_vm_t* vm)
         case OP_ADDRG: {
             /* Push address of global named variable (searches both named_globals and garrays) */
             const char* name = instr->arg.s;
+            int found = 0;
             
             /* Search global arrays first */
             for (size_t i = 0; i < vm->ngarrays; i++) {
@@ -855,28 +894,23 @@ int qrun_vm_run(qrun_vm_t* vm)
                     if (vm->ngarray_handles >= vm->garray_handles_capacity) {
                         fprintf(stderr, "ADDRG: too many global array handles\n");
                         vm->halted = 1;
+                        found = 1;  /* Mark as found to skip named_globals search */
                         break;
                     }
                     vm->garray_handles[vm->ngarray_handles] = vm->garrays[i].data;
+                    vm->garray_handle_indices[vm->ngarray_handles] = (int)i;  /* Store garray_idx */
                     int handle_idx = (int)vm->ngarray_handles;
                     vm->ngarray_handles++;
                     
                     /* Encode as: block_id = 256 + handle_idx, offset = 0 */
                     qrun_value_t addr = -((256 + handle_idx) * 100000 + 1000);
                     qrun_push_value(vm, addr);
-                    break;
-                }
-            }
-            
-            /* If not found in garrays, search named globals */
-            int found = 0;
-            for (size_t i = 0; i < vm->ngarrays; i++) {
-                if (vm->garrays[i].name && strcmp(vm->garrays[i].name, name) == 0) {
                     found = 1;
                     break;
                 }
             }
             
+            /* If not found in garrays, search named globals */
             if (!found) {
                 for (size_t i = 0; i < vm->nglobals; i++) {
                     if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
@@ -963,14 +997,11 @@ int qrun_vm_run(qrun_vm_t* vm)
                     vm->halted = 1;
                     break;
                 }
-                /* Dereference with offset: base_ptr[offset / sizeof(qrun_value_t)] */
-                int idx = offset / sizeof(qrun_value_t);
-                if (idx < 0) {
-                    fprintf(stderr, "LOADIND: negative array index %d\n", idx);
-                    vm->halted = 1;
-                    break;
-                }
-                qrun_push_value(vm, base_ptr[idx]);
+                /* Dereference with byte offset
+                   offset is in bytes, cast to char* for byte indexing */
+                char* byte_ptr = (char*)base_ptr;
+                qrun_value_t value = (unsigned char)byte_ptr[offset];
+                qrun_push_value(vm, value);
             } else if (block_id == 2) {
                 /* Pointer to local (from ADDRL) - offset is heap index */
                 int heap_idx = offset;
@@ -1027,14 +1058,10 @@ int qrun_vm_run(qrun_vm_t* vm)
                     vm->halted = 1;
                     break;
                 }
-                /* Store with offset: base_ptr[offset / sizeof(qrun_value_t)] = value */
-                int idx = offset / sizeof(qrun_value_t);
-                if (idx < 0) {
-                    fprintf(stderr, "STOREIND: negative array index %d\n", idx);
-                    vm->halted = 1;
-                    break;
-                }
-                base_ptr[idx] = value;
+                /* Store with byte offset
+                   offset is in bytes, cast to char* for byte indexing */
+                char* byte_ptr = (char*)base_ptr;
+                byte_ptr[offset] = (unsigned char)value;
             } else if (block_id == 2) {
                 /* Pointer to local (from ADDRL) - offset is heap index */
                 int heap_idx = offset;
@@ -1271,10 +1298,24 @@ int qrun_vm_run(qrun_vm_t* vm)
                 break;
             }
             
-            /* Store value in array */
-            vm->garrays[garray_idx].data[index] = value;
+            /* Store value in array at byte offset
+               index is element number, convert to byte offset
+               Cast to char* for byte-level access */
+            int tsize = vm->garrays[garray_idx].type_size;
+            char* byte_ptr = (char*)vm->garrays[garray_idx].data;
+            byte_ptr[index * tsize] = (unsigned char)value;
             break;
         }
+        
+        case OP_GLOBALDECL:
+            /* GLOBALDECL - external global declaration (no-op at runtime) */
+            /* Used for multi-file linking declarations */
+            break;
+        
+        case OP_FUNCDECL:
+            /* FUNCDECL - external function declaration (no-op at runtime) */
+            /* Used for multi-file linking declarations */
+            break;
         
         case OP_HALT:
             vm->halted = 1;

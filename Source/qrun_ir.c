@@ -199,6 +199,8 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "PRINTC") == 0)    return OP_PRINTC;
     if (strcmp(s, "GLOBAL") == 0)    return OP_GLOBAL;
     if (strcmp(s, "GINIT") == 0)     return OP_GINIT;
+    if (strcmp(s, "GLOBALDECL") == 0) return OP_GLOBALDECL;
+    if (strcmp(s, "FUNCDECL") == 0)  return OP_FUNCDECL;
     if (strcmp(s, "OK") == 0)        return OP_HALT;
     
     return -1;
@@ -371,6 +373,45 @@ int qrun_ir_parse(const char* filename,
                 code[code_idx].arg.ginit.name = name;
                 code[code_idx].arg.ginit.index = index;
                 code[code_idx].arg.ginit.value = value;
+            }
+            break;
+        }
+        
+        case OP_GLOBAL: {
+            /* GLOBAL <name> <scope> <type> <init> */
+            if (arg_str) {
+                char* name = qrun_string_pool_intern(lex->pool, arg_str);
+                char* scope_str = qrun_next_token(lex);
+                int scope = scope_str ? atoi(scope_str) : 0;
+                char* type_str = qrun_next_token(lex);
+                if (type_str) type_str = qrun_string_pool_intern(lex->pool, type_str);
+                char* init_str = qrun_next_token(lex);
+                int32_t init_val = init_str ? (int32_t)atoi(init_str) : 0;
+                
+                code[code_idx].arg.global.name = name;
+                code[code_idx].arg.global.scope = scope;
+                code[code_idx].arg.global.type = type_str;
+                code[code_idx].arg.global.init = init_val;
+            }
+            break;
+        }
+        
+        case OP_GLOBALDECL: {
+            /* GLOBALDECL <name> <type> - external global declaration (no-op) */
+            /* Just parse and discard - these are for multi-file linking */
+            if (arg_str) {
+                char* type_str = qrun_next_token(lex);
+                /* Type is discarded - we just ignore external declarations */
+            }
+            break;
+        }
+        
+        case OP_FUNCDECL: {
+            /* FUNCDECL <name> <nargs> - external function declaration (no-op) */
+            /* Just parse and discard - these are for multi-file linking */
+            if (arg_str) {
+                char* nargs_str = qrun_next_token(lex);
+                /* nargs is discarded - we just ignore external declarations */
             }
             break;
         }
