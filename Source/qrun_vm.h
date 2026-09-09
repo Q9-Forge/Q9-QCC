@@ -87,6 +87,10 @@ typedef enum {
     OP_STOREP,      /* STOREP <slot> - store pointer to local */
     OP_LOADIND,     /* LOADIND <type> - dereference and load */
     OP_STOREIND,    /* STOREIND <type> - dereference and store */
+    OP_IPADD,       /* IPADD <type> - pointer += int * sizeof(type) */
+    OP_PADD,        /* PADD <type> - pointer + pointer (offset add) */
+    OP_PCMPNE,      /* PCMPNE - compare pointers for inequality */
+    OP_PUSHADDR,    /* PUSHADDR <scope> <slot/name> <offset> */
     
     /* IO/Debug */
     OP_PRINT,       /* PRINT - pop and print top value */
@@ -167,6 +171,11 @@ typedef struct {
     }* named_globals;
     size_t nglobals;
     size_t nglobals_capacity;
+    
+    /* Pointer heap - simple memory model for pointers */
+    qrun_value_t* heap;
+    size_t heap_size;
+    size_t heap_capacity;
     
     /* Global arrays */
     struct {

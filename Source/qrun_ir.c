@@ -186,6 +186,10 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "STOREP") == 0)    return OP_STOREP;
     if (strcmp(s, "LOADIND") == 0)   return OP_LOADIND;
     if (strcmp(s, "STOREIND") == 0)  return OP_STOREIND;
+    if (strcmp(s, "IPADD") == 0)     return OP_IPADD;
+    if (strcmp(s, "PADD") == 0)      return OP_PADD;
+    if (strcmp(s, "PCMPNE") == 0)    return OP_PCMPNE;
+    if (strcmp(s, "PUSHADDR") == 0)  return OP_PUSHADDR;
     if (strcmp(s, "PRINT") == 0)     return OP_PRINT;
     if (strcmp(s, "PRINTC") == 0)    return OP_PRINTC;
     if (strcmp(s, "GLOBAL") == 0)    return OP_GLOBAL;
