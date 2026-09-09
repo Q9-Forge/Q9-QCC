@@ -101,6 +101,7 @@ typedef enum {
     
     /* Declarations */
     OP_GLOBAL,      /* GLOBAL <name> [init] */
+    OP_GINIT,       /* GINIT <name> <index> <value> - initialize global array element */
     
     /* Sentinel */
     OP_HALT
@@ -128,6 +129,11 @@ typedef struct {
             int size;                   /* array size (for LARRAY) */
             char* name;                 /* name (for GARRAY, LOADIDX, STOREIDX) */
         } array;                        /* Array operations */
+        struct {
+            char* name;                 /* global array name */
+            int index;                  /* array index */
+            int32_t value;              /* value to initialize */
+        } ginit;                        /* GINIT - global array initialization */
     } arg;
 } qrun_instruction_t;
 
