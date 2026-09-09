@@ -26,11 +26,11 @@
 
  <structName>                     = <ident> .
 
- <structField>                    = [ <fieldConstKw> ] <type> <pointerDecl> <structDeclarator> { "," <structDeclarator> } ";" .
+ <structField>                    = [ <fieldConstKw> ] <type> <structDeclarator> { "," <structDeclarator> } ";" .
 
  <fieldConstKw>                   = "const" .
 
- <structDeclarator>               = <fieldName> [ <arraySize> [ <arraySizeN> ] ] .
+ <structDeclarator>               = <pointerDecl> <fieldName> [ <arraySize> [ <arraySizeN> ] ] .
 
  <fieldName>                      = <ident> .
 
@@ -62,9 +62,9 @@
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
 
- <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <pointerDecl> <globalDeclarator> { "," <globalDeclarator> } ";" .
+ <plainGlobalDecl>                = [ <staticKw> ] [ <constKw> ] <type> <globalDeclarator> { "," <globalDeclarator> } ";" .
 
- <globalDeclarator>               = <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] .
+ <globalDeclarator>               = <pointerDecl> <globalName> [ <arraySize> { <arraySizeN> } ] [ "=" <globalInit> ] .
 
  <constKw>                        = "const" .
 
@@ -187,9 +187,9 @@
 
  <defaultLabel>                   = "default" ":" .
 
- <varDecl>                        = [ <constKw> ] <type> <pointerDecl> <varDeclarator> { "," <varDeclarator> } ";" .
+ <varDecl>                        = [ <constKw> ] <type> <varDeclarator> { "," <varDeclarator> } ";" .
 
- <varDeclarator>                  = <localDecl> [ "=" <varInit> ] .
+ <varDeclarator>                  = <pointerDecl> <localDecl> [ "=" <varInit> ] .
 
  <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
@@ -621,17 +621,17 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 43  | <structName>                    | NTS | <ident>                         | 611  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 44  | <structField>                   | NTS | <fieldConstKw>                  | 51   | 45 | 45 |
+| 44  | <structField>                   | NTS | <fieldConstKw>                  | 50   | 45 | 45 |
 | 45  |                                 | NTS | <type>                          | 589  | 46 | F  |
-| 46  |                                 | NTS | <pointerDecl>                   | 604  | 47 | E  |
-| 47  |                                 | NTS | <structDeclarator>              | 52   | 48 | E  |
-| 48  |                                 | TS  | ","                             | -    | 49 | 50 |
-| 49  |                                 | NTS | <structDeclarator>              | 52   | 48 | E  |
-| 50  |                                 | TS  | ";"                             | -    | T  | E  |
+| 46  |                                 | NTS | <structDeclarator>              | 51   | 47 | E  |
+| 47  |                                 | TS  | ","                             | -    | 48 | 49 |
+| 48  |                                 | NTS | <structDeclarator>              | 51   | 47 | E  |
+| 49  |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 51  | <fieldConstKw>                  | TS  | "const"                         | -    | T  | F  |
+| 50  | <fieldConstKw>                  | TS  | "const"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 52  | <structDeclarator>              | NTS | <fieldName>                     | 55   | 53 | F  |
+| 51  | <structDeclarator>              | NTS | <pointerDecl>                   | 604  | 52 | F  |
+| 52  |                                 | NTS | <fieldName>                     | 55   | 53 | E  |
 | 53  |                                 | NTS | <arraySize>                     | 114  | 54 | T  |
 | 54  |                                 | NTS | <arraySizeN>                    | 117  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -689,13 +689,13 @@
 | 93  | <plainGlobalDecl>               | NTS | <staticKw>                      | 107  | 94 | 94 |
 | 94  |                                 | NTS | <constKw>                       | 106  | 95 | 95 |
 | 95  |                                 | NTS | <type>                          | 589  | 96 | F  |
-| 96  |                                 | NTS | <pointerDecl>                   | 604  | 97 | E  |
-| 97  |                                 | NTS | <globalDeclarator>              | 101  | 98 | E  |
-| 98  |                                 | TS  | ","                             | -    | 99 | 100|
-| 99  |                                 | NTS | <globalDeclarator>              | 101  | 98 | E  |
-| 100 |                                 | TS  | ";"                             | -    | T  | E  |
+| 96  |                                 | NTS | <globalDeclarator>              | 100  | 97 | E  |
+| 97  |                                 | TS  | ","                             | -    | 98 | 99 |
+| 98  |                                 | NTS | <globalDeclarator>              | 100  | 97 | E  |
+| 99  |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 101 | <globalDeclarator>              | NTS | <globalName>                    | 587  | 102| F  |
+| 100 | <globalDeclarator>              | NTS | <pointerDecl>                   | 604  | 101| F  |
+| 101 |                                 | NTS | <globalName>                    | 587  | 102| E  |
 | 102 |                                 | NTS | <arraySize>                     | 114  | 103| 104|
 | 103 |                                 | NTS | <arraySizeN>                    | 117  | 103| 104|
 | 104 |                                 | TS  | "="                             | -    | 105| T  |
@@ -877,13 +877,13 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 234 | <varDecl>                       | NTS | <constKw>                       | 106  | 235| 235|
 | 235 |                                 | NTS | <type>                          | 589  | 236| F  |
-| 236 |                                 | NTS | <pointerDecl>                   | 604  | 237| E  |
-| 237 |                                 | NTS | <varDeclarator>                 | 241  | 238| E  |
-| 238 |                                 | TS  | ","                             | -    | 239| 240|
-| 239 |                                 | NTS | <varDeclarator>                 | 241  | 238| E  |
-| 240 |                                 | TS  | ";"                             | -    | T  | E  |
+| 236 |                                 | NTS | <varDeclarator>                 | 240  | 237| E  |
+| 237 |                                 | TS  | ","                             | -    | 238| 239|
+| 238 |                                 | NTS | <varDeclarator>                 | 240  | 237| E  |
+| 239 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 241 | <varDeclarator>                 | NTS | <localDecl>                     | 244  | 242| F  |
+| 240 | <varDeclarator>                 | NTS | <pointerDecl>                   | 604  | 241| F  |
+| 241 |                                 | NTS | <localDecl>                     | 244  | 242| E  |
 | 242 |                                 | TS  | "="                             | -    | 243| T  |
 | 243 |                                 | NTS | <varInit>                       | 247  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+

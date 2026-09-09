@@ -4,6 +4,52 @@
 > Konvention "englisches Original + `_de`-Fassung" umgestellt (siehe README).
 > Neue Eintraege daher weiterhin auf Deutsch.
 
+## Mehrere Zeiger-Deklaratoren in EINER Anweisung behoben (2026-09-09)
+
+Aufgriff der beim Peephole-Bau gefundenen und dort nur umgangenen Luecke
+(`docs/ISO_C_GAP_LIST_de.md`, Nachtrag 2026-09-08): `pointerDecl` stand in
+`varDecl`/`structField`/`plainGlobalDecl` je EINMAL vor der GANZEN
+Deklaratorliste statt vor jedem einzelnen Deklarator -- echtes C haengt den
+Stern an den Deklarator, nicht an den gemeinsamen Typ.
+
+**Bei Lokalen und Struct-Feldern:** stiller Parse-Fehler. `char *a, *b;`
+scheiterte, weil nach dem Komma ein "*" auf keine Regel mehr passte (der
+EINE `pointerDecl` war schon vor dem ersten Namen verbraucht).
+
+**Bei globalen Variablen war es schlimmer:** kein Parse-Fehler, sondern
+STILL FALSCHER Code. Globale Mehrfachdeklaratoren laufen ueber einen
+eigenen Rohtext-Mechanismus (`tc_globalend`/`tcGlobalOne`, noetig fuer
+Nicht-Zeiger-Faelle wie `static TCType a[512], b[512][64];`) -- der fuer
+weitere Deklaratoren wiederverwendete Typ-Praefix schleppte dabei den
+Stern des ERSTEN Deklarators mit. `char *a, *b;` wurde zu `char **b`
+(Doppelzeiger) verfaelscht; `char* a, b;` machte das eigentlich
+nicht-zeigende `b` faelschlich SELBST zum Zeiger. Mit `grep` gegen den
+eigenen Quelltext (`Source/*.cpp`, `Data/qcc_p.c`) geprueft, ob die Luecke
+dort ueberhaupt vorkommt -- 0 Treffer, kein aktueller Bootstrap-Blocker,
+aber ein reales Silent-Wrong-Code-Risiko fuer jeden normalen C-Code.
+
+**Fix, drei Teile:**
+1. Grammatik (`Data/qcc.ebnf`): `pointerDecl` jetzt Teil von
+   `varDeclarator`/`structDeclarator`/`globalDeclarator` statt vor der
+   jeweiligen Liste.
+2. `tc_pointerdecl` (`Data/qcc.lextab`) SETZT den Zeigergrad bei jedem
+   Aufruf neu, statt ihn aufzuaddieren -- sonst haette der zweite
+   Deklarator in `char *a, *b;` faelschlich einen Doppelzeiger bekommen
+   (Akkumulation ueber beide Aufrufe). Basis ist `tcBasePointers` (aus
+   `tc_type`, meist 0, aber der eigene Grad eines Zeiger-`typedef`s bleibt
+   damit erhalten -- ein reines Nullen haette DAS kaputtgemacht).
+3. `tc_globalend` filtert Sterne jetzt beim Kopieren des wiederverwendeten
+   Praefixes heraus (mit erzwungenem Trenner-Leerzeichen fuer den Randfall
+   ohne Leerraum zwischen Typwort und Stern im Original, z. B.
+   `char** p, q;` -- sonst waeren "char" und "q" ohne jeden Trenner
+   zusammengeklebt).
+
+Fuenf neue `tc_check`-Faelle in `runtests.sh` (rein und GEMISCHT --
+gemischt ist der eigentliche Beweis, dass nur der Deklarator MIT eigenem
+Stern zum Zeiger wird, wie in echtem C -- je einmal lokal, Struct-Feld,
+global). Volle Suite inkl. Abgleichtest zwischen Q9-QCC und Q9-Parsec
+weiterhin gruen (206 statt zuvor 201 QCCVM-Programme).
+
 ## Peephole, fuenftes Muster: MOVEQ statt MOVE.L (2026-09-09)
 
 Frage: gibt es ausser Peephole noch andere Optimierungsarten, die hier
