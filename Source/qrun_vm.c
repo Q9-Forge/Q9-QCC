@@ -53,6 +53,11 @@ qrun_vm_t* qrun_vm_create(void)
     vm->heap_size = 0;
     vm->heap_capacity = 256;
     
+    /* Allocate global array handles */
+    vm->garray_handles = malloc(64 * sizeof(vm->garray_handles[0]));
+    vm->ngarray_handles = 0;
+    vm->garray_handles_capacity = 64;
+    
     /* Allocate global arrays */
     vm->garrays = malloc(64 * sizeof(vm->garrays[0]));
     vm->ngarrays = 0;
@@ -75,6 +80,7 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     free(vm->globals);
     free(vm->named_globals);
     free(vm->heap);
+    free(vm->garray_handles);
     
     /* Destroy frame local arrays */
     for (size_t i = 0; i < vm->fp; i++) {
@@ -872,19 +878,29 @@ int qrun_vm_run(qrun_vm_t* vm)
                     break;
                 }
                 qrun_push_value(vm, vm->heap[heap_idx]);
-            } else if (block_id == 1) {
-                /* Global array access */
-                int garr_idx = offset;
-                if (garr_idx < 0 || garr_idx >= (int)vm->ngarrays) {
-                    fprintf(stderr, "LOADIND: global array index out of range\n");
+            } else if (block_id >= 256) {
+                /* Global array access via handle pointer
+                   block_id = 256 + handle_idx, offset may be non-zero from PADD */
+                int handle_idx = block_id - 256;
+                if (handle_idx < 0 || handle_idx >= (int)vm->ngarray_handles) {
+                    fprintf(stderr, "LOADIND: global array handle out of range (handle_idx=%d)\n", handle_idx);
                     vm->halted = 1;
                     break;
                 }
-                if (vm->garrays[garr_idx].size > 0) {
-                    qrun_push_value(vm, vm->garrays[garr_idx].data[0]);
-                } else {
-                    qrun_push_value(vm, 0);
+                qrun_value_t* base_ptr = vm->garray_handles[handle_idx];
+                if (!base_ptr) {
+                    fprintf(stderr, "LOADIND: global array handle is NULL\n");
+                    vm->halted = 1;
+                    break;
                 }
+                /* Dereference with offset: base_ptr[offset / sizeof(qrun_value_t)] */
+                int idx = offset / sizeof(qrun_value_t);
+                if (idx < 0) {
+                    fprintf(stderr, "LOADIND: negative array index %d\n", idx);
+                    vm->halted = 1;
+                    break;
+                }
+                qrun_push_value(vm, base_ptr[idx]);
             } else if (block_id == 2) {
                 /* Pointer to local (from ADDRL) - offset is heap index */
                 int heap_idx = offset;
@@ -926,17 +942,29 @@ int qrun_vm_run(qrun_vm_t* vm)
                     break;
                 }
                 vm->heap[heap_idx] = value;
-            } else if (block_id == 1) {
-                /* Global array access */
-                int garr_idx = offset;
-                if (garr_idx < 0 || garr_idx >= (int)vm->ngarrays) {
-                    fprintf(stderr, "STOREIND: global array index out of range\n");
+            } else if (block_id >= 256) {
+                /* Global array access via handle pointer
+                   block_id = 256 + handle_idx, offset may be non-zero from PADD */
+                int handle_idx = block_id - 256;
+                if (handle_idx < 0 || handle_idx >= (int)vm->ngarray_handles) {
+                    fprintf(stderr, "STOREIND: global array handle out of range (handle_idx=%d)\n", handle_idx);
                     vm->halted = 1;
                     break;
                 }
-                if (vm->garrays[garr_idx].size > 0) {
-                    vm->garrays[garr_idx].data[0] = value;
+                qrun_value_t* base_ptr = vm->garray_handles[handle_idx];
+                if (!base_ptr) {
+                    fprintf(stderr, "STOREIND: global array handle is NULL\n");
+                    vm->halted = 1;
+                    break;
                 }
+                /* Store with offset: base_ptr[offset / sizeof(qrun_value_t)] = value */
+                int idx = offset / sizeof(qrun_value_t);
+                if (idx < 0) {
+                    fprintf(stderr, "STOREIND: negative array index %d\n", idx);
+                    vm->halted = 1;
+                    break;
+                }
+                base_ptr[idx] = value;
             } else if (block_id == 2) {
                 /* Pointer to local (from ADDRL) - offset is heap index */
                 int heap_idx = offset;
@@ -1093,8 +1121,22 @@ int qrun_vm_run(qrun_vm_t* vm)
                     break;
                 }
                 
-                /* Push with block_id=1 to indicate global array */
-                qrun_value_t addr = -(1 * 100000 + global_idx + 1000);
+                /* Create a handle for this global array's data pointer
+                   This allows pointer arithmetic to work correctly */
+                if (vm->ngarray_handles >= vm->garray_handles_capacity) {
+                    vm->garray_handles_capacity *= 2;
+                    vm->garray_handles = realloc(vm->garray_handles, 
+                                                  vm->garray_handles_capacity * sizeof(vm->garray_handles[0]));
+                }
+                
+                size_t handle_idx = vm->ngarray_handles;
+                vm->garray_handles[handle_idx] = vm->garrays[global_idx].data;
+                vm->ngarray_handles++;
+                
+                /* Encoding: use block_id = 256 + handle_idx to encode handle in block_id
+                   This way PADD can modify offset and we still know which array it is */
+                int block_id = 256 + (int)handle_idx;
+                qrun_value_t addr = -(block_id * 100000 + 0 + 1000);  /* offset=0 initially */
                 qrun_push_value(vm, addr);
             }
             break;
