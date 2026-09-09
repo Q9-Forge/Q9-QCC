@@ -44,6 +44,8 @@ typedef enum {
     /* Load/Store global */
     OP_LOADG,       /* LOADG <name> */
     OP_STOREG,      /* STOREG <name> */
+    OP_LOADGP,      /* LOADGP <name> - load pointer global */
+    OP_STOREGP,     /* STOREGP <name> - store pointer global */
     
     /* Arithmetic */
     OP_ADD,         /* ADD */
@@ -91,6 +93,7 @@ typedef enum {
     OP_PADD,        /* PADD <type> - pointer + pointer (offset add) */
     OP_PCMPNE,      /* PCMPNE - compare pointers for inequality */
     OP_PUSHADDR,    /* PUSHADDR <scope> <slot/name> <offset> */
+    OP_IPADDN,      /* IPADDN <size> - pointer += int * size (runtime size) */
     
     /* IO/Debug */
     OP_PRINT,       /* PRINT - pop and print top value */

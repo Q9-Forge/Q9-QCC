@@ -352,6 +352,43 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
+        case OP_LOADGP: {
+            /* Load global pointer - same as LOADG (values are just ints) */
+            const char* name = instr->arg.s;
+            qrun_value_t value = 0;
+            
+            /* Search named globals first */
+            for (size_t i = 0; i < vm->nglobals; i++) {
+                if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
+                    value = vm->named_globals[i].value;
+                    qrun_push_value(vm, value);
+                    break;
+                }
+            }
+            
+            fprintf(stderr, "LOADGP: '%s' not found in named globals\n", name);
+            vm->halted = 1;
+            break;
+        }
+        
+        case OP_STOREGP: {
+            /* Store global pointer - same as STOREG (values are just ints) */
+            const char* name = instr->arg.s;
+            qrun_value_t v = qrun_pop_value(vm);
+            
+            /* Search named globals */
+            for (size_t i = 0; i < vm->nglobals; i++) {
+                if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
+                    vm->named_globals[i].value = v;
+                    break;
+                }
+            }
+            
+            fprintf(stderr, "STOREGP: '%s' not found in named globals\n", name);
+            vm->halted = 1;
+            break;
+        }
+        
         case OP_ADD: {
             qrun_value_t b = qrun_pop_value(vm);
             qrun_value_t a = qrun_pop_value(vm);
@@ -1007,6 +1044,33 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
+        case OP_IPADDN: {
+            /* Pop pointer, pop integer, push (ptr + int*runtime_size)
+               IPADDN <size>: size is provided as instruction argument (struct byte size) */
+            qrun_value_t ptr_val = qrun_pop_value(vm);
+            qrun_value_t int_val = qrun_pop_value(vm);
+            int runtime_size = instr->arg.i;
+            
+            if (ptr_val >= 0) {
+                fprintf(stderr, "IPADDN: pointer operand required\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            /* Decode pointer: ptr_val = -(block_id*100000 + offset + 1000) */
+            qrun_value_t encoded = -ptr_val - 1000;
+            int block_id = encoded / 100000;
+            int offset = encoded % 100000;
+            
+            /* Add runtime size scaled by count */
+            offset += (int_val * runtime_size);
+            
+            /* Re-encode with new offset */
+            qrun_value_t result = -(block_id * 100000 + offset + 1000);
+            qrun_push_value(vm, result);
+            break;
+        }
+        
         case OP_PADD: {
             /* Pop integer, pop pointer, push (ptr + int*size)
                Stack order: [..., ptr, int] -> pop int, pop ptr
@@ -1141,6 +1205,10 @@ int qrun_vm_run(qrun_vm_t* vm)
             }
             break;
         }
+        
+        case OP_GLOBAL:
+            /* GLOBAL <name> [init] - Global variable declaration (no-op at runtime) */
+            break;
         
         case OP_HALT:
             vm->halted = 1;
