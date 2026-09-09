@@ -539,7 +539,10 @@ sizeofArg  = sizeofType | sizeofVarName .
    sizeofVarName, das Variable UND typedef-Namen aufloest; sizeof(ActionLogEntry)
    bleibt also moeglich (der Bootstrap braucht genau das). */
 sizeofType = sizeofBaseType pointerDecl .
-sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" .
+/* NACHTRAG 2026-09-09 -- "short" dazu (s. type/unsignedInt weiter unten):
+   dieselbe Erweiterung, damit sizeof(short)/sizeof(unsigned short) nicht an
+   dieser eigenen Kopie der Typliste vorbeilaeuft. */
+sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" .
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
@@ -633,8 +636,13 @@ globalName = ident .
 funcName  = ident .
 /* "long" ist auf dem 68k-Ziel wortgleich mit "int" (beide 32 Bit) und wird
    in tc_type auch so abgebildet -- eigener Typ waere ohne 64-Bit-Arithmetik
-   bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt. */
-type      = "unsigned" unsignedInt | "int" | "long" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+   bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt.
+   NACHTRAG 2026-09-09 -- "short" ECHTER 16-Bit-Basistyp (Q9-Tools/MWOS-
+   Header brauchen ihn: module.h definiert u_int16 selbst als "unsigned
+   short" und hat etliche blanke "short"-Structfelder). Anders als long/int
+   NICHT auf einen bestehenden Typ abgebildet -- der 68k-Codegen legt short
+   echt als 2 Byte an (s. tcTypeTag/qcc_backend_c.cpp). */
+type      = "unsigned" unsignedInt | "int" | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
 structTypeRef = ident .
 enumTypeRef = ident .
 typedefRef = ident .
@@ -642,8 +650,11 @@ pointerDecl = { pointerStar } .
 pointerStar = "*" .
 /* "unsigned char" wird auf QCCs char abgebildet: der 68k-Codegen laedt ein
    char ohnehin nullerweitert ("moveq #0,d0 / move.b"), QCCs char verhaelt
-   sich also bereits vorzeichenlos. "unsigned long" analog zu unsigned int. */
-unsignedInt = "int" | "char" | "long" .
+   sich also bereits vorzeichenlos. "unsigned long" analog zu unsigned int.
+   "unsigned short" (2026-09-09) genauso: short wird ohnehin schon
+   nullerweitert geladen (dieselbe Entscheidung wie bei char), es gibt also
+   gar keinen zweiten short-Basistyp, den man hier waehlen muesste. */
+unsignedInt = "int" | "char" | "long" | "short" .
 boolLit   = "true" | "false" .
 
 ident     = letter { letter | digit } .
