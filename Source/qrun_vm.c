@@ -870,6 +870,61 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
+        case OP_IPADD: {
+            /* Pop integer, pop pointer, push (ptr + int*size) */
+            qrun_value_t int_val = qrun_pop_value(vm);
+            qrun_value_t ptr = qrun_pop_value(vm);
+            
+            if (ptr >= 0) {
+                fprintf(stderr, "IPADD: pointer operand required\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            /* Simple model: just add to heap index */
+            qrun_value_t result = ptr + int_val;
+            qrun_push_value(vm, result);
+            break;
+        }
+        
+        case OP_PADD: {
+            /* Pop two pointers, push sum (for offset arithmetic) */
+            qrun_value_t ptr2 = qrun_pop_value(vm);
+            qrun_value_t ptr1 = qrun_pop_value(vm);
+            
+            if (ptr1 >= 0 || ptr2 >= 0) {
+                fprintf(stderr, "PADD: pointer operands required\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            qrun_value_t result = ptr1 + ptr2;
+            qrun_push_value(vm, result);
+            break;
+        }
+        
+        case OP_PCMPNE: {
+            /* Pop two pointers, compare for inequality */
+            qrun_value_t ptr2 = qrun_pop_value(vm);
+            qrun_value_t ptr1 = qrun_pop_value(vm);
+            
+            if (ptr1 >= 0 || ptr2 >= 0) {
+                fprintf(stderr, "PCMPNE: pointer operands required\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            qrun_push_value(vm, (ptr1 != ptr2) ? 1 : 0);
+            break;
+        }
+        
+        case OP_PUSHADDR: {
+            /* Direct address push (not yet implemented) */
+            fprintf(stderr, "PUSHADDR not yet implemented\n");
+            vm->halted = 1;
+            break;
+        }
+        
         case OP_HALT:
             vm->halted = 1;
             break;
