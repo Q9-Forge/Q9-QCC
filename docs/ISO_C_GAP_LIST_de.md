@@ -45,7 +45,7 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | `short`, `long`, `long long` | offen | hoch |
 | `_Bool` und Qualifizierer | teilweise/offen | hoch |
 | `float`, `double`, `long double` | offen | hoch |
-| Pointer und Pointerarithmetik | erledigt, EINE Ausnahme (s. Nachtrag 2026-09-08) | — |
+| Pointer und Pointerarithmetik | erledigt (Ausnahme aus Nachtrag 2026-09-08 seit 2026-09-09 behoben, s. dort) | — |
 | Arrays und Array-Decay | teilweise | sehr hoch |
 | Funktionspointer | offen | hoch |
 | `void` und `void *` | offen | hoch |
@@ -58,9 +58,30 @@ Meldung — `const char *a;` (EIN Zeiger) geht, `int a, b;` (mehrere
 NICHT-Zeiger-Deklaratoren) geht, nur die Kombination bricht. Gefunden
 beim Bau des Peephole-Optimierers (`Source/qcc_backend_peephole.c`),
 Umgehung dort: je ein eigener Deklarator pro Zeile statt einer
-gemeinsamen Anweisung — NICHT im Frontend behoben, das ist ein eigenes
-Vorhaben. Bisektionsmethode wie ueblich: `build/qcc_p '<schnipsel>'`
-einzeln, an Funktionsgrenzen schneiden.
+gemeinsamen Anweisung.
+
+**Nachtrag 2026-09-09 — BEHOBEN, und zwar an DREI Stellen, nicht nur der
+oben gefundenen.** `pointerDecl` stand in `varDecl`/`structField`/
+`plainGlobalDecl` bis eben je EINMAL vor der ganzen Deklaratorliste statt
+vor jedem einzelnen Deklarator — echtes C haengt den Stern an den
+Deklarator, nicht an den gemeinsamen Typ. Bei Lokalen und Struct-Feldern
+war das der oben beschriebene stille Parse-Fehler; bei GLOBALEN Variablen
+(eigener Rohtext-Mechanismus in `tc_globalend`/`tcGlobalOne`, da
+`Data/qcc_p.c` mehrere Deklaratoren pro Zeile dort schon fuer
+Nicht-Zeiger-Faelle wie `static TCType a[512], b[512][64];` unterstuetzte)
+war der Bug NIE ein Parse-Fehler, sondern STILL FALSCHER Code: der fuer
+weitere Deklaratoren wiederverwendete Typ-Praefix schleppte den Stern des
+ERSTEN Deklarators mit, `char *a, *b;` wurde zu `char **b` (Doppelzeiger)
+verfaelscht, `char* a, b;` machte das eigentlich nicht-zeigende `b`
+faelschlich ZUM Zeiger. Fix: `pointerDecl` jetzt Teil von
+`varDeclarator`/`structDeclarator`/`globalDeclarator`; `tc_pointerdecl`
+SETZT den Zeigergrad pro Aufruf neu (Basis `tcBasePointers` aus dem Typ,
+z. B. einem Zeiger-`typedef`) statt ihn aufzuaddieren; `tc_globalend`
+filtert Sterne beim Kopieren des wiederverwendeten Praefixes jetzt heraus
+(mit erzwungenem Trenner-Leerzeichen, falls Typwort und Stern im
+Originaltext ohne Leerraum aneinanderstiessen, z. B. `char** p, q;`).
+Fuenf neue `tc_check`-Faelle (rein und gemischt, lokal/Struct-Feld/global)
+in `runtests.sh`, volle Suite inkl. Abgleichtest weiterhin gruen.
 
 **Nachtrag 2026-09-07 — Zeigerarrays als Strukturfeld gehen jetzt.**
 `char* args[6]` in einer Struct war bis dahin abgelehnt („pointer arrays as

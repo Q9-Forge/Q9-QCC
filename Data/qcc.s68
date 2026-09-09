@@ -477,9 +477,6 @@ L52:
 	bsr	p_type
 	tst.b	d0
 	beq	L50
-	bsr	p_pointerDecl
-	tst.b	d0
-	beq	L50
 	bsr	p_structDeclarator
 	tst.b	d0
 	beq	L50
@@ -536,6 +533,9 @@ L55:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: structDeclarator
 p_structDeclarator:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_pointerDecl
+	tst.b	d0
+	beq	L56
 	bsr	p_fieldName
 	tst.b	d0
 	beq	L56
@@ -959,9 +959,6 @@ L95:
 	bsr	p_type
 	tst.b	d0
 	beq	L91
-	bsr	p_pointerDecl
-	tst.b	d0
-	beq	L91
 	bsr	p_globalDeclarator
 	tst.b	d0
 	beq	L91
@@ -991,6 +988,9 @@ L91:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: globalDeclarator
 p_globalDeclarator:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_pointerDecl
+	tst.b	d0
+	beq	L98
 	bsr	p_globalName
 	tst.b	d0
 	beq	L98
@@ -2339,9 +2339,6 @@ L254:
 	bsr	p_type
 	tst.b	d0
 	beq	L252
-	bsr	p_pointerDecl
-	tst.b	d0
-	beq	L252
 	bsr	p_varDeclarator
 	tst.b	d0
 	beq	L252
@@ -2371,6 +2368,9 @@ L252:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: varDeclarator
 p_varDeclarator:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_pointerDecl
+	tst.b	d0
+	beq	L257
 	bsr	p_localDecl
 	tst.b	d0
 	beq	L257

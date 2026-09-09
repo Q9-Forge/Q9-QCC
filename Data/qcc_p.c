@@ -252,6 +252,14 @@ static int  tcFuncNameIsStatic = 0;  /* Schnappschuss von tcPendingStatic, von t
 static char tcStaticLocalName[32];   /* Name-Zwischenspeicher zwischen staticLocalName und staticVarDecl */
 static int  tcStaticRuntimeInitPending = 0; /* gesetzt von tc_staticruntimeinit, konsumiert von tc_staticlocal */
 static TCType tcCurrentType;
+static int  tcBasePointers = 0; /* Zeigergrad AUS DEM TYP ALLEIN (0, ausser bei einem
+                                    Zeiger-typedef) -- von tc_type gesetzt, von
+                                    tc_pointerdecl als Basis genommen. Noetig, seit
+                                    pointerDecl PRO DEKLARATOR feuert (2026-09-09,
+                                    "char *a, *b;"-Fix): ohne eigene Basis wuerde der
+                                    zweite Deklarator entweder den Zeigergrad des
+                                    ersten erben (Akkumulation) oder einen
+                                    Zeiger-typedef verlieren (blosses Nullen). */
 static TCType tcFuncType;
 static char tcFuncName[32];
 static char tcFunctionNames[MAX_FUNCTIONS][32];
@@ -1484,6 +1492,10 @@ static void tc_setcurrenttype(int base, int pointers) {
 
 void tc_type(const char* start, const char* end) {
 	const char* we = tcWordEnd(start, end);
+	/* Basis fuer tc_pointerdecl (siehe tcBasePointers-Deklaration): 0 fuer
+	   jeden eingebauten Basistyp, ueberschrieben unten im typedef-Zweig, falls
+	   der typedef selbst schon ein Zeigertyp ist. */
+	tcBasePointers = 0;
 	if (tcEqSpan(start, we, "unsigned")) {
 		/* "unsigned char" -> QCCs char (der 68k-Codegen laedt char nullerweitert,
 		   verhaelt sich also schon vorzeichenlos); "unsigned int"/"unsigned long"
@@ -1521,17 +1533,27 @@ void tc_type(const char* start, const char* end) {
 		tcCurrentType.pointers = tcTypedefTypes[td].pointers;
 		tcCurrentType.structId = tcTypedefTypes[td].structId;
 		tcCurrentType.pointeeConst = tcTypedefTypes[td].pointeeConst;
+		tcBasePointers = tcCurrentType.pointers;
 	}
 }
 
+/* Zeigergrad IMMER NEU aus tcBasePointers + den hier gematchten Sternen
+   SETZEN, nicht auf den alten tcCurrentType.pointers AUFADDIEREN (2026-09-09-
+   Fix). pointerDecl feuert seit diesem Fix pro Deklarator ("char *a, *b;"),
+   nicht mehr einmal fuer die ganze Zeile -- ein Aufaddieren haette den
+   zweiten Deklarator faelschlich zum Doppelzeiger gemacht (Zeigergrad des
+   ersten Deklarators haette sich mit dem des zweiten summiert). Ein reines
+   Nullen waere stattdessen fuer einen Zeiger-typedef falsch (der Grad des
+   typedefs selbst ginge verloren) -- daher die Basis aus tc_type statt einer
+   festen 0. */
 void tc_pointerdecl(const char* start, const char* end) {
 	const char* p;
+	int n = tcBasePointers;
 	/* TCType nicht durch eine Funktionsgrenze reichen: der selfhostende
 	   68k-Aufrufpfad behandelt den 4-Byte-Struct-Rueckgabewert nicht korrekt. */
-	for (p = start; p < end; p++) if (*p == '*') {
-		if (tcCurrentType.pointers < 255) tcCurrentType.pointers++;
-		else actionErrors++;
-	}
+	for (p = start; p < end; p++) if (*p == '*') n++;
+	if (n > 255) { n = 255; actionErrors++; }
+	tcCurrentType.pointers = (unsigned char)n;
 }
 
 void tc_param(const char* start, const char* end) {
@@ -1889,7 +1911,26 @@ void tc_globalend(const char* start, const char* end) {
 		}
 		if (!stop) stop = end;
 		n = 0;
-		for (i = 0; i < pre; i++) buf[n++] = start[i];
+		/* "*" NICHT mitkopieren (2026-09-09-Fix): der Typ-Praefix reicht laut
+		   obigem Scan bis zum ERSTEN Deklarator, schliesst also dessen EIGENEN
+		   Stern mit ein ("char *a, *b" -> Praefix "char *"). Kopiert man den
+		   unveraendert vor jedes weitere Segment, bekommt "*b" faelschlich
+		   einen ZWEITEN Stern spendiert ("char **b") -- und bei "char* a, b"
+		   (kein Stern beim zweiten Deklarator) wuerde "b" faelschlich ZUM
+		   ZEIGER, obwohl in echtem C nur "a" einer ist. Jeder Stern gehoert
+		   dem Deklarator, VOR dessen Namen er im Rohtext steht -- der
+		   erste hat seinen schon in seinem eigenen (unveraendert kopierten)
+		   Segment, jeder weitere bringt seinen eigenen (falls vorhanden) im
+		   Text NACH dem Komma mit. Der Praefix selbst darf deshalb nie einen
+		   Stern beisteuern. */
+		for (i = 0; i < pre; i++) if (start[i] != '*') buf[n++] = start[i];
+		/* Trenner ERZWINGEN (2026-09-09): ohne Leerraum zwischen Typwort und
+		   Sternen im Original ("char** p, q;") faellt beim Sternefiltern jeder
+		   Abstand weg ("char" + "q" -> "charq", ein einziges Bezeichnerwort
+		   statt Schluesselwort+Name). Ein zusaetzliches Leerzeichen ist immer
+		   sicher -- tcGlobalOne ueberspringt Leerraum ohnehin an jeder
+		   Token-Grenze, ein doppeltes stoert nicht. */
+		buf[n++] = ' ';
 		while (p < stop && (*p == ' ' || *p == '\t')) p++;
 		while (p < stop) buf[n++] = *p++;
 		buf[n++] = ';'; buf[n] = 0;
@@ -5318,7 +5359,6 @@ static int p_structField(void) {
 L38:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L39:	;
 	if (!p_type()) goto L37;
-	if (!p_pointerDecl()) goto L37;
 	if (!p_structDeclarator()) goto L37;
 L40:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
@@ -5360,6 +5400,7 @@ static int p_structDeclarator(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	if (!p_pointerDecl()) goto L43;
 	if (!p_fieldName()) goto L43;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_arraySize()) goto L44;
@@ -5658,7 +5699,6 @@ L79:	;
 L80:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L81:	;
 	if (!p_type()) goto L77;
-	if (!p_pointerDecl()) goto L77;
 	if (!p_globalDeclarator()) goto L77;
 L82:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
@@ -5683,6 +5723,7 @@ static int p_globalDeclarator(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	if (!p_pointerDecl()) goto L84;
 	if (!p_globalName()) goto L84;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_arraySize()) goto L85;
@@ -6692,7 +6733,6 @@ static int p_varDecl(void) {
 L225:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L226:	;
 	if (!p_type()) goto L224;
-	if (!p_pointerDecl()) goto L224;
 	if (!p_varDeclarator()) goto L224;
 L227:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
@@ -6716,6 +6756,7 @@ static int p_varDeclarator(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	if (!p_pointerDecl()) goto L229;
 	if (!p_localDecl()) goto L229;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
