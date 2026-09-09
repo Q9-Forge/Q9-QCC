@@ -160,6 +160,14 @@ typedef struct {
     qrun_value_t* globals;
     size_t globals_size;
     
+    /* Named globals (for __ptrsize and similar) */
+    struct {
+        const char* name;
+        qrun_value_t value;
+    }* named_globals;
+    size_t nglobals;
+    size_t nglobals_capacity;
+    
     /* Global arrays */
     struct {
         char* name;

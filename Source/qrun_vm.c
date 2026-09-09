@@ -24,6 +24,11 @@ qrun_vm_t* qrun_vm_create(void)
     vm->globals = malloc(1024 * sizeof(qrun_value_t));
     vm->globals_size = 1024;
     
+    /* Allocate named globals (for __ptrsize, etc.) */
+    vm->named_globals = malloc(64 * sizeof(vm->named_globals[0]));
+    vm->nglobals = 0;
+    vm->nglobals_capacity = 64;
+    
     /* Allocate call frames */
     vm->frames = malloc(256 * sizeof(vm->frames[0]));
     vm->frame_size = 256;
@@ -63,6 +68,7 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     free(vm->code);
     free(vm->stack);
     free(vm->globals);
+    free(vm->named_globals);
     
     /* Destroy frame local arrays */
     for (size_t i = 0; i < vm->fp; i++) {
@@ -296,6 +302,41 @@ int qrun_vm_run(qrun_vm_t* vm)
         case OP_STOREL: {
             qrun_value_t v = qrun_pop_value(vm);
             qrun_store_local(vm, instr->arg.i, v);
+            break;
+        }
+        
+        case OP_LOADG: {
+            const char* name = instr->arg.s;
+            qrun_value_t value = 0;
+            
+            /* Search named globals first (__ptrsize, etc.) */
+            for (size_t i = 0; i < vm->nglobals; i++) {
+                if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
+                    value = vm->named_globals[i].value;
+                    qrun_push_value(vm, value);
+                    break;
+                }
+            }
+            
+            fprintf(stderr, "LOADG: '%s' not found in named globals\n", name);
+            vm->halted = 1;
+            break;
+        }
+        
+        case OP_STOREG: {
+            const char* name = instr->arg.s;
+            qrun_value_t v = qrun_pop_value(vm);
+            
+            /* Search named globals */
+            for (size_t i = 0; i < vm->nglobals; i++) {
+                if (vm->named_globals[i].name && strcmp(vm->named_globals[i].name, name) == 0) {
+                    vm->named_globals[i].value = v;
+                    break;
+                }
+            }
+            
+            fprintf(stderr, "STOREG: '%s' not found in named globals\n", name);
+            vm->halted = 1;
             break;
         }
         
