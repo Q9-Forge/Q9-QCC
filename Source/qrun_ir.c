@@ -148,6 +148,8 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "STOREL") == 0)    return OP_STOREL;
     if (strcmp(s, "LOADG") == 0)     return OP_LOADG;
     if (strcmp(s, "STOREG") == 0)    return OP_STOREG;
+    if (strcmp(s, "LOADGP") == 0)    return OP_LOADGP;
+    if (strcmp(s, "STOREGP") == 0)   return OP_STOREGP;
     if (strcmp(s, "ADD") == 0)       return OP_ADD;
     if (strcmp(s, "SUB") == 0)       return OP_SUB;
     if (strcmp(s, "MUL") == 0)       return OP_MUL;
@@ -187,6 +189,7 @@ static qrun_opcode_t qrun_opcode_from_string(const char* s)
     if (strcmp(s, "LOADIND") == 0)   return OP_LOADIND;
     if (strcmp(s, "STOREIND") == 0)  return OP_STOREIND;
     if (strcmp(s, "IPADD") == 0)     return OP_IPADD;
+    if (strcmp(s, "IPADDN") == 0)    return OP_IPADDN;
     if (strcmp(s, "PADD") == 0)      return OP_PADD;
     if (strcmp(s, "PCMPNE") == 0)    return OP_PCMPNE;
     if (strcmp(s, "PUSHADDR") == 0)  return OP_PUSHADDR;
@@ -340,6 +343,14 @@ int qrun_ir_parse(const char* filename,
             break;
         }
         
+        case OP_IPADDN: {
+            /* IPADDN <size>: runtime size for offset calculation */
+            if (arg_str) {
+                code[code_idx].arg.i = atoi(arg_str);
+            }
+            break;
+        }
+        
         case OP_PCMPNE: {
             /* PCMPNE has no args */
             break;
@@ -347,6 +358,8 @@ int qrun_ir_parse(const char* filename,
         
         case OP_LOADG:
         case OP_STOREG:
+        case OP_LOADGP:
+        case OP_STOREGP:
         case OP_LABEL:
         case OP_JMP:
         case OP_BEQ:
