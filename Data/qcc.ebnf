@@ -90,8 +90,15 @@ fieldConstKw = "const" .
 structDeclarator = pointerDecl fieldName [ arraySize [ arraySizeN ] ] .
 fieldName   = ident .
 
-typedefDecl = "typedef" typedefType typedefTargetName ";"
+/* NACHTRAG 2026-09-09 -- derselbe Mehrfachdeklaratoren-Fix wie bei
+   varDecl/structField/plainGlobalDecl (s. oben): "typedef struct modhcom
+   mh_com, *Mh_com;" (Microwares echter SDK-Header module.h) scheiterte
+   still, weil typedefTargetName nur EINEN Namen erlaubte. pointerDecl
+   wandert dafuer aus typedefType HERAUS in die neue typedefDeclarator --
+   pro Deklarator sein EIGENER Zeigergrad, wie ueberall sonst. */
+typedefDecl = "typedef" typedefType typedefDeclarator { "," typedefDeclarator } ";"
             | fnPtrTypedef .
+typedefDeclarator = pointerDecl typedefTargetName .
 
 /* Funktionszeiger-typedef: "typedef void (*ActionFn)(const char*, const char*);"
    Steht als ZWEITE Alternative, damit der bisherige Fall unveraendert der
@@ -109,11 +116,14 @@ fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" fnPtrParam
 fnPtrParams  = voidParams | externRealParams .
 fnPtrOpen    = "(" .
 fnPtrName    = ident .
-typedefType = anonStructType | type pointerDecl .
+/* pointerDecl steht NICHT mehr hier (s. NACHTRAG oben bei typedefDecl),
+   sondern in typedefDeclarator -- sonst wuerde ein Zeigergrad hier UND
+   dort gleichzeitig gezaehlt. */
+typedefType = anonStructType | type .
 /* Optionaler Struct-Tag im typedef ("typedef struct TCType { ... } TCType;").
    structTagName ist AKTIONSLOS: der Tag wird geparst und verworfen, als
-   interner Tag dient wie bisher der typedef-Zielname (siehe
-   tc_anonstructbegin/tc_typedefend). Damit ist "struct TCType" NICHT als
+   interner Tag dient wie bisher der ERSTE typedef-Zielname (siehe
+   tc_anonstructbegin/tc_typedeftarget). Damit ist "struct TCType" NICHT als
    eigenstaendiger Typname nutzbar -- im Bootstrap-Ziel wird ohnehin
    ausschliesslich der typedef-Name verwendet. */
 anonStructType = "struct" [ structTagName ] anonStructOpen structField { structField } "}" .
