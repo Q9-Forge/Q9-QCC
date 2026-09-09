@@ -32,10 +32,21 @@ qrun_vm_t* qrun_vm_create(void)
     memset(vm->funcs, 0, 256 * sizeof(vm->funcs[0]));
     vm->fp = 0;
     
+    /* Initialize frames (clear arrays pointers) */
+    for (int i = 0; i < 256; i++) {
+        vm->frames[i].arrays = NULL;
+        vm->frames[i].narrays = 0;
+    }
+    
     /* Allocate labels */
     vm->labels = malloc(512 * sizeof(vm->labels[0]));
     vm->nlabels = 0;
     vm->labels_capacity = 512;
+    
+    /* Allocate global arrays */
+    vm->garrays = malloc(64 * sizeof(vm->garrays[0]));
+    vm->ngarrays = 0;
+    vm->garrays_capacity = 64;
     
     vm->string_pool = NULL;  /* Will be set by qrun_vm_load_ir */
     
@@ -53,12 +64,25 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     free(vm->stack);
     free(vm->globals);
     
+    /* Destroy frame local arrays */
     for (size_t i = 0; i < vm->fp; i++) {
         free(vm->frames[i].locals);
+        if (vm->frames[i].arrays) {
+            for (size_t j = 0; j < vm->frames[i].narrays; j++) {
+                free(vm->frames[i].arrays[j].data);
+            }
+            free(vm->frames[i].arrays);
+        }
     }
     free(vm->frames);
     free(vm->funcs);
     free(vm->labels);
+    
+    /* Destroy global arrays */
+    for (size_t i = 0; i < vm->ngarrays; i++) {
+        free(vm->garrays[i].data);
+    }
+    free(vm->garrays);
     
     /* Destroy string pool */
     if (vm->string_pool) {
@@ -68,6 +92,9 @@ void qrun_vm_destroy(qrun_vm_t* vm)
     free(vm);
 }
 
+/* Forward declaration */
+static int qrun_type_size(const char* type);
+
 int qrun_vm_load_ir(qrun_vm_t* vm, const char* filename)
 {
     if (!vm || !filename) return -1;
@@ -76,7 +103,7 @@ int qrun_vm_load_ir(qrun_vm_t* vm, const char* filename)
         return -1;
     }
     
-    /* Build function and label lookup tables */
+    /* Build function, label, and global array lookup tables */
     for (size_t i = 0; i < vm->code_size; i++) {
         if (vm->code[i].op == OP_FUNC) {
             if (vm->nfuncs >= 256) {
@@ -96,6 +123,23 @@ int qrun_vm_load_ir(qrun_vm_t* vm, const char* filename)
             vm->labels[vm->nlabels].name = vm->code[i].arg.s;
             vm->labels[vm->nlabels].addr = i;
             vm->nlabels++;
+        } else if (vm->code[i].op == OP_GARRAY) {
+            /* Allocate global arrays at load time */
+            const char* name = vm->code[i].arg.array.name;
+            const char* type = vm->code[i].arg.array.type;
+            size_t size = vm->code[i].arg.array.size;
+            int tsize = qrun_type_size(type);
+            
+            if (vm->ngarrays >= vm->garrays_capacity) {
+                fprintf(stderr, "Too many global arrays\n");
+                return -1;
+            }
+            
+            vm->garrays[vm->ngarrays].name = (char*)name;
+            vm->garrays[vm->ngarrays].data = calloc(size, sizeof(qrun_value_t));
+            vm->garrays[vm->ngarrays].size = size;
+            vm->garrays[vm->ngarrays].type_size = tsize;
+            vm->ngarrays++;
         }
     }
     
@@ -132,6 +176,15 @@ static qrun_value_t qrun_peek_value(qrun_vm_t* vm)
 {
     if (vm->sp == 0) return 0;
     return vm->stack[vm->sp - 1].val;
+}
+
+static int qrun_type_size(const char* type)
+{
+    if (!type) return 4;
+    if (type[0] == 'c' || type[0] == 'b') return 1;  /* char/byte */
+    if (type[0] == 'h') return 2;  /* short */
+    if (type[0] == 'p') return 8;  /* pointer */
+    return 4;  /* default int */
 }
 
 static qrun_value_t qrun_load_local(qrun_vm_t* vm, int slot)
@@ -502,18 +555,168 @@ int qrun_vm_run(qrun_vm_t* vm)
             break;
         }
         
-        case OP_LARRAY:
+        case OP_LARRAY: {
+            int slot = instr->arg.array.slot;
+            const char* type = instr->arg.array.type;
+            size_t size = instr->arg.array.size;
+            int tsize = qrun_type_size(type);
+            
+            if (vm->fp == 0) {
+                fprintf(stderr, "LARRAY: no active frame\n");
+                vm->halted = 1;
+                break;
+            }
+            
+            size_t frame_idx = vm->fp - 1;
+            struct {
+                qrun_value_t* data;
+                size_t size;
+                int type_size;
+            }* arrays = vm->frames[frame_idx].arrays;
+            
+            /* Expand arrays if needed */
+            if (slot >= (int)vm->frames[frame_idx].narrays) {
+                size_t new_size = slot + 1;
+                arrays = realloc(arrays, new_size * sizeof(arrays[0]));
+                for (size_t i = vm->frames[frame_idx].narrays; i < new_size; i++) {
+                    arrays[i].data = NULL;
+                    arrays[i].size = 0;
+                    arrays[i].type_size = 0;
+                }
+                vm->frames[frame_idx].arrays = arrays;
+                vm->frames[frame_idx].narrays = new_size;
+            }
+            
+            /* Allocate array */
+            arrays[slot].data = calloc(size, sizeof(qrun_value_t));
+            arrays[slot].size = size;
+            arrays[slot].type_size = tsize;
+            break;
+        }
+        
         case OP_GARRAY:
-        case OP_LOADIDX:
-        case OP_STOREIDX:
+            /* Global arrays are allocated during IR load - skip at runtime */
+            break;
+        
+        case OP_LOADIDX: {
+            qrun_value_t index = qrun_pop_value(vm);
+            int is_local = (instr->arg.array.size != 0);  /* Repurposed: size=1 means local */
+            
+            if (is_local) {
+                int slot = instr->arg.array.slot;
+                if (vm->fp == 0) {
+                    fprintf(stderr, "LOADIDX: no active frame\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                size_t frame_idx = vm->fp - 1;
+                if (slot < 0 || slot >= (int)vm->frames[frame_idx].narrays) {
+                    fprintf(stderr, "LOADIDX: array slot %d out of range\n", slot);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                if (index < 0 || index >= (int)vm->frames[frame_idx].arrays[slot].size) {
+                    fprintf(stderr, "LOADIDX: array index out of bounds\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                qrun_push_value(vm, vm->frames[frame_idx].arrays[slot].data[index]);
+            } else {
+                /* Global array */
+                const char* name = instr->arg.array.name;
+                int found = -1;
+                for (size_t i = 0; i < vm->ngarrays; i++) {
+                    if (vm->garrays[i].name && strcmp(vm->garrays[i].name, name) == 0) {
+                        found = i;
+                        break;
+                    }
+                }
+                
+                if (found < 0) {
+                    fprintf(stderr, "LOADIDX: global array '%s' not found\n", name);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                if (index < 0 || index >= (int)vm->garrays[found].size) {
+                    fprintf(stderr, "LOADIDX: array index out of bounds\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                qrun_push_value(vm, vm->garrays[found].data[index]);
+            }
+            break;
+        }
+        
+        case OP_STOREIDX: {
+            qrun_value_t value = qrun_pop_value(vm);
+            qrun_value_t index = qrun_pop_value(vm);
+            int is_local = (instr->arg.array.size != 0);
+            
+            if (is_local) {
+                int slot = instr->arg.array.slot;
+                
+                if (vm->fp == 0) {
+                    fprintf(stderr, "STOREIDX: no active frame\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                size_t frame_idx = vm->fp - 1;
+                if (slot < 0 || slot >= (int)vm->frames[frame_idx].narrays) {
+                    fprintf(stderr, "STOREIDX: array slot %d out of range\n", slot);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                if (index < 0 || index >= (int)vm->frames[frame_idx].arrays[slot].size) {
+                    fprintf(stderr, "STOREIDX: array index out of bounds\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                vm->frames[frame_idx].arrays[slot].data[index] = value;
+            } else {
+                /* Global array */
+                const char* name = instr->arg.array.name;
+                int found = -1;
+                
+                for (size_t i = 0; i < vm->ngarrays; i++) {
+                    if (vm->garrays[i].name && strcmp(vm->garrays[i].name, name) == 0) {
+                        found = i;
+                        break;
+                    }
+                }
+                
+                if (found < 0) {
+                    fprintf(stderr, "STOREIDX: global array '%s' not found\n", name);
+                    vm->halted = 1;
+                    break;
+                }
+                
+                if (index < 0 || index >= (int)vm->garrays[found].size) {
+                    fprintf(stderr, "STOREIDX: array index out of bounds\n");
+                    vm->halted = 1;
+                    break;
+                }
+                
+                vm->garrays[found].data[index] = value;
+            }
+            break;
+        }
+        
         case OP_ADDRL:
         case OP_ADDRG:
         case OP_LOADP:
         case OP_STOREP:
         case OP_LOADIND:
         case OP_STOREIND:
-            /* TODO: Phase 5 (Arrays & Pointers) */
-            fprintf(stderr, "Array/Pointer opcode not yet implemented: %d\n", op);
+            /* TODO: Phase 5 (Pointers) */
+            fprintf(stderr, "Pointer opcode not yet implemented: %d\n", op);
             vm->halted = 1;
             break;
         

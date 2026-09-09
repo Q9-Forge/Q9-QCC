@@ -253,6 +253,61 @@ int qrun_ir_parse(const char* filename,
             break;
         }
         
+        case OP_LARRAY: {
+            /* LARRAY <slot> <type> <size> */
+            if (arg_str) {
+                int slot_val = atoi(arg_str);
+                char* type_str = qrun_next_token(lex);
+                char* type_str_intern = type_str ? qrun_string_pool_intern(lex->pool, type_str) : NULL;
+                char* size_str = qrun_next_token(lex);
+                int size_val = size_str ? atoi(size_str) : 0;
+                
+                code[code_idx].arg.array.slot = slot_val;
+                code[code_idx].arg.array.type = type_str_intern;
+                code[code_idx].arg.array.size = size_val;
+            }
+            break;
+        }
+        
+        case OP_GARRAY: {
+            /* GARRAY <name> <type> <size> <init> */
+            if (arg_str) {
+                char* name = qrun_string_pool_intern(lex->pool, arg_str);
+                char* type_str = qrun_next_token(lex);
+                if (type_str) type_str = qrun_string_pool_intern(lex->pool, type_str);
+                char* size_str = qrun_next_token(lex);
+                int size_val = size_str ? atoi(size_str) : 0;
+                char* init_str = qrun_next_token(lex);
+                
+                code[code_idx].arg.array.name = name;
+                code[code_idx].arg.array.type = type_str;
+                code[code_idx].arg.array.size = size_val;
+                /* init is ignored for now */
+            }
+            break;
+        }
+        
+        case OP_LOADIDX:
+        case OP_STOREIDX: {
+            /* LOADIDX <scope> <name/slot> <type> */
+            if (arg_str) {
+                /* scope is L/G, parse it */
+                int is_local = (arg_str[0] == 'L');
+                char* name_or_slot = qrun_next_token(lex);
+                
+                if (is_local) {
+                    code[code_idx].arg.array.slot = name_or_slot ? atoi(name_or_slot) : 0;
+                } else {
+                    code[code_idx].arg.array.name = name_or_slot ? qrun_string_pool_intern(lex->pool, name_or_slot) : NULL;
+                }
+                
+                char* type_str = qrun_next_token(lex);
+                code[code_idx].arg.array.type = type_str ? qrun_string_pool_intern(lex->pool, type_str) : NULL;
+                code[code_idx].arg.array.size = is_local ? 1 : 0;  /* Repurpose: size=0 means global */
+            }
+            break;
+        }
+        
         case OP_LOADG:
         case OP_STOREG:
         case OP_LABEL:

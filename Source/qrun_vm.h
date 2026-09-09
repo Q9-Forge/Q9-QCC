@@ -115,6 +115,12 @@ typedef struct {
             char* name;
             int nargs;
         } call;                         /* CALL arguments */
+        struct {
+            int slot;                   /* local slot or scope for LOADIDX/STOREIDX */
+            char* type;                 /* type tag (i, c, h, etc.) */
+            int size;                   /* array size (for LARRAY) */
+            char* name;                 /* name (for GARRAY, LOADIDX, STOREIDX) */
+        } array;                        /* Array operations */
     } arg;
 } qrun_instruction_t;
 
@@ -154,11 +160,29 @@ typedef struct {
     qrun_value_t* globals;
     size_t globals_size;
     
+    /* Global arrays */
+    struct {
+        char* name;
+        qrun_value_t* data;
+        size_t size;
+        int type_size;
+    }* garrays;
+    size_t ngarrays;
+    size_t garrays_capacity;
+    
     /* Call stack / local frames */
     struct {
         size_t code_addr;   /* return address (instruction index) */
         qrun_value_t* locals;  /* local variables for this frame (sparse, up to 256) */
         size_t nlocals_allocated;  /* size of locals array */
+        
+        /* Local arrays indexed by slot */
+        struct {
+            qrun_value_t* data;
+            size_t size;
+            int type_size;  /* 1, 2, 4, or 8 bytes */
+        }* arrays;
+        size_t narrays;  /* number of arrays allocated */
     }* frames;
     size_t frame_size;
     size_t fp;              /* Frame pointer (next free) */
