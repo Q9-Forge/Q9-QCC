@@ -915,8 +915,6 @@ int qrun_vm_run(qrun_vm_t* vm)
             qrun_value_t ptr_val = qrun_pop_value(vm);
             qrun_value_t int_val = qrun_pop_value(vm);
             
-            fprintf(stderr, "DEBUG IPADD: ptr_val=%d, int_val=%d\n", ptr_val, int_val);
-            
             if (ptr_val >= 0) {
                 fprintf(stderr, "IPADD: pointer operand required\n");
                 vm->halted = 1;
