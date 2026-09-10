@@ -6,7 +6,7 @@ BUILD_DIR = build
 SOURCE_DIR = Source
 TEST_DIR = tests
 
-SOURCES = $(wildcard $(SOURCE_DIR)/*.c)
+SOURCES = $(filter-out $(SOURCE_DIR)/qrun_all.c,$(wildcard $(SOURCE_DIR)/*.c))
 HEADERS = $(wildcard $(SOURCE_DIR)/*.h)
 OBJECTS = $(SOURCES:$(SOURCE_DIR)/%.c=$(BUILD_DIR)/%.o)
 
