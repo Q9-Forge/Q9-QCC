@@ -2,7 +2,7 @@
 # Das VIERTE Werkzeug auf dem Ziel: QCCs Backend selbst.
 #
 # qcpp, qcc (der Parser), qr68 und ql68 sind auf dem 68030 nachgewiesen.
-# qcc_backend war das einzige Glied, das dort NIE gelaufen ist -- der Weg vom
+# qir_68k war das einzige Glied, das dort NIE gelaufen ist -- der Weg vom
 # IR zum Assembler. Damit fehlte der Kette genau ein Schritt, um sich auf dem
 # Ziel selbst zu bauen.
 #
@@ -49,9 +49,9 @@ OS9="$MWOS_TOOLSHED_OS9"
 echo "== 1/5 das Backend mit der eigenen Kette zum 68k-Modul =="
 "$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" "$QCC/Source/qcc_backend_c.cpp" \
 	"$WORK/b.i" || die "qcpp"
-"$QCC/build/qcc_p" "@$WORK/b.i" > "$WORK/b.ir" 2> "$WORK/b.err"
-[ "$(tail -1 "$WORK/b.ir")" = OK ] || { head -5 "$WORK/b.err"; die "qcc_p auf das Backend"; }
-"$QCC/build/qcc_backend" "$WORK/b.ir" "$WORK/qccb.s68" -os9 -largedata -remotedata >/dev/null ||
+"$QCC/build/qcir" "@$WORK/b.i" > "$WORK/b.ir" 2> "$WORK/b.err"
+[ "$(tail -1 "$WORK/b.ir")" = OK ] || { head -5 "$WORK/b.err"; die "qcir auf das Backend"; }
+"$QCC/build/qir_68k" "$WORK/b.ir" "$WORK/qccb.s68" -os9 -largedata -remotedata >/dev/null ||
 	die "Backend uebersetzt sich selbst nicht"
 "$FORGE/Q9-qr68/build/qr68" "$WORK/qccb.s68" "-o=$WORK/qccb.r" || die "qr68"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
@@ -64,7 +64,7 @@ echo "  ok ($(wc -l < "$WORK/qccb.s68" | tr -d ' ') Assemblerzeilen -> $(wc -c <
 
 echo "== 2/5 Hostlauf zum Vergleich =="
 cp "$IR" "$WORK/host/in.ir"
-( cd "$WORK/host" && "$QCC/build/qcc_backend" in.ir out.s68 -os9 >/dev/null ) ||
+( cd "$WORK/host" && "$QCC/build/qir_68k" in.ir out.s68 -os9 >/dev/null ) ||
 	die "Hostlauf"
 echo "  $(wc -c < "$WORK/host/out.s68" | tr -d ' ') Byte"
 
@@ -128,8 +128,8 @@ z=$(wc -c < "$WORK/ziel/out.s68" | tr -d ' ')
 if cmp -s "$WORK/host/out.s68" "$WORK/ziel/out.s68"; then
 	echo "  BYTEIDENTISCH ($z Byte)"
 	echo
-	echo "qcc_backend laeuft auf echtem 68030 -- damit ist JEDES Glied der"
-	echo "Kette auf dem Ziel nachgewiesen: qcpp, qcc, qcc_backend, qr68, ql68."
+	echo "qir_68k laeuft auf echtem 68030 -- damit ist JEDES Glied der"
+	echo "Kette auf dem Ziel nachgewiesen: qcpp, qcc, qir_68k, qr68, ql68."
 	exit 0
 fi
 echo "  ABWEICHUNG (Host $h, Ziel $z Byte)"

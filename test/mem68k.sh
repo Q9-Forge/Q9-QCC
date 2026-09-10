@@ -28,9 +28,9 @@ MWOS="$MWOS_UNIX"
 echo "== 1/3 Sonde bauen und binden =="
 "$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" test/memprobe.c "$WORK/mp.i" ||
 	die "qcpp"
-"$QCC/build/qcc_p" "@$WORK/mp.i" > "$WORK/mp.ir" 2> "$WORK/mp.err"
-[ "$(tail -1 "$WORK/mp.ir")" = OK ] || { head -5 "$WORK/mp.err"; die "qcc_p"; }
-"$QCC/build/qcc_backend" "$WORK/mp.ir" "$WORK/mp.s68" -os9 -largedata >/dev/null ||
+"$QCC/build/qcir" "@$WORK/mp.i" > "$WORK/mp.ir" 2> "$WORK/mp.err"
+[ "$(tail -1 "$WORK/mp.ir")" = OK ] || { head -5 "$WORK/mp.err"; die "qcir"; }
+"$QCC/build/qir_68k" "$WORK/mp.ir" "$WORK/mp.s68" -os9 -largedata >/dev/null ||
 	die "Backend"
 "$FORGE/Q9-qr68/build/qr68" "$WORK/mp.s68" "-o=$WORK/mp.r" || die "qr68"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
