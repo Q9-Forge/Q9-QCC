@@ -41,10 +41,11 @@ enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
 
 structDecl  = "struct" structName "{" structField { structField } "}" ";" .
 structName  = ident .
-/* Pointer-Felder in struct (2026-07-25, Selfhosting L2): reine Skalar-Pointer
-   (z.B. "char* text;"), noch NICHT Pointer-Arrays oder struct-Pointer-Felder
-   (letztere waeren ohnehin durch das generelle struct-in-struct-Verbot
-   ausgeschlossen). Layout siehe tcRegisterStruct: Pointer-Felder werden
+/* Pointer-Felder in struct (2026-07-25, Selfhosting L2): Skalar-Pointer
+   (z.B. "char* text;" oder "struct Node* next;"). Ein struct-WERT als Feld
+   bleibt ausgeschlossen; ein Pointer darauf ist jedoch ein normaler Pointer
+   und benoetigt weder das Layout noch eine rekursive Einbettung. Layout siehe
+   tcRegisterStruct: Pointer-Felder werden
    IMMER mit 8 Byte Groesse/Ausrichtung reserviert (nicht 4 wie beim 68k-
    Backend selbst), damit dasselbe frontend-berechnete Byte-Layout fuer
    BEIDE Architekturen gueltig bleibt (68k-Pointer sind 4 Byte, ARM64-Pointer
@@ -561,7 +562,9 @@ castOperand = factor .
 /* "x.feld++" und "p->feld++". member deckt beide Schreibweisen ab. */
 preIncDec  = incdecOp derefIncTarget | incdecOp memberIncTarget | incdecOp indexIncTarget | incdecOp ident .
 postIncDec = derefIncTarget incdecOp | memberIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
-memberIncTarget = ident member .
+/* Includes both x.field and x.field[i].  The latter is needed for normal
+   C89 idioms such as vm->state[i]++ (and is not the same as x[i].field). */
+memberIncTarget = ident member [ index ] .
 indexIncTarget = ident index .
 derefIncTarget = "(" "*" ident ")" .
 incdecOp   = "++" | "--" .
