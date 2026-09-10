@@ -450,6 +450,7 @@
                                   | "int" 
                                   | "long" 
                                   | "char" 
+                                  | "short" 
                                   | "bool" 
                                   | "struct" <structTypeRef> 
                                   | "enum" <enumTypeRef> 
@@ -528,6 +529,7 @@
  <type>                           = "unsigned" <unsignedInt> 
                                   | "int" 
                                   | "long" 
+                                  | "short" 
                                   | "char" 
                                   | "bool" 
                                   | "struct" <structTypeRef> 
@@ -547,7 +549,8 @@
 
  <unsignedInt>                    = "int" 
                                   | "char" 
-                                  | "long" .
+                                  | "long" 
+                                  | "short" .
 
  <boolLit>                        = "true" 
                                   | "false" .
@@ -660,19 +663,20 @@
 78   TS   "int"
 79   TS   "long"
 80   TS   "char"
-81   TS   "bool"
-82   TS   "++"
-83   TS   "--"
-84   TS   "."
-85   TS   "->"
-86   TS   "x"
-87   TS   "X"
-88   RNG  "a"~"f"
-89   RNG  "A"~"F"
-90   RNG  "a"~"z"
-91   RNG  "A"~"Z"
-92   TS   "_"
-93   RNG  "0"~"9"
+81   TS   "short"
+82   TS   "bool"
+83   TS   "++"
+84   TS   "--"
+85   TS   "."
+86   TS   "->"
+87   TS   "x"
+88   TS   "X"
+89   RNG  "a"~"f"
+90   RNG  "A"~"F"
+91   RNG  "a"~"z"
+92   RNG  "A"~"Z"
+93   TS   "_"
+94   RNG  "0"~"9"
 [ENDE]
 
 [NTS-SYMBOLTABELLE]
@@ -850,52 +854,52 @@
 170  493         sizeofArg
 171  495         sizeofType
 172  497         sizeofBaseType
-173  508         sizeofVarName
-174  509         castExpr
-175  513         castType
-176  515         castOperand
-177  516         preIncDec
-178  524         postIncDec
-179  532         memberIncTarget
-180  534         indexIncTarget
-181  536         derefIncTarget
-182  540         incdecOp
-183  542         incDecStmt
-184  546         derefRef
-185  548         call
-186  552         callMember
-187  554         indirectCall
-188  558         indCallOpen
-189  559         argList
-190  562         arg
-191  563         target
-192  565         directTarget
-193  571         indirectTarget
-194  573         varRef
-195  579         index
-196  582         indexOpen
-197  583         member
-198  587         defName
-199  588         paramName
-200  589         localName
-201  590         globalName
-202  591         funcName
-203  592         type
-204  604         structTypeRef
-205  605         enumTypeRef
-206  606         typedefRef
-207  607         pointerDecl
-208  608         pointerStar
-209  609         unsignedInt
-210  612         boolLit
-211  614         ident
-212  617         number
-213  619         hexNumber
-214  623         hexMark
-215  625         hexDigit
-216  628         decNumber
-217  630         letter
-218  633         digit
+173  509         sizeofVarName
+174  510         castExpr
+175  514         castType
+176  516         castOperand
+177  517         preIncDec
+178  525         postIncDec
+179  533         memberIncTarget
+180  535         indexIncTarget
+181  537         derefIncTarget
+182  541         incdecOp
+183  543         incDecStmt
+184  547         derefRef
+185  549         call
+186  553         callMember
+187  555         indirectCall
+188  559         indCallOpen
+189  560         argList
+190  563         arg
+191  564         target
+192  566         directTarget
+193  572         indirectTarget
+194  574         varRef
+195  580         index
+196  583         indexOpen
+197  584         member
+198  588         defName
+199  589         paramName
+200  590         localName
+201  591         globalName
+202  592         funcName
+203  593         type
+204  606         structTypeRef
+205  607         enumTypeRef
+206  608         typedefRef
+207  609         pointerDecl
+208  610         pointerStar
+209  611         unsignedInt
+210  615         boolLit
+211  617         ident
+212  620         number
+213  622         hexNumber
+214  626         hexMark
+215  628         hexDigit
+216  631         decNumber
+217  633         letter
+218  636         digit
 [ENDE]
 
 [PARSER-TABELLE]
@@ -908,12 +912,12 @@
 4     0     5     6     0     0     -                NTS  externDecl
 5     0     -1    138   0     0     -                NTS  funcdef
 6     7     -2    -1    0     0     externDecl       TS   "extern"
-7     8     -3    592   0     0     -                NTS  type
-8     9     -3    607   0     0     -                NTS  pointerDecl
+7     8     -3    593   0     0     -                NTS  type
+8     9     -3    609   0     0     -                NTS  pointerDecl
 9     10    -3    12    0     0     -                NTS  externName
 10    11    -3    13    0     0     -                NTS  externParams
 11    -1    -3    -1    0     0     -                TS   ";"
-12    -1    -2    614   0     0     externName       NTS  ident
+12    -1    -2    617   0     0     externName       NTS  ident
 13    -1    14    155   0     0     externParams     NTS  voidParams
 14    -1    -2    15    0     0     -                NTS  externRealParams
 15    16    -2    -1    0     0     externRealParams TS   "("
@@ -925,16 +929,16 @@
 21    22    -1    -1    0     0     -                TS   ","
 22    -1    -3    27    0     0     -                NTS  ellipsisTok
 23    24    24    109   0     0     externParam      NTS  constKw
-24    25    -2    592   0     0     -                NTS  type
-25    26    -3    607   0     0     -                NTS  pointerDecl
-26    -1    -1    614   0     0     -                NTS  ident
+24    25    -2    593   0     0     -                NTS  type
+25    26    -3    609   0     0     -                NTS  pointerDecl
+26    -1    -1    617   0     0     -                NTS  ident
 27    -1    -2    -1    0     0     ellipsisTok      TS   "..."
 28    29    -2    -1    0     0     enumDecl         TS   "enum"
-29    30    -3    614   0     0     -                NTS  ident
+29    30    -3    617   0     0     -                NTS  ident
 30    31    -3    -1    0     0     -                TS   "{"
-31    32    -3    614   0     0     -                NTS  ident
+31    32    -3    617   0     0     -                NTS  ident
 32    33    34    -1    0     0     -                TS   ","
-33    32    -3    614   0     0     -                NTS  ident
+33    32    -3    617   0     0     -                NTS  ident
 34    35    -3    -1    0     0     -                TS   "}"
 35    -1    -3    -1    0     0     -                TS   ";"
 36    37    -2    -1    0     0     structDecl       TS   "struct"
@@ -944,19 +948,19 @@
 40    40    41    44    0     0     -                NTS  structField
 41    42    -3    -1    0     0     -                TS   "}"
 42    -1    -3    -1    0     0     -                TS   ";"
-43    -1    -2    614   0     0     structName       NTS  ident
+43    -1    -2    617   0     0     structName       NTS  ident
 44    45    45    50    0     0     structField      NTS  fieldConstKw
-45    46    -2    592   0     0     -                NTS  type
+45    46    -2    593   0     0     -                NTS  type
 46    47    -3    51    0     0     -                NTS  structDeclarator
 47    48    49    -1    0     0     -                TS   ","
 48    47    -3    51    0     0     -                NTS  structDeclarator
 49    -1    -3    -1    0     0     -                TS   ";"
 50    -1    -2    -1    0     0     fieldConstKw     TS   "const"
-51    52    -2    607   0     0     structDeclarator NTS  pointerDecl
+51    52    -2    609   0     0     structDeclarator NTS  pointerDecl
 52    53    -3    55    0     0     -                NTS  fieldName
 53    54    -1    117   0     0     -                NTS  arraySize
 54    -1    -1    120   0     0     -                NTS  arraySizeN
-55    -1    -2    614   0     0     fieldName        NTS  ident
+55    -1    -2    617   0     0     fieldName        NTS  ident
 56    57    62    -1    0     0     typedefDecl      TS   "typedef"
 57    58    -3    78    0     0     -                NTS  typedefType
 58    59    -3    63    0     0     -                NTS  typedefDeclarator
@@ -964,11 +968,11 @@
 60    59    -3    63    0     0     -                NTS  typedefDeclarator
 61    -1    -3    -1    0     0     -                TS   ";"
 62    -1    -2    65    0     0     -                NTS  fnPtrTypedef
-63    64    -2    607   0     0     typedefDeclarator NTS  pointerDecl
+63    64    -2    609   0     0     typedefDeclarator NTS  pointerDecl
 64    -1    -3    88    0     0     -                NTS  typedefTargetName
 65    66    -2    -1    0     0     fnPtrTypedef     TS   "typedef"
-66    67    -3    592   0     0     -                NTS  type
-67    68    -3    607   0     0     -                NTS  pointerDecl
+66    67    -3    593   0     0     -                NTS  type
+67    68    -3    609   0     0     -                NTS  pointerDecl
 68    69    -3    76    0     0     -                NTS  fnPtrOpen
 69    70    -3    -1    0     0     -                TS   "*"
 70    71    -3    77    0     0     -                NTS  fnPtrName
@@ -978,34 +982,34 @@
 74    -1    75    155   0     0     fnPtrParams      NTS  voidParams
 75    -1    -2    15    0     0     -                NTS  externRealParams
 76    -1    -2    -1    0     0     fnPtrOpen        TS   "("
-77    -1    -2    614   0     0     fnPtrName        NTS  ident
+77    -1    -2    617   0     0     fnPtrName        NTS  ident
 78    -1    79    80    0     0     typedefType      NTS  anonStructType
-79    -1    -2    592   0     0     -                NTS  type
+79    -1    -2    593   0     0     -                NTS  type
 80    81    -2    -1    0     0     anonStructType   TS   "struct"
 81    82    82    86    0     0     -                NTS  structTagName
 82    83    -3    87    0     0     -                NTS  anonStructOpen
 83    84    -3    44    0     0     -                NTS  structField
 84    84    85    44    0     0     -                NTS  structField
 85    -1    -3    -1    0     0     -                TS   "}"
-86    -1    -2    614   0     0     structTagName    NTS  ident
+86    -1    -2    617   0     0     structTagName    NTS  ident
 87    -1    -2    -1    0     0     anonStructOpen   TS   "{"
-88    -1    -2    614   0     0     typedefTargetName NTS  ident
+88    -1    -2    617   0     0     typedefTargetName NTS  ident
 89    -1    90    91    0     0     globalDecl       NTS  externGlobalDecl
 90    -1    -2    96    0     0     -                NTS  plainGlobalDecl
 91    92    -2    -1    0     0     externGlobalDecl TS   "extern"
-92    93    -3    592   0     0     -                NTS  type
-93    94    -3    607   0     0     -                NTS  pointerDecl
-94    95    -3    590   0     0     -                NTS  globalName
+92    93    -3    593   0     0     -                NTS  type
+93    94    -3    609   0     0     -                NTS  pointerDecl
+94    95    -3    591   0     0     -                NTS  globalName
 95    -1    -3    -1    0     0     -                TS   ";"
 96    97    97    110   0     0     plainGlobalDecl  NTS  staticKw
 97    98    98    109   0     0     -                NTS  constKw
-98    99    -2    592   0     0     -                NTS  type
+98    99    -2    593   0     0     -                NTS  type
 99    100   -3    103   0     0     -                NTS  globalDeclarator
 100   101   102   -1    0     0     -                TS   ","
 101   100   -3    103   0     0     -                NTS  globalDeclarator
 102   -1    -3    -1    0     0     -                TS   ";"
-103   104   -2    607   0     0     globalDeclarator NTS  pointerDecl
-104   105   -3    590   0     0     -                NTS  globalName
+103   104   -2    609   0     0     globalDeclarator NTS  pointerDecl
+104   105   -3    591   0     0     -                NTS  globalName
 105   106   107   117   0     0     -                NTS  arraySize
 106   106   107   120   0     0     -                NTS  arraySizeN
 107   108   -1    -1    0     0     -                TS   "="
@@ -1037,8 +1041,8 @@
 133   -1    -2    -1    0     0     -                TS   "false"
 134   135   -2    -1    0     0     globalNeg        TS   "-"
 135   -1    -3    136   0     0     -                NTS  globalNumber
-136   137   -2    633   0     0     globalNumber     NTS  digit
-137   137   -1    633   0     0     -                NTS  digit
+136   137   -2    636   0     0     globalNumber     NTS  digit
+137   137   -1    636   0     0     -                NTS  digit
 138   139   -2    146   0     0     funcdef          NTS  funcHead
 139   -1    140   141   0     0     -                NTS  funcBody
 140   -1    -3    145   0     0     -                NTS  protoEnd
@@ -1049,9 +1053,9 @@
 145   -1    -2    -1    0     0     protoEnd         TS   ";"
 146   147   147   110   0     0     funcHead         NTS  staticKw
 147   148   148   152   0     0     -                NTS  retConstKw
-148   149   -2    592   0     0     -                NTS  type
-149   150   -3    607   0     0     -                NTS  pointerDecl
-150   151   -3    587   0     0     -                NTS  defName
+148   149   -2    593   0     0     -                NTS  type
+149   150   -3    609   0     0     -                NTS  pointerDecl
+150   151   -3    588   0     0     -                NTS  defName
 151   -1    -3    153   0     0     -                NTS  funcParams
 152   -1    -2    -1    0     0     retConstKw       TS   "const"
 153   -1    154   155   0     0     funcParams       NTS  voidParams
@@ -1066,10 +1070,10 @@
 162   163   -1    -1    0     0     -                TS   ","
 163   162   -3    164   0     0     -                NTS  param
 164   165   165   109   0     0     param            NTS  constKw
-165   166   -2    592   0     0     -                NTS  type
-166   167   -3    607   0     0     -                NTS  pointerDecl
+165   166   -2    593   0     0     -                NTS  type
+166   167   -3    609   0     0     -                NTS  pointerDecl
 167   -1    -3    168   0     0     -                NTS  paramDecl
-168   169   -2    588   0     0     paramDecl        NTS  paramName
+168   169   -2    589   0     0     paramDecl        NTS  paramName
 169   -1    -1    170   0     0     -                NTS  paramArray
 170   171   -2    -1    0     0     paramArray       TS   "["
 171   -1    -3    -1    0     0     -                TS   "]"
@@ -1092,19 +1096,19 @@
 188   -1    189   294   0     0     -                NTS  emptyStmt
 189   -1    190   295   0     0     -                NTS  voidCastStmt
 190   -1    191   290   0     0     -                NTS  callStmt
-191   -1    192   542   0     0     -                NTS  incDecStmt
+191   -1    192   543   0     0     -                NTS  incDecStmt
 192   -1    193   268   0     0     -                NTS  assignStmt
 193   -1    194   195   0     0     -                NTS  staticVarDecl
 194   -1    -2    237   0     0     -                NTS  varDecl
 195   196   -2    110   0     0     staticVarDecl    NTS  staticKw
 196   197   197   109   0     0     -                NTS  constKw
-197   198   -3    592   0     0     -                NTS  type
-198   199   -3    607   0     0     -                NTS  pointerDecl
+197   198   -3    593   0     0     -                NTS  type
+198   199   -3    609   0     0     -                NTS  pointerDecl
 199   200   -3    203   0     0     -                NTS  staticLocalName
 200   201   202   -1    0     0     -                TS   "="
 201   202   -3    204   0     0     -                NTS  staticInit
 202   -1    -3    -1    0     0     -                TS   ";"
-203   -1    -2    614   0     0     staticLocalName  NTS  ident
+203   -1    -2    617   0     0     staticLocalName  NTS  ident
 204   -1    205   129   0     0     staticInit       NTS  globalValue
 205   -1    -2    206   0     0     -                NTS  staticRuntimeInit
 206   -1    -2    369   0     0     staticRuntimeInit NTS  expr
@@ -1126,29 +1130,29 @@
 222   223   -2    -1    0     0     caseLabel        TS   "case"
 223   224   -3    225   0     0     -                NTS  caseValue
 224   -1    -3    -1    0     0     -                TS   ":"
-225   -1    226   614   0     0     caseValue        NTS  ident
+225   -1    226   617   0     0     caseValue        NTS  ident
 226   -1    227   228   0     0     -                NTS  caseNeg
 227   -1    -2    230   0     0     -                NTS  caseNumber
 228   229   -2    -1    0     0     caseNeg          TS   "-"
 229   -1    -3    230   0     0     -                NTS  caseNumber
-230   231   -2    633   0     0     caseNumber       NTS  digit
-231   231   -1    633   0     0     -                NTS  digit
+230   231   -2    636   0     0     caseNumber       NTS  digit
+231   231   -1    636   0     0     -                NTS  digit
 232   232   -1    178   0     0     caseBody         NTS  unlabeledStmt
 233   234   -2    235   0     0     defaultGroup     NTS  defaultLabel
 234   -1    -3    232   0     0     -                NTS  caseBody
 235   236   -2    -1    0     0     defaultLabel     TS   "default"
 236   -1    -3    -1    0     0     -                TS   ":"
 237   238   238   109   0     0     varDecl          NTS  constKw
-238   239   -2    592   0     0     -                NTS  type
+238   239   -2    593   0     0     -                NTS  type
 239   240   -3    243   0     0     -                NTS  varDeclarator
 240   241   242   -1    0     0     -                TS   ","
 241   240   -3    243   0     0     -                NTS  varDeclarator
 242   -1    -3    -1    0     0     -                TS   ";"
-243   244   -2    607   0     0     varDeclarator    NTS  pointerDecl
+243   244   -2    609   0     0     varDeclarator    NTS  pointerDecl
 244   245   -3    247   0     0     -                NTS  localDecl
 245   246   -1    -1    0     0     -                TS   "="
 246   -1    -3    250   0     0     -                NTS  varInit
-247   248   -2    589   0     0     localDecl        NTS  localName
+247   248   -2    590   0     0     localDecl        NTS  localName
 248   249   -1    117   0     0     -                NTS  arraySize
 249   249   -1    120   0     0     -                NTS  arraySizeN
 250   -1    251   253   0     0     varInit          NTS  arrayStringInit
@@ -1167,16 +1171,16 @@
 263   -1    -2    -1    0     0     -                TS   "false"
 264   265   -2    -1    0     0     initNeg          TS   "-"
 265   -1    -3    266   0     0     -                NTS  initNumber
-266   267   -2    633   0     0     initNumber       NTS  digit
-267   267   -1    633   0     0     -                NTS  digit
+266   267   -2    636   0     0     initNumber       NTS  digit
+267   267   -1    636   0     0     -                NTS  digit
 268   -1    269   273   0     0     assignStmt       NTS  chainAssign
-269   270   -2    563   0     0     -                NTS  target
+269   270   -2    564   0     0     -                NTS  target
 270   271   -3    279   0     0     -                NTS  assignop
 271   272   -3    369   0     0     -                NTS  expr
 272   -1    -3    -1    0     0     -                TS   ";"
-273   274   -2    563   0     0     chainAssign      NTS  target
+273   274   -2    564   0     0     chainAssign      NTS  target
 274   275   -3    279   0     0     -                NTS  assignop
-275   276   -3    563   0     0     -                NTS  target
+275   276   -3    564   0     0     -                NTS  target
 276   277   -3    279   0     0     -                NTS  assignop
 277   278   -3    369   0     0     -                NTS  expr
 278   -1    -3    -1    0     0     -                TS   ";"
@@ -1191,9 +1195,9 @@
 287   -1    288   -1    0     0     -                TS   "&="
 288   -1    289   -1    0     0     -                TS   "^="
 289   -1    -2    -1    0     0     -                TS   "|="
-290   291   292   548   0     0     callStmt         NTS  call
+290   291   292   549   0     0     callStmt         NTS  call
 291   -1    -3    -1    0     0     -                TS   ";"
-292   293   -2    554   0     0     -                NTS  indirectCall
+292   293   -2    555   0     0     -                NTS  indirectCall
 293   -1    -3    -1    0     0     -                TS   ";"
 294   -1    -2    -1    0     0     emptyStmt        TS   ";"
 295   296   -2    298   0     0     voidCastStmt     NTS  voidCastOpen
@@ -1239,15 +1243,15 @@
 335   -1    -2    -1    0     0     forSep1          TS   ";"
 336   -1    -2    -1    0     0     forSep2          TS   ";"
 337   -1    -2    -1    0     0     forClose         TS   ")"
-338   339   -2    563   0     0     forInit          NTS  target
+338   339   -2    564   0     0     forInit          NTS  target
 339   340   -3    279   0     0     -                NTS  assignop
 340   -1    -3    369   0     0     -                NTS  expr
 341   -1    -2    369   0     0     forCond          NTS  expr
-342   343   345   563   0     0     forStep          NTS  target
+342   343   345   564   0     0     forStep          NTS  target
 343   344   -3    279   0     0     -                NTS  assignop
 344   -1    -3    369   0     0     -                NTS  expr
-345   -1    346   524   0     0     -                NTS  postIncDec
-346   -1    -2    516   0     0     -                NTS  preIncDec
+345   -1    346   525   0     0     -                NTS  postIncDec
+346   -1    -2    517   0     0     -                NTS  preIncDec
 347   -1    -2    176   0     0     forBody          NTS  statement
 348   349   -2    355   0     0     doStmt           NTS  doKw
 349   350   -3    359   0     0     -                NTS  doBody
@@ -1266,9 +1270,9 @@
 362   363   -2    -1    0     0     continueStmt     TS   "continue"
 363   -1    -3    -1    0     0     -                TS   ";"
 364   365   -2    -1    0     0     gotoStmt         TS   "goto"
-365   366   -3    614   0     0     -                NTS  ident
+365   366   -3    617   0     0     -                NTS  ident
 366   -1    -3    -1    0     0     -                TS   ";"
-367   368   -2    614   0     0     labelStmt        NTS  ident
+367   368   -2    617   0     0     labelStmt        NTS  ident
 368   -1    -3    -1    0     0     -                TS   ":"
 369   -1    -2    370   0     0     expr             NTS  conditionalExpr
 370   371   -2    391   0     0     conditionalExpr  NTS  orExpr
@@ -1284,7 +1288,7 @@
 380   -1    -2    -1    0     0     commaTok         TS   ","
 381   -1    382   383   0     0     commaItem        NTS  commaAssign
 382   -1    -2    386   0     0     -                NTS  commaValue
-383   384   -2    563   0     0     commaAssign      NTS  target
+383   384   -2    564   0     0     commaAssign      NTS  target
 384   385   -3    279   0     0     -                NTS  assignop
 385   -1    -3    369   0     0     -                NTS  expr
 386   -1    -2    369   0     0     commaValue       NTS  expr
@@ -1339,26 +1343,26 @@
 435   -1    436   -1    0     0     -                TS   "/"
 436   -1    -2    -1    0     0     -                TS   "%"
 437   -1    438   489   0     0     factor           NTS  sizeofExpr
-438   -1    439   509   0     0     -                NTS  castExpr
-439   -1    440   516   0     0     -                NTS  preIncDec
-440   -1    441   524   0     0     -                NTS  postIncDec
+438   -1    439   510   0     0     -                NTS  castExpr
+439   -1    440   517   0     0     -                NTS  preIncDec
+440   -1    441   525   0     0     -                NTS  postIncDec
 441   442   444   375   0     0     -                NTS  parenOpen
 442   443   -3    377   0     0     -                NTS  commaExpr
 443   -1    -3    376   0     0     -                NTS  parenClose
-444   445   447   548   0     0     -                NTS  call
+444   445   447   549   0     0     -                NTS  call
 445   446   446   457   0     0     -                NTS  postfixIndex
-446   -1    447   552   0     0     -                NTS  callMember
-447   -1    448   554   0     0     -                NTS  indirectCall
-448   -1    449   612   0     0     -                NTS  boolLit
+446   -1    447   553   0     0     -                NTS  callMember
+447   -1    448   555   0     0     -                NTS  indirectCall
+448   -1    449   615   0     0     -                NTS  boolLit
 449   -1    450   486   0     0     -                NTS  addressRef
-450   -1    451   546   0     0     -                NTS  derefRef
-451   -1    452   573   0     0     -                NTS  varRef
+450   -1    451   547   0     0     -                NTS  derefRef
+451   -1    452   574   0     0     -                NTS  varRef
 452   -1    453   461   0     0     -                NTS  charLit
-453   -1    454   617   0     0     -                NTS  number
+453   -1    454   620   0     0     -                NTS  number
 454   455   456   458   0     0     -                NTS  stringLit
 455   -1    456   457   0     0     -                NTS  postfixIndex
 456   -1    -2    482   0     0     -                NTS  negFactor
-457   -1    -2    579   0     0     postfixIndex     NTS  index
+457   -1    -2    580   0     0     postfixIndex     NTS  index
 458   459   -2    -1    0     0     stringLit        TS   """
 459   459   460   476   0     0     -                NTS  character
 460   -1    -3    -1    0     0     -                TS   """
@@ -1388,153 +1392,156 @@
 484   485   -2    -1    0     0     -                TS   "~"
 485   -1    -3    437   0     0     -                NTS  factor
 486   487   -2    -1    0     0     addressRef       TS   "&"
-487   488   -3    614   0     0     -                NTS  ident
-488   -1    -1    579   0     0     -                NTS  index
+487   488   -3    617   0     0     -                NTS  ident
+488   -1    -1    580   0     0     -                NTS  index
 489   490   -2    -1    0     0     sizeofExpr       TS   "sizeof"
 490   491   -3    -1    0     0     -                TS   "("
 491   492   -3    493   0     0     -                NTS  sizeofArg
 492   -1    -3    -1    0     0     -                TS   ")"
 493   -1    494   495   0     0     sizeofArg        NTS  sizeofType
-494   -1    -2    508   0     0     -                NTS  sizeofVarName
+494   -1    -2    509   0     0     -                NTS  sizeofVarName
 495   496   -2    497   0     0     sizeofType       NTS  sizeofBaseType
-496   -1    -3    607   0     0     -                NTS  pointerDecl
+496   -1    -3    609   0     0     -                NTS  pointerDecl
 497   498   499   -1    0     0     sizeofBaseType   TS   "unsigned"
-498   -1    -3    609   0     0     -                NTS  unsignedInt
+498   -1    -3    611   0     0     -                NTS  unsignedInt
 499   -1    500   -1    0     0     -                TS   "int"
 500   -1    501   -1    0     0     -                TS   "long"
 501   -1    502   -1    0     0     -                TS   "char"
-502   -1    503   -1    0     0     -                TS   "bool"
-503   504   505   -1    0     0     -                TS   "struct"
-504   -1    -3    604   0     0     -                NTS  structTypeRef
-505   506   507   -1    0     0     -                TS   "enum"
-506   -1    -3    605   0     0     -                NTS  enumTypeRef
-507   -1    -2    -1    0     0     -                TS   "void"
-508   -1    -2    614   0     0     sizeofVarName    NTS  ident
-509   510   -2    -1    0     0     castExpr         TS   "("
-510   511   -3    513   0     0     -                NTS  castType
-511   512   -3    -1    0     0     -                TS   ")"
-512   -1    -3    515   0     0     -                NTS  castOperand
-513   514   -2    592   0     0     castType         NTS  type
-514   -1    -3    607   0     0     -                NTS  pointerDecl
-515   -1    -2    437   0     0     castOperand      NTS  factor
-516   517   518   540   0     0     preIncDec        NTS  incdecOp
-517   -1    -3    536   0     0     -                NTS  derefIncTarget
-518   519   520   540   0     0     -                NTS  incdecOp
-519   -1    -3    532   0     0     -                NTS  memberIncTarget
-520   521   522   540   0     0     -                NTS  incdecOp
-521   -1    -3    534   0     0     -                NTS  indexIncTarget
-522   523   -2    540   0     0     -                NTS  incdecOp
-523   -1    -3    614   0     0     -                NTS  ident
-524   525   526   536   0     0     postIncDec       NTS  derefIncTarget
-525   -1    -3    540   0     0     -                NTS  incdecOp
-526   527   528   532   0     0     -                NTS  memberIncTarget
-527   -1    -3    540   0     0     -                NTS  incdecOp
-528   529   530   534   0     0     -                NTS  indexIncTarget
-529   -1    -3    540   0     0     -                NTS  incdecOp
-530   531   -2    614   0     0     -                NTS  ident
-531   -1    -3    540   0     0     -                NTS  incdecOp
-532   533   -2    614   0     0     memberIncTarget  NTS  ident
-533   -1    -3    583   0     0     -                NTS  member
-534   535   -2    614   0     0     indexIncTarget   NTS  ident
-535   -1    -3    579   0     0     -                NTS  index
-536   537   -2    -1    0     0     derefIncTarget   TS   "("
-537   538   -3    -1    0     0     -                TS   "*"
-538   539   -3    614   0     0     -                NTS  ident
-539   -1    -3    -1    0     0     -                TS   ")"
-540   -1    541   -1    0     0     incdecOp         TS   "++"
-541   -1    -2    -1    0     0     -                TS   "--"
-542   543   544   516   0     0     incDecStmt       NTS  preIncDec
-543   -1    -3    -1    0     0     -                TS   ";"
-544   545   -2    524   0     0     -                NTS  postIncDec
-545   -1    -3    -1    0     0     -                TS   ";"
-546   547   -2    -1    0     0     derefRef         TS   "*"
-547   -1    -3    437   0     0     -                NTS  factor
-548   549   -2    591   0     0     call             NTS  funcName
-549   550   -3    -1    0     0     -                TS   "("
-550   551   -3    559   0     0     -                NTS  argList
-551   -1    -3    -1    0     0     -                TS   ")"
-552   553   -2    583   0     0     callMember       NTS  member
-553   -1    -1    579   0     0     -                NTS  index
-554   555   -2    573   0     0     indirectCall     NTS  varRef
-555   556   -3    558   0     0     -                NTS  indCallOpen
-556   557   -3    559   0     0     -                NTS  argList
-557   -1    -3    -1    0     0     -                TS   ")"
-558   -1    -2    -1    0     0     indCallOpen      TS   "("
-559   560   -1    562   0     0     argList          NTS  arg
-560   561   -1    -1    0     0     -                TS   ","
-561   560   -3    562   0     0     -                NTS  arg
-562   -1    -2    369   0     0     arg              NTS  expr
-563   -1    564   565   0     0     target           NTS  directTarget
-564   -1    -2    571   0     0     -                NTS  indirectTarget
-565   566   -2    614   0     0     directTarget     NTS  ident
-566   567   568   579   0     0     -                NTS  index
-567   567   568   579   0     0     -                NTS  index
-568   569   -1    583   0     0     -                NTS  member
-569   570   -1    579   0     0     -                NTS  index
-570   570   -1    579   0     0     -                NTS  index
-571   572   -2    -1    0     0     indirectTarget   TS   "*"
-572   -1    -3    437   0     0     -                NTS  factor
-573   574   -2    614   0     0     varRef           NTS  ident
-574   575   576   579   0     0     -                NTS  index
-575   575   576   579   0     0     -                NTS  index
-576   577   -1    583   0     0     -                NTS  member
-577   578   -1    579   0     0     -                NTS  index
-578   578   -1    579   0     0     -                NTS  index
-579   580   -2    582   0     0     index            NTS  indexOpen
-580   581   -3    369   0     0     -                NTS  expr
-581   -1    -3    -1    0     0     -                TS   "]"
-582   -1    -2    -1    0     0     indexOpen        TS   "["
-583   584   585   -1    0     0     member           TS   "."
-584   -1    -3    55    0     0     -                NTS  fieldName
-585   586   -2    -1    0     0     -                TS   "->"
-586   -1    -3    55    0     0     -                NTS  fieldName
-587   -1    -2    614   0     0     defName          NTS  ident
-588   -1    -2    614   0     0     paramName        NTS  ident
-589   -1    -2    614   0     0     localName        NTS  ident
-590   -1    -2    614   0     0     globalName       NTS  ident
-591   -1    -2    614   0     0     funcName         NTS  ident
-592   593   594   -1    0     0     type             TS   "unsigned"
-593   -1    -3    609   0     0     -                NTS  unsignedInt
-594   -1    595   -1    0     0     -                TS   "int"
-595   -1    596   -1    0     0     -                TS   "long"
-596   -1    597   -1    0     0     -                TS   "char"
-597   -1    598   -1    0     0     -                TS   "bool"
-598   599   600   -1    0     0     -                TS   "struct"
-599   -1    -3    604   0     0     -                NTS  structTypeRef
-600   601   602   -1    0     0     -                TS   "enum"
-601   -1    -3    605   0     0     -                NTS  enumTypeRef
-602   -1    603   -1    0     0     -                TS   "void"
-603   -1    -2    606   0     0     -                NTS  typedefRef
-604   -1    -2    614   0     0     structTypeRef    NTS  ident
-605   -1    -2    614   0     0     enumTypeRef      NTS  ident
-606   -1    -2    614   0     0     typedefRef       NTS  ident
-607   607   -1    608   0     0     pointerDecl      NTS  pointerStar
-608   -1    -2    -1    0     0     pointerStar      TS   "*"
-609   -1    610   -1    0     0     unsignedInt      TS   "int"
-610   -1    611   -1    0     0     -                TS   "char"
-611   -1    -2    -1    0     0     -                TS   "long"
-612   -1    613   -1    0     0     boolLit          TS   "true"
-613   -1    -2    -1    0     0     -                TS   "false"
-614   615   -2    630   0     0     ident            NTS  letter
-615   615   616   630   0     0     -                NTS  letter
-616   615   -1    633   0     0     -                NTS  digit
-617   -1    618   619   0     0     number           NTS  hexNumber
-618   -1    -2    628   0     0     -                NTS  decNumber
-619   620   -2    -1    0     0     hexNumber        TS   "0"
-620   621   -3    623   0     0     -                NTS  hexMark
-621   622   -3    625   0     0     -                NTS  hexDigit
-622   622   -1    625   0     0     -                NTS  hexDigit
-623   -1    624   -1    0     0     hexMark          TS   "x"
-624   -1    -2    -1    0     0     -                TS   "X"
-625   -1    626   633   0     0     hexDigit         NTS  digit
-626   -1    627   -1    97    102   -                RNG  "a"~"f"
-627   -1    -2    -1    65    70    -                RNG  "A"~"F"
-628   629   -2    633   0     0     decNumber        NTS  digit
-629   629   -1    633   0     0     -                NTS  digit
-630   -1    631   -1    97    122   letter           RNG  "a"~"z"
-631   -1    632   -1    65    90    -                RNG  "A"~"Z"
-632   -1    -2    -1    0     0     -                TS   "_"
-633   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+502   -1    503   -1    0     0     -                TS   "short"
+503   -1    504   -1    0     0     -                TS   "bool"
+504   505   506   -1    0     0     -                TS   "struct"
+505   -1    -3    606   0     0     -                NTS  structTypeRef
+506   507   508   -1    0     0     -                TS   "enum"
+507   -1    -3    607   0     0     -                NTS  enumTypeRef
+508   -1    -2    -1    0     0     -                TS   "void"
+509   -1    -2    617   0     0     sizeofVarName    NTS  ident
+510   511   -2    -1    0     0     castExpr         TS   "("
+511   512   -3    514   0     0     -                NTS  castType
+512   513   -3    -1    0     0     -                TS   ")"
+513   -1    -3    516   0     0     -                NTS  castOperand
+514   515   -2    593   0     0     castType         NTS  type
+515   -1    -3    609   0     0     -                NTS  pointerDecl
+516   -1    -2    437   0     0     castOperand      NTS  factor
+517   518   519   541   0     0     preIncDec        NTS  incdecOp
+518   -1    -3    537   0     0     -                NTS  derefIncTarget
+519   520   521   541   0     0     -                NTS  incdecOp
+520   -1    -3    533   0     0     -                NTS  memberIncTarget
+521   522   523   541   0     0     -                NTS  incdecOp
+522   -1    -3    535   0     0     -                NTS  indexIncTarget
+523   524   -2    541   0     0     -                NTS  incdecOp
+524   -1    -3    617   0     0     -                NTS  ident
+525   526   527   537   0     0     postIncDec       NTS  derefIncTarget
+526   -1    -3    541   0     0     -                NTS  incdecOp
+527   528   529   533   0     0     -                NTS  memberIncTarget
+528   -1    -3    541   0     0     -                NTS  incdecOp
+529   530   531   535   0     0     -                NTS  indexIncTarget
+530   -1    -3    541   0     0     -                NTS  incdecOp
+531   532   -2    617   0     0     -                NTS  ident
+532   -1    -3    541   0     0     -                NTS  incdecOp
+533   534   -2    617   0     0     memberIncTarget  NTS  ident
+534   -1    -3    584   0     0     -                NTS  member
+535   536   -2    617   0     0     indexIncTarget   NTS  ident
+536   -1    -3    580   0     0     -                NTS  index
+537   538   -2    -1    0     0     derefIncTarget   TS   "("
+538   539   -3    -1    0     0     -                TS   "*"
+539   540   -3    617   0     0     -                NTS  ident
+540   -1    -3    -1    0     0     -                TS   ")"
+541   -1    542   -1    0     0     incdecOp         TS   "++"
+542   -1    -2    -1    0     0     -                TS   "--"
+543   544   545   517   0     0     incDecStmt       NTS  preIncDec
+544   -1    -3    -1    0     0     -                TS   ";"
+545   546   -2    525   0     0     -                NTS  postIncDec
+546   -1    -3    -1    0     0     -                TS   ";"
+547   548   -2    -1    0     0     derefRef         TS   "*"
+548   -1    -3    437   0     0     -                NTS  factor
+549   550   -2    592   0     0     call             NTS  funcName
+550   551   -3    -1    0     0     -                TS   "("
+551   552   -3    560   0     0     -                NTS  argList
+552   -1    -3    -1    0     0     -                TS   ")"
+553   554   -2    584   0     0     callMember       NTS  member
+554   -1    -1    580   0     0     -                NTS  index
+555   556   -2    574   0     0     indirectCall     NTS  varRef
+556   557   -3    559   0     0     -                NTS  indCallOpen
+557   558   -3    560   0     0     -                NTS  argList
+558   -1    -3    -1    0     0     -                TS   ")"
+559   -1    -2    -1    0     0     indCallOpen      TS   "("
+560   561   -1    563   0     0     argList          NTS  arg
+561   562   -1    -1    0     0     -                TS   ","
+562   561   -3    563   0     0     -                NTS  arg
+563   -1    -2    369   0     0     arg              NTS  expr
+564   -1    565   566   0     0     target           NTS  directTarget
+565   -1    -2    572   0     0     -                NTS  indirectTarget
+566   567   -2    617   0     0     directTarget     NTS  ident
+567   568   569   580   0     0     -                NTS  index
+568   568   569   580   0     0     -                NTS  index
+569   570   -1    584   0     0     -                NTS  member
+570   571   -1    580   0     0     -                NTS  index
+571   571   -1    580   0     0     -                NTS  index
+572   573   -2    -1    0     0     indirectTarget   TS   "*"
+573   -1    -3    437   0     0     -                NTS  factor
+574   575   -2    617   0     0     varRef           NTS  ident
+575   576   577   580   0     0     -                NTS  index
+576   576   577   580   0     0     -                NTS  index
+577   578   -1    584   0     0     -                NTS  member
+578   579   -1    580   0     0     -                NTS  index
+579   579   -1    580   0     0     -                NTS  index
+580   581   -2    583   0     0     index            NTS  indexOpen
+581   582   -3    369   0     0     -                NTS  expr
+582   -1    -3    -1    0     0     -                TS   "]"
+583   -1    -2    -1    0     0     indexOpen        TS   "["
+584   585   586   -1    0     0     member           TS   "."
+585   -1    -3    55    0     0     -                NTS  fieldName
+586   587   -2    -1    0     0     -                TS   "->"
+587   -1    -3    55    0     0     -                NTS  fieldName
+588   -1    -2    617   0     0     defName          NTS  ident
+589   -1    -2    617   0     0     paramName        NTS  ident
+590   -1    -2    617   0     0     localName        NTS  ident
+591   -1    -2    617   0     0     globalName       NTS  ident
+592   -1    -2    617   0     0     funcName         NTS  ident
+593   594   595   -1    0     0     type             TS   "unsigned"
+594   -1    -3    611   0     0     -                NTS  unsignedInt
+595   -1    596   -1    0     0     -                TS   "int"
+596   -1    597   -1    0     0     -                TS   "long"
+597   -1    598   -1    0     0     -                TS   "short"
+598   -1    599   -1    0     0     -                TS   "char"
+599   -1    600   -1    0     0     -                TS   "bool"
+600   601   602   -1    0     0     -                TS   "struct"
+601   -1    -3    606   0     0     -                NTS  structTypeRef
+602   603   604   -1    0     0     -                TS   "enum"
+603   -1    -3    607   0     0     -                NTS  enumTypeRef
+604   -1    605   -1    0     0     -                TS   "void"
+605   -1    -2    608   0     0     -                NTS  typedefRef
+606   -1    -2    617   0     0     structTypeRef    NTS  ident
+607   -1    -2    617   0     0     enumTypeRef      NTS  ident
+608   -1    -2    617   0     0     typedefRef       NTS  ident
+609   609   -1    610   0     0     pointerDecl      NTS  pointerStar
+610   -1    -2    -1    0     0     pointerStar      TS   "*"
+611   -1    612   -1    0     0     unsignedInt      TS   "int"
+612   -1    613   -1    0     0     -                TS   "char"
+613   -1    614   -1    0     0     -                TS   "long"
+614   -1    -2    -1    0     0     -                TS   "short"
+615   -1    616   -1    0     0     boolLit          TS   "true"
+616   -1    -2    -1    0     0     -                TS   "false"
+617   618   -2    633   0     0     ident            NTS  letter
+618   618   619   633   0     0     -                NTS  letter
+619   618   -1    636   0     0     -                NTS  digit
+620   -1    621   622   0     0     number           NTS  hexNumber
+621   -1    -2    631   0     0     -                NTS  decNumber
+622   623   -2    -1    0     0     hexNumber        TS   "0"
+623   624   -3    626   0     0     -                NTS  hexMark
+624   625   -3    628   0     0     -                NTS  hexDigit
+625   625   -1    628   0     0     -                NTS  hexDigit
+626   -1    627   -1    0     0     hexMark          TS   "x"
+627   -1    -2    -1    0     0     -                TS   "X"
+628   -1    629   636   0     0     hexDigit         NTS  digit
+629   -1    630   -1    97    102   -                RNG  "a"~"f"
+630   -1    -2    -1    65    70    -                RNG  "A"~"F"
+631   632   -2    636   0     0     decNumber        NTS  digit
+632   632   -1    636   0     0     -                NTS  digit
+633   -1    634   -1    97    122   letter           RNG  "a"~"z"
+634   -1    635   -1    65    90    -                RNG  "A"~"Z"
+635   -1    -2    -1    0     0     -                TS   "_"
+636   -1    -2    -1    48    57    digit            RNG  "0"~"9"
 [ENDE]
 
 [TESTS]
@@ -2222,7 +2229,7 @@ static TCType tcMakeFnPtr(int sigId) {
 	t.structId = (unsigned char)(sigId + 1);
 	return t;
 }
-static int tcIsInteger(TCType t) { return !t.pointers && (t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'z'); }
+static int tcIsInteger(TCType t) { return !t.pointers && (t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'h' || t.base == 'z'); }
 static int tcIsBool(TCType t) { return !t.pointers && t.base == 'b'; }
 /* ISO C kennt keinen eigenen Wahrheitswert-Typ in Bedingungen: "if (x)" ist
    fuer JEDEN skalaren Typ definiert (Ganzzahl, Zeichen, Zeiger) und bedeutet
@@ -2235,10 +2242,42 @@ static int tcIsBool(TCType t) { return !t.pointers && t.base == 'b'; }
    Rein additiv: was vorher zulaessig war, bleibt es. Codegen-seitig aendert
    sich nichts -- ein bool liegt ohnehin als 0/1 im selben 32-Bit-Slot wie ein
    int, und JZ/JNZ testen den Wert unabhaengig vom Typ. */
-static int tcIsTruthy(TCType t) { return t.pointers != 0 || t.base == 'b' || t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'z'; }
+static int tcIsTruthy(TCType t) { return t.pointers != 0 || t.base == 'b' || t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'h' || t.base == 'z'; }
 static TCType tcPointerTo(TCType t) { if (t.pointers < 255) t.pointers++; else actionErrors++; return t; }
 static TCType tcPointee(TCType t) { if (t.pointers) t.pointers--; else actionErrors++; return t; }
-static char tcTypeTag(TCType t) { return t.pointers ? 'p' : (t.base == 'c' || t.base == 'b') ? t.base : 'i'; }
+/* 'h' (short, 2026-09-09) dazu -- dieselbe Fallgruppe wie 'c'/'b': der
+   Basiswert IST schon der richtige einbuchstabige IR-Tag, kein Umweg auf
+   'i' noetig. qcc_backend_c.cpp muss 'h' ab hier ueberall dort kennen, wo
+   bisher nur zwischen "byteweise" (isByteWord: 'c'/'b') und "langwortweise"
+   (alles andere) unterschieden wurde -- s. tagSize() dort. */
+static char tcTypeTag(TCType t) { return t.pointers ? 'p' : (t.base == 'c' || t.base == 'b' || t.base == 'h') ? t.base : 'i'; }
+/* Opcode-Namenssuffix fuer LOADL/LOADLH/LOADC-artige Paare (2026-09-09, mit
+   short dazugekommen): "" fuer den normalen 4-Byte-Fall (LOADL, LOADG, ...),
+   "C" fuer char/bool (1 Byte), "H" fuer short (2 Byte) -- an DREI Stellen
+   gebraucht (Praeinkrement/-dekrement, static-lokale Deklaration, globales
+   Lesen); ein gemeinsamer Helfer statt drei Kopien, damit eine kuenftige
+   vierte Groesse nicht an einer der drei Stellen vergessen wird. */
+static const char* tcWordSuffix(char tag) { return tag == 'i' ? "" : tag == 'h' ? "H" : "C"; }
+/* Dieselbe Dreiteilung wie tcWordSuffix, aber fuer LOAD%s/STORE%s (lokal
+   OHNE G-Praefix): der int-Fall braucht dort ein "L" statt "" (LOADL/
+   STOREL sind eigene Opcode-Namen, es gibt kein blankes "LOAD"/"STORE"). */
+static const char* tcWordSuffixL(char tag) { return tag == 'i' ? "L" : tag == 'h' ? "LH" : "C"; }
+/* Byte-Groesse eines Skalartyps fuer die 2D-Feld-Zeilenschrittweite
+   (tcEmitFieldRowColIndex, zweimal dupliziert -- 2026-09-09 mit short
+   dazugekommen). NICHT dieselbe Groesse wie im 68k-Backend (dort eigene,
+   unabhaengige tagSize() fuer LOADIND/PTRINDEX & Co, s. qcc_backend_c.cpp) --
+   dieser Wert geht hier als reine Zahl in eine echte Laufzeitmultiplikation
+   (IPADDN), keine lsl.l-Kurzform. */
+static int tcElemByteSize(TCType t) { char g = tcTypeTag(t); return g == 'c' ? 1 : g == 'h' ? 2 : 4; }
+/* Array-Initialisiererwert auf die Speicherbreite kuerzen (GINIT/STOREIDX-
+   Init, 2026-09-09 mit short dazugekommen) -- dieselbe Kuerzung, die
+   tc_staticlocal fuer eine EINZELNE static-lokale Variable schon macht. */
+static long tcTruncInit(TCType t, long v) {
+	if (t.pointers) return v;
+	if (t.base == 'c') return v & 255;
+	if (t.base == 'h') return v & 65535;
+	return v;
+}
 /* Der Indexschritt fuer ein ARRAY-FELD einer Struct.
  *
  * IPADD skaliert den Index mit der Groesse des TYPTAGS -- fuer 'p' sind das
@@ -2355,7 +2394,7 @@ static void tcUnstashChainedIndex(void) {
    (haengt LOADIND an); laden=0: Zuweisungsziel (Adresse bleibt liegen,
    Aufrufer setzt tcTargetIndirect). */
 static TCType tcEmitFieldRowColIndex(int sid, int fi, int laden) {
-	int elemSize = tcTypeTag(tcStructFieldTypes[sid][fi]) == 'c' ? 1 : 4;
+	int elemSize = tcElemByteSize(tcStructFieldTypes[sid][fi]);
 	printf("IPADDN %d\n", tcStructFieldRowLen[sid][fi] * elemSize);
 	tcUnstashChainedIndex();
 	tcEmitFieldIndexStep(sid, fi);
@@ -2437,11 +2476,11 @@ static int tcCompatible4(const TCType* wanted, const TCType* got) {
 	if (wanted->pointers && got->pointers && wanted->pointers == got->pointers &&
 	    (wanted->base == 'v' || got->base == 'v')) return 1;
 	if (wanted->pointers) return !got->pointers && got->base == 'z';
-	if ((wanted->base == 'i' || wanted->base == 'u' || wanted->base == 'c' || wanted->base == 'z') &&
-	    !wanted->pointers && !got->pointers && got->base == 'b') return 1;
-	return !wanted->pointers && !got->pointers &&
-	       (wanted->base == 'i' || wanted->base == 'u' || wanted->base == 'c' || wanted->base == 'z') &&
-	       (got->base == 'i' || got->base == 'u' || got->base == 'c' || got->base == 'z');
+	/* 2026-09-09: auf tcIsInteger() umgestellt (vorher hier dreifach inline
+	   dupliziert, ohne 'h' geraten haette short lautlos wieder eine eigene
+	   Ausnahme gebraucht -- s. [[schrittweiten-geschwister-suchen]]). */
+	if (tcIsInteger(*wanted) && !wanted->pointers && !got->pointers && got->base == 'b') return 1;
+	return !wanted->pointers && !got->pointers && tcIsInteger(*wanted) && tcIsInteger(*got);
 }
 #define TC_SET_CURRENT(B, P) do { tcCurrentType.base = (unsigned char)(B); tcCurrentType.pointers = (unsigned char)(P); tcCurrentType.structId = 0; tcCurrentType.pointeeConst = 0; } while (0)
 #define TC_TYPE_PUSH(B, P, S, C) do { if (tcValueDepth < 256) { tcValueTypes[tcValueDepth].base = (unsigned char)(B); tcValueTypes[tcValueDepth].pointers = (unsigned char)(P); tcValueTypes[tcValueDepth].structId = (unsigned char)(S); tcValueTypes[tcValueDepth].pointeeConst = (unsigned char)(C); tcValueDepth++; } else actionErrors++; } while (0)
@@ -2600,8 +2639,19 @@ static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 		tcTypePush(t);
 		return;
 	}
-	loadOp = slot >= 0 ? (tag == 'i' ? "LOADL" : "LOADC") : (tag == 'i' ? "LOADG" : "LOADGC");
-	storeOp = slot >= 0 ? (tag == 'i' ? "STOREL" : "STOREC") : (tag == 'i' ? "STOREG" : "STOREGC");
+	/* 2026-09-09, short dazu: bei genau EINEM Byte-Tag half die alte
+	   Zwei-Wege-Ternaerkette (LOADC deckte 'c' UND 'b' ab); mit 'h' als
+	   dritter Groesse jetzt ein echtes if/else statt einer dritten
+	   verschachtelten Ternaerstufe (bleibt lesbar). */
+	if (slot >= 0) {
+		if (tag == 'i')      { loadOp = "LOADL";  storeOp = "STOREL"; }
+		else if (tag == 'h') { loadOp = "LOADLH"; storeOp = "STORELH"; }
+		else                 { loadOp = "LOADC";  storeOp = "STOREC"; }
+	} else {
+		if (tag == 'i')      { loadOp = "LOADG";  storeOp = "STOREG"; }
+		else if (tag == 'h') { loadOp = "LOADGH"; storeOp = "STOREGH"; }
+		else                 { loadOp = "LOADGC"; storeOp = "STOREGC"; }
+	}
 	if (slot >= 0) printf("%s %d\n", loadOp, slot); else printf("%s %s\n", loadOp, tcGlobalNames[global]);
 	if (isPre) printf("PUSH 1\n%s\nDUP\n", isDec ? "SUB" : "ADD");
 	else printf("DUP\nPUSH 1\n%s\n", isDec ? "SUB" : "ADD");
@@ -2645,7 +2695,7 @@ static void tcPrintType(FILE* out, TCType t) {
 		fputs("function pointer", out);
 		return;
 	}
-	name = t.base == 'u' ? "unsigned int" : t.base == 'c' ? "char" : t.base == 'b' ? "bool" : t.base == 'z' ? "null" : t.base == 'i' ? "int" : t.base == 'v' ? "void" : t.base == 's' ? "struct" : "?";
+	name = t.base == 'u' ? "unsigned int" : t.base == 'c' ? "char" : t.base == 'h' ? "short" : t.base == 'b' ? "bool" : t.base == 'z' ? "null" : t.base == 'i' ? "int" : t.base == 'v' ? "void" : t.base == 's' ? "struct" : "?";
 	fputs(name, out); for (i = 0; i < t.pointers; i++) fputc('*', out);
 }
 static void tcTypeError(const char* what, TCType wanted, TCType got) {
@@ -2779,9 +2829,9 @@ static void tcLoadTarget(void) {
 	char tag = tcTypeTag(tcTargetType);
 	if (tcTargetIndirect) printf("DUPP\nLOADIND %c\n", tag);
 	else if (tcTargetIsGlobal && tcTargetIsArray) printf("DUP\nLOADIDX G %s %c\n", tcTargetGlobal, tag);
-	else if (tcTargetIsGlobal) printf("LOADG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
+	else if (tcTargetIsGlobal) printf("LOADG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffix(tag), tcTargetGlobal);
 	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("DUP\nLOADIDX L %d %c\n", tcTargetSlot, tag);
-	else if (tcTargetSlot >= 0) printf("LOAD%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
+	else if (tcTargetSlot >= 0) printf("LOAD%s %d\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffixL(tag), tcTargetSlot);
 	else { tcErrAt(parserActionAt); fprintf(stderr, "unknown assignment target\n"); actionErrors++; return; }
 	tcTypePush(tcTargetType);
 }
@@ -3152,18 +3202,28 @@ void tc_type(const char* start, const char* end) {
 	tcBasePointers = 0;
 	if (tcEqSpan(start, we, "unsigned")) {
 		/* "unsigned char" -> QCCs char (der 68k-Codegen laedt char nullerweitert,
-		   verhaelt sich also schon vorzeichenlos); "unsigned int"/"unsigned long"
-		   -> 'u'. Dafuer muss das ZWEITE Wort geprueft werden, tcWordEnd liefert
-		   nur das erste. */
+		   verhaelt sich also schon vorzeichenlos); "unsigned short" (2026-09-09)
+		   analog -> 'h' (short wird ebenso nullerweitert geladen, s. unten);
+		   "unsigned int"/"unsigned long" -> 'u'. Dafuer muss das ZWEITE Wort
+		   geprueft werden, tcWordEnd liefert nur das erste. */
 		const char* q = we; const char* qe;
 		while (q < end && (*q == ' ' || *q == '\t')) q++;
 		qe = tcWordEnd(q, end);
 		if (tcEqSpan(q, qe, "char")) TC_SET_CURRENT('c', 0);
+		else if (tcEqSpan(q, qe, "short")) TC_SET_CURRENT('h', 0);
 		else TC_SET_CURRENT('u', 0);
 	}
 	else if (tcEqSpan(start, we, "int")) TC_SET_CURRENT('i', 0);
 	/* long ist auf dem 68k-Ziel wortgleich mit int (32 Bit) -- siehe Grammatik. */
 	else if (tcEqSpan(start, we, "long")) TC_SET_CURRENT('i', 0);
+	/* short (2026-09-09) ist NICHT wortgleich mit int -- echter 16-Bit-Typ,
+	   eigener Basiswert 'h'. tcTypeTag/qcc_backend_c.cpp legen ihn als 2 Byte
+	   an und laden ihn nullerweitert (dieselbe Vereinfachung wie bei char:
+	   ein negativer short-Wert verhaelt sich hier wie ein positiver
+	   Bitmuster-gleicher -- fuer Groessen/Zaehler/Flags aus OS-9-Headern, der
+	   eigentliche Anlass, ohne Belang; echte Vorzeichenerweiterung waere ein
+	   zweiter Basistyp und ist bewusst nicht gebaut). */
+	else if (tcEqSpan(start, we, "short")) TC_SET_CURRENT('h', 0);
 	else if (tcEqSpan(start, we, "char")) TC_SET_CURRENT('c', 0);
 	else if (tcEqSpan(start, we, "bool")) TC_SET_CURRENT('b', 0);
 	else if (tcEqSpan(start, we, "void")) TC_SET_CURRENT('v', 0);
@@ -3482,6 +3542,7 @@ void tc_staticlocal(const char* start, const char* end) {
 				actionErrors++;
 			}
 			if (!tcCurrentType.pointers && tcCurrentType.base == 'c') value &= 255;
+			if (!tcCurrentType.pointers && tcCurrentType.base == 'h') value &= 65535;
 			if (!tcCurrentType.pointers && tcCurrentType.base == 'b') value = value ? 1 : 0;
 		}
 	}
@@ -3502,7 +3563,7 @@ void tc_staticlocal(const char* start, const char* end) {
 	printf("GLOBAL %s %ld %c 1\n", tcStaticLocalName, value, tcTypeTag(tcCurrentType));
 	if (runtimeInit) {
 		char flagName[40]; int doInitLabel = tcNextLabel++, afterLabel = tcNextLabel++;
-		const char* storeSuffix = tcIsPointer(tcCurrentType) ? "P" : (tcTypeTag(tcCurrentType) == 'i' ? "" : "C");
+		const char* storeSuffix = tcIsPointer(tcCurrentType) ? "P" : tcWordSuffix(tcTypeTag(tcCurrentType));
 		sprintf(flagName, "__static_init_%s", tcStaticLocalName);
 		printf("GLOBAL %s 0 b 1\n", flagName);
 		printf("LOADGC %s\nJZ L%d\n", flagName, doInitLabel);
@@ -3646,12 +3707,15 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 		q = p; qe = tcWordEnd(q, end);
 		if (tcEqSpan(q, qe, "char")) { type.base = 'c'; p = qe; }
+		else if (tcEqSpan(q, qe, "short")) { type.base = 'h'; p = qe; }
 		else if (tcEqSpan(q, qe, "int") || tcEqSpan(q, qe, "long")) { type.base = 'u'; p = qe; }
 		else type.base = 'u';                 /* blosses "unsigned" */
 	}
 	else if (end - p >= 3 && p[0] == 'i' && p[1] == 'n' && p[2] == 't') p += 3;
 	/* long ist auf dem 68k-Ziel wortgleich mit int (32 Bit), type.base bleibt 'i'. */
 	else if (end - p >= 4 && p[0] == 'l' && p[1] == 'o' && p[2] == 'n' && p[3] == 'g') p += 4;
+	/* short (2026-09-09): ECHTER 16-Bit-Typ, siehe tc_type/tcTypeTag. */
+	else if (end - p >= 5 && p[0] == 's' && p[1] == 'h' && p[2] == 'o' && p[3] == 'r' && p[4] == 't') { p += 5; type.base = 'h'; }
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
@@ -3771,10 +3835,11 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	}
 	if (arrayLen) {
 		printf("GARRAY %s %c %d %d\n", name, tcTypeTag(type), arrayLen, isStatic);
-		for (i = 0; i < initCount; i++) printf("GINIT %s %d %ld\n", name, i, !type.pointers && type.base == 'c' ? (initValues[i] & 255) : initValues[i]);
+		for (i = 0; i < initCount; i++) printf("GINIT %s %d %ld\n", name, i, tcTruncInit(type, initValues[i]));
 		return;
 	}
 	if (!type.pointers && type.base == 'c') value &= 255;
+	if (!type.pointers && type.base == 'h') value &= 65535;
 	if (!type.pointers && type.base == 'b') value = value ? 1 : 0;
 	printf("GLOBAL %s %ld %c %d\n", name, value, tcTypeTag(type), isStatic);
 }
@@ -3799,11 +3864,13 @@ void tc_externglobaldecl(const char* start, const char* end) {
 		p += 8; while (p < end && (*p == ' ' || *p == '\t')) p++;
 		q = p; qe = tcWordEnd(q, end);
 		if (tcEqSpan(q, qe, "char")) { type.base = 'c'; p = qe; }
+		else if (tcEqSpan(q, qe, "short")) { type.base = 'h'; p = qe; }
 		else if (tcEqSpan(q, qe, "int") || tcEqSpan(q, qe, "long")) { type.base = 'u'; p = qe; }
 		else type.base = 'u';
 	}
 	else if (end - p >= 3 && p[0] == 'i' && p[1] == 'n' && p[2] == 't') p += 3;
 	else if (end - p >= 4 && p[0] == 'l' && p[1] == 'o' && p[2] == 'n' && p[3] == 'g') p += 4;
+	else if (end - p >= 5 && p[0] == 's' && p[1] == 'h' && p[2] == 'o' && p[3] == 'r' && p[4] == 't') { p += 5; type.base = 'h'; }
 	else if (end - p >= 4 && p[0] == 'c' && p[1] == 'h' && p[2] == 'a' && p[3] == 'r') { p += 4; type.base = 'c'; }
 	else if (end - p >= 4 && p[0] == 'b' && p[1] == 'o' && p[2] == 'o' && p[3] == 'l') { p += 4; type.base = 'b'; }
 	else if (end - p >= 4 && p[0] == 'v' && p[1] == 'o' && p[2] == 'i' && p[3] == 'd') { p += 4; type.base = 'v'; }
@@ -3842,7 +3909,7 @@ void tc_varinit(const char* start, const char* end) {
 		{ const char* q = start; while (q < end && (*q == ' ' || *q == '\t')) q++; if (q < end && *q == '"') return; }
 		count = tcInitList(start, end, values, 256);
 		if (count < 0 || count > tcLocalArrayLen[slot]) { actionErrors++; tcErrAt(start); fprintf(stderr, "bad or oversized array initializer\n"); return; }
-		for (i = 0; i < count; i++) printf("PUSH %d\nPUSH %ld\nSTOREIDX L %d %c\n", i, !tcLocalTypes[slot].pointers && tcLocalTypes[slot].base == 'c' ? (values[i] & 255) : values[i], slot, tcTypeTag(tcLocalTypes[slot]));
+		for (i = 0; i < count; i++) printf("PUSH %d\nPUSH %ld\nSTOREIDX L %d %c\n", i, tcTruncInit(tcLocalTypes[slot], values[i]), slot, tcTypeTag(tcLocalTypes[slot]));
 		return;
 	}
 	if (tcInitList(start, end, values, 256) >= 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer\n"); return; }
@@ -3866,7 +3933,7 @@ void tc_varinit(const char* start, const char* end) {
 			return;
 		}
 	}
-	printf("STORE%s %d\n", tcIsPointer(tcLocalType(slot)) ? "P" : tcTypeTag(tcLocalType(slot)) == 'i' ? "L" : "C", slot);
+	printf("STORE%s %d\n", tcIsPointer(tcLocalType(slot)) ? "P" : tcWordSuffixL(tcTypeTag(tcLocalType(slot))), slot);
 }
 END
 ROUTINE C tc_number
@@ -4143,7 +4210,7 @@ void tc_varref(const char* start, const char* end) {
 				   einen ZEIGER auf deren erstes Element -- kein LOADIND. Der Sprung geht
 				   um rowLen ELEMENTE, deshalb IPADDN mit der Zeilengroesse in Bytes
 				   (IPADD kennt nur feste Typtag-Groessen). */
-				int elemSize = tcTypeTag(tcStructFieldTypes[sid][fi]) == 'c' ? 1 : 4;
+				int elemSize = tcElemByteSize(tcStructFieldTypes[sid][fi]);
 				tcCheckConstIndex(fieldEnd, end, tcStructFieldArrayLen[sid][fi] / tcStructFieldRowLen[sid][fi]);
 				printf("IPADDN %d\n", tcStructFieldRowLen[sid][fi] * elemSize);
 				tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return;
@@ -4373,7 +4440,10 @@ void tc_varref(const char* start, const char* end) {
 			             tcLocalTypes[slot].structId, tcLocalTypes[slot].pointeeConst);
 		}
 		else {
-			printf("LOAD%s %d\n", tcLocalTypes[slot].pointers ? "P" : tcLocalTypes[slot].base == 'i' || tcLocalTypes[slot].base == 'u' ? "L" : "C", slot);
+			/* 2026-09-09: direkter .base-Vergleich statt tcWordSuffixL(tcTypeTag(...))
+			   -- war vorher 'i'/'u' -> "L" sonst "C", eine bislang uebersehene
+			   dritte Fassung derselben Weiche (s. tcWordSuffix/tcWordSuffixL). */
+			printf("LOAD%s %d\n", tcLocalTypes[slot].pointers ? "P" : tcWordSuffixL(tcTypeTag(tcLocalTypes[slot])), slot);
 			TC_TYPE_PUSH(tcLocalTypes[slot].base, tcLocalTypes[slot].pointers,
 			             tcLocalTypes[slot].structId, tcLocalTypes[slot].pointeeConst);
 		}
@@ -4403,7 +4473,7 @@ void tc_varref(const char* start, const char* end) {
 			TCType valueType = globalValueType;
 			char valueTag;
 			valueType.pointers = valueType.pointers - 1;
-			valueTag = valueType.pointers ? 'p' : (valueType.base == 'c' || valueType.base == 'b') ? valueType.base : 'i';
+			valueTag = tcTypeTag(valueType);
 			printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, valueTag, valueTag);
 			if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = valueType; else actionErrors++;
 		} else if (indexed) { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; }
@@ -4414,7 +4484,7 @@ void tc_varref(const char* start, const char* end) {
 			TC_TYPE_PUSH(globalValueType.base, globalValueType.pointers,
 			             globalValueType.structId, globalValueType.pointeeConst);
 		}
-		else { printf("LOADG%s %s\n", tcIsPointer(globalValueType) ? "P" : tcTypeTag(globalValueType) == 'i' ? "" : "C", name); tcTypePush(globalValueType); }
+		else { printf("LOADG%s %s\n", tcIsPointer(globalValueType) ? "P" : tcWordSuffix(tcTypeTag(globalValueType)), name); tcTypePush(globalValueType); }
 	}
 	else {
 		int ec = tcLookupEnumConst(start, identEnd);
@@ -4733,8 +4803,8 @@ void tc_expr(const char* start, const char* end) {
 		TCType right, left; int pointerCompare, leftInteger, rightInteger, leftBool, rightBool;
 		TC_TYPE_POP(right); TC_TYPE_POP(left);
 		pointerCompare = tcIsPointer(left) || tcIsPointer(right);
-		leftInteger = !left.pointers && (left.base == 'i' || left.base == 'u' || left.base == 'c' || left.base == 'z');
-		rightInteger = !right.pointers && (right.base == 'i' || right.base == 'u' || right.base == 'c' || right.base == 'z');
+		leftInteger = tcIsInteger(left);
+		rightInteger = tcIsInteger(right);
 		leftBool = !left.pointers && left.base == 'b';
 		rightBool = !right.pointers && right.base == 'b';
 		if (pointerCompare && !(tcSameType(left, right) || (tcIsPointer(left) && right.base == 'z' && !right.pointers) || (tcIsPointer(right) && left.base == 'z' && !left.pointers))) tcTypeError("pointer comparison", left, right);
@@ -5245,8 +5315,8 @@ void tc_chainassign(const char* start, const char* end) {
 		if (!tcCompatible(tcPrevTargetType, got)) tcTypeError("assignment", tcPrevTargetType, got);
 		printf("DUP\n");
 		tag = tcTypeTag(tcTargetType);
-		if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
-		else printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
+		if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffix(tag), tcTargetGlobal);
+		else printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffixL(tag), tcTargetSlot);
 		tag = tcTypeTag(tcPrevTargetType);
 		if (tcPrevTargetIndirect) printf("STOREIND %c\n", tag);
 		else if (tcPrevTargetIsGlobal) printf("STOREIDX G %s %c\n", tcPrevTargetGlobal, tag);
@@ -5262,11 +5332,11 @@ void tc_chainassign(const char* start, const char* end) {
 	if (!tcCompatible(tcPrevTargetType, got)) tcTypeError("assignment", tcPrevTargetType, got);
 	printf("DUP\n");
 	tag = tcTypeTag(tcTargetType);
-	if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
-	else printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
+	if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffix(tag), tcTargetGlobal);
+	else printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffixL(tag), tcTargetSlot);
 	tag = tcTypeTag(tcPrevTargetType);
-	if (tcPrevTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcPrevTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcPrevTargetGlobal);
-	else printf("STORE%s %d\n", tcIsPointer(tcPrevTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcPrevTargetSlot);
+	if (tcPrevTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcPrevTargetType) ? "P" : tcWordSuffix(tag), tcPrevTargetGlobal);
+	else printf("STORE%s %d\n", tcIsPointer(tcPrevTargetType) ? "P" : tcWordSuffixL(tag), tcPrevTargetSlot);
 }
 END
 ROUTINE C tc_assign
@@ -5378,9 +5448,9 @@ static void tcAssignStore(int leaveValue) {
 	if (leaveValue && !tcTargetIndirect && !tcTargetIsArray) printf("DUP\n");
 	if (tcTargetIndirect) printf("STOREIND%s %c\n", leaveValue ? "KEEP" : "", tag);
 	else if (tcTargetIsGlobal && tcTargetIsArray) printf("STOREIDX%s G %s %c\n", leaveValue ? "KEEP" : "", tcTargetGlobal, tag);
-	else if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "", tcTargetGlobal);
+	else if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffix(tag), tcTargetGlobal);
 	else if (tcTargetSlot >= 0 && tcTargetIsArray) printf("STOREIDX%s L %d %c\n", leaveValue ? "KEEP" : "", tcTargetSlot, tag);
-	else if (tcTargetSlot >= 0) printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tag == 'c' || tag == 'b' ? "C" : "L", tcTargetSlot);
+	else if (tcTargetSlot >= 0) printf("STORE%s %d\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffixL(tag), tcTargetSlot);
 	else { actionErrors++; tcErrAt(parserActionAt); fprintf(stderr, "unknown assignment target slot=%d global=%d array=%d indirect=%d\n", tcTargetSlot, tcTargetIsGlobal, tcTargetIsArray, tcTargetIndirect); return; }
 	if (leaveValue) tcTypePush(tcTargetType);
 }
@@ -5552,6 +5622,7 @@ void tc_call(const char* start, const char* end) {
 			printf("%s %s %d\n", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLP" : "CALL", tcCallName[frame], tcCallArgCount[frame]);
 		}
 		if (!tcIsPointer(tcFunctionReturnTypes[f]) && tcFunctionReturnTypes[f].base == 'c') printf("NARROWC\n");
+		else if (!tcIsPointer(tcFunctionReturnTypes[f]) && tcFunctionReturnTypes[f].base == 'h') printf("NARROWH\n");
 		tcTypePush(tcFunctionReturnTypes[f]);
 		tcLastWasPrint = 0;
 	}
@@ -5600,6 +5671,7 @@ void tc_return(const char* start, const char* end) {
 		}
 	}
 	if (!tcIsPointer(tcFuncType) && tcFuncType.base == 'c') printf("NARROWC\n");
+	else if (!tcIsPointer(tcFuncType) && tcFuncType.base == 'h') printf("NARROWH\n");
 	printf("%s\n", tcIsPointer(tcFuncType) ? "RETP" : "RET");
 	tcRetHasVal = 0;
 }
@@ -6019,7 +6091,7 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		if (tcIsPointer(ft) && tcStructBuildFieldRowLen[i] > 0) {
 			tcErrAt(parserActionAt); fprintf(stderr, "two-dimensional pointer arrays as struct field not supported in this version\n"); actionErrors++; return -1;
 		}
-		elemSize = tcIsPointer(ft) ? TC_PTR_SLOT : (ft.base == 'c' || ft.base == 'b') ? 1 : 4;
+		elemSize = tcIsPointer(ft) ? TC_PTR_SLOT : (ft.base == 'c' || ft.base == 'b') ? 1 : ft.base == 'h' ? 2 : 4;
 		align = elemSize;
 		size = tcStructBuildFieldArrayLen[i] > 0 ? elemSize * tcStructBuildFieldArrayLen[i] : elemSize;
 		offset = (offset + align - 1) & ~(align - 1);
@@ -6147,6 +6219,7 @@ void tc_sizeof(const char* start, const char* end) {
 	} else if (tcCurrentType.base == 's') {
 		size = tcStructByteSize[tcCurrentType.structId - 1];
 	} else if (tcCurrentType.base == 'c' || tcCurrentType.base == 'b') size = 1;
+	else if (tcCurrentType.base == 'h') size = 2;
 	else size = 4;
 	printf("PUSH %d\n", size);
 	tcTypePush(tcMakeType('i', 0));
@@ -6173,6 +6246,7 @@ void tc_sizeofvar(const char* start, const char* end) {
 			actionErrors++; tdSize = 4;
 		} else if (tdBase == 's') tdSize = tcStructByteSize[tdSid - 1];
 		else if (tdBase == 'c' || tdBase == 'b') tdSize = 1;
+		else if (tdBase == 'h') tdSize = 2;
 		else tdSize = 4;
 		printf("PUSH %d\n", tdSize);
 		tcTypePush(tcMakeType('i', 0));
@@ -6186,7 +6260,7 @@ void tc_sizeofvar(const char* start, const char* end) {
 	} else if (t.base == 's') {
 		size = (count > 0 ? count : 1) * tcStructByteSize[t.structId - 1];
 	} else {
-		int elemSize = (t.base == 'c' || t.base == 'b') ? 1 : 4;
+		int elemSize = (t.base == 'c' || t.base == 'b') ? 1 : t.base == 'h' ? 2 : 4;
 		size = count > 0 ? count * elemSize : elemSize;
 	}
 	printf("PUSH %d\n", size);
@@ -6395,6 +6469,7 @@ void tc_cast(const char* start, const char* end) {
 	   ohnehin aus. */
 	if (tcIsInteger(target) || tcIsBool(target)) {
 		if (target.base == 'c') printf("NARROWC\n");
+		else if (target.base == 'h') printf("NARROWH\n");
 		else if (target.base == 'b') printf("PUSH 0\nCMPNE\n");
 	}
 	tcTypePush(target);

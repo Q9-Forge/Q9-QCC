@@ -75,7 +75,10 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int initialValue;
-	int isChar;
+	/* 2026-09-09: war "isChar" (bool), mit short zu einer echten Groesse in
+	   Byte (1/2/4) geworden -- s. tagSize(). Alle Leseseiten unten wechseln
+	   von "isChar ? X : Y" auf einen dreiteiligen Schalter. */
+	int elemSize;
 	int isArray;
 	int length;
 	/* 2026-08-11: war `int init[MAX_ARRAY_LEN]`, also 16 KB pro Global und bei
@@ -517,12 +520,24 @@ static void emitCall(FILE* out, const char* asmName, int tableOffset, int* seria
 }
 
 static int isNumWord(const char* w) {
-	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 || strcmp(w, "p") == 0;
+	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 ||
+	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
 }
 
-static int isByteWord(const char* w) {
-	return strcmp(w, "c") == 0 || strcmp(w, "b") == 0;
+/* Byte-Groesse eines Typtags fuer LOAD/STORE-Breite und Zeiger-/Index-
+   Skalierung (2026-09-09, ersetzt das fruehere isByteWord(): mit short als
+   dritter Groesse reicht ein bool nicht mehr). 'h' -> 2, alles andere wie
+   bisher (Zeiger 'p' und alle 32-Bit-Skalare 'i'/'u' -> 4). */
+static int tagSize(const char* w) {
+	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
+	if (strcmp(w, "h") == 0) return 2;
+	return 4;
 }
+/* Schiebeweite fuer die lsl.l/asr.l-Skalierung bei Zeigerarithmetik/Index:
+   Byte 1x (kein Schieben), Word 2x, Long 4x. */
+static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : 2; }
+/* 68k-Groessensuffix fuer move/dc/ds. */
+static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
 
 static int number(const char* text, int line) {
 	char* end;
@@ -612,7 +627,8 @@ static void collectGlobals(void) {
 					   das diese Datei ohnehin ueberall benutzt. */
 					int* initP = globals[gi].init;
 					initP[idx] = number(insP->args[2], insP->line);
-					if (globals[gi].isChar) initP[idx] &= 255;
+					if (globals[gi].elemSize == 1) initP[idx] &= 255;
+					else if (globals[gi].elemSize == 2) initP[idx] &= 65535;
 					globals[gi].hasGinit = 1;
 					found = 1;
 					break;
@@ -636,7 +652,7 @@ static void collectGlobals(void) {
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
 			strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
-			globals[gi].isChar = isByteWord(insP->args[1]);
+			globals[gi].elemSize = tagSize(insP->args[1]);
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
 			globals[gi].isStatic = insP->argc >= 4 && number(insP->args[3], insP->line) != 0;
@@ -661,7 +677,7 @@ static void collectGlobals(void) {
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
 		globals[gi].initialValue = insP->argc >= 2 ? number(insP->args[1], insP->line) : 0;
-		globals[gi].isChar = insP->argc >= 3 && isByteWord(insP->args[2]);
+		globals[gi].elemSize = insP->argc >= 3 ? tagSize(insP->args[2]) : 4;
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
 		globals[gi].isStatic = insP->argc >= 4 && number(insP->args[3], insP->line) != 0;
@@ -680,7 +696,7 @@ static void collectGlobals(void) {
 		gi = globalCount++;
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
-		globals[gi].isChar = isByteWord(insP->args[1]);
+		globals[gi].elemSize = tagSize(insP->args[1]);
 		globals[gi].isStatic = insP->argc == 3 && number(insP->args[2], insP->line) != 0;
 		globals[gi].declOnly = 1;
 	}
@@ -779,8 +795,13 @@ static void collectFunctions(void) {
 		int k;
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* x = &ir[k];
+			/* LOADLH/STORELH (2026-09-09, short) MUESSEN hier mitgezaehlt werden --
+			   sonst bleibt ein Slot, der NUR ueber sie angesprochen wird, unterhalb
+			   von "highest" und fn->locals faellt zu klein aus (Frame zu kurz,
+			   spaetere Slots ueberschreiben sich). */
 			if ((strcmp(x->op, "LOADL") == 0 || strcmp(x->op, "STOREL") == 0 || strcmp(x->op, "LOADC") == 0 ||
-				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
+				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADLH") == 0 || strcmp(x->op, "STORELH") == 0 ||
+				strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
 				strcmp(x->op, "ADDRL") == 0 || strcmp(x->op, "LARRAY") == 0) && x->argc > 0) {
 				int slotN = number(x->args[0], x->line);
 				if (slotN < 0) { sprintf(msg, "IR Zeile %d: negativer lokaler Slot", x->line); fatal(msg); }
@@ -796,9 +817,15 @@ static void collectFunctions(void) {
 				if (x->argc != 3) fatal("ungueltiges LARRAY");
 				len = number(x->args[2], x->line);
 				if (len <= 0) fatal("LARRAY-Laenge muss positiv sein");
-				align = isByteWord(x->args[1]) ? 1 : 2;
+				/* Ausrichtung war schon vor short nur 1 (Byte) oder 2 (alles
+				   andere, auch 4-Byte-Werte) -- 68k braucht fuer Word UND
+				   Long nur eine GERADE Adresse, keine 4er-Ausrichtung. Short
+				   faellt also einfach mit in den bestehenden "sonst"-Zweig,
+				   nur die tatsaechliche Elementgroesse (fuer frameBytes) wird
+				   jetzt echt dreiteilig ueber tagSize(). */
+				align = tagSize(x->args[1]) == 1 ? 1 : 2;
 				fn->frameBytes = (fn->frameBytes + align - 1) & ~(align - 1);
-				fn->frameBytes += len * (isByteWord(x->args[1]) ? 1 : 4);
+				fn->frameBytes += len * tagSize(x->args[1]);
 			}
 		}
 		fn->frameBytes = (fn->frameBytes + 3) & ~3;
@@ -819,7 +846,7 @@ static void collectExterns(void) {
 	}
 }
 
-static int arrayOffset(const Function* fn, int wanted, int* isChar, int line) {
+static int arrayOffset(const Function* fn, int wanted, int* elemSize, int line) {
 	int offset = fn->locals * 4;
 	int k;
 	char msg[200];
@@ -830,11 +857,11 @@ static int arrayOffset(const Function* fn, int wanted, int* isChar, int line) {
 			if (x->argc != 3) fatal("ungueltiges LARRAY");
 			slotN = number(x->args[0], x->line);
 			len = number(x->args[2], x->line);
-			align = isByteWord(x->args[1]) ? 1 : 2;
+			align = tagSize(x->args[1]) == 1 ? 1 : 2;
 			offset = (offset + align - 1) & ~(align - 1);
-			offset += len * (isByteWord(x->args[1]) ? 1 : 4);
+			offset += len * tagSize(x->args[1]);
 			if (slotN == wanted) {
-				*isChar = isByteWord(x->args[1]);
+				*elemSize = tagSize(x->args[1]);
 				return offset;
 			}
 		}
@@ -936,6 +963,212 @@ static void emitM68kCore(FILE* out) {
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 	fputs("tc_umod_u32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
+}
+
+/* Datenzugriffs-/Zeigeropcodes (PUSH..PDIFF), 2026-09-09 aus emitIR()
+   ausgelagert: mit short als dritter Groesse ueberall (tagSize/tagSuffix/
+   tagShift statt isByteWord) ist emitIR()s eigener 68k-Code -- den QCC sich
+   beim Selbsthosten SELBST erzeugt -- so weit gewachsen, dass qr68 einen
+   Sprung als "zu weit fuer die Wortform" ablehnte (kein Bug, echte Grenze:
+   weder r68 noch qr68 kennen eine lange Sprungform). Diese Auslagerung
+   verkuerzt die Sprungspannen in emitIR() selbst wieder, ohne an der
+   Semantik irgendetwas zu aendern -- reiner Verschnitt. Rueckgabe 1, wenn
+   der Opcode hier behandelt wurde, sonst 0 (emitIR() macht dann mit dem
+   Rest der Kette weiter). */
+static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn, int* serial) {
+	char addrBuf[64];
+	char msg[300];
+	if (strcmp(op, "PUSH") == 0 && insP->argc == 1) {
+		fprintf(out, "\tmove.l\t#%s,-(a7)\n", insP->args[0]);
+	} else if (strcmp(op, "LOADL") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
+	} else if (strcmp(op, "STOREL") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
+	} else if (strcmp(op, "LOADC") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s,d0\n\tmove.l\td0,-(a7)\n", addrBuf);
+	} else if (strcmp(op, "STOREC") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.b\td0,%s\n", addrBuf);
+	} else if (strcmp(op, "LOADLH") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmoveq\t#0,d0\n\tmove.w\t%s,d0\n\tmove.l\td0,-(a7)\n", addrBuf);
+	} else if (strcmp(op, "STORELH") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.w\td0,%s\n", addrBuf);
+	} else if (strcmp(op, "LOADP") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
+	} else if (strcmp(op, "STOREP") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
+	} else if (strcmp(op, "ADDRL") == 0 && insP->argc == 1) {
+		slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
+		fprintf(out, "\tlea\t%s,a0\n\tmove.l\ta0,-(a7)\n", addrBuf);
+	} else if (strcmp(op, "ADDRG") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]);
+		if (gidx < 0) fatal("unbekannte globale Variable");
+		emitLeaGlobal(out, gidx, "a0");
+		fputs("\tmove.l\ta0,-(a7)\n", out);
+	} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
+		/* nur Frame-Layout, kein Code */
+	} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
+		int ignored;
+		if (strcmp(insP->args[0], "L") == 0) {
+			int slotN = number(insP->args[1], insP->line);
+			/* Ein Struct mit genau einem Langwort (der Bootstrap-Fall
+			   TCType: vier char-Felder) wird als normaler 32-Bit-
+			   Parameter uebergeben. Seine Feldzugriffe verwenden trotzdem
+			   PUSHADDR L <param>; dafuer ist die Parameteradresse selbst
+			   korrekt. Nicht jede L-Adresse ist also ein LARRAY. Groessere
+			   Struct-by-value-Parameter brauchen weiterhin eine eigene ABI. */
+			if (slotN < fn->nargs) {
+				slotAddress(addrBuf, slotN, fn, insP->line);
+				fprintf(out, "\tlea\t%s,a0\n", addrBuf);
+			} else {
+				int off = arrayOffset(fn, slotN, &ignored, insP->line);
+				fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
+			}
+		} else if (strcmp(insP->args[0], "P") == 0) {
+			slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
+			fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
+		} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
+			emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
+		} else {
+			fatal("unbekanntes Array");
+		}
+		fputs("\tmove.l\ta0,-(a7)\n", out);
+	} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && insP->argc == 3) {
+		/* 2026-09-09: isChar (bool) -> elemSize (1/2/4), short als
+		   dritte Groesse dazu. */
+		int elemSize = tagSize(insP->args[2]);
+		int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
+		if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 &&
+		    strcmp(insP->args[2], "h") != 0 && strcmp(insP->args[2], "c") != 0 &&
+		    strcmp(insP->args[2], "b") != 0) fatal("unbekannter Arraytyp");
+		if (strcmp(op, "STOREIDX") == 0 || keepValue) fputs("\tmove.l\t(a7)+,d0\n", out);
+		fputs("\tmove.l\t(a7)+,d1\n", out);
+		if (elemSize > 1) fprintf(out, "\tlsl.l\t#%d,d1\n", tagShift(insP->args[2]));
+		if (strcmp(insP->args[0], "L") == 0) {
+			int off = arrayOffset(fn, number(insP->args[1], insP->line), &elemSize, insP->line);
+			fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
+		} else if (strcmp(insP->args[0], "P") == 0) {
+			slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
+			fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
+		} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
+			emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
+		} else {
+			fatal("unbekanntes Array");
+		}
+		fputs("\tadd.l\td1,a0\n", out);
+		if (strcmp(op, "LOADIDX") == 0) {
+			if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
+			else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
+			fputs("\tmove.l\td0,-(a7)\n", out);
+		} else {
+			if (elemSize == 1 && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
+			else if (elemSize == 2 && keepValue) fputs("\tand.l\t#$ffff,d0\n", out);
+			fprintf(out, "\tmove.%c\td0,(a0)\n", tagSuffix(elemSize));
+			if (keepValue) fputs("\tmove.l\td0,-(a7)\n", out);
+		}
+	} else if (strcmp(op, "LOADG") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
+		   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
+		   siehe emitLeaGlobal()-Kommentar. */
+		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+		else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
+	} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		fputs("\tmove.l\t(a7)+,d0\n", out);
+		emitLeaGlobal(out, gidx, "a0");
+		fputs("\tmove.l\td0,(a0)\n", out);
+	} else if (strcmp(op, "LOADGC") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+		else fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
+	} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		fputs("\tmove.l\t(a7)+,d0\n", out);
+		emitLeaGlobal(out, gidx, "a0");
+		fputs("\tmove.b\td0,(a0)\n", out);
+	} else if (strcmp(op, "LOADGH") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.w\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+		else fprintf(out, "\tmoveq\t#0,d0\n\tmove.w\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
+	} else if (strcmp(op, "STOREGH") == 0 && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		fputs("\tmove.l\t(a7)+,d0\n", out);
+		emitLeaGlobal(out, gidx, "a0");
+		fputs("\tmove.w\td0,(a0)\n", out);
+	} else if ((strcmp(op, "LOADGP") == 0 || strcmp(op, "STOREGP") == 0) && insP->argc == 1) {
+		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
+		if (gidx < 0) fatal("unbekannte globale Variable");
+		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
+		if (strcmp(op, "LOADGP") == 0) {
+			if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+			else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
+		} else {
+			fputs("\tmove.l\t(a7)+,d0\n", out);
+			emitLeaGlobal(out, gidx, "a0");
+			fputs("\tmove.l\td0,(a0)\n", out);
+		}
+	} else if (strcmp(op, "PTRINDEX") == 0 && insP->argc == 1) {
+		fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
+		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
+		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
+	} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && insP->argc == 1) {
+		/* 2026-09-09: byte (bool) -> elemSize (1/2/4). */
+		int elemSize = tagSize(insP->args[0]);
+		int keepValue = strcmp(op, "STOREINDKEEP") == 0;
+		if (strcmp(op, "LOADIND") == 0) {
+			fputs("\tmove.l\t(a7)+,a0\n", out);
+			if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
+			else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
+			fputs("\tmove.l\td0,-(a7)\n", out);
+		} else {
+			fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n\tmove.%c\td0,(a0)\n", tagSuffix(elemSize));
+			if (elemSize == 1 && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
+			else if (elemSize == 2 && keepValue) fputs("\tand.l\t#$ffff,d0\n", out);
+			if (keepValue) fputs("\tmove.l\td0,-(a7)\n", out);
+		}
+	} else if ((strcmp(op, "PADD") == 0 || strcmp(op, "PSUB") == 0) && insP->argc == 1) {
+		fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n", out);
+		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
+		if (strcmp(op, "PSUB") == 0) fputs("\tneg.l\td0\n", out);
+		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
+	} else if (strcmp(op, "IPADD") == 0 && insP->argc == 1) {
+		fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
+		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
+		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
+	} else if (strcmp(op, "IPADDN") == 0 && insP->argc == 1) {
+		/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
+		   statt einer festen Typtag-Groesse -- kein lsl.l (Groesse ist beliebig, nicht
+		   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
+		   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
+		fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n", insP->args[0]);
+		emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"), serial, psectName);
+		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
+	} else if (strcmp(op, "PDIFF") == 0 && insP->argc == 1) {
+		fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tsub.l\td1,d0\n", out);
+		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tasr.l\t#%d,d0\n", tagShift(insP->args[0]));
+		fputs("\tmove.l\td0,-(a7)\n", out);
+	} else return 0;
+	return 1;
 }
 
 static void emitIR(FILE* out) {
@@ -1351,189 +1584,36 @@ static void emitIR(FILE* out) {
 			int pslot;
 			int pk;
 			for (pslot = 0; pslot < fn->nargs; pslot++) {
-				int usedAsChar = 0;
+				int usedAsChar = 0, usedAsShort = 0;
 				int off;
 				for (pk = fn->first; pk < fn->last; pk++) {
 					Instr* px = &ir[pk];
-					if (px->argc == 1 &&
-						(strcmp(px->op, "LOADC") == 0 || strcmp(px->op, "STOREC") == 0) &&
-						number(px->args[0], px->line) == pslot) {
-						usedAsChar = 1;
-						break;
+					/* Der Opcode-Name-Vergleich MUSS vor number() stehen (Kurzschluss-
+					   Auswertung) -- sonst faellt number() ueber JEDE einargumentige
+					   Instruktion her, auch "LABEL L0" oder "JMP L2", deren Argument
+					   gar keine Zahl ist. Genau das brach hier beim Umbau auf zwei
+					   Opcode-Paare (2026-09-09): number() lief unbedingt zuerst und
+					   "IR Zeile N: Zahl erwartet: L0" schlug beim naechsten Selbsthost-
+					   Lauf zu (SourceQCC/ebnf.tc, tcCopyBounded). */
+					if (px->argc == 1) {
+						if ((strcmp(px->op, "LOADC") == 0 || strcmp(px->op, "STOREC") == 0) &&
+						    number(px->args[0], px->line) == pslot) usedAsChar = 1;
+						else if ((strcmp(px->op, "LOADLH") == 0 || strcmp(px->op, "STORELH") == 0) &&
+						         number(px->args[0], px->line) == pslot) usedAsShort = 1;
 					}
 				}
-				if (usedAsChar) {
-					off = 8 + 4 * (fn->nargs - 1 - pslot);
-					fprintf(out, "\tmove.b\t%d(%s),%d(%s)\n", off + 3, framePtr(), off, framePtr());
-				}
+				off = 8 + 4 * (fn->nargs - 1 - pslot);
+				if (usedAsChar) fprintf(out, "\tmove.b\t%d(%s),%d(%s)\n", off + 3, framePtr(), off, framePtr());
+				else if (usedAsShort) fprintf(out, "\tmove.w\t%d(%s),%d(%s)\n", off + 2, framePtr(), off, framePtr());
 			}
 		}
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
 
-			if (strcmp(op, "PUSH") == 0 && insP->argc == 1) {
-				fprintf(out, "\tmove.l\t#%s,-(a7)\n", insP->args[0]);
-			} else if (strcmp(op, "LOADL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
-			} else if (strcmp(op, "STOREL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
-			} else if (strcmp(op, "LOADC") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s,d0\n\tmove.l\td0,-(a7)\n", addrBuf);
-			} else if (strcmp(op, "STOREC") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.b\td0,%s\n", addrBuf);
-			} else if (strcmp(op, "LOADP") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tmove.l\t%s,-(a7)\n", addrBuf);
-			} else if (strcmp(op, "STOREP") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tmove.l\t(a7)+,%s\n", addrBuf);
-			} else if (strcmp(op, "ADDRL") == 0 && insP->argc == 1) {
-				slotAddress(addrBuf, number(insP->args[0], insP->line), fn, insP->line);
-				fprintf(out, "\tlea\t%s,a0\n\tmove.l\ta0,-(a7)\n", addrBuf);
-			} else if (strcmp(op, "ADDRG") == 0 && insP->argc == 1) {
-				int gidx = findGlobal(insP->args[0]);
-				if (gidx < 0) fatal("unbekannte globale Variable");
-				emitLeaGlobal(out, gidx, "a0");
-				fputs("\tmove.l\ta0,-(a7)\n", out);
-			} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
-				/* nur Frame-Layout, kein Code */
-			} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
-				int ignored;
-				if (strcmp(insP->args[0], "L") == 0) {
-					int slotN = number(insP->args[1], insP->line);
-					/* Ein Struct mit genau einem Langwort (der Bootstrap-Fall
-					   TCType: vier char-Felder) wird als normaler 32-Bit-
-					   Parameter uebergeben. Seine Feldzugriffe verwenden trotzdem
-					   PUSHADDR L <param>; dafuer ist die Parameteradresse selbst
-					   korrekt. Nicht jede L-Adresse ist also ein LARRAY. Groessere
-					   Struct-by-value-Parameter brauchen weiterhin eine eigene ABI. */
-					if (slotN < fn->nargs) {
-						slotAddress(addrBuf, slotN, fn, insP->line);
-						fprintf(out, "\tlea\t%s,a0\n", addrBuf);
-					} else {
-						int off = arrayOffset(fn, slotN, &ignored, insP->line);
-						fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
-					}
-				} else if (strcmp(insP->args[0], "P") == 0) {
-					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
-					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
-				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
-					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
-				} else {
-					fatal("unbekanntes Array");
-				}
-				fputs("\tmove.l\ta0,-(a7)\n", out);
-			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && insP->argc == 3) {
-				int isChar = isByteWord(insP->args[2]);
-				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
-				if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 && !isChar) fatal("unbekannter Arraytyp");
-				if (strcmp(op, "STOREIDX") == 0 || keepValue) fputs("\tmove.l\t(a7)+,d0\n", out);
-				fputs("\tmove.l\t(a7)+,d1\n", out);
-				if (!isChar) fputs("\tlsl.l\t#2,d1\n", out);
-				if (strcmp(insP->args[0], "L") == 0) {
-					int off = arrayOffset(fn, number(insP->args[1], insP->line), &isChar, insP->line);
-					fprintf(out, "\tlea\t-%d(%s),a0\n", off, framePtr());
-				} else if (strcmp(insP->args[0], "P") == 0) {
-					slotAddress(addrBuf, number(insP->args[1], insP->line), fn, insP->line);
-					fprintf(out, "\tmove.l\t%s,a0\n", addrBuf);
-				} else if (findGlobal(insP->args[1]) >= 0 && strcmp(insP->args[0], "G") == 0) {
-					emitLeaGlobal(out, findGlobal(insP->args[1]), "a0");
-				} else {
-					fatal("unbekanntes Array");
-				}
-				fputs("\tadd.l\td1,a0\n", out);
-				if (strcmp(op, "LOADIDX") == 0) {
-					if (isChar) fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n", out);
-					else fputs("\tmove.l\t(a0),d0\n", out);
-					fputs("\tmove.l\td0,-(a7)\n", out);
-				} else {
-					if (isChar && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
-					fprintf(out, "\tmove.%s\td0,(a0)\n", isChar ? "b" : "l");
-					if (keepValue) fputs("\tmove.l\td0,-(a7)\n", out);
-				}
-			} else if (strcmp(op, "LOADG") == 0 && insP->argc == 1) {
-				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
-				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
-				   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
-				   siehe emitLeaGlobal()-Kommentar. */
-				if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
-				else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
-			} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
-				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
-				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitLeaGlobal(out, gidx, "a0");
-				fputs("\tmove.l\td0,(a0)\n", out);
-			} else if (strcmp(op, "LOADGC") == 0 && insP->argc == 1) {
-				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
-				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
-				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
-			} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
-				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
-				if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
-				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				fputs("\tmove.l\t(a7)+,d0\n", out);
-				emitLeaGlobal(out, gidx, "a0");
-				fputs("\tmove.b\td0,(a0)\n", out);
-			} else if ((strcmp(op, "LOADGP") == 0 || strcmp(op, "STOREGP") == 0) && insP->argc == 1) {
-				int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
-				if (gidx < 0) fatal("unbekannte globale Variable");
-				mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-				if (strcmp(op, "LOADGP") == 0) {
-					if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
-					else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
-				} else {
-					fputs("\tmove.l\t(a7)+,d0\n", out);
-					emitLeaGlobal(out, gidx, "a0");
-					fputs("\tmove.l\td0,(a0)\n", out);
-				}
-			} else if (strcmp(op, "PTRINDEX") == 0 && insP->argc == 1) {
-				fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
-				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
-				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
-			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && insP->argc == 1) {
-				int byte = isByteWord(insP->args[0]);
-				int keepValue = strcmp(op, "STOREINDKEEP") == 0;
-				if (strcmp(op, "LOADIND") == 0) {
-					fputs("\tmove.l\t(a7)+,a0\n", out);
-					if (byte) fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n", out); else fputs("\tmove.l\t(a0),d0\n", out);
-					fputs("\tmove.l\td0,-(a7)\n", out);
-				} else {
-					fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n\tmove.%s\td0,(a0)\n", byte ? "b" : "l");
-					if (byte && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
-					if (keepValue) fputs("\tmove.l\td0,-(a7)\n", out);
-				}
-			} else if ((strcmp(op, "PADD") == 0 || strcmp(op, "PSUB") == 0) && insP->argc == 1) {
-				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n", out);
-				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
-				if (strcmp(op, "PSUB") == 0) fputs("\tneg.l\td0\n", out);
-				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
-			} else if (strcmp(op, "IPADD") == 0 && insP->argc == 1) {
-				fputs("\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n", out);
-				if (!isByteWord(insP->args[0])) fputs("\tlsl.l\t#2,d0\n", out);
-				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
-			} else if (strcmp(op, "IPADDN") == 0 && insP->argc == 1) {
-				/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
-				   statt einer festen Typtag-Groesse -- kein lsl.l (Groesse ist beliebig, nicht
-				   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
-				   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
-				fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n", insP->args[0]);
-				emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"), &serial, psectName);
-				fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
-			} else if (strcmp(op, "PDIFF") == 0 && insP->argc == 1) {
-				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tsub.l\td1,d0\n", out);
-				if (!isByteWord(insP->args[0])) fputs("\tasr.l\t#2,d0\n", out);
-				fputs("\tmove.l\td0,-(a7)\n", out);
+			if (emitDataOp(out, op, insP, fn, &serial)) {
+				/* s. emitDataOp() -- PUSH..PDIFF, ausgelagert wegen der
+				   Sprungweite (2026-09-09). */
 			} else if (strcmp(op, "ADD") == 0) {
 				fputs("\tmove.l\t(a7)+,d1\n\tadd.l\t(a7)+,d1\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "SUB") == 0) {
@@ -1555,6 +1635,8 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\t%s.l\td1,d0\n\tmove.l\td0,-(a7)\n", mnem);
 			} else if (strcmp(op, "NARROWC") == 0) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#255,d0\n\tmove.l\td0,(a7)\n", out);
+			} else if (strcmp(op, "NARROWH") == 0) {
+				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#65535,d0\n\tmove.l\td0,(a7)\n", out);
 			} else if (strcmp(op, "SWAP") == 0) {
 				/* Vertauscht die obersten zwei Stackelemente. Gebraucht ueberall dort,
 				   wo ein Ergebniswert UNTER einer Adresse liegen bleiben muss --
@@ -1834,15 +1916,18 @@ static void emitIR(FILE* out) {
 				if (!globalRemote(gi)) {
 					int e; char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
-					if (!g->isChar) emitAlign(out);
+					if (g->elemSize != 1) emitAlign(out);
 					if (!g->isArray) {
-						fprintf(out, "%s:\tdc.%s\t%d\n", gAsmName, g->isChar ? "b" : "l", g->initialValue);
+						fprintf(out, "%s:\tdc.%c\t%d\n", gAsmName, tagSuffix(g->elemSize), g->initialValue);
 					} else if (!g->hasGinit) {
-						int e, perLine = g->isChar ? 40 : 20;
+						/* perLine nur Lesbarkeit des erzeugten Assemblers, keine
+						   Korrektheitsfrage -- 2026-09-09 fuer short (elemSize 2)
+						   einen Mittelwert dazugenommen. */
+						int e, perLine = g->elemSize == 1 ? 40 : g->elemSize == 2 ? 30 : 20;
 						fprintf(out, "%s:\n", gAsmName);
 						for (e = 0; e < g->length; ) {
 							int n = g->length - e < perLine ? g->length - e : perLine, k;
-							fprintf(out, "\tdc.%s\t0", g->isChar ? "b" : "l");
+							fprintf(out, "\tdc.%c\t0", tagSuffix(g->elemSize));
 							for (k = 1; k < n; k++) fprintf(out, ",0");
 							fprintf(out, "\n");
 							e += n;
@@ -1864,7 +1949,7 @@ static void emitIR(FILE* out) {
 							   Teilmenge nicht. */
 							int* gi2 = g->init;
 							int v = e < g->initLen ? gi2[e] : 0;
-							fprintf(out, "\tdc.%s\t%d\n", g->isChar ? "b" : "l", v);
+							fprintf(out, "\tdc.%c\t%d\n", tagSuffix(g->elemSize), v);
 						}
 					}
 				}
@@ -1883,8 +1968,8 @@ static void emitIR(FILE* out) {
 					/* ds.b richtet nicht aus; ein folgendes ds.l braucht die
 					   Langwortgrenze, sonst liest der 68000 ein ungerades Langwort.
 					   align im vsect ist gegen r68 geprueft (Q9-qr68/test/remotetest.sh). */
-					if (!g->isChar) emitAlign(out);
-					fprintf(out, "%s:\tds.%s\t%d\n", gAsmName, g->isChar ? "b" : "l",
+					if (g->elemSize != 1) emitAlign(out);
+					fprintf(out, "%s:\tds.%c\t%d\n", gAsmName, tagSuffix(g->elemSize),
 					        g->isArray ? g->length : 1);
 				}
 			}
@@ -1975,7 +2060,7 @@ int main(int argc, char* argv[]) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue;
 			if (globalRemote(gi)) continue; /* liegt im Datenbereich, nicht im psect -- keine PC-relative Distanz */
-			totalGlobalBytes += (long)(g->isChar ? 1 : 4) * (g->isArray ? g->length : 1);
+			totalGlobalBytes += (long)g->elemSize * (g->isArray ? g->length : 1);
 		}
 		if (totalGlobalBytes > 16000) {
 			fprintf(stderr, "qcc_backend: Warnung: globale Daten sind mit %ld Byte recht gross fuer das\n", totalGlobalBytes);
