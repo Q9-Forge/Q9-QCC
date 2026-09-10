@@ -7,7 +7,7 @@
 # der Host-Compiler aus derselben Quelle erzeugt -- ein Fixpunkt, nicht nur
 # "laeuft durch".
 #
-#   Stufe 0  build/qcc_p (Host)      @build/qcc_p.bootstrap.c  -> stage1.ir
+#   Stufe 0  build/qcir (Host)       @build/qcc_p.bootstrap.c  -> stage1.ir
 #   Stufe 2  stage1.ir -> Backend -> r68 -> l68                -> 68k-Modul
 #   Stufe 2' das Modul im Emulator   @qcc_p.bootstrap.c        -> stage2.ir
 #   Pruefung stage2.ir == stage1.ir  (byteweise)
@@ -30,8 +30,8 @@ KEEP=0
 [ "${1:-}" = "-k" ] && KEEP=1
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
-[ -x "$REPO/build/qcc_p" ]       || die "build/qcc_p fehlt"
-[ -x "$REPO/build/qcc_backend" ] || die "build/qcc_backend fehlt"
+[ -x "$REPO/build/qcir" ]     || die "build/qcir fehlt"
+[ -x "$REPO/build/qir_68k" ]  || die "build/qir_68k fehlt"
 [ -f "$REPO/build/qcc_p.bootstrap.c" ] || die "build/qcc_p.bootstrap.c fehlt (tools/build_xcc_bootstrap.sh)"
 [ -f "$SRCIMG" ]                 || die "Image nicht gefunden: $SRCIMG"
 [ -d "$FLUX" ]                   || die "Q9-Flux nicht gefunden: $FLUX"
@@ -58,7 +58,7 @@ w() { arch -x86_64 "$WINE_BIN" cmd /c "$1" >>wine.log 2>&1; }
 TS="$MWOS_TOOLSHED_OS9"
 
 echo "== 1/6 Host: QCC uebersetzt seinen eigenen Parser =="
-"$REPO/build/qcc_p" "@$REPO/build/qcc_p.bootstrap.c" > stage1.ir 2> stage1.err
+"$REPO/build/qcir" "@$REPO/build/qcc_p.bootstrap.c" > stage1.ir 2> stage1.err
 rc=$?
 if [ $rc -ne 0 ] || [ "$(tail -1 stage1.ir)" != "OK" ]; then
 	echo "  rc=$rc Schlusswort=$(tail -1 stage1.ir)"; head -5 stage1.err
@@ -69,8 +69,8 @@ echo "  ok ($(wc -l < stage1.ir | tr -d ' ') IR-Zeilen, $(wc -c < stage1.ir | tr
 # -largedata ist Pflicht: der Parser hat weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet r68 "value out of range".
 echo "== 2/6 Backend (-os9 -largedata -remotedata) =="
-"$REPO/build/qcc_backend" stage1.ir stage2.s68 -os9 -largedata -remotedata >/dev/null \
-	|| die "qcc_backend"
+"$REPO/build/qir_68k" stage1.ir stage2.s68 -os9 -largedata -remotedata >/dev/null \
+	|| die "qir_68k"
 echo "  ok ($(wc -l < stage2.s68 | tr -d ' ') Assemblerzeilen)"
 
 echo "== 3/6 r68 + l68 =="

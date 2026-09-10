@@ -8,7 +8,7 @@ scheitern -- statt beim ersten Fehler abzubrechen. Damit bekommt man die
 VOLLSTAENDIGE Luecken-Liste in einem Lauf.
 
 Aufruf:
-    python3 tools/bootstrap_survey.py build/qcc_p <vorverarbeitete-datei.c>
+    python3 tools/bootstrap_survey.py build/qcir <vorverarbeitete-datei.c>
 
 Die Eingabe muss praeprozessorfrei sein (QCC hat keinen Praeprozessor):
     sed 's|^[[:space:]]*#[[:space:]]*include.*||' datei.c > tmp.c

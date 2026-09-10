@@ -5,7 +5,7 @@
 #
 #   Stufe 0  qcpp (Host)          src/qcpp.c            -> qcpp.self.c
 #   Stufe 1  QCC (Host)           @qcpp.self.c          -> self.ir
-#   Stufe 2  qcc_backend -> r68 -> l68                  -> 68k-Modul
+#   Stufe 2  qir_68k -> r68 -> l68                  -> 68k-Modul
 #   Stufe 3  Modul im Emulator    /dd/qcpptest.c        -> /dd/self.i
 #   Pruefung self.i == Hostlauf derselben Quelle (byteweise)
 #
@@ -29,8 +29,8 @@ WORK="${WORK:-/tmp/qcpp-selfhost}"
 die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -x "$REPO/build/qcpp" ]      || die "q9-cpp/build/qcpp fehlt (make)"
-[ -x "$QCC/build/qcc_p" ]      || die "build/qcc_p fehlt"
-[ -x "$QCC/build/qcc_backend" ] || die "build/qcc_backend fehlt"
+[ -x "$QCC/build/qcir" ]      || die "build/qcir fehlt"
+[ -x "$QCC/build/qir_68k" ] || die "build/qir_68k fehlt"
 [ -f "$BASE" ]                 || die "Ausgangsimage fehlt: $BASE"
 [ -x "$Q9FLUX/build/macos/q9.exe" ] || die "q9.exe fehlt (in Q9-Flux: make host)"
 
@@ -56,7 +56,7 @@ echo "== 1/6 qcpp verarbeitet seine eigene Quelle vor =="
 echo "  $(wc -c < "$WORK/qcpp.self.c" | tr -d ' ') Byte (Quelle: $(wc -c < src/qcpp.c | tr -d ' '))"
 
 echo "== 2/6 QCC uebersetzt das Ergebnis =="
-"$QCC/build/qcc_p" "@$WORK/qcpp.self.c" > "$WORK/self.ir" 2> "$WORK/self.err"
+"$QCC/build/qcir" "@$WORK/qcpp.self.c" > "$WORK/self.ir" 2> "$WORK/self.err"
 last="$(tail -1 "$WORK/self.ir")"
 msgs="$(wc -l < "$WORK/self.err" | tr -d ' ')"
 echo "  $(wc -l < "$WORK/self.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $msgs Meldungen"
@@ -66,8 +66,8 @@ echo "  $(wc -l < "$WORK/self.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 echo "== 3/6 Backend (-os9 -largedata) =="
 # -largedata ist Pflicht: qcpp haelt weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet r68 "value out of range".
-"$QCC/build/qcc_backend" "$WORK/self.ir" "$WORK/qcpp.s68" -os9 -largedata >/dev/null ||
-	die "qcc_backend"
+"$QCC/build/qir_68k" "$WORK/self.ir" "$WORK/qcpp.s68" -os9 -largedata >/dev/null ||
+	die "qir_68k"
 echo "  $(wc -c < "$WORK/qcpp.s68" | tr -d ' ') Byte Assembler"
 
 echo "== 4/6 r68 + l68 =="

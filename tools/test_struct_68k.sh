@@ -2,7 +2,7 @@
 # Struct-Regressionstest auf dem ECHTEN 68k-Ziel (Q9-Flux-Emulator).
 #
 # Fuehrt tools/test_struct_68k.c durch die komplette Kette
-#   qcc_p -> qcc_backend -> r68 -> l68 -> ToolShed -> Emulator
+#   qcir -> qir_68k -> r68 -> l68 -> ToolShed -> Emulator
 # und vergleicht die Ausgabe fallweise mit der Erwartung unten.
 #
 # Warum das nicht in runtests.sh gegen qccvm.py laeuft: die Host-VM ist fuer
@@ -63,8 +63,8 @@ EXPECT_WHAT=(
 )
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
-[ -x "$REPO/build/qcc_p" ]       || die "build/qcc_p fehlt -- erst bauen"
-[ -x "$REPO/build/qcc_backend" ] || die "build/qcc_backend fehlt"
+[ -x "$REPO/build/qcir" ]    || die "build/qcir fehlt -- erst bauen"
+[ -x "$REPO/build/qir_68k" ] || die "build/qir_68k fehlt"
 [ -f "$IMG" ]                    || die "Image nicht gefunden: $IMG"
 [ -d "$FLUX" ]                   || die "Q9-Flux nicht gefunden: $FLUX"
 
@@ -82,18 +82,18 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 w() { arch -x86_64 "$WINE_BIN" cmd /c "$1" >/dev/null 2>&1; }
 
 echo "== 1/5 uebersetzen =="
-"$REPO/build/qcc_p" "@$REPO/tools/test_struct_68k.c" > t.ir 2> t.err
+"$REPO/build/qcir" "@$REPO/tools/test_struct_68k.c" > t.ir 2> t.err
 rc=$?
 last="$(tail -1 t.ir)"
 if [ $rc -ne 0 ] || [ "$last" != "OK" ]; then
-	echo "  qcc_p: rc=$rc Schlusswort=$last"
+	echo "  qcir: rc=$rc Schlusswort=$last"
 	head -5 t.err
 	die "Testprogramm uebersetzt nicht -- das ist selbst schon ein Befund"
 fi
 echo "  ok ($(wc -l < t.ir | tr -d ' ') IR-Zeilen)"
 
 echo "== 2/5 Backend + Assembler + Linker =="
-"$REPO/build/qcc_backend" t.ir t.s68 -os9 >/dev/null || die "qcc_backend"
+"$REPO/build/qir_68k" t.ir t.s68 -os9 >/dev/null || die "qir_68k"
 w 'Z: && cd \tmp\qcc-struct68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
 [ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
 w 'Z: && cd \tmp\qcc-struct68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe t.s68 -o=t.r'

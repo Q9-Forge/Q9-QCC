@@ -12,7 +12,7 @@
 # Uebersetzung am HOST und nur das fertige Modul auf dem Ziel. Hier laeuft
 # die Sprachverarbeitung selbst auf dem Ziel.
 #
-# Was in dieser Kette noch NICHT auf dem Ziel laeuft: qcc_backend, r68 und
+# Was in dieser Kette noch NICHT auf dem Ziel laeuft: qir_68k, r68 und
 # l68 -- also der Weg vom IR zum Modul.
 #
 # Aufruf:  tools/target_chain_68k.sh
@@ -32,8 +32,8 @@ WORK="${WORK:-/tmp/qcpp-target-chain}"
 die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -x "$REPO/build/qcpp" ]       || die "q9-cpp/build/qcpp fehlt (make)"
-[ -x "$QCC/build/qcc_p" ]       || die "build/qcc_p fehlt"
-[ -x "$QCC/build/qcc_backend" ] || die "build/qcc_backend fehlt"
+[ -x "$QCC/build/qcir" ]       || die "build/qcir fehlt"
+[ -x "$QCC/build/qir_68k" ] || die "build/qir_68k fehlt"
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
 	die "build/qcc_p.bootstrap.c fehlt (tools/build_xcc_bootstrap.sh oder q9-cpp/tools/bootstrap.sh)"
 [ -f "$BASE" ]                  || die "Ausgangsimage fehlt: $BASE"
@@ -72,8 +72,8 @@ check_module() {
 build_module() {
 	local ir="$1" name="$2" stack="$3"
 
-	"$QCC/build/qcc_backend" "$ir" "$WORK/$name.s68" -os9 -largedata >/dev/null ||
-		die "qcc_backend fuer $name"
+	"$QCC/build/qir_68k" "$ir" "$WORK/$name.s68" -os9 -largedata >/dev/null ||
+		die "qir_68k fuer $name"
 	w "Z: && cd $WORKWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $name.s68 -o=$name.r"
 	[ -f "$WORK/$name.r" ] || {
 		grep -iE "error|out of range" "$WORK/wine.log" | head -5
@@ -91,7 +91,7 @@ cd "$REPO"
 
 echo "== 1/7 Hostlauf als Referenz =="
 ./build/qcpp src/qcpp.c "$WORK/host.self.c" || die "qcpp am Host"
-"$QCC/build/qcc_p" "@$WORK/host.self.c" > "$WORK/host.self.ir" 2> "$WORK/host.self.err"
+"$QCC/build/qcir" "@$WORK/host.self.c" > "$WORK/host.self.ir" 2> "$WORK/host.self.err"
 [ "$(tail -1 "$WORK/host.self.ir")" = OK ] || die "QCC am Host lehnt es ab"
 [ ! -s "$WORK/host.self.err" ] || { head -5 "$WORK/host.self.err"; die "Meldungen am Host"; }
 echo "  vorverarbeitet $(wc -c < "$WORK/host.self.c" | tr -d ' ') Byte, IR $(wc -l < "$WORK/host.self.ir" | tr -d ' ') Zeilen"
@@ -104,7 +104,7 @@ echo "== 3/7 qcpp-Modul aus qcpps eigenem IR =="
 build_module "$WORK/host.self.ir" qcpp 512
 
 echo "== 4/7 QCC-Modul aus QCCs eigenem IR =="
-"$QCC/build/qcc_p" "@$QCC/build/qcc_p.bootstrap.c" > "$WORK/qcc.ir" 2>/dev/null
+"$QCC/build/qcir" "@$QCC/build/qcc_p.bootstrap.c" > "$WORK/qcc.ir" 2>/dev/null
 [ "$(tail -1 "$WORK/qcc.ir")" = OK ] || die "QCC uebersetzt seinen eigenen Parser nicht"
 # 1 MB Stack: der Parser steigt rekursiv ab.
 build_module "$WORK/qcc.ir" qcc 1024
