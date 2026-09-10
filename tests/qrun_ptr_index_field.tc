@@ -1,0 +1,34 @@
+/* Regression: Q9-Run stores stack values through pointer[index].field.
+   This is ordinary C89 and must work for pointers to structs. */
+typedef struct {
+    int value;
+} Cell;
+
+typedef struct {
+    int state[2];
+    Cell* values;
+} Vm;
+
+typedef struct {
+    int* values;
+} Row;
+
+int main(void)
+{
+    Cell cells[2];
+    Cell* stack;
+    Vm vm;
+    Row rows_store[1];
+    Row* rows;
+    int integers[1];
+    vm.values = cells;
+    stack = vm.values;
+    rows = rows_store;
+    rows[0].values = integers;
+    rows[0].values[0] = 7;
+    vm.state[0] = 1;
+    vm.state[0]++;
+    --vm.state[0];
+    stack[vm.state[0]].value = 42;
+    return stack[vm.state[0]].value + rows[0].values[0];
+}

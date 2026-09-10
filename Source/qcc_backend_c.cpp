@@ -910,8 +910,16 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	   NICHT genommen wurde) -- die Flags von cmp.l bleiben bis zum Branch
 	   selbst unangetastet. */
 	int id = (*serial)++;
+	/* Branch relaxation belongs to Microware r68 (-m3 -b).  Keeping the
+	   source form short lets r68 choose a correct long encoding/trampoline,
+	   while hand-emitting .l branches bypassed that relocation machinery. */
+	const char* longBranch = "";
 	fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tcmp.l\td1,d0\n");
-	fprintf(out, "\t%s\ttc_cmp_yes_%d__%s\n\tmoveq\t#0,d0\n\tbra\ttc_cmp_done_%d__%s\n", branch, id, psectName, id, psectName);
+	/* The false-path skip is always local to this compare and therefore fits
+	   the 68000 short branch.  Keeping this BRA short also avoids the Q9
+	   assembler/emulator long-BRA corner case; only the conditional branch
+	   to the compare arm needs the long form in large functions. */
+	fprintf(out, "\t%s%s\ttc_cmp_yes_%d__%s\n\tmoveq\t#0,d0\n\tbra\ttc_cmp_done_%d__%s\n", branch, longBranch, id, psectName, id, psectName);
 	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
