@@ -72,5 +72,11 @@ int main(void) {
 	u = 40000;
 	mark(14); val(u);
 
+	/* Eigener Emissionsort (NARROWH im castExpr-Zweig, Data/qcc.lextab
+	   Zeile ~6472) -- unabhaengig von den beiden Rueckgabe-Narrowing-Stellen
+	   (Fall 13 oben), die einen ANDEREN Zweig treffen. Beide bisher nicht
+	   verwechselbar zu halten war Sinn dieses eigenen Falls. */
+	mark(15); val((short)100000);
+
 	return 0;
 }
