@@ -76,7 +76,7 @@ python3 tools/bootstrap_prepare.py build/qcc_p.xcc.i build/qcc_p.bootstrap.c
 # unbemerkt durchgegangen: sie stand im Kopf des erzeugten Parsers und damit
 # VOR dem Marker, an dem bootstrap_prepare.py den Header-Vorspann abschneidet.
 echo "== Selbsttest: QCC uebersetzt die Bootstrap-Quelle =="
-if ! ./build/qcc_p "@build/qcc_p.bootstrap.c" > build/qcc_p.bootstrap.ir 2> build/qcc_p.bootstrap.err; then
+if ! ./build/qcir "@build/qcc_p.bootstrap.c" > build/qcc_p.bootstrap.ir 2> build/qcc_p.bootstrap.err; then
 	echo "FEHLGESCHLAGEN -- Meldungen:" >&2
 	cat build/qcc_p.bootstrap.err >&2
 	exit 1

@@ -29,7 +29,7 @@ ERR=q9-cpp/build/qcc_p.q9.err
 REF=build/qcc_p.bootstrap.ir      # Referenz des alten xcc+Python-Weges, falls da
 
 [ -x q9-cpp/build/qcpp ] || { echo "FEHLER: q9-cpp/build/qcpp fehlt (make)"; exit 2; }
-[ -x build/qcc_p ] || { echo "FEHLER: build/qcc_p fehlt"; exit 2; }
+[ -x build/qcir ] || { echo "FEHLER: build/qcir fehlt"; exit 2; }
 mkdir -p q9-cpp/build
 
 echo "== 1/3 vorverarbeiten (qcpp + eigene Header) =="
@@ -37,7 +37,7 @@ q9-cpp/build/qcpp -Iq9-cpp/include "$SRC" "$OUT"
 echo "  $OUT ($(wc -c < "$OUT" | tr -d ' ') Byte)"
 
 echo "== 2/3 QCC uebersetzt das Ergebnis =="
-if ! ./build/qcc_p "@$OUT" > "$IR" 2> "$ERR"; then
+if ! ./build/qcir "@$OUT" > "$IR" 2> "$ERR"; then
 	echo "FEHLGESCHLAGEN -- Meldungen:"
 	head -20 "$ERR"
 	exit 1

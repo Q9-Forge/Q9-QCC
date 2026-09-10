@@ -365,7 +365,7 @@ Jetzt:
 
 ```
 q9-cpp/build/qcpp -Iq9-cpp/include Data/qcc_p.c build/qcc_p.q9.c
-build/qcc_p @build/qcc_p.q9.c > build/qcc_p.q9.ir
+build/qcir @build/qcc_p.q9.c > build/qcc_p.q9.ir
 ```
 
 Das Skript prüft dabei nicht nur, dass QCC durchläuft (89.769 IR-Zeilen,
