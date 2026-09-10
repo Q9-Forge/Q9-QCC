@@ -1,8 +1,14 @@
 #ifndef QRUN_VM_H
 #define QRUN_VM_H
 
+#ifdef QRUN_OS9
+#include "qrun_os9.h"
+#define QRUN_PTR_BYTES 8
+#else
 #include <stdint.h>
 #include <stddef.h>
+#define QRUN_PTR_BYTES sizeof(void*)
+#endif
 
 /* =========================================================================
  * QCC Stack IR Interpreter - Virtual Machine
@@ -18,220 +24,155 @@ typedef struct {
 } qrun_pointer_t;
 
 /* Stack entry: can hold value OR pointer */
-typedef union {
-    qrun_value_t   val;
-    qrun_pointer_t ptr;
+typedef struct {
+    qrun_value_t val;
 } qrun_stackval_t;
 
 /* Opcode enum - Phase 1 subset */
-typedef enum {
-    /* Control flow */
-    OP_FUNC,        /* FUNC <name> <nargs> <nlocals> */
-    OP_ENDFUNC,     /* ENDFUNC */
-    OP_RET,         /* RET */
-    OP_LABEL,       /* LABEL <name> */
-    OP_JMP,         /* JMP <label> */
-    
-    /* Stack ops */
-    OP_PUSH,        /* PUSH <int32> */
-    OP_DUP,         /* DUP */
-    OP_SWAP,        /* SWAP */
-    
-    /* Load/Store local */
-    OP_LOADL,       /* LOADL <slot> */
-    OP_STOREL,      /* STOREL <slot> */
-    
-    /* Load/Store global */
-    OP_LOADG,       /* LOADG <name> */
-    OP_STOREG,      /* STOREG <name> */
-    OP_LOADGP,      /* LOADGP <name> - load pointer global */
-    OP_STOREGP,     /* STOREGP <name> - store pointer global */
-    
-    /* Arithmetic */
-    OP_ADD,         /* ADD */
-    OP_SUB,         /* SUB */
-    OP_MUL,         /* MUL */
-    OP_DIV,         /* DIV */
-    OP_MOD,         /* MOD */
-    OP_NEG,         /* NEG */
-    
-    /* Comparisons (signed) */
-    OP_CMPEQ,       /* CMPEQ */
-    OP_CMPNE,       /* CMPNE */
-    OP_CMPLT,       /* CMPLT */
-    OP_CMPLE,       /* CMPLE */
-    OP_CMPGT,       /* CMPGT */
-    OP_CMPGE,       /* CMPGE */
-    
-    /* Comparisons (unsigned) */
-    OP_CMPULT,      /* CMPULT */
-    OP_CMPUGE,      /* CMPUGE */
-    OP_CMPULE,      /* CMPULE */
-    OP_CMPUGT,      /* CMPUGT */
-    
-    /* Conditional branches */
-    OP_BEQ,         /* BEQ <label> - branch if top == 0 */
-    OP_BNE,         /* BNE <label> - branch if top != 0 */
-    
-    /* Function calls */
-    OP_CALL,        /* CALL <name> <nargs> */
-    
-    /* Arrays & Locals */
-    OP_LARRAY,      /* LARRAY <slot> <type> <size> */
-    OP_GARRAY,      /* GARRAY <name> <type> <size> <init> */
-    OP_LOADIDX,     /* LOADIDX <scope> <name> <type> */
-    OP_STOREIDX,    /* STOREIDX <scope> <name> <type> */
-    
-    /* Pointers */
-    OP_ADDRL,       /* ADDRL <slot> - address of local */
-    OP_ADDRG,       /* ADDRG <name> - address of global */
-    OP_LOADP,       /* LOADP <slot> - load pointer from local */
-    OP_STOREP,      /* STOREP <slot> - store pointer to local */
-    OP_LOADIND,     /* LOADIND <type> - dereference and load */
-    OP_STOREIND,    /* STOREIND <type> - dereference and store */
-    OP_IPADD,       /* IPADD <type> - pointer += int * sizeof(type) */
-    OP_PADD,        /* PADD <type> - pointer + pointer (offset add) */
-    OP_PCMPNE,      /* PCMPNE - compare pointers for inequality */
-    OP_PUSHADDR,    /* PUSHADDR <scope> <slot/name> <offset> */
-    OP_IPADDN,      /* IPADDN <size> - pointer += int * size (runtime size) */
-    
-    /* IO/Debug */
-    OP_PRINT,       /* PRINT - pop and print top value */
-    OP_PRINTC,      /* PRINTC - pop and print as char */
-    
-    /* Declarations */
-    OP_GLOBAL,      /* GLOBAL <name> [init] */
-    OP_GINIT,       /* GINIT <name> <index> <value> - initialize global array element */
-    OP_GLOBALDECL,  /* GLOBALDECL <name> <type> - external global declaration (no-op) */
-    OP_FUNCDECL,    /* FUNCDECL <name> <nargs> - external function declaration (no-op) */
-    
-    /* Sentinel */
-    OP_HALT
-} qrun_opcode_t;
+typedef int qrun_opcode_t;
+#define OP_FUNC 0
+#define OP_ENDFUNC 1
+#define OP_RET 2
+#define OP_LABEL 3
+#define OP_JMP 4
+#define OP_PUSH 5
+#define OP_DUP 6
+#define OP_SWAP 7
+#define OP_DROP 8
+#define OP_LOADL 9
+#define OP_STOREL 10
+#define OP_LOADG 11
+#define OP_STOREG 12
+#define OP_LOADGP 13
+#define OP_STOREGP 14
+#define OP_ADD 15
+#define OP_SUB 16
+#define OP_MUL 17
+#define OP_DIV 18
+#define OP_MOD 19
+#define OP_NEG 20
+#define OP_BAND 21
+#define OP_BOR 22
+#define OP_BXOR 23
+#define OP_NOTBIT 24
+#define OP_SHL 25
+#define OP_SHR 26
+#define OP_USHR 27
+#define OP_CMPEQ 28
+#define OP_CMPNE 29
+#define OP_CMPLT 30
+#define OP_CMPLE 31
+#define OP_CMPGT 32
+#define OP_CMPGE 33
+#define OP_CMPULT 34
+#define OP_CMPUGE 35
+#define OP_CMPULE 36
+#define OP_CMPUGT 37
+#define OP_BEQ 38
+#define OP_BNE 39
+#define OP_CALL 40
+#define OP_LARRAY 41
+#define OP_GARRAY 42
+#define OP_LOADIDX 43
+#define OP_STOREIDX 44
+#define OP_ADDRL 45
+#define OP_ADDRG 46
+#define OP_LOADP 47
+#define OP_STOREP 48
+#define OP_LOADIND 49
+#define OP_STOREIND 50
+#define OP_IPADD 51
+#define OP_PTRINDEX 52
+#define OP_PADD 53
+#define OP_PCMPNE 54
+#define OP_PUSHADDR 55
+#define OP_IPADDN 56
+#define OP_PRINT 57
+#define OP_PRINTC 58
+#define OP_GLOBAL 59
+#define OP_GINIT 60
+#define OP_GLOBALDECL 61
+#define OP_FUNCDECL 62
+#define OP_HALT 63
 
-/* Instruction: opcode + arguments */
+/* Flat records keep the layout expressible by the QCC frontend. */
 typedef struct {
     qrun_opcode_t op;
-    
-    union {
-        int32_t   i;                    /* integer argument */
-        char*     s;                    /* string argument (name, label) */
-        struct {
-            char* name;
-            int nargs;
-            int nlocals;
-        } func;                         /* FUNC arguments */
-        struct {
-            char* name;
-            int nargs;
-        } call;                         /* CALL arguments */
-        struct {
-            int slot;                   /* local slot or scope for LOADIDX/STOREIDX */
-            char* type;                 /* type tag (i, c, h, etc.) */
-            int size;                   /* array size (for LARRAY) */
-            char* name;                 /* name (for GARRAY, LOADIDX, STOREIDX) */
-        } array;                        /* Array operations */
-        struct {
-            char* name;                 /* global array name */
-            int index;                  /* array index */
-            int32_t value;              /* value to initialize */
-        } ginit;                        /* GINIT - global array initialization */
-        struct {
-            char* name;                 /* global variable name */
-            int scope;                  /* 0=global */
-            char* type;                 /* type tag (i, c, h, etc.) */
-            int32_t init;               /* initial value */
-        } global;                       /* GLOBAL - global variable definition */
-    } arg;
+    int32_t arg_i;
+    char* arg_s;
+    int arg_nargs;
+    int arg_func_nlocals;
+    int arg_array_slot;
+    char* arg_type;
+    int arg_array_size;
+    int arg_ginit_index;
+    int32_t arg_ginit_value;
+    int arg_global_scope;
+    int32_t arg_global_init;
 } qrun_instruction_t;
-
-/* VM State */
 typedef struct {
-    /* Instruction stream */
+    char* name;
+    size_t addr;
+    int nargs;
+    int nlocals;
+} qrun_function_t;
+typedef struct {
+    char* name;
+    size_t addr;
+} qrun_label_t;
+typedef struct {
+    const char* name;
+    qrun_value_t value;
+} qrun_global_t;
+typedef struct {
+    char* name;
+    qrun_value_t* data;
+    size_t size;
+    int type_size;
+} qrun_array_t;
+typedef struct {
+    size_t code_addr;
+    qrun_value_t* locals;
+    size_t nlocals_allocated;
+    qrun_array_t* arrays;
+    size_t narrays;
+} qrun_frame_t;
+typedef qrun_value_t* qrun_handle_t;
+typedef struct {
     qrun_instruction_t* code;
-    size_t code_size;
-    size_t pc;              /* Program counter */
-    
-    /* Function lookup table */
-    struct {
-        char* name;
-        size_t addr;        /* instruction index */
-        int nargs;
-        int nlocals;
-    }* funcs;
-    size_t nfuncs;
-    
-    /* Label lookup table */
-    struct {
-        char* name;
-        size_t addr;        /* instruction index */
-    }* labels;
-    size_t nlabels;
-    size_t labels_capacity;
-    
-    /* Value stack */
+    qrun_function_t* funcs;
+    qrun_label_t* labels;
     qrun_stackval_t* stack;
-    size_t stack_size;
-    size_t sp;              /* Stack pointer (next free) */
-    
-    /* String pool (for IR strings, kept alive) */
-    void* string_pool;      /* qrun_string_pool_t* */
-    
-    /* Globals storage (flat memory) */
+    void* string_pool;
     qrun_value_t* globals;
-    size_t globals_size;
-    
-    /* Named globals (for __ptrsize and similar) */
-    struct {
-        const char* name;
-        qrun_value_t value;
-    }* named_globals;
-    size_t nglobals;
-    size_t nglobals_capacity;
-    
-    /* Pointer heap - simple memory model for pointers */
+    qrun_global_t* named_globals;
     qrun_value_t* heap;
-    size_t heap_size;
-    size_t heap_capacity;
-    
-    /* Global array handle pointers (for PUSHADDR to reference with offset arithmetic)
-       Maps handle index to actual data pointer in garrays */
-    qrun_value_t** garray_handles;
-    int* garray_handle_indices;  /* Parallel array: garray_handle_indices[i] = garray_idx */
-    size_t ngarray_handles;
-    size_t garray_handles_capacity;
-    
-    /* Global arrays */
-    struct {
-        char* name;
-        qrun_value_t* data;
-        size_t size;
-        int type_size;
-    }* garrays;
-    size_t ngarrays;
-    size_t garrays_capacity;
-    
-    /* Call stack / local frames */
-    struct {
-        size_t code_addr;   /* return address (instruction index) */
-        qrun_value_t* locals;  /* local variables for this frame (sparse, up to 256) */
-        size_t nlocals_allocated;  /* size of locals array */
-        
-        /* Local arrays indexed by slot */
-        struct {
-            qrun_value_t* data;
-            size_t size;
-            int type_size;  /* 1, 2, 4, or 8 bytes */
-        }* arrays;
-        size_t narrays;  /* number of arrays allocated */
-    }* frames;
-    size_t frame_size;
-    size_t fp;              /* Frame pointer (next free) */
-    
-    /* Halt flag */
-    int halted;
-    int32_t exit_code;
+    qrun_handle_t* garray_handles;
+    int* garray_handle_indices;
+    qrun_array_t* garrays;
+    qrun_frame_t* frames;
+    int state[24];
 } qrun_vm_t;
+#define QRUN_CODE_SIZE 0
+#define QRUN_PC 1
+#define QRUN_NFUNCS 2
+#define QRUN_NLABELS 3
+#define QRUN_LABELS_CAPACITY 4
+#define QRUN_STACK_SIZE 5
+#define QRUN_SP 6
+#define QRUN_GLOBALS_SIZE 7
+#define QRUN_NGLOBALS 8
+#define QRUN_NGLOBALS_CAPACITY 9
+#define QRUN_HEAP_SIZE 10
+#define QRUN_HEAP_CAPACITY 11
+#define QRUN_NGARRAY_HANDLES 12
+#define QRUN_GARRAY_HANDLES_CAPACITY 13
+#define QRUN_NGARRAYS 14
+#define QRUN_GARRAYS_CAPACITY 15
+#define QRUN_FRAME_SIZE 16
+#define QRUN_FP 17
+#define QRUN_HALTED 18
+#define QRUN_EXIT_CODE 19
 
 /* VM API */
 qrun_vm_t* qrun_vm_create(void);

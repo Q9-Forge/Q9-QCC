@@ -52,4 +52,13 @@ make test
 
 ## Status
 
-- 🔨 **In Progress** — Phase 1 (IR-Parser + Basic Stack)
+- ✅ Native QCC-IR integration passes and matches `qccvm.py`.
+- ✅ The QCC-to-68k-to-Q9-Flux test infrastructure passes its 35-case
+  struct/pointer regression suite.
+- ✅ The QCC frontend grammar gap that rejected five large VM functions
+  (`memberIncTarget` missing `x.field[i]++`) is fixed (2026-09-10); all
+  Q9-Run source files now clear QCC's frontend (stage 1/grammar).
+- 🔨 On-target Q9-Run translation is in progress; the full chain (frontend
+  -> IR -> VM -> 68k backend -> Q9-Flux) is not yet verified for the real
+  VM functions. Stage-2 (semantic) measurement is currently skewed by a
+  preprocessing artifact -- see `Q9-QCC/docs/KNOWN_BUGS_C89_de.md`.

@@ -1,11 +1,14 @@
 #include "qrun_vm.h"
+#ifndef QRUN_OS9
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#endif
 
 /* Parse architecture JSON file and set globals */
 static int qrun_load_arch_file(qrun_vm_t* vm, const char* arch_file)
 {
+    qrun_global_t* named_globals = vm->named_globals;
     FILE* f = fopen(arch_file, "r");
     if (!f) {
         fprintf(stderr, "Failed to open architecture file: %s\n", arch_file);
@@ -14,7 +17,7 @@ static int qrun_load_arch_file(qrun_vm_t* vm, const char* arch_file)
     
     /* Simple JSON parser for { "__ptrsize": N } format */
     char line[256];
-    while (fgets(line, sizeof(line), f)) {
+    while (fgets(line, 256, f)) {
         /* Look for "__ptrsize": N pattern */
         const char* ptr = strstr(line, "__ptrsize");
         if (!ptr) continue;
@@ -25,10 +28,10 @@ static int qrun_load_arch_file(qrun_vm_t* vm, const char* arch_file)
         int value = atoi(ptr + 1);
         
         /* Add global __ptrsize */
-        if (vm->nglobals < vm->nglobals_capacity) {
-            vm->named_globals[vm->nglobals].name = "__ptrsize";
-            vm->named_globals[vm->nglobals].value = value;
-            vm->nglobals++;
+        if (vm->state[QRUN_NGLOBALS] < vm->state[QRUN_NGLOBALS_CAPACITY]) {
+            named_globals[vm->state[QRUN_NGLOBALS]].name = "__ptrsize";
+            named_globals[vm->state[QRUN_NGLOBALS]].value = value;
+            vm->state[QRUN_NGLOBALS]++;
             fprintf(stderr, "Architecture: __ptrsize = %d\n", value);
         }
     }
@@ -43,13 +46,15 @@ int main(int argc, char* argv[])
     const char* arch_file = NULL;
     
     /* Parse arguments: [--arch=FILE] IR_FILE */
-    for (int i = 1; i < argc; i++) {
+    { int i;
+        for (i = 1; i < argc; i++) {
         if (strncmp(argv[i], "--arch=", 7) == 0) {
             arch_file = argv[i] + 7;
         } else {
             ir_file = argv[i];
         }
     }
+        }
     
     if (!ir_file) {
         fprintf(stderr, "Usage: %s [--arch=ARCH_FILE] <ir_file>\n", argv[0]);
