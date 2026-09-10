@@ -2,7 +2,7 @@
 # DER RINGSCHLUSS: die ganze Kette laeuft auf dem 68030.
 #
 # Bis hierher war jedes Werkzeug EINZELN auf dem Ziel nachgewiesen -- qcpp,
-# qcc, qcc_backend, qr68, ql68, jedes gegen qclib gebunden. Was fehlte, war
+# qcc, qir_68k, qr68, ql68, jedes gegen qclib gebunden. Was fehlte, war
 # der Lauf, der sie HINTEREINANDER schaltet: von der C-Quelle bis zum
 # lauffaehigen Modul, ohne dass zwischendurch etwas am Host passiert.
 #
@@ -10,7 +10,7 @@
 #                         eigenen Kette gebaut und gegen qclib gebunden
 #   Stufe 1  (68030)      qcpp        hello.c    -> hello.i
 #   Stufe 2  (68030)      qcc        @hello.i    -> hello.ir
-#   Stufe 3  (68030)      qcc_backend hello.ir   -> hello.s68
+#   Stufe 3  (68030)      qir_68k hello.ir   -> hello.s68
 #   Stufe 4  (68030)      qr68        hello.s68  -> hello.r
 #   Stufe 5  (68030)      ql68        hello.r    -> q9_hk (Modul)
 #   Stufe 6  (68030)      attr q9_hk -e -pe  (sonst startet OS-9 es nicht)
@@ -18,7 +18,7 @@
 #   Pruefung (Host)       das auf dem Ziel gebaute Modul BYTEIDENTISCH zum
 #                         am Host gebauten, und die 24 Ausgabezeilen richtig
 #
-# DIE NAMEN MUESSEN AUF BEIDEN SEITEN GLEICH SEIN: qcc_backend leitet bei
+# DIE NAMEN MUESSEN AUF BEIDEN SEITEN GLEICH SEIN: qir_68k leitet bei
 # -os9 den psect-Namen aus dem Ausgabenamen ab, ql68 den Modulnamen aus -O=.
 # Verschiedene Namen geben immer einen Unterschied -- diese Falle steht
 # mehrfach in den Projektnotizen.
@@ -40,8 +40,8 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 	die "build/qcc_p.bootstrap.c fehlt (Q9-QCC/tools/build_xcc_bootstrap.sh)"
 
 QCPP_H="$QCC/q9-cpp/build/qcpp"
-QCCP="$QCC/build/qcc_p"
-QCCB="$QCC/build/qcc_backend"
+QCCP="$QCC/build/qcir"
+QCCB="$QCC/build/qir_68k"
 QR68="$FORGE/Q9-qr68/build/qr68"
 QL68="$FORGE/Q9-ql68/build/ql68"
 for t in "$QCPP_H" "$QCCP" "$QCCB" "$QR68" "$QL68"; do
@@ -137,7 +137,7 @@ echo "  ok"
 echo "== 4/6 im Emulator: fuenf Bauschritte, Attribut, Lauf =="
 cat > "$WORK/run.exp" <<'EOF'
 log_file -a LOGFILE
-# Weit gefasst: qcc_backend allein ist ein 9,6-MB-Modul und will vom
+# Weit gefasst: qir_68k allein ist ein 9,6-MB-Modul und will vom
 # CF-Abbild geladen werden.
 set timeout 1800
 set send_slow {1 .003}
@@ -237,7 +237,7 @@ echo "  $n von 12 Stichproben in der Ausgabe"
 
 echo
 if [ $fail -eq 0 ]; then
-	echo "DIE KETTE LAEUFT AUF DEM ZIEL: qcpp, qcc, qcc_backend, qr68 und ql68"
+	echo "DIE KETTE LAEUFT AUF DEM ZIEL: qcpp, qcc, qir_68k, qr68 und ql68"
 	echo "haben auf dem 68030 aus hello.c ein Modul gebaut, das dort laeuft --"
 	echo "byteidentisch zu dem, was der Host aus derselben Quelle baut."
 else

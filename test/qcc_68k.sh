@@ -33,8 +33,8 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -f "$REPO/build/qclib.l" ]      || die "build/qclib.l fehlt -- vorher make"
 [ -f "$REPO/build/q9_cstart.r" ]  || die "build/q9_cstart.r fehlt -- vorher make"
-[ -x "$QCC/build/qcc_p" ]         || die "qcc_p fehlt"
-[ -x "$QCC/build/qcc_backend" ]   || die "qcc_backend fehlt"
+[ -x "$QCC/build/qcir" ]         || die "qcir fehlt"
+[ -x "$QCC/build/qir_68k" ]   || die "qir_68k fehlt"
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
 	die "qcc_p.bootstrap.c fehlt (Q9-QCC/tools/build_xcc_bootstrap.sh)"
 [ -f "$QCC/test/expect/selfhost_68k.exp" ] || die "der gemeinsame Emulatorlauf fehlt"
@@ -55,7 +55,7 @@ MWOS="$MWOS_UNIX"
 OS9="$MWOS_TOOLSHED_OS9"
 
 echo "== 1/6 Host: QCC uebersetzt seinen eigenen Parser =="
-"$QCC/build/qcc_p" "@$QCC/build/qcc_p.bootstrap.c" \
+"$QCC/build/qcir" "@$QCC/build/qcc_p.bootstrap.c" \
 	> "$WORK/stage1.ir" 2> "$WORK/stage1.err"
 [ "$(tail -1 "$WORK/stage1.ir")" = OK ] || {
 	head -5 "$WORK/stage1.err"; die "schon am Host nicht uebersetzbar"; }
@@ -65,8 +65,8 @@ echo "  ok ($(wc -l < "$WORK/stage1.ir" | tr -d " ") IR-Zeilen, $(wc -c < "$WORK
 # Zustand, ohne die Indirektionstabelle reicht die PC-relative
 # Adressierung des 68000 nicht.
 echo "== 2/6 die eigene Kette: Backend, qr68, ql68 =="
-"$QCC/build/qcc_backend" "$WORK/stage1.ir" "$WORK/stage2.s68" -os9 -largedata -remotedata \
-	>/dev/null || die "qcc_backend"
+"$QCC/build/qir_68k" "$WORK/stage1.ir" "$WORK/stage2.s68" -os9 -largedata -remotedata \
+	>/dev/null || die "qir_68k"
 "$QR68" "$WORK/stage2.s68" "-o=$WORK/stage2.r" >"$WORK/asm.log" 2>&1 || {
 	head -10 "$WORK/asm.log"; die "qr68"; }
 # -M=1024K: der Parser steigt rekursiv ab; mit dem Standardstack

@@ -32,9 +32,9 @@ TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
 
 echo "== 1/3 uebersetzen (eigene Kette) und gegen clib binden =="
 "$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" test/lineend.c "$WORK/le.i" || die "qcpp"
-"$QCC/build/qcc_p" "@$WORK/le.i" > "$WORK/le.ir" 2> "$WORK/le.err"
-[ "$(tail -1 "$WORK/le.ir")" = OK ] || { head -5 "$WORK/le.err"; die "qcc_p"; }
-"$QCC/build/qcc_backend" "$WORK/le.ir" "$WORK/le.s68" -os9 -largedata >/dev/null || die "Backend"
+"$QCC/build/qcir" "@$WORK/le.i" > "$WORK/le.ir" 2> "$WORK/le.err"
+[ "$(tail -1 "$WORK/le.ir")" = OK ] || { head -5 "$WORK/le.err"; die "qcir"; }
+"$QCC/build/qir_68k" "$WORK/le.ir" "$WORK/le.s68" -os9 -largedata >/dev/null || die "Backend"
 "$FORGE/Q9-qr68/build/qr68" "$WORK/le.s68" "-o=$WORK/le.r" || die "qr68"
 cp "$QCC/runtime/os9/q9_cstart.a" "$QCC/runtime/os9/q9defs.d" "$WORK/"
 ( cd "$WORK" && "$FORGE/Q9-qr68/build/qr68" q9_cstart.a -o=q9_cstart.r ) || die "qr68 cstart"

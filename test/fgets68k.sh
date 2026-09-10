@@ -43,9 +43,9 @@ sed 's/^/    /' "$WORK/host.out"
 
 echo "== 2/4 gegen qclib binden (eigene Kette) =="
 "$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" test/fgtest.c "$WORK/fg.i" || die "qcpp"
-"$QCC/build/qcc_p" "@$WORK/fg.i" > "$WORK/fg.ir" 2> "$WORK/fg.err"
-[ "$(tail -1 "$WORK/fg.ir")" = OK ] || { head -5 "$WORK/fg.err"; die "qcc_p"; }
-"$QCC/build/qcc_backend" "$WORK/fg.ir" "$WORK/fg.s68" -os9 -largedata >/dev/null || die "Backend"
+"$QCC/build/qcir" "@$WORK/fg.i" > "$WORK/fg.ir" 2> "$WORK/fg.err"
+[ "$(tail -1 "$WORK/fg.ir")" = OK ] || { head -5 "$WORK/fg.err"; die "qcir"; }
+"$QCC/build/qir_68k" "$WORK/fg.ir" "$WORK/fg.s68" -os9 -largedata >/dev/null || die "Backend"
 "$FORGE/Q9-qr68/build/qr68" "$WORK/fg.s68" "-o=$WORK/fg.r" || die "qr68"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
 "$FORGE/Q9-ql68/build/ql68" -a "$WORK/q9_cstart.r" "$WORK/fg.r" -l="$WORK/qclib.l" \
