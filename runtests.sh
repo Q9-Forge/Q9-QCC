@@ -1294,6 +1294,37 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'typedef int I, *IP; int main(){ I x=7; IP p; p=&x; putint(*p); putint(x); }' '7\n7'
 		tc_check 'typedef struct { int a; } S, *SP; int main(){ S s; SP p; s.a=9; p=&s; putint(p->a); putint(s.a); }' '9\n9'
 		tc_check 'typedef int A, *B, **C; int main(){ int x=5; A a=x; B b=&x; C c=&b; putint(a); putint(*b); putint(**c); }' '5\n5\n5'
+		# Neuer echter 16-Bit-Basistyp "short"/"unsigned short" (2026-09-09,
+		# beim Q9-Tools-Uebersetzungsversuch entdeckt: module.h definiert
+		# u_int16 selbst als "unsigned short" und hat etliche blanke short-
+		# Felder -- vorher gab es dafuer ueberhaupt keinen Basistyp). Bewusste
+		# Vereinfachung wie bei char: IMMER nullerweitert geladen, kein
+		# eigener vorzeichenbehafteter Zweig (short b=-1; kommt als 65535
+		# zurueck -- das Bitmuster ist richtig, nur die Interpretation ist wie
+		# bei char bewusst unsigned). Je ein Test: lokale Variablen + sizeof,
+		# globale Variable samt Arithmetik, Array, Zeiger, und ein Struct MIT
+		# echter Feldgroesse (int VOR den beiden short-Feldern -- diese
+		# Reihenfolge ist Absicht, s. NACHTRAG gleich danach).
+		tc_check 'int main(){ short a=7, b=-1; putint(a); putint(b); putint(sizeof(short)); putint(sizeof(a)); }' '7\n65535\n2\n2'
+		tc_check 'short g=300; int main(){ g=g+1; putint(g); }' '301'
+		tc_check 'int main(){ short arr[3]; int i; for(i=0;i<3;i=i+1) arr[i]=i*10; putint(arr[0]); putint(arr[1]); putint(arr[2]); }' '0\n10\n20'
+		tc_check 'int main(){ short x=42; short *p; p=&x; putint(*p); *p=7; putint(x); }' '42\n7'
+		tc_check 'struct M { int c; short a; short b; }; int main(){ struct M m; m.c=99999; m.a=100; m.b=200; putint(m.c); putint(m.a); putint(m.b); putint(sizeof(struct M)); }' '99999\n100\n200\n8'
+		# NACHTRAG -- echter, vorbestehender Mangel in DIESEM Orakel gefunden
+		# (nicht im Compiler: auf dem 68030 laeuft die volle Kette mit der
+		# Feldreihenfolge "short a; short b; int c;" byteidentisch richtig,
+		# s. Memory project_qcc_short.md). qccvm modelliert einen Zeiger als
+		# (Block, Byte-Offset) und ein struct-Feld darin als
+		# "block[offset // typgroesse]" (pointer_index) -- das setzt
+		# STILLSCHWEIGEND voraus, dass verschieden grosse Felder NIE auf denselben
+		# Index kollidieren. "short a@0(Gr.2)->Index 0, short b@2(Gr.2)->Index 1,
+		# int c@4(Gr.4)->Index 1" -- b und c landen auf demselben Python-
+		# Listenplatz, c ueberschreibt b. Vor short kam das nie vor (nur 1-Byte-
+		# und 4-Byte-Felder, deren Indizes bei ueblichen Layouts nicht
+		# zusammenfallen); short macht Kollisionen leicht moeglich. ECHTE Reparatur
+		# waere ein Byte-genaues Speichermodell in qccvm.py -- eigenes, separates
+		# Vorhaben, hier bewusst nicht angefasst. Deshalb oben die Feldreihenfolge
+		# "int VOR den shorts" gewaehlt, die keine Kollision hat.
 		[ $tcfail -eq 0 ] && echo "ok    qcc: $tccount Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder inkl. direkter Indizierung DURCH sie, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
 	else
 		echo "FAIL  qcc: Data/qcc_p.c kompiliert nicht"; fail=1

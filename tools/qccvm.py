@@ -75,7 +75,18 @@ class FnRef:
 
 
 def type_size(tag):
-    return 1 if tag in ("c", "b") else 8 if tag == "p" else 4
+    # 2026-09-09: 'h' (short) dazu -- echte 2 Byte, wie im 68k-Backend.
+    return 1 if tag in ("c", "b") else 2 if tag == "h" else 8 if tag == "p" else 4
+
+
+def mask_for(tag, value):
+    # Nullerweiterung wie im 68k-Backend (moveq #0,d0 / move.b bzw. move.w) --
+    # dieselbe Maske an vier Stellen (LOADIDX/STOREIDX/LOADIND/STOREIND).
+    if tag in ("c", "b"):
+        return value & 0xff
+    if tag == "h":
+        return value & 0xffff
+    return value
 
 
 def pointer(value, what="pointer operation"):
@@ -141,6 +152,10 @@ def run(prog):
             opstack.append(frames[-1][1].setdefault(int(args[0]), [0])[0] & 0xff); ip += 1
         elif op == "STOREC":
             frames[-1][1].setdefault(int(args[0]), [0])[0] = opstack.pop() & 0xff; ip += 1
+        elif op == "LOADLH":
+            opstack.append(frames[-1][1].setdefault(int(args[0]), [0])[0] & 0xffff); ip += 1
+        elif op == "STORELH":
+            frames[-1][1].setdefault(int(args[0]), [0])[0] = opstack.pop() & 0xffff; ip += 1
         elif op == "LOADP":
             opstack.append(frames[-1][1].setdefault(int(args[0]), [0])[0]); ip += 1
         elif op == "STOREP":
@@ -153,6 +168,10 @@ def run(prog):
             opstack.append(globals_[args[0]][0] & 0xff); ip += 1
         elif op == "STOREGC":
             globals_[args[0]][0] = opstack.pop() & 0xff; ip += 1
+        elif op == "LOADGH":
+            opstack.append(globals_[args[0]][0] & 0xffff); ip += 1
+        elif op == "STOREGH":
+            globals_[args[0]][0] = opstack.pop() & 0xffff; ip += 1
         elif op == "LOADGP":
             opstack.append(globals_[args[0]][0]); ip += 1
         elif op == "STOREGP":
@@ -176,13 +195,13 @@ def run(prog):
             if index < 0 or index >= len(values):
                 sys.stderr.write("qccvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
             value = values[index]
-            opstack.append(value & 0xff if args[2] in ("c", "b") else value); ip += 1
+            opstack.append(mask_for(args[2], value)); ip += 1
         elif op in ("STOREIDX", "STOREIDXKEEP"):
             value = opstack.pop(); index = opstack.pop()
             values = frames[-1][2][int(args[1])] if args[0] == "L" else frames[-1][1][int(args[1])] if args[0] == "P" else globals_[args[1]]
             if index < 0 or index >= len(values):
                 sys.stderr.write("qccvm: array index %d out of range (length %d)\n" % (index, len(values))); return 4
-            value = value & 0xff if args[2] in ("c", "b") else value
+            value = mask_for(args[2], value)
             values[index] = value
             if op == "STOREIDXKEEP": opstack.append(value)
             ip += 1
@@ -191,10 +210,10 @@ def run(prog):
             opstack.append(p.shifted(index, type_size(args[0]))); ip += 1
         elif op == "LOADIND":
             block, index = pointer_index(opstack.pop(), args[0]); value = block[index]
-            opstack.append(value & 0xff if args[0] in ("c", "b") else value); ip += 1
+            opstack.append(mask_for(args[0], value)); ip += 1
         elif op in ("STOREIND", "STOREINDKEEP"):
             value = opstack.pop(); block, index = pointer_index(opstack.pop(), args[0])
-            value = value & 0xff if args[0] in ("c", "b") else value
+            value = mask_for(args[0], value)
             block[index] = value
             if op == "STOREINDKEEP": opstack.append(value)
             ip += 1
@@ -250,6 +269,8 @@ def run(prog):
             b = opstack.pop(); a = opstack.pop(); opstack.append(u32(a) >> b); ip += 1
         elif op == "NARROWC":
             opstack.append(opstack.pop() & 0xff); ip += 1
+        elif op == "NARROWH":
+            opstack.append(opstack.pop() & 0xffff); ip += 1
         elif op == "DUP":
             opstack.append(opstack[-1]); ip += 1
         elif op == "DUPP":
