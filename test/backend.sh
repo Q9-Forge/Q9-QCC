@@ -3,7 +3,7 @@
 #
 # Die eingebauten Proben in difftest.sh pruefen Einzelfaelle, test/insn.a die
 # Befehlstabelle. Hier laeuft dagegen das, was in der Kette
-# qcc_backend -> qr68 -> l68 tatsaechlich ankommt: ganze Module, bis zu
+# qir_68k -> qr68 -> l68 tatsaechlich ankommt: ganze Module, bis zu
 # 146.000 Zeilen. Das ist der Test, der zaehlt.
 #
 #   ./test/backend.sh              -- alle gefundenen Module

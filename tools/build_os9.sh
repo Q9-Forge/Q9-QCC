@@ -2,8 +2,8 @@
 # Baut qr68 als OS-9-Modul fuer den 68030 -- mit der eigenen Kette:
 #
 #   1  qcpp        src/qr68.c            -> qr68.i      (Praeprozessor)
-#   2  qcc_p       @qr68.i               -> qr68.ir     (Compiler)
-#   3  qcc_backend qr68.ir               -> qr68.s68    (Codeerzeugung)
+#   2  qcir       @qr68.i               -> qr68.ir     (Compiler)
+#   3  qir_68k qr68.ir               -> qr68.s68    (Codeerzeugung)
 #   4  qr68        qr68.s68              -> qr68.r      (SICH SELBST)
 #   5  r68         q9_cstart.a           -> q9_cstart.r (Laufzeiteinstieg)
 #   6  l68         + clib/os_lib/sys.l   -> q9_qr68     (Modul)
@@ -29,8 +29,8 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -x "$REPO/build/qr68" ]        || die "build/qr68 fehlt (make)"
 [ -x "$QCC/q9-cpp/build/qcpp" ]  || die "$QCC/q9-cpp/build/qcpp fehlt"
-[ -x "$QCC/build/qcc_p" ]        || die "$QCC/build/qcc_p fehlt"
-[ -x "$QCC/build/qcc_backend" ]  || die "$QCC/build/qcc_backend fehlt"
+[ -x "$QCC/build/qcir" ]        || die "$QCC/build/qcir fehlt"
+[ -x "$QCC/build/qir_68k" ]  || die "$QCC/build/qir_68k fehlt"
 
 MWOS_UNIX="$MWOS"
 rm -rf "$WORK"; mkdir -p "$WORK"
@@ -52,7 +52,7 @@ echo "== 1/6 qcpp =="
 echo "  $(wc -c < "$WORK/qr68.i" | tr -d ' ') Byte"
 
 echo "== 2/6 QCC =="
-"$QCC/build/qcc_p" "@$WORK/qr68.i" > "$WORK/qr68.ir" 2> "$WORK/qr68.err"
+"$QCC/build/qcir" "@$WORK/qr68.i" > "$WORK/qr68.ir" 2> "$WORK/qr68.err"
 last="$(tail -1 "$WORK/qr68.ir")"
 msgs="$(wc -l < "$WORK/qr68.err" | tr -d ' ')"
 echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $msgs Meldungen"
@@ -62,8 +62,8 @@ echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 echo "== 3/6 Backend (-os9 -largedata -remotedata) =="
 # -largedata ist Pflicht: qr68 haelt weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet der Assembler "value out of range".
-"$QCC/build/qcc_backend" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
-	>/dev/null || die "qcc_backend"
+"$QCC/build/qir_68k" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
+	>/dev/null || die "qir_68k"
 echo "  $(wc -c < "$WORK/qr68.s68" | tr -d ' ') Byte Assembler"
 
 echo "== 4/6 qr68 assembliert sich selbst =="
