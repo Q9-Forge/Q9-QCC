@@ -2730,6 +2730,26 @@ else
 	echo "warn  qcc ARM64/Darwin: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
+
+# 15b) short/unsigned short auf dem ARM64-Backend (2026-09-10, s. auch
+#     tools/test_short_68k.sh in Q9-QCC fuer den 68k-Gegenpart). Deckt
+#     lokale/globale Variable, Array, Zeiger, ein struct mit der Feldreihen-
+#     folge "short a; short b; int c;" (im Host-Orakel qccvm.py NICHT
+#     pruefbar, hier aber ein echter Speicherzugriff wie auf dem 68k), Wert-
+#     parameter, Rueckgabe-Narrowing, unsigned short und expliziten Cast ab.
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct N { short a; short b; int c; }; short g = 300; short retTooBig(void){ return 100000; } void byval(short x){ putint(x); } int main(){ short a; short arr[3]; short x; short *p; struct N n; int i; unsigned short u; a = -1; putint(a); g = g + 1; putint(g); for(i=0;i<3;i=i+1) arr[i]=i*10; putint(arr[1]); x=42; p=&x; *p=7; putint(x); n.a=11; n.b=22; n.c=99999; putint(n.a); putint(n.b); putint(n.c); putint(sizeof(struct N)); byval(-3); putint(retTooBig()); u=40000; putint(u); putint((short)100000); }' > build/qcc_short_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_short_arm64.ir build/qcc_short_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_short_arm64 build/qcc_short_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_short_arm64)" = "$(printf '65535\n301\n10\n7\n11\n22\n99999\n8\n65533\n34464\n40000\n34464')" ]; then
+		echo "ok    qcc short ARM64: lokal/global/Array/Zeiger/struct (short+short+int)/Wertparameter/Rueckgabe-Narrowing/unsigned/Cast korrekt"
+	else
+		echo "FAIL  qcc short ARM64: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  qcc short ARM64: nur auf arm64-macOS getestet -- uebersprungen"
+fi
+
 # 16a) QCC Mehrdatei-Uebersetzung, M3 (2026-07-25): ZWEI SEPARAT mit -part
 #     kompilierte Dateien werden mit clang zu getrennten .o-Objekten assembliert
 #     und mit demselben clang-Aufruf (der intern ld ruft) zu EINEM Programm
