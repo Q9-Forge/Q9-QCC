@@ -25,8 +25,8 @@ WORK="${WORK:-/tmp/qcc-short68k}"
 KEEP=0
 [ "${1:-}" = "-k" ] && KEEP=1
 
-EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14)
-EXPECT_VALS=(2 65535 301 10 7 200 8 11 22 99999 8 65533 34464 40000)
+EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+EXPECT_VALS=(2 65535 301 10 7 200 8 11 22 99999 8 65533 34464 40000 34464)
 EXPECT_WHAT=(
 	"sizeof(short)"
 	"lokales short, negativ (65535 statt -1)"
@@ -42,6 +42,7 @@ EXPECT_WHAT=(
 	"short als Parameter per Wert (-3 -> 65533)"
 	"short-Rueckgabe, NARROWH (100000 -> 34464)"
 	"unsigned short"
+	"expliziter Cast (short)100000, eigener Emissionsort im castExpr"
 )
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
