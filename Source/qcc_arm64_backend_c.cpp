@@ -48,6 +48,7 @@ typedef struct {
 	char name[NAME_LEN];
 	int initialValue;
 	int isChar;
+	int isShort;
 	int isPointer;
 	int isArray;
 	int length;
@@ -91,11 +92,34 @@ static int findGlobal(const char* name) {
 }
 
 static int isNumWord(const char* w) {
-	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 || strcmp(w, "p") == 0;
+	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 ||
+	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
 }
 
 static int isByteWord(const char* w) {
 	return strcmp(w, "c") == 0 || strcmp(w, "b") == 0;
+}
+
+/* short (2026-09-10, s. qcc_backend_c.cpp fuer das 68k-Gegenstueck): echter
+   16-Bit-Typ, wie char IMMER nullerweitert (ldrh/strh zero-extenden auf
+   ARM64 ohnehin automatisch in w0, wie ldrb es schon fuer char tut). */
+static int isShortWord(const char* w) { return strcmp(w, "h") == 0; }
+
+/* Elementgroesse eines Typtags in Byte -- gebraucht fuer Array-/Zeiger-
+   Adressierung. Anders als beim 68k-Backend ist ein Zeiger hier 8 Byte
+   (ARM64), nicht 4. */
+static int elemBytes(const char* w) {
+	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
+	if (strcmp(w, "h") == 0) return 2;
+	if (strcmp(w, "p") == 0) return 8;
+	return 4;
+}
+/* ldr/str-Groessensuffix: "b" (Byte), "h" (Halfword), "" (Word/Doubleword --
+   welches von beiden ergibt sich aus dem gewaehlten Register w/x). */
+static const char* elemSuffix(const char* w) {
+	if (isByteWord(w)) return "b";
+	if (isShortWord(w)) return "h";
+	return "";
 }
 
 static int number(const char* text, int line) {
@@ -163,6 +187,7 @@ static void collectGlobals(void) {
 					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
 					globals[gi].init[idx] = number(x->args[2], x->line);
 					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
+					else if (globals[gi].isShort) globals[gi].init[idx] &= 65535;
 					globals[gi].hasGinit = 1;
 					found = 1;
 					break;
@@ -191,6 +216,7 @@ static void collectGlobals(void) {
 			memset(&globals[gi], 0, sizeof(Global));
 			strncpy(globals[gi].name, x->args[0], NAME_LEN - 1);
 			globals[gi].isChar = isByteWord(x->args[1]);
+			globals[gi].isShort = isShortWord(x->args[1]);
 			globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
@@ -207,6 +233,7 @@ static void collectGlobals(void) {
 		strncpy(globals[gi].name, x->args[0], NAME_LEN - 1);
 		globals[gi].initialValue = x->argc >= 2 ? number(x->args[1], x->line) : 0;
 		globals[gi].isChar = x->argc >= 3 && isByteWord(x->args[2]);
+		globals[gi].isShort = x->argc >= 3 && isShortWord(x->args[2]);
 		globals[gi].isPointer = x->argc >= 3 && strcmp(x->args[2], "p") == 0;
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
@@ -226,6 +253,7 @@ static void collectGlobals(void) {
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, x->args[0], NAME_LEN - 1);
 		globals[gi].isChar = isByteWord(x->args[1]);
+		globals[gi].isShort = isShortWord(x->args[1]);
 		globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
 		globals[gi].declOnly = 1;
 	}
@@ -295,8 +323,13 @@ static void collectFunctions(void) {
 		int k, bytes;
 		for (k = f->first; k < f->last; k++) {
 			Instr* x = &ir[k];
+			/* LOADLH/STORELH (2026-09-10, short) MUESSEN hier mitgezaehlt werden --
+			   sonst bleibt ein Slot, der NUR ueber sie angesprochen wird, unterhalb
+			   von "top" und der Frame faellt zu klein aus (dieselbe Falle wie im
+			   68k-Backend, s. qcc_backend_c.cpp). */
 			if ((strcmp(x->op, "LOADL") == 0 || strcmp(x->op, "STOREL") == 0 || strcmp(x->op, "LOADC") == 0 ||
-				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
+				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADLH") == 0 || strcmp(x->op, "STORELH") == 0 ||
+				strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
 				strcmp(x->op, "ADDRL") == 0 || strcmp(x->op, "LARRAY") == 0) && x->argc > 0) {
 				int v = number(x->args[0], x->line);
 				if (v > top) top = v;
@@ -308,10 +341,10 @@ static void collectFunctions(void) {
 			if (strcmp(ir[k].op, "LARRAY") == 0) {
 				Instr* x = &ir[k];
 				int len, align;
-				if (x->argc != 3 || !(strcmp(x->args[1], "i") == 0 || isByteWord(x->args[1]) || strcmp(x->args[1], "p") == 0)) fatal("ungueltiges LARRAY");
+				if (x->argc != 3 || !(strcmp(x->args[1], "i") == 0 || isByteWord(x->args[1]) || isShortWord(x->args[1]) || strcmp(x->args[1], "p") == 0)) fatal("ungueltiges LARRAY");
 				len = number(x->args[2], x->line);
 				if (len <= 0) fatal("LARRAY-Laenge muss positiv sein");
-				align = strcmp(x->args[1], "p") == 0 ? 8 : isByteWord(x->args[1]) ? 1 : 4;
+				align = elemBytes(x->args[1]);
 				bytes = (bytes + align - 1) & ~(align - 1);
 				bytes += len * align;
 			}
@@ -331,7 +364,7 @@ static int arrayOffset(const Function* f, int wanted, int* isChar, int line) {
 			if (x->argc != 3) fatal("ungueltiges LARRAY");
 			slotN = number(x->args[0], x->line);
 			len = number(x->args[2], x->line);
-			align = strcmp(x->args[1], "p") == 0 ? 8 : isByteWord(x->args[1]) ? 1 : 4;
+			align = elemBytes(x->args[1]);
 			offset = (offset + align - 1) & ~(align - 1);
 			offset += len * align;
 			if (slotN == wanted) { *isChar = isByteWord(x->args[1]); return offset; }
@@ -352,13 +385,23 @@ static void slotStr(char* out_, int n, const Function* f, int line) {
 	else sprintf(out_, "#-%d", 16 * (n - f->nargs + 1));
 }
 
+/* Kann "mov w0,#v" das als EINE Instruktion (movz/movn-Alias) kodieren? --
+   nur wenn eine der beiden 16-Bit-Haelften von v ODER von ~v Null ist.
+   2026-09-10 gefunden (nicht short-spezifisch, aber blockierte dessen
+   Verifikation): 99999/100000 -- vorher nie als PUSH-Literal gebraucht --
+   erfuellen KEINE der beiden Formen; clang lehnt "mov w0,#99999" ab. */
+static int fitsSingleMov(unsigned int v) {
+	return (v & 0xffffu) == 0 || (v >> 16) == 0 || (~v & 0xffffu) == 0 || (~v >> 16) == 0;
+}
+
 static void push(FILE* o, const char* reg) { fprintf(o, "\tstr\t%s,[sp,#-16]!\n", reg); }
 static void pop(FILE* o, const char* reg) { fprintf(o, "\tldr\t%s,[sp]\n\tadd\tsp,sp,#16\n", reg); }
 
 // Skalierungssuffix fuer add/sub bei Pointerarithmetik: char/bool=1 (kein Shift),
-// Pointer=#3 (*8), sonst=#2 (*4). Immer gefolgt von "\n".
+// short=#1 (*2), Pointer=#3 (*8), sonst=#2 (*4). Immer gefolgt von "\n".
 static const char* scaleSuffix(const char* typeWord) {
 	if (isByteWord(typeWord)) return "\n";
+	if (isShortWord(typeWord)) return " #1\n";
 	if (strcmp(typeWord, "p") == 0) return " #3\n";
 	return " #2\n";
 }
@@ -385,7 +428,10 @@ static void emit(FILE* o) {
 			const char* op = x->op;
 
 			if (strcmp(op, "PUSH") == 0 && x->argc == 1) {
-				fprintf(o, "\tmov\tw0,#%s\n", x->args[0]); push(o, "w0");
+				unsigned int uv = (unsigned int) strtol(x->args[0], NULL, 10);
+				if (fitsSingleMov(uv)) fprintf(o, "\tmov\tw0,#%s\n", x->args[0]);
+				else fprintf(o, "\tmovz\tw0,#%u\n\tmovk\tw0,#%u,lsl #16\n", uv & 0xffffu, uv >> 16);
+				push(o, "w0");
 			} else if (strcmp(op, "LOADL") == 0 && x->argc == 1) {
 				slotStr(slotBuf, number(x->args[0], x->line), f, x->line);
 				fprintf(o, "\tldr\tw0,[x29,%s]\n", slotBuf); push(o, "w0");
@@ -400,6 +446,13 @@ static void emit(FILE* o) {
 				pop(o, "w0");
 				slotStr(slotBuf, number(x->args[0], x->line), f, x->line);
 				fprintf(o, "\tstrb\tw0,[x29,%s]\n", slotBuf);
+			} else if (strcmp(op, "LOADLH") == 0 && x->argc == 1) {
+				slotStr(slotBuf, number(x->args[0], x->line), f, x->line);
+				fprintf(o, "\tldrh\tw0,[x29,%s]\n", slotBuf); push(o, "w0");
+			} else if (strcmp(op, "STORELH") == 0 && x->argc == 1) {
+				pop(o, "w0");
+				slotStr(slotBuf, number(x->args[0], x->line), f, x->line);
+				fprintf(o, "\tstrh\tw0,[x29,%s]\n", slotBuf);
 			} else if (strcmp(op, "LOADP") == 0 && x->argc == 1) {
 				slotStr(slotBuf, number(x->args[0], x->line), f, x->line);
 				fprintf(o, "\tldr\tx0,[x29,%s]\n", slotBuf); push(o, "x0");
@@ -439,13 +492,17 @@ static void emit(FILE* o) {
 				}
 				fputs("\tstr\tx0,[sp,#-16]!\n", o);
 			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && x->argc == 3) {
-				int isChar = isByteWord(x->args[2]), isPointer = strcmp(x->args[2], "p") == 0;
+				/* 2026-09-10: isChar (bool) -> isByteWord/isShortWord auf dem
+				   Original-Tag, short als dritte Groesse dazu. */
+				int isPointer = strcmp(x->args[2], "p") == 0;
 				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
-				if (strcmp(x->args[2], "i") != 0 && !isChar && !isPointer) fatal("unbekannter Arraytyp");
+				if (strcmp(x->args[2], "i") != 0 && !isByteWord(x->args[2]) && !isShortWord(x->args[2]) && !isPointer)
+					fatal("unbekannter Arraytyp");
 				if (strcmp(op, "STOREIDX") == 0 || keepValue) { if (isPointer) pop(o, "x0"); else pop(o, "w0"); }
 				pop(o, "w1");
 				if (strcmp(x->args[0], "L") == 0) {
-					int off = arrayOffset(f, number(x->args[1], x->line), &isChar, x->line);
+					int ignored;
+					int off = arrayOffset(f, number(x->args[1], x->line), &ignored, x->line);
 					fprintf(o, "\tsub\tx9,x29,#%d\n", off);
 				} else if (strcmp(x->args[0], "P") == 0) {
 					slotStr(slotBuf, number(x->args[1], x->line), f, x->line);
@@ -455,13 +512,14 @@ static void emit(FILE* o) {
 				} else {
 					fatal("unbekanntes Array");
 				}
-				fprintf(o, "\tadd\tx9,x9,w1,sxtw%s", isChar ? "\n" : isPointer ? " #3\n" : " #2\n");
+				fprintf(o, "\tadd\tx9,x9,w1,sxtw%s", scaleSuffix(x->args[2]));
 				if (strcmp(op, "LOADIDX") == 0) {
-					fprintf(o, "\tldr%s\t%s,[x9]\n", isChar ? "b" : "", isPointer ? "x0" : "w0");
+					fprintf(o, "\tldr%s\t%s,[x9]\n", elemSuffix(x->args[2]), isPointer ? "x0" : "w0");
 					if (isPointer) push(o, "x0"); else push(o, "w0");
 				} else {
-					fprintf(o, "\tstr%s\t%s,[x9]\n", isChar ? "b" : "", isPointer ? "x0" : "w0");
-					if (isChar && keepValue) fputs("\tuxtb\tw0,w0\n", o);
+					fprintf(o, "\tstr%s\t%s,[x9]\n", elemSuffix(x->args[2]), isPointer ? "x0" : "w0");
+					if (isByteWord(x->args[2]) && keepValue) fputs("\tuxtb\tw0,w0\n", o);
+					else if (isShortWord(x->args[2]) && keepValue) fputs("\tuxth\tw0,w0\n", o);
 					if (keepValue) { if (isPointer) push(o, "x0"); else push(o, "w0"); }
 				}
 			} else if ((strcmp(op, "LOADG") == 0 || strcmp(op, "STOREG") == 0) && x->argc == 1) {
@@ -474,6 +532,11 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadrp\tx9,_tc_g_%s@PAGE\n", x->args[0]);
 				if (strcmp(op, "LOADGC") == 0) { fprintf(o, "\tldrb\tw0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]); push(o, "w0"); }
 				else { pop(o, "w0"); fprintf(o, "\tstrb\tw0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]); }
+			} else if ((strcmp(op, "LOADGH") == 0 || strcmp(op, "STOREGH") == 0) && x->argc == 1) {
+				if (findGlobal(x->args[0]) < 0) fatal("unbekannte globale Variable");
+				fprintf(o, "\tadrp\tx9,_tc_g_%s@PAGE\n", x->args[0]);
+				if (strcmp(op, "LOADGH") == 0) { fprintf(o, "\tldrh\tw0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]); push(o, "w0"); }
+				else { pop(o, "w0"); fprintf(o, "\tstrh\tw0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]); }
 			} else if ((strcmp(op, "LOADGP") == 0 || strcmp(op, "STOREGP") == 0) && x->argc == 1) {
 				if (findGlobal(x->args[0]) < 0) fatal("unbekannte globale Variable");
 				fprintf(o, "\tadrp\tx9,_tc_g_%s@PAGE\n", x->args[0]);
@@ -484,17 +547,18 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadd\tx0,x0,w1,sxtw%s", scaleSuffix(x->args[0]));
 				push(o, "x0");
 			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && x->argc == 1) {
-				int byte = isByteWord(x->args[0]), ptr = strcmp(x->args[0], "p") == 0;
+				int ptr = strcmp(x->args[0], "p") == 0;
 				int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 				if (strcmp(op, "LOADIND") == 0) {
 					pop(o, "x9");
-					fprintf(o, "\tldr%s\t%s,[x9]\n", byte ? "b" : "", ptr ? "x0" : "w0");
+					fprintf(o, "\tldr%s\t%s,[x9]\n", elemSuffix(x->args[0]), ptr ? "x0" : "w0");
 					if (ptr) push(o, "x0"); else push(o, "w0");
 				} else {
 					if (ptr) pop(o, "x0"); else pop(o, "w0");
 					pop(o, "x9");
-					fprintf(o, "\tstr%s\t%s,[x9]\n", byte ? "b" : "", ptr ? "x0" : "w0");
-					if (byte && keepValue) fputs("\tuxtb\tw0,w0\n", o);
+					fprintf(o, "\tstr%s\t%s,[x9]\n", elemSuffix(x->args[0]), ptr ? "x0" : "w0");
+					if (isByteWord(x->args[0]) && keepValue) fputs("\tuxtb\tw0,w0\n", o);
+					else if (isShortWord(x->args[0]) && keepValue) fputs("\tuxth\tw0,w0\n", o);
 					if (keepValue) { if (ptr) push(o, "x0"); else push(o, "w0"); }
 				}
 			} else if ((strcmp(op, "PADD") == 0 || strcmp(op, "PSUB") == 0) && x->argc == 1) {
@@ -515,7 +579,10 @@ static void emit(FILE* o) {
 			} else if (strcmp(op, "PDIFF") == 0 && x->argc == 1) {
 				pop(o, "x1"); pop(o, "x0");
 				fputs("\tsub\tx0,x0,x1\n", o);
-				if (!isByteWord(x->args[0])) fprintf(o, "\tasr\tx0,x0,#%d\n", strcmp(x->args[0], "p") == 0 ? 3 : 2);
+				if (!isByteWord(x->args[0])) {
+					int shift = strcmp(x->args[0], "p") == 0 ? 3 : isShortWord(x->args[0]) ? 1 : 2;
+					fprintf(o, "\tasr\tx0,x0,#%d\n", shift);
+				}
 				push(o, "w0");
 			} else if (strcmp(op, "ADD") == 0 || strcmp(op, "SUB") == 0 || strcmp(op, "MUL") == 0 || strcmp(op, "DIV") == 0 || strcmp(op, "UDIV") == 0) {
 				pop(o, "w1"); pop(o, "w0");
@@ -541,6 +608,8 @@ static void emit(FILE* o) {
 				push(o, "w0");
 			} else if (strcmp(op, "NARROWC") == 0) {
 				pop(o, "w0"); fputs("\tand\tw0,w0,#255\n", o); push(o, "w0");
+			} else if (strcmp(op, "NARROWH") == 0) {
+				pop(o, "w0"); fputs("\tand\tw0,w0,#65535\n", o); push(o, "w0");
 			} else if (strcmp(op, "DUP") == 0) {
 				fputs("\tldr\tw0,[sp]\n", o); push(o, "w0");
 			} else if (strcmp(op, "DUPP") == 0) {
@@ -609,13 +678,13 @@ static void emit(FILE* o) {
 			if (!g->isArray && g->initialValue == 0) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
-					(g->isChar ? 1 : g->isPointer ? 8 : 4) * g->length,
-					g->isChar ? 0 : g->isPointer ? 3 : 2);
+					(g->isChar ? 1 : g->isShort ? 2 : g->isPointer ? 8 : 4) * g->length,
+					g->isChar ? 0 : g->isShort ? 1 : g->isPointer ? 3 : 2);
 			} else if (g->isArray && !g->hasGinit) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
-					(g->isChar ? 1 : g->isPointer ? 8 : 4) * g->length,
-					g->isChar ? 0 : g->isPointer ? 3 : 2);
+					(g->isChar ? 1 : g->isShort ? 2 : g->isPointer ? 8 : 4) * g->length,
+					g->isChar ? 0 : g->isShort ? 1 : g->isPointer ? 3 : 2);
 			}
 			hasData |= (g->isArray && g->hasGinit) || (!g->isArray && g->initialValue != 0);
 		}
@@ -626,15 +695,16 @@ static void emit(FILE* o) {
 				if (g->declOnly) continue;
 				if ((g->isArray && g->hasGinit) || (!g->isArray && g->initialValue != 0)) {
 					int e;
-					if (!g->isChar) fputs("\t.p2align\t2\n", o);
+					if (g->isShort) fputs("\t.p2align\t1\n", o);
+					else if (!g->isChar) fputs("\t.p2align\t2\n", o);
 					if (g->isPointer) fputs("\t.p2align\t3\n", o);
 					if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 					fprintf(o, "_tc_g_%s:\n", g->name);
 					if (!g->isArray) {
-						fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isPointer ? "quad" : "long", g->initialValue);
+						fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->initialValue);
 					} else {
 						for (e = 0; e < g->length; e++)
-							fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isPointer ? "quad" : "long", g->init[e]);
+							fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->init[e]);
 					}
 				}
 			}
