@@ -1,0 +1,71 @@
+* printf, fprintf, sprintf -- Adapter von Microwares Aufrufkonvention
+* auf ein zusammenhaengendes Argumentfeld.
+*
+* Beim Eintritt liegen die Argumente NICHT zusammenhaengend (an einem
+* echten Fuenf-Argument-Aufruf nachgemessen, siehe README):
+*
+*     d0        = Formatzeichenkette
+*     d1        = erstes variadisches Argument
+*     4(a7)     = zweites, 8(a7) = drittes, ... aufsteigend
+*     (a7)      = Ruecksprungadresse -- sie liegt MITTEN darin
+*
+* Der Adapter schreibt d1 auf den Platz der Ruecksprungadresse und d0
+* darueber. Danach haengen fmt, arg1, arg2, ... lueckenlos zusammen und
+* der C-Rumpf ist ein gewoehnliches "int printf_a(int *args)" -- ohne
+* varargs (die QCC nicht definieren kann) und ohne &param.
+*
+* Die Ruecksprungadresse wird ueber den STACK gerettet, nicht in einem
+* Register: welche Register den Aufruf ueberleben, waere eine eigene
+* Messung, und diese Fassung braucht sie nicht.
+*
+* Den Stack raeumt wie ueblich der Aufrufer (er hat die Argumente ab dem
+* dritten selbst abgelegt).
+
+         psect   qprintf,0,0,0,0,0
+
+printf:
+         move.l  (a7),a1                 * Ruecksprungadresse merken
+         move.l  d1,(a7)                 * arg1 an ihren Platz
+         move.l  d0,-(a7)                * fmt darueber -- jetzt lueckenlos
+         move.l  a1,-(a7)                * Ruecksprungadresse sichern
+         pea     4(a7)                   * &args = Adresse von fmt
+         bsr     tc_printf_a
+         addq.l  #4,a7                   * &args weg
+         move.l  (a7)+,a1                * Ruecksprungadresse zurueck
+         addq.l  #4,a7                   * fmt weg
+         move.l  a1,(a7)                 * sie an den arg1-Platz
+         rts                             * d0 traegt den Rueckgabewert
+
+
+* fprintf(FILE*, fmt, ...) und sprintf(char*, fmt, ...) brauchen keinen
+* eigenen Handgriff: der Adapter macht aus d0/d1/Stack immer dasselbe
+* lueckenlose Feld, und welcher Eintrag die Formatzeichenkette ist,
+* entscheidet allein der C-Rumpf (qp_run mit fi = 0 oder 1).
+
+fprintf:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_fprintf_a
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+sprintf:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_sprintf_a
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+         ends

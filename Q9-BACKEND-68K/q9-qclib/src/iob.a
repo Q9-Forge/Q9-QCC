@@ -1,0 +1,47 @@
+* _iob und die Anschluesse, die q9_cstart.a erwartet.
+*
+* GEMESSEN an q9_cstart.a (eigener Startcode, Q9-QCC/runtime/os9):
+*   _fcbs:  dc.l _iob            -- Zeiger auf die "CIO-Dateibloecke"
+*   iobinit: bsr _iobinit        -- einmalig beim Start
+*   _initarg                     -- Argumentaufbereitung
+*   _utinit                      -- Benutzer-Trapinitialisierung
+* und im FEHLERPFAD schreibt der Startcode eine Meldung als rohe BYTES
+* nach _iob (movea.l #_iob,a1 / adda.l a6,a1 / mover). _iob muss dort
+* also schlicht Platz sein -- es wird NICHT als FILE-Feld gelesen.
+*
+* Daraus folgt: das FILE-Layout ist hier FREI. Microwares 13-Feld-Struktur
+* (_ptr/_base/_end/_flag/_fd/...) muss nicht nachgebaut werden, solange
+* nur eigener Code auf _iob zugreift. Diese Fassung stellt nur den Platz
+* bereit; sobald fopen dazukommt, bekommt qclib ein eigenes, hier
+* dokumentiertes Layout.
+*
+* Die drei Anschluesse sind bewusst LEER: der Startcode ruft sie, aber
+* fuer die Ausgabe ueber _os_write ist nichts einzurichten. Das ist kein
+* Platzhalter, sondern der gemessene Bedarf -- was sie bei Microware tun,
+* braucht diese Kette nicht.
+
+         psect   qiob,0,0,0,0,0
+
+_iobinit:
+         rts
+
+_initarg:
+         rts
+
+_utinit:
+         rts
+
+* exit(status) -- Microware-Konvention: erstes Argument in d0.
+* _os_exit kehrt nicht zurueck; der zweite Aufruf ist die Sicherung fuer
+* den Fall, dass ein Debugger den ersten abfaengt (so macht es auch
+* q9_cstart.a).
+exit:
+         bsr     _os_exit                * d0 traegt den Status schon
+         bsr     _os_exit
+         rts
+
+         vsect
+_iob:    ds.b    512
+         ends
+
+         ends
