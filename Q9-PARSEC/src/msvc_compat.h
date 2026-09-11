@@ -1,12 +1,12 @@
 //------------------------------------------------------------------------------------------------
-// msvc_compat.h -- Portabilitaets-Schicht fuer die MSVC "sicheren" CRT-Funktionen
+// msvc_compat.h -- portability layer for MSVC "secure" CRT functions
 //------------------------------------------------------------------------------------------------
-// Der Quelltext ist urspruenglich ein Visual-Studio-Projekt und verwendet durchgehend die
+// The source originated as a Visual Studio project and consistently uses
 // MSVC-eigenen *_s-Funktionen (strcpy_s, strncpy_s, strcat_s, sprintf_s, fopen_s, _itoa_s).
-// Diese existieren auf macOS/Linux nicht (Annex K wird von glibc/BSD-libc nicht angeboten).
-// Dieser Header bildet sie fuer Nicht-Windows-Plattformen nach.
+// These are unavailable on macOS/Linux (glibc/BSD libc do not provide Annex K).
+// This header supplies compatible implementations on non-Windows platforms.
 //
-// Bewusst OHNE C++-Templates (Stand 2026-07-23): die urspruengliche Fassung hatte pro
+// Deliberately WITHOUT C++ templates (as of 2026-07-23): the original version had
 // Funktion zusaetzlich eine Template-Ueberladung, die die Zielgroesse aus dem Array-Typ
 // ableitet (kein "sizeof(dst)" an der Aufrufstelle noetig). Microwares "xcc"-Compiler
 // (Ultra C/C++ 2.5, Baujahr 2001) stuerzt bei dieser Deduktion mit einem internen Fehler
@@ -15,7 +15,7 @@
 // (Zielgroesse per sizeof() als eigenes Argument) umgestellt -- funktioniert unveraendert
 // auf allen Plattformen, keine Bedingungs-Kompilierung noetig.
 //
-// Unter Windows (_WIN32) ist der Header ein No-Op, dort liefert die MSVC-CRT alles selbst.
+// On Windows (_WIN32) this header is a no-op; the MSVC CRT supplies everything.
 //------------------------------------------------------------------------------------------------
 #ifndef MSVC_COMPAT_H
 #define MSVC_COMPAT_H
@@ -33,8 +33,8 @@ inline size_t strnlen(const char* s, size_t maxlen) {
 	return n;
 }
 
-// memmove statt memcpy/strcpy: einzelne Aufrufstellen kopieren innerhalb desselben
-// Puffers (Kommentar-Filter in comment()), das muss ueberlappungssicher sein.
+// Use memmove rather than memcpy/strcpy: some call sites copy within the same
+// buffer (the comment filter), so overlap safety is required.
 inline int strcpy_s(char* dst, size_t dstSize, const char* src) {
 	size_t len = strlen(src);
 	if (dstSize == 0) return 1;
@@ -79,7 +79,7 @@ inline int fopen_s(FILE** fp, const char* name, const char* mode) {
 	return (*fp == NULL) ? 1 : 0;
 }
 
-// nur Basis 10 wird im Projekt verwendet; andere Basen der Vollstaendigkeit halber
+// Only base 10 is used by the project; support other bases for completeness.
 inline int _itoa_s(int value, char* dst, size_t dstSize, int radix) {
 	if (radix == 10) {
 		sprintf(dst, "%d", value);
