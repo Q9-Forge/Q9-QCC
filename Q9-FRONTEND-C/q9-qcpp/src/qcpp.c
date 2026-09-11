@@ -1989,7 +1989,7 @@ static int evalShift(void)
 	while (1) {
 		if (evIsPunct("<<")) {
 			evI++;
-			v = v << evalAdd();      /* Bitmuster, fuer beide gleich */
+			v = v << evalAdd();      /* Same bit pattern for both signedness modes. */
 			continue;
 		}
 		if (evIsPunct(">>")) {
@@ -2020,7 +2020,7 @@ static int evalRel(void)
 			evI++;
 			r = evalShift();
 			v = arithCmp(v, r, lu | evUns, 0);
-			lu = 0;                  /* Ergebnis eines Vergleichs ist int */
+			lu = 0;                  /* A comparison result has type int. */
 			continue;
 		}
 		if (evIsPunct(">")) {
@@ -2064,7 +2064,7 @@ static int evalEq(void)
 		if (evIsPunct("==")) {
 			evI++;
 			r = evalRel();
-			v = (v == r);           /* Bitmuster genuegt fuer Gleichheit */
+			v = (v == r);           /* Bit patterns are sufficient for equality. */
 			evUns = 0;
 			continue;
 		}
@@ -2221,8 +2221,8 @@ static int evalTernary(void)
 		bu = evUns;
 		if (c != 0)
 			evDead--;
-		/* Der Typ des Bedingungsoperators ergibt sich aus BEIDEN Zweigen
-		   (usual arithmetic conversions), nicht aus dem gewaehlten. */
+		/* The conditional operator type is determined from both branches,
+		   not only the selected branch. */
 		evUns = au | bu;
 		if (c != 0)
 			return a;
