@@ -10,7 +10,7 @@
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
 // Date    │ Ver. │ Description                                                             │ By
 //─────────┼──────┼─────────────────────────────────────────────────────────────────────────┼──────
-// 26-07-19│ 1.00 │ Initiale Version: AST-Stack-API + C- und 68k-Backend                    │ CF
+// 26-07-19│ 1.00 │ Initial version: AST stack API plus C and 68k backends                  │ CF
 //─────────┴──────┴─────────────────────────────────────────────────────────────────────────┴──────
 #ifndef CODEGEN_H
 #define CODEGEN_H
@@ -50,8 +50,8 @@ int lexParseConfig(const char* buf);
 // buf = kompletter Roh-Blockinhalt, NULL/leer = Defaults. Unterstuetzte Zeilen:
 //   M68K OS9                zusaetzlich <basis>_os9.a im r68/psect-Format erzeugen
 //   M68K PSECT = <name>     psect-Name (Default: <basisname>_p)
-//   START = <regel>         Startregel (Default: erste Regel der Grammatik) -- gilt
-//                           fuer die erzeugten Parser UND den Tabellen-Testlauf
+//   START = <rule>          Start rule (default: first grammar rule) -- applies to
+//                           generated parsers AND the table test run
 //------------------------------------------------------------------------------------------------
 int cgenParseConfig(const char* buf);
 int cgenWantOS9();
@@ -60,11 +60,11 @@ const char* cgenStartRule();		// "" wenn nicht konfiguriert
 //------------------------------------------------------------------------------------------------
 // ACTIONS configuration from the workfile's [USER-CODE] block (see ARCHITEKTUR.md §9).
 // buf = kompletter Roh-Blockinhalt, NULL/leer = keine Aktionen. Unterstuetzte Zeilen:
-//   ACTION AFTER <regel> CALL <name>    Aufruf direkt nach Erfolg von <regel>
+//   ACTION AFTER <rule> CALL <name>     Call immediately after <rule> succeeds
 //   ROUTINE C <name> ... END            rohe C-Funktion void <name>(const char*,const char*)
 //   ROUTINE M68K <name> ... END         rohe 68k-Subroutine (Label <name>:, a0=Ende, rts)
-// Muss VOR genParserC()/genParser68k() aufgerufen werden. Liefert immer 1 (Fehler = Warnung
-// + betroffene Aktion faellt weg, kein Abbruch der Codegenerierung).
+// Must be called BEFORE genParserC()/genParser68k(). Always returns 1 (errors become
+// warnings and remove the affected action without aborting code generation).
 //------------------------------------------------------------------------------------------------
 int actionsParseConfig(const char* buf);
 
