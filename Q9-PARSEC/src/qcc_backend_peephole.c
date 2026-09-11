@@ -192,9 +192,9 @@ static int phMatchPush(const char* line, const char** labelStart, int* labelLen,
 	return 1;
 }
 
-/* Erkennt "move.l (a7)+,DST" -- KEIN Label davor: koennte ein Sprungziel
- * sein, und dafuer gibt es hier (noch) keine Sprungziel-Nachfuehrung
- * (s. o68-Kommentar oben am Dateianfang). Lieber nicht falten als falsch. */
+/* Recognizes "move.l (a7)+,DST". No label is allowed before it: it could be a
+ * branch target, and label tracking is not implemented here. Do not fold an
+ * ambiguous line. */
 static int phMatchPop(const char* line, const char** dstStart) {
 	if (line[0] != '\t') return 0;
 	if (strncmp(line + 1, "move.l\t(a7)+,", 13) != 0) return 0;
@@ -202,8 +202,8 @@ static int phMatchPop(const char* line, const char** dstStart) {
 	return 1;
 }
 
-/* Vergleicht ein laengenbegrenztes SRC mit einem nullterminierten DST auf
- * Textgleichheit -- fuer die SRC==DST-Verfeinerung von Muster eins/drei. */
+/* Compares a length-limited SRC with NUL-terminated DST for text equality,
+ * used by the SRC==DST refinement of patterns one and three. */
 static int phSameText(const char* a, int aLen, const char* b) {
 	return (int)strlen(b) == aLen && strncmp(a, b, aLen) == 0;
 }
