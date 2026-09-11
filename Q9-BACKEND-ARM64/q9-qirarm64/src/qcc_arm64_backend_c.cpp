@@ -162,12 +162,11 @@ static void readIR(const char* path) {
 }
 
 static void collectGlobals(void) {
-	/* GLOBAL/GARRAY/GINIT duerfen auch INNERHALB einer Funktion stehen -- eine "static"
-	   lokale Variable (siehe Data/qcc.lextab, tc_staticlocal) wird als ganz normaler
-	   GLOBAL registriert, an der Textstelle ihrer Deklaration, also moeglicherweise
-	   mitten in einer FUNC...ENDFUNC-Spanne. collectFunctions() prueft weiterhin, dass
-	   so eine Zeile innerhalb einer offenen Funktion oder vor der ersten Funktion liegt,
-	   nicht "zwischen" zwei Funktionen. */
+	/* GLOBAL/GARRAY/GINIT may also occur inside a function: a "static" local
+	   variable is registered as a normal GLOBAL at its declaration site. It may
+	   therefore occur inside a FUNC...ENDFUNC span. collectFunctions() still
+	   requires such a line to be inside an open function or before the first
+	   function, never between two functions. */
 	int i, gi, idx, len;
 	char msg[300];
 	globalCount = 0;
@@ -180,8 +179,8 @@ static void collectGlobals(void) {
 				if (strcmp(globals[gi].name, x->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(x->args[1], x->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
-					/* siehe 68k-Backend: die MAX_ARRAY_LEN-Grenze gilt nur fuer tatsaechlich per
-					   GINIT gesetzte Indizes, nicht mehr fuer die deklarierte GARRAY-Laenge. */
+					/* As in the 68k backend, MAX_ARRAY_LEN limits only indices actually
+					   initialized by GINIT, not the declared GARRAY length. */
 					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
 					globals[gi].init[idx] = number(x->args[2], x->line);
 					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
@@ -195,20 +194,20 @@ static void collectGlobals(void) {
 			continue;
 		}
 		if (strcmp(x->op, "GLOBAL") != 0 && strcmp(x->op, "GARRAY") != 0) continue;
-		// Original prueft Duplikat VOR der GARRAY/GLOBAL-Unterscheidung und meldet das
-		// einheitlich als "ungueltiges GLOBAL" -- bewusst NICHT dieselbe Meldung wie im
-		// 68k-Backend (dort getrennt je Zweig formuliert).
+		// The original checks duplicates before distinguishing GARRAY from GLOBAL
+		// and reports both uniformly as "invalid GLOBAL". This intentionally differs
+		// from the 68k backend, which formats the message separately per branch.
 		if (findGlobal(x->args[0]) >= 0) {
 			sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", x->line);
 			fatal(msg);
 		}
 		if (strcmp(x->op, "GARRAY") == 0) {
-			/* 4. Argument (2026-07-25, Mehrdatei-Uebersetzung): optionales isstatic-Flag,
-			   hier noch nicht ausgewertet. */
+			/* Fourth argument (2026-07-25, multi-file translation): optional
+			   isstatic flag, not evaluated here yet. */
 			if ((x->argc != 3 && x->argc != 4) || !isNumWord(x->args[1])) fatal("ungueltiges GARRAY");
 			len = number(x->args[2], x->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
-			/* KEINE MAX_ARRAY_LEN-Grenze mehr hier -- siehe Kommentar bei GINIT oben. */
+			/* No MAX_ARRAY_LEN limit here; see the GINIT comment above. */
 			if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
@@ -222,8 +221,8 @@ static void collectGlobals(void) {
 			continue;
 		}
 		if (x->argc != 1 && x->argc != 2 && x->argc != 3 && x->argc != 4) fatal("ungueltiges GLOBAL");
-		/* argc>=3 statt ==3 (2026-07-25): 4. Argument ist das optionale isstatic-Flag
-		   (Mehrdatei-Uebersetzung), der Typtag bleibt immer an Position 2. */
+		/* argc>=3 rather than ==3 (2026-07-25): the fourth argument is the
+		   optional isstatic flag; the type tag remains at position 2. */
 		if (x->argc >= 3 && !isNumWord(x->args[2])) fatal("unbekannter Globaltyp");
 		if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 		gi = globalCount++;
@@ -265,18 +264,17 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
 		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0) {
-			/* vor der ersten Funktion ODER innerhalb einer offenen Funktion (static
-			   lokale Variable) erlaubt -- NICHT zwischen zwei Funktionen. */
+			/* Allowed before the first function or inside an open function (static
+			   local variable), but not between two functions. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
 		} else if (strcmp(x->op, "FUNCDECL") == 0 || strcmp(x->op, "GLOBALDECL") == 0) {
-			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
-			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY);
-			   FUNCDECL wird unten in einem separaten Durchlauf registriert (analog
-			   zu GLOBALDECL in collectGlobals), da es KEINE FUNC/ENDFUNC-Spanne
-			   oeffnet/schliesst. */
+			/* Multi-file translation (2026-07-25): "exists but is not defined here".
+			   Allowed outside every FUNC span, like GLOBAL/GARRAY. FUNCDECL is
+			   registered in a separate pass below because it does not open or close
+			   a FUNC/ENDFUNC span. */
 		} else if (strcmp(x->op, "FUNC") == 0) {
-			/* 3. Argument (2026-07-25): optionales isstatic-Flag (steuert .globl in
-			   emit()). */
+			/* Third argument (2026-07-25): optional isstatic flag controlling .globl
+			   emission. */
 			if (open || (x->argc != 2 && x->argc != 3)) fatal("ungueltiges FUNC");
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, x->args[0], NAME_LEN - 1);
@@ -296,9 +294,9 @@ static void collectFunctions(void) {
 		}
 	}
 	if (open) fatal("unvollstaendige IR");
-	/* -part (2026-07-25): eine Datei OHNE main/Funktionen ist zulaessig, solange
-	   sie wenigstens globale Deklarationen enthaelt -- komplett leere Datei
-	   bleibt ein Fehler. Ohne -part unveraendert immer ein Fehler. */
+	/* -part (2026-07-25): a file without main/functions is valid if it contains
+	   at least one global declaration; a completely empty file remains an error.
+	   Without -part, the original error behavior is preserved. */
 	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("unvollstaendige IR");
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
@@ -321,10 +319,9 @@ static void collectFunctions(void) {
 		int k, bytes;
 		for (k = f->first; k < f->last; k++) {
 			Instr* x = &ir[k];
-			/* LOADLH/STORELH (2026-09-10, short) MUESSEN hier mitgezaehlt werden --
-			   sonst bleibt ein Slot, der NUR ueber sie angesprochen wird, unterhalb
-			   von "top" und der Frame faellt zu klein aus (dieselbe Falle wie im
-			   68k-Backend, s. qcc_backend_c.cpp). */
+			/* LOADLH/STORELH (2026-09-10, short) must be counted here. Otherwise a
+			   slot accessed only through them remains below "top" and the frame is
+			   too small, as in the 68k backend. */
 			if ((strcmp(x->op, "LOADL") == 0 || strcmp(x->op, "STOREL") == 0 || strcmp(x->op, "LOADC") == 0 ||
 				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADLH") == 0 || strcmp(x->op, "STORELH") == 0 ||
 				strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
