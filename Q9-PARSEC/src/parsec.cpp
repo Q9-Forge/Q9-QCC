@@ -749,31 +749,28 @@ int execFrom(int startRow, int* pos) {
 }
 
 //------------------------------------------------------------------------------------------------
-// Arbeitsdatei (<basis>.lextab)
+// Workfile (<base>.lextab)
 //------------------------------------------------------------------------------------------------
 // .lextab is no longer a raw CSV table but a structured workfile with five
 // blocks (block start = "[NAME]", block end = "[END]"):
 //
-//   [EBNF-QUELLTEXT]     huebsch formatierter, syntaxfehlerfreier Quelltext (wie im Listing)
-//   [TS-SYMBOLTABELLE]   alle distinkten Terminale (TS-Literale und RNG-Bereiche)
-//   [NTS-SYMBOLTABELLE]  alle Regelnamen + Startzeile in der Parser-Tabelle
-//   [PARSER-TABELLE]     die eigentliche Tabelle, ein Eintrag pro Zeile, maschinell parsebar:
-//                        zeile true false addr rngLo rngHi regel modus symbol
-//                        (true/false/addr als Integer 1:1 wie intern, STAT_TRUE=-1 usw.;
-//                        regel = "-" wenn leer; symbol = Rest der Zeile, verbatim)
-//   [TESTS]              Nutzer-editierbare Testzeilen: TEST "<eingabe>" OK|FAIL
-//   [NUTZER-CODE]        unveraenderter Platz fuer spaetere semantische Aktionen
+//   [EBNF-QUELLTEXT]     formatted, syntax-error-free source as shown in the listing
+//   [TS-SYMBOLTABELLE]   all distinct terminals (TS literals and RNG ranges)
+//   [NTS-SYMBOLTABELLE]  all rule names and their parser-table start rows
+//   [PARSER-TABELLE]     the machine-readable table, one entry per row:
+//                        row true false addr rngLo rngHi rule mode symbol
+//                        (true/false/addr use the internal integer values;
+//                        rule is "-" when empty; symbol is the rest verbatim)
+//   [TESTS]              user-editable test rows: TEST "<input>" OK|FAIL
+//   [NUTZER-CODE]        unchanged space reserved for future semantic actions
 //
-// Die Arbeitsdatei ist AUCH Eingabe:
-//   Fall A (Normalfall): <basis>.ebnf existiert -> IMMER die Wahrheit, alles wird neu
-//     gebaut; die editierbaren Bloecke TESTS und NUTZER-CODE der alten Arbeitsdatei
-//     werden vorher gerettet und unveraendert wieder mit hineingeschrieben
-//     (loadPreservedTests()).
-//   Fall B: <basis>.ebnf existiert NICHT, aber die Arbeitsdatei schon -> Tabelle wird
-//     direkt aus dem PARSER-TABELLE-Block geladen (loadWorkfileAsGrammar()), danach
-//     laufen resolveCallAddresses() und checkLeftRecursion() erneut darueber.
+// The workfile is also an input:
+//   Case A (normal): <base>.ebnf exists and is authoritative. Everything is rebuilt;
+//     TESTS and USER-CODE from the old workfile are preserved unchanged first.
+//   Case B: <base>.ebnf is absent but the workfile exists. Load the table directly
+//     from PARSER-TABELLE, then run resolveCallAddresses() and checkLeftRecursion().
 //
-// Grenze (bewusst): Testeingaben duerfen selbst kein '"' enthalten (keine Escapes).
+// Deliberate limitation: test inputs may not contain '"' because escapes are unsupported.
 //------------------------------------------------------------------------------------------------
 #define MAX_TESTS       256
 #define TEST_INPUT_LEN  256
@@ -782,7 +779,7 @@ int execFrom(int startRow, int* pos) {
 
 typedef struct {
 	char input[TEST_INPUT_LEN];
-	int expectOk;			// 1 = OK erwartet, 0 = FAIL erwartet
+	int expectOk;			// 1 = expect OK, 0 = expect FAIL
 } TestCase;
 
 TestCase testCases[MAX_TESTS];
