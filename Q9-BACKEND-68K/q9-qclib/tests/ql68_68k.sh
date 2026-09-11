@@ -13,6 +13,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
 : "${FORGE:=$(cd .. && pwd)}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+[[ "$MWOS" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.stock-stargate.hda}"
 : "${ROMIMG:=$MWOS/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN}"

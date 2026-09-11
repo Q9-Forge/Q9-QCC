@@ -26,6 +26,7 @@ REPO="$PWD"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+[[ "$MWOS" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${IMG_SRC:=$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
 : "${IR:=$REPO/build/hello.ir}"
 
