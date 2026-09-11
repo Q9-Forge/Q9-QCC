@@ -58,8 +58,8 @@ static int rofRoot;          /* Root psect index. */
 static int rTyLan[QL_ROF];
 static int rAttRev[QL_ROF];
 static int rEdition[QL_ROF];
-static int rStat[QL_ROF];    /* uninitialisierte Daten (ds im vsect) */
-static int rIDat[QL_ROF];    /* initialisierte Daten (dc im vsect)   */
+static int rStat[QL_ROF];    /* Uninitialized data (ds in vsect). */
+static int rIDat[QL_ROF];    /* Initialized data (dc in vsect). */
 static int rRem[QL_ROF];     /* reservierte FERNdaten (ds im vsect remote) */
 static int rCod[QL_ROF];
 static int rStk[QL_ROF];
@@ -82,7 +82,7 @@ static int bInit[QL_ROF];    /* dc-data offset. */
 static int bRemote[QL_ROF];  /* Remote-data offset. */
 static int bIDataMod[QL_ROF];/* dc-data module offset. */
 
-/* Der Vorspann auf den Datenzeiger. Bei einem Programm (mod_exec) zeigt
+/* Data-pointer bias. For a program (mod_exec), a6 points
    a6 NICHT auf den Anfang des Datenbereichs, sondern $8000 dahinter --
    so reicht ein 16-Bit-Displacement +-32K weit. Ein TREIBER bekommt
    seinen statischen Speicher dagegen direkt (in a2) und kennt keinen
@@ -102,7 +102,7 @@ static int rawCodeBias;
 static char modName[256];
 static int optOwner = 65536;       /* M$Owner $00010000, ohne -gu= (gemessen) */
 static int optAccess = 1365;       /* M$Accs  $0555,     ohne -p=  (gemessen) */
-static int optEdition = -1;        /* -e=: ueberschreibt den psect-Wert */
+static int optEdition = -1;        /* -e=: override the psect value. */
 /* -M=<n>[K]: stack-size increment. The number is always in KiB, so -M=1
    and -M=1K both add 1024, while -M=100 adds 102400 (measured). */
 static int optStackAdd;
@@ -126,7 +126,7 @@ static int irefCodeN;
 static int irefData[QL_IREF];
 static int irefDataN;
 
-/* Symboltabelle. Der Bedarf ist GEMESSEN, nicht geschaetzt: QCCs eigener
+/* Symbol table. Capacity is measured, not guessed: QCC's own
    Parser (stage2.r aus qcc_backend -os9 -largedata) bringt 14.193
    Globale mit 325.828 Byte Namenstext -- QCC macht aus jeder Sprungmarke
    ein Globalsymbol. Dazu q9_cstart.r (55) und qclib.l (433), zusammen
@@ -146,7 +146,7 @@ static int irefDataN;
 #endif
 #define QL_LIB    16
 #define QL_ARGS   1024              /* Argumente nach dem Aufloesen von -z= */
-#define QL_ZBUF    65536            /* Text der -z=-Dateien */
+#define QL_ZBUF    65536            /* Text of -z= files. */
 #define QL_JT     1024              /* Eintraege der Sprungtabelle */
 
 /* --- Die Sprungtabelle von -a ------------------------------------------
@@ -175,10 +175,10 @@ static int irefDataN;
    genuegen zwei Durchlaeufe: einer zaehlt, einer schreibt. */
 static int optJumpTab;         /* -a */
 static int jtPlan;             /* 1 = Zaehllauf */
-static int jtSym[QL_JT];       /* je SYMBOL ein Eintrag, nicht je Aufruf */
+static int jtSym[QL_JT];       /* One entry per symbol, not per call. */
 static int jtN;
-static int jtBase;             /* Datenabstand der Tabelle */
-static int jtAt;               /* Dateioffset der Tabelle */
+static int jtBase;             /* Data offset of the table. */
+static int jtAt;               /* File offset of the table. */
 
 static int jtFind(int si)
 {
@@ -232,7 +232,7 @@ static int be32(int at)
 	       ((inBuf[at + 2] & 255) << 8) | (inBuf[at + 3] & 255);
 }
 
-/* Ueberspringt einen nullterminierten Namen und liefert den Offset
+/* Skip a NUL-terminated name and return the following offset.
    dahinter. */
 static int skipName(int at)
 {
