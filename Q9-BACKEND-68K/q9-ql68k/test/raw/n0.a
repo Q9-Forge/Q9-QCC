@@ -1,7 +1,0 @@
-         psect   n0,$0101,$8000,1,100,start
-start    moveq   #0,d0
-         rts
-         vsect
-         dc.l    $1234
-         ends
-         ends
