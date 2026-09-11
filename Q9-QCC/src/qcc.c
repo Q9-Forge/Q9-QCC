@@ -6,6 +6,19 @@
 #define QCC_VERSION "0.2.0-dev"
 #define TEXT 128
 
+/* Host and OS-9 use different command names for the small file operations
+ * needed by the pipeline.  Keep this translation at the driver boundary so
+ * the compiler stages themselves remain platform-neutral. */
+#ifdef _Q9OS
+#define QCC_MKDIR "makdir"
+#define QCC_COPY  "copy"
+#define QCC_REMOVE "del"
+#else
+#define QCC_MKDIR "mkdir -p"
+#define QCC_COPY  "cp"
+#define QCC_REMOVE "rm -f"
+#endif
+
 static char target[TEXT] = "OS9-68K";
 static char frontend[TEXT] = "c";
 static char cpu[TEXT] = "68000";
@@ -141,28 +154,28 @@ int main(int argc, char **argv)
 	{
 		char command[512];
 		const char *input = argv[argc - 1];
-		sprintf(command, "mkdir -p %s", tmpdir);
+		sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
 		if (q9_system(command) != 0) return 4;
 		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s %s/input.i", qcpp, input, tmpdir);
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
 		if (preprocess_only) {
 			if (output[0] != '\0') {
-				sprintf(command, "cp %s/input.i %s", tmpdir, output);
+				sprintf(command, "%s %s/input.i %s", QCC_COPY, tmpdir, output);
 				if (q9_system(command) != 0) return 4;
 				printf("%s\n", output);
 			} else printf("%s/input.i\n", tmpdir);
-			if (!keep_files) { sprintf(command, "rm -f %s/input.i", tmpdir); q9_system(command); }
+			if (!keep_files) { sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command); }
 			return 0;
 		}
 		sprintf(command, "%s @%s/input.i > %s/output.ir", qcir, tmpdir, tmpdir);
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
 		if (emit_ir) {
 			if (output[0] != '\0') {
-				sprintf(command, "cp %s/output.ir %s", tmpdir, output);
+				sprintf(command, "%s %s/output.ir %s", QCC_COPY, tmpdir, output);
 				if (q9_system(command) != 0) return 4;
 				printf("%s\n", output);
 			} else printf("%s/output.ir\n", tmpdir);
-			if (!keep_files) { sprintf(command, "rm -f %s/input.i", tmpdir); q9_system(command); }
+			if (!keep_files) { sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command); }
 			return 0;
 		}
 		if (assembly_only || object_only) {
@@ -177,10 +190,10 @@ int main(int argc, char **argv)
 				if (q9_system(command) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
 			}
 			if (output[0] != '\0') {
-				sprintf(command, "cp %s/%s %s", tmpdir, object_only ? "output.r" : (optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"), output);
+				sprintf(command, "%s %s/%s %s", QCC_COPY, tmpdir, object_only ? "output.r" : (optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"), output);
 				if (q9_system(command) != 0) return 4;
 			}
-			if (!keep_files) { sprintf(command, "rm -f %s/input.i %s/output.ir", tmpdir, tmpdir); q9_system(command); }
+			if (!keep_files) { sprintf(command, "%s %s/input.i %s/output.ir", QCC_REMOVE, tmpdir, tmpdir); q9_system(command); }
 			return 0;
 		}
 		/* Vollstaendiger Standardlauf: Backend, Optimierer, Assembler, Linker. */
@@ -195,7 +208,7 @@ int main(int argc, char **argv)
 		sprintf(command, "../Q9-BACKEND-68K/q9-ql68k/build/ql68k ../Q9-BACKEND-68K/q9-qclib/build/q9_cstart.r %s/output.r -l=../Q9-BACKEND-68K/q9-qclib/build/qclib.l -O=%s", tmpdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
 		if (!keep_files) {
-			sprintf(command, "rm -f %s/input.i %s/output.ir %s/output.s68k %s/output.opt.s68k %s/output.r", tmpdir, tmpdir, tmpdir, tmpdir, tmpdir);
+			sprintf(command, "%s %s/input.i %s/output.ir %s/output.s68k %s/output.opt.s68k %s/output.r", QCC_REMOVE, tmpdir, tmpdir, tmpdir, tmpdir, tmpdir);
 			q9_system(command);
 		}
 		if (output[0] != '\0') {

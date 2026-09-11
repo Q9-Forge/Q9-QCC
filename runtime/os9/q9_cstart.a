@@ -57,6 +57,11 @@ q9_cstart_reserved:ds.l 1                      * Reservierter Laufzeitbereich
         vsect
 _fcbs:  dc.l    _iob                            * Zeiger auf CIO-Dateibloecke
 _ofcbs: dc.l    0                               * Kompatibilitaets-CIO-Zeiger
+* Microwares clib referenziert die globale Variable unter _environ.
+* Der Q9-Startcode hiess bisher nur environ; beide Namen muessen auf
+* denselben Prozesszeiger zeigen, damit getenv/system mit q9_cstart
+* gelinkt werden koennen.
+_environ:
 environ:dc.l    EVNULL                          * Zeiger auf die Environmentliste
 _stklimit:dc.l  0                               * Noch nicht verifizierter Stack
         ends
