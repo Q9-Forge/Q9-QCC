@@ -649,17 +649,17 @@ void checkLeftRecursion() {
 }
 
 //------------------------------------------------------------------------------------------------
-// Stack-Maschine: fuehrt die fertige Tabelle gegen echten Eingabetext aus
+// Stack machine: execute the completed table against real input text
 //------------------------------------------------------------------------------------------------
-// Kernidee (Call/Return statt reinem Goto):
-//  - TS/RNG-Zeilen vergleichen direkt gegen das naechste Eingabezeichen (bzw. den naechsten
+// Core idea (call/return rather than plain goto):
+//  - TS/RNG rows compare directly with the next input character (or the next
 //    Eingabeabschnitt bei TS) und ruecken bei Erfolg die Position weiter.
-//  - NTS-Zeilen sind ein "Unterprogrammaufruf": wir merken uns die Eingabeposition VOR dem
+//  - NTS rows are a "subroutine call": remember the input position BEFORE the
 //    Aufruf, rufen die Zielregel (Addr-Spalte) rekursiv auf. Der native C++-Aufrufstack
 //    uebernimmt hier exakt die Rolle des Call/Return-Stacks, an dem wir vorher gescheitert
 //    waren -- ein Stack-Eintrag ist implizit (Rueckkehr-Zeile ueber trueAction/falseAction
 //    der aufrufenden Zeile, Ruecksetzposition ueber die lokale Variable curPos).
-//  - falseAction unterscheidet zwei Arten von Fehlschlag: STAT_FALSE (bzw. ein Sprung auf
+//  - falseAction distinguishes two failure types: STAT_FALSE (or a jump to
 //    eine andere Zeile = naechste Alternative) heisst "gescheitert, OHNE Eingabe konsumiert
 //    zu haben" -- nur solche Fehlschlaege duerfen eine andere Alternative anspringen, denn
 //    die Maschine setzt Positionen nur an NTS-Aufruf-Grenzen zurueck. STAT_ERROR heisst
@@ -669,7 +669,7 @@ void checkLeftRecursion() {
 //    Bekannte Grenze: hat eine ueberspringbare Gruppe zur Laufzeit DOCH konsumiert und
 //    ein nachfolgender Faktor scheitert, springt die Maschine ohne Positions-Ruecksetzung
 //    weiter -- solche Stellen werden beim Erzeugen der Tabelle klar angewarnt (ambigF).
-//  - Linksrekursive Grammatiken wuerden hier (wie bei jedem rekursiven Abstieg) in einer
+//  - Left-recursive grammars would end in infinite recursion here, as with any
 //    Endlosrekursion enden -- deshalb wird vor dem Start immer checkLeftRecursion() geprueft
 //    und ein Testlauf bei gefundener Linksrekursion von main() gar nicht erst gestartet.
 const char* inputBuf = NULL;
@@ -677,7 +677,7 @@ int inputLen = 0;
 
 void extractLiteralText(const char* quoted, char* out, int outMax) {
 	int len = (int)strlen(quoted);
-	int n = len - 2;		// ohne die beiden umschliessenden Anfuehrungszeichen
+	int n = len - 2;		// without the two surrounding quotation marks
 	if (n < 0) n = 0;
 	if (n > outMax - 1) n = outMax - 1;
 	strncpy_s(out, outMax, quoted + 1, n);
@@ -751,8 +751,8 @@ int execFrom(int startRow, int* pos) {
 //------------------------------------------------------------------------------------------------
 // Arbeitsdatei (<basis>.lextab)
 //------------------------------------------------------------------------------------------------
-// Die .lextab ist keine rohe CSV-Tabelle mehr, sondern eine strukturierte "Arbeitsdatei"
-// mit fuenf Bloecken (Blockanfang = Zeile "[NAME]", Blockende = "[ENDE]"):
+// .lextab is no longer a raw CSV table but a structured workfile with five
+// blocks (block start = "[NAME]", block end = "[END]"):
 //
 //   [EBNF-QUELLTEXT]     huebsch formatierter, syntaxfehlerfreier Quelltext (wie im Listing)
 //   [TS-SYMBOLTABELLE]   alle distinkten Terminale (TS-Literale und RNG-Bereiche)
