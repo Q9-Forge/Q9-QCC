@@ -1380,8 +1380,8 @@ static void emitIR(FILE* out) {
 		fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
 	}
 	/* Scratch field for CALLEXT/CALLEXTP (see above): up to 8 stack-passed
-	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
-	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. vasm kennt
+	   arguments of an external call. Always declared (32 bytes), regardless of
+	   whether the program actually uses CALLEXT. vasm supports
 	   "ds.l" (reservierter, uninitialisierter Speicher); der echte Microware-
 	   r68-Assembler kennt "ds.l" NICHT (empirisch verifiziert: "bad mnemonic"),
 	   daher im os9-Modus stattdessen 8x "dc.l 0" (funktional gleichwertig: alle
@@ -1389,16 +1389,16 @@ static void emitIR(FILE* out) {
 	emitAlign(out);
 	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
 	if (os9Mode) {
-		/* tc_io_buf: Ziffernpuffer fuer tc_putint/tc_putuint (max. "-2147483648\r"
-		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
-		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
-		   echten _os_write-Aufruf (siehe tc_io_write oben). */
+		/* tc_io_buf: digit buffer for tc_putint/tc_putuint (maximum
+		   "-2147483648\r" = 12 bytes, filled backwards) and single-byte buffer
+		   for tc_putchar (uses only the first byte). tc_io_cnt is the IN/OUT count
+		   cell for the real _os_write call (see tc_io_write above). */
 		fputs("tc_io_buf:\tdc.l\t0,0,0\n", out);
 		fputs("tc_io_cnt:\tdc.l\t0\n", out);
 	}
 	} /* !partMode || runtimeMode */
 
-	/* os9Mode + largeDataMode: main ist der einzige Einsprungpunkt (kein
+	/* os9Mode + largeDataMode: main is the only entry point (no private
 	   eigener tc_start) und muss dort "lea tc_functab(pc),a4" ausfuehren --
 	   diese lea ist selbst PC-relativ und daher nur gueltig, wenn main DIREKT
 	   nach der Tabelle liegt. main kann aber an beliebiger Stelle in funcs[]
@@ -1423,10 +1423,10 @@ static void emitIR(FILE* out) {
 		fi = order[oi];
 		Function* fn = &funcs[fi];
 		char asmName[NAME_LEN + 40];
-		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
+		if (fn->declOnly) continue; /* defined in ANOTHER file; no body here */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
-			/* cstart.r ruft den exportierten Einstieg nach der Microware-C-ABI
+			/* cstart.r calls the exported entry point according to the Microware C ABI:
 			   auf: argc in d0, argv in d1. QCC-interne CALLs verwenden dagegen
 			   ausschliesslich den Operand-Stack (erstes Argument weiter oben).
 			   Ein parameterloses main braucht keinen Adapter; bei main(argc,argv)
@@ -1436,8 +1436,8 @@ static void emitIR(FILE* out) {
 				if (fn->nargs >= 1) fputs("\tmove.l\td0,-(a7)\n", out);
 				if (fn->nargs >= 2) fputs("\tmove.l\td1,-(a7)\n", out);
 				if (fn->nargs > 2) {
-					/* Cstart kann nur argc/argv liefern. Weitere Parameter bleiben
-					   bewusst null statt aus undefiniertem Registerinhalt zu kommen. */
+					/* Cstart can provide only argc/argv. Additional parameters deliberately
+					   remain zero instead of coming from undefined register contents. */
 					int mi;
 					for (mi = 2; mi < fn->nargs; mi++) fputs("\tmoveq\t#0,d0\n\tmove.l\td0,-(a7)\n", out);
 				}
@@ -1453,10 +1453,10 @@ static void emitIR(FILE* out) {
 			fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		}
 		if (largeDataMode) {
-			/* Jede Funktion muss beim Eintritt ihre eigene Tabellenbasis herstellen.
-			   Der Aufrufer kann aus einem anderen Psect kommen; ausserdem sind a3/a4
-			   ABI-Temporaerregister. Das eigene Label bleibt PC-relativ erreichbar,
-			   die beiden Linkzeit-Differenzen sind ohne 16-Bit-PC-Grenze. */
+			/* Every function must establish its own table bases on entry. The caller
+			   may come from another psect, and a3/a4 are ABI scratch registers. The
+			   function's own label remains PC-relative and reachable; the two link-time
+			   differences have no 16-bit PC-relative limit. */
 			emitTableBases(out, asmName, psectName);
 		}
 		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- vierter, tiefster
