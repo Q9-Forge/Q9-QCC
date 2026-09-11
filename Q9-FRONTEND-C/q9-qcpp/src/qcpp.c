@@ -1551,6 +1551,10 @@ static int evDead;
    die Deutung steckt in diesem Kennzeichen. */
 static int evUns;
 
+/* Function: arithDiv
+ * Performs preprocessor integer division with C89 zero-divisor handling.
+ * Parameters: a Dividend; b Divisor; uns Unsigned-arithmetic flag.
+ * Returns: Quotient, or reports an error for division by zero. */
 static int arithDiv(int a, int b, int uns)
 {
 	unsigned int ua;
@@ -1743,6 +1747,10 @@ static int evCharValue(int text)
 	return v;
 }
 
+/* Function: evalPrimary
+ * Evaluates a primary preprocessing expression.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalPrimary(void)
 {
 	int v;
@@ -1780,6 +1788,10 @@ static int evalPrimary(void)
 	return 0;
 }
 
+/* Function: evalUnary
+ * Evaluates unary operators in a preprocessing expression.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalUnary(void)
 {
 	int v;
@@ -1811,6 +1823,10 @@ static int evalUnary(void)
    mit: nach JEDEM Teilausdruck wird evUns sofort gesichert (der naechste
    Aufruf ueberschreibt es), und das Ergebnis ist vorzeichenlos, sobald einer
    der Operanden es war. */
+/* Function: evalMul
+ * Evaluates multiplicative operators.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalMul(void)
 {
 	int v;
@@ -1868,6 +1884,10 @@ static int evalMul(void)
 	return v;
 }
 
+/* Function: evalAdd
+ * Evaluates additive operators.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalAdd(void)
 {
 	int v;
@@ -1894,6 +1914,10 @@ static int evalAdd(void)
 	return v;
 }
 
+/* Function: evalShift
+ * Evaluates left- and right-shift operators.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalShift(void)
 {
 	int v;
@@ -1920,6 +1944,10 @@ static int evalShift(void)
 	return v;
 }
 
+/* Function: evalRel
+ * Evaluates relational operators.
+ * Parameters: None.
+ * Returns: Integer truth value. */
 static int evalRel(void)
 {
 	int v;
@@ -1963,6 +1991,10 @@ static int evalRel(void)
 	return v;
 }
 
+/* Function: evalEq
+ * Evaluates equality operators.
+ * Parameters: None.
+ * Returns: Integer truth value. */
 static int evalEq(void)
 {
 	int v;
@@ -2037,6 +2069,10 @@ static int evalBOr(void)
 	return v;
 }
 
+/* Function: evalAnd
+ * Evaluates bitwise AND expressions.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalAnd(void)
 {
 	int v;
@@ -2058,6 +2094,10 @@ static int evalAnd(void)
 	return v;
 }
 
+/* Function: evalOr
+ * Evaluates bitwise OR expressions.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalOr(void)
 {
 	int v;
@@ -2079,6 +2119,10 @@ static int evalOr(void)
 	return v;
 }
 
+/* Function: evalTernary
+ * Evaluates a conditional preprocessing expression.
+ * Parameters: None.
+ * Returns: Selected integer expression value. */
 static int evalTernary(void)
 {
 	int c;
