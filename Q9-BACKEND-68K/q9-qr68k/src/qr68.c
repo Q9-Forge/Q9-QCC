@@ -701,9 +701,8 @@ static void termAdd(int sect, int name)
 	termN[2]++;
 }
 
-/* Kuerzt Paare aus einem addierten und einem abgezogenen MODULEIGENEN
-   Anteil weg -- r68 rechnet solche Differenzen aus. Externe Namen bleiben
-   stehen, auch "EA-EB". */
+/* Remove pairs consisting of an added and subtracted module-local term;
+   r68 evaluates such differences. External names remain, including EA-EB. */
 static void termFold(void)
 {
 	int i;
@@ -724,7 +723,7 @@ static void termFold(void)
 			i++;
 			continue;
 		}
-		/* i und j herausnehmen, hoeheres zuerst */
+		/* Remove i and j, starting with the higher index. */
 		if (j < i) {
 			k = i;
 			i = j;
@@ -746,11 +745,10 @@ static void termFold(void)
 	}
 }
 
-/* 1 = im Ausdruck stand ein Name, der noch gar nicht bekannt sein KANN.
-   Nur im ersten Durchlauf moeglich: ab dem zweiten ist die Symboltabelle
-   vollstaendig, ein dann noch unbekannter Name ist wirklich extern.
-   Solange das offen ist, zaehlt an einem Operanden nur seine Laenge --
-   Wert und Bereichspruefungen kommen im naechsten Durchlauf. */
+/* 1 means the expression contains a name that cannot be known yet. This is
+   possible only on the first pass; later an unknown name is truly external.
+   While open, only operand length is counted; value and range checks wait for
+   the next pass. */
 static int exOpen;
 
 static int exprTop(void);
@@ -794,17 +792,13 @@ static int exNumber(int base)
 	return v;
 }
 
-/* Ein Ausdruck bezieht sich entweder auf nichts (SECT_ABS) oder auf genau
-   einen verschiebbaren Abschnitt. Die Verknuepfungen pruefen das: "SYM-SYM"
-   im selben Abschnitt ist absolut (genau das erzeugt das QCC-Backend in
-   seiner Funktionstabelle), "SYM+SYM" ist es nicht. */
-/* Hat der gerade gelesene Teilausdruck -- alles ab "mark" -- einen
-   verschiebbaren Anteil? Dann darf er nicht multipliziert, geteilt,
-   geschoben oder verundet werden. Vorher wird gekuerzt, denn
-   "(*-BaudTabl)/2" steht so im SDK und IST eine Konstante. Und es zaehlt
-   nur der Teilausdruck, nicht der ganze: "\1+\1+\1+\1+256*4" (aus
-   MACROS/os9svc.m) hat vier verschiebbare Summanden und trotzdem eine
-   erlaubte Multiplikation. */
+/* An expression refers either to nothing (SECT_ABS) or to one relocatable
+   section. The operators enforce this: SYM-SYM in one section is absolute,
+   while SYM+SYM is not. */
+/* Does the subexpression read since mark contain a relocatable term? Such a
+   value cannot be multiplied, divided, shifted or bitwise-combined. Fold
+   cancellations first because "(*-BaudTabl)/2" is an absolute constant.
+   Only the current subexpression counts, not the complete expression. */
 static void exNeedAbsSince(int mark, const char *what)
 {
 	if (exOpen)
@@ -848,10 +842,8 @@ static int exPrimary(void)
 		return exPrimary();
 	}
 	if (exP[0] == '^') {
-		/* "^" ist bei Microware das UNAERE Nicht, kein XOR: gemessen
-		   ergibt "dc.b ^$0f" ein $f0, waehrend "$ff^$0f" mit
-		   "illegal expression terminator" abgelehnt wird. Ein "~"
-		   kennt r68 gar nicht ("bad operand"). */
+		/* In Microware syntax "^" is unary NOT, not XOR: dc.b ^$0f yields
+		   $f0, while $ff^$0f is rejected. r68 does not support "~". */
 		{
 			int mark;
 
@@ -878,7 +870,7 @@ static int exPrimary(void)
 		return exNumber(8);
 	}
 	if (exP[0] == 39) {
-		/* Zeichenkonstante: 'A' oder mehrere Zeichen */
+		/* Character constant: 'A' or multiple characters. */
 		exP = exP + 1;
 		exSect = SECT_ABS;
 		v = 0;
@@ -891,8 +883,8 @@ static int exPrimary(void)
 		return v;
 	}
 	if (exP[0] == '*') {
-		/* aktueller Ort im Abschnitt. Ausserhalb eines Abschnitts gibt
-		   es ihn nicht -- r68 meldet dort "undefined org". */
+		/* Current location in the section. Outside a section it is undefined,
+		   matching r68's "undefined org" diagnostic. */
 		exP = exP + 1;
 		if (curSect == SECT_NONE)
 			fatal("\"*\" ausserhalb eines Abschnitts", "");
@@ -901,18 +893,16 @@ static int exPrimary(void)
 		return stmtPC;
 	}
 	if (exP[0] == '.' && !isSymCh(exP[1] & 255)) {
-		/* "." ist der org-Zaehler, nicht der Ort im Abschnitt
-		   (gemessen: "SIZE equ ." nach do-Direktiven liefert deren
-		   Endstand, und zwar auch innerhalb eines psect). */
+		/* "." is the org counter, not the section location. "SIZE equ ."
+		   returns the post-directive value, including inside a psect. */
 		exP = exP + 1;
 		exSect = SECT_ABS;
 		return orgPC;
 	}
 	if (isDigitCh(exP[0] & 255)) {
 		exSect = SECT_ABS;
-		/* "0x100" kennt r68 neben "$100" -- so steht es in
-		   MWOS/OS9/SRC/IO/SCF/DRVR/sccd2401.a:1151. Nur klein
-		   geschrieben: "0X10" lehnt r68 ab. */
+		/* r68 accepts "0x100" in addition to "$100"; uppercase "0X10" is
+		   rejected. */
 		if (exP[0] == '0' && exP[1] == 'x') {
 			exP = exP + 2;
 			return exNumber(16);
