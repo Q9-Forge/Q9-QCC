@@ -849,7 +849,7 @@ static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 }
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
-	/* tc_cmp_yes_<id>/tc_cmp_done_<id> sind reine interne Sprungmarken, KEINE
+	/* tc_cmp_yes_<id>/tc_cmp_done_<id> are internal labels, NOT QCC symbols --
 	   QCC-Symbole -- ohne psectName-Suffix kollidieren sie beim Mehrdatei-
 	   Link, sobald ZWEI separat kompilierte Dateien beide mindestens einen
 	   Vergleichsoperator benutzen (r68/l68 kennen kein Sichtbarkeitskonzept,
@@ -857,7 +857,7 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	   der serial-Zaehler startet in jeder Datei wieder bei 0). Live gefunden
 	   beim ersten echten Zwei-Datei-Link von SourceQCC/ebnf.tc gegen
 	   codegen.tc (2026-07-26, writeWorkfile-Chunk), siehe docs/FORTSCHRITT.md.
-	   FUNDAMENTALER FUND (2026-07-26, live auf Q9 gefunden -- ALLE Vergleiche
+	   FUNDAMENTAL FINDING (2026-07-26, found live on Q9 -- ALL comparisons
 	   waren betroffen, live reproduziert bis in ein winziges Standalone-
 	   Programm): "moveq #0,d0" ZWISCHEN "cmp.l" und dem bedingten Branch
 	   (frueherer Code hier) ZERSTOERT die von cmp.l gesetzten Flags, BEVOR der
@@ -887,9 +887,9 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
-// 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
-// Schablonen bilden deshalb die definierte QCC-int32-Arithmetik nach. Sie
-// erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
+// The 68000 MULS/DIVS instructions support only 16-bit operands. These fixed,
+// PIC-friendly templates therefore implement the defined QCC int32 arithmetic.
+// They preserve d2-d5 (ABI-friendly) and return only in d0.
 static void emitM68kCore(FILE* out) {
 	fprintf(out, "%s 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n", fullCommentPrefix());
 	fputs("tc_mul_i32:\n", out);
@@ -924,29 +924,24 @@ static void emitM68kCore(FILE* out) {
 	fputs("tc_udiv_skip:\tdbra\td4,tc_udiv_loop\n\tmove.l\td2,d0\n", out);
 	fputs("tc_udiv_done:\tmove.l\t(a7)+,d4\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 
-	/* Rest = Dividend - Quotient*Divisor. WICHTIG (2026-07-24, gefunden ueber
-	   tools/qcc68sim.py beim Debuggen der neuen -os9-putint-Ziffernzerlegung):
-	   vor "bsr tc_mul_i32" muss d0 den DIVISOR (d3) tragen, NICHT nochmal den
-	   Dividenden (d2) -- sonst wird Quotient*Dividend statt Quotient*Divisor
-	   gerechnet. Dieser Bug war seit Einfuehrung von tc_mod_i32/tc_umod_u32
-	   unentdeckt, weil kein einziger 68k-Backend-Test (nur die QCCVM-Tests)
-	   den "%"-Operator ueber den echten 68k-Pfad ausgefuehrt hat. */
+	/* Remainder = dividend - quotient*divisor. IMPORTANT (2026-07-24, found
+	   with tools/qcc68sim.py while debugging the new -os9-putint digit split):
+	   before "bsr tc_mul_i32", d0 must contain the divisor (d3), not the
+	   dividend (d2) again. Otherwise the code computes quotient*dividend.
+	   This had remained unnoticed since tc_mod_i32/tc_umod_u32 were introduced
+	   because no 68k backend test, only QCCVM tests, exercised '%' on real 68k. */
 	fputs("tc_mod_i32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 	fputs("tc_umod_u32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 }
 
-/* Datenzugriffs-/Zeigeropcodes (PUSH..PDIFF), 2026-09-09 aus emitIR()
-   ausgelagert: mit short als dritter Groesse ueberall (tagSize/tagSuffix/
-   tagShift statt isByteWord) ist emitIR()s eigener 68k-Code -- den QCC sich
-   beim Selbsthosten SELBST erzeugt -- so weit gewachsen, dass qr68 einen
-   Sprung als "zu weit fuer die Wortform" ablehnte (kein Bug, echte Grenze:
-   weder r68 noch qr68 kennen eine lange Sprungform). Diese Auslagerung
-   verkuerzt die Sprungspannen in emitIR() selbst wieder, ohne an der
-   Semantik irgendetwas zu aendern -- reiner Verschnitt. Rueckgabe 1, wenn
-   der Opcode hier behandelt wurde, sonst 0 (emitIR() macht dann mit dem
-   Rest der Kette weiter). */
+/* Data-access/pointer opcodes (PUSH..PDIFF), moved out of emitIR() on
+   2026-09-09: with short as a third size (tagSize/tagSuffix/tagShift instead
+   of isByteWord), emitIR() had grown so large that qr68 rejected a branch as
+   too far for its word form. This extraction shortens emitIR() branch spans
+   without changing semantics. Returns 1 when handled, otherwise 0 so emitIR()
+   continues with the remaining dispatch chain. */
 static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn, int* serial) {
 	char addrBuf[64];
 	char msg[300];
