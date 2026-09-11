@@ -1,24 +1,22 @@
 /* Test program for fgets and ferror.
  *
  * WHY NOT hello.c: Microware clib is NOT a valid fgets oracle.
- * Orakel. Gemessen mit test/lineend68k.sh trennt clibs fgets an $0d, weil
- * Microwares C n auf CR abbildet; QCC bildet es auf $0a ab, und alle
- * Dateien dieser Kette entstehen damit. Das Orakel ist deshalb die
- * HOST-libc: die versteht n genauso als $0a. Dasselbe Programm laeuft
- * einmal mit clang am Host und einmal gegen qclib auf dem 68030, und beide
- * Ausgaben muessen zeichengleich sein.
+ * The host libc is the oracle. Measured with test/lineend68k.sh, clib's fgets
+ * splits at $0d because Microware C maps \n to CR; QCC maps it to $0a, and all
+ * files in this chain use that convention. The same program runs once with
+ * clang on the host and once against qclib on the 68030; both outputs must be
+ * character-identical.
  *
  * There is therefore no OS-9-specific path here: the filename is
- * relativ, damit beide Seiten ihn benutzen koennen.
+ * relative so both sides can use it.
  *
  * The cases where fgets implementations differ are tested:
- *   - eine gewoehnliche Zeile
- *   - eine LEERE Zeile (nur der Umbruch)
- *   - eine Zeile, die LAENGER ist als der Puffer (Abschneiden bei n-1,
- *     Fortsetzung im naechsten Aufruf)
- *   - die letzte Zeile OHNE Umbruch am Dateiende
- *   - der Aufruf nach dem Dateiende (muss 0 liefern)
- * und dass ferror danach NICHT anschlaegt.
+ *   - an ordinary line
+ *   - an EMPTY line (only the line ending)
+ *   - a line LONGER than the buffer (truncate at n-1, continue on the next call)
+ *   - the final line WITHOUT a line ending
+ *   - a call after end-of-file (must return 0)
+ *   - ferror must remain clear afterward.
  */
 
 #include <stdio.h>
