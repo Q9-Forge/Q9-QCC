@@ -217,8 +217,8 @@ static void collectGlobals(void) {
 			continue;
 		}
 		if (x->argc != 1 && x->argc != 2 && x->argc != 3 && x->argc != 4) fatal("ungueltiges GLOBAL");
-		/* argc>=3 statt ==3 (2026-07-25): 4. Argument ist das optionale isstatic-Flag
-		   (Mehrdatei-Uebersetzung), der Typtag bleibt immer an Position 2. */
+		/* argc>=3 instead of ==3 (2026-07-25): the fourth argument is the
+		   optional isstatic flag; the type tag remains at position 2. */
 		if (x->argc >= 3 && !isNumWord(x->args[2])) fatal("unbekannter Globaltyp");
 		if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 		gi = globalCount++;
@@ -260,11 +260,11 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
 		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0) {
-			/* vor der ersten Funktion ODER innerhalb einer offenen Funktion (static
+			/* before the first function OR inside an open function (static
 			   lokale Variable) erlaubt -- NICHT zwischen zwei Funktionen. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
 		} else if (strcmp(x->op, "FUNCDECL") == 0 || strcmp(x->op, "GLOBALDECL") == 0) {
-			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
+			/* Multi-file translation (2026-07-25): "exists but is not defined here"
 			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY);
 			   FUNCDECL wird unten in einem separaten Durchlauf registriert (analog
 			   zu GLOBALDECL in collectGlobals), da es KEINE FUNC/ENDFUNC-Spanne
@@ -291,7 +291,7 @@ static void collectFunctions(void) {
 		}
 	}
 	if (open) fatal("unvollstaendige IR");
-	/* -part (2026-07-25): eine Datei OHNE main/Funktionen ist zulaessig, solange
+	/* -part (2026-07-25): a file WITHOUT main/functions is valid as long as
 	   sie wenigstens globale Deklarationen enthaelt -- komplett leere Datei
 	   bleibt ein Fehler. Ohne -part unveraendert immer ein Fehler. */
 	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("unvollstaendige IR");
@@ -316,7 +316,7 @@ static void collectFunctions(void) {
 		int k, bytes;
 		for (k = f->first; k < f->last; k++) {
 			Instr* x = &ir[k];
-			/* LOADLH/STORELH (2026-09-10, short) MUESSEN hier mitgezaehlt werden --
+			/* LOADLH/STORELH (2026-09-10, short) MUST be counted here --
 			   sonst bleibt ein Slot, der NUR ueber sie angesprochen wird, unterhalb
 			   von "top" und der Frame faellt zu klein aus (dieselbe Falle wie im
 			   68k-Backend, s. qcc_backend_c.cpp). */
@@ -378,7 +378,7 @@ static void slotStr(char* out_, int n, const Function* f, int line) {
 	else sprintf(out_, "#-%d", 16 * (n - f->nargs + 1));
 }
 
-/* Kann "mov w0,#v" das als EINE Instruktion (movz/movn-Alias) kodieren? --
+/* Can "mov w0,#v" be encoded as ONE instruction (movz/movn alias)? --
    nur wenn eine der beiden 16-Bit-Haelften von v ODER von ~v Null ist.
    2026-09-10 gefunden (nicht short-spezifisch, aber blockierte dessen
    Verifikation): 99999/100000 -- vorher nie als PUSH-Literal gebraucht --
@@ -390,8 +390,8 @@ static int fitsSingleMov(unsigned int v) {
 static void push(FILE* o, const char* reg) { fprintf(o, "\tstr\t%s,[sp,#-16]!\n", reg); }
 static void pop(FILE* o, const char* reg) { fprintf(o, "\tldr\t%s,[sp]\n\tadd\tsp,sp,#16\n", reg); }
 
-// Skalierungssuffix fuer add/sub bei Pointerarithmetik: char/bool=1 (kein Shift),
-// short=#1 (*2), Pointer=#3 (*8), sonst=#2 (*4). Immer gefolgt von "\n".
+// Scaling suffix for add/sub in pointer arithmetic: char/bool=1 (no shift),
+// short=#1 (*2), pointer=#3 (*8), otherwise=#2 (*4). Always followed by "\n".
 static const char* scaleSuffix(const char* typeWord) {
 	if (isByteWord(typeWord)) return "\n";
 	if (isShortWord(typeWord)) return " #1\n";
@@ -463,7 +463,7 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadrp\tx0,_tc_g_%s@PAGE\n\tadd\tx0,x0,_tc_g_%s@PAGEOFF\n", x->args[0], x->args[0]);
 				push(o, "x0");
 			} else if (strcmp(op, "LARRAY") == 0 && x->argc == 3) {
-				/* nur Frame-Layout, kein Code */
+				/* frame layout only, no code */
 			} else if (strcmp(op, "PUSHADDR") == 0 && x->argc == 2) {
 				int ignored;
 				if (strcmp(x->args[0], "L") == 0) {
@@ -485,7 +485,7 @@ static void emit(FILE* o) {
 				}
 				fputs("\tstr\tx0,[sp,#-16]!\n", o);
 			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && x->argc == 3) {
-				/* 2026-09-10: isChar (bool) -> isByteWord/isShortWord auf dem
+				/* 2026-09-10: isChar (bool) became isByteWord/isShortWord on the
 				   Original-Tag, short als dritte Groesse dazu. */
 				int isPointer = strcmp(x->args[2], "p") == 0;
 				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
@@ -563,7 +563,7 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadd\tx0,x0,w1,sxtw%s", scaleSuffix(x->args[0]));
 				push(o, "x0");
 			} else if (strcmp(op, "IPADDN") == 0 && x->argc == 1) {
-				/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
+				/* Like IPADD, but scale by a RUNTIME byte size (for example structByteSize)
 				   statt einer festen Typtag-Groesse -- echte Multiplikation (w2 = Literal, mul,
 				   dann sign-extend + add), da scaleSuffix nur feste 1/4/8-Shifts kennt. */
 				pop(o, "x0"); pop(o, "w1");
@@ -649,7 +649,7 @@ static void emit(FILE* o) {
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
 			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
-				/* static lokale Variable: bereits von collectGlobals() ausgewertet, hier
+				/* Static local variable: already processed by collectGlobals(); here it is
 				   an dieser Stelle im Funktionskoerper ein reines No-op. */
 			} else {
 				sprintf(msg, "IR Zeile %d: unbekannter Opcode %s", x->line, op);
@@ -664,7 +664,7 @@ static void emit(FILE* o) {
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
-			// Skalare UND (seit 2026-07-25) Arrays OHNE jedes GINIT erreichen zerofill --
+			// Scalars AND (since 2026-07-25) arrays WITHOUT any GINIT use zero fill --
 			// echtes BSS braucht keine Element-Daten, nur die Gesamtgroesse in Byte, und
 			// erlaubt dadurch beliebig grosse nullinitialisierte Arrays (z.B. ein
 			// 8192-Elemente-AST-Knotenpuffer) OHNE eine .byte/.long-Zeile pro Element.
