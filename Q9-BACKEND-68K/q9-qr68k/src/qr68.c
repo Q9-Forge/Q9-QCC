@@ -1191,7 +1191,7 @@ static void addRef(int name, int type, int offs, int local)
      Daten 1, reservierte Daten 0; ein externer Name ebenfalls 0.
    Belegt an: dc.l/dc.w/dc.b auf ein Codelabel ($3c/$34/$2c), dc.l auf
    initialisierte ($39) und auf reservierte Daten ($38), dieselben Faelle
-   innerhalb des vsect ($1c/$19) und "move.w #dat,d0" ($31). */
+   inside the vsect ($1c/$19) and "move.w #dat,d0" ($31). */
 static int refTypeFor(int size, int target)
 {
 	int t;
@@ -1305,7 +1305,7 @@ static void selfCheck(void)
 /* Microware format: label in column 1, indented mnemonic, then operands and
    operands, then comment. "*" in column 1 is a comment line.
    Ein Label mit ":" ist GLOBAL -- gemessen an r68: aus "start: rts" wird ein
-   Global-Eintrag im ROF, aus "start rts" nicht. */
+   global ROF entry, while "start rts" does not. */
 static char lnLabel[256];
 static char lnOp[64];          /* Lowercase; instructions are case-insensitive. */
 static char lnOpRaw[64];       /* Original spelling; macro names are not. */
@@ -1370,7 +1370,7 @@ static int splitLine(void)
 	     "move.l-(a0),d4"        ja
 	     "move.l$1234.w,d2"      NEIN -- "$" gehoert noch zum Mnemonic,
 	                                    r68 meldet "bad mnemonic"
-	   Das "$" ist also KEIN Trennzeichen, die anderen vier schon. */
+	   Therefore "$" is NOT a separator; the other four characters are. */
 	while (lxTmp[i] != 0 && !isSpaceCh(lxTmp[i] & 255) &&
 	       lxTmp[i] != '(' && lxTmp[i] != '#' && lxTmp[i] != '*' &&
 	       lxTmp[i] != '-') {
@@ -1805,7 +1805,7 @@ static char opTxt1[512];
    Zwischenspeicher des Ausdrucksauswerters (termN[2]). Die drei Befehle
    kommen ohne aus: bei pack/unpk ist der dritte Operand ein reiner
    Sofortwert, bei cas sind die ersten beiden blosse Datenregister, sodass
-   der dritte in Fach 0 geparst werden kann. */
+	   so the third can be parsed in slot 0. */
 static char opTxt2[512];
 /* A fourth operand is needed only by ptest ("ptestr #0,(a1),#3,a2"). */
 static char opTxt3[512];
@@ -2348,7 +2348,7 @@ static void emitEa(int k, int size)
                                               Verzeichnisse.
    r68 nimmt bei <> zusaetzlich ein festes <MWOS>/OS9/SRC/DEFS. Das haengt an
    einer Umgebungsvariablen, die qr68 nicht liest -- dieses Verzeichnis muss
-   man ihm also mit -u= nennen. */
+   it must therefore be supplied with -u=. */
 static int USEDIR_MAX = 16;
 static int useDirs[16];
 static int useDirN;
@@ -2494,7 +2494,7 @@ static void doUse(void)
    die SDK-Makros pruefen "\#" und benutzen hoehere Argumente nur in einem
    Zweig, den die bedingte Assemblierung dann ohnehin ueberspringt.
    Makronamen sind schreibungsabhaengig ("mactest" findet "MacTest" nicht),
-   deshalb wird dafuer lnOpRaw genommen und nicht lnOp. */
+	   therefore lnOpRaw is used instead of lnOp. */
 static int MAC_MAX = 128;
 static int macName[128];
 static int macStart[128];
@@ -2771,7 +2771,7 @@ static void repExpand(int m, int count)
    "ifeq DEFINIERT" mit 1 nicht (an r68 gemessen, ebenso die Schachtelung und
    dass ein uebersprungener Block auch Unuebersetzbares enthalten darf).
    Der Operand von "endc" ist bei Microware ueblicherweise ein Kommentar --
-   er wird nicht angesehen. */
+	   it is ignored. */
 static int COND_MAX = 32;
 static int condActive[32];     /* 1 = this branch is assembled */
 static int condAny[32];        /* 1 = a branch was already true */
@@ -2895,7 +2895,7 @@ static void doCond(const char *base)
      Kurzform.
    Was r68 NICHT umformt: "move.l #7,d0" bleibt MOVE (kein MOVEQ), "bra"
    bleibt die Wortform (es warnt nur "destination in short branch range"),
-   "lea 0(a5),a0" bleibt die Displacementform. */
+	   "lea 0(a5),a0" remains displacement form. */
 
 static int sizeBytes(int c)
 {
@@ -4324,7 +4324,7 @@ static void doInstruction(void)
 	   "btst d1,d6" $0306; die Art steht in Bit 7..6 (btst 0, bchg 1,
 	   bclr 2, bset 3): "bset #3,d0" $08c0, "bclr #3,(a0)" $0890,
 	   "bchg d1,d0" $0340. Den Umfang bestimmt der Zieloperand
-	   (Datenregister lang, Speicher byteweise), nicht ein Buchstabe. */
+	   (data registers long, memory byte-sized), not a suffix. */
 	if (baseIs(base, "btst") || baseIs(base, "bchg") ||
 	    baseIs(base, "bclr") || baseIs(base, "bset")) {
 		int kind;
