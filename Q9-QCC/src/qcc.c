@@ -207,7 +207,7 @@ int main(int argc, char **argv)
 			input = os9_input;
 		}
 		#endif
-		if (strcmp(tmpdir, "/dd") != 0 && strcmp(tmpdir, ".") != 0) {
+		if (strcmp(tmpdir, "/dd") != 0 && strcmp(tmpdir, "/dd/CMDS") != 0 && strcmp(tmpdir, ".") != 0) {
 			sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
 			if (q9_system(command) != 0) return 4;
 		}
