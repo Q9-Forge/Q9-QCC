@@ -1,4 +1,4 @@
-/* Structs: einzelne Variable, Array von Structs, Feldzugriff.
+/* Structs: single variable, array of structs, and field access.
    Zeigt: Feldoffsets (PUSH <offset> + IPADD/PADD), LOADIND/STOREIND,
    den Unterschied zwischen einer einzelnen Struct-Variable (Adresse im
    Slot) und einem Element eines Struct-Arrays (Adresse = Basis + i*Groesse). */

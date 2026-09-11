@@ -1,4 +1,4 @@
-/* Zeiger: Adressoperator, Dereferenzierung, Zeigerarithmetik, Zeiger auf
+/* Pointers: address operator, dereference, pointer arithmetic, and pointers to
    Struct. Zeigt: ADDRL/ADDRG/PUSHADDR, LOADIND/STOREIND, PADD/PDIFF
    (Zeigerarithmetik ist eigenstaendig, keine gewoehnliche ADD/SUB). */
 struct Node {

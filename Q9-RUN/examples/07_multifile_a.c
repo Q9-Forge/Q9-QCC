@@ -1,4 +1,4 @@
-/* Mehrdatei-Beispiel, Teil A: benutzt Teil B. Zusammen mit 07_multifile_b.c
+/* Multi-file example, part A: uses part B. Together with 07_multifile_b.c
    zeigt dies FUNCDECL/GLOBALDECL -- reine Vorwaertsdeklarationen ohne
    Rumpf, die QCCVM nicht selbst ausfuehren kann (siehe IR_OPCODES_de.md),
    sondern die erst ein "Linker" aufloesen muss. tools/qcc_merge.py

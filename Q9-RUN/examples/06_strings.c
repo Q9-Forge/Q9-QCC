@@ -1,4 +1,4 @@
-/* String-Literale. Zeigt: GARRAY/GINIT fuer den impliziten char-Puffer
+/* String literals. Demonstrates GARRAY/GINIT for the implicit char buffer
    samt Nullterminator, ADDRG als Adresse eines Literals, direkte
    Indizierung ohne Zwischenvariable. */
 int first_char(void) {
