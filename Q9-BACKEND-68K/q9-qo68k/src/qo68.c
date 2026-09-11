@@ -1,5 +1,12 @@
-/*================================================================================
- * qcc_backend_peephole.c -- Peephole-Optimierer fuer die 68k-Ausgabe (-peephole)
+/*===============================================================================
+ * qo68k -- 68k peephole optimizer
+ *
+ * Purpose:
+ *   Optimizes generated 68k assembly after Stack-IR lowering, preserving the
+ *   observable instruction semantics required by the Q9 runtime.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
  *
  * Arbeitet NICHT auf der IR, sondern auf dem bereits erzeugten Assemblertext --
  * dieselbe Stelle, an der Microwares eigener Optimierer o68 in der klassischen
@@ -505,6 +512,10 @@ static void phWrite(const char* path) {
    werden (OS-9s I$Create scheitert sonst an einer schon bestehenden
    Datei). srcPath bleibt als .tmp-Datei liegen -- kein Aufrufer in
    dieser Kette raeumt Zwischendateien auf, s. .i/.ir ueberall sonst. */
+/* Function: peepholeRun
+ * Reads assembly, applies safe local rewrites and writes optimized assembly.
+ * Parameters: srcPath Input assembly; dstPath Optimized output assembly.
+ * Returns: Nothing; reports I/O failures through the optimizer diagnostic. */
 static void peepholeRun(const char* srcPath, const char* dstPath) {
 	int total, roundTotal, kept, i, rounds, moveqCount;
 	phLoad(srcPath);

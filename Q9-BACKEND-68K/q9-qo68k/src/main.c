@@ -1,4 +1,9 @@
-/* Eigenstaendiger qo68k-CLI um den bestehenden Peephole-Kern. */
+/*
+ * qo68k command-line entry point
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +16,10 @@ static void fatal(const char *message)
 
 #include "qo68.c"
 
+/* Function: main
+ * Runs the standalone peephole optimizer command.
+ * Parameters: argc, argv Command-line argument count and vector.
+ * Returns: Process status, zero on success. */
 int main(int argc, char **argv)
 {
 	if (argc != 3) {
