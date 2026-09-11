@@ -1,3 +1,6 @@
+* q9-qclib string ABI adapters.
+* Edition history: 2026-09-11  Introduced the English source-header format.
+*
 * Die Adapter der Stringfunktionen: strlen, strchr, strncmp und (seit
 * 2026-09-07, fuer qcc_backend_c.cpp) strcmp, strcat, strncpy, strrchr,
 * strtok, strtol, memset, memcpy.
