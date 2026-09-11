@@ -21,7 +21,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.stock-stargate.hda}"
 : "${ROMIMG:=$MWOS/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN}"
-: "${QUELLE:=$REPO/test/insn.a}"
+: "${QUELLE:=$REPO/tests/insn.a}"
 WORK=/tmp/qr68-os9
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
@@ -58,7 +58,7 @@ echo "  $(wc -c < "$WORK/host.r" | tr -d ' ') Byte"
 
 echo "== Emulator =="
 Q9FLUX="$Q9FLUX" QR68_IMAGE="local_images/$IMAGE_NAME" MWOS="$MWOS_UNIX" \
-	ROMIMG="$ROMIMG" expect -f "$REPO/test/run_68k.exp" > "$WORK/run.log" 2>&1 || {
+	ROMIMG="$ROMIMG" expect -f "$REPO/tests/run_68k.exp" > "$WORK/run.log" 2>&1 || {
 		echo "FEHLGESCHLAGEN -- letzte Zeilen:"
 		tail -25 "$WORK/run.log"
 		exit 1
