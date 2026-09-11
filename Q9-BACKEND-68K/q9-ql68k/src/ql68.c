@@ -8,16 +8,14 @@
  * Edition history:
  *   2026-09-11  Introduced the English source-header format.
  *
- * ALLES HIER IST AN l68 GEMESSEN, nicht aus der Dokumentation abgeleitet.
- * Die Dokumentation (MWOS/DOC/PDF/ultrac_use.pdf Kap. 6 und 9,
- * 68k_tech.pdf) gibt die Struktur vor; die Bytes kommen aus dem Vergleich.
- * Was gemessen wurde, steht im README.
+ * Everything here is measured against l68 rather than inferred from prose.
+ * The documentation defines the structure; byte-level behavior comes from
+ * comparison tests. Measured details are recorded in the README.
  *
- * Geschrieben in derselben Teilmenge wie qr68 und qcpp, damit sich ql68
- * spaeter selbst uebersetzen laesst: kein Union, kein "->", kein float,
- * Arraygroessen als Literale, feste Tabellen statt malloc, KEINE
- * aneinandergereihten Stringliterale und KEIN zweistufiger Index auf ein
- * Zeigerfeld (beides kann QCC nicht).
+ * Written in the same subset as qr68 and qcpp so ql68 can later self-host:
+ * no unions, no "->", no floating point, literal array sizes, fixed tables
+ * instead of malloc, no adjacent string literals and no two-stage indexing
+ * of pointer arrays (QCC does not support the latter two forms).
  */
 
 extern int printf(const char *fmt, ...);
@@ -28,27 +26,20 @@ extern int fclose(char *fp);
 extern int fread(char *buf, int size, int n, char *fp);
 extern int fwrite(const char *buf, int size, int n, char *fp);
 
-/* Eingaben UND Bibliotheken liegen zusammen in inBuf; qcpp.r allein ist
-   schon 4,4 MB (QCCs Backend legt genullte Felder in den initialisierten
-   Datenbereich, und qcpp haelt seine Tabellen als feste globale Felder).
-   Am Host kostet der Platz nichts -- einen _Q9OS-Zweig mit Zielmassen
-   gibt es hier noch nicht, weil ql68 selbst noch nicht auf dem 68030
-   laeuft. */
-/* Groessen als LITERALE, nicht als Ausdruecke: QCCs constSize kennt nur
-   Zahlen -- "(32 * 1024 * 1024)" laesst den Compiler still abbrechen
-   (Schlusswort FAIL, keine Meldung). Dieselbe Einschraenkung steht in
-   qr68.c.
-
-   Am Host darf es grosszuegig sein (qcpp.r allein ist 4,4 MB), auf dem
-   Ziel nicht: QCCs Backend legt genullte Felder in den INITIALISIERTEN
-   Datenbereich, und der wandert vollstaendig ins Modul -- ein 32-MB-Puffer
-   waere ein 32-MB-Modul. */
+/* Inputs and libraries share inBuf; qcpp.r alone is already 4.4 MiB because
+   QCC places zero-initialized fields in the initialized data area and qcpp
+   uses fixed global tables. Host memory is inexpensive; target-sized limits
+   are selected below for _Q9OS. */
+/* Keep sizes as literals rather than expressions: QCC's constSize accepts
+   only numbers in this context. Host builds can be generous, while target
+   builds must keep zero-initialized global buffers small because they become
+   part of the module's initialized data area. */
 #ifdef _Q9OS
-#define QL_IN       524288            /* Eingaben und Bibliotheken */
-#define QL_OUT      524288            /* Ausgabepuffer  */
+#define QL_IN       524288            /* Inputs and libraries. */
+#define QL_OUT      524288            /* Output buffer. */
 #else
-#define QL_IN     33554432            /* Eingaben und Bibliotheken */
-#define QL_OUT    33554432            /* Ausgabepuffer  */
+#define QL_IN     33554432            /* Inputs and libraries. */
+#define QL_OUT    33554432            /* Output buffer. */
 #endif
 #define QL_IREF   16384               /* Zeiger je Liste */
 
@@ -58,14 +49,12 @@ static char outBuf[QL_OUT];
 static int outLen;
 
 /* ------------------------------------------------------------------ ROF */
-/* Ein Eintrag je psect. Der ERSTE ist der Wurzel-psect -- nur er hat
-   einen Typ/Sprach-Wert ungleich null, und nur aus ihm entsteht der
-   Modulkopf (Handbuch Kap. 9: "mainline is the pathlist of the file
-   containing the root psect"). */
+/* One entry per psect. The first is the root psect; only it has a non-zero
+   type/language value and only it supplies the module header. */
 #define QL_ROF    256
 
 static int rofN;
-static int rofRoot;          /* Index des Wurzel-psect */
+static int rofRoot;          /* Root psect index. */
 static int rTyLan[QL_ROF];
 static int rAttRev[QL_ROF];
 static int rEdition[QL_ROF];
@@ -86,12 +75,12 @@ static int rExtN[QL_ROF];
 static int rLocalAt[QL_ROF];
 static int rLocalN[QL_ROF];
 
-/* Nach dem Auslegen: wo der psect im Modul bzw. im Datenbereich liegt. */
-static int bCode[QL_ROF];    /* Modulabstand des Codes            */
-static int bUninit[QL_ROF];  /* Datenabstand der ds-Daten         */
-static int bInit[QL_ROF];    /* Datenabstand der dc-Daten         */
-static int bRemote[QL_ROF];  /* Datenabstand der Ferndaten        */
-static int bIDataMod[QL_ROF];/* Modulabstand der dc-Daten         */
+/* Psect locations after layout in the module and data areas. */
+static int bCode[QL_ROF];    /* Code module offset. */
+static int bUninit[QL_ROF];  /* ds-data offset. */
+static int bInit[QL_ROF];    /* dc-data offset. */
+static int bRemote[QL_ROF];  /* Remote-data offset. */
+static int bIDataMod[QL_ROF];/* dc-data module offset. */
 
 /* Der Vorspann auf den Datenzeiger. Bei einem Programm (mod_exec) zeigt
    a6 NICHT auf den Anfang des Datenbereichs, sondern $8000 dahinter --
@@ -100,9 +89,9 @@ static int bIDataMod[QL_ROF];/* Modulabstand der dc-Daten         */
    Vorspann. Gemessen: "move.l zeiger(a6),d1" mit zeiger auf $000c ergibt
    im Programm $800c, "move.w d2,$001c(a2)" im Treiber sc172 dagegen
    $001c. */
-static int dataBias;
+static int dataBias;         /* Data-pointer bias for program modules. */
 
-/* -r=<basis>: rohe Binaerausgabe statt eines Moduls. -1 = aus. */
+/* -r=<base>: raw binary output instead of a module. -1 disables it. */
 static int optRaw = -1;
 /* In der rohen Ausgabe bekommt ein Codebezug IM CODE die Basis
    aufaddiert, ein Zeiger IN DEN DATEN dagegen nicht -- den setzt erst der
@@ -114,26 +103,24 @@ static char modName[256];
 static int optOwner = 65536;       /* M$Owner $00010000, ohne -gu= (gemessen) */
 static int optAccess = 1365;       /* M$Accs  $0555,     ohne -p=  (gemessen) */
 static int optEdition = -1;        /* -e=: ueberschreibt den psect-Wert */
-/* -M=<n>[K]: Zuschlag auf den Stack. Die Zahl zaehlt IMMER in K --
-   "-M=1" und "-M=1K" ergeben beide 1024 dazu, "-M=100" ganze 102400
-   (gemessen). Das Suffix ist schmueckend. */
+/* -M=<n>[K]: stack-size increment. The number is always in KiB, so -M=1
+   and -M=1K both add 1024, while -M=100 adds 102400 (measured). */
 static int optStackAdd;
-/* -b=<n>: Code- und Datenanfang auf n ausrichten (n = 2, 4, 8, 16).
-   Gemessen: bei zwei psects wird JEDER Codeabschnitt ausgerichtet, mit
-   Nullbytes aufgefuellt; die Zeigerlisten dagegen nicht. */
+/* -b=<n>: align code and data starts to n (n = 2, 4, 8, 16). Measured:
+   every code section is aligned and padded with zero bytes, but pointer
+   lists are not. */
 static int optAlign = 1;
-/* -x=<n>: NUR den Anfang des Codebereichs ausrichten -- gemessen an einem
-   psect mit Einsprung auf Codeabstand 4: mit -x=8 beginnt der Code auf
-   $50, der Einsprung steht auf $54. Ausgerichtet wird also der CODE, nicht
-   der Einsprung, und auch nur der erste psect. */
+/* -x=<n>: align only the beginning of the code area. Measured with an entry
+   at code offset 4: -x=8 starts code at $50 while the entry remains at $54.
+   Only the first psect's code area is aligned. */
 static int optXAlign = 1;
-/* -S: das Modul bleibt im Speicher. Gemessen: im Attributwort kommt Bit
-   $4000 dazu ($8000 -> $c000). */
+/* -S: keep the module in memory. Measured effect: add bit $4000 to the
+   attribute word ($8000 -> $c000). */
 static int optSticky = 0;
-/* -R=<n>: Revisionsnummer, das untere Byte desselben Wortes. */
+/* -R=<n>: revision number in the low byte of the same word. */
 static int optRevision = -1;
 
-/* Zeigerlisten fuer den IRefs-Abschnitt. */
+/* Pointer lists for the IRefs section. */
 static int irefCode[QL_IREF];
 static int irefCodeN;
 static int irefData[QL_IREF];
@@ -204,8 +191,8 @@ static int jtFind(int si)
 	return -1;
 }
 
-/* Symboltabelle fuer alles, was externe Referenzen aufloesen kann: die
-   Globalen der Bibliotheken und die vom Binder selbst gesetzten Symbole. */
+/* Symbol table for resolving external references: library globals and
+   symbols defined by the linker itself. */
 static char symPool[QL_POOL];
 static int symPoolTop;
 static int symName[QL_SYM];    /* Index in symPool */
