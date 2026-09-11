@@ -16,6 +16,8 @@ test: $(TARGET)
 	@$(TARGET) --help | grep -q 'Usage:'
 	@$(TARGET) --dry-run main.c | grep -q 'qcpp -> .i'
 	@$(TARGET) --print-config | grep -q '^backend=qir68k'
+	@$(TARGET) --emit-ir tests/smoke.c >/dev/null
+	@grep -q '^FUNC main' build/qcc/output.ir
 	@echo 'qcc smoke test: OK'
 
 clean:
