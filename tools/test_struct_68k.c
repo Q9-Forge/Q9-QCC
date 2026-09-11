@@ -121,23 +121,22 @@ int main(void)
 	            val(same(grid[gi][gj], x)); }
 
 
-	/* 21 Zeigerarray-Feld: schreiben und lesen, fester Index */
+	/* 21 pointer-array field: write and read, fixed index */
 	mark(21); { struct A x; char *p; txt[0] = 71; x.args[0] = txt;
 	            p = x.args[0]; val(p[0]); }
-	/* 22 dito mit VARIABLEM Index -- hier zaehlt die Schrittweite */
+	/* 22 same with VARIABLE index; stride matters here */
 	mark(22); { struct A x; char *p; int i; txt[1] = 72;
 	            x.args[2] = txt + 1; i = 2;
 	            p = x.args[i]; val(p[0]); }
-	/* 23 SCHREIBEN mit variablem Index, lesen mit festem */
+	/* 23 WRITE with variable index, read with fixed index */
 	mark(23); { struct A x; char *p; int i; txt[2] = 73; i = 3;
 	            x.args[i] = txt + 2;
 	            p = x.args[3]; val(p[0]); }
-	/* 24 ueber einen Zeiger auf die Struct -- der ->-Pfad ist eine eigene
-	      Emissionsstelle */
+	/* 24 through a pointer to the struct; the -> path has its own emission site */
 	mark(24); { struct A x; struct A *xp; char *p; txt[3] = 74;
 	            xp = &x; xp->args[1] = txt + 3;
 	            p = xp->args[1]; val(p[0]); }
-	/* 25 GLOBALE Struct: wieder eigene Stellen (LOADGP/PUSHADDR G) */
+	/* 25 GLOBAL struct: separate emission sites again (LOADGP/PUSHADDR G) */
 	mark(25); { char *p; txt[4] = 75; ga.args[4] = txt + 4;
 	            p = ga.args[4]; val(p[0]); }
 	/* Ein Fall FEHLT hier bewusst: aarr[k].args[5] -- also Structschritt und
@@ -166,7 +165,7 @@ int main(void)
 	mark(27); { struct I *ip; int k; k = 2;
 	            tab[2].a = 0; ip = &tab[k]; ip->a = 55;
 	            val(tab[2].a); }
-	/* 28 dasselbe LOKAL -- eine eigene Emissionsstelle */
+	/* 28 same case LOCAL -- a separate emission site */
 	mark(28); { struct I loc[3]; struct I *ip; int k; k = 2;
 	            loc[2].a = 0; ip = &loc[k]; ip->a = 56;
 	            val(loc[2].a); }
@@ -177,28 +176,28 @@ int main(void)
 	      geholt werden muss (LOADIND p) -- die Aufrufer haben nur die
 	      ADRESSE des Feldes auf dem Stapel. Jeder Fall indiziert ungleich
 	      null, sonst faellt eine falsche Schrittweite nicht auf. */
-	/* 29 globale Struct, lesen ueber ein int*-Feld */
+	/* 29 global struct, read through an int* field */
 	mark(29); { int k; k = 3; zfeld[3] = 81; gz.ip = zfeld;
 	            val(gz.ip[k]); }
-	/* 30 globale Struct, schreiben */
+	/* 30 global struct, write */
 	mark(30); { int k; k = 3; zfeld[3] = 0; gz.ip = zfeld;
 	            gz.ip[k] = 82; val(zfeld[3]); }
-	/* 31 ueber einen Structzeiger lesen, char*-Feld (Schrittweite 1) */
+	/* 31 read through a struct pointer, char* field (stride 1) */
 	mark(31); { struct Z *zp; int k; k = 2; ztxt[2] = 83;
 	            zp = &gz; zp->cp = ztxt;
 	            val(zp->cp[k] & 255); }
-	/* 32 ueber einen Structzeiger schreiben */
+	/* 32 write through a struct pointer */
 	mark(32); { struct Z *zp; int k; k = 2; zfeld[2] = 0;
 	            zp = &gz; zp->ip = zfeld;
 	            zp->ip[k] = 84; val(zfeld[2]); }
-	/* 33 LOKALE Struct, lesen -- wieder eine eigene Stelle */
+	/* 33 LOCAL struct, read -- another separate site */
 	mark(33); { struct Z lz; int k; k = 5; zfeld[5] = 85; lz.ip = zfeld;
 	            val(lz.ip[k]); }
-	/* 34 LOKALE Struct, schreiben */
+	/* 34 LOCAL struct, write */
 	mark(34); { struct Z lz; int k; k = 5; zfeld[5] = 0; lz.ip = zfeld;
 	            lz.ip[k] = 86; val(zfeld[5]); }
 
-	/* 35 GANZE STRUCT UEBER EINEN ZEIGER KOPIEREN (v = p[i]).
+	/* 35 COPY COMPLETE STRUCT THROUGH A POINTER (v = p[i]).
 	      Das war ein STILLER Falschcode-Fehler (2026-09-07):
 	      LOADP/PTRINDEX i/LOADIND i -- vier Byte Schrittweite UND ein
 	      Ladebefehl, der vier Byte der Struct als Zahl liest und als
