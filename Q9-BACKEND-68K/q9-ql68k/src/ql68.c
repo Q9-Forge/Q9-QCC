@@ -1202,7 +1202,7 @@ static void emit(void)
 		return;
 	}
 
-	/* --- Kopf. Die Groessenfelder werden spaeter nachgetragen. --- */
+	/* --- Header. Size fields are patched after layout. ------------------ */
 	put16(0x4AFC);                 /* M$ID    */
 	put16(1);                      /* M$SysRev */
 	put32(0);                      /* M$Size, spaeter */
@@ -1246,14 +1246,14 @@ static void emit(void)
 		put32(0);                         /* M$IRefs, spaeter */
 	}
 
-	/* Ein GERAETEDESCRIPTOR (Typ 15) hat keine mod_exec-Erweiterung:
+	/* A DEVICE descriptor (type 15) has no mod_exec extension:
 	   sein ROF-Code IST die Kopferweiterung und liegt unmittelbar hinter
 	   dem gemeinsamen Kopf auf $30; danach folgt nur der Name und der
 	   CRC -- weder IData- noch IRefs-Abschnitt. */
 	if (isDesc || isDrvr) {
 		if (totalInit != 0)
 			fatal("initialisierte Daten gibt es bei diesem Modultyp nicht -- l68 braucht dafuer -i", "");
-		/* Auch hier duerfen es mehrere psects sein -- die Uhrenmodule
+		/* Multiple psects are allowed here too; SDK clock modules
 		   des SDK werden aus tickgeneric.r und dem portspezifischen
 		   Teil gebunden. Der Code folgt der Reihenfolge der
 		   Kommandozeile, wie bei mod_exec. */
@@ -1302,7 +1302,7 @@ static void emit(void)
 		return;
 	}
 
-	/* --- Name, auf gerade aufgefuellt --- */
+	/* --- Name, padded to an even offset ------------------------------- */
 	nameAt = outLen;
 	n = strLen(modName);
 	for (i = 0; i < n; i++)
@@ -1311,7 +1311,7 @@ static void emit(void)
 	if ((outLen % 2) != 0)
 		put8(0);
 
-	/* --- Code aller psects, in Reihenfolge der Kommandozeile --- */
+	/* --- Code for all psects, in command-line order -------------------- */
 	alignTo(optXAlign);
 	for (k = 0; k < rofN; k++) {
 		alignTo(optAlign);
@@ -1320,7 +1320,7 @@ static void emit(void)
 			put8(inBuf[rCodeAt[k] + i]);
 	}
 
-	/* --- Initialisierte Daten: <Offset><Anzahl><Bytes> --- */
+	/* --- Initialized data: <offset><count><bytes> --------------------- */
 	alignTo(optAlign);
 	idataAt = outLen;
 	put32(totalUninit);
@@ -1332,19 +1332,18 @@ static void emit(void)
 		for (i = rIDat[k]; i < alignUp(rIDat[k], optAlign); i++)
 			put8(0);
 	}
-	/* Platz fuer die Sprungtabelle; gefuellt wird sie erst, wenn die
-	   Referenzen abgearbeitet sind und die Zielwerte feststehen. */
+	/* Reserve space for the jump table; fill it after references have been
+	   resolved and target values are known. */
 	jtAt = outLen;
 	for (i = 0; i < jtN * 6; i++)
 		put8(0);
 
-	/* Erst jetzt stehen alle Basen fest. */
+	/* All section bases are known now. */
 	for (k = 0; k < rofN; k++)
 		addGlobals(k);
 
-	/* Die Symbole, die erst der Binder kennt (Handbuch Tab. 9-8/9-9).
-	   Sie werden NACH den Bibliotheken und Globalen eingetragen und
-	   verdecken damit eine gleichnamige Definition. */
+	/* Symbols created by the linker itself. Add them AFTER libraries and
+	   globals so they override definitions with the same name. */
 	symAdd("bname", nameAt, 6);
 	symAdd("_bname", nameAt, 6);
 	symAdd("btext", 0, 6);
@@ -1363,13 +1362,13 @@ static void emit(void)
 		applyExtRefs(k);
 	}
 
-	/* --- Zeigerlisten --- */
+	/* --- Pointer lists -------------------------------------------------- */
 	irefAt = outLen;
 	putJumpTable();
 	putIrefList(irefCode, irefCodeN);
 	putIrefList(irefData, irefDataN);
 
-	/* --- Auf gerade Gesamtgroesse auffuellen, dann der CRC. --- */
+	/* --- Pad to an even total size, then append the CRC. ---------------- */
 	if (((outLen + 3) % 2) != 0)
 		put8(0);
 
