@@ -17,13 +17,13 @@ for {set i 0} {$i < 10 && !$logged} {incr i} {
     }
 }
 if {!$logged} { exit 1 }
-send -s "/dd/CMDS/qcc --tmpdir /dd --emit-ir -o /dd/driver.ir driver_probe.c\r"
+send -s "/dd/CMDS/qcc --tmpdir . --emit-ir -o driver.ir driver_probe.c\r"
 expect {
     -re {[#$] ?$} {}
     -re {FAIL|SEMERR|qcc:|error|Error} { exit 1 }
     timeout { exit 1 }
 }
-send -s "dir -e /dd/driver.ir\r"
+send -s "dir -e driver.ir\r"
 expect {
     -re {driver\.ir} { send "\x1d"; expect eof; exit 0 }
     timeout { exit 1 }
