@@ -22,7 +22,9 @@ Q9-QCC/
 ## Aktueller Stand
 
 Der portable Kommandozeilenkern ist angelegt und unterstützt zunächst
-`--help`, `--version`, Konfigurationsladen, `--dry-run` und die Zielauswahl. Die eigentliche Pipeline wird
+`--help`, `--version`, Konfigurationsladen, `--dry-run` und die Zielauswahl. Die Konfiguration verwendet
+Sektionen wie `[global]` und `[target.OS9-68K]`; weitere Target-Profile können
+ergänzt werden. Die eigentliche Pipeline wird
 schrittweise ergänzt; ein Aufruf mit Eingabedatei meldet bis dahin bewusst
 „Pipeline noch nicht implementiert“, statt einen unvollständigen Build
 vorzutäuschen.
