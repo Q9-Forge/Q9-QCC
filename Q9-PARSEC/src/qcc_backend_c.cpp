@@ -389,25 +389,14 @@ static int findGlobal(const char* name) {
 	return -1;
 }
 
-/* -largedata (function-call part, 2026-07-25, user request to "automatically
-   jmp table bauen wenn die Spruenge zu gross werden"): bsr ist wie lea(pc)
-   PC-relativ-16-Bit -- betrifft NICHT die internen bra/beq/bne-Sprungziele
-   INNERHALB einer Funktion (LABEL/JMP/JZ/JNZ, immer durch die Groesse EINER
-   Funktion begrenzt), sondern FUNKTIONSUEBERGREIFENDE Aufrufe (CALL/CALLP,
-   interne Laufzeit-Helfer wie tc_mul_i32), deren Aufrufstellen ueber ein
-   beliebig grosses Programm verstreut sein koennen.
-   Loesung: EIN Register (a4) wird EINMAL beim Programmstart auf die absolute
-   Adresse einer kleinen Tabelle (tc_functab) gesetzt ("lea tc_functab(pc),a4"
-   -- die Tabelle liegt bewusst DIREKT nach tc_start/main, bleibt also immer
-   erreichbar, WIE GROSS der Rest des Programms auch wird). Jeder Aufruf wird
-   dann zu "move.l N(a4),a2\njsr (a2)" statt "bsr X" -- a4-relative
-   Adressierung hat zwar auch nur 16-Bit-Displacement, aber die Tabelle selbst
-   waechst nur mit der ANZAHL der Funktionen (4 Byte/Eintrag), nicht mit der
-   Code-GROESSE -- bleibt fuer jede realistische Anzahl Funktionen klein genug.
-   a2 als Scratch-Register gewaehlt (NICHT a0/a1): a0 ist z.B. in IPADDN ueber
-   den bsr hinweg belegt (Pointer-Wert), a1 in tc_putint/tc_putuint/tc_putchar
-   (Puffer-Zeiger, siehe deren Definition) -- a2 ist an JEDER betroffenen
-   Aufrufstelle nachweislich frei. */
+/* -largedata function-call support (2026-07-25): bsr, like lea(pc), has a
+   16-bit PC-relative range. This affects cross-function CALL/CALLP calls and
+   runtime helpers, not branches within one function. A small tc_functab table
+   is placed near tc_start/main and addressed through a4. Each call loads its
+   link-time offset from the table into a2, adds the table base, and uses
+   jsr (a2). The table grows with the number of functions rather than code size.
+   a2 is used as scratch because a0 carries pointer values in IPADDN and a1 is
+   the output buffer register in the runtime helpers. */
 static int helperTableOffset(const char* rawName) {
 	/* WRITTEN OUT INSTEAD OF A TABLE so QCC can translate this file
 	   (2026-09-07): QCC's subset does not support an initialized pointer array
