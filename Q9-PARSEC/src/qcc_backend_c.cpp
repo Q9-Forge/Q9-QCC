@@ -1265,25 +1265,12 @@ static void emitIR(FILE* out) {
 		}
 	}
 
-	/* 2026-07-26, found live on Q9: emitM68kCore()/tc_putint/tc_putuint/
-	   tc_putchar/tc_io_write MUESSEN (wie tc_functab/tc_gadata/die Extern-
-	   Wrapper-Stubs oben) NAH BEIEINANDER UND NAH AN DEN TABELLEN liegen --
-	   vorher stand dieser ganze Block NACH der kompletten Funktionsrumpf-
-	   Schleife weiter unten, was bei einem grossen Programm (z.B. ebnf.tc
-	   allein, >17000 Zeilen generierter Assembler) "value out of range" fuer
-	   das "lea tc_functab/tc_gadata(pc)" INNERHALB von tc_io_write ausloeste
-	   (echter r68-Assemblierungsfehler, live reproduziert) -- tc_io_write lag
-	   dann selbst weit ausserhalb der 32-KB-PC-relativ-Reichweite zu den
-	   Tabellen. Deshalb JETZT hier (VOR der Funktionsrumpf-Schleife) statt
-	   danach emittiert -- inhaltlich unveraendert, nur die Position im
-	   erzeugten Assemblertext verschoben (keine der INTERNEN "bsr"-Distanzen
-	   innerhalb dieses Blocks aendert sich dadurch, nur seine absolute
-	   Position im Gesamttext). Mehrdatei-Uebersetzung (2026-07-25): der
-	   gemeinsame 68k-Core/I/O-Anker (siehe partMode/runtimeMode-Kommentar
-	   oben) wird unter -part NUR in GENAU EINER Datei emittiert (-runtime) --
-	   sonst meldet l68 fuer JEDES dieser Symbole "duplicate symbol", da jede
-	   Datei sonst ihre eigene Kopie mitbraechte. Ohne -part unveraendert
-	   immer emittiert (Vollprogramm). */
+	/* 2026-07-26, found live on Q9: the 68k core and runtime I/O helpers must be
+	   emitted near tc_functab/tc_gadata. Emitting them after all function bodies
+	   made their PC-relative table-base loads exceed r68's 32 KB range in large
+	   programs. They are emitted here instead; generated code and internal
+	   branch distances are unchanged. In -part mode exactly one file emits the
+	   shared core when -runtime is set, avoiding duplicate linker symbols. */
 	if (!partMode || runtimeMode) {
 	emitM68kCore(out);
 	if (os9Mode) {
