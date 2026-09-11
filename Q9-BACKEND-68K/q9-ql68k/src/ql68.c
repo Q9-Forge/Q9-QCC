@@ -308,7 +308,7 @@ static int rofParse(int at0)
 	at = rGlobAt[k];
 	for (i = 0; i < rGlobN[k]; i++) {
 		at = skipName(at);
-		at = at + 6;               /* Typwort und Wert */
+		at = at + 6;               /* type word and value */
 	}
 
 	rCodeAt[k] = at;
@@ -852,7 +852,7 @@ static void farCall(int si, int here, const char *name)
 		fatal("-a kennt bisher nur bsr.w und lea d16(pc): ", name);
 		return;
 	}
-	disp = disp + 0x8000;             /* Datenabstand mit dem a6-Vorspann */
+	disp = disp + 0x8000;             /* data distance including the a6 prefix */
 	outBuf[here] = (disp >> 8) & 255;
 	outBuf[here + 1] = disp & 255;
 }
