@@ -22,7 +22,7 @@ test: $(TARGET)
 	@$(TARGET) --help | grep -q 'Usage:'
 	@$(TARGET) --dry-run main.c | grep -q 'qcpp -> .i'
 	@$(TARGET) --print-config | grep -q '^backend=qir68k'
-	@$(TARGET) --emit-ir tests/smoke.c >/dev/null
+	@$(TARGET) --emit-ir --tmpdir build/qcc-tmp tests/smoke.c >/dev/null
 	@grep -q '^FUNC main' build/qcc-tmp/output.ir
 	@$(TARGET) --emit-ir --tmpdir build/qcc-test -o build/qcc-test/result.ir tests/smoke.c >/dev/null
 	@grep -q '^PUSH 42' build/qcc-test/result.ir
@@ -32,6 +32,8 @@ test: $(TARGET)
 	@$(TARGET) --dry-run --no-optimizer main.c | grep -q '3. qir68k'
 	@$(TARGET) -c -o build/qcc-test/result.r tests/smoke.c >/dev/null
 	@test -s build/qcc-test/result.r
+	@$(TARGET) -o build/qcc-test/result.mod tests/smoke.c >/dev/null
+	@test -s build/qcc-test/result.mod
 	@echo 'qcc smoke test: OK'
 
 clean:

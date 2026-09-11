@@ -149,6 +149,15 @@ int main(int argc, char **argv)
 		}
 		sprintf(command, "%s @%s/input.i > %s/output.ir", qcir, tmpdir, tmpdir);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
+		if (emit_ir) {
+			if (output[0] != '\0') {
+				sprintf(command, "cp %s/output.ir %s", tmpdir, output);
+				if (system(command) != 0) return 4;
+				printf("%s\n", output);
+			} else printf("%s/output.ir\n", tmpdir);
+			if (!keep_files) { sprintf(command, "rm -f %s/input.i", tmpdir); system(command); }
+			return 0;
+		}
 		if (assembly_only || object_only) {
 			sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
 			if (system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
@@ -167,19 +176,26 @@ int main(int argc, char **argv)
 			if (!keep_files) { sprintf(command, "rm -f %s/input.i %s/output.ir", tmpdir, tmpdir); system(command); }
 			return 0;
 		}
-		if (assembly_only || object_only) {
-			fprintf(stderr, "qcc: diese Stopppunkt-Stufe ist noch nicht implementiert\n");
-			return 3;
+		/* Vollstaendiger Standardlauf: Backend, Optimierer, Assembler, Linker. */
+		sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
+		if (system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+		if (optimizer[0] != '\0') {
+			sprintf(command, "../Q9-BACKEND-68K/q9-qo68k/build/qo68k %s/output.s68k %s/output.opt.s68k", tmpdir, tmpdir);
+			if (system(command) != 0) { fprintf(stderr, "qcc: qo68k fehlgeschlagen\n"); return 4; }
+		}
+		sprintf(command, "../Q9-BACKEND-68K/q9-qr68k/build/qr68k %s/%s %s/output.r", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);
+		if (system(command) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
+		sprintf(command, "../Q9-BACKEND-68K/q9-ql68k/build/ql68k ../Q9-BACKEND-68K/q9-qclib/build/q9_cstart.r %s/output.r -l=../Q9-BACKEND-68K/q9-qclib/build/qclib.l -O=%s", tmpdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+		if (system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
+		if (!keep_files) {
+			sprintf(command, "rm -f %s/input.i %s/output.ir %s/output.s68k %s/output.opt.s68k %s/output.r", tmpdir, tmpdir, tmpdir, tmpdir, tmpdir);
+			system(command);
 		}
 		if (output[0] != '\0') {
-			sprintf(command, "cp %s/output.ir %s", tmpdir, output);
-			if (system(command) != 0) { fprintf(stderr, "qcc: Ausgabedatei konnte nicht geschrieben werden\n"); return 4; }
+			printf("%s\n", output);
+		} else {
+			printf("%s/output.mod\n", tmpdir);
 		}
-		if (!keep_files && !emit_ir) {
-			sprintf(command, "rm -f %s/input.i %s/output.ir", tmpdir, tmpdir);
-			if (system(command) != 0) return 4;
-		}
-		if (output[0] != '\0') printf("%s\n", output); else printf("%s/output.ir\n", tmpdir);
 	}
 	return 0;
 }
