@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Differenztest an ECHTEM Material: den Quellen, die QCCs Backend erzeugt.
+# Differential test on REAL material: sources produced by QCC's backend.
 #
-# Die eingebauten Proben in difftest.sh pruefen Einzelfaelle, test/insn.a die
-# Befehlstabelle. Hier laeuft dagegen das, was in der Kette
-# qir_68k -> qr68 -> l68 tatsaechlich ankommt: ganze Module, bis zu
-# 146.000 Zeilen. Das ist der Test, der zaehlt.
+# Built-in probes in difftest.sh check individual cases, and test/insn.a checks
+# the instruction table. This runs what actually arrives in the chain
+# qir_68k -> qr68 -> l68: complete modules, up to 146,000 lines. This is the
+# test that matters.
 #
-#   ./test/backend.sh              -- alle gefundenen Module
+#   ./test/backend.sh              -- all discovered modules
 #   QCC_BUILD=... ./test/backend.sh
 set -uo pipefail
 
@@ -21,8 +21,8 @@ fi
 TMP="$(mktemp -d /tmp/qr68-backend.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Die kleinen Module und eines der grossen. Groesser als SRC_MAX geht
-# (noch) nicht: die 18-MB-Quellen brauchen einen stroemenden Leser.
+# The small modules and one large module. Larger than SRC_MAX is not supported
+# yet: the 18 MB sources require a streaming reader.
 files=()
 for f in "$QCC_BUILD"/os9_*.s68 "$QCC_BUILD"/qcc_fullprobe.s68; do
 	[ -f "$f" ] || continue

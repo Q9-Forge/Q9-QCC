@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Differenztest ueber den GANZEN Korpus -- mit den Aufrufen, die das SDK
+# Differential test over the ENTIRE corpus, using the invocations from the SDK
 # selbst benutzt, statt sie je Port zu raten.
 #
-# Der Hebel: "os9make -nn -u" DRUCKT die Kommandos, statt sie auszufuehren,
+# The mechanism: "os9make -nn -u" PRINTS commands instead of executing them,
 # und steigt dabei in die Untermakes ab ("-nn" = wie "-n", aber Verzeichnisse
 # wechseln und Untermakes ebenfalls mit "-nn" aufrufen). MWMAKEOPTS=-u sorgt
 # dafuer, dass auch die Untermakes alles neu bauen wollen -- sonst schweigen
@@ -10,7 +10,7 @@
 # r68-Kommandozeile mit ihren echten Schaltern, Suchverzeichnissen und
 # -a-Definitionen fest.
 #
-# In den SDK-Baum wird dabei NICHTS geschrieben: os9make fuehrt nichts aus,
+# NOTHING is written to the SDK tree: os9make executes nothing,
 # und die -o=-Angabe wird auf ein Temporaerverzeichnis umgebogen.
 #
 # Das ist der Unterschied zu test/mwos.sh, das PORTDIR/DRVDIR/UEXTRA von Hand

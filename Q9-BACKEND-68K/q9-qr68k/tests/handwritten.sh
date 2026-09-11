@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Differenztest an HANDGESCHRIEBENEM Material: den Assemblerquellen des
+# Differential test on HANDWRITTEN material: assembler sources of the
 # Q9-OS-Kernels. Anders als die Backend-Ausgabe nutzen die den vollen
 # Sprachumfang -- movem mit Registerlisten, Bitbefehle, ccr/sr, exg, movec,
 # Kommentare ohne Semikolon hinter operandenlosen Befehlen.
 #
-# Die MWOS-Treiberquellen fehlen hier noch: sie brauchen Ausdruecke mit
+# MWOS driver sources are not included yet: they require expressions with
 # MEHREREN verschiebbaren Anteilen ("PD_PAR-PD_OPT+M$DTyp(a1)", alle drei
 # extern), was qr68 noch nicht kann.
 set -uo pipefail
