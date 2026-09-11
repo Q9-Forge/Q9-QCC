@@ -62,12 +62,11 @@
  *
  * MUST run LAST, not in the convergence pass with the other four patterns:
  * vier: phMatchMoveIntoDataReg (Muster zwei/drei) sucht wortwoertlich den
- * Text "move.l\t" als Ausloeser. Liefe die MOVEQ-Umwandlung VORHER, saehe
- * ein anschliessendes "tst.l Dn" oder "move.l Dn,DST" sein Gegenstueck
- * nicht mehr -- die Faltungschance ginge verloren. MOVEQ-Zeilen selbst
- * bieten dafuer keine neue Faltungschance (die Quelle ist ein Sofortwert,
- * nie textgleich mit einem Zielregister), ein einzelner Durchlauf am Ende
- * reicht deshalb aus.
+ * text "move.l\t" as its trigger. If MOVEQ conversion ran first, a following
+ * "tst.l Dn" or "move.l Dn,DST" would no longer match and the fold opportunity
+ * would be lost. MOVEQ lines themselves create no new fold opportunity because
+ * their source is an immediate value and never textually equals a destination
+ * register, so one final pass is sufficient.
  *
  * MULTIPLE PASSES: removing one line often exposes the next opportunity --
  * "PUSH x / POP d0 / TST d0" first folds to "move.l x,d0", and only then is
@@ -85,7 +84,7 @@
  * MEMORY SIZES ARE MEASURED, NOT GUESSED: qr68's own assembler output with
  * -remotedata (the largest target-side case outside self-hosting so far) has
  * 75,273 lines / 1,588,771 bytes. The limits below provide
- * darauf reichlich Kopfraum; QCCs eigener Selbsthost-Bau (222.832 Zeilen /
+ * ample headroom; QCC's own self-hosting build (222,832 lines /
  * 4.59 MB) deliberately exceeds them; -peephole is not yet wired into that
  * path, which requires a separate future memory-budget decision. Exceeding a
  * limit calls fatal(), like every other backend capacity limit, with no silent
