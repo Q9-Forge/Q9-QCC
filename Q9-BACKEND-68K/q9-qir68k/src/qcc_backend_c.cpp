@@ -252,39 +252,35 @@ static char staticUnit[NAME_LEN] = "";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
 /* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
    "68K" -> "Register Usage"): a5 = Frame/local pointer, a6 = STATIC STORAGE
-   POINTER (nicht Frame-Pointer!). Das echte cstart.r/clib.l nutzt a6 als
-   Zeiger auf den eigenen statischen Datenbereich UEBER DIE GESAMTE LAUFZEIT
-   des (mit unserem Code zu EINEM Modul zusammengelinkten) Programms -- wird
-   dieser Wert von unserem eigenen Code ueberschrieben (was das Default-/vasm-
-   Format mit "link a6,#N" tut), stuerzt jeder nachfolgende echte clib-Aufruf
-   mit einem PMMU-Fehler ab (live am echten Q9 verifiziert, 2026-07-24: ein
-   Testmodul, das a6 als eigenen Frame-Pointer benutzte UND anschliessend
-   _os_write aufrief, brachte den Emulator zum Absturz -- a6 zeigte auf den
-   eigenen Frame statt auf den echten statischen Datenbereich). Deshalb NUR im
-   -os9-Modus a5 statt a6 als Frame-Pointer verwenden (a6 bleibt dann komplett
-   unangetastet); das Default-/vasm-Format bleibt bei a6 (keine Notwendigkeit,
-   keine Regression an den QCCVM-/Simulator-Tests). */
+   POINTER (not the frame pointer!). The real cstart.r/clib.l uses a6 as a
+   pointer to its own static data area THROUGHOUT the lifetime of the program
+   (our code is linked into the same module). If our code overwrites it, as
+   the default/vasm format does with "link a6,#N", every later real clib call
+   fails with a PMMU error. This was verified on the real Q9 on 2026-07-24:
+   a test module using a6 as its frame pointer and then calling _os_write
+   crashed the emulator because a6 pointed to our frame instead of the real
+   static data area. Therefore, only -os9 uses a5 as frame pointer; a6 remains
+   untouched. The default/vasm format continues using a6, with no need to
+   change the QCCVM/simulator tests. */
 static const char* framePtr(void) { return os9Mode ? "a5" : "a6"; }
-/* Namensverfremdung fuer static-Symbole (Mehrdatei-Uebersetzung, 2026-07-25):
-   r68/l68 kennen KEIN Sichtbarkeitskonzept (kein xdef/xref, jedes Label ist
-   beim Linken automatisch fuer JEDE andere gelinkte Datei sichtbar -- empirisch
-   verifiziert, siehe docs/STATUS.md). Ohne Verfremdung wuerde "static" seinen
-   Hauptzweck verfehlen: zwei unabhaengig kompilierte Dateien koennen jeweils
-   einen privaten Helfer GLEICHEN Namens haben wollen (z.B. beide ein eigenes
-   "static int init()"), was l68 sonst als "duplicate symbol" ablehnt (ebenso
-   empirisch bestaetigt). Nur eine KONVENTION, KEINE echte Durchsetzung -- der
-   psect-Name (aus dem Ausgabedateinamen abgeleitet, siehe main()) ist bereits
-   der natuerliche Ort fuer Eindeutigkeit pro Datei. */
+/* Name mangling for static symbols (multi-file translation, 2026-07-25):
+   r68/l68 have NO visibility concept (no xdef/xref; every label is visible to
+   every other linked file -- verified empirically, see docs/STATUS.md). Without
+   mangling, "static" would fail its main purpose: independently compiled
+   files could each define a private helper with the SAME name, such as their
+   own "static int init()", which l68 otherwise rejects as a duplicate symbol.
+   This is a convention, not enforcement; the psect name derived from the
+   output filename (see main()) provides the natural per-file uniqueness. */
 static char* mangledName(char* buf, const char* prefix, const char* name, int isStatic) {
 	if (os9Mode && isStatic) sprintf(buf, "%s%s__%s", prefix, name,
 		staticUnit[0] ? staticUnit : psectName);
 	else sprintf(buf, "%s%s", prefix, name);
 	return buf;
 }
-/* vasm supports "even" (alignment to an even address); the real Microware r68
-   Assembler kennt "even" NICHT (empirisch verifiziert: "bad mnemonic"), wohl
-   aber "align 4" (Longword-Ausrichtung -- strenger als "even", aber fuer
-   dc.l-Daten das eigentlich Gemeinte und ebenfalls empirisch verifiziert). */
+/* vasm supports "even" (alignment to an even address), but the real Microware
+   r68 assembler does NOT know "even" (verified empirically: "bad mnemonic").
+   It does support "align 4", which is stricter than "even" but is the intended
+   alignment for dc.l data and was also verified empirically. */
 static void emitAlign(FILE* out) {
 	fputs(os9Mode ? "\talign\t4\n" : "\teven\n", out);
 }
@@ -346,8 +342,8 @@ static void emitAlign(FILE* out) {
    selbst (kurze Distanz, nie ueber 32 KB). emitLeaGlobal()/emitCall() selbst
    bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
    aufgefrischten Wert). */
-/* Ein Globales ist GANZ null, wenn kein Initialisierer einen Wert setzt: ein
-   An array without any GINIT or a scalar with initial value 0. These belong
+/* A global is ALL ZERO when no initializer assigns a value: an array without
+   any GINIT or a scalar with initial value 0. These belong
    in the remote vsect; arrays WITH GINIT remain in the psect or their values
    would be lost. */
 static int globalAllZero(Global* g) {
@@ -364,11 +360,11 @@ static int globalRemote(int gidx) {
 }
 static void emitLeaGlobal(FILE* out, int gidx, const char* reg) {
 	if (globalRemote(gidx)) {
-		/* a6 = Prozessdatenbasis (Ultra-C-Handbuch: Static Storage Pointer; im
-		   -os9-Modus ist a5 der Frame-Pointer, a6 bleibt unangetastet). Der
-		   Symbolwert eines vsect-Symbols ist ein Offset IN diesem Bereich, den
-		   l68/ql68 zur Bindezeit einsetzen -- keine Laufzeitrelokation, und weil
-		   das Immediate 32 Bit breit ist, auch keine Distanzgrenze. */
+		/* a6 = process data base (Ultra-C manual: static storage pointer). In
+		   -os9 mode a5 is the frame pointer, so a6 remains untouched. A vsect
+		   symbol value is an offset within this area, inserted by l68/ql68 at
+		   link time; no runtime relocation or distance limit is needed because
+		   the immediate is 32 bits wide. */
 		char gAsmName[NAME_LEN + 40];
 		mangledName(gAsmName, "tc_g_", globals[gidx].name, globals[gidx].isStatic);
 		fprintf(out, "\tmovea.l\t#%s,%s\n\tadda.l\ta6,%s\n", gAsmName, reg, reg);
