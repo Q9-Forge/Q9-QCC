@@ -1,0 +1,10 @@
+         psect   dat,$0101,$8000,1,100,start
+start    moveq   #0,d0
+         move.l  zeiger(a6),d1
+         rts
+         vsect
+wert     dc.l    $11223344
+zeiger   dc.l    start
+puffer   ds.b    8
+         ends
+         ends
