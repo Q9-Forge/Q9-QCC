@@ -1,0 +1,87 @@
+#---------------------------------------------------------------------------------------------------------------------------------------------------
+# Oberon-07 Grammer in EBNF (nach N. Wirth, The Programming Language Oberon, Revision 2013/2016)
+# 28.04.2020 Andreas Foellmer
+# 2026-07-19: vervollstaendigt -- Schluesselwoerter gequotet (standen als undefinierte NTS da),
+#             string/character-Regeln mit \042-Escape, PEG-gerechte Reihenfolgen fuer die
+#             geordnete Auswahl der Codegenerierung (real VOR integer, Hex-Integer VOR Dezimal,
+#             "<=" VOR "<"), letter-Aufzaehlung war nie fertig getippt (nur A/B/Z/a/b/z)
+#---------------------------------------------------------------------------------------------------------------------------------------------------
+
+ident = letter {letter | digit}.
+letter = "A"~"Z" | "a"~"z".
+digit = "0"~"9".
+# real VOR integer: bei geordneter Auswahl wuerde integer sonst "1.5" als "1" matchen
+number = real | integer.
+# Hex VOR Dezimal: digit {hexDigit} "H" muss zuerst versucht werden ("0FFH")
+integer = digit {hexDigit} "H" | digit {digit}.
+real = digit {digit} "." {digit} [ScaleFactor].
+ScaleFactor = "E" ["+" | "-"] digit {digit}.
+hexDigit = digit | "A"~"F".
+string = "\042" {character} "\042" | digit {hexDigit} "X".
+# druckbares ASCII ausser dem Anfuehrungszeichen (\042)
+character = " "~"!" | "#"~"~".
+
+module = "MODULE" ident ";" [ImportList] DeclarationSequence
+    ["BEGIN" StatementSequence] "END" ident ".".
+ImportList = "IMPORT" import {"," import} ";".
+import = ident [":=" ident].
+DeclarationSequence = ["CONST" {ConstDeclaration ";"}]
+    ["TYPE" {TypeDeclaration ";"}] ["VAR" {VariableDeclaration ";"}]
+    {ProcedureDeclaration ";"}.
+ConstDeclaration = identdef "=" ConstExpression.
+ConstExpression = expression.
+TypeDeclaration = identdef "=" StrucType.
+StrucType = ArrayType | RecordType | PointerType | ProcedureType.
+ArrayType = "ARRAY" length {"," length} "OF" type.
+length = ConstExpression.
+RecordType = "RECORD" ["(" BaseType ")"] [FieldListSequence] "END".
+BaseType = qualident.
+FieldListSequence = FieldList {";" FieldList}.
+FieldList = IdentList ":" type.
+IdentList = identdef {"," identdef}.
+PointerType = "POINTER" "TO" type.
+ProcedureType = "PROCEDURE" [FormalParameters].
+FormalParameters = "(" [FPSection {";" FPSection}] ")" [":" qualident].
+FPSection = ["VAR"] ident {"," ident} ":" FormalType.
+FormalType = {"ARRAY" "OF"} qualident.
+qualident = [ident "."] ident.
+identdef = ident ["*"].
+VariableDeclaration = IdentList ":" type.
+type = qualident | StrucType.
+ProcedureDeclaration = ProcedureHeading ";" ProcedureBody ident.
+ProcedureHeading = "PROCEDURE" identdef [FormalParameters].
+ProcedureBody = DeclarationSequence ["BEGIN" StatementSequence]
+    ["RETURN" expression] "END".
+expression = SimpleExpression [relation SimpleExpression].
+# "<=" VOR "<" und ">=" VOR ">": geordnete Auswahl
+relation = "=" | "#" | "<=" | "<" | ">=" | ">" | "IN" | "IS".
+SimpleExpression = ["+" | "-"] term {AddOperator term}.
+AddOperator = "+" | "-" | "OR".
+term = factor {MulOperator factor}.
+MulOperator = "*" | "/" | "DIV" | "MOD" | "&".
+factor = number | string | "NIL" | "TRUE" | "FALSE" |
+    set | designator [ActualParameters] | "(" expression ")" | "~" factor.
+designator = qualident {selector}.
+selector = "." ident | "[" ExpList "]" | "^" | "(" qualident ")".
+set = "{" [element {"," element}] "}".
+element = expression [".." expression].
+ExpList = expression {"," expression}.
+ActualParameters = "(" [ExpList] ")".
+statement = [assignment | ProcedureCall | IfStatement | CaseStatement |
+    WhileStatement | RepeatStatement | ForStatement].
+assignment = designator ":=" expression.
+ProcedureCall = designator [ActualParameters].
+StatementSequence = statement {";" statement}.
+IfStatement = "IF" expression "THEN" StatementSequence
+    {"ELSIF" expression "THEN" StatementSequence}
+    ["ELSE" StatementSequence] "END".
+CaseStatement = "CASE" expression "OF" case {"|" case} "END".
+case = [CaseLabelList ":" StatementSequence].
+CaseLabelList = LabelRange {"," LabelRange}.
+LabelRange = label [".." label].
+label = integer | string | qualident.
+WhileStatement = "WHILE" expression "DO" StatementSequence
+    {"ELSIF" expression "DO" StatementSequence} "END".
+RepeatStatement = "REPEAT" StatementSequence "UNTIL" expression.
+ForStatement = "FOR" ident ":=" expression "TO" expression ["BY" ConstExpression]
+    "DO" StatementSequence "END".

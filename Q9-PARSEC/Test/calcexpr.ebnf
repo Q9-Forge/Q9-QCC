@@ -1,0 +1,7 @@
+expr = term {addop term}.
+term = factor {mulop factor}.
+factor = number.
+addop = "+" | "-".
+mulop = "*" | "/".
+number = digit {digit}.
+digit = "0"~"9".
