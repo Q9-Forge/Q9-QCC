@@ -76,8 +76,8 @@ echo "  ok ($(wc -l < stage2.s68k | tr -d ' ') Assemblerzeilen)"
 echo "== 3/6 r68 + l68 =="
 w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
 [ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
-w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe stage2.s68 -o=stage2.r'
-[ -f stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68k"; }
+w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe stage2.s68k -o=stage2.r'
+[ -f stage2.r ] && [ -s stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68k"; }
 # -M=1024K: der Parser steigt rekursiv ab.  Mit dem Standard-Stack (3072 Byte)
 # bricht schon die Rauchprobe mit "**** Stack Overflow ****" ab.
 w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcc-selfhost\\q9_cstart.r Z:\\tmp\\qcc-selfhost\\stage2.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcc-selfhost\\q9_qcc_stage2"
