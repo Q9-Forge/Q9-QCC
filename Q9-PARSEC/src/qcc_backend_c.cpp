@@ -1215,7 +1215,7 @@ static void emitIR(FILE* out) {
 		fprintf(out, "\tdc.l\ttc_mod_i32-tc_functab__%s\n\tdc.l\ttc_umod_u32-tc_functab__%s\n", psectName, psectName);
 		fprintf(out, "\tdc.l\ttc_putint-tc_functab__%s\n\tdc.l\ttc_putuint-tc_functab__%s\n\tdc.l\ttc_putchar-tc_functab__%s\n",
 			psectName, psectName, psectName);
-		/* 2026-07-26 (siehe registerExtern()-Kommentar): externe CALLEXT/CALLEXTP-
+		/* 2026-07-26 (see the registerExtern() comment): external CALLEXT/CALLEXTP
 		   Ziele bekommen KEINEN direkten Tabelleneintrag auf den rohen externen
 		   Namen (der laege ausserhalb dieses Psects, "label-tab" waere dann keine
 		   Link-Zeit-Konstante mehr innerhalb DIESES Psects -- tatsaechlich hatten
@@ -1231,7 +1231,7 @@ static void emitIR(FILE* out) {
 			mangledName(asmName, "tc_", funcs[fi].name, funcs[fi].isStatic);
 			fprintf(out, "\tdc.l\t%s-tc_functab__%s\n", asmName, psectName);
 		}
-		/* Daten-Indirektionstabelle (siehe emitLeaGlobal()-Kommentar): MUSS wie
+		/* Data indirection table (see the emitLeaGlobal() comment): MUST, like
 		   tc_functab direkt nach tc_start/main stehen (VOR den potenziell
 		   riesigen Funktionsrumpf-Texten), damit das einmalige
 		   "lea tc_gadata(pc),a3" immer erreichbar bleibt, egal wie gross der
@@ -1257,7 +1257,7 @@ static void emitIR(FILE* out) {
 		for (gi = 0; gi < globalCount; gi++) {
 			char gAsmName[NAME_LEN + 40];
 			mangledName(gAsmName, "tc_g_", globals[gi].name, globals[gi].isStatic);
-			/* Ein Globales im vsect remote ist ueber DIESE Tabelle nicht erreichbar:
+			/* A global in the remote vsect cannot be reached through THIS table:
 			   sein Symbolwert ist ein Offset im DATENbereich, die Tabelle haelt
 			   Offsets im psect -- die Differenz waere zweierlei Mass. Der Platz
 			   bleibt aber belegt, damit gidx*4 und der tc_extcall_tmp-Eintrag am
@@ -1266,7 +1266,7 @@ static void emitIR(FILE* out) {
 			else fprintf(out, "\tdc.l\t%s-tc_gadata__%s\n", gAsmName, psectName);
 		}
 		fprintf(out, "\tdc.l\ttc_extcall_tmp-tc_gadata__%s\n", psectName);
-		/* 2026-07-26 (siehe registerExtern()-Kommentar oben): ein Wrapper-Stub pro
+		/* 2026-07-26 (see the registerExtern() comment above): one wrapper stub per
 		   externer Funktion, DIREKT hier (nah an tc_functab/tc_gadata, also immer
 		   PC-relativ sicher erreichbar) platziert. "jsr (a2)" (von der Aufrufstelle,
 		   ueber den a4-Tabellenmechanismus) hat bereits EINE Ruecksprungadresse auf
@@ -1291,7 +1291,7 @@ static void emitIR(FILE* out) {
 		}
 	}
 
-	/* 2026-07-26, live auf Q9 gefunden: emitM68kCore()/tc_putint/tc_putuint/
+	/* 2026-07-26, found live on Q9: emitM68kCore()/tc_putint/tc_putuint/
 	   tc_putchar/tc_io_write MUESSEN (wie tc_functab/tc_gadata/die Extern-
 	   Wrapper-Stubs oben) NAH BEIEINANDER UND NAH AN DEN TABELLEN liegen --
 	   vorher stand dieser ganze Block NACH der kompletten Funktionsrumpf-
@@ -1313,7 +1313,7 @@ static void emitIR(FILE* out) {
 	if (!partMode || runtimeMode) {
 	emitM68kCore(out);
 	if (os9Mode) {
-		/* Echte Ausgabe ueber die reale Microware-clib.l-Funktion _os_write
+		/* Real output through the Microware clib.l function _os_write
 		   (Signatur laut OS9/SRC/DEFS/modes.h: error_code _os_write(path_id,
 		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
 		   = stdout, analog zu Unix-Filedeskriptoren). BEWUSST nicht ueber
@@ -1351,7 +1351,7 @@ static void emitIR(FILE* out) {
 		fputs("\tlea\ttc_io_buf(pc),a1\n\tmove.b\td0,(a1)\n\tmoveq\t#1,d1\n\tbsr\ttc_io_write\n", out);
 		fprintf(out, "\tunlk\t%s\n\trts\n\n", framePtr());
 
-		/* a1=Puffer, d1=Laenge -- ruft _os_write(1,a1,&tc_io_cnt) auf.
+		/* a1=buffer, d1=length -- calls _os_write(1,a1,&tc_io_cnt).
 		   2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/CALLEXT-
 		   Kommentar): "bsr _os_write" ist ein ECHTER externer Aufruf wie jeder
 		   CALLEXT, zerstoert also genauso a3/a4 (reine ABI-Temporaer-Register).
@@ -1372,13 +1372,13 @@ static void emitIR(FILE* out) {
 		if (largeDataMode) fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		fputs("\trts\n\n", out);
 	} else {
-		// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
+		// Target runtime stubs: replaceable; no absolute access, so PIC-friendly.
 		fputs("tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n", out);
 		fputs("tc_exit:\trts\t; Target Runtime beendet den Prozess\n", out);
 	}
-	/* Scratch-Feld fuer CALLEXT/CALLEXTP (siehe dort) -- max. 8 auf den Stack
+	/* Scratch field for CALLEXT/CALLEXTP (see there) -- at most 8 stack-passed
 	   gereichte Argumente eines externen Aufrufs. Immer deklariert (32 Byte),
 	   unabhaengig davon ob das Programm CALLEXT tatsaechlich nutzt. vasm kennt
 	   "ds.l" (reservierter, uninitialisierter Speicher); der echte Microware-
@@ -1388,7 +1388,7 @@ static void emitIR(FILE* out) {
 	emitAlign(out);
 	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
 	if (os9Mode) {
-		/* tc_io_buf: Ziffernpuffer fuer tc_putint/tc_putuint (max. "-2147483648\r"
+		/* tc_io_buf: digit buffer for tc_putint/tc_putuint (maximum "-2147483648\r"
 		   = 12 Byte, rueckwaerts befuellt) UND Einzelbyte-Puffer fuer tc_putchar
 		   (nutzt nur das erste Byte). tc_io_cnt: IN/OUT-Zaehlzelle fuer den
 		   echten _os_write-Aufruf (siehe tc_io_write oben). */
