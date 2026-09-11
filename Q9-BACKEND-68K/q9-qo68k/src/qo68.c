@@ -8,22 +8,15 @@
  * Edition history:
  *   2026-09-11  Introduced the English source-header format.
  *
- * Arbeitet NICHT auf der IR, sondern auf dem bereits erzeugten Assemblertext --
- * dieselbe Stelle, an der Microwares eigener Optimierer o68 in der klassischen
- * Kette sitzt (cc -> cpp -> c68 -> o68 -> r68 -> l68, auf einer echten OS-9/68K-
- * Binaerdatei nachgemessen, 08.09.2026). Grund: die Verschwendung entsteht erst
- * bei der UMSETZUNG der abstrakten Stack-IR in echte 68k-Speicherzugriffe, nicht
- * in der IR selbst -- ein PUSH/POP-Paar in der IR ist dort keine ueberfluessige
- * Sequenz, sondern die Opcode-Semantik selbst (jeder Aufrufer verlaesst sich
- * darauf, dass sein Operand "vor ihm" auf dem Stapel liegt). Erst wenn das
- * 68k-Backend daraus "move.l X,-(a7)" gefolgt von "move.l (a7)+,Y" macht, ist
- * der Umweg ueber den Speicher sichtbar und entfernbar.
+ * Operates on generated assembly text, not on IR. This is the same position
+ * occupied by Microware's o68 in the classic OS-9/68K toolchain. Stack
+ * push/pop pairs are meaningful in the abstract IR; they become removable
+ * only after the 68k backend lowers them to memory operations such as
+ * "move.l X,-(a7)" followed by "move.l (a7)+,Y".
  *
- * ERSTES MUSTER: "move.l SRC,-(a7)" unmittelbar gefolgt von "move.l (a7)+,DST"
- * wird zu "move.l SRC,DST". Das ist an DIESER Stelle immer sicher, unabhaengig
- * vom Kontext: ein Push, dem sofort und ausschliesslich sein eigener Pop folgt,
- * aendert A7 zwischenzeitlich, aber nichts sonst beobachtet das -- der Wert
- * geht unveraendert von SRC nach DST, in einem Schritt statt zwei.
+ * FIRST PATTERN: "move.l SRC,-(a7)" immediately followed by
+ * "move.l (a7)+,DST" becomes "move.l SRC,DST". This is safe here because
+ * the push is immediately followed only by its matching pop.
  *
  * ZWEITES MUSTER (08.09.2026, an der echten Haeufigkeitsverteilung von
  * qr68s eigener Ausgabe gefunden -- 2064 Vorkommen, der mit Abstand groesste
