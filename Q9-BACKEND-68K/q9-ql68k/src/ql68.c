@@ -1028,7 +1028,7 @@ static void emit(void)
 	int n;
 	int crc;
 
-	/* Der Modulaufbau haengt am TYP (s. module.h):
+	/* Module layout depends on the TYPE (see module.h):
 	     Typ 15 (Devic)  mod_dev    -- gar keine feste Erweiterung
 	     Typ 14 (Drivr)  mod_driver -- nur _mexec/_mexcpt/_mdata (12 Byte)
 	     sonst           mod_exec   -- 24 Byte mit Stack, IData, IRefs
@@ -1039,7 +1039,7 @@ static void emit(void)
 	   Gemessen an sc8x30.a (Treiber sc172): _mexec = $3c zeigt auf die
 	   Routinentabelle, die die ersten 14 Codebytes sind; _mdata = $114
 	   sind die 276 Byte ds; der Name liegt auf $664 = $3c + 1576. */
-	/* Wie gross die Kopferweiterung ist, entscheidet die SPRACHE, nicht
+	/* Header extension size depends on the LANGUAGE, not the type.
 	   der Typ -- an den gebundenen SDK-Modulen nachgemessen, indem der
 	   Codeanfang aus M$Name minus Codegroesse zurueckgerechnet wurde:
 
@@ -1082,7 +1082,7 @@ static void emit(void)
 		bInit[k] = totalUninit + totalInit;
 		totalInit = totalInit + alignUp(rIDat[k], optAlign);
 	}
-	/* Die Sprungtabelle liegt am ENDE der initialisierten Daten -- an
+	/* The jump table is placed at the END of initialized data. In the
 	   l68 gemessen: dort endete sie genau auf M$Data. Im Zaehllauf ist
 	   jtN noch 0; das macht nichts, weil die Tabelle in den DATEN liegt
 	   und die Codelagen nicht verschiebt. Genau deshalb genuegen zwei
@@ -1090,7 +1090,7 @@ static void emit(void)
 	jtBase = totalUninit + totalInit;
 	totalInit = totalInit + jtN * 6;
 
-	/* --- DIE FERNDATEN, hinter allem anderen -------------------------
+	/* --- REMOTE DATA, after all other data ----------------------------
 	   An l68 gemessen (ein psect mit 8000 nicht-remote, 8 Byte
 	   initialisiert, 70000 remote):
 	     blk  (nicht remote)  -> Datenoffset     0
@@ -1115,7 +1115,7 @@ static void emit(void)
 		totalRemote = totalRemote + alignUp(rRem[k], optAlign);
 	}
 
-	/* --- DIE 64-KB-GRENZE DER NICHT-REMOTE-DATEN ------------------------
+	/* --- 64 KiB LIMIT FOR NON-REMOTE DATA ------------------------------
 	   Ein nicht-remoter vsect wird ueber "d16(a6)" angesprochen. Mit dem
 	   $8000-Vorspann deckt ein 16-Bit-Displacement genau die Offsets
 	   0..65535 ab (0 wird -$8000, 65535 wird $7fff) -- deshalb liegt die
@@ -1143,9 +1143,9 @@ static void emit(void)
 	   bricht bei ihnen ohnehin schon vorher ab, alles hier ist also
 	   nicht-remote. */
 	if (totalUninit + totalInit > 65536)
-		fatal("mehr als 64 KB nicht-remote Daten -- ein d16(a6) reicht nicht so weit", "");
+		fatal("more than 64 KiB non-remote data -- d16(a6) cannot reach it", "");
 
-	/* --- Rohe Binaerausgabe: kein Kopf, kein Name, kein CRC. Der Code
+	/* --- Raw binary output: no header, name or CRC. Code starts at the
 	   liegt ab Dateianfang, dahinter IData und IRefs wie sonst auch.
 	   Auch der $8000-Vorspann auf die Daten entfaellt -- den legt in
 	   dieser Betriebsart der Startcode selbst an (Handbuch Kap. 9:
@@ -1179,11 +1179,11 @@ static void emit(void)
 		symAdd("_btext", 0, 6);
 		symAdd("etext", idataAt, 6);
 		symAdd("_bidata", idataAt, 6);
-		/* Typ 0 (Daten), nicht 6 (equ): "end" bezeichnet das Ende des
+		/* Type 0 (data), not 6 (equ): "end" denotes the end of the
 		   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
 		   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
 		   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
-		/* "end" bezeichnet das Ende des GANZEN Datenbereichs, Ferndaten
+		/* "end" denotes the end of the ENTIRE data area, including remote
 		   eingeschlossen -- an l68 gemessen: mit 4 Byte initialisiert und
 		   8000 Byte remote steht end auf 8004. */
 		symAdd("end", totalUninit + totalInit + totalRemote, 0);
@@ -1197,7 +1197,7 @@ static void emit(void)
 		putIrefList(irefData, irefDataN);
 		symAdd("edata", irefAt, 6);
 		symAdd("_birefs", irefAt, 6);
-		/* Ist GENAU EINE der beiden Listen leer, haengt l68 vier
+		/* If exactly ONE of the two lists is empty, l68 appends four
 		   Nullbytes an -- an sieben Faellen gemessen (keine, nur
 		   Code-, nur Daten-, beide Zeigerarten, je ein bis drei
 		   Stueck). Sind beide leer oder beide gefuellt, kommt nichts.
