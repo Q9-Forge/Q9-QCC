@@ -4958,7 +4958,7 @@ static void doInstruction(void)
 	}
 
 	/* --- exchange registers --- */
-	/* Gemessen: "exg d0,d1" $c141, "exg a0,a1" $c149, "exg d0,a1" $c189 --
+/* Measured: "exg d0,d1" $c141, "exg a0,a1" $c149, "exg d0,a1" $c189 --
 	   und "exg a1,d0" ergibt DASSELBE $c189, r68 dreht die gemischte Form
 	   also so, dass das Datenregister im Rx-Feld steht. */
 	if (baseIs(base, "exg")) {
@@ -5022,8 +5022,8 @@ static void doInstruction(void)
 		return;
 	}
 	/* --- via function codes (68010) --- */
-	/* Gemessen: "moves.l d0,(a0)" $0e90 + $0800 (Bit 11 = Register nach
-	   Speicher), "moves.l (a0),d0" $0e90 + $0000. */
+	/* Measured: "moves.l d0,(a0)" $0e90 + $0800 (bit 11 = register to
+	   memory), "moves.l (a0),d0" $0e90 + $0000. */
 	if (baseIs(base, "moves")) {
 		int ext;
 		int rn;
@@ -5180,7 +5180,7 @@ static void doInstruction(void)
 	}
 
 	/* --- conditional trap (trapcc, 68020) --- */
-	/* Gemessen: $50F8 | Bedingung<<8 | Form -- Form 4 ohne Operand
+	/* Measured: $50F8 | condition<<8 | form -- form 4 without operand
 	   ("trapeq" -> $57fc), 2 mit Wort ("trapeq.w #7" -> $57fa $0007),
 	   3 mit Langwort ("trapeq.l #7" -> $57fb $00000007). "trapt" und
 	   "trapf" sind die Bedingungen 0 und 1; wie bei Scc kennt condOf()
@@ -5195,7 +5195,7 @@ static void doInstruction(void)
 			cond = 1;
 		if (cond >= 0) {
 			if (size == 0) {
-				/* Ohne Groessenbuchstaben hat trapcc keinen
+				/* Without a size suffix, trapcc has no
 				   Operanden -- das dritte Feld ist dann schon
 				   der Kommentar, s. dropOps(). */
 				dropOps();
@@ -5224,7 +5224,7 @@ static void doInstruction(void)
 
 /* Does the statement emit at least one word? If so, r68 aligns it first -- and
    zwar BEVOR das Label der Zeile seinen Wert bekommt. Gemessen an
-   "dc.b 1 / lab: nop": lab hat den Wert 2, nicht 1. */
+	   "dc.b 1 / lab: nop": lab has value 2, not 1. */
 static int lineAligns(void)
 {
 	char b[64];
@@ -5252,7 +5252,7 @@ static int lineAligns(void)
 	}
 	/* A macro invocation emits nothing itself; whatever the body emits,
 	   richtet sich dort aus. r68 macht es genauso: zwei Aufrufe, die je
-	   ein "dc.b" ausdehnen, ergeben zwei aufeinanderfolgende Bytes. */
+	   expanding a "dc.b" produces two consecutive bytes. */
 	if (lnOpRaw[0] != 0 && macFind(intern(lnOpRaw)) >= 0)
 		return 0;
 	return 1;
