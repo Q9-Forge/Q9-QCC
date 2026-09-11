@@ -1,7 +1,7 @@
 /*================================================================================
- * qcc_backend_peephole.c -- Peephole-Optimierer fuer die 68k-Ausgabe (-peephole)
+ * qcc_backend_peephole.c -- peephole optimizer for 68k output (-peephole)
  *
- * Arbeitet NICHT auf der IR, sondern auf dem bereits erzeugten Assemblertext --
+ * Operates on generated assembly text rather than IR --
  * dieselbe Stelle, an der Microwares eigener Optimierer o68 in der klassischen
  * Kette sitzt (cc -> cpp -> c68 -> o68 -> r68 -> l68, auf einer echten OS-9/68K-
  * Binaerdatei nachgemessen, 08.09.2026). Grund: die Verschwendung entsteht erst
