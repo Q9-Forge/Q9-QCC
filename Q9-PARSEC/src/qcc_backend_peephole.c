@@ -65,8 +65,8 @@
  * Fall bleibt die alte Verschmelzung zu "label:\tmove.l\tDn,Dn" bestehen,
  * harmlos, nur nicht ideal.
  *
- * FUENFTES MUSTER (09.09.2026, ueber Haeufigkeit gegen Aufwand entschieden,
- * nicht geraten): "move.l #IMM,Dn" mit IMM im Bereich -128..127 wird zu
+ * FIFTH PATTERN (09.09.2026, selected by frequency versus effort, not guessed):
+ * "move.l #IMM,Dn" with IMM in the range -128..127 becomes
  * "moveq #IMM,Dn" -- 1928 Vorkommen in qr68s eigener Ausgabe (gegen 76 fuer
  * Sprungketten-Verkuerzung und 0 fuer bra-auf-naechste-Zeile, beide
  * verworfen: seltener UND nur mit datei-weiter Label-Verfolgung zu haben,
@@ -90,7 +90,7 @@
  * nie textgleich mit einem Zielregister), ein einzelner Durchlauf am Ende
  * reicht deshalb aus.
  *
- * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
+ * MULTIPLE PASSES: removing one line often exposes the next opportunity --
  * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
  * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
  * wiederholt deshalb alle drei Muster, bis ein Durchlauf nichts mehr
@@ -99,13 +99,13 @@
  * Nachbarschaft verlassen (phLines[i+1]) -- eine schon gestrichene Zeile
  * liegt weiterhin im Array, phNextKept() ueberspringt sie.
  *
- * ARCHITEKTUR fuer weitere Muster (o68-Lehre): reines LESEN der Originalzeilen
+ * ARCHITECTURE for additional patterns (o68 lesson): read original lines only
  * (keine Mutation), Ersetzungen landen in einem eigenen Synthesepuffer, eine
  * Zeile wird durch Streichen markiert statt physisch verschoben (o68s remins-
  * Idee) -- neue Muster kommen als weitere phFold*-Funktionen dazu, nicht als
  * Sonderfaelle in einer bestehenden.
  *
- * SPEICHERGROESSEN GEMESSEN, NICHT GERATEN: qr68s eigene Assemblerausgabe mit
+ * MEMORY SIZES ARE MEASURED, NOT GUESSED: qr68's own assembler output with
  * -remotedata (der groesste bisher auf dem Ziel gelaufene Fall ausserhalb des
  * Selbsthosts) hat 75.273 Zeilen / 1.588.771 Byte. Die Grenzen unten geben
  * darauf reichlich Kopfraum; QCCs eigener Selbsthost-Bau (222.832 Zeilen /
