@@ -1,4 +1,4 @@
-/* MESSUNG, kein Soll-Ist-Vergleich: wie trennt Microwares clib Zeilen?
+/* Measurement, not pass/fail comparison: how does Microware clib split lines?
  *
  * Die Frage steht vor qclibs fgets. OS-9 nutzt herkoemmlich CR ($0d) als
  * Zeilenende, C schreibt LF ($0a) vor, und die IR-Dateien der Kette
@@ -10,7 +10,7 @@
  * Danach liest fgets sie zurueck, und das Programm druckt jede Zeile als
  * Bytefolge. Aus der Aufteilung folgt die Antwort.
  *
- * Dieses Programm wird gegen clib gebunden (qclib hat noch kein fgets).
+ * This program is linked against clib (qclib does not yet provide fgets).
  */
 
 #include <stdio.h>
