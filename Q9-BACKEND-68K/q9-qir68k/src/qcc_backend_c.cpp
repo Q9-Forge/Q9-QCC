@@ -1505,20 +1505,15 @@ static void emitIR(FILE* out) {
 		   Stack-Langworte -- beide Referenzpfade konnten den Fehler prinzipiell
 		   nicht zeigen. Nur echtes 68k-Big-Endian ist betroffen.
 		   FIX: einmalig im Prolog das niederwertige Byte an die Slot-Basis
-		   kopieren. Danach stimmen ALLE bestehenden Byte-Zugriffspfade
-		   (LOADC, STOREC sowie ADDRL+LOADIND/STOREIND) unveraendert ueberein --
-		   exakt wie bei lokalen char-Slots, kein Eingriff an den Opcodes noetig.
-		   Betroffen sind nur Parameter, die im Rumpf TATSAECHLICH byteweise
-		   benutzt werden (LOADC/STOREC auf ihrem Slot) -- das ist der
-		   eindeutige Beleg, dass es ein char-Parameter ist; int- und
-		   Pointer-Parameter bleiben unangetastet.
-		   BEWUSST OFFENE RESTLUECKE: ein char-Parameter, dessen Adresse per
-		   ADDRL genommen wird, OHNE dass er irgendwo per LOADC/STOREC
-		   angefasst wird ("void f(char c){char* p; p=&c; ...}"), wird hier
-		   nicht erkannt -- die IR ("FUNC <name> <nargs>", s. docs/IR_OPCODES.md)
-		   traegt keine Parametertypen, und ADDRL allein ist kein Beleg fuer
-		   char (bei einem int-Parameter waere die Verengung sogar falsch).
-		   Im echten Generator kommt dieser Fall nicht vor. */
+		   copy the low byte to the slot base. All existing byte-access paths
+		   (LOADC, STOREC, and ADDRL+LOADIND/STOREIND) then remain unchanged, just
+		   as for local char slots. Only parameters actually used byte-wise in the
+		   body (LOADC/STOREC on their slot) are adjusted; int and pointer parameters
+		   remain untouched. A known limitation is that a char parameter whose address
+		   is taken with ADDRL but never accessed through LOADC/STOREC cannot be
+		   recognized: the IR carries no parameter types, and ADDRL alone does not
+		   prove char (narrowing an int parameter would be wrong). The real generator
+		   does not currently produce this case. */
 		{
 			int pslot;
 			int pk;
