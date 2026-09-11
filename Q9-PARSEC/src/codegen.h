@@ -1,11 +1,10 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   codegen.h                                                                      Ver. 1.00
 // Owner:  AF
-// Desc.:  Schnittstelle AST-Aufbau + Codegenerierung (siehe docs/ARCHITEKTUR.md).
-//         Der Parser in parsec.cpp baut ueber die astPush*/astGroup*-Aufrufe waehrend des
-//         normalen Parsens einen AST auf; daraus erzeugen genParserC()/genParser68k()
-//         einen backtracking-rekursiven Abstiegsparser (C-Zwilling zur Validierung,
-//         68k-Assembler als eigentliches Ziel).
+// Desc.:  AST construction and code-generation interface (see docs/ARCHITEKTUR.md).
+//         parsec.cpp builds an AST through astPush*/astGroup* calls during normal parsing;
+//         genParserC()/genParser68k() then generate a backtracking recursive-descent parser
+//         (C counterpart for validation, 68k assembly as the primary target).
 //
 // Edition History
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
@@ -17,12 +16,11 @@
 #define CODEGEN_H
 
 //------------------------------------------------------------------------------------------------
-// AST-Aufbau -- wird vom Parser (parsec.cpp) waehrend des Parsens aufgerufen.
-// Konvention: factor() hinterlaesst genau EINEN Knoten auf dem AST-Stack;
-// term()/expression() fassen mit astGroupSeq()/astGroupAlt() alles oberhalb ihrer
-// gemerkten Marke (astMark()) zusammen; rule() schliesst mit astFinishRule() ab.
-// Bei Grammatik-Fehlern (errorCnt>0) wird der AST einfach nie benutzt -- die
-// Funktionen sind gegen unbalancierte Aufrufe (Fehler-Recovery) robust.
+// AST construction, called by parsec.cpp during parsing. Convention: factor()
+// leaves exactly one node on the AST stack; term()/expression() group everything
+// above astMark() with astGroupSeq()/astGroupAlt(); rule() closes with
+// astFinishRule(). The AST is unused when errorCnt>0; these functions tolerate
+// unbalanced calls during error recovery.
 //------------------------------------------------------------------------------------------------
 void astReset();
 int  astMark();
@@ -36,19 +34,19 @@ void astWrapRep();				// oberster Knoten -> {..}
 void astFinishRule(const char* name);
 
 //------------------------------------------------------------------------------------------------
-// LEXER-Konfiguration (aus dem [LEXER]-Block der Arbeitsdatei, siehe ARCHITEKTUR.md §8).
-// buf = kompletter Roh-Blockinhalt (Zeilen mit \n getrennt), NULL/leer = kein Lexer
-// (Codegen bleibt dann zeichenbasiert wie bisher). Liefert 1 ok / 0 Konfigurationsfehler.
-// Unterstuetzte Zeilen:
-//   WHITESPACE = " \t\r\n"        Zeichen, die zwischen Symbolen ueberlesen werden
-//   TOKEN <regel>                 Regel ist lexikalisch (Token-Wurzel); ihr transitiver
-//                                 Abschluss wird OHNE Whitespace-Skipping generiert
-//   COMMENT LINE = "//"           Zeilenkommentar der OBJEKTsprache (bis Zeilenende)
+// LEXER configuration from the workfile's [LEXER] block (see ARCHITEKTUR.md §8).
+// buf is the complete raw block, with lines separated by \n; NULL/empty means
+// no lexer configuration and preserves character-based generation. Return 1 on
+// success and 0 on configuration error. Supported lines:
+//   WHITESPACE = " \t\r\n"        characters skipped between symbols
+//   TOKEN <rule>                  lexical rule root; its transitive closure is
+//                                 generated without whitespace skipping
+//   COMMENT LINE = "//"           object-language line comment through line end
 //------------------------------------------------------------------------------------------------
 int lexParseConfig(const char* buf);
 
 //------------------------------------------------------------------------------------------------
-// CODEGEN-Konfiguration (aus dem [CODEGEN]-Block der Arbeitsdatei).
+// CODEGEN configuration from the workfile's [CODEGEN] block.
 // buf = kompletter Roh-Blockinhalt, NULL/leer = Defaults. Unterstuetzte Zeilen:
 //   M68K OS9                zusaetzlich <basis>_os9.a im r68/psect-Format erzeugen
 //   M68K PSECT = <name>     psect-Name (Default: <basisname>_p)
@@ -60,7 +58,7 @@ int cgenWantOS9();
 const char* cgenStartRule();		// "" wenn nicht konfiguriert
 
 //------------------------------------------------------------------------------------------------
-// ACTIONS-Konfiguration (aus dem [NUTZER-CODE]-Block der Arbeitsdatei, siehe ARCHITEKTUR.md §9).
+// ACTIONS configuration from the workfile's [USER-CODE] block (see ARCHITEKTUR.md §9).
 // buf = kompletter Roh-Blockinhalt, NULL/leer = keine Aktionen. Unterstuetzte Zeilen:
 //   ACTION AFTER <regel> CALL <name>    Aufruf direkt nach Erfolg von <regel>
 //   ROUTINE C <name> ... END            rohe C-Funktion void <name>(const char*,const char*)
@@ -71,10 +69,11 @@ const char* cgenStartRule();		// "" wenn nicht konfiguriert
 int actionsParseConfig(const char* buf);
 
 //------------------------------------------------------------------------------------------------
-// Codegenerierung -- nur bei fehlerfreier, nicht-linksrekursiver Grammatik aufrufen.
-// Liefert 1 bei Erfolg, 0 bei Fehler (Meldung bereits ausgegeben).
-// genParser68kOS9: wie genParser68k, aber im Microware-r68-Format (nam/psect/ends,
-// '*'-Kommentarzeilen); baseName = Basisname ohne Pfad fuer den Default-psect-Namen.
+// Call code generation only for an error-free, non-left-recursive grammar.
+// Return 1 on success and 0 on error (a diagnostic has already been printed).
+// genParser68kOS9 is like genParser68k but uses Microware r68 format
+// (nam/psect/ends and '*' comment lines); baseName is the path-free basename
+// used for the default psect name.
 //------------------------------------------------------------------------------------------------
 int genParserC(const char* path);
 int genParser68k(const char* path);
