@@ -5,9 +5,9 @@
  * Q9-Tools/System/touch,date,dir, but
  * time()/localtime() are intentionally not declared yet: qclib does not have
  * the required OS-9 clock syscall (a future project). These headers otherwise
- * remain aligned with
- * dem, was qclib tatsaechlich bereitstellt (s. string.h); eine Deklaration
- * ohne Gegenstueck waere nur ein spaeterer Binder-Fehler statt eines
+ * remain aligned with what qclib actually provides (see string.h); a
+ * declaration without an implementation would cause a later linker error
+ * instead of an early, clear
  * fruehen, klaren "unknown function".
  *
  * struct tm contains only the six fields read by these tools; add the others

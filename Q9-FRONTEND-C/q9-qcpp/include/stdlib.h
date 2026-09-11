@@ -6,8 +6,8 @@
  * declaration changes the compiler input.
  *
  * malloc/free are intentionally NOT declared here: the backend uses fixed
- * globalen Tabellen aus (so ist es fuer den Emulator ausgelegt, s.
- * docs/STATUS.md), und qclib hat keine Freigabeliste.
+ * global tables (as required by the emulator; see docs/STATUS.md), and qclib
+ * has no allocation interface yet.
  */
 #ifndef Q9_STDLIB_H
 #define Q9_STDLIB_H
