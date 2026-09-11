@@ -334,12 +334,11 @@ void exitProgram(int exitCode){
 
 
 //------------------------------------------------------------------------------------------------
-// Quelltext-Sammelpuffer fuer die Arbeitsdatei (Block "EBNF-QUELLTEXT")
+// Source-text collection buffer for the workfile ("EBNF-QUELLTEXT" block)
 //------------------------------------------------------------------------------------------------
-// Sammelt exakt denselben huebsch formatierten Text, der schon immer pro Regel auf die
-// Konsole und in die .lexlst-Datei geschrieben wurde (siehe rule()) -- damit die
-// Arbeitsdatei den Quelltext "wie im Listing" zeigt, ohne ihn ein zweites Mal aus der
-// Tabelle rekonstruieren zu muessen.
+// Collects the same formatted text already printed per rule to the console and
+// .lexlst file (see rule()), so the workfile shows the source as in the listing
+// without reconstructing it from the table a second time.
 #define QUELLTEXT_BUF_SIZE 65536
 char quelltextBuf[QUELLTEXT_BUF_SIZE];
 int quelltextLen = 0;
@@ -378,7 +377,7 @@ void addLst(const char* str, int num) {
 
 
 //------------------------------------------------------------------------------------------
-// Semantic Tabelle
+// Semantic table
 //------------------------------------------------------------------------------------------------	
 #define STAT_TRUE			-1
 #define STAT_FALSE			-2
@@ -401,8 +400,8 @@ typedef struct {
 	char rangeLo;		// nur bei mode=="RNG": untere Grenze des Zeichenbereichs
 	char rangeHi;		// nur bei mode=="RNG": obere Grenze des Zeichenbereichs
 	char ambigF;		// nur Parse-Zeit: STAT_FALSE dieser Zeile ist "nach ueberspringbarer
-						// Gruppe" -- wird daraus ein Sprung auf eine echte Zeile, ist das
-						// runtime-mehrdeutig (Position evtl. nicht zurueckgesetzt) -> Warnung
+						// group" -- a jump to a real row is runtime-ambiguous because the
+						// input position may not be reset; issue a warning.
 } TabEntry;
 
 TabEntry lexTab[1024];
@@ -451,8 +450,8 @@ void printLexTab() {
 		else {
 			strcpy_s(addrStr, sizeof(addrStr), "-");
 		}
-		// Anzeige-Varianten mit <NTS>-Klammerung nur fuer Bildschirm/Listing (.lexlst);
-		// .lextab (fpOut) bleibt roh, da es fuer eine spaetere maschinelle Weiterverarbeitung gedacht ist.
+		// Display variants with <NTS> brackets are only for screen/listing output;
+		// .lextab (fpOut) remains raw for later machine processing.
 		if (strlen(lexTab[i].ident)) {
 			sprintf_s(identDisp, sizeof(identDisp), "<%s>", lexTab[i].ident);
 		}
@@ -467,15 +466,15 @@ void printLexTab() {
 		}
 		printf(value0, i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
 		fprintf(fpLst, value0, i, identDisp, lexTab[i].mode, tsDisp, addrStr, trueStr, falseStr);
-		// fpOut (die .lextab) wird NICHT mehr hier beschrieben -- das alte rohe CSV-Format
-		// ist durch die strukturierte Arbeitsdatei ersetzt, siehe writeWorkfile().
+		// fpOut (.lextab) is no longer written here: the old raw CSV format was
+		// replaced by the structured workfile; see writeWorkfile().
 	}
 	printf(head0);
 	fprintf(fpLst, head0);
 }
 
 //------------------------------------------------------------------------------------------------
-// Regel-Adressaufloesung (Regelname -> Startzeile)
+// Rule address resolution (rule name -> start row)
 //------------------------------------------------------------------------------------------------
 #define MAX_RULES 256
 typedef struct {
@@ -520,34 +519,31 @@ void resolveCallAddresses() {
 }
 
 //------------------------------------------------------------------------------------------------
-// Linksrekursions-Erkennung
+// Left-recursion detection
 //------------------------------------------------------------------------------------------------
-// Ein Aufruf einer Regel B aus Regel A gilt als "erste Position", wenn er ohne vorheriges
-// Konsumieren eines Terminals erreichbar ist (direkt nach '=' oder '|', oder nach einer
-// ueberspringbaren [option]/{repeat}-Gruppe). Zyklen in diesem Graph sind Linksrekursion,
-// die ein rekursiver Abstieg (und damit auch eine Stack-Maschine mit Call/Return) nie
-// terminieren wuerde -- das ist keine Bug-Frage, sondern Informatik (regulaer vs. kontextfrei).
+// A call from rule A to rule B is at the "first position" when it is reachable
+// without consuming a terminal first (directly after '=' or '|', or after a
+// skippable [option]/{repeat} group). Cycles in this graph are left recursion;
+// recursive descent and a call/return stack machine would never terminate.
 char currentDefRule[IDENT_LEN + 1] = "";
 int firstPos = 1;
 
-// Zeigt an, ob der zuletzt verarbeitete Faktor sich seine trueAction/falseAction bereits
-// SELBST korrekt gesetzt hat (block()/repeat()/option()) -- im Gegensatz zu ident()/literal(),
-// die dafuer auf term()s generisches Backpatching der ERSTEN Zeile angewiesen sind. term()
-// darf dieses Backpatching NUR anwenden, wenn der erste Faktor "einfach" war, sonst zerstoert
-// es genau das, was block()/repeat()/option() gerade erst richtig hingebogen haben (der Bug,
-// der z.B. "num = [\"-\"] digit {digit}." ohne das optionale Minus scheitern liess).
+// Indicates whether the last factor set its trueAction/falseAction itself
+// (block()/repeat()/option()), unlike ident()/literal(), which rely on term()'s
+// generic backpatching of the first row. term() may apply that patch only when
+// the first factor was simple; otherwise it destroys the links fixed by the
+// grouping constructs.
 int lastFactorWasComplex = 0;
 
-// Zeigt an, ob der zuletzt verarbeitete Faktor UEBERSPRINGBAR ist ([option]/{repeat}: darf
-// scheitern, ohne dass die Sequenz scheitert und ohne Eingabe zu konsumieren) -- im Gegensatz
-// zu Pflicht-Faktoren (ident/literal/block), nach deren Erfolg die Sequenz "committed" ist:
-// ein spaeterer Fehlschlag darf dann NICHT mehr eine andere Alternative anspringen, weil
-// bereits Eingabe konsumiert wurde und die Stack-Maschine Positionen nur an NTS-Aufruf-
-// Grenzen zuruecksetzt.
+// Indicates whether the last factor is skippable ([option]/{repeat} may fail
+// without failing the sequence or consuming input). Required factors
+// (ident/literal/block) commit after success; a later failure may not select
+// another alternative because input was consumed and the machine resets
+// positions only at NTS-call boundaries.
 int lastFactorSkippable = 0;
 
-// Pro Regel nur einmal warnen, wenn eine runtime-mehrdeutige F-Verdrahtung entsteht
-// (Faktor nach ueberspringbarer Gruppe, dessen Fehlschlag auf eine echte Zeile springt).
+// Emit at most one warning per rule when runtime-ambiguous F wiring is created
+// (a factor after a skippable group whose failure jumps to a real row).
 int ambigFalseWarned = 0;
 
 #define MAX_RULE_NAMES 256
