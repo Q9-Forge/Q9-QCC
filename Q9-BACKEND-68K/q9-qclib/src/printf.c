@@ -262,10 +262,10 @@ int qp_run(int *args, int fi)
 	return qp_cnt;
 }
 
-/* Die Pfadnummer hinter einem FILE*.
+/* Path number represented by a FILE*.
  *
- * Ein FILE* ist hier die Adresse eines Tabelleneintrags mit der
- * Pfadnummer (siehe file.c). ZWEI Sonderfaelle:
+ * A FILE* is the address of a table entry containing the path number (see
+ * file.c). There are two special cases:
  *
  * - FILE* == 0 geht auf Pfad 2, den Fehlerkanal. QCCs Bootstrap-Quelle
  *   erklaert "stderr" als nie zugewiesenen Zeiger und ruft damit
@@ -274,7 +274,7 @@ int qp_run(int *args, int fi)
  * - Ein Eintrag mit 0 ist eine GESCHLOSSENE Datei. Der gibt -1, und
  *   qp_flush verwirft die Bytes, statt auf Pfad 0 zu schreiben.
  *
- * Dieselben Zeilen stehen in file.c. Sie sind bewusst DOPPELT: QCC
+ * The same logic exists in file.c and is intentionally duplicated: QCC
  * benennt eine Definition "tc_<name>", ein Aufruf sucht aber den nackten
  * Namen -- ein Aufruf ueber die Uebersetzungseinheit hinweg findet sein
  * Ziel also nicht. Eine gemeinsame Fassung muesste in Assembler stehen
