@@ -1,3 +1,13 @@
+/*
+ * q9-qclib string and memory functions
+ *
+ * Purpose:
+ *   Implements the C string and byte-memory operations required by the Q9
+ *   compiler tools on the 68k target.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ */
 /* Die Stringfunktionen von qclib -- die C-Rumpfe.
  *
  * strlen, strchr, strncmp brauchte QCCs erzeugter Parser; strcmp, strcat,
@@ -28,6 +38,10 @@
  * tab[i][k] auf Zeigerfeldern, kein static.
  */
 
+/* Function: qs_len
+ * Computes the length of a NUL-terminated string.
+ * Parameters: a Runtime argument frame containing the string.
+ * Returns: String length. */
 int qs_len(int *a)
 {
 	char *s;
@@ -42,6 +56,10 @@ int qs_len(int *a)
 
 /* strchr findet auch das abschliessende Nullzeichen -- deshalb wird erst
    verglichen und dann auf das Ende geprueft. */
+/* Function: qs_chr
+ * Finds the first occurrence of a byte in a string.
+ * Parameters: a Runtime argument frame containing string and byte.
+ * Returns: Matching address, or null. */
 char *qs_chr(int *a)
 {
 	char *s;
@@ -58,6 +76,10 @@ char *qs_chr(int *a)
 	}
 }
 
+/* Function: qs_ncmp
+ * Compares at most n bytes of two strings.
+ * Parameters: a Runtime argument frame containing both strings and n.
+ * Returns: Negative, zero or positive comparison result. */
 int qs_ncmp(int *a)
 {
 	char *x;
@@ -88,6 +110,10 @@ int qs_ncmp(int *a)
 
 /* ---------------------------------------------------------------- strcmp */
 /* Wie strncmp, nur ohne Grenze. Verglichen wird auf unsigned char (C89). */
+/* Function: qs_cmp
+ * Compares two NUL-terminated strings.
+ * Parameters: a Runtime argument frame containing both strings.
+ * Returns: Negative, zero or positive comparison result. */
 int qs_cmp(int *a)
 {
 	char *x;
@@ -116,6 +142,10 @@ int qs_cmp(int *a)
 /* ---------------------------------------------------------------- strcat */
 /* Haengt an und gibt das Ziel zurueck. Der Aufrufer buergt fuer den Platz --
    so steht es in C89, und eine Grenze gaebe es hier nicht zu pruefen. */
+/* Function: qs_cat
+ * Appends one string to another.
+ * Parameters: a Runtime argument frame containing destination and source.
+ * Returns: Destination string address. */
 char *qs_cat(int *a)
 {
 	char *dst;
@@ -143,6 +173,10 @@ char *qs_cat(int *a)
    Null -- deshalb schreibt qcc_backend_c.cpp hinter jedem strncpy die Null
    selbst ("insP->op[OP_LEN - 1] = 0"). Wer hier die Null immer setzt, waere
    bequemer und falsch. */
+/* Function: qs_ncpy
+ * Copies at most n bytes between strings.
+ * Parameters: a Runtime argument frame containing destination, source and n.
+ * Returns: Destination string address. */
 char *qs_ncpy(int *a)
 {
 	char *dst;
@@ -168,6 +202,10 @@ char *qs_ncpy(int *a)
 /* --------------------------------------------------------------- strrchr */
 /* Das LETZTE Vorkommen. Die abschliessende Null gehoert dazu (C89), deshalb
    laeuft die Schleife bis EINSCHLIESSLICH der Null. */
+/* Function: qs_rchr
+ * Finds the last occurrence of a byte in a string.
+ * Parameters: a Runtime argument frame containing string and byte.
+ * Returns: Matching address, or null. */
 char *qs_rchr(int *a)
 {
 	char *s;
@@ -208,6 +246,10 @@ int qs_istrenner(char *delim, int c)
 	return 0;
 }
 
+/* Function: qs_tok
+ * Splits a string into delimiter-separated tokens.
+ * Parameters: a Runtime argument frame containing string and delimiters.
+ * Returns: Next token address, or null. */
 char *qs_tok(int *a)
 {
 	char *s;
@@ -250,6 +292,10 @@ char *qs_tok(int *a)
  * werden weiter verbraucht, damit end richtig steht. C89 will zusaetzlich
  * errno = ERANGE; qclib hat kein errno, und das ist hier ausgeschrieben statt
  * verschwiegen. */
+/* Function: qs_tol
+ * Converts a decimal string to a signed long value.
+ * Parameters: a Runtime argument frame containing string, end pointer and base.
+ * Returns: Converted value. */
 int qs_tol(int *a)
 {
 	char *s;
@@ -336,6 +382,10 @@ int qs_tol(int *a)
 /* ------------------------------------------------------- memset / memcpy */
 /* Beide stehen in string.h und deshalb hier -- mem.c ist die Speicher-
    BESCHAFFUNG (realloc), nicht die Speicherarbeit. */
+/* Function: qs_set
+ * Fills a byte range with one value.
+ * Parameters: a Runtime argument frame containing destination, value and n.
+ * Returns: Destination address. */
 char *qs_set(int *a)
 {
 	char *d;
@@ -359,6 +409,10 @@ char *qs_set(int *a)
    Getrenntes. Langwortweise, wenn beide Seiten und die Laenge es zulassen --
    bei den Argumentfeldern des Backends sind das wenige Byte, bei einer
    Tabellenkopie viele. */
+/* Function: qs_cpy
+ * Copies a byte range from source to destination.
+ * Parameters: a Runtime argument frame containing destination, source and n.
+ * Returns: Destination address. */
 char *qs_cpy(int *a)
 {
 	char *d;
@@ -395,6 +449,10 @@ char *qs_cpy(int *a)
    ctype.h). Nur der lateinische ASCII-Bereich -- reicht fuer die Kette, wie
    ueberall sonst kein Vorratsbau. Alles ausserhalb A-Z kommt unveraendert
    zurueck, wie es C89 fuer tolower() vorschreibt. */
+/* Function: qs_lower
+ * Converts one ASCII uppercase byte to lowercase.
+ * Parameters: a Runtime argument frame containing the byte.
+ * Returns: Converted byte. */
 int qs_lower(int *a)
 {
 	int c;
