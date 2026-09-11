@@ -44,16 +44,16 @@ extern int _os_write(int path, char *buf, int *count);
 
 #define QP_BUF 256
 
-int qp_sink;                    /* 0 = OS-9-Pfad, 1 = Zeichenkette */
-int qp_path;                    /* Zielpfad, wenn qp_sink == 0 */
-char *qp_dst;                   /* Schreibmarke, wenn qp_sink == 1 */
-int qp_cnt;                     /* abgelegte Zeichen -- der Rueckgabewert */
+int qp_sink;                    /* 0 = OS-9 path, 1 = string buffer. */
+int qp_path;                    /* Destination path when qp_sink == 0. */
+char *qp_dst;                   /* Write position when qp_sink == 1. */
+int qp_cnt;                     /* Emitted characters; the return value. */
 
-char qp_buf[QP_BUF];            /* Sammelpuffer der laufenden Ausgabe */
-int qp_len;                     /* belegt */
+char qp_buf[QP_BUF];            /* Buffer for pending output. */
+int qp_len;                     /* Bytes currently used. */
 
-/* Den Sammelpuffer ausgeben und leeren. Bei der Zeichenkettensenke gibt
-   es nichts zu leeren -- dort schreibt qp_putc direkt ans Ziel. */
+/* Flush and clear the output buffer. A string sink has nothing to flush;
+   qp_putc writes directly to its destination. */
 /* Function: qp_flush
  * Flushes the active output sink.
  * Parameters: None.
@@ -69,8 +69,8 @@ void qp_flush(void)
 		return;
 	}
 	if (qp_path < 0) {
-		/* Kein gueltiger Pfad (geschlossene Datei). Lieber die Bytes
-		   verwerfen als sie auf einem fremden Pfad ausgeben. */
+		/* Invalid path (closed file): discard bytes rather than writing to
+		   an unrelated path. */
 		qp_len = 0;
 		return;
 	}
@@ -97,8 +97,8 @@ void qp_putc(int c)
 	qp_len = qp_len + 1;
 }
 
-/* Zeichenkette ausgeben, hoechstens prec Zeichen; prec < 0 = ohne Grenze.
-   Damit deckt eine Schleife %s und %.*s ab. */
+/* Emit at most prec characters of a string; prec < 0 means unlimited. This
+   handles both %s and %.*s. */
 /* Function: qp_putn
  * Emits a bounded string segment.
  * Parameters: s String; prec Maximum character count.
@@ -120,8 +120,8 @@ void qp_putn(char *s, int prec)
 	}
 }
 
-/* Vorzeichenlos zur Basis b. Die Ziffern entstehen rueckwaerts, deshalb
-   erst in ein kleines Feld und dann verkehrt herum heraus. */
+/* Emit an unsigned value in base b. Digits are generated backwards, so
+   store them in a small buffer and output them in reverse order. */
 /* Function: qp_num
  * Emits an unsigned integer in the requested base.
  * Parameters: v Value; b Base.
@@ -152,9 +152,9 @@ void qp_num(unsigned int v, int b)
 	}
 }
 
-/* Der kleinste int hat kein positives Gegenstueck: -v ergibt dasselbe
-   Bitmuster. Das geht hier trotzdem richtig aus, weil qp_num sein
-   Argument VORZEICHENLOS liest -- aus $80000000 wird 2147483648. */
+/* The smallest int has no positive counterpart: -v keeps the same bit
+   pattern. This still works because qp_num reads its argument unsigned;
+   $80000000 becomes 2147483648. */
 /* Function: qp_int
  * Emits a signed decimal integer.
  * Parameters: v Value.
@@ -239,7 +239,7 @@ int qp_run(int *args, int fi)
 			break;
 		f++;
 		if (prec >= 0 && c != 115) {
-			/* Genauigkeit an etwas anderem als %s: durchreichen. */
+			/* Precision on anything other than %s: pass it through unchanged. */
 			while (spec < f) {
 				qp_putc(*spec);
 				spec++;
@@ -262,8 +262,8 @@ int qp_run(int *args, int fi)
 			qp_putn((char *) args[ai], prec);
 			ai = ai + 1;
 		} else {
-			/* Unbekannte Angabe unveraendert durchreichen, statt
-			   still etwas zu verschlucken. */
+			/* Pass unknown specifications through unchanged instead of
+			   silently dropping them. */
 			while (spec < f) {
 				qp_putc(*spec);
 				spec++;
@@ -319,11 +319,9 @@ int printf_a(int *args)
 	return qp_run(args, 0);
 }
 
-/* Auf eine geschlossene Datei wird NICHT geschrieben, und der Aufruf
-   meldet das auch: C89 verlangt bei einem Fehler einen negativen
-   Rueckgabewert. Ohne diese Zeile haette fprintf die Zeichenzahl
-   gemeldet, waehrend qp_flush die Bytes verwirft -- ein stiller
-   Erfolgsbericht fuer eine Ausgabe, die nie stattfand. */
+/* Never write to a closed file, and report the failure: C89 requires a
+   negative return value on error. Without this check fprintf would report
+   a character count while qp_flush discarded the bytes. */
 /* Function: fprintf_a
  * Formats output to a selected FILE stream.
  * Parameters: args Runtime argument frame.
@@ -340,8 +338,8 @@ int fprintf_a(int *args)
 	return qp_run(args, 1);
 }
 
-/* sprintf haengt die abschliessende Null an; sie zaehlt nicht zum
-   Rueckgabewert, so steht es in C89. */
+/* sprintf appends the terminating NUL, which is excluded from the return
+   value as required by C89. */
 /* Function: sprintf_a
  * Formats output into a caller-provided character buffer.
  * Parameters: args Runtime argument frame.
