@@ -18,29 +18,29 @@
 #define NAME_LEN        64
 #define LINE_LEN        512
 #define MAX_ARGS        6
-/* 2026-07-25: von 8192 erhoeht -- beim Skalierungstest fuer den -largedata-
+/* 2026-07-25: increased from 8192; the -largedata
    Funktionsaufruf-Schalter (a4/a2-Indirektionstabelle statt bsr) blockierte
    dieser Cap den Nachweis bei realistischer Groessenordnung (150 generierte
    Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
    sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
 #define MAX_IR_LINES    98304
-/* 2026-08-10 von 256 auf 1024 erhoeht: Data/qcc_p.c allein bringt 354
-   Funktionen mit -- der Selbstuebersetzungsversuch lief hier in die Grenze. */
+/* 2026-08-10 increased from 256 to 1024: Data/qcc_p.c alone has 354
+   functions, so self-hosting reached this limit. */
 #define MAX_FUNCS       1024
-/* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceQCC/
+/* 2026-07-25: increased from 256 during the SourceQCC/
    codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
    Nachweis: JEDES String-Literal im QCC-Quelltext wird zu einem
    anonymen __strN-Global, und das kumulative Kompilat hat inzwischen weit
    ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
    Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
    nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
-/* Der vollstaendige selbst erzeugte qcc_p-Parser enthaelt rund 1.053
-   Globals (fast alle sind Stringliterale). 1024 war damit eine kuenstliche
-   Bootstrap-Grenze, nicht eine Speichergrenze. */
+/* The complete generated qcc_p parser contains about 1,053 globals, mostly
+   string literals. 1024 was therefore an artificial bootstrap limit, not a
+   memory limit. */
 #define MAX_GLOBALS     2048
 #define MAX_ARRAY_LEN   4096
 
-/* 2026-08-11: `args` war vorher `char args[MAX_ARGS][ARG_LEN]`, also 6x64 = 384
+/* 2026-08-11: `args` used to be `char args[MAX_ARGS][ARG_LEN]`, or 6x64 = 384
    der damals 416 Byte pro Instr -- bei MAX_IR_LINES=65536 ergab das ein
    statisches Feld von 26 MB. Auf dem Q9 (16 MB RAM) ist der Compiler damit
    grundsaetzlich nicht lauffaehig, unabhaengig von jeder Sprachluecke.
@@ -64,7 +64,7 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
-	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
+	/* Multi-file translation (2026-07-25): declOnly is registered by FUNCDECL,
 	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei) --
 	   first/last/locals/frameBytes bleiben dann unbenutzt (0/-1). isStatic
 	   steuert die Namensverfremdung (siehe mangledName()) -- r68/l68 kennen
@@ -77,7 +77,7 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int initialValue;
-	/* 2026-09-09: war "isChar" (bool), mit short zu einer echten Groesse in
+	/* 2026-09-09: formerly "isChar" (bool), now the actual size with short in
 	   Byte (1/2/4) geworden -- s. tagSize(). Alle Leseseiten unten wechseln
 	   von "isChar ? X : Y" auf einen dreiteiligen Schalter. */
 	int elemSize;
