@@ -1063,15 +1063,10 @@ static void emit(void)
 	if (!isDesc && !isDrvr)
 		dataBias = -0x8000;
 
-	/* --- Lay out data: all reserved data first, then all
-	   initialisierten Daten -- und zwar psect fuer psect in der
-	   Reihenfolge der Kommandozeile (Handbuch Abb. 9-2, an zwei psects
-	   nachgemessen: mvar landet auf $0c, svar auf $14). --- */
-	/* With -b=<n>, every psect block gets its own boundary, counted in
-	   zwar im DATENbereich gezaehlt, nicht im Dateiabstand (gemessen:
-	   bei -b=16 stehen die dc-Daten auf Dateiabstand $78, jeder Block
-	   ist trotzdem 16 lang). Ohne -b= ist optAlign 1 und alignUp
-	   aendert nichts. */
+	/* --- Lay out data: reserved data first, then initialized data, psect by
+	   psect in command-line order. */
+	/* With -b=<n>, each psect block gets its own boundary in the data area,
+	   not in the file offset. Without -b, optAlign is 1 and alignUp is a no-op. */
 	totalUninit = 0;
 	for (k = 0; k < rofN; k++) {
 		bUninit[k] = totalUninit;
@@ -1082,11 +1077,9 @@ static void emit(void)
 		bInit[k] = totalUninit + totalInit;
 		totalInit = totalInit + alignUp(rIDat[k], optAlign);
 	}
-	/* The jump table is placed at the END of initialized data. In the
-	   l68 gemessen: dort endete sie genau auf M$Data. Im Zaehllauf ist
-	   jtN noch 0; das macht nichts, weil die Tabelle in den DATEN liegt
-	   und die Codelagen nicht verschiebt. Genau deshalb genuegen zwei
-	   Durchlaeufe. */
+	/* The jump table is placed at the END of initialized data and ends at
+	   M$Data. During the counting pass jtN is still zero; this is harmless
+	   because the table is in data and does not move code. */
 	jtBase = totalUninit + totalInit;
 	totalInit = totalInit + jtN * 6;
 
