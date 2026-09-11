@@ -197,7 +197,7 @@ int qp_run(int *args, int fi)
 			f++;
 			continue;
 		}
-		spec = f;                       /* zeigt auf das Prozentzeichen */
+		spec = f;                       /* points to the percent sign */
 		f++;
 		prec = -1;
 		while (*f != 0) {
@@ -267,18 +267,17 @@ int qp_run(int *args, int fi)
  * A FILE* is the address of a table entry containing the path number (see
  * file.c). There are two special cases:
  *
- * - FILE* == 0 geht auf Pfad 2, den Fehlerkanal. QCCs Bootstrap-Quelle
- *   erklaert "stderr" als nie zugewiesenen Zeiger und ruft damit
- *   fprintf(stderr, ...) -- gegen Microwares clib laeuft das ins
- *   Ungewisse. Auf Pfad 2 sind die Diagnosen wenigstens zu lesen.
- * - Ein Eintrag mit 0 ist eine GESCHLOSSENE Datei. Der gibt -1, und
- *   qp_flush verwirft die Bytes, statt auf Pfad 0 zu schreiben.
+ * - FILE* == 0 maps to path 2, the error channel. QCC's bootstrap source
+ *   declares stderr as an unassigned pointer and calls fprintf(stderr, ...),
+ *   which is otherwise undefined against Microware's clib. Diagnostics are
+ *   at least readable on path 2.
+ * - An entry containing 0 represents a CLOSED file. It returns -1, and
+ *   qp_flush discards the bytes instead of writing to path 0.
  *
  * The same logic exists in file.c and is intentionally duplicated: QCC
- * benennt eine Definition "tc_<name>", ein Aufruf sucht aber den nackten
- * Namen -- ein Aufruf ueber die Uebersetzungseinheit hinweg findet sein
- * Ziel also nicht. Eine gemeinsame Fassung muesste in Assembler stehen
- * und waere laenger als die Wiederholung.
+ * names definitions "tc_<name>", while a call searches for the raw name, so
+ * a call across translation units cannot find its target. A shared version
+ * would have to be written in assembly and would be longer than this duplicate.
  */
 /* Function: qp_pathof
  * Resolves a FILE handle to an OS-9 path number.
