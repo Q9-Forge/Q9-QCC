@@ -980,12 +980,12 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		emitLeaGlobal(out, gidx, "a0");
 		fputs("\tmove.l\ta0,-(a7)\n", out);
 	} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
-		/* nur Frame-Layout, kein Code */
+				/* frame layout only, no code */
 	} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
 		int ignored;
 		if (strcmp(insP->args[0], "L") == 0) {
 			int slotN = number(insP->args[1], insP->line);
-			/* Ein Struct mit genau einem Langwort (der Bootstrap-Fall
+			/* A struct with exactly one longword (the bootstrap case
 			   TCType: vier char-Felder) wird als normaler 32-Bit-
 			   Parameter uebergeben. Seine Feldzugriffe verwenden trotzdem
 			   PUSHADDR L <param>; dafuer ist die Parameteradresse selbst
@@ -1122,7 +1122,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
 		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
 	} else if (strcmp(op, "IPADDN") == 0 && insP->argc == 1) {
-		/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
+			/* Like IPADD, but scale by a RUNTIME byte size (for example structByteSize)
 		   statt einer festen Typtag-Groesse -- kein lsl.l (Groesse ist beliebig, nicht
 		   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
 		   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
@@ -1571,7 +1571,7 @@ static void emitIR(FILE* out) {
 			const char* op = insP->op;
 
 			if (emitDataOp(out, op, insP, fn, &serial)) {
-				/* s. emitDataOp() -- PUSH..PDIFF, ausgelagert wegen der
+				/* See emitDataOp() -- PUSH..PDIFF was extracted because the
 				   Sprungweite (2026-09-09). */
 			} else if (strcmp(op, "ADD") == 0) {
 				fputs("\tmove.l\t(a7)+,d1\n\tadd.l\t(a7)+,d1\n\tmove.l\td1,-(a7)\n", out);
@@ -1628,7 +1628,7 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PCMPLE") == 0) { emitCompare(out, "bls", &serial);
 			} else if (strcmp(op, "PCMPGE") == 0) { emitCompare(out, "bcc", &serial);
 			} else if (strcmp(op, "LABEL") == 0 && insP->argc == 1) {
-				/* psectName-Suffix aus demselben Grund wie bei emitCompare oben:
+				/* psectName suffix for the same reason as in emitCompare above:
 				   LABEL-Namen (tc_L0, tc_L1, ...) kommen aus der QCC-Frontend-
 				   eigenen Label-Nummerierung, die in JEDER Datei wieder bei 0
 				   startet -- ohne Suffix kollidieren sie beim Mehrdatei-Link,
@@ -1661,13 +1661,13 @@ static void emitIR(FILE* out) {
 				if (fnIdx < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[fnIdx].isStatic);
 				if (largeDataMode) {
-					/* "add.l a4,d0", NICHT "adda.l": ADDA verlangt ein ADRESSregister
+					/* "add.l a4,d0", NOT "adda.l": ADDA requires an address register
 					   als Ziel (emitCall() rechnet deshalb in a2). Hier ist das Ziel
 					   ein Datenregister, also das normale ADD -- "ADD.L An,Dn" ist
 					   zulaessig. Der echte r68 weist "adda.l a4,d0" korrekt ab
 					   ("incomplete line: code not generated"). */
 					if (trampolineMode) {
-						/* Funktionszeiger bleiben im Tabellenpfad; r68 -j gilt fuer
+						/* Function pointers remain on the table path; r68 -j applies to
 						   direkte Aufrufe, nicht fuer einen beliebigen Datenwert. */
 						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", (8 + externCount + fnIdx) * 4);
 					} else {
