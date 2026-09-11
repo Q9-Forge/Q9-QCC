@@ -619,12 +619,12 @@ static void rdTake(void)
 static int lexAppend(int n, int c)
 {
 	if (n + 1 >= LXTMP_MAX)
-		fatal("Token zu lang (LXTMP_MAX)", "");
+		fatal("token too long (LXTMP_MAX)", "");
 	lxTmp[n] = c;
 	return n + 1;
 }
 
-/* Ein Token aus der Datei holen. Setzt tkKind/tkText/tkLine/tkFile/tkWs. */
+/* Read one token from the file and update tkKind/tkText/tkLine/tkFile/tkWs. */
 /*
  * Function: lexNext
  *
