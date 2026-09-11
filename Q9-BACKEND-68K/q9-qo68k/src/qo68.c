@@ -183,16 +183,13 @@ static const char* phEmitFused(const char* labelStart, int labelLen,
 	return p;
 }
 
-/* Push unmittelbar gefolgt vom eigenen Pop, s. Kommentar am Dateianfang.
- * Pop wird ZUERST geprueft (lesend, folgenlos bei Fehlschlag) -- erst wenn
- * er passt, lohnt sich die genauere Pruefung des Push davor. */
+/* Fold a push immediately followed by its matching pop. Check the pop first
+ * without side effects; only then is detailed push matching worthwhile. */
 static int phFoldPushPop(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* NICHT "const char *a, *b, *c;" -- mehrere Zeiger-Deklaratoren in
-		   EINER Anweisung sind ein stiller QCC-Abbruch (FAIL, 0 Meldungen,
-		   08.09.2026 gefunden; unabhaengig von "const", "char *a, *b;"
-		   bricht ebenso), noch nicht behoben. Je ein eigener Deklarator. */
+		/* Keep pointer declarations separate. The current QCC bootstrap rejects
+		 * multiple declarators in one statement without a diagnostic. */
 		const char* labelStart;
 		const char* srcStart;
 		const char* dst;
@@ -204,8 +201,7 @@ static int phFoldPushPop(void) {
 		if (!phMatchPop(phLines[j], &dst)) continue;
 		if (!phMatchPush(phLines[i], &labelStart, &labelLen, &srcStart, &srcLen)) continue;
 		if (labelLen == 0 && phSameText(srcStart, srcLen, dst)) {
-			/* SRC==DST: Push und Pop heben sich vollstaendig auf, s.
-			   Verfeinerung oben -- kein Ersatzbau noetig. */
+			/* SRC==DST: push and pop cancel completely; no replacement is needed. */
 			phRemoved[i] = 1;
 			phRemoved[j] = 1;
 			folded++;
@@ -218,10 +214,9 @@ static int phFoldPushPop(void) {
 	return folded;
 }
 
-/* Erkennt "move.l SRC,Dn" (Dn eines von d0-d7 -- NIE a0-a6, s. Kommentar
- * am Dateianfang zu Muster zwei/drei), optional mit Label-Vorspann.
- * Liefert SOWOHL SRC (fuer Muster drei) ALS AUCH nur das Zielregister
- * (fuer Muster zwei) -- eine Funktion statt zwei fast identischer. */
+/* Recognize "move.l SRC,Dn" for d0-d7, optionally with a label prefix.
+ * Return both the source (for pattern three) and the destination register
+ * (for pattern two), avoiding two nearly identical matchers. */
 static int phMatchMoveIntoDataReg(const char* line, const char** labelStart, int* labelLen,
                                    const char** srcStart, int* srcLen,
                                    const char** regStart, int* regLen) {
@@ -256,12 +251,12 @@ static int phMatchTst(const char* line, const char* regStart, int regLen) {
 	return strncmp(line + 7, regStart, regLen) == 0;
 }
 
-/* Kein Ersatzbau noetig -- die Move-Zeile bleibt UNVERAENDERT stehen, nur
- * das ueberfluessige TST verschwindet. */
+/* No replacement is needed: keep the MOVE line unchanged and remove only the
+ * redundant TST. */
 static int phFoldMoveTst(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		/* Keep pointer declarations separate; see phFoldPushPop above. */
 		const char* labelStart;
 		const char* srcStart;
 		const char* regStart;
@@ -277,12 +272,10 @@ static int phFoldMoveTst(void) {
 	return folded;
 }
 
-/* DRITTES MUSTER, s. Kommentar am Dateianfang: "move.l Dn,DST" -- dasselbe
- * Datenregister, das die vorherige Zeile (phMatchMoveIntoDataReg) gerade
- * gefuellt hat. KEIN Label davor zugelassen (koennte Sprungziel sein,
- * dieselbe Vorsicht wie bei phMatchPop). DST reicht bis zum Zeilenende --
- * derselbe Aufbau wie phMatchPop, deshalb direkt an phEmitFused
- * uebergebbar, keine eigene Ersatzbau-Funktion noetig. */
+/* Match the third pattern's "move.l Dn,DST" using the register filled by the
+ * preceding phMatchMoveIntoDataReg line. Labels are rejected because they
+ * may be branch targets. DST extends to the end of the line and can therefore
+ * be passed directly to phEmitFused. */
 static int phMatchMoveFromDataReg(const char* line, const char* regStart, int regLen,
                                    const char** dstStart) {
 	const char* p;
@@ -298,7 +291,7 @@ static int phMatchMoveFromDataReg(const char* line, const char* regStart, int re
 static int phFoldLoadThenMove(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		/* Keep pointer declarations separate; see phFoldPushPop above. */
 		const char* labelStart;
 		const char* srcStart;
 		const char* regStart;
@@ -310,7 +303,7 @@ static int phFoldLoadThenMove(void) {
 		if (j < 0) continue;
 		if (!phMatchMoveFromDataReg(phLines[j], regStart, regLen, &dstStart)) continue;
 		if (labelLen == 0 && phSameText(srcStart, srcLen, dstStart)) {
-			/* SRC==DST, s. Verfeinerung am Dateianfang. */
+			/* SRC==DST; see the refinement described at the top of this file. */
 			phRemoved[i] = 1;
 			phRemoved[j] = 1;
 			folded++;
