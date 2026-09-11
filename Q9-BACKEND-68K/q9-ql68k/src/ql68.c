@@ -143,19 +143,11 @@ static int irefDataN;
    $8000-Bias. Alles an `l68 -a -j` nachgemessen, das seine Rechnung
    selbst druckt.
 
-   ql68 legt nur die WIRKLICH gebrauchten Eintraege an. l68 dagegen
-   schaetzt: `-j` meldet etwa "guess=11 Actual=7", und die vier
-   ueberzaehligen bleiben als `4ef9 00000000` stehen und vergroessern den
-   Datenbereich. Der Grund ist strukturell -- l68 muss die Tabellengroesse
-   festlegen, BEVOR die Bibliothekssuche entschieden hat, welche Module
-   dazukommen und wo sie liegen. Gemessen: bei gewoehnlichen ROF-Eingaben
-   rechnet l68 exakt (guess == Actual bei 1, 2, 3 und 5 fernen Aufrufen),
-   nur mit Bibliotheken schaetzt es hoch (dort blieb guess=6 stehen,
-   gleich ob 1, 2 oder 4 Aufrufe -- die Schaetzung reagiert gar nicht auf
-   ihre Zahl). ql68 kennt beim Layout alle Eingaben und Bibliotheken und
-   braucht deshalb nicht zu schaetzen. Byteidentitaet bleibt damit ueberall
-   pruefbar, wo l68 selbst exakt ist; bei Bibliotheksfaellen weicht ql68
-   bewusst ab -- die Tabelle ist dann kleiner, das Modul aber richtig.
+   ql68 creates only entries that are actually needed. l68 estimates instead;
+   `-j` may report `guess=11 Actual=7`, leaving unused `4ef9 00000000`
+   entries in the data area. l68 must size the table before library search
+   determines which modules are added. ql68 knows all inputs during layout
+   and therefore needs no estimate. Its table is smaller but correct.
 
    The table does not move CODE because it resides in data, so two passes
    are sufficient: one counts and one writes. */
