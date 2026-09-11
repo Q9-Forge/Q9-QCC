@@ -105,62 +105,62 @@ _cs10:
         bra.s   newarg_b
 
 oldarg:
-        clr.b   -1(a5,d5.l)                      * CR am Parameterende loeschen
+        clr.b   -1(a5,d5.l)                      * Remove CR at argument end
 oldarg_a:
-        move.l  a5,a0                            * Parameterbasis kopieren
-        adda.l  Q9_M_Name(a3),a3                * Modulname als argv[0]
-        clr.l   -(sp)                            * argv-Abschluss
+        move.l  a5,a0                            * Copy argument base
+        adda.l  Q9_M_Name(a3),a3                * Module name as argv[0]
+        clr.l   -(sp)                            * argv terminator
         move.l  a3,-(sp)                         * argv[0]
-        moveq.l #1,d2                            * Mindestens ein Argument
-        move.l  #_initarg-*-8,d0                 * Relokativer _initarg-Aufruf
+        moveq.l #1,d2                            * At least one argument
+        move.l  #_initarg-*-8,d0                 * Relative _initarg call
         jsr     (pcr,d0.l)
         bra.s   iobinit
 
 newarg_a:
-        lea     4(a0),a1                         * Environmentliste merken
-        move.l  a1,environ(a6)                  * environ setzen
-        moveq   #0,d2                            * argc initialisieren
+        lea     4(a0),a1                         * Save environment list
+        move.l  a1,environ(a6)                  * Set environ
+        moveq   #0,d2                            * Initialize argc
 newarg_b:
-        move.l  -(a0),a1                         * Naechsten Offset lesen
-        move.l  a1,d7                            * Offset gleich null?
-        beq.s   newarg_c                        * Ende der Liste
-        adda.l  a5,a1                            * Offset in Pointer umwandeln
-        clr.b   -1(a1)                            * Vorherige Zeichenkette beenden
-        move.l  a1,(a0)                          * Pointer zurueckschreiben
-        addq.l  #1,d2                            * argc erhoehen
+        move.l  -(a0),a1                         * Read next offset
+        move.l  a1,d7                            * Is the offset zero?
+        beq.s   newarg_c                        * End of list
+        adda.l  a5,a1                            * Convert offset to pointer
+        clr.b   -1(a1)                            * Terminate previous string
+        move.l  a1,(a0)                          * Store pointer back
+        addq.l  #1,d2                            * Increment argc
         bra.s   newarg_b
 
 newarg_c:
-        subq.l  #1,d0                            * argv-Aufbau pruefen
-        beq.s   newarg_a                        * Ein weiteres Element verarbeiten
-        tst.l   d2                               * Existiert ein erstes Argument?
-        bne.s   newarg_e                        * Ja
-        tst.w   -2(a0)                            * Wurde argv ueber os9exec geliefert?
-        beq.s   newarg_e                        * Ja: ein Argument existiert
-        clr.b   -1(a0)                            * CR des alten Aufbaus loeschen
-        movea.l a0,a2                            * argv[0]-Pruefadresse sichern
-        addq.l  #4,a0                            * Auf naechsten Eintrag zeigen
+        subq.l  #1,d0                            * Check argv layout
+        beq.s   newarg_a                        * Process another element
+        tst.l   d2                               * Does a first argument exist?
+        bne.s   newarg_e                        * Yes
+        tst.w   -2(a0)                            * Was argv supplied by os9exec?
+        beq.s   newarg_e                        * Yes: one argument exists
+        clr.b   -1(a0)                            * Remove CR from old layout
+        movea.l a0,a2                            * Save argv[0] check address
+        addq.l  #4,a0                            * Point to next entry
         bra.s   newarg_f
 
 newarg_e:
-        move.l  a5,(a0)                          * argv[1] auf Parameterbasis setzen
-        movea.l a0,a2                            * argv[0]-Pruefadresse sichern
-        addq.l  #1,d2                            * Fehlendes argv-Element ausgleichen
+        move.l  a5,(a0)                          * Set argv[1] to argument base
+        movea.l a0,a2                            * Save argv[0] check address
+        addq.l  #1,d2                            * Account for missing argv element
 newarg_f:
-        addq.l  #1,d2                            * argv[0] mitzaehlen
-        tst.l   (a4)                             * Weitere Eintraege vorhanden?
-        beq.s   newarg_i                        * Nein
-        move.l  (a4),a4                          * Letzten Pointer holen
+        addq.l  #1,d2                            * Count argv[0]
+        tst.l   (a4)                             * Are more entries present?
+        beq.s   newarg_i                        * No
+        move.l  (a4),a4                          * Get last pointer
 newarg_g:
-        tst.b   (a4)+                            * Ende des Strings suchen
+        tst.b   (a4)+                            * Find end of string
         bne.s   newarg_g
-        cmpa.l  a4,a2                            * Luecke zwischen Bereichen?
-        bls.s   newarg_s                        * Nein: normaler Aufbau
-        cmpi.b  #$fc,(a4)+                       * argv[0]-Synchronisationsbyte?
-        bne.s   newarg_s                        * Nein
-        addq.l  #1,a4                            * Versionsbyte ueberspringen
-        move.l  (a4),a3                          * argv[0]-Offset lesen
-        adda.l  a5,a3                            * Offset in Pointer umwandeln
+        cmpa.l  a4,a2                            * Gap between areas?
+        bls.s   newarg_s                        * No: normal layout
+        cmpi.b  #$fc,(a4)+                       * argv[0] synchronization byte?
+        bne.s   newarg_s                        * No
+        addq.l  #1,a4                            * Skip version byte
+        move.l  (a4),a3                          * Read argv[0] offset
+        adda.l  a5,a3                            * Convert offset to pointer
         bra.s   newarg_t
 
 newarg_i:
