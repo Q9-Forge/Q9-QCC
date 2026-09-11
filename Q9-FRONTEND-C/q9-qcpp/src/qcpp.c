@@ -1306,9 +1306,8 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 	int myAt[64];
 	int myLen[64];
 
-	/* Argumentbereiche SOFORT kopieren: prescanArg() unten expandiert und
-	   kann dabei erneut collectArgs() aufrufen, das argAt/argLen neu
-	   belegt. */
+	/* Copy argument ranges immediately: prescanArg() may recursively call
+	   collectArgs(), which would overwrite argAt/argLen. */
 	for (i = 0; i < nargs; i++) {
 		myAt[i] = argAt[i];
 		myLen[i] = argLen[i];
@@ -1354,7 +1353,7 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 				p = macIsParam(m, rt);
 			if (p >= 0) {
 				if (myLen[p] == 0)
-					continue;   /* leeres Argument: nichts anzuhaengen */
+					continue;   /* Empty argument: append nothing. */
 				rt = agText[myAt[p]];
 			}
 			last = exTop - 1;
@@ -1368,7 +1367,7 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 			else if (isDigitCh(pool[exText[last]] & 255))
 				exKind[last] = TK_NUM;
 			if (p >= 0) {
-				/* die restlichen Tokens des Arguments anhaengen */
+				/* Append the remaining argument tokens. */
 				for (k = 1; k < myLen[p]; k++) {
 					if (exTop >= EX_MAX)
 						fatal("Expansionspuffer voll (EX_MAX)", "");
@@ -1386,7 +1385,7 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 		if (macFunc[m] && kind == TK_ID)
 			p = macIsParam(m, text);
 		if (p >= 0) {
-			/* Operand eines folgenden ## : ROHES Argument */
+			/* Operand of a following ##: use the raw argument. */
 			pasteNext = 0;
 			if (i + 1 < bn && mtKind[bi + i + 1] == TK_PUNCT &&
 			    poolEq(mtText[bi + i + 1], "##"))
@@ -1422,9 +1421,8 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 
 	agTop = saveAg;
 
-	/* Endmarke zuerst (sie wird also ZULETZT gelesen) -- solange die
-	   Ersetzung noch im Strom steht, bleibt das Makro gesperrt (C89
-	   3.8.3.4, "blaue Farbe"). */
+	/* Push the end marker first so it is read last. The macro remains locked
+	   while its replacement is in the token stream (C89 3.8.3.4). */
 	pbPush(TK_ENDMAC, m, line, file, 0);
 	for (i = exTop - 1; i >= exBase; i--) {
 		n = exWs[i];
@@ -1436,8 +1434,8 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 	macInUse[m] = 1;
 }
 
-/* Ein Token holen und dabei expandieren. Rueckgabe 0 heisst: es wurde
-   expandiert, der Aufrufer muss erneut fragen. */
+/* Read one token and expand it. Return zero when expansion consumed the
+   invocation and the caller must ask again. */
 /*
  * Function: expandOne
  *
@@ -1522,10 +1520,8 @@ static int expandOne(void)
 		return 0;
 	}
 
-	/* funktionsartig: nur expandieren, wenn wirklich eine "(" folgt.
-	   Zeilenumbrueche dazwischen sind erlaubt (C89 3.8.3: der Aufruf darf
-	   sich ueber Zeilen erstrecken) und werden bei Nichttreffer wieder
-	   zurueckgelegt. */
+	/* Function-like macros expand only when followed by "(". Intervening
+	   newlines are allowed (C89 3.8.3) and are restored on a non-match. */
 	save = pbN;
 	nlCount = 0;
 	while (1) {
@@ -1550,7 +1546,7 @@ static int expandOne(void)
 		return 0;
 	}
 
-	/* kein Aufruf: gelesenes Token und die Umbrueche zurueck, Name bleibt */
+	/* Not a call: restore the token and newlines; keep the macro name. */
 	pbPushCur();
 	for (i = 0; i < nlCount; i++)
 		pbPush(TK_NL, intern("\n"), line, file, 0);
@@ -1574,23 +1570,18 @@ static void nextExpanded(void)
 		;
 }
 
-/* ============================================== #if -Ausdrucksauswertung == */
+/* ============================================== #if expression evaluation == */
 static int evalTernary(void);
 
-/* Zaehler fuer "wird nur noch geparst, nicht mehr ausgewertet": der rechte
-   Operand eines kurzgeschlossenen && / || und der nicht gewaehlte Zweig eines
-   ?: muessen zwar syntaktisch durchlaufen werden, duerfen aber nicht mehr
-   rechnen -- "#if 0 && 1/0" ist gueltig und darf nicht an der Division
-   scheitern. */
+/* When parsing without evaluation, the right operand of short-circuited
+   &&/|| and the unselected ?: branch must still be traversed syntactically
+   but must not calculate; "#if 0 && 1/0" is valid. */
 static int evDead;
 
-/* Vorzeichenlosigkeit des zuletzt ausgewerteten Teilausdrucks. C89 3.8.1
-   verlangt die Auswertung in long/unsigned long und die "usual arithmetic
-   conversions": sobald EIN Operand vorzeichenlos ist, wird vorzeichenlos
-   gerechnet und verglichen. Ohne das entscheidet "#if 1 << 31 > 0" falsch --
-   und das ist ein Bitmaskentest, kein exotischer Fall. In diesem 32-Bit-
-   Modell fallen int und long zusammen; gehalten wird das BITMUSTER in int,
-   die Deutung steckt in diesem Kennzeichen. */
+/* Unsigned state of the last evaluated subexpression. C89 3.8.1 requires
+   long/unsigned-long evaluation and the usual arithmetic conversions: one
+   unsigned operand makes the operation unsigned. In this 32-bit model int
+   and long have the same representation; this flag supplies the meaning. */
 static int evUns;
 
 /* Function: arithDiv
