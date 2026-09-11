@@ -1,11 +1,11 @@
 //============================================================================
-// qcc_arm64_backend_c.cpp -- reines-C-Gegenstueck zu qcc_arm64_backend.cpp
+// qcc_arm64_backend_c.cpp -- C-only counterpart to qcc_arm64_backend.cpp
 //
-// Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
-// Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
-// Original (qcc_arm64_backend.cpp) bleibt unveraendert als Referenz liegen;
-// siehe docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5. Um auf die C++-Version
-// zurueckzuschalten, in runtests.sh wieder qcc_arm64_backend.cpp bauen.
+// Behaviorally equivalent implementation without STL, exceptions or
+// std::string: fixed global tables and linear search, in the style of
+// parsec.cpp/codegen.cpp. The original C++ file remains as a reference; see
+// section 5 of docs/SELFHOSTING_LUECKENLISTE.md. To switch back, build
+// qcc_arm64_backend.cpp again in runtests.sh.
 //============================================================================
 #include <stdio.h>
 #include <stdlib.h>

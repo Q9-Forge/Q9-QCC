@@ -1,9 +1,9 @@
 //============================================================================
 // qcc_arm64_backend.cpp -- QCC Stack-IR -> ARM64/Darwin-Assembler
 //
-// Eigenstaendiges Architecture Backend. start.s stellt die Plattform-Schicht
-// (_start, tc_putint, tc_exit); dieser Generator emittiert nur Programmcode
-// und Globals. Alle Operanden belegen aus Einfachheitsgruenden 16 Stackbytes.
+// Standalone architecture backend. start.s provides the platform layer
+// (_start, tc_putint, tc_exit); this generator emits only program code and
+// globals. For simplicity, every operand occupies 16 stack bytes.
 //============================================================================
 #include <fstream>
 #include <iostream>
