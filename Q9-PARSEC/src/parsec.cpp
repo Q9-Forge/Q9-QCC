@@ -1605,19 +1605,19 @@ void block(void) {
 
 	addLst("(", 0);
 
-	// firstPos wird UNVERAENDERT vom umgebenden Kontext geerbt: war vorher schon ein
-	// Terminal konsumiert (firstPos==0), ist auch der Inhalt von "(...)" nicht mehr an
-	// "erster Position" der aeusseren Regel erreichbar.
+	// Inherit firstPos unchanged from the surrounding context: once a terminal
+	// was consumed (firstPos==0), the contents of "(...)" are no longer reachable
+	// at the outer rule's first position.
 	lexikalischeAnalyse();
 	expression();
 	test(TOKEN_BLOCKOFF, (char *)"BLOCKOFF Symbol )");
 	addLst(")", 0);
 	firstPos = 0;		// Block ist verpflichtend -> bricht jede Linksrekursions-Kette
 
-	// Erfolg -> weiter beim naechsten Faktor nach dem Block (aktTabIndex = genau das,
-	// da dort noch nichts geschrieben wurde). Misserfolg bleibt STAT_FALSE/STAT_ERROR:
-	// ein Pflicht-Block, der nicht matcht, soll die ganze umschliessende Regel scheitern
-	// lassen -- das ist bei "(...)" (im Gegensatz zu "[...]"/"{...}") so gewollt.
+	// Success continues with the next factor after the block (aktTabIndex points
+	// there because nothing has been written yet). Failure remains
+	// STAT_FALSE/STAT_ERROR: a required block that does not match must fail the
+	// enclosing rule, as intended for "(...)" unlike "[...]"/"{...}".
 	patchLocalTrue(blockStart, aktTabIndex, aktTabIndex);
 	lastFactorWasComplex = 1;
 	lastFactorSkippable = 0;	// (...) ist verpflichtend: Erfolg konsumiert (praktisch immer)
@@ -1629,16 +1629,15 @@ void repeat() {
 
 	addLst("{", 0);
 
-	// firstPos bleibt wie vom Aufrufer geerbt (siehe Kommentar in block())
+	// Inherit firstPos from the caller; see block().
 	lexikalischeAnalyse();
 	expression();
 	test(TOKEN_REPEATOFF, (char *)"REPEATOFF Symbol }");
 	addLst("}", 0);
-	firstPos = savedFirstPos;	// {..} ist ueberspringbar -> "erste Position" bleibt wie zuvor
+	firstPos = savedFirstPos;	// {..} is skippable; first position remains unchanged.
 
-	// Erfolg -> zurueck an den Anfang des Wiederholungs-Inhalts (nochmal versuchen).
-	// Misserfolg -> das ist bei einer Wiederholung kein Fehler, sondern das normale Ende
-	// der Schleife (0 Treffer sind erlaubt): weiter beim naechsten Faktor danach.
+	// Success returns to the beginning of the repeated content for another try.
+	// Failure is normal loop termination, not an error; zero matches are allowed.
 	patchLocalTrue(repStart, aktTabIndex, repStart);
 	patchLocalFalse(repStart, aktTabIndex, aktTabIndex);
 	lastFactorWasComplex = 1;
@@ -1652,15 +1651,15 @@ void option() {
 
 	addLst("[", 0);
 
-	// firstPos bleibt wie vom Aufrufer geerbt (siehe Kommentar in block())
+	// Inherit firstPos from the caller; see block().
 	lexikalischeAnalyse();
 	expression();
 	test(TOKEN_OPTIONOFF, (char *)"OPTIONOFF Symbol ]");
 	addLst("]", 0);
-	firstPos = savedFirstPos;	// [..] ist ueberspringbar -> "erste Position" bleibt wie zuvor
+	firstPos = savedFirstPos;	// [..] is skippable; first position remains unchanged.
 
-	// Sowohl Erfolg als auch Misserfolg fuehren zum naechsten Faktor danach -- eine
-	// Option matcht 0 oder 1 mal, ein Fehlschlag ist also kein Fehler.
+	// Both success and failure continue with the next factor: an option matches
+	// zero or one times, so failure is not an error.
 	patchLocalTrue(optStart, aktTabIndex, aktTabIndex);
 	patchLocalFalse(optStart, aktTabIndex, aktTabIndex);
 	lastFactorWasComplex = 1;
