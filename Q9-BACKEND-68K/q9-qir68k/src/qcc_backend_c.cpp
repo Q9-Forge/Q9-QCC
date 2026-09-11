@@ -1509,9 +1509,9 @@ static void emitIR(FILE* out) {
 		   keine PC-relativ-Grenze, im Gegensatz zu "d(pc)"-Adressierungs-
 		   arten). So kann JEDE Funktion, egal wie weit von ihrer eigenen
 		   Tabelle entfernt, diese trotzdem sicher erreichen. */
-		/* a3/a4 werden am Programmeinstieg gesetzt und von internen QCC-
-		   Funktionen nicht veraendert. Externe Aufrufe nutzen Wrapper, die
-		   diese ABI-Temporaerregister wiederherstellen. */
+		/* a3/a4 are initialized at program entry and are not changed by internal
+		   QCC functions. External calls use wrappers that restore these ABI scratch
+		   registers. */
 		/* BIG-ENDIAN-KORREKTUR FUER char-PARAMETER (2026-08-10, live am
 		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
 		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
@@ -1578,8 +1578,8 @@ static void emitIR(FILE* out) {
 			const char* op = insP->op;
 
 			if (emitDataOp(out, op, insP, fn, &serial)) {
-				/* s. emitDataOp() -- PUSH..PDIFF, ausgelagert wegen der
-				   Sprungweite (2026-09-09). */
+				/* See emitDataOp(): PUSH..PDIFF were moved out because of branch
+				   distance (2026-09-09). */
 			} else if (strcmp(op, "ADD") == 0) {
 				fputs("\tmove.l\t(a7)+,d1\n\tadd.l\t(a7)+,d1\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "SUB") == 0) {
@@ -1604,11 +1604,10 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "NARROWH") == 0) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#65535,d0\n\tmove.l\td0,(a7)\n", out);
 			} else if (strcmp(op, "SWAP") == 0) {
-				/* Vertauscht die obersten zwei Stackelemente. Gebraucht ueberall dort,
-				   wo ein Ergebniswert UNTER einer Adresse liegen bleiben muss --
-				   "(*p)++", "a[i]++" und die Kettenzuweisung scheiterten allesamt
-				   daran, dass sich der Stack bisher nicht umordnen liess (es gab nur
-				   DUP). */
+				/* Swap the top two stack elements. Needed wherever a result must remain
+				   UNDER an address: "(*p)++", "a[i]++", and chained assignment all
+				   failed because the stack could not previously be reordered (only DUP
+				   existed). */
 				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "DUP") == 0 || strcmp(op, "DUPP") == 0) {
 				fputs("\tmove.l\t(a7),-(a7)\n", out);
