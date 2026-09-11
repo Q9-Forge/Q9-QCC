@@ -980,8 +980,8 @@ void loadPreservedTests(const char* path) {
 	}
 }
 
-// Distinkte Terminale (TS + RNG) aus der fertigen Parser-Tabelle einsammeln -- Grundlage
-// fuer die TS-SYMBOLTABELLE und spaeter fuer den tabellenbasierten Lexer (Pass 1).
+// Collect distinct terminals (TS + RNG) from the completed parser table. This
+// feeds the TS-SYMBOLTABELLE and later the table-based lexer (pass 1).
 int tsSymbolIndexOf(char tsList[][IDENT_LEN + 1], int tsCnt, const char* sym) {
 	int i;
 	for (i = 0; i < tsCnt; i++) {
@@ -990,8 +990,8 @@ int tsSymbolIndexOf(char tsList[][IDENT_LEN + 1], int tsCnt, const char* sym) {
 	return -1;
 }
 
-// Die komplette Arbeitsdatei schreiben. fp ist bereits per "w" geoeffnet (WICHTIG:
-// erst NACH loadPreservedTests() oeffnen, sonst ist der alte TESTS-Block schon weg).
+// Write the complete workfile. fp is already open with "w"; it must be opened
+// only AFTER loadPreservedTests(), or the old TESTS block is lost.
 void writeWorkfile(FILE* fp) {
 	static char tsList[LEXTAB_LEN][IDENT_LEN + 1];
 	static char tsMode[LEXTAB_LEN][4];
@@ -1007,7 +1007,7 @@ void writeWorkfile(FILE* fp) {
 	fprintf(fp, "# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).\n");
 	fprintf(fp, "#================================================================================\n\n");
 
-	// Block 1: EBNF-QUELLTEXT (waehrend des Parsens von rule() mitgeschrieben)
+	// Block 1: EBNF-QUELLTEXT (collected by rule() during parsing)
 	fprintf(fp, "[EBNF-QUELLTEXT]\n");
 	fprintf(fp, "%s", quelltextBuf);
 	if (quelltextLen > 0 && quelltextBuf[quelltextLen - 1] != EOL) {
@@ -1015,7 +1015,7 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n\n");
 
-	// Block 2: TS-SYMBOLTABELLE (distinkte Terminale, Reihenfolge = erstes Vorkommen)
+	// Block 2: TS-SYMBOLTABELLE (distinct terminals, first-occurrence order)
 	for (i = 0; i < aktTabIndex; i++) {
 		if ((strcmp(lexTab[i].mode, "TS") == 0 || strcmp(lexTab[i].mode, "RNG") == 0)
 			&& tsSymbolIndexOf(tsList, tsCnt, lexTab[i].TS) < 0 && tsCnt < LEXTAB_LEN) {
@@ -1033,7 +1033,7 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n\n");
 
-	// Block 3: NTS-SYMBOLTABELLE (= ruleSymbols: Regelname + Startzeile)
+	// Block 3: NTS-SYMBOLTABELLE (ruleSymbols: rule name and start row)
 	fprintf(fp, "[NTS-SYMBOLTABELLE]\n");
 	fprintf(fp, "# nr  startzeile  name\n");
 	for (i = 0; i < ruleSymbolCnt; i++) {
@@ -1041,7 +1041,7 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n\n");
 
-	// Block 4: PARSER-TABELLE (Integer-Werte 1:1 wie intern, symbol = Rest der Zeile)
+	// Block 4: PARSER-TABELLE (internal integer values unchanged, symbol = row remainder)
 	fprintf(fp, "[PARSER-TABELLE]\n");
 	fprintf(fp, "# zeile true false addr rngLo rngHi regel modus symbol\n");
 	fprintf(fp, "# (symbol: Steuerzeichen/Backslash als \\ooo enkodiert -- Zeilenformat!)\n");
@@ -1061,7 +1061,7 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n\n");
 
-	// Block 5: TESTS (aus der alten Arbeitsdatei gerettet, unveraendert zurueckschreiben)
+	// Block 5: TESTS (preserved from the old workfile and written unchanged)
 	fprintf(fp, "[TESTS]\n");
 	fprintf(fp, "# TEST \"<eingabe>\" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt\n");
 	for (i = 0; i < testCaseCnt; i++) {
@@ -1069,8 +1069,8 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n");
 
-	// Block 6: LEXER-Konfiguration (roh erhalten; wird vor der Codegenerierung an
-	// lexParseConfig() uebergeben, siehe codegen.h/docs/ARCHITEKTUR.md §8)
+	// Block 6: LEXER configuration (preserved verbatim and passed to
+	// lexParseConfig() before code generation; see codegen.h/docs/ARCHITEKTUR.md §8)
 	fprintf(fp, "\n[LEXER]\n");
 	if (lexerCfgLen == 0) {
 		fprintf(fp, "# Optional: aktiviert Whitespace-/Kommentar-Behandlung im ERZEUGTEN Parser.\n");
@@ -1084,7 +1084,7 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n");
 
-	// Block 6b: CODEGEN-Optionen (roh erhalten, geparst von cgenParseConfig())
+	// Block 6b: CODEGEN options (preserved verbatim and parsed by cgenParseConfig())
 	fprintf(fp, "\n[CODEGEN]\n");
 	if (cgenCfgLen == 0) {
 		fprintf(fp, "# Optional: Ausgabe-Optionen der Codegenerierung.\n");
@@ -1096,8 +1096,8 @@ void writeWorkfile(FILE* fp) {
 	}
 	fprintf(fp, "[ENDE]\n");
 
-	// Block 7: NUTZER-CODE. Der Inhalt bleibt absichtlich roh: C, 68k und spaetere
-	// Aktions-Metadaten duerfen hier stehen, ohne dass der EBNF-Parser sie kennen muss.
+	// Block 7: USER-CODE. Content remains deliberately raw so C, 68k and future
+	// action metadata can be stored without requiring EBNF parser knowledge.
 	fprintf(fp, "\n[NUTZER-CODE]\n");
 	if (userCodeLen == 0) {
 		fprintf(fp, "# Semantische Aktionen (siehe docs/ARCHITEKTUR.md, Abschnitt 9). Beispiel:\n");
@@ -1117,7 +1117,7 @@ void writeWorkfile(FILE* fp) {
 	fprintf(fp, "[ENDE]\n");
 }
 
-// Fall B: Kanten fuer die Linksrekursions-Pruefung aus der geladenen Tabelle rekonstruieren.
+// Case B: reconstruct left-recursion edges from the loaded table.
 // Idee: ein Fehlschlag konsumiert nie Eingabe -- alles, was vom Regelstart aus NUR ueber
 // falseAction-Kanten erreichbar ist, liegt an "erster Position" der Regel. Jede NTS-Zeile
 // auf diesem Weg ergibt eine Kante Regel->Zielregel (dieselbe Semantik, die beim normalen
@@ -1144,9 +1144,9 @@ void rebuildFirstEdgesFromTable() {
 	}
 }
 
-// Fall B: PARSER-TABELLE- und EBNF-QUELLTEXT-Block direkt aus der Arbeitsdatei laden
-// (keine .ebnf vorhanden). Liefert 1 bei Erfolg, 0 wenn die Datei keine Arbeitsdatei
-// im neuen Format ist (z.B. alte CSV-.lextab) oder nicht lesbar war.
+// Case B: load the PARSER-TABELLE and EBNF-QUELLTEXT blocks directly from the
+// workfile when no .ebnf exists. Return 1 on success, or 0 for a legacy CSV
+// file, an invalid new-format workfile, or an unreadable file.
 int loadWorkfileAsGrammar(const char* path) {
 	FILE* fp;
 	char line[WORKFILE_LINE];
