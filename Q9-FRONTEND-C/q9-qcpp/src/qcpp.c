@@ -1676,8 +1676,8 @@ static int evIsPunct(const char *s)
 	return poolEq(evText[evI], s);
 }
 
-/* Suffix nach den Ziffern pruefen: u/U macht die Konstante vorzeichenlos,
-   l/L ist in diesem 32-Bit-Modell wirkungslos. */
+/* Check the suffix after the digits: u/U makes the constant unsigned;
+   l/L has no effect in this 32-bit model. */
 /* Function: evSuffixUns
  * Detects an unsigned integer suffix in a numeric token.
  * Parameters: s Token text; from Suffix start; n Token length.
@@ -1691,7 +1691,7 @@ static int evSuffixUns(const char *s, int from, int n)
 			return 1;
 		if (s[i] == 'l' || s[i] == 'L')
 			continue;
-		fatal("keine gueltige Zahl im #if: ", s);
+		fatal("invalid number in #if: ", s);
 	}
 	return 0;
 }
@@ -1752,10 +1752,9 @@ static int evNumValue(int text)
 		uns = evSuffixUns(s, i, n);
 	}
 
-	/* Ein Wert, der nicht mehr in den vorzeichenbehafteten Bereich passt,
-	   ist nach C89 3.1.3.2 vorzeichenlos (int -> long -> unsigned long; hier
-	   fallen int und long zusammen). Genau daran haengt, dass
-	   "#if 0xFFFFFFFF > 0" wahr wird. */
+	/* A value outside the signed range is unsigned under C89 3.1.3.2
+	   (int -> long -> unsigned long; int and long coincide here). This is
+	   why "#if 0xFFFFFFFF > 0" evaluates true. */
 	if (v > 2147483647)
 		uns = 1;
 	evUns = uns;
@@ -1799,12 +1798,12 @@ static int evCharValue(int text)
 				c = 12;
 			else if (c == 'v')
 				c = 11;
-			/* \\ \' \" bleiben, wie sie sind */
+			/* Backslash, single quote and double quote remain unchanged. */
 		}
 		v = (v << 8) | c;
 		i++;
 	}
-	evUns = 0;                    /* Zeichenkonstanten sind int (C89 3.1.3.4) */
+	evUns = 0;                    /* Character constants have type int (C89 3.1.3.4). */
 	return v;
 }
 
@@ -1837,8 +1836,8 @@ static int evalPrimary(void)
 		return v;
 	}
 	if (evKind[evI] == TK_ID) {
-		/* Ein Bezeichner, der bis hierhin ueberlebt hat, ist NICHT als
-		   Makro definiert -- C89 3.8.1 schreibt dafuer den Wert 0 vor. */
+		/* An identifier that survives to this point is not a defined macro;
+		   C89 3.8.1 specifies the value zero. */
 		evI++;
 		evUns = 0;
 		return 0;
@@ -1880,10 +1879,9 @@ static int evalUnary(void)
 	return evalPrimary();
 }
 
-/* Ab hier tragen alle zweistelligen Operatoren das Vorzeichen-Kennzeichen
-   mit: nach JEDEM Teilausdruck wird evUns sofort gesichert (der naechste
-   Aufruf ueberschreibt es), und das Ergebnis ist vorzeichenlos, sobald einer
-   der Operanden es war. */
+	/* From here, binary operators carry signedness: save evUns immediately
+	   after every subexpression because the next call overwrites it, and make
+	   the result unsigned when either operand was unsigned. */
 /* Function: evalMul
  * Evaluates multiplicative operators.
  * Parameters: None.
@@ -1903,7 +1901,7 @@ static int evalMul(void)
 			r = evalUnary();
 			ru = evUns;
 			lu = lu | ru;
-			v = v * r;              /* Bitmuster, fuer beide gleich */
+			v = v * r;              /* Same bit pattern for both signedness modes. */
 			evUns = lu;
 			continue;
 		}
