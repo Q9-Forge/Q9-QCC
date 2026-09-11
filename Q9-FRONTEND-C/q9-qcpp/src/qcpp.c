@@ -1726,6 +1726,10 @@ static int evNumValue(int text)
 	return v;
 }
 
+/* Function: evCharValue
+ * Decodes the value of an interned character constant.
+ * Parameters: text Interned token text index.
+ * Returns: Character value, or zero for an invalid token. */
 static int evCharValue(int text)
 {
 	const char *s;
@@ -2042,6 +2046,10 @@ static int evalEq(void)
 	return v;
 }
 
+/* Function: evalBAnd
+ * Evaluates bitwise AND expressions.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalBAnd(void)
 {
 	int v;
@@ -2058,6 +2066,10 @@ static int evalBAnd(void)
 	return v;
 }
 
+/* Function: evalBXor
+ * Evaluates bitwise XOR expressions.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalBXor(void)
 {
 	int v;
@@ -2074,6 +2086,10 @@ static int evalBXor(void)
 	return v;
 }
 
+/* Function: evalBOr
+ * Evaluates bitwise OR expressions.
+ * Parameters: None.
+ * Returns: Integer expression value. */
 static int evalBOr(void)
 {
 	int v;
@@ -2404,6 +2420,12 @@ static void collectLine(void)
 	}
 }
 
+/* Function: defineMacro
+ * Adds or replaces a macro definition in the macro table.
+ * Parameters: name Macro name; isFunc Function-like flag; nPar Parameter count;
+ *             parAt Parameter data index; bodyAt Replacement-list index;
+ *             bodyN Replacement-list length.
+ * Returns: Nothing; reports a full macro table as a fatal error. */
 static void defineMacro(int name, int isFunc, int nPar, int parAt, int bodyAt,
 			int bodyN, int kind)
 {
@@ -2533,6 +2555,10 @@ static void doUndef(void)
 
 /* Wert eines #if/#elif -Ausdrucks. "defined" wird VOR der Makroexpansion
    aufgeloest -- sonst wuerde sein Operand mitexpandiert. */
+/* Function: evalIfLine
+ * Evaluates the expression following #if or #elif.
+ * Parameters: None.
+ * Returns: Non-zero when the conditional is active. */
 static int evalIfLine(void)
 {
 	int i;
@@ -2628,6 +2654,10 @@ static int evalIfLine(void)
 	return 0;
 }
 
+/* Function: condPush
+ * Pushes one conditional-compilation nesting level.
+ * Parameters: active Whether the new branch is active.
+ * Returns: Nothing. */
 static void condPush(int active)
 {
 	int parent;
@@ -2646,6 +2676,10 @@ static void condPush(int active)
 		skipping = 1;
 }
 
+/* Function: condUpdateSkip
+ * Recomputes whether the current conditional branch is skipped.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void condUpdateSkip(void)
 {
 	skipping = 0;
