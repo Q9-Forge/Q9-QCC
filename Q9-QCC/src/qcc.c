@@ -199,11 +199,12 @@ int main(int argc, char **argv)
 	}
 	{
 		char command[512];
+		char os9_input[TEXT];
 		const char *input = argv[argc - 1];
 		#if defined(_Q9OS) || defined(_OSK)
 		if (strncmp(input, "/dd/", 4) == 0) {
-			if (q9_system("chd /dd") != 0) return 4;
-			input += 4;
+			sprintf(os9_input, "../../%s", input + 4);
+			input = os9_input;
 		}
 		#endif
 		if (strcmp(tmpdir, "/dd") != 0) {
