@@ -1448,10 +1448,10 @@ static void emitIR(FILE* out) {
 			fprintf(out, "\tlea\ttc_functab__%s(pc),a4\n\tlea\ttc_gadata__%s(pc),a3\n", psectName, psectName);
 		}
 		if (largeDataMode) {
-			/* Jede Funktion muss beim Eintritt ihre eigene Tabellenbasis herstellen.
-			   Der Aufrufer kann aus einem anderen Psect kommen; ausserdem sind a3/a4
-			   ABI-Temporaerregister. Das eigene Label bleibt PC-relativ erreichbar,
-			   die beiden Linkzeit-Differenzen sind ohne 16-Bit-PC-Grenze. */
+			/* Each function must establish its own table bases on entry. The caller
+			   may come from another psect, and a3/a4 are ABI temporary registers.
+			   The function's own label is always PC-reachable; the two link-time
+			   differences have no 16-bit PC-relative limit. */
 			emitTableBases(out, asmName, psectName);
 		}
 		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- vierter, tiefster
@@ -1507,7 +1507,7 @@ static void emitIR(FILE* out) {
 		/* a3/a4 werden am Programmeinstieg gesetzt und von internen QCC-
 		   Funktionen nicht veraendert. Externe Aufrufe nutzen Wrapper, die
 		   diese ABI-Temporaerregister wiederherstellen. */
-		/* BIG-ENDIAN-KORREKTUR FUER char-PARAMETER (2026-08-10, live am
+		/* BIG-ENDIAN FIX FOR char PARAMETERS (2026-08-10, found live in the
 		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
 		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
 		   PUSH/emitCall) -- der Bytewert eines char-Parameters steht damit im
@@ -1549,13 +1549,11 @@ static void emitIR(FILE* out) {
 				int off;
 				for (pk = fn->first; pk < fn->last; pk++) {
 					Instr* px = &ir[pk];
-					/* Der Opcode-Name-Vergleich MUSS vor number() stehen (Kurzschluss-
-					   Auswertung) -- sonst faellt number() ueber JEDE einargumentige
-					   Instruktion her, auch "LABEL L0" oder "JMP L2", deren Argument
-					   gar keine Zahl ist. Genau das brach hier beim Umbau auf zwei
-					   Opcode-Paare (2026-09-09): number() lief unbedingt zuerst und
-					   "IR Zeile N: Zahl erwartet: L0" schlug beim naechsten Selbsthost-
-					   Lauf zu (SourceQCC/ebnf.tc, tcCopyBounded). */
+					/* The opcode-name check MUST precede number() due to short-circuit
+					   evaluation. Otherwise number() would process every one-argument
+					   instruction, including "LABEL L0" or "JMP L2", whose argument is
+					   not numeric. This broke the two-opcode-pair conversion on
+					   2026-09-09 when number() ran first and rejected L0. */
 					if (px->argc == 1) {
 						if ((strcmp(px->op, "LOADC") == 0 || strcmp(px->op, "STOREC") == 0) &&
 						    number(px->args[0], px->line) == pslot) usedAsChar = 1;
