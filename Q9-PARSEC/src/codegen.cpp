@@ -1213,27 +1213,17 @@ int genParserC(const char* path) {
 	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
 	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
 	fprintf(fp, "\t} else p = argv[1];\n");
-	/* Beide Zweige oben setzen p; eine Zuweisung dahinter deckt deshalb den
-	   Datei- UND den Kommandozeilenfall ab. */
+	/* Both branches above set p; one assignment here covers both file and
+	   command-line input cases. */
 	fprintf(fp, "\tparserInputStart = p;\n");
-	// actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input erkannt) --
-	// nur dann steht fest, dass keine der protokollierten Aktionen zu einem inzwischen
-	// verworfenen Backtracking-Pfad gehoert (siehe Kommentar bei actionLogPush oben).
-	// Nach dem Replay: hat eine ACTION-Routine einen Fehler gemeldet, ist der Lauf
-	// GESCHEITERT -- auch wenn die Grammatik die Eingabe vollstaendig erkannt hat.
-	// Die bereits ausgegebene Nutzlast bleibt auf stdout stehen (sie entsteht
-	// waehrend des Replays, der Zaehlerstand ist erst danach bekannt).
+	// Replay actions only AFTER complete input success; only then can no logged
+	// action belong to a rejected backtracking path. An action error makes the
+	// run fail even when the grammar recognized the complete input.
 	//
-	// Das Schlusswort lautet dann "SEMERR", NICHT "FAIL". Der Unterschied ist
-	// wesentlich und war zunaechst falsch gebaut: "FAIL" heisst "die Grammatik
-	// hat die Eingabe nicht erkannt", und dieses Ergebnis ist praefix-stabil --
-	// Werkzeuge wie tools/bootstrap_survey.py schieben Teilstuecke einer Datei
-	// durch den Parser und messen genau das. Semantische Fehler sind in einem
-	// Teilstueck dagegen voellig regulaer (Vorwaertsbezuege auf noch nicht
-	// eingespeiste Definitionen). Beide unter demselben Wort zu melden machte
-	// diese Messung unbrauchbar: aus 5 gemeldeten Luecken wurden 346.
-	// Drei Ergebnisse, drei Woerter -- OK / SEMERR / FAIL, Rueckgabewert
-	// 0 / 1 / 1.
+	// The result marker is SEMERR, not FAIL. FAIL means grammar rejection and
+	// is prefix-stable for bootstrap measurements; semantic errors in a prefix
+	// are normal because later definitions may be absent. Keep the three cases
+	// distinct: OK / SEMERR / FAIL, with return values 0 / 1 / 1.
 	//
 	// Das Wort heisst bewusst SEMERR und nicht SEMFAIL: der erste Versuch hiess
 	// so und enthielt damit "FAIL" als Teilzeichenkette, worauf jeder Aufrufer
@@ -1258,11 +1248,11 @@ int genParserC(const char* path) {
 }
 
 //------------------------------------------------------------------------------------------------
-// 68k-Backend (Motorola-Syntax, vasm-kompatibel; keine Assembler-Direktiven noetig)
+// 68k backend (Motorola syntax, vasm-compatible; no assembler directives needed)
 //------------------------------------------------------------------------------------------------
-// Registerkonvention (siehe ARCHITEKTUR.md §4/§5):
-//   a0   = Eingabezeiger (NUL-terminiert), laeuft bei Erfolg mit
-//   d0.b = 1 Erfolg / 0 Misserfolg (bei Misserfolg: a0 unveraendert)
+// Register convention (see ARCHITEKTUR.md §4/§5):
+//   a0   = NUL-terminated input pointer, advanced on success
+//   d0.b = 1 success / 0 failure (a0 unchanged on failure)
 //   d1   = Scratch fuer Bereichsvergleiche; Ruecksetzpunkte liegen auf dem Stack -(a7)
 // Jede Regel <name> wird Subroutine p_<name>; Einstieg "parse" ruft die Startregel.
 // TS-Literale vergleichen erst alle Zeichen (mit Offsets) und konsumieren dann in einem
@@ -1270,7 +1260,7 @@ int genParserC(const char* path) {
 // von selbst scheitern (kein separater Laengencheck noetig).
 static void emitConsume68k(FILE* fp, int len) {
 	if (len == 0) {
-		return;			// leeres Literal "" matcht immer, konsumiert nichts
+		return;			// Empty literal "" always matches and consumes nothing.
 	}
 	if (len <= 8) {
 		fprintf(fp, "\taddq.l\t#%d,a0\n", len);
@@ -1415,7 +1405,7 @@ static void emitLexHelpers68k(FILE* fp, const char* cs) {
 	int lRet = newLabel();		// ws: fertig
 	int lCmtShared = newLabel();	// ws: gemeinsamer Rumpf "bis Zeilenende ueberlesen" fuer ALLE Line-Marker
 	int lLCentry[LEX_MARKERS_MAX];		// ws: Eintritt je Zeilenkommentar-Marker
-	int lBCentry[LEX_MARKERS_MAX];		// ws: Eintritt je Blockkommentar-Marker
+	int lBCentry[LEX_MARKERS_MAX];		// ws: entry label for each block-comment marker
 	int lYes = newLabel();		// idch: ja
 	int lNo1 = newLabel();
 	int lNo2 = newLabel();
@@ -1437,10 +1427,9 @@ static void emitLexHelpers68k(FILE* fp, const char* cs) {
 		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", (unsigned char)lexWs[i], cc);
 		fprintf(fp, "\tbeq\tL%d\n", lSkip);
 	}
-	// Zeilenkommentar-Marker der Reihe nach probieren: Mismatch faellt zum naechsten
-	// Marker durch (letzter Marker faellt zum ersten Blockkommentar-Marker bzw. lRet).
-	// Voller Match springt IMMER explizit zu lCmtShared (sonst wuerde er in den
-	// naechsten Marker-Check hineinlaufen).
+	// Try line-comment markers in order. A mismatch falls through to the next
+	// marker (or the first block marker / lRet after the final line marker).
+	// A full match always branches explicitly to lCmtShared.
 	for (j = 0; j < lexLineCommentCnt; j++) {
 		int failTo = (j + 1 < lexLineCommentCnt) ? lLCentry[j + 1]
 			: (lexBlockCnt > 0 ? lBCentry[0] : lRet);
@@ -1465,9 +1454,8 @@ static void emitLexHelpers68k(FILE* fp, const char* cs) {
 		fprintf(fp, "\taddq.l\t#1,a0\n");
 		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
 	}
-	// Blockkommentar-Marker der Reihe nach probieren (analog); jeder Marker hat seine
-	// eigene Ende-Sequenz und damit seine eigene innere Schleife -- kann NICHT wie bei
-	// den Zeilenkommentaren einen gemeinsamen Rumpf teilen.
+	// Try block-comment markers in order. Each marker has its own closing
+	// sequence and inner loop, so the bodies cannot share one common loop.
 	for (j = 0; j < lexBlockCnt; j++) {
 		int failTo = (j + 1 < lexBlockCnt) ? lBCentry[j + 1] : lRet;
 		int lBk = newLabel();
