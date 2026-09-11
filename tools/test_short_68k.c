@@ -1,6 +1,6 @@
-/* short-Regressionstest fuer das ECHTE 68k-Ziel (2026-09-10).
+/* short regression test for the REAL 68k target (2026-09-10).
  *
- * Warum nicht ausschliesslich gegen qccvm.py (Host-VM): pointer_index()
+ * Why not only qccvm.py (host VM): pointer_index()
  * rechnet offset // type_size(tag) -- ein struct-Feld-Layout, in dem ein
  * 2-Byte- und ein 4-Byte-Feld auf denselben Python-Listenplatz fallen
  * (z. B. "short a; short b; int c;": b liegt auf Byteoffset 2, c auf
@@ -8,7 +8,7 @@
  * Fall 7 unten ist genau diese Reihenfolge und daher NUR hier, nicht in
  * runtests.sh, aussagekraeftig.
  *
- * Ausgabeformat wie test_struct_68k.c: je Fall "<id>:<wert>\n".
+ * Output format matches test_struct_68k.c: one "<id>:<value>\n" per case.
  */
 
 struct M { int c; short a; short b; };
