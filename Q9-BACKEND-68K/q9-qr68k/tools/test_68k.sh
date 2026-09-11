@@ -5,11 +5,11 @@
 #   1  tools/build_os9.sh  baut das Modul (qr68 assembliert sich selbst)
 #   2  Abbild bestuecken   Modul nach /CMDS, test/insn.a nach /dd
 #   3  Emulator            q9_qr68 -v /dd/insn.a /dd/insn.r
-#   4  Vergleich           /dd/insn.r == Hostlauf derselben Quelle
+#   4  Comparison          /dd/insn.r == host run of the same source
 #
 # Work on a COPY of the image ("cp -c", a CoW clone costs
-# nichts): ToolShed schreibt an einem laufenden Emulator vorbei direkt in die
-# Datei, und auf dem Mac laufen oft mehrere Emulatoren.
+# nothing): ToolShed writes directly to the file while an emulator is running,
+# and multiple emulators often run on the Mac.
 #
 # Usage:  tools/test_68k.sh
 # Exit:   0 = byte-identical, 1 = difference/error, 2 = setup failure
@@ -48,7 +48,7 @@ rm -f "$IMAGE"
 cp -c "$BASE" "$IMAGE" 2>/dev/null || cp "$BASE" "$IMAGE" || die "Abbild kopieren"
 "$OS9" copy -r "$WORK/q9_qr68" "$IMAGE,/CMDS/q9_qr68" || die "ToolShed copy (Modul)"
 # ToolShed does NOT set the e attribute; without it OS-9 will not start the module
-# (Fehler 214).
+# (error 214).
 "$OS9" attr -e -w -r -pe -pr "$IMAGE,/CMDS/q9_qr68" >/dev/null || die "ToolShed attr"
 "$OS9" copy -l -r "$QUELLE" "$IMAGE,/insn.a" || die "ToolShed copy (Quelle)"
 
