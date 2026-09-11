@@ -3,7 +3,7 @@
 // Owner:  AF
 // Desc.:  EBNF translator (Wirth dialect): parses a .ebnf grammar, generates a
 //         call/return jump table (stack machine), executes it against test input
-//         aus und verwaltet eine strukturierte Arbeitsdatei (<basis>.lextab) mit den Bloecken
+//         executes it and manages a structured workfile (<base>.lextab) with the blocks
 //         EBNF-QUELLTEXT, TS-/NTS-SYMBOLTABELLE, PARSER-TABELLE sowie den nutzer-editierbaren
 //         TESTS and USER-CODE blocks.
 //         Project goal: recursive-descent code generation for the grammar,
