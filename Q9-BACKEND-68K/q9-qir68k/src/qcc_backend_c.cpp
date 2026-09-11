@@ -162,24 +162,21 @@ static int* initAlloc(int n, int irLine)
 	return dst;
 }
 
-/* 2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/emitCall()-Kommentar
-   in qcc_backend_c.cpp): jeder CALLEXT/CALLEXTP-Aufruf ging bisher per rohem
-   "bsr <rawname>" direkt an die externe clib.l-Funktion -- das zerstoert a3/a4
-   (reine ABI-Temporaer-Register, siehe Ultra-C/C++ Processor Guide Table
-   1-12), UND ein Versuch, a3/a4 direkt an der Aufrufstelle wieder aufzufrischen
-   ("lea (pc)"), scheitert bei r68 mit "value out of range", sobald die
-   Aufrufstelle mehr als 32 KB von tc_functab/tc_gadata entfernt liegt (die
-   ganze a3/a4-Indirektion existiert ja GENAU wegen dieser Grenze). LOESUNG:
-   jede ECHTE externe Funktion, die per CALLEXT/CALLEXTP gerufen wird, bekommt
-   einen EIGENEN kleinen Wrapper-Stub ("tc_extwrap_<name>", physisch DIREKT
-   neben tc_gadata platziert, siehe emitIR()) -- der Wrapper macht den echten
-   "bsr <rawname>" (immer PC-relativ sicher, da er nah an allem anderen
-   Fruehen liegt) und frischt DANACH a3/a4 auf (ebenfalls sicher, da der
-   Wrapper selbst nah an den Tabellen liegt). Aufrufstellen rufen NICHT mehr
-   direkt "bsr <rawname>", sondern den Wrapper -- ueber genau denselben
-   a4-Tabellen-Indirektionsmechanismus wie interne QCC-Funktionen
-   (emitCall()), der beliebige Entfernungen bereits beherrscht (Register-
-   indirekter jsr, keine PC-relative Distanzgrenze). */
+/* 2026-07-26, found live on Q9 (see the emitLeaGlobal()/emitCall() comments
+   in qcc_backend_c.cpp): every CALLEXT/CALLEXTP call previously used a raw
+   "bsr <rawname>" directly to the external clib.l function, corrupting a3/a4
+   (ABI temporary registers; see Ultra-C/C++ Processor Guide Table 1-12).
+   Refreshing a3/a4 directly at the call site with "lea (pc)" also fails in
+   r68 with "value out of range" once the call site is more than 32 KB from
+   tc_functab/tc_gadata. The entire a3/a4 indirection exists specifically to
+   overcome that limit. SOLUTION: every real external function called through
+   CALLEXT/CALLEXTP receives its own small wrapper stub
+   ("tc_extwrap_<name>", placed directly beside tc_gadata; see emitIR()).
+   The wrapper performs the real "bsr <rawname>" (PC-relative and safe because
+   it is close to the other early code) and then refreshes a3/a4. Call sites
+   invoke the wrapper through the same a4 table-indirection mechanism used for
+   internal QCC functions (emitCall()), which supports arbitrary distances via
+   register-indirect jsr without a PC-relative distance limit. */
 #define MAX_EXTERNS 128
 static char externNames[MAX_EXTERNS][NAME_LEN];
 static int externCount = 0;
@@ -193,60 +190,56 @@ static int findExtern(const char* name) {
 static int registerExtern(const char* name) {
 	int idx = findExtern(name);
 	if (idx >= 0) return idx;
-	if (externCount >= MAX_EXTERNS) fatal("zu viele verschiedene externe Funktionen (CALLEXT/CALLEXTP)");
+	if (externCount >= MAX_EXTERNS) fatal("too many different external functions (CALLEXT/CALLEXTP)");
 	strncpy(externNames[externCount], name, NAME_LEN - 1);
 	return externCount++;
 }
 
-/* Tabellen-Offset EINES externen Wrappers, direkt nach den festen Helfern
-   und den QCC-Funktionen. */
+/* Table offset of one external wrapper, directly after the fixed helpers and
+   QCC functions. */
 static int externTableOffset(const char* name) {
 	int idx = findExtern(name);
-	if (idx < 0) fatal("interner Fehler: externe Funktion nicht registriert");
+	if (idx < 0) fatal("internal error: external function not registered");
 	return 8 * 4 + idx * 4;
 }
 
-/* -os9: Microware-r68-Ausgabeformat statt vasm-kompatiblem "nacktem" Motorola-
-   Format (siehe genParser68kTo in Source/codegen.cpp fuer denselben Trick beim
-   Parser-Codegen -- dort empirisch verifiziert: r68 akzeptiert Label-Doppel-
-   punkte und ";"-Endkommentare unveraendert, es braucht nur "*" statt ";" fuer
-   VOLLE Kommentarzeilen sowie einen nam/psect/ends-Rahmen). Der eigentliche
-   Instruktions-Codegen (emitIR-Dispatch weiter unten) ist DAHER GROESSTENTEILS
-   fuer beide Formate identisch -- MIT EINER wichtigen Ausnahme: dem Frame-
-   Pointer-Register (siehe framePtr() direkt unten). */
+/* -os9: Microware r68 output format instead of vasm-compatible "bare" Motorola
+   syntax (see genParser68kTo in Source/codegen.cpp for the same parser-codegen
+   technique). That behavior was verified empirically: r68 accepts label
+   colons and trailing ';' comments unchanged, but requires '*' instead of ';'
+   for full comment lines plus a nam/psect/ends wrapper. Instruction generation
+   in the emitIR dispatch below is therefore mostly identical for both formats,
+   with one important exception: the frame-pointer register (see framePtr()). */
 static int os9Mode = 0;
-/* -part (2026-07-25, Mehrdatei-Uebersetzung): diese Datei ist EIN TEIL eines
-   Mehrdatei-Programms, kein vollstaendiges Programm fuer sich -- die main/
-   funcCount-Pflicht wird gelockert, siehe collectFunctions()/emitIR(). */
+/* -part (2026-07-25, multi-file translation): this file is ONE PART of a
+   multi-file program, not a complete program by itself; the main/funcCount
+   requirement is relaxed (see collectFunctions()/emitIR()). */
 static int partMode = 0;
-/* -runtime (2026-07-25, Mehrdatei-Uebersetzung): der 68k-Core (mul/div,
-   emitM68kCore) sowie putint/putuint/putchar/tc_io_write + deren Scratch-
-   Speicher (tc_extcall_tmp/tc_io_buf/tc_io_cnt) werden OHNE -part IMMER
-   emittiert (Vollprogramm-Annahme, unveraendert). Unter -part wuerde JEDE
-   Datei ihre EIGENE Kopie dieser Symbole mitbringen -- l68 lehnt das beim
-   Linken zuverlaessig als "duplicate symbol" ab (siehe docs/STATUS.md,
-   empirisch verifiziert). Deshalb: unter -part NUR emittieren, wenn
-   zusaetzlich -runtime gesetzt ist -- GENAU EINE Datei im Mehrdatei-Programm
-   traegt so den gemeinsamen Anker, alle anderen referenzieren ihn per
-   undefiniertem Symbolverweis (vom Linker aufgeloest, wie jeder andere
-   Cross-Datei-Aufruf auch). */
+/* -runtime (2026-07-25, multi-file translation): the 68k core (mul/div,
+   emitM68kCore) and putint/putuint/putchar/tc_io_write plus their scratch
+   storage (tc_extcall_tmp/tc_io_buf/tc_io_cnt) are ALWAYS emitted without
+   -part (complete-program assumption, unchanged). With -part, EVERY file
+   would contain its OWN copy of these symbols, and l68 reliably rejects that
+   at link time as "duplicate symbol" (see docs/STATUS.md; verified
+   empirically). Therefore, under -part they are emitted ONLY when -runtime is
+   also set: EXACTLY ONE file in the multi-file program carries the shared
+   anchor, while all others reference it as an undefined symbol resolved by
+   the linker, like any other cross-file call. */
 static int runtimeMode = 0;
-/* -largedata (2026-07-25, "Speichermodell"-Schalter): siehe grosser Kommentar bei
-   emitLeaGlobal() weiter unten -- Standardmodell adressiert jedes Globale
-   AUSSCHLIESSLICH PC-relativ (echte 68000-Grenze: 16-Bit-Displacement, +-32 KB),
-   dieser Schalter wechselt auf eine zusaetzliche Indirektionstabelle mit
-   absoluten Adressen (vom Linker aufgeloest), die beliebig weit entfernte
-   Globale erreichbar macht -- auf Kosten eines zusaetzlichen Speicherzugriffs
-   pro Zugriff. */
+/* -largedata (2026-07-25, memory-model switch): see the detailed comment at
+   emitLeaGlobal() below. The default model addresses every global exclusively
+   PC-relatively (real 68000 limit: 16-bit displacement, +/-32 KB). This switch
+   adds an indirection table with linker-resolved addresses, making globals at
+   arbitrary distances reachable at the cost of one additional memory access
+   per reference. */
 static int largeDataMode = 0;
-/* -remotedata (2026-09-08): genullte Globals kommen nicht mehr als dc.l 0 in
-   den psect, sondern in einen "vsect remote" -- OS-9 nullt den Datenbereich
-   selbst (2026-09-07 gemessen, im Handbuch steht es nicht), also braucht das
-   Modul die Nullen nicht mitzuschleppen. Der Zugriff wird a6-relativ mit
-   VOLLEN 32 Bit (movea.l #sym,reg / adda.l a6,reg -- dasselbe Muster, das
-   runtime/os9/q9_cstart.a in Produktion benutzt), kennt also weder die
-   32-KB-Grenze der PC-relativen Adressierung noch die 64-KB-Grenze eines
-   nicht-remoten vsects. Siehe docs/FORTSCHRITT.md. */
+/* -remotedata (2026-09-08): zero-initialized globals are emitted in a
+   "vsect remote" instead of as dc.l 0 in the psect. OS-9 clears that data area
+   itself (measured on 2026-09-07; not documented in the manual), so the module
+   does not need to carry the zero bytes. Access is a full 32-bit a6-relative
+   operation (movea.l #sym,reg / adda.l a6,reg, the same pattern used in the
+   production runtime/os9/q9_cstart.a), avoiding both the 32 KB PC-relative
+   limit and the 64 KB limit of a non-remote vsect. See docs/FORTSCHRITT.md. */
 static int remoteDataMode = 0;
 /* Experimental long-call path; without -trampolines the tested table path
    remains unchanged. */
