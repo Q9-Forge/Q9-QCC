@@ -7,7 +7,7 @@
  */
 #include <stdio.h>
 #include <string.h>
-extern char* realloc(char*, int);
+#include "../../q9-qcpp/include/stdlib.h"
 #ifdef QCC_BUFFERED_OUTPUT
 #include <stdarg.h>
 static char qccOutputBuffer[8192]; static int qccOutputUsed = 0;
@@ -43,7 +43,6 @@ static void ws(void) {
 	}
 }
 
-extern void exit(int);
 typedef struct { int id; const char* start; const char* end; } ActionLogEntry;
 static ActionLogEntry* actionLog;
 static int actionLogCap;
