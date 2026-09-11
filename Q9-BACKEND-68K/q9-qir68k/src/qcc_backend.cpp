@@ -299,8 +299,8 @@ static void emitIR(std::ostream& out, const std::vector<Instr>& ir, const std::v
 			}
 			else if (op == "STOREG" && ins.args.size() == 1) {
 				if (globalByName.find(ins.args[0]) == globalByName.end()) throw std::runtime_error("IR Zeile " + std::to_string(ins.line) + ": unbekannte globale Variable " + ins.args[0]);
-				// PC-relative Adressierung ist beim 68000 nur Quelle, nicht Ziel.
-				// a0 ist hier ein kurzlebiger Adress-Temporaer des Machine Backends.
+				// On the 68000, PC-relative addressing is valid only as a source,
+				// not as a destination. a0 is a short-lived address temporary here.
 				out << "\tmove.l\t(a7)+,d0\n\tlea\ttc_g_" << ins.args[0] << "(pc),a0\n\tmove.l\td0,(a0)\n";
 			}
 			else if (op == "LOADGC" && ins.args.size() == 1) {

@@ -4230,7 +4230,7 @@ static void doInstruction(void)
 		int op;
 		int longDiv;
 
-		/* Die 68020-Langform: "divu.l d1,d0" -> $4c41 $0000,
+		/* The 68020 long form: "divu.l d1,d0" -> $4c41 $0000,
 		   "divs.l" setzt Bit 11, und "divu.l d1,d2:d0" (Rest in d2)
 		   setzt zusaetzlich Bit 10 und traegt d2 unten ein.
 		   mulu/muls.l liegen bei $4c00. Alles gemessen.
