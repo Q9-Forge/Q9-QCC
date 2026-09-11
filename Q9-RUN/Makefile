@@ -3,7 +3,7 @@ CFLAGS = -std=c99 -Wall -Wextra -O2 -D_POSIX_C_SOURCE=200809L
 LDFLAGS = 
 
 BUILD_DIR = build
-SOURCE_DIR = Source
+SOURCE_DIR = src
 TEST_DIR = tests
 
 SOURCES = $(filter-out $(SOURCE_DIR)/qrun_all.c,$(wildcard $(SOURCE_DIR)/*.c))
