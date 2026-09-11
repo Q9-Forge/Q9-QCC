@@ -194,62 +194,53 @@ static int registerExtern(const char* name) {
 	return externCount++;
 }
 
-/* Tabellen-Offset EINES externen Wrappers, direkt nach den festen Helfern
-   und den QCC-Funktionen. */
+/* Table offset of one external wrapper, directly after the fixed helpers
+   and QCC functions. */
 static int externTableOffset(const char* name) {
 	int idx = findExtern(name);
 	if (idx < 0) fatal("interner Fehler: externe Funktion nicht registriert");
 	return 8 * 4 + idx * 4;
 }
 
-/* -os9: Microware-r68-Ausgabeformat statt vasm-kompatiblem "nacktem" Motorola-
-   Format (siehe genParser68kTo in Source/codegen.cpp fuer denselben Trick beim
-   Parser-Codegen -- dort empirisch verifiziert: r68 akzeptiert Label-Doppel-
-   punkte und ";"-Endkommentare unveraendert, es braucht nur "*" statt ";" fuer
-   VOLLE Kommentarzeilen sowie einen nam/psect/ends-Rahmen). Der eigentliche
-   Instruktions-Codegen (emitIR-Dispatch weiter unten) ist DAHER GROESSTENTEILS
-   fuer beide Formate identisch -- MIT EINER wichtigen Ausnahme: dem Frame-
-   Pointer-Register (siehe framePtr() direkt unten). */
+/* -os9: Microware r68 output format instead of vasm-compatible bare Motorola
+   format (see genParser68kTo in Source/codegen.cpp for the same parser-codegen
+   technique). r68 accepts label colons and trailing semicolon comments, but
+   requires '*' instead of ';' for full comment lines and a nam/psect/ends
+   wrapper. Instruction generation is therefore mostly identical in both
+   formats, with one important exception: the frame-pointer register. */
 static int os9Mode = 0;
-/* -part (2026-07-25, Mehrdatei-Uebersetzung): diese Datei ist EIN TEIL eines
-   Mehrdatei-Programms, kein vollstaendiges Programm fuer sich -- die main/
-   funcCount-Pflicht wird gelockert, siehe collectFunctions()/emitIR(). */
+/* -part (2026-07-25, multi-file translation): this file is one part of a
+   multi-file program, not a complete program by itself; the main/funcCount
+   requirement is relaxed. See collectFunctions()/emitIR(). */
 static int partMode = 0;
-/* -runtime (2026-07-25, Mehrdatei-Uebersetzung): der 68k-Core (mul/div,
-   emitM68kCore) sowie putint/putuint/putchar/tc_io_write + deren Scratch-
-   Speicher (tc_extcall_tmp/tc_io_buf/tc_io_cnt) werden OHNE -part IMMER
-   emittiert (Vollprogramm-Annahme, unveraendert). Unter -part wuerde JEDE
-   Datei ihre EIGENE Kopie dieser Symbole mitbringen -- l68 lehnt das beim
-   Linken zuverlaessig als "duplicate symbol" ab (siehe docs/STATUS.md,
-   empirisch verifiziert). Deshalb: unter -part NUR emittieren, wenn
-   zusaetzlich -runtime gesetzt ist -- GENAU EINE Datei im Mehrdatei-Programm
-   traegt so den gemeinsamen Anker, alle anderen referenzieren ihn per
-   undefiniertem Symbolverweis (vom Linker aufgeloest, wie jeder andere
-   Cross-Datei-Aufruf auch). */
+/* -runtime (2026-07-25, multi-file translation): without -part, the 68k core
+   (mul/div, emitM68kCore) and putint/putuint/putchar/tc_io_write plus their
+   scratch storage are always emitted, preserving the complete-program model.
+   With -part every file would provide its own copy, which l68 rejects as
+   duplicate symbols. Therefore -part emits these only when -runtime is also
+   set: exactly one file carries the shared anchor and all others reference it
+   as an unresolved symbol for the linker to resolve. */
 static int runtimeMode = 0;
-/* -largedata (2026-07-25, "Speichermodell"-Schalter): siehe grosser Kommentar bei
-   emitLeaGlobal() weiter unten -- Standardmodell adressiert jedes Globale
-   AUSSCHLIESSLICH PC-relativ (echte 68000-Grenze: 16-Bit-Displacement, +-32 KB),
-   dieser Schalter wechselt auf eine zusaetzliche Indirektionstabelle mit
-   absoluten Adressen (vom Linker aufgeloest), die beliebig weit entfernte
-   Globale erreichbar macht -- auf Kosten eines zusaetzlichen Speicherzugriffs
-   pro Zugriff. */
+/* -largedata (2026-07-25, memory-model switch): see the detailed comment at
+   emitLeaGlobal() below. The default model addresses every global exclusively
+   PC-relatively (a real 68000 limit: 16-bit displacement, +/-32 KB); this
+   switch uses an additional indirection table with linker-resolved absolute
+   addresses, reaching globals at any distance at the cost of one extra memory
+   access per reference. */
 static int largeDataMode = 0;
-/* -remotedata (2026-09-08): genullte Globals kommen nicht mehr als dc.l 0 in
-   den psect, sondern in einen "vsect remote" -- OS-9 nullt den Datenbereich
-   selbst (2026-09-07 gemessen, im Handbuch steht es nicht), also braucht das
-   Modul die Nullen nicht mitzuschleppen. Der Zugriff wird a6-relativ mit
-   VOLLEN 32 Bit (movea.l #sym,reg / adda.l a6,reg -- dasselbe Muster, das
-   runtime/os9/q9_cstart.a in Produktion benutzt), kennt also weder die
-   32-KB-Grenze der PC-relativen Adressierung noch die 64-KB-Grenze eines
-   nicht-remoten vsects. Siehe docs/FORTSCHRITT.md. */
+/* -remotedata (2026-09-08): zeroed globals are emitted in a "vsect remote"
+   instead of as dc.l 0 in the psect. OS-9 clears this data area itself, so the
+   module need not carry the zero bytes. Access uses full 32-bit a6-relative
+   addressing (movea.l #sym,reg / adda.l a6,reg), avoiding both the 32 KB PC-
+   relative limit and the 64 KB limit of a non-remote vsect. See
+   docs/FORTSCHRITT.md. */
 static int remoteDataMode = 0;
-/* Experimenteller Fernaufrufpfad; ohne -trampolines bleibt der getestete
-   Tabellenpfad unveraendert. */
+/* Experimental long-call path; without -trampolines the tested table path
+   remains unchanged. */
 static int trampolineMode = 0;
-/* -peephole (2026-09-08): Nachlauf ueber den bereits erzeugten Assemblertext,
-   s. Source/qcc_backend_peephole.c. Unabhaengig von -os9/-largedata/
-   -remotedata -- arbeitet rein textuell auf der Ausgabedatei. */
+/* -peephole (2026-09-08): post-process the generated assembly text; see
+   Source/qcc_backend_peephole.c. Independent of -os9/-largedata/-remotedata,
+   it operates purely on the output file. */
 static int peepholeMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 /* -unit=<name> groups artificially split IR parts that originated from one
