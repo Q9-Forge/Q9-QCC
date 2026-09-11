@@ -15,6 +15,7 @@ REPO="$PWD"
 : "${FORGE:=$(cd .. && pwd)}"
 : "${QCPP:=$FORGE/Q9-QCC/q9-cpp}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+[[ "$MWOS" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.stock-stargate.hda}"
 : "${QCPP_ROF:=/tmp/qcpp-own/qcpp.r}"
