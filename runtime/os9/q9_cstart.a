@@ -9,64 +9,63 @@
 * Q9-owned version in a later runtime work package.
 * -----------------------------------------------------------------------------
 
-        use     q9defs.d                         * Q9-Definitionen; siehe q9defsfile
+        use     q9defs.d                         * Q9 definitions; see q9defs.d
 
-Typ             equ     1                       * OS-9-Programmmodul
-Edition         equ     7                       * Q9-Ausgabeedition
-StackSize       equ     2048+1024               * Standard-Stackreservierung
-CError          equ     257                     * Interner C-Fehlercode
+Typ             equ     1                       * OS-9 program module
+Edition         equ     7                       * Q9 release edition
+StackSize       equ     2048+1024               * Standard stack reservation
+CError          equ     257                     * Internal C error code
 
 * Modulbeschreibung ----------------------------------------------------------
 
         psect   q9_cstart_a,(Q9Prgrm<<8)!Q9Objct,(Q9ReEnt<<8)!1,Edition,StackSize,_cstart,trapinit
 
-CR              equ     $0d                     * Wagenruecklauf
-Space           equ     $20                     * Leerzeichen
-Comma           equ     $2c                     * Komma
-DQuote          equ     $22                     * Doppeltes Anfuehrungszeichen
-SQuote          equ     $27                     * Einfaches Anfuehrungszeichen
+CR              equ     $0d                     * Carriage return
+Space           equ     $20                     * Space
+Comma           equ     $2c                     * Comma
+DQuote          equ     $22                     * Double quote
+SQuote          equ     $27                     * Single quote
 
 * Prozessdaten ---------------------------------------------------------------
-* Diese Bereiche liegen im Vsect. OS-9 uebergibt die Basis in A6.
+* These areas reside in the Vsect. OS-9 passes the base address in A6.
 
         vsect
-_sttop: ds.l    1                               * Obergrenze des Anfangsstacks
-_csl_a6:ds.l    1                               * CSL-Datenzeiger im OSK-Modus
+_sttop: ds.l    1                               * Top of the initial stack
+_csl_a6:ds.l    1                               * CSL data pointer in OSK mode
         ends
 
         vsect
-_mtop:  ds.l    1                               * Aktuelles Ende des Datenspeichers
-_stbot: ds.l    1                               * Untere Stackgrenze
-errno:  ds.l    1                               * Globaler C-Fehlercode
-_totmem:ds.l    1                               * Bereits reservierter Speicher
-_sbsize:ds.l    1                               * Obergrenze fuer sbrk()
-_pathcnt:ds.w  1                               * Anzahl geerbter Pfade
-_sysglob:ds.l  1                               * Zeiger auf System-Globals
-_modhead:ds.l  1                               * Zeiger auf den Prozessmodulheader
-_modname:ds.l  1                               * Zeiger auf den aktuellen Modulnamen
-_procid:ds.l  1                                * Prozess-ID
-_maxstack:ds.l 1                               * Maximal erreichte Stacktiefe
-_glob_data:ds.l 1                              * Zeiger auf statische C-Daten
-_csl_bsrentry:ds.l 1                           * CSL-BSR-Einstieg
-q9_cstart_reserved:ds.l 1                      * Reservierter Laufzeitbereich
+_mtop:  ds.l    1                               * Current end of data memory
+_stbot: ds.l    1                               * Bottom of the stack
+errno:  ds.l    1                               * Global C error code
+_totmem:ds.l    1                               * Already allocated memory
+_sbsize:ds.l    1                               * Upper limit for sbrk()
+_pathcnt:ds.w  1                               * Number of inherited paths
+_sysglob:ds.l  1                               * Pointer to system globals
+_modhead:ds.l  1                               * Pointer to the process module header
+_modname:ds.l  1                               * Pointer to the current module name
+_procid:ds.l  1                                * Process ID
+_maxstack:ds.l 1                               * Maximum stack depth reached
+_glob_data:ds.l 1                              * Pointer to static C data
+_csl_bsrentry:ds.l 1                           * CSL BSR entry point
+q9_cstart_reserved:ds.l 1                      * Reserved runtime area
         ends
 
         vsect
-_fcbs:  dc.l    _iob                            * Zeiger auf CIO-Dateibloecke
-_ofcbs: dc.l    0                               * Kompatibilitaets-CIO-Zeiger
-* Microwares clib referenziert die globale Variable unter _environ.
-* Der Q9-Startcode hiess bisher nur environ; beide Namen muessen auf
-* denselben Prozesszeiger zeigen, damit getenv/system mit q9_cstart
-* gelinkt werden koennen.
+_fcbs:  dc.l    _iob                            * Pointer to CIO file blocks
+_ofcbs: dc.l    0                               * Compatibility CIO pointer
+* Microware clib references the global variable as _environ.
+* Q9 startup code previously defined only environ; both names must refer
+* to the same process pointer so getenv/system can link with q9_cstart.
 _environ:
-environ:dc.l    EVNULL                          * Zeiger auf die Environmentliste
-_stklimit:dc.l  0                               * Noch nicht verifizierter Stack
+environ:dc.l    EVNULL                          * Pointer to the environment list
+_stklimit:dc.l  0                               * Stack limit not yet verified
         ends
 
 * C-Einstieg -----------------------------------------------------------------
-* Eintrittsregister:
-*   A3  Modulbasis, A4 System-Globals, A5 Parameterbereich, A6 Prozessdaten
-*   D3  Anzahl geerbter Pfade, D5 Parameterlaenge, D6 Anfangsdatengroesse
+* Entry registers:
+*   A3  module base, A4 system globals, A5 parameter area, A6 process data
+*   D3  inherited path count, D5 parameter length, D6 initial data size
 
 * Function: _cstart
 * Establishes the process data area, initializes runtime state and invokes
@@ -74,35 +73,35 @@ _stklimit:dc.l  0                               * Noch nicht verifizierter Stack
 * Parameters: OS-9 process registers and inherited argument state.
 * Returns: Normally does not return; process termination is handled by exit.
 _cstart:
-        move.l  a6,_glob_data(a6)                * Statische Datenbasis sichern
-        move.l  a3,_modhead(a6)                 * Modulheader sichern
-        move.l  d0,_procid(a6)                  * Prozess-ID sichern
-        movea.l a3,a0                           * Moduladresse kopieren
-        adda.l  Q9_M_ID(a0),a0                  * Modulnamenoffset anwenden
-        move.l  a0,_modname(a6)                 * Modulnamenzeiger sichern
-        move.l  d6,_totmem(a6)                  * Anfangsgroesse sichern
-        move.l  d6,_sbsize(a6)                  * Anfangsgroesse fuer sbrk()
-        move.w  d3,_pathcnt(a6)                 * Geerbte Pfade sichern
+        move.l  a6,_glob_data(a6)                * Save static data base
+        move.l  a3,_modhead(a6)                 * Save module header
+        move.l  d0,_procid(a6)                  * Save process ID
+        movea.l a3,a0                           * Copy module address
+        adda.l  Q9_M_ID(a0),a0                  * Apply module name offset
+        move.l  a0,_modname(a6)                 * Save module name pointer
+        move.l  d6,_totmem(a6)                  * Save initial size
+        move.l  d6,_sbsize(a6)                  * Initial sbrk() limit
+        move.w  d3,_pathcnt(a6)                 * Save inherited paths
 
-        btst    #Q9SupStBit,Q9_M_Attr(a3)        * System-State-Modul?
-        beq.s   _cs10                           * Nein: Systemzeiger ignorieren
-        move.l  a4,_sysglob(a6)                 * System-Globals uebernehmen
-        bne.s   _cs10                           * Gueltiger Zeiger vorhanden
-        move.l  0.l,_sysglob(a6)                * Alte OS-9-Konvention: Adresse 0
+        btst    #Q9SupStBit,Q9_M_Attr(a3)        * System-state module?
+        beq.s   _cs10                           * No: ignore system pointer
+        move.l  a4,_sysglob(a6)                 * Save system globals
+        bne.s   _cs10                           * Valid pointer present
+        move.l  0.l,_sysglob(a6)                * Old OS-9 convention: address 0
 _cs10:
 
-* Kommandozeilenparameter ----------------------------------------------------
+* Command-line arguments -----------------------------------------------------
 
-        tst.l   d5                              * Gibt es Parameter?
-        beq.s   oldarg_a                        * Nein: alter Aufrufweg
-        btst    #0,d5                            * Ungerade Laenge?
-        bne.s   oldarg                          * Alter OS-9-Parameterweg
-        lea     (a5,d5.l),a0                     * Ende des Parameterbereichs
-        tst.w   -2(a0)                           * Neuer argv-Aufbau?
-        bne.s   oldarg                          * Nein: alter Aufbau
-        subq.l  #4,a0                            * Environment-Ende ueberspringen
-        lea     -4(a0),a4                        * Letztes envp/argv-Element
-        moveq   #1,d0                            * Zaehler fuer argv
+        tst.l   d5                              * Are arguments present?
+        beq.s   oldarg_a                        * No: use the old path
+        btst    #0,d5                            * Odd length?
+        bne.s   oldarg                          * Old OS-9 argument path
+        lea     (a5,d5.l),a0                     * End of argument area
+        tst.w   -2(a0)                           * New argv layout?
+        bne.s   oldarg                          * No: use old layout
+        subq.l  #4,a0                            * Skip environment end
+        lea     -4(a0),a4                        * Last envp/argv element
+        moveq   #1,d0                            * argv counter
         bra.s   newarg_b
 
 oldarg:
