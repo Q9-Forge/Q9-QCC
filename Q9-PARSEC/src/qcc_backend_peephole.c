@@ -158,19 +158,16 @@ static void phLoad(const char* path) {
 	for (i = 0; i < phLineCount; i++) phRemoved[i] = 0;
 }
 
-/* Naechste NICHT gestrichene Zeile nach i, oder -1. Siehe Kommentar am
- * Dateianfang zu "mehrere Durchlaeufe": nach einer Faltung liegt die
- * logisch naechste Zeile nicht mehr zwingend bei i+1. */
+/* Next line not marked for removal after i, or -1. After a fold, the logical
+ * next line is not necessarily at i+1; see the multiple-pass note above. */
 static int phNextKept(int i) {
 	int j = i + 1;
 	while (j < phLineCount && phRemoved[j]) j++;
 	return j < phLineCount ? j : -1;
 }
 
-/* Erkennt "move.l SRC,-(a7)", optional mit einem "label:\t"-Vorspann auf
- * DERSELBEN Zeile (dieses Backend haengt Labels so an, siehe emitIR()).
- * Liest NUR -- schreibt nichts in die Zeile, damit ein Fehlschlag hier
- * (Pop passt am Ende doch nicht) den Originaltext nicht beschaedigt. */
+/* Recognizes "move.l SRC,-(a7)", optionally preceded by "label:\t" on the
+ * same line. This is read-only so a failed match cannot damage original text. */
 static int phMatchPush(const char* line, const char** labelStart, int* labelLen,
                         const char** srcStart, int* srcLen) {
 	const char* p;
