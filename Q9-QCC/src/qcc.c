@@ -205,7 +205,7 @@ int main(int argc, char **argv)
 			if (q9_system(command) != 0) return 4;
 		}
 		#if defined(_Q9OS) || defined(_OSK)
-		sprintf(command, "%s -I/dd/DEFS/Q9 %s %s/input.i", qcpp, input, tmpdir);
+		sprintf(command, "%s %s %s/input.i", qcpp, input, tmpdir);
 		#else
 		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s %s/input.i", qcpp, input, tmpdir);
 		#endif
