@@ -1,3 +1,14 @@
+/*
+ * q9-qclib file I/O
+ *
+ * Purpose:
+ *   Provides the Q9 FILE abstraction and unbuffered OS-9 file operations.
+ *   A FILE handle identifies an entry in the Q9 path table rather than a
+ *   Microware FILE layout.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ */
 /* fopen, fclose, fread, fwrite, puts, fputc, fputs, fgets, ferror fuer qclib.
  *
  * Der FILE* der C-Ebene ist hier die ADRESSE eines Tabelleneintrags, und
@@ -66,6 +77,10 @@ extern char *realloc(char *p, int n);
    statt durch Zeigerarithmetik -- QF_MAX ist 16, und ein "(fp - &qf_path[0])
    / 4" waere eine Annahme ueber die Feldgroesse mehr. -1 = kein gueltiger
    Eintrag. */
+/* Function: qf_index
+ * Finds the table entry represented by a FILE handle.
+ * Parameters: fp FILE handle.
+ * Returns: Table index, or -1 when invalid. */
 int qf_index(char *fp)
 {
 	int i;
@@ -82,6 +97,10 @@ int qf_index(char *fp)
 }
 
 /* Den Lesepuffer nachfuellen. 1 = es gibt Bytes, 0 = Ende oder Fehler. */
+/* Function: qf_fill
+ * Fills the read buffer for an open file.
+ * Parameters: i File table index.
+ * Returns: Number of bytes read, or a negative error status. */
 int qf_fill(int i)
 {
 	char *buf;
@@ -118,6 +137,10 @@ int qf_fill(int i)
 	return 1;
 }
 
+/* Function: qf_open
+ * Opens or creates a file using the requested mode.
+ * Parameters: a IR argument frame containing path and mode.
+ * Returns: FILE handle, or null on failure. */
 char *qf_open(int *a)
 {
 	char *name;
@@ -166,6 +189,10 @@ char *qf_open(int *a)
 	return (char *) &qf_path[frei];
 }
 
+/* Function: qf_close
+ * Closes a Q9 file handle and releases its table entry.
+ * Parameters: a IR argument frame containing the handle.
+ * Returns: Zero on success, or an OS-9 error code. */
 int qf_close(int *a)
 {
 	char *fp;
@@ -187,6 +214,10 @@ int qf_close(int *a)
 
 /* Liefert die Zahl der vollstaendig gelesenen ELEMENTE, nicht der Bytes
    -- so steht es in C89, und die Kette ruft durchweg mit size = 1. */
+/* Function: qf_read
+ * Reads complete items from a Q9 file.
+ * Parameters: a IR argument frame containing buffer, size, count and handle.
+ * Returns: Number of items read. */
 int qf_read(int *a)
 {
 	char *buf;
@@ -225,6 +256,10 @@ int qf_read(int *a)
 	return got / size;
 }
 
+/* Function: qf_write
+ * Writes complete items to a Q9 file.
+ * Parameters: a IR argument frame containing buffer, size, count and handle.
+ * Returns: Number of items written. */
 int qf_write(int *a)
 {
 	char *buf;
@@ -277,6 +312,10 @@ int qf_write(int *a)
  *
  * Folge fuer die Pruefstaende: IR-Dateien mit ToolShed "copy -r" (roh) ins
  * Abbild bringen, nicht mit "copy -l" -- das setzt OS-9-Zeilenenden. */
+/* Function: qf_gets
+ * Reads one line into the caller's buffer.
+ * Parameters: a IR argument frame containing buffer, limit and handle.
+ * Returns: Buffer on success, or null at EOF/error. */
 char *qf_gets(int *a)
 {
 	char *dst;
@@ -316,6 +355,10 @@ char *qf_gets(int *a)
 /* ferror: die Fehlerkennung der Datei. Gesetzt wird sie dort, wo ein
    Systemaufruf fehlschlaegt -- ohne diese Kennung waere ein Schreibfehler
    nur ein kleinerer Rueckgabewert, den kein Aufrufer prueft. */
+/* Function: qf_error
+ * Returns the pending error state of a Q9 file handle.
+ * Parameters: a IR argument frame containing the handle.
+ * Returns: Non-zero when an I/O error occurred. */
 int qf_error(int *a)
 {
 	int i;
@@ -336,6 +379,10 @@ int qf_error(int *a)
    Namen -- ein Aufruf ueber die Uebersetzungseinheit hinweg findet sein
    Ziel also nicht. Eine gemeinsame Fassung muesste in Assembler stehen
    und waere laenger als die Wiederholung. */
+/* Function: qf_pathof
+ * Resolves a Q9 FILE handle to its OS-9 path number.
+ * Parameters: fp Handle value.
+ * Returns: OS-9 path number, or the diagnostic path for null. */
 int qf_pathof(int fp)
 {
 	int *slot;
@@ -351,6 +398,10 @@ int qf_pathof(int fp)
 /* fputc gibt das geschriebene Zeichen zurueck, so steht es in C89 --
    nicht 0. Geschrieben wird EIN Byte ungepuffert; die Kette ruft fputc
    nur in Diagnosen, wo es auf Geschwindigkeit nicht ankommt. */
+/* Function: qf_putc
+ * Writes one character to a Q9 stream.
+ * Parameters: a IR argument frame containing character and handle.
+ * Returns: Character on success, or EOF-style failure. */
 int qf_putc(int *a)
 {
 	char eins[4];
@@ -372,6 +423,10 @@ int qf_putc(int *a)
 /* fputs haengt KEINEN Zeilenumbruch an -- anders als puts. Geschrieben
    wird direkt aus der uebergebenen Zeichenkette, ohne Umkopieren: die
    Laenge steht ja fest, und _os_write nimmt jeden Puffer. */
+/* Function: qf_puts_f
+ * Writes a string without appending a newline.
+ * Parameters: a IR argument frame containing string and handle.
+ * Returns: Non-negative success status, or failure. */
 int qf_puts_f(int *a)
 {
 	char *s;
@@ -407,6 +462,10 @@ int qf_puts_f(int *a)
    printf fuer "\n" ablegt, und das ist $0a; damit bricht das Terminal
    um. Der eigene Test hatte den Fehler durchgelassen, weil er nur auf
    den Text prueft, nicht auf den Umbruch. */
+/* Function: qf_puts
+ * Writes a string followed by a newline.
+ * Parameters: a IR argument frame containing the string.
+ * Returns: Non-negative success status, or failure. */
 int qf_puts(int *a)
 {
 	char *s;
