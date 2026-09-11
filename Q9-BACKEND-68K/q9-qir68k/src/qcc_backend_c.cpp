@@ -18,22 +18,20 @@
 #define NAME_LEN        64
 #define LINE_LEN        512
 #define MAX_ARGS        6
-/* 2026-07-25: increased from 8192; the -largedata
-   Funktionsaufruf-Schalter (a4/a2-Indirektionstabelle statt bsr) blockierte
-   dieser Cap den Nachweis bei realistischer Groessenordnung (150 generierte
-   Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
-   sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
+/* 2026-07-25: increased from 8192; the -largedata function-call mode
+   (a4/a2 indirection table instead of bsr) made this cap too small for
+   realistic programs (150 generated functions already produced over 36,000
+   IR lines). It was already guarded by fatal(), but the limit was too low. */
 #define MAX_IR_LINES    98304
 /* 2026-08-10 increased from 256 to 1024: Data/qcc_p.c alone has 354
    functions, so self-hosting reached this limit. */
 #define MAX_FUNCS       1024
-/* 2026-07-25: increased from 256 during the SourceQCC/
-   codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
-   Nachweis: JEDES String-Literal im QCC-Quelltext wird zu einem
-   anonymen __strN-Global, und das kumulative Kompilat hat inzwischen weit
-   ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
-   Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
-   nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
+/* 2026-07-25: increased from 256. During the SourceQCC/codegen.tc
+   self-hosting test, this cap blocked verification: every string literal in
+   the QCC source becomes an anonymous __strN global, and the cumulative
+   compilation already contains well over 256 such literals, in addition to
+   real globals such as nodes[8192]. It was already guarded by fatal(), but
+   the limit was too low, just like MAX_IR_LINES above. */
 /* The complete generated qcc_p parser contains about 1,053 globals, mostly
    string literals. 1024 was therefore an artificial bootstrap limit, not a
    memory limit. */
@@ -41,19 +39,18 @@
 #define MAX_ARRAY_LEN   4096
 
 /* 2026-08-11: `args` used to be `char args[MAX_ARGS][ARG_LEN]`, or 6x64 = 384
-   der damals 416 Byte pro Instr -- bei MAX_IR_LINES=65536 ergab das ein
-   statisches Feld von 26 MB. Auf dem Q9 (16 MB RAM) ist der Compiler damit
-   grundsaetzlich nicht lauffaehig, unabhaengig von jeder Sprachluecke.
-   Jetzt zeigen die Eintraege in einen gemeinsamen Textpool (s. argPool):
-   Instr schrumpft damit auf 24 + 6*sizeof(char*) + 8 Byte -- auf dem 68k mit
-   4-Byte-Zeigern also 56 Byte, das Feld auf 3,7 MB.
+   bytes, making each instruction 416 bytes. At MAX_IR_LINES=65536 this
+   required a 26 MB static field. On the Q9 (16 MB RAM), the compiler was
+   therefore unusable regardless of language limitations. The entries now
+   point into a shared text pool (see argPool), reducing Instr to
+   24 + 6*sizeof(char*) + 8 bytes, or 56 bytes with 4-byte 68k pointers.
+   The complete field is now about 3.7 MB.
 
-   Bewusst als ZEIGER-Array (nicht als Offset-Index): dadurch bleibt jede der
-   101 Lesestellen (`insP->args[i]` als `const char*`) unveraendert gueltig,
-   nur die eine Schreibstelle in readIR() musste angepasst werden. Nicht
-   belegte Argumente zeigen auf einen leeren String, damit Leser sich weiter
-   auf "" statt NULL verlassen koennen -- genau das Verhalten des vormals
-   nullinitialisierten Arrays. */
+   The entries deliberately remain POINTERS rather than offset indices, so
+   all 101 read sites (`insP->args[i]` as `const char*`) remain valid. Only the
+   single write site in readIR() needed adjustment. Unused arguments point to
+   an empty string, preserving the former behavior of the zero-initialized
+   array and allowing readers to rely on "" rather than NULL. */
 typedef struct {
 	char op[OP_LEN];
 	char* args[MAX_ARGS];
@@ -82,28 +79,28 @@ typedef struct {
 	int isArray;
 	int length;
 	/* 2026-08-11: formerly `int init[MAX_ARRAY_LEN]`, or 16 KB per global; with
-	   MAX_GLOBALS=1024 ein statisches Feld von 16,8 MB -- der groesste Einzel-
-	   posten des Backends und auf dem Q9 (16 MB RAM) allein schon zu viel.
-	   Jetzt ein Zeiger in initPool, erst beim ERSTEN GINIT zugeteilt: Arrays
-	   ohne Initialisierer kosten gar nichts mehr. Gemessener echter Bedarf:
-	   ebnf.tc 20,5 KB, codegen.tc 34,9 KB.
-	   initLen = Anzahl tatsaechlich zugeteilter Elemente (<= MAX_ARRAY_LEN);
-	   init == NULL bedeutet "kein Initialisierer, alles null". */
+	   MAX_GLOBALS=1024 required a 16.8 MB static field, the backend's largest
+	   single allocation and already too large for the Q9's 16 MB RAM. It is now
+	   a pointer into initPool, allocated only at the FIRST GINIT: arrays without
+	   initializers cost nothing. Measured actual usage: ebnf.tc 20.5 KB and
+	   codegen.tc 34.9 KB.
+	   initLen is the number of actually allocated elements (<= MAX_ARRAY_LEN);
+	   init == NULL means "no initializer; all values are zero". */
 	int* init;
 	int initLen;
-	int hasGinit; /* 2026-07-25: mind. ein GINIT fuer dieses Array gesehen (siehe unten) */
-	int declOnly, isStatic; /* siehe Function */
+	int hasGinit; /* 2026-07-25: at least one GINIT was seen for this array */
+	int declOnly, isStatic; /* see Function */
 } Global;
 
 static Instr ir[MAX_IR_LINES];
 
 /* Text pool for arguments of all IR lines (see the Instr comment).
-   Groesse an echten Daten bemessen, nicht geraten: SourceQCC/ebnf.tc (12220
-   IR-Zeilen) braucht 109 KB Argumenttext, codegen.tc (16469 Zeilen) 162 KB --
-   also rund 9 Byte pro Zeile. Auf MAX_IR_LINES=65536 hochgerechnet sind das
-   ~0,6 MB; 1 MB laesst damit ueber 60% Luft. Erschoepfung wird wie die
-   uebrigen Kapazitaetsgrenzen dieses Backends laut per fatal() gemeldet,
-   nicht still abgeschnitten. */
+   Sized from real data rather than guessed: SourceQCC/ebnf.tc (12,220 IR
+   lines) needs 109 KB of argument text, while codegen.tc (16,469 lines) needs
+   162 KB, or about 9 bytes per line. At MAX_IR_LINES=65536 this projects to
+   about 0.6 MB; 1 MB leaves more than 60% headroom. Exhaustion is reported
+   loudly with fatal(), like the other backend capacity limits, rather than
+   being silently truncated. */
 #define ARG_POOL_BYTES  1048576
 static char argPool[ARG_POOL_BYTES];
 static int  argPoolUsed;
