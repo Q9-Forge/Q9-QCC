@@ -17,7 +17,7 @@ for {set i 0} {$i < 10 && !$logged} {incr i} {
     }
 }
 if {!$logged} { exit 1 }
-send -s "/dd/CMDS/qcc --tmpdir . --emit-ir -o driver.ir driver_probe.c\r"
+send -s "/dd/CMDS/qcc --tmpdir . --emit-ir -o driver.ir ../HOME/ROOT/driver_probe.c\r"
 expect {
     -re {[#$] ?$} {}
     -re {FAIL|SEMERR|qcc:|error|Error} { exit 1 }
