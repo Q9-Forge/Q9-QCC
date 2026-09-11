@@ -89,16 +89,10 @@ extern int printf(const char *fmt, ...);
 extern void exit(int code);
 
 /* ------------------------------------------------------------ Limits ----- */
-/* Auf dem ZIEL sind die Felder kleiner. Das ist kein Geiz, sondern
-   Notwendigkeit: QCCs Backend legt genullte Felder in den INITIALISIERTEN
-   Datenbereich, und der wandert vollstaendig ins OS-9-Modul -- jedes
-   Kilobyte Feld ist ein Kilobyte Modul (bei qcpp sind daraus 4,3 MB
-   geworden). Der Grund liegt tiefer: ein nicht-remoter vsect wird ueber
-   "d16(a6)" angesprochen und passt damit nur in 64 KB; r68 meldet fuer
-   alles darueber "value out of range". Solange QCCs Datenmodell so ist,
-   wird hier gespart.
-   Die Zielgroessen reichen fuer handgeschriebene OS-9-Quellen: der
-   Q9-OS-Kernel braucht 232 Symbole, der groesste SDK-Treiber 1428. */
+/* Target builds use smaller tables because QCC places zero-initialized
+   fields in the module's initialized data area. Non-remote vsect data is
+   limited to 64 KiB through d16(a6). These sizes cover hand-written OS-9
+   sources; the Q9-OS kernel uses 232 symbols and the largest SDK driver 1428. */
 #ifdef _Q9OS
 #define QR_POOL     65536
 #define QR_POOLHASH  1024
@@ -114,10 +108,9 @@ extern void exit(int code);
 #define QR_POOL    524288
 #define QR_POOLHASH  4096
 #define QR_PENT     32768
-/* 2026-09-07 von 16 auf 32 MB: QCCs Backend als 68k-Modul zu bauen erzeugt
-   eine Assemblerquelle von 20,7 MB (277.744 Zeilen) -- das ist die groesste
-   Quelle, die diese Kette bisher durch qr68 schickt. Gemessen, nicht
-   geschaetzt. Die Zielgroessen darunter bleiben unberuehrt. */
+/* Increased from 16 to 32 MiB on 2026-09-07: building QCC as a 68k module
+   produces a 20.7 MiB assembly source (277,744 lines), the largest source
+   currently passed through qr68. Target sizes below remain unchanged. */
 #define QR_SRC   33554432
 #define QR_SYM      16384
 #define QR_SYMHASH   4096
@@ -134,8 +127,8 @@ static char pool[QR_POOL];
 static int POOL_MAX = QR_POOL;
 static int poolTop;
 
-/* Streutabelle ueber die Namen: poolHead[] zeigt auf den ersten Eintrag der
-   Kette, pentOff/pentNext beschreiben die Eintraege. */
+/* Name hash table: poolHead[] points to the first chain entry, while
+   pentOff/pentNext describe the entries. */
 static int POOLHASH_MAX = QR_POOLHASH;
 static int poolHead[QR_POOLHASH];
 static int PENT_MAX = QR_PENT;
@@ -143,20 +136,16 @@ static int pentOff[QR_PENT];
 static int pentNext[QR_PENT];
 static int pentN;
 
-/* Der handgeschriebene Korpus braucht davon nicht einmal ein Viertel
-   (groesste Datei: 766 KB, MWOS/.../rlm-sys-1/libfame.a); die vom
-   QCC-Backend erzeugten Quellen sind mit bis zu 18 MB deutlich groesser --
-   fuer die braucht es einen stroemenden Leser statt der Arena, das ist
-   offen. Die Arena ist zugleich die Groesse, die das spaetere OS-9-Modul
-   mitschleppt (QCCs Backend legt genullte Tabellen in den initialisierten
-   Datenbereich), also nicht beliebig aufblasen. */
+/* Hand-written sources use less than a quarter of this arena, while QCC
+   backend output can reach 18 MiB. A streaming reader is still needed for
+   larger inputs. The arena size also affects the later OS-9 module because
+   zero-initialized tables become initialized data, so it cannot grow freely. */
 static char srcArena[QR_SRC];
 static int SRC_MAX = QR_SRC;
 static int srcTop;
-/* Der Ausdehnungsspeicher fuer Makros liegt am OBEREN Ende derselben Arena
-   und waechst nach unten: eingelesene Dateien wachsen von unten,
-   Ausdehnungen sind ein Stapel und werden beim Verlassen wieder
-   freigegeben. So kann eine Ausdehnung nie eine Datei ueberschreiben. */
+/* Macro expansion storage occupies the TOP of the same arena and grows
+   downward. Source files grow upward; expansions are stack storage released
+   on return, so expansion can never overwrite a source file. */
 static int expTop;
 
 static int FILE_MAX = 64;
@@ -169,11 +158,11 @@ static int flN;
 static int SYM_MAX = QR_SYM;
 static int symName[QR_SYM];
 static int symValue[QR_SYM];
-static int symSect[QR_SYM];     /* s. SECT_* */
+static int symSect[QR_SYM];     /* See SECT_* constants. */
 static int symDefined[QR_SYM];
 static int symGlobal[QR_SYM];
 static int symUsed[QR_SYM];
-static int symPass[QR_SYM];     /* Durchlauf der letzten Definition, s. ifdef */
+static int symPass[QR_SYM];     /* Pass of the last definition; see ifdef. */
 static int SYMHASH_MAX = QR_SYMHASH;
 static int symHead[QR_SYMHASH];
 static int symNext[QR_SYM];
@@ -397,10 +386,8 @@ static int internN(const char *s, int n)
 	int h;
 	int e;
 
-	/* Ueber eine Streutabelle: die lineare Suche ueber den ganzen
-	   Namensspeicher war bei 12.000 Namen der teuerste Teil des Laufs
-	   (3,5 MB Quelle brauchten damit acht Sekunden). Die Kette ist eine
-	   Liste von Eintraegen, jeder mit seinem Offset im Namensspeicher. */
+	/* Use a hash table: linear search through the name pool was the most
+	   expensive part for 12,000 names. Each chain entry stores a pool offset. */
 	h = nameHash(s, n);
 	e = poolHead[h];
 	while (e >= 0) {
@@ -442,7 +429,7 @@ static void fatal(const char *msg, const char *detail)
 {
 	const char *fn;
 
-	fn = "<keine Datei>";
+	fn = "<no file>";
 	if (curFile >= 0 && curFile < FILE_MAX && flName[curFile] > 0)
 		fn = poolAt(flName[curFile]);
 	printf("qr68: %s:%d: %s%s\n", fn, curLine, msg, detail);
@@ -468,9 +455,8 @@ static int fileLoad(const char *path)
 	while (1) {
 		if (srcTop >= SRC_MAX)
 			fatal("Quelltextspeicher voll (SRC_MAX)", "");
-		/* In Haeppchen lesen, nicht der ganze freie Rest in einem Zug:
-		   auf OS-9 kam ein einzelnes grosses fread mit 0 zurueck (bei
-		   qcpp gemessen). */
+		/* Read in chunks rather than requesting the entire remaining arena;
+		   a single large fread returned zero on OS-9 (measured with qcpp). */
 		want = SRC_MAX - srcTop;
 		if (want > 4096)
 			want = 4096;
@@ -493,9 +479,9 @@ static int fileLoad(const char *path)
 	return id;
 }
 
-/* Schon eingelesen? Eine Datei wird nur EINMAL in die Arena geholt, auch
-   wenn mehrere Durchlaeufe sie mehrfach ueber "use" erreichen -- sonst
-   liefe der Quelltextspeicher mit jedem Durchlauf weiter voll. */
+/* Check whether a file is already loaded. Load each file only once even if
+   multiple passes reach it through "use", otherwise the source arena grows
+   on every pass. */
 static int fileFind(const char *path)
 {
 	int name;
