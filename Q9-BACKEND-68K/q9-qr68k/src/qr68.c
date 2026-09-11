@@ -5422,13 +5422,12 @@ static void runPass(void)
 		/* From here the statement location is fixed; this is "*". */
 		stmtPC = curPC;
 
-		/* A colon label becomes GLOBAL only when it is INSIDE the
-		   psect steht. Gemessen an einer Probe mit Labels davor, darin
-		   und nach "ends": nur die inneren stehen in r68s
-		   Globalenliste. Daran haengen die *stat-Dateien in SRC/DEFS,
-		   die ihre Feldabstaende per "use" noch VOR der psect-Zeile
-		   holen -- r68 legt fuer scfstat.a null Globale an, qr68 legte
-		   21. The symbol value is valid in both cases. */
+		/* A colon label becomes GLOBAL only when it is INSIDE the psect.
+		   A probe with labels before, inside, and after "ends" showed that only
+		   the inner labels appear in r68's global list. The *stat files in
+		   SRC/DEFS depend on this: they obtain field offsets with "use" before
+		   the psect line. r68 creates no globals for scfstat.a, while qr68
+		   created 21. The symbol value is valid in both cases. */
 		if (curSect == SECT_NONE)
 			lnGlobal = 0;
 
