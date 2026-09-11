@@ -1,11 +1,14 @@
 /*
- * qr68 -- 68k-Assembler der Q9-Werkzeugkette, Ausgabe im OS-9-ROF-Format
+ * qr68 -- Q9 68k assembler with OS-9 ROF output
  *
  * Aufruf:  qr68 [Optionen] <eingabe.a> <ausgabe.r>
  *
- * Ziel: Microwares r68 ersetzen. Der Praeprozessor (qcpp) und das
- * Compiler-Frontend (QCC) laufen schon auf dem Ziel; Assembler und Binder
- * sind die letzten Fremdteile der Kette.
+ * Purpose: replace Microware r68. The preprocessor (qcpp) and
+ * compiler frontend (QCC) can run on the target; assembler and linker
+ * are the remaining foreign stages of the toolchain.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
  *
  * ---------------------------------------------------------------------------
  * DAS ROF-FORMAT, AM ORIGINAL GEMESSEN (2026-09-03)
@@ -6047,6 +6050,10 @@ static void parseDate(const char *s)
 	dtSec = vals[5];
 }
 
+/* Function: main
+ * Parses assembler options, assembles the input and writes one ROF object.
+ * Parameters: argc, argv Command-line argument count and vector.
+ * Returns: Process status, zero on success. */
 int main(int argc, char **argv)
 {
 	int i;
