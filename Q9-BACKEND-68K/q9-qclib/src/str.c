@@ -8,35 +8,17 @@
  * Edition history:
  *   2026-09-11  Introduced the English source-header format.
  */
-/* Die Stringfunktionen von qclib -- die C-Rumpfe.
+/* qclib string and memory functions.
  *
- * strlen, strchr, strncmp brauchte QCCs erzeugter Parser; strcmp, strcat,
- * strncpy, strrchr, strtok, strtol, memset und memcpy kamen 2026-09-07 fuer
- * qcc_backend_c.cpp dazu (dort nachgezaehlt: strcmp 154-mal, strncpy 9-mal,
- * memset 6-mal, strtok und strrchr je zweimal, strcat, memcpy und strtol je
- * einmal). Nichts davon ist Vorratsbau -- jede Funktion hat einen Aufrufer
- * in der Kette.
+ * This unit implements the exact string and memory operations required by the
+ * generated parser and qcc_backend_c.cpp. The assembly adapter packs runtime
+ * arguments into one contiguous field, which this C implementation reads as
+ * a[0], a[1], and so on.
  *
- * Bauform wie bei den anderen Einheiten: der Adapter in str.a hat die
- * Argumente vorher zu EINEM zusammenhaengenden Feld gemacht, der Rumpf
- * liest a[0], a[1], ... (siehe file.a fuer die Begruendung).
- *
- * VERGLICHEN WIRD AUF unsigned char, so schreibt es C89 fuer strncmp und
- * strchr vor: "as if converted to unsigned char". Auf dem 68k ist char
- * vorzeichenBEHAFTET, deshalb steht hier ueberall "& 255" -- ohne das
- * waere ein Byte ab $80 kleiner als jedes ASCII-Zeichen. Der erzeugte
- * Parser vergleicht mit strncmp Quelltext, in dem solche Bytes vorkommen
- * koennen.
- *
- * KEINE Nullzeigerpruefung: strlen(0) und strncmp(0,...) sind in C89
- * undefiniert, und ein stillschweigendes "0" waere hier das Schlimmste,
- * was passieren kann -- bei strncmp heisst 0 "gleich", der Parser wuerde
- * also ein Schluesselwort erkennen, wo keines steht. Ein Zugriff auf 0
- * faellt auf dem 68030 dagegen laut als PMMU-Fehler auf.
- *
- * Quelle im QCC-Subset: keine Zeichenkettenverkettung, kein
- * tab[i][k] auf Zeigerfeldern, kein static.
- */
+ * Comparisons use unsigned-byte semantics required by C89 for strchr and
+ * strncmp. Since 68k char is signed, byte values are masked with 255 before
+ * comparison. Null-pointer checks are intentionally omitted because the
+ * corresponding C89 operations are undefined for null pointers. */
 
 /* Function: qs_len
  * Computes the length of a NUL-terminated string.
