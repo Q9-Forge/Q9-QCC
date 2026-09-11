@@ -1,13 +1,13 @@
-# qr68 -- 68k-Assembler der Q9-Werkzeugkette, Ausgabe als OS-9-ROF
+# qr68 -- 68k assembler for the Q9 toolchain, producing OS-9 ROF files
 #
-#   make           Hostfassung bauen (build/qr68k)
-#   make test      Differenztest gegen r68 (braucht Wine + MWOS-Toolchain)
+#   make           Build the host version (build/qr68k)
+#   make test      Differential test against r68 (requires Wine + MWOS tools)
 #   make clean
 
 CC ?= cc
-# -std=c89, weil qr68 in der Teilmenge bleiben soll, die QCC lesen kann.
-# -Wno-builtin-requires-header: die libc-Prototypen stehen absichtlich
-# vereinfacht in der Quelle statt per Header (s. README).
+# -std=c89 keeps qr68 within the subset readable by QCC.
+# -Wno-builtin-requires-header: libc prototypes are intentionally simplified
+# in the source instead of being supplied by a header (see README).
 CFLAGS ?= -std=c89 -Wall -Wextra -Wno-builtin-requires-header -O2
 
 all: build/qr68k
@@ -23,25 +23,25 @@ test: build/qr68k
 	./tests/usetest.sh
 	./tests/remotetest.sh
 
-# Zusaetzlich an echtem Material: den Quellen des QCC-Backends und den
-# handgeschriebenen Kernelquellen von Q9-OS.
+# Additional real-world material: QCC backend sources and handwritten Q9-OS
+# kernel sources.
 backend: build/qr68k
 	./tests/backend.sh
 	./tests/handwritten.sh
 
-# qr68 als OS-9-Modul bauen (qcpp -> QCC -> Backend -> qr68 selbst -> l68)
-# und auf echtem 68030 fahren. QUELLE= waehlt die Quelle, die dort
-# assembliert wird; verglichen wird byteweise mit dem Hostlauf.
+# Build qr68 as an OS-9 module (qcpp -> QCC -> backend -> qr68 itself -> l68)
+# and run it on a real 68030. SOURCE= selects the source assembled there;
+# the result is compared byte-for-byte with the host run.
 os9: build/qr68k
 	./tools/build_os9.sh
 
 test68k: build/qr68k
 	./tools/test_68k.sh
 
-# Der schwerste Korpus: die SCF-Treiber des SDK. Laeuft NICHT in "check",
-# weil drei der 14 uebersetzbaren Quellen bewusst abweichen (s. README) --
-# der Aufruf haette also immer Exitcode 1. PORTDIR=/DRVDIR= waehlen die
-# Gruppe, UEXTRA= zusaetzliche Suchverzeichnisse.
+# The largest corpus: SDK SCF drivers. It is NOT part of "check" because
+# three of the 14 translatable sources intentionally differ (see README), so
+# the command would always return 1. PORTDIR=/DRVDIR= select the group;
+# UEXTRA= adds search directories.
 mwos: build/qr68k
 	./tests/mwos.sh
 
