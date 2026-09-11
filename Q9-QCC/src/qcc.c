@@ -37,8 +37,13 @@ static char assembler[TEXT] = "qr68k";
 static char linker[TEXT] = "ql68k";
 static char startup[TEXT] = "cstart.a";
 static char libraries[TEXT] = "clib.l,os9.l,sys.l";
+#ifdef _Q9OS
+static char qcpp[TEXT] = "qcpp";
+static char qcir[TEXT] = "qcir";
+#else
 static char qcpp[TEXT] = "../Q9-FRONTEND-C/q9-qcpp/build/qcpp";
 static char qcir[TEXT] = "../Q9-FRONTEND-C/q9-qcir/build/qcir";
+#endif
 static int dry_run;
 static int print_config;
 static int emit_ir;
