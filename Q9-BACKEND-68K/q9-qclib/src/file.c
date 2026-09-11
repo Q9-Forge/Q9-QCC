@@ -255,10 +255,8 @@ int qf_write(int *a)
 	done = want;
 	rc = _os_write(*slot, buf, &done);
 	if (rc != 0) {
-		/* Den Fehler MERKEN, sonst hat ferror nichts zu melden: ein
-		   Schreibfehler waere allein am kleineren Rueckgabewert erkennbar,
-		   und den prueft kaum ein Aufrufer. qcc_backend_c.cpp fragt nach
-		   dem Schreiben genau danach. */
+		/* Remember the error so ferror can report it; callers may only inspect
+		   the number of successfully written items. */
 		i = qf_index(fp);
 		if (i >= 0)
 			qf_err[i] = 1;
@@ -269,19 +267,10 @@ int qf_write(int *a)
 	return done / size;
 }
 
-/* fgets: bis zum Zeilenumbruch EINSCHLIESSLICH, hoechstens n-1 Zeichen, immer
-   mit abschliessender Null. Liefert 0, wenn nichts mehr kommt.
- *
- * DAS ZEILENENDE IST $0a, UND DAS WEICHT VON clib AB -- gemessen mit
- * test/lineend68k.sh: Microwares fgets trennt an $0d und laesst $0a
- * durchlaufen. Beides ist in sich stimmig, denn der Unterschied steckt im
- * COMPILER: Microwares C bildet '\n' auf CR ab, QCC auf LF. Alle Dateien
- * dieser Kette entstehen mit $0a (an printf nachgemessen), also muss fgets
- * hier an $0a trennen. Fuer DIESE Funktion ist der Gegenlauf gegen clib
- * deshalb kein gueltiges Orakel.
- *
- * Folge fuer die Pruefstaende: IR-Dateien mit ToolShed "copy -r" (roh) ins
- * Abbild bringen, nicht mit "copy -l" -- das setzt OS-9-Zeilenenden. */
+/* fgets includes the line ending, reads at most n-1 bytes and always
+   terminates the result with NUL. Q9 uses LF ($0a), while Microware clib
+   uses CR ($0d); the difference follows from the compiler's newline
+   representation. */
 /* Function: qf_gets
  * Reads one line into the caller's buffer.
  * Parameters: a IR argument frame containing buffer, limit and handle.
@@ -317,14 +306,12 @@ char *qf_gets(int *a)
 			break;
 	}
 	if (k == 0)
-		return 0;               /* nichts gelesen: Ende */
+		return 0;               /* No bytes read: end of file. */
 	dst[k] = 0;
 	return dst;
 }
 
-/* ferror: die Fehlerkennung der Datei. Gesetzt wird sie dort, wo ein
-   Systemaufruf fehlschlaegt -- ohne diese Kennung waere ein Schreibfehler
-   nur ein kleinerer Rueckgabewert, den kein Aufrufer prueft. */
+/* Return the stored stream error state. */
 /* Function: qf_error
  * Returns the pending error state of a Q9 file handle.
  * Parameters: a IR argument frame containing the handle.
@@ -335,20 +322,14 @@ int qf_error(int *a)
 
 	i = qf_index((char *) a[0]);
 	if (i < 0)
-		return 1;               /* kein gueltiger Strom ist selbst ein Fehler */
+		return 1;               /* An invalid stream is itself an error. */
 	return qf_err[i];
 }
 
-/* Die Pfadnummer hinter einem FILE*. FILE* == 0 geht auf Pfad 2, den
-   Fehlerkanal -- QCCs Bootstrap-Quelle erklaert "stderr" als nie
-   zugewiesenen Zeiger und ruft damit fprintf/fputs/fputc darauf. Ein
-   Eintrag mit 0 ist eine GESCHLOSSENE Datei und gibt -1.
-
-   Dieselben Zeilen stehen in printf.c. Sie sind bewusst DOPPELT: QCC
-   benennt eine Definition "tc_<name>", ein Aufruf sucht aber den nackten
-   Namen -- ein Aufruf ueber die Uebersetzungseinheit hinweg findet sein
-   Ziel also nicht. Eine gemeinsame Fassung muesste in Assembler stehen
-   und waere laenger als die Wiederholung. */
+/* Derive the OS-9 path number from a FILE handle. A null handle maps to
+   path 2 (diagnostic output), while a closed handle maps to -1. This logic
+   is duplicated in printf.c because the QCC ABI exports tc_* symbols while
+   callers use the plain names. */
 /* Function: qf_pathof
  * Resolves a Q9 FILE handle to its OS-9 path number.
  * Parameters: fp Handle value.
@@ -365,9 +346,7 @@ int qf_pathof(int fp)
 	return *slot;
 }
 
-/* fputc gibt das geschriebene Zeichen zurueck, so steht es in C89 --
-   nicht 0. Geschrieben wird EIN Byte ungepuffert; die Kette ruft fputc
-   nur in Diagnosen, wo es auf Geschwindigkeit nicht ankommt. */
+/* C89 requires fputc to return the written character, not zero. */
 /* Function: qf_putc
  * Writes one character to a Q9 stream.
  * Parameters: a IR argument frame containing character and handle.
@@ -390,9 +369,7 @@ int qf_putc(int *a)
 	return a[0] & 255;
 }
 
-/* fputs haengt KEINEN Zeilenumbruch an -- anders als puts. Geschrieben
-   wird direkt aus der uebergebenen Zeichenkette, ohne Umkopieren: die
-   Laenge steht ja fest, und _os_write nimmt jeden Puffer. */
+/* Write directly from the caller's string; no copy is needed. */
 /* Function: qf_puts_f
  * Writes a string without appending a newline.
  * Parameters: a IR argument frame containing string and handle.
@@ -421,17 +398,7 @@ int qf_puts_f(int *a)
 	return 0;
 }
 
-/* puts haengt einen Zeilenumbruch an -- anders als fputs. Geschrieben
-   wird in einem Stueck, damit zwischen Text und Umbruch nichts anderes
-   dazwischenkommt.
-
-   DAS ZEILENENDE IST $0a, NICHT $0d. Hier stand zuerst $0d, abgeleitet
-   aus q9_cstart.a ("move.b #CR,-1(a1)") -- eine Ableitung, keine
-   Messung, und sie war falsch: der Gegenlauf gegen clib zeigte
-   "puts gehtgeschrieben 11" statt zweier Zeilen. Massgeblich ist, was
-   printf fuer "\n" ablegt, und das ist $0a; damit bricht das Terminal
-   um. Der eigene Test hatte den Fehler durchgelassen, weil er nur auf
-   den Text prueft, nicht auf den Umbruch. */
+/* puts appends LF ($0a), matching qclib printf output and Q9 text files. */
 /* Function: qf_puts
  * Writes a string followed by a newline.
  * Parameters: a IR argument frame containing the string.
