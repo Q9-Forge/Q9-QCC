@@ -210,7 +210,7 @@ static int isDigitCh(int c)
  * Returns: Non-zero for ASCII letters and underscore. */
 static int isAlphaCh(int c)
 {
-	/* Bezeichneralphabet des QCC-Subsets: ASCII plus Unterstrich. */
+	/* Identifier alphabet of the QCC subset: ASCII letters plus underscore. */
 	if (c >= 'a' && c <= 'z')
 		return 1;
 	if (c >= 'A' && c <= 'Z')
@@ -823,7 +823,7 @@ static void lexNext(void)
 		return;
 	}
 
-	/* Satzzeichen, laengste Uebereinstimmung zuerst */
+	/* Punctuation, longest match first. */
 	rdTake();
 	n = 0;
 	n = lexAppend(n, c);
@@ -1772,7 +1772,7 @@ static int evCharValue(int text)
 	s = poolAt(text);
 	n = strLen(s);
 	v = 0;
-	i = 1;                      /* fuehrendes ' */
+	i = 1;                      /* opening quote */
 	while (i < n && s[i] != 39) {
 		c = s[i] & 255;
 		if (c == 92) {
@@ -1863,7 +1863,7 @@ static int evalUnary(void)
 	if (evIsPunct("!")) {
 		evI++;
 		v = evalUnary();
-		evUns = 0;                    /* Ergebnis von ! ist int */
+		evUns = 0;                    /* The result of ! is int. */
 		if (v == 0)
 			return 1;
 		return 0;
