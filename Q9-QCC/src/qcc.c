@@ -37,7 +37,7 @@ static char assembler[TEXT] = "qr68k";
 static char linker[TEXT] = "ql68k";
 static char startup[TEXT] = "cstart.a";
 static char libraries[TEXT] = "clib.l,os9.l,sys.l";
-#ifdef _Q9OS
+#if defined(_Q9OS) || defined(_OSK)
 static char qcpp[TEXT] = "qcpp";
 static char qcir[TEXT] = "qcir";
 #else
@@ -204,7 +204,11 @@ int main(int argc, char **argv)
 			sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
 			if (q9_system(command) != 0) return 4;
 		}
+		#if defined(_Q9OS) || defined(_OSK)
+		sprintf(command, "%s -I/dd/DEFS/Q9 %s %s/input.i", qcpp, input, tmpdir);
+		#else
 		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s %s/input.i", qcpp, input, tmpdir);
+		#endif
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
 		if (preprocess_only) {
 			if (output[0] != '\0') {
