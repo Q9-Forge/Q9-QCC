@@ -701,28 +701,21 @@ static void collectFunctions(void) {
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
 		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0) {
-			/* Erlaubt vor der ersten Funktion (echte globale Variablen), innerhalb
-			   einer offenen Funktion (static lokale Variable, siehe collectGlobals)
-			   UND seit 2026-08-10 auch ZWISCHEN zwei Funktionen: C laesst
-			   Deklarationen und Funktionen beliebig mischen, und seit die
-			   program-Regel das abbildet (noetig fuer eine Vorwaertsdeklaration
-			   mitten im Deklarationsblock, siehe docs/FORTSCHRITT.md) entstehen
-			   solche IR-Folgen regulaer. collectGlobals sammelt sie ohnehin
-			   positionsunabhaengig ein. */
+			/* Allowed before the first function (true globals), inside an open
+			   function (static locals), and between functions since 2026-08-10.
+			   C permits declarations and functions to be mixed freely; collectGlobals
+			   already collects these directives independently of position. */
 			if (insP->argc != 1 && insP->argc != 2 && insP->argc != 3 && insP->argc != 4) {
 				sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", insP->line);
 				fatal(msg);
 			}
 		} else if (strcmp(insP->op, "FUNCDECL") == 0 || strcmp(insP->op, "GLOBALDECL") == 0) {
-			/* Mehrdatei-Uebersetzung (2026-07-25): "existiert, ist aber nicht hier
-			   definiert" -- ausserhalb jeder FUNC-Spanne erlaubt (wie GLOBAL/GARRAY);
-			   FUNCDECL wird unten in einem separaten Durchlauf registriert (analog
-			   zu GLOBALDECL in collectGlobals), da es KEINE FUNC/ENDFUNC-Spanne
-			   oeffnet/schliesst. */
+			/* Multi-file translation (2026-07-25): "exists but is not defined here"
+			   is allowed outside every FUNC span, like GLOBAL/GARRAY. FUNCDECL is
+			   registered in a separate pass because it opens no FUNC/ENDFUNC span. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
-			/* 3. Argument (2026-07-25): optionales isstatic-Flag (Namensverfremdung
-			   in emitIR, siehe mangledName() -- r68/l68 kennen kein Sichtbarkeits-
-			   konzept, siehe docs/STATUS.md). */
+			/* Third argument (2026-07-25): optional isstatic flag (name mangling in
+			   emitIR; see mangledName()). r68/l68 have no visibility concept. */
 			if (open || (insP->argc != 2 && insP->argc != 3)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
@@ -744,10 +737,10 @@ static void collectFunctions(void) {
 		}
 	}
 	if (open) fatal("IR: fehlendes ENDFUNC");
-	/* -part (2026-07-25, Mehrdatei-Uebersetzung): eine Datei OHNE main/Funktionen
-	   ist zulaessig, solange sie wenigstens globale Deklarationen enthaelt --
-	   eine komplett leere Datei bleibt weiterhin ein Fehler. Ohne -part
-	   unveraendert immer ein Fehler (Vollprogramm-Annahme). */
+	/* -part (2026-07-25, multi-file translation): a file WITHOUT main/functions
+	   is valid if it contains global declarations; a completely empty file
+	   remains an error. Without -part, the complete-program assumption is
+	   unchanged. */
 	if (funcCount == 0 && (!partMode || globalCount == 0)) fatal("IR: keine Funktion");
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
