@@ -1,13 +1,13 @@
-/* Struct-Regressionstest fuer das ECHTE 68k-Ziel.
+/* Struct regression test for the REAL 68k target.
  *
- * Warum nicht in runtests.sh gegen qccvm.py: die Host-VM ist fuer Structs kein
- * gueltiges Orakel. Ihr pointer_index() rechnet offset // type_size(tag), der
+ * Why not run it against qccvm.py in runtests.sh: the host VM is not a valid
+ * oracle for structs. Its pointer_index() computes offset // type_size(tag), so
  * Zellenindex haengt also vom ZUGRIFFSTYP ab -- eine byteweise Kopie und ein
  * int-Zugriff landen bei arr[i] in verschiedenen Zellen. Auf echtem 68k
- * (Byte-Speicher) ist dasselbe IR korrekt. Struct-Aenderungen muessen deshalb
- * im Emulator geprueft werden.
+ * the same IR is correct on real 68k byte memory. Struct changes must therefore
+ * be checked in the emulator.
  *
- * Ausgabeformat: je Fall "<id>:<wert>\n". Die id wird VOR dem Fall gedruckt,
+ * Output format: one "<id>:<value>\n" per case. The id is printed BEFORE the case,
  * damit ein Absturz (PMMU, Stack Overflow) am letzten gedruckten Marker
  * ablesbar ist statt nur als fehlende Ausgabe.
  */
