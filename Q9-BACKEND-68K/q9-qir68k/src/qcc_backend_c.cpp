@@ -1635,12 +1635,11 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PCMPLE") == 0) { emitCompare(out, "bls", &serial);
 			} else if (strcmp(op, "PCMPGE") == 0) { emitCompare(out, "bcc", &serial);
 			} else if (strcmp(op, "LABEL") == 0 && insP->argc == 1) {
-				/* psectName-Suffix aus demselben Grund wie bei emitCompare oben:
-				   LABEL-Namen (tc_L0, tc_L1, ...) kommen aus der QCC-Frontend-
-				   eigenen Label-Nummerierung, die in JEDER Datei wieder bei 0
-				   startet -- ohne Suffix kollidieren sie beim Mehrdatei-Link,
-				   sobald zwei Dateien beide Kontrollfluss (if/while/for/...)
-				   enthalten (praktisch immer der Fall). */
+				/* The psect suffix is needed for the same reason as in emitCompare:
+				   LABEL names (tc_L0, tc_L1, ...) come from the QCC frontend's local
+				   numbering, which restarts at 0 in EVERY file. Without the suffix,
+				   labels collide during multi-file linking when two files contain
+				   control flow (if/while/for/...; practically always). */
 				fprintf(out, "tc_%s__%s:\n", insP->args[0], psectName);
 			} else if (strcmp(op, "JMP") == 0 && insP->argc == 1) {
 				fprintf(out, "\tbra\ttc_%s__%s\n", insP->args[0], psectName);
@@ -1658,7 +1657,7 @@ static void emitIR(FILE* out) {
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "PUSHFN") == 0 && insP->argc == 1) {
-				/* Adresse einer QCC-Funktion als Wert auf den Stack (Funktionszeiger).
+				/* Push the address of a QCC function as a value (function pointer).
 				   Im -largedata-Modus liegt sie NICHT als Symbol vor, sondern als
 				   Link-Zeit-Offset in der Funktionsindirektionstabelle: die echte
 				   Laufzeitadresse ist a4 + *(a4 + index*4) -- exakt dieselbe Rechnung,
@@ -1668,14 +1667,14 @@ static void emitIR(FILE* out) {
 				if (fnIdx < 0) { sprintf(msg, "IR Zeile %d: unbekannte Funktion %s", insP->line, insP->args[0]); fatal(msg); }
 				mangledName(asmName, "tc_", insP->args[0], funcs[fnIdx].isStatic);
 				if (largeDataMode) {
-					/* "add.l a4,d0", NICHT "adda.l": ADDA verlangt ein ADRESSregister
+					/* "add.l a4,d0", NOT "adda.l": ADDA requires an ADDRESS register
 					   als Ziel (emitCall() rechnet deshalb in a2). Hier ist das Ziel
 					   ein Datenregister, also das normale ADD -- "ADD.L An,Dn" ist
 					   zulaessig. Der echte r68 weist "adda.l a4,d0" korrekt ab
 					   ("incomplete line: code not generated"). */
 					if (trampolineMode) {
-						/* Funktionszeiger bleiben im Tabellenpfad; r68 -j gilt fuer
-						   direkte Aufrufe, nicht fuer einen beliebigen Datenwert. */
+						/* Function pointers remain on the table path; r68 -j applies to
+						   direct calls, not to an arbitrary data value. */
 						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", (8 + externCount + fnIdx) * 4);
 					} else {
 						fprintf(out, "\tmove.l\t%d(a4),d0\n\tadd.l\ta4,d0\n\tmove.l\td0,-(a7)\n", (8 + externCount + fnIdx) * 4);
@@ -1684,7 +1683,7 @@ static void emitIR(FILE* out) {
 					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
 				}
 			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
-				/* Indirekter Aufruf ueber einen Funktionszeiger. Stapelbelegung beim
+				/* Indirect call through a function pointer. At entry, the stack layout
 				   Eintritt (von UNTEN nach oben): zuerst der Zeiger, darueber
 				   arg1..argN. Diese Reihenfolge ergibt sich zwangslaeufig aus dem
 				   Parsen: bei "ausdruck(args)" wird der Callee-Ausdruck VOR den
