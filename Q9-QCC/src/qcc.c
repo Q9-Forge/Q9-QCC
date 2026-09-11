@@ -149,6 +149,12 @@ int main(int argc, char **argv)
 		}
 		sprintf(command, "%s @%s/input.i > %s/output.ir", qcir, tmpdir, tmpdir);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
+		if (assembly_only) {
+			sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s", tmpdir, output[0] != '\0' ? output : "build/qcc-tmp/output.s68k");
+			if (system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+			if (!keep_files) { sprintf(command, "rm -f %s/input.i %s/output.ir", tmpdir, tmpdir); system(command); }
+			return 0;
+		}
 		if (assembly_only || object_only) {
 			fprintf(stderr, "qcc: diese Stopppunkt-Stufe ist noch nicht implementiert\n");
 			return 3;

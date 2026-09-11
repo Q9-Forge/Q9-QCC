@@ -5,7 +5,10 @@ TARGET  := $(BUILD)/qcc
 
 .PHONY: all clean test
 
-all: $(TARGET)
+all: $(TARGET) ../Q9-BACKEND-68K/q9-qir68k/build/qir68k
+
+../Q9-BACKEND-68K/q9-qir68k/build/qir68k:
+	make -C ../Q9-BACKEND-68K/q9-qir68k
 
 $(TARGET): src/qcc.c
 	@mkdir -p $(BUILD)
