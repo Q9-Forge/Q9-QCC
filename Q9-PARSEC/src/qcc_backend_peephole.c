@@ -116,12 +116,11 @@
  *================================================================================*/
 
 #define PH_MAX_LINES  100000
-#define PH_TEXT_BYTES 2097152   /* 2 MB, ~35% Kopfraum ueber qr68 (1,59 MB) */
-#define PH_SYNTH_BYTES PH_TEXT_BYTES /* eine ersetzte Zeile ist nie laenger als
-                                        die beiden Originalzeilen zusammen --
-                                        die Summe aller Ersetzungen passt also
-                                        immer in denselben Rahmen wie der
-                                        Originaltext. */
+#define PH_TEXT_BYTES 2097152   /* 2 MB, about 35% headroom over qr68 (1.59 MB) */
+#define PH_SYNTH_BYTES PH_TEXT_BYTES /* A replacement line is never longer than
+                                        the two original lines combined, so the
+                                        sum of all replacements fits within the
+                                        original text budget. */
 
 static char phText[PH_TEXT_BYTES];
 static const char* phLines[PH_MAX_LINES];
