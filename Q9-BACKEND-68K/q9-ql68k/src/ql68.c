@@ -1565,9 +1565,8 @@ int main(int argc, char **argv)
 	inPathN = 0;
 	outPath = 0;
 	modName[0] = 0;
-	/* Erst die Argumentliste aufbauen -- dabei loest argAdd jedes -z=
-	   an Ort und Stelle auf. Danach unterscheidet sich eine Zeile aus
-	   der Datei in nichts mehr von einem Wort der Kommandozeile. */
+	/* Build the argument list first; argAdd expands each -z= in place. After
+	   this, a line from the option file is indistinguishable from an argv word. */
 	argN = 0;
 	zLen = 0;
 	for (i = 1; i < argc; i++)
@@ -1598,8 +1597,8 @@ int main(int argc, char **argv)
 		}
 		k = argStarts(a, "-gu=");
 		if (k > 0 && a[k] != 0) {
-			/* "-gu=<gruppe>.<nutzer>" -- die beiden Zahlen bilden
-			   die obere und untere Haelfte von M$Owner. */
+			/* "-gu=<group>.<user>"; the two numbers form the upper and lower
+			   halves of M$Owner. */
 			int g;
 			int u;
 
@@ -1621,7 +1620,7 @@ int main(int argc, char **argv)
 		}
 		k = argStarts(a, "-p=");
 		if (k > 0 && a[k] != 0) {
-			/* HEXADEZIMAL, so steht es in der Hilfe von l68. */
+			/* Hexadecimal, matching l68 help and behavior. */
 			int v;
 			int c;
 
@@ -1695,9 +1694,8 @@ int main(int argc, char **argv)
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'r' && a[2] == 0) {
-			/* l68 schreibt "-r[=<base>] ... default=0". An l68
-			   gemessen: "-r" und "-r=0" liefern dieselben 54
-			   Byte. */
+			/* l68 documents "-r[=<base>] ... default=0"; "-r" and "-r=0"
+			   produce the same output. */
 			optRaw = 0;
 			continue;
 		}
@@ -1745,9 +1743,8 @@ int main(int argc, char **argv)
 		}
 		k = argStarts(a, "-t=");
 		if (k > 0 && a[k] != 0) {
-			/* Nur OS-9/68k. Die uebrigen Ziele von l68 sind ganz
-			   andere Modulformate -- lieber abbrechen als still das
-			   falsche Format schreiben. */
+			/* OS-9/68k only. Other l68 targets use different module formats;
+			   abort instead of silently writing the wrong format. */
 			if (!argStarts(&a[k], "os9_68k"))
 				fatal("ql68 kennt nur -t=os9_68k: ", a);
 			continue;
@@ -1757,7 +1754,7 @@ int main(int argc, char **argv)
 			continue;
 		}
 		if (a[0] == '-' && harmlessOpt(a)) {
-			/* -a schaltet die Sprungtabelle ein, auch als
+			/* -a enables the jump table, including when it appears as a
 			   Buchstabe in einem Buendel ("-swam"). Nur bei den
 			   reinen Buchstabenformen nachsehen -- in "-m=pfad_a"
 			   oder "-f=..." waere ein 'a' blosser Text. */
@@ -1786,9 +1783,8 @@ int main(int argc, char **argv)
 	if (modName[0] == 0)
 		nameFromPath(outPath);
 
-	/* Alle Eingabedateien hintereinander in denselben Puffer -- eine
-	   Datei kann selbst mehrere ROFs enthalten (so sind die Bibliotheken
-	   aufgebaut), deshalb wird bis zum Dateiende weitergelesen. */
+	/* Read all input files consecutively into one buffer. A file may contain
+	   multiple ROFs, as libraries do, so read through each file's end. */
 	inLen = 0;
 	for (i = 0; i < inPathN; i++) {
 		int start;
@@ -1806,14 +1802,13 @@ int main(int argc, char **argv)
 			at = rofParse(at);
 	}
 
-	/* Erst jetzt die Bibliotheken: verzeichnen, dann in EINEM Durchgang
-	   einbinden, was gebraucht wird. Vorher war das umgekehrt -- das ging
-	   nur, solange eine Bibliothek blosse Konstanten lieferte. */
+	/* Index libraries now, then include only required modules in one pass.
+	   The old order worked only while libraries contained constants alone. */
 	for (i = 0; i < libN; i++)
 		libScan(libPath[i]);
 	libLink();
 
-	/* Den Wurzel-psect suchen: er ist der EINZIGE mit einem Typ/Sprach-
+	/* Find the root psect: it is the only one with a non-zero type/language
 	   Wert ungleich null. Er steht NICHT zwangslaeufig vorn -- die
 	   SDK-Makefiles schreiben etwa
 	     l68 ... ..\..\68000\LIB\scfstat.l RELS\sc172.r -O=...
@@ -1828,7 +1823,7 @@ int main(int argc, char **argv)
 	}
 	if (rofRoot < 0)
 		fatal("keine der Eingaben hat einen Wurzel-psect (Typ/Sprache ist 0) -- nur daraus entsteht ein Modul", "");
-	/* Erst zaehlen, dann schreiben. Der Zaehllauf stellt fest, wie viele
+	/* Count first, then write. The counting pass determines how many
 	   Aufrufe zu weit sind; die Tabelle liegt in den DATEN und verschiebt
 	   den Code nicht, deshalb ist der zweite Lauf endgueltig. Ohne -a
 	   bricht farCall schon im ersten Lauf ab. */
