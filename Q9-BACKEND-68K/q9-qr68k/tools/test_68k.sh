@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Der Ziellauf: qr68 assembliert auf echtem 68030 und muss dabei BYTEWEISE
-# dasselbe liefern wie am Host.
+# Target run: qr68 assembles on a real 68030 and must produce the same
+# bytes as the host build.
 #
 #   1  tools/build_os9.sh  baut das Modul (qr68 assembliert sich selbst)
 #   2  Abbild bestuecken   Modul nach /CMDS, test/insn.a nach /dd
 #   3  Emulator            q9_qr68 -v /dd/insn.a /dd/insn.r
 #   4  Vergleich           /dd/insn.r == Hostlauf derselben Quelle
 #
-# Gearbeitet wird auf einer KOPIE des Abbilds ("cp -c", ein CoW-Klon kostet
+# Work on a COPY of the image ("cp -c", a CoW clone costs
 # nichts): ToolShed schreibt an einem laufenden Emulator vorbei direkt in die
 # Datei, und auf dem Mac laufen oft mehrere Emulatoren.
 #
-# Aufruf:  tools/test_68k.sh
-# Exit:    0 = byteidentisch, 1 = abweichend/Fehler, 2 = Aufbauproblem
+# Usage:  tools/test_68k.sh
+# Exit:   0 = byte-identical, 1 = difference/error, 2 = setup failure
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,7 +47,7 @@ echo "== Abbild bestuecken =="
 rm -f "$IMAGE"
 cp -c "$BASE" "$IMAGE" 2>/dev/null || cp "$BASE" "$IMAGE" || die "Abbild kopieren"
 "$OS9" copy -r "$WORK/q9_qr68" "$IMAGE,/CMDS/q9_qr68" || die "ToolShed copy (Modul)"
-# ToolShed setzt KEIN e-Attribut -- ohne das startet OS-9 das Modul nicht
+# ToolShed does NOT set the e attribute; without it OS-9 will not start the module
 # (Fehler 214).
 "$OS9" attr -e -w -r -pe -pr "$IMAGE,/CMDS/q9_qr68" >/dev/null || die "ToolShed attr"
 "$OS9" copy -l -r "$QUELLE" "$IMAGE,/insn.a" || die "ToolShed copy (Quelle)"
