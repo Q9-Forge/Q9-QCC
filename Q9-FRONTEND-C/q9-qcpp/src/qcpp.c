@@ -64,15 +64,15 @@
    + - *), die Spiegelvariablen darunter tragen denselben Wert fuer die
    Bereichspruefungen. selfCheck() in main vergleicht beides per sizeof --
    damit kann die Verdopplung nicht unbemerkt auseinanderlaufen. */
-static char pool[524288];
-static int POOL_MAX = 524288;
+#define POOL_MAX 524288
+static char pool[POOL_MAX];
 static int poolTop;
 
-static char srcArena[2097152];
-static int SRC_MAX = 2097152;
+#define SRC_MAX 2097152
+static char srcArena[SRC_MAX];
 static int srcTop;
 
-static int FILE_MAX = 512;
+#define FILE_MAX 512
 static int flName[512];
 static int flDir[512];
 static int flStart[512];
@@ -80,14 +80,14 @@ static int flEnd[512];
 static int flOnce[512];     /* Datei hat "#pragma once" gesehen */
 static int flN;
 
-static int INC_MAX = 64;
+#define INC_MAX 64
 static int isFile[64];
 static int isPos[64];
 static int isLine[64];
 static int isCd[64];        /* #if-Tiefe beim Einbinden, s. Hauptschleife */
 static int isDepth;
 
-static int PB_MAX = 16384;
+#define PB_MAX 16384
 static int pbKind[16384];
 static int pbText[16384];
 static int pbLine[16384];
@@ -95,7 +95,7 @@ static int pbFile[16384];
 static int pbWs[16384];
 static int pbN;
 
-static int MAC_MAX = 4096;
+#define MAC_MAX 4096
 static int macName[4096];
 static int macFunc[4096];
 static int macNPar[4096];
@@ -106,17 +106,17 @@ static int macInUse[4096];
 static int macKind[4096];   /* 0 = normal, 1 = __FILE__, 2 = __LINE__ */
 static int macN;
 
-static int PAR_MAX = 8192;
+#define PAR_MAX 8192
 static int parName[8192];
 static int parTop;
 
-static int MT_MAX = 32768;
+#define MT_MAX 32768
 static int mtKind[32768];
 static int mtText[32768];
 static int mtWs[32768];
 static int mtTop;
 
-static int AG_MAX = 16384;
+#define AG_MAX 16384
 static int agKind[16384];
 static int agText[16384];
 static int agWs[16384];
@@ -125,37 +125,37 @@ static int agTop;
 /* Ersetzungspuffer als Stapelspeicher (exTop), NICHT als einfaches Feld ab 0:
    substitute() ruft beim Prescan eines Arguments wieder substitute() auf, ein
    gemeinsames Feld ab 0 wuerde die aeussere Ersetzung dabei ueberschreiben. */
-static int EX_MAX = 16384;
+#define EX_MAX 16384
 static int exKind[16384];
 static int exText[16384];
 static int exWs[16384];
 static int exTop;
 
-static int EV_MAX = 4096;
+#define EV_MAX 4096
 static int evKind[4096];
 static int evText[4096];
 static int evN;
 static int evI;
 
-static int CD_MAX = 64;
+#define CD_MAX 64
 static int cdActive[64];
 static int cdTaken[64];
 static int cdElse[64];
 static int cdDepth;
 
-static int DIR_MAX = 64;
+#define DIR_MAX 64
 static int dirPath[64];
 static int dirN;
 
-static int HASH_BUCKETS = 8192;
+#define HASH_BUCKETS 8192
 static int hashHead[8192];
-static int HASH_MAX = 32768;
+#define HASH_MAX 32768
 static int hashNext[32768];
 static int hashText[32768];
 static int hashN;
 
 static char lxTmp[8192];
-static int LXTMP_MAX = 8192;
+#define LXTMP_MAX 8192
 
 static char outBuf[8192];
 static int outN;
@@ -1101,7 +1101,7 @@ static int preLen;
    Meldung, und auf dem Ziel mit 512 KB Stack zuerst. Das widerspricht der
    Linie dieses Programms, an Modellgrenzen abzubrechen. */
 static int expDepth;
-static int EXP_DEPTH_MAX = 200;
+#define EXP_DEPTH_MAX 200
 
 static int prescanArg(int at, int n, int line, int file)
 {
