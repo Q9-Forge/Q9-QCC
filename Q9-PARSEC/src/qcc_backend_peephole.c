@@ -34,27 +34,24 @@
  * comma in each move.l line, so the rightmost comma safely separates SRC/DST.
  *
  * FOURTH PATTERN (same frequency list, 867 occurrences): "move.l
- * Dn,-(a7)" unmittelbar gefolgt von "addq.l #4,a7" (oder "lea 4(a7),a7").
- * Der IR-Opcode DROP emittiert genau diese addq.l-Zeile ("Ausdruckswert
- * berechnen, Ergebnis verwerfen" -- z.B. eine Anweisung "f();", deren
- * Rueckgabewert niemand liest). Ein Push, dem SOFORT sein eigenes
- * Verwerfen folgt, hat auf A7 keinen Nettoeffekt und sein Wert wird von
- * NICHTS gelesen -- ANDERS als bei den ersten drei Mustern wird hier
- * NICHTS ersetzt, BEIDE Zeilen verschwinden ersatzlos. BEWUSST NUR SRC
- * OHNE Klammer (kein "(a0)", "(a0)+" o.ae.): eine Adressierung mit
- * Seiteneffekt (Post-/Praedekrement) MUESSTE weiterhin ausgewertet
- * werden, auch wenn ihr Wert verworfen wird -- nur ein reines Register
- * oder ein Sofortwert ist wirklich folgenlos zu streichen.
+ * Dn,-(a7)" immediately followed by "addq.l #4,a7" (or "lea 4(a7),a7").
+ * The IR opcode DROP emits exactly this addq.l line (compute an expression
+ * and discard its result, for example a statement "f();" whose return value
+ * is unused). A push immediately followed by its own discard has no net effect
+ * on A7 and its value is never read. Unlike the first three patterns, nothing
+ * is replaced: both lines disappear. Limit this to SRC without parentheses
+ * (no "(a0)", "(a0)+", etc.); post-/pre-decrement side effects still need to
+ * execute even when the value is discarded. Only a plain register or immediate
+ * value can be removed safely.
  *
- * VERFEINERUNG zu Muster eins/drei (08.09.2026, 776 Vorkommen bereits im
- * Ergebnis der ersten vier Muster gemessen): faellt SRC mit DST zusammen
- * ("move.l d0,-(a7)" gefolgt von "move.l (a7)+,d0", DIESELBE Nummer beide
- * Male), waere die Verschmelzung "move.l d0,d0" -- eine echte, aber
- * wirkungslose Instruktion. Sicherer und kleiner: BEIDE Zeilen verschwinden
- * ersatzlos, genau wie bei Muster vier. NUR wenn KEIN Label auf der ersten
- * Zeile haengt -- sonst ginge das Sprungziel verloren; in dem (seltenen)
- * Fall bleibt die alte Verschmelzung zu "label:\tmove.l\tDn,Dn" bestehen,
- * harmlos, nur nicht ideal.
+ * REFINEMENT of patterns one/three (08.09.2026, 776 occurrences measured in
+ * the output of the first four patterns): when SRC equals DST
+ * ("move.l d0,-(a7)" followed by "move.l (a7)+,d0", the same number both
+ * times), fusion would produce the real but useless "move.l d0,d0". Safer and
+ * smaller: remove BOTH lines, as in pattern four. This is allowed only when
+ * the first line has no label, otherwise the branch target would be lost. In
+ * the rare labeled case, retain the harmless but non-ideal fusion
+ * "label:\tmove.l\tDn,Dn".
  *
  * FIFTH PATTERN (09.09.2026, selected by frequency versus effort, not guessed):
  * "move.l #IMM,Dn" with IMM in the range -128..127 becomes
