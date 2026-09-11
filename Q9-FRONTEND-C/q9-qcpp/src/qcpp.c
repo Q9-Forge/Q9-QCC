@@ -2182,6 +2182,10 @@ static int evalTernary(void)
 }
 
 /* =============================================================== Ausgabe == */
+/* Function: outFlush
+ * Writes buffered preprocessor output to the destination stream.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void outFlush(void)
 {
 	if (outN > 0) {
@@ -2192,6 +2196,10 @@ static void outFlush(void)
 	}
 }
 
+/* Function: outCh
+ * Appends one byte to the output buffer.
+ * Parameters: c Byte to append.
+ * Returns: Nothing. */
 static void outCh(int c)
 {
 	if (outN >= 8192)
@@ -2205,6 +2213,10 @@ static void outCh(int c)
 		atOutBOL = 0;
 }
 
+/* Function: outStr
+ * Appends a NUL-terminated string to the output buffer.
+ * Parameters: s String to append.
+ * Returns: Nothing. */
 static void outStr(const char *s)
 {
 	int i;
@@ -2216,6 +2228,10 @@ static void outStr(const char *s)
 	}
 }
 
+/* Function: outNum
+ * Appends a decimal integer to the output buffer.
+ * Parameters: v Integer value.
+ * Returns: Nothing. */
 static void outNum(int v)
 {
 	char buf[32];
@@ -2263,6 +2279,10 @@ static void outLineMarker(int file, int line)
    so viele Umbrueche ersetzt. Damit zeigen die Diagnosen der naechsten Stufe
    auf dieselbe Zeile wie in der Quelle -- der Grund, warum das hier nicht
    einfach zusammengefaltet wird (-min tut das). */
+/* Function: outTok
+ * Emits the current token and its required source whitespace.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void outTok(void)
 {
 	int i;
@@ -2333,6 +2353,10 @@ static void outTok(void)
 }
 
 /* ============================================================ Direktiven == */
+/* Function: nextDirTok
+ * Reads the next token while parsing a preprocessor directive.
+ * Parameters: None.
+ * Returns: Token kind. */
 static int nextDirTok(void)
 {
 	nextRaw();
@@ -2341,6 +2365,10 @@ static int nextDirTok(void)
 	return 1;
 }
 
+/* Function: skipRestOfLine
+ * Discards the remainder of the current directive line.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void skipRestOfLine(void)
 {
 	while (1) {
@@ -2354,6 +2382,10 @@ static void skipRestOfLine(void)
 static int lineAt;
 static int lineN;
 
+/* Function: collectLine
+ * Collects the next logical source line for directive processing.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void collectLine(void)
 {
 	lineAt = agTop;
@@ -2621,6 +2653,10 @@ static void condUpdateSkip(void)
 		skipping = 1;
 }
 
+/* Function: findInclude
+ * Searches configured include directories for a header.
+ * Parameters: name Header name; isAngle Angle-include flag; fromDir Parent directory.
+ * Returns: File identifier, or -1 when not found. */
 static int findInclude(const char *name, int isAngle, int fromDir)
 {
 	int i;
@@ -2757,6 +2793,10 @@ static void doInclude(void)
 	atBOL = 1;
 }
 
+/* Function: popInclude
+ * Restores the previous source file after an include completes.
+ * Parameters: None.
+ * Returns: Non-zero when an include level was restored. */
 static int popInclude(void)
 {
 	if (isDepth == 0)
@@ -3125,6 +3165,11 @@ static void directive(void)
 }
 
 /* ================================================================== main == */
+/* Function: setupBuiltins
+ * Initializes predefined macros and fixed date/time values.
+ * Parameters: wantAnsi Enables __STDC__; noPredef Disables target defaults;
+ *             dateText, timeText Replacement date and time strings.
+ * Returns: Nothing. */
 static void setupBuiltins(int wantAnsi, int noPredef, int dateText, int timeText)
 {
 	int at;
@@ -3289,6 +3334,10 @@ static void usage(void)
 	exit(2);
 }
 
+/* Function: selfCheck
+ * Verifies compile-time table sizes against their runtime invariants.
+ * Parameters: None.
+ * Returns: Nothing; terminates on an inconsistent build. */
 static void selfCheck(void)
 {
 	/* Die Arraygroessen stehen als Literal im Kopf und als Variable
