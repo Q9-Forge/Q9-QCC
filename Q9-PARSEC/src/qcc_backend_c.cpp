@@ -1,11 +1,11 @@
 //================================================================================
-// qcc_backend_c.cpp -- reines-C-Gegenstueck zu qcc_backend.cpp
+// qcc_backend_c.cpp -- pure-C counterpart of qcc_backend.cpp
 //
-// Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
-// Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
-// Original (qcc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
-// docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
-// C++-Version zurueckzuschalten, in runtests.sh wieder qcc_backend.cpp bauen.
+// Behaviorally equivalent implementation without STL/exceptions/std::string:
+// fixed global tables plus linear search, following parsec.cpp/codegen.cpp.
+// The original qcc_backend.cpp remains as a reference; see section 5 of
+// docs/SELFHOSTING_LUECKENLISTE.md. To switch back to C++, build qcc_backend.cpp
+// in runtests.sh again.
 //================================================================================
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,42 +16,36 @@
 #define NAME_LEN        64
 #define LINE_LEN        512
 #define MAX_ARGS        6
-/* 2026-07-25: von 8192 erhoeht -- beim Skalierungstest fuer den -largedata-
-   Funktionsaufruf-Schalter (a4/a2-Indirektionstabelle statt bsr) blockierte
-   dieser Cap den Nachweis bei realistischer Groessenordnung (150 generierte
-   Funktionen ergaben bereits >36000 IR-Zeilen). Bereits vorher als fatal()
-   sauber/laut abgesichert (kein stiller Bug), nur zu knapp bemessen. */
+/* 2026-07-25: increased from 8192 -- during the -largedata function-call
+   scaling test (a4/a2 indirection table instead of bsr), this cap prevented
+   testing realistic sizes (150 generated functions already produced >36000 IR
+   lines). It was already guarded clearly by fatal() and was simply too small. */
 #define MAX_IR_LINES    98304
-/* 2026-08-10 von 256 auf 1024 erhoeht: Data/qcc_p.c allein bringt 354
-   Funktionen mit -- der Selbstuebersetzungsversuch lief hier in die Grenze. */
+/* 2026-08-10 increased from 256 to 1024: Data/qcc_p.c alone contains 354
+   functions, so the self-hosting attempt hit this limit. */
 #define MAX_FUNCS       1024
-/* 2026-07-25: von 256 erhoeht -- beim Skalierungstest fuer SourceQCC/
-   codegen.tc selbst (genParser68kTo-Chunk) blockierte dieser Cap den
-   Nachweis: JEDES String-Literal im QCC-Quelltext wird zu einem
-   anonymen __strN-Global, und das kumulative Kompilat hat inzwischen weit
-   ueber 256 solcher Literale (dazu die "echten" Globalen wie nodes[8192]).
-   Bereits vorher als fatal() sauber/laut abgesichert (kein stiller Bug),
-   nur zu knapp bemessen -- analog zum MAX_IR_LINES-Fund oben. */
-/* Der vollstaendige selbst erzeugte qcc_p-Parser enthaelt rund 1.053
-   Globals (fast alle sind Stringliterale). 1024 war damit eine kuenstliche
-   Bootstrap-Grenze, nicht eine Speichergrenze. */
+/* 2026-07-25: increased from 256 -- during the SourceQCC/codegen.tc scaling
+   test (genParser68kTo chunk), this cap prevented validation: every string
+   literal becomes an anonymous __strN global, and the cumulative compilation
+   now contains well over 256 literals (plus real globals such as nodes[8192]).
+   The limit was already guarded by fatal() and was simply too small. */
+/* The complete self-generated qcc_p parser contains about 1,053 globals,
+   almost all of them string literals. 1024 was an artificial bootstrap limit,
+   not a memory limit. */
 #define MAX_GLOBALS     2048
 #define MAX_ARRAY_LEN   4096
 
-/* 2026-08-11: `args` war vorher `char args[MAX_ARGS][ARG_LEN]`, also 6x64 = 384
-   der damals 416 Byte pro Instr -- bei MAX_IR_LINES=65536 ergab das ein
-   statisches Feld von 26 MB. Auf dem Q9 (16 MB RAM) ist der Compiler damit
-   grundsaetzlich nicht lauffaehig, unabhaengig von jeder Sprachluecke.
-   Jetzt zeigen die Eintraege in einen gemeinsamen Textpool (s. argPool):
-   Instr schrumpft damit auf 24 + 6*sizeof(char*) + 8 Byte -- auf dem 68k mit
-   4-Byte-Zeigern also 56 Byte, das Feld auf 3,7 MB.
+/* 2026-08-11: `args` used to be `char args[MAX_ARGS][ARG_LEN]`, 6x64 = 384
+   of the former 416 bytes per instruction. With MAX_IR_LINES=65536 this made
+   a 26 MB static field, making the compiler unusable on the 16 MB Q9 regardless
+   of language gaps. Entries now point into a shared text pool (see argPool),
+   reducing each instruction to 24 + 6*sizeof(char*) + 8 bytes (56 bytes on
+   68k with 4-byte pointers), and the field to 3.7 MB.
 
-   Bewusst als ZEIGER-Array (nicht als Offset-Index): dadurch bleibt jede der
-   101 Lesestellen (`insP->args[i]` als `const char*`) unveraendert gueltig,
-   nur die eine Schreibstelle in readIR() musste angepasst werden. Nicht
-   belegte Argumente zeigen auf einen leeren String, damit Leser sich weiter
-   auf "" statt NULL verlassen koennen -- genau das Verhalten des vormals
-   nullinitialisierten Arrays. */
+   This intentionally uses a pointer array rather than offsets: all 101 read
+   sites (`insP->args[i]` as `const char*`) remain valid, and only the write
+   site in readIR() needed adjustment. Unused arguments point to an empty
+   string, preserving the former zero-initialized-array behavior. */
 typedef struct {
 	char op[OP_LEN];
 	char* args[MAX_ARGS];
@@ -62,22 +56,21 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
-	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
-	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei) --
-	   first/last/locals/frameBytes bleiben dann unbenutzt (0/-1). isStatic
-	   steuert die Namensverfremdung (siehe mangledName()) -- r68/l68 kennen
-	   KEIN Sichtbarkeitskonzept (siehe docs/STATUS.md), Mangling ist die einzige
-	   Moeglichkeit, dass zwei Dateien denselben privaten Helfernamen frei
-	   verwenden koennen, ohne dass l68 "duplicate symbol" meldet. */
+	/* Multi-file translation (2026-07-25): declOnly is registered by FUNCDECL
+	   without a body in this file (defined in another QCC file); first/last/
+	   locals/frameBytes are unused (0/-1). isStatic controls name mangling (see
+	   mangledName()). r68/l68 have no visibility concept (see docs/STATUS.md),
+	   so mangling is the only way for two files to use the same private helper
+	   name without l68 reporting a duplicate symbol. */
 	int declOnly, isStatic;
 } Function;
 
 typedef struct {
 	char name[NAME_LEN];
 	int initialValue;
-	/* 2026-09-09: war "isChar" (bool), mit short zu einer echten Groesse in
-	   Byte (1/2/4) geworden -- s. tagSize(). Alle Leseseiten unten wechseln
-	   von "isChar ? X : Y" auf einen dreiteiligen Schalter. */
+	/* 2026-09-09: formerly "isChar" (bool), now the actual element size in
+	   bytes (1/2/4); see tagSize(). All readers below use a three-way switch
+	   instead of "isChar ? X : Y". */
 	int elemSize;
 	int isArray;
 	int length;

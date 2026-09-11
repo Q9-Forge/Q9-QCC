@@ -811,7 +811,7 @@ static int validateAstForCodegen() {
 		return 0;
 	}
 
-	// Die Nullbarkeit gegenseitig rekursiver Regeln braucht einen kleinen Fixpunkt.
+	// Nullability of mutually recursive rules requires a small fixed point.
 	do {
 		changed = 0;
 		for (r = 0; r < ruleCnt; r++) {
@@ -1236,7 +1236,7 @@ int genParserC(const char* path) {
 //   d1   = scratch register for range comparisons; save points use stack -(a7)
 // Each rule <name> becomes subroutine p_<name>; entry point "parse" calls the start rule.
 // TS literals compare all characters with offsets and consume them in one step,
-// Schritt -> ein TS konsumiert nie teilweise; NUL am Eingabeende laesst jeden Vergleich
+// A step never partially consumes a terminal symbol; NUL at end of input makes every
 // fail naturally; no separate length check is needed.
 static void emitConsume68k(FILE* fp, int len) {
 	if (len == 0) {
