@@ -1008,8 +1008,8 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		}
 		fputs("\tmove.l\ta0,-(a7)\n", out);
 	} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && insP->argc == 3) {
-		/* 2026-09-09: isChar (bool) -> elemSize (1/2/4), short als
-		   dritte Groesse dazu. */
+		/* 2026-09-09: isChar (bool) became elemSize (1/2/4), with short
+		   added as the third size. */
 		int elemSize = tagSize(insP->args[2]);
 		int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
 		if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 &&
@@ -1044,9 +1044,8 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-		/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
-		   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
-		   siehe emitLeaGlobal()-Kommentar. */
+		/* small: direct PC-relative value load; large: first obtain the
+		   address from the indirection table, then dereference it. */
 		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 		else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 	} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
@@ -1099,7 +1098,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
 		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
 	} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && insP->argc == 1) {
-		/* 2026-09-09: byte (bool) -> elemSize (1/2/4). */
+		/* 2026-09-09: byte (bool) became elemSize (1/2/4). */
 		int elemSize = tagSize(insP->args[0]);
 		int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 		if (strcmp(op, "LOADIND") == 0) {
@@ -1147,9 +1146,9 @@ static void emitIR(FILE* out) {
 	int oi;
 	int gi;
 
-	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
-	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
-	   keine der gelinkten Dateien es liefert. */
+	/* -part (2026-07-25): main may be in another file of the multi-file
+	   program; the real linker (l68) reports an error if no linked file provides
+	   it. */
 	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
 	fprintf(out, "%s QCC 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
@@ -1158,15 +1157,14 @@ static void emitIR(FILE* out) {
 		fprintf(out, "\tnam\t%s\n", psectName);
 		fprintf(out, "\tpsect\t%s,0,0,%d,0,0\n", psectName, trampolineMode ? 0 : 1);
 		if (trampolineMode)
-			/* r68 braucht fuer -j eine explizite Registerangabe. Der Register-
-			   wert wird nur beim Assemblieren benutzt; l68 -a erzeugt die
-			   eigentliche OS-9-relokierbare Sprungtabelle. */
+			/* r68 needs an explicit register for -j. The register value is used
+			   only during assembly; l68 -a creates the actual OS-9-relocatable
+			   jump table. */
 			fputs("\tspanreg\td7\n", out);
 		fputs("\n", out);
 		if (trampolineMode) {
-			/* l68 -a legt seine Sprungtabelle in den initialisierten
-			   Datenbereich. Ein expliziter Vsect-Anker sorgt dafuer, dass
-			   cstart dafuer auch eine OS-9-Datenbasis in A6 einrichtet. */
+			/* l68 -a places its jump table in initialized data. An explicit vsect
+			   anchor ensures that cstart also establishes an OS-9 data base in A6. */
 			fputs("\tvsect\n\tds.b\t1\n\tends\n\n", out);
 		}
 		fprintf(out, "%s Kein eigener tc_start-Boot-Code hier: cstart.r (echte Microware-\n", fullCommentPrefix());
