@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# "use" gegen r68 stellen -- eigenes Skript, weil dafuer ein Verzeichnisbaum
-# und dieselben -u=-Angaben auf beiden Seiten noetig sind.
+# Compare "use" against r68; a dedicated script is needed because both sides
+# require the same directory tree and -u= options.
 #
-# Geprueft wird zugleich die an r68 gemessene Suchregel:
+# Also verify the search rule measured against r68:
 #   "use datei" und "use \"datei\"" -> relativ zum ARBEITSverzeichnis,
 #   "use <datei>"                   -> nur die -u=-Verzeichnisse.
 set -uo pipefail
