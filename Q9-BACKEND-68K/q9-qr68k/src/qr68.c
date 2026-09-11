@@ -923,9 +923,8 @@ static int exPrimary(void)
 		s = symIntern(name);
 		symUsed[s] = 1;
 		if (!symDefined[s]) {
-			/* Im ersten Durchlauf ist eine Vorwaertsreferenz normal.
-			   Bleibt sie danach undefiniert, ist es ein externer
-			   Name -- den traegt der Aufrufer als Referenz ein. */
+			/* A forward reference is normal on the first pass. If it remains
+			   undefined afterwards, it is external and recorded by the caller. */
 			exExtern = name;
 			exSect = SECT_EXTERN;
 			termAdd(SECT_EXTERN, name);
@@ -1004,7 +1003,7 @@ static int exAdd(void)
 			mark = termN[2];
 			r = exMul();
 			v = v - r;
-			/* Alles, was rechts dazugekommen ist, geht negativ ein. */
+			/* Every term added on the right contributes negatively. */
 			for (i = mark; i < termN[2]; i++)
 				termNeg[16 + i] = !termNeg[16 + i];
 		}
@@ -1060,10 +1059,8 @@ static int exprTop(void)
 			continue;
 		}
 		if (exP[0] == '!' || exP[0] == '|') {
-			/* "!" ist bei Microware das bitweise ODER -- "|" tut
-			   es auch (gemessen: "A|B|C" mit 1,2,4 ergibt 7). In
-			   PORTS/CB030/SYSMODS/rtccb030.a:78 steht die
-			   Strichform. */
+			/* In Microware syntax "!" is bitwise OR; "|" also works. Both
+			   forms are accepted because SDK sources use each spelling. */
 			exNeedAbsSince(mark, "ODER-Verknuepfung");
 			exP = exP + 1;
 			mark = termN[2];
@@ -1076,8 +1073,8 @@ static int exprTop(void)
 	return v;
 }
 
-/* Ausdruck aus einer Zeichenkette auswerten. exSect/exExtern beschreiben
-   danach, worauf sich das Ergebnis bezieht. */
+/* Evaluate an expression string. exSect/exExtern describe the referenced
+   section or external symbol afterwards. */
 static int evalExpr(const char *s)
 {
 	int v;
@@ -1088,16 +1085,14 @@ static int evalExpr(const char *s)
 	exOpen = 0;
 	termN[2] = 0;
 	v = exprTop();
-	/* Der Ausdruck muss GANZ aufgebraucht sein. Ohne diese Pruefung
-	   liefert ein unbekanntes Zahlenformat still einen falschen Wert --
-	   "0x100" ergab, bevor es unterstuetzt war, klaglos 0. */
+	/* The complete expression must be consumed. Without this check an unknown
+	   numeric form could silently produce a wrong value. */
 	exSkip();
 	if (exP[0] != 0)
 		fatal("Rest im Ausdruck nicht auswertbar: ", exP);
 	termFold();
-	/* exSect/exExtern beschreiben den EINEN Anteil, wenn es genau einen
-	   gibt -- daran haengen die Pruefungen fuer Spruenge und
-	   PC-relative Formen. */
+	/* exSect/exExtern describe the single remaining term, when there is one;
+	   branch and PC-relative checks depend on this information. */
 	exSect = SECT_ABS;
 	exExtern = -1;
 	if (termN[2] > 0) {
@@ -1152,14 +1147,12 @@ static void outStrZ(const char *s)
 	outByte(0);
 }
 
-/* ============================================================ Code legen == */
+/* ============================================================ Emit code ==== */
 static void emitByte(int b)
 {
-	/* codeN und idataN zaehlen in JEDEM Durchlauf mit, nicht nur beim
-	   Ausgeben: sie sind zugleich der Ort im Abschnitt. Nur das Ablegen im
-	   Puffer haengt am letzten Durchlauf. (Zaehlten sie nur dort, saesse
-	   "ends" nach einem vsect die Codemarke auf 0 und alle Adressen
-	   dahinter waeren im Messdurchlauf falsch.) */
+	/* Count codeN and idataN on every pass, not only while emitting: they are
+	   also the current section locations. Store bytes only on the final pass;
+	   otherwise addresses after an ends directive would be wrong during sizing. */
 	if (curSect == SECT_CODE) {
 		if (codeN >= CODE_MAX)
 			fatal("Codespeicher voll (CODE_MAX)", "");
