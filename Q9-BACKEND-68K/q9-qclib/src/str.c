@@ -271,7 +271,7 @@ char *qs_tok(int *a)
 	while (*qs_tokp != 0 && !qs_istrenner(delim, *qs_tokp & 255))
 		qs_tokp++;
 	if (*qs_tokp != 0) {
-		*qs_tokp = 0;           /* das Feld abschliessen -- strtok SCHREIBT */
+		*qs_tokp = 0;           /* Terminate the field; strtok modifies it. */
 		qs_tokp++;
 	} else {
 		qs_tokp = 0;            /* am Ende angekommen */
@@ -280,16 +280,14 @@ char *qs_tok(int *a)
 }
 
 /* ---------------------------------------------------------------- strtol */
-/* Basis 2..36 und 0 (dann entscheidet das Praefix: 0x -> 16, 0 -> 8, sonst
-   10), fuehrender Leerraum und ein Vorzeichen werden ueberlesen. end zeigt
-   danach auf das erste nicht verbrauchte Zeichen; ohne eine einzige Ziffer
-   auf den ANFANG -- so verlangt es C89, und qcc_backend_c.cpp prueft genau
-   das ("*end != 0" heisst: keine Zahl).
+/* Accept bases 2..36 and 0 (prefix selects hexadecimal for 0x, octal for 0,
+   decimal otherwise). Skip leading whitespace and an optional sign. end is
+   set to the first unused character, or to the original input when no digit
+   was consumed, as required by C89.
  *
- * UEBERLAUF wird GEKAPPT (auf 2147483647 bzw. -2147483648) und die Ziffern
- * werden weiter verbraucht, damit end richtig steht. C89 will zusaetzlich
- * errno = ERANGE; qclib hat kein errno, und das ist hier ausgeschrieben statt
- * verschwiegen. */
+ * Clamp overflow to 2147483647 or -2147483648 while still consuming all
+ * valid digits so end is correct. C89 also requires errno = ERANGE; qclib has
+ * no errno, so this limitation is documented explicitly. */
 /* Function: qs_tol
  * Converts a decimal string to a signed long value.
  * Parameters: a Runtime argument frame containing string, end pointer and base.
