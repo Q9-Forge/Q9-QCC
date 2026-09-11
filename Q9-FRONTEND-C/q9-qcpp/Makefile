@@ -20,10 +20,10 @@ build/qcpp: src/qcpp.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 test: build/qcpp
-	./test/run_tests.sh
+	./tests/run_tests.sh
 
 difftest: build/qcpp
-	./test/difftest.sh
+	./tests/difftest.sh
 
 check: test difftest
 
