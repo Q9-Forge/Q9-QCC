@@ -814,8 +814,9 @@ int qrun_vm_run(qrun_vm_t* vm)
                This allows PUSHADDR L slot to return a valid heap pointer
                and STOREIND/LOADIND to work with local arrays */
             if (vm->state[QRUN_HEAP_SIZE] + size > vm->state[QRUN_HEAP_CAPACITY]) {
-                fprintf(stderr, "LARRAY: heap overflow (need %d, have %d)\n", 
-                        vm->state[QRUN_HEAP_SIZE] + size, vm->state[QRUN_HEAP_CAPACITY]);
+                fprintf(stderr, "LARRAY: heap overflow (need %zu, have %zu)\n", 
+                        (size_t)(vm->state[QRUN_HEAP_SIZE] + size),
+                        (size_t)vm->state[QRUN_HEAP_CAPACITY]);
                 vm->state[QRUN_HALTED] = 1;
                 break;
             }
