@@ -28,15 +28,14 @@ static struct P bad(void)        { struct P t; t.base = 63; t.pointers = 0; t.st
 static struct P pop(void)        { return depth > 0 ? vals[--depth] : bad(); }
 static struct P pointee(struct P t) { if (t.pointers) t.pointers--; return t; }
 static int      isPtr(struct P t)   { return t.pointers != 0; }
-/* Muster von tcTypePop4: schreibt ueber einen Struct-ZEIGER in eine lokale
-   Struct des Aufrufers. Braucht &s -- und damit die Blockadresse, nicht die
-   eines Skalarslots. */
+/* tcTypePop4 pattern: writes through a struct pointer into a caller-local
+   struct. Requires &s, the block address rather than a scalar-slot address. */
 static void     fill(struct P* out, int v) { out->base = v; out->pointers = v + 1; }
-/* Muster von tcCompatible(tcFunctionParamTypes[f][n], got): ein Struct-Wert
-   aus einem ZWEIdimensionalen Array, direkt als Argument. */
+/* tcCompatible(tcFunctionParamTypes[f][n], got) pattern: a struct value from a
+   TWO-dimensional array, passed directly as an argument. */
 static int      same(struct P a, struct P b) { return a.base == b.base && a.pointers == b.pointers; }
 
-/* Zeigerarrays als Strukturfeld (seit 2026-09-07). Genau daran ist
+/* Pointer arrays as struct fields (since 2026-09-07). This is exactly where
    qcc_backend_c.cpp gescheitert: "char* args[6]" in seiner Instr-Struktur.
    Der Witz ist die SCHRITTWEITE -- ein Zeiger belegt im Struct acht Byte,
    IPADD wuerde mit vier skalieren, deshalb IPADDN 8. Ein falscher Schritt
@@ -46,8 +45,8 @@ static int      same(struct P a, struct P b) { return a.base == b.base && a.poin
 struct A { char op[4]; char* args[6]; int argc; };
 static struct A ga;
 
-/* Fuer die Faelle 29-35: ein skalares ZEIGERfeld (nicht Zeigerarray) und
-   eine Struct, die ueber einen Zeiger indiziert wird. */
+/* Cases 29-35: a scalar POINTER field (not a pointer array) and a struct
+   indexed through a pointer. */
 struct Z { int *ip; char *cp; int n; };
 static struct Z gz;
 static int zfeld[8];
@@ -64,23 +63,23 @@ int main(void)
 
 	y.a = 98; y.b = 3;
 
-	/* 1  Zuweisung lokal -> lokal */
+	/* 1  local -> local assignment */
 	mark(1);  { struct I x; x = y; val(x.a); }
-	/* 2  Initialisierung aus Variable (tc_varinit, nicht tcAssignStore) */
+	/* 2  initialization from variable (tc_varinit, not tcAssignStore) */
 	mark(2);  { struct I x = y; val(x.b); }
-	/* 3  Initialisierung aus Funktionsrueckgabe */
+	/* 3  initialization from function return */
 	mark(3);  { struct I x = mk(10); val(x.b); }
-	/* 4  Zuweisung lokal -> global */
+	/* 4  local -> global assignment */
 	mark(4);  g = y; val(g.a);
-	/* 5  Initialisierung aus global */
+	/* 5  initialization from global */
 	mark(5);  { struct I x = g; val(x.a); }
-	/* 6  Zuweisung an Array-Element */
+	/* 6  assignment to array element */
 	mark(6);  tab[2] = y; val(tab[2].a);
-	/* 7  Lesen eines ganzen Array-Elements */
+	/* 7  read complete array element */
 	mark(7);  q = tab[2]; val(q.b);
-	/* 8  Struct als Parameter per Wert */
+	/* 8  struct passed by value */
 	mark(8);  val(use(y));
-	/* 9  Wertsemantik: der Aufgerufene darf das Original nicht aendern */
+	/* 9  value semantics: callee must not change the original */
 	mark(9);  { struct P p; p.base = 1; p.pointers = 5; p.structId = 0; p.pad = 0;
 	            pointee(p); val(p.pointers); }
 	/* 10 ternaer + Array-Element mit Prae-Dekrement + Rueckgabe (tcTypePop) */
