@@ -546,9 +546,9 @@ static void readIR(const char* path) {
 		strncpy(insP->op, tok, OP_LEN - 1); insP->op[OP_LEN - 1] = '\0';
 		insP->line = line;
 		insP->argc = 0;
-		/* Alle Plaetze zuerst auf den leeren String zeigen lassen -- vormals
-		   waren nicht belegte Argumente "" (nullinitialisiertes Array), darauf
-		   duerfen Leser sich weiterhin verlassen. */
+		/* Initialize every slot to the empty string. Unused arguments formerly
+		   contained "" in the zero-initialized array, and readers may continue
+		   relying on that behavior. */
 		for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
 		while ((tok = strtok(NULL, " \t\r\n")) != NULL) {
 			if (insP->argc < MAX_ARGS) {
@@ -561,13 +561,12 @@ static void readIR(const char* path) {
 }
 
 static void collectGlobals(void) {
-	/* GLOBAL/GARRAY/GINIT duerfen -- anders als frueher -- auch INNERHALB einer Funktion
-	   stehen: eine "static" lokale Variable (Data/qcc.lextab, tc_staticlocal) wird als
-	   ganz normaler GLOBAL registriert, an genau der Textstelle, an der ihre Deklaration
-	   im Quelltext steht, also moeglicherweise mitten in einer FUNC...ENDFUNC-Spanne.
-	   collectFunctions() prueft weiterhin, dass jede Zeile entweder zu GLOBAL/GARRAY/GINIT
-	   gehoert oder innerhalb einer offenen Funktion liegt -- eine Zeile "zwischen" zwei
-	   Funktionen ausserhalb jeder FUNC-Spanne bleibt also weiterhin ein Fehler. */
+	/* GLOBAL/GARRAY/GINIT may now appear INSIDE a function: a "static" local
+	   variable (Data/qcc.lextab, tc_staticlocal) is registered as an ordinary
+	   GLOBAL at the exact source position of its declaration, possibly in the
+	   middle of a FUNC...ENDFUNC span. collectFunctions() still verifies that
+	   every line is either GLOBAL/GARRAY/GINIT or inside an open function, so a
+	   line between functions and outside every FUNC span remains an error. */
 	int i, gi, idx, len;
 	char msg[300];
 	globalCount = 0;
@@ -594,8 +593,8 @@ static void collectGlobals(void) {
 					}
 					/* Use an intermediate pointer so QCC can translate this file
 					   (2026-09-07): nested indexing through a pointer field is outside
-					   the subset. The intermediate pointer is the idiom used throughout
-					   this file. */
+					   the supported subset. The intermediate pointer is the idiom used
+					   throughout this file. */
 					int* initP = globals[gi].init;
 					initP[idx] = number(insP->args[2], insP->line);
 					if (globals[gi].elemSize == 1) initP[idx] &= 255;
@@ -638,8 +637,8 @@ static void collectGlobals(void) {
 			sprintf(msg, "IR Zeile %d: doppelte globale Variable %s", insP->line, insP->args[0]);
 			fatal(msg);
 		}
-		/* argc>=3 statt ==3 (2026-07-25): 4. Argument ist das optionale isstatic-Flag
-		   (Mehrdatei-Uebersetzung), der Typtag bleibt immer an Position 2. */
+		/* argc>=3 rather than ==3 (2026-07-25): the fourth argument is the optional
+		   isstatic flag for multi-file translation; the type tag remains at index 2. */
 		if (insP->argc >= 3 && !isNumWord(insP->args[2])) {
 			sprintf(msg, "IR Zeile %d: unbekannter Globaltyp", insP->line);
 			fatal(msg);
