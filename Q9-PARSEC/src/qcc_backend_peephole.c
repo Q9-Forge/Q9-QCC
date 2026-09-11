@@ -10,17 +10,16 @@
  * the backend emits "move.l X,-(a7)" followed by "move.l (a7)+,Y" is the
  * removable memory round trip visible.
  *
- * ERSTES MUSTER: "move.l SRC,-(a7)" unmittelbar gefolgt von "move.l (a7)+,DST"
- * wird zu "move.l SRC,DST". Das ist an DIESER Stelle immer sicher, unabhaengig
- * vom Kontext: ein Push, dem sofort und ausschliesslich sein eigener Pop folgt,
- * aendert A7 zwischenzeitlich, aber nichts sonst beobachtet das -- der Wert
- * geht unveraendert von SRC nach DST, in einem Schritt statt zwei.
+ * FIRST PATTERN: "move.l SRC,-(a7)" immediately followed by "move.l (a7)+,DST"
+ * becomes "move.l SRC,DST". This is always safe here: a push immediately
+ * followed exclusively by its own pop changes A7 temporarily, but nothing else
+ * observes it. The value moves unchanged from SRC to DST in one step.
  *
- * ZWEITES MUSTER (08.09.2026, an der echten Haeufigkeitsverteilung von
- * qr68s eigener Ausgabe gefunden -- 2064 Vorkommen, der mit Abstand groesste
- * Einzelfund): "move.l SRC,Dn" unmittelbar gefolgt von "tst.l Dn" (DIESELBE
- * Nummer, ein DATENregister d0-d7). MOVE.L setzt N/Z auf 68000-Hardwareebene
- * bereits GENAUSO wie TST.L es fuer denselben Wert taete (V/C werden bei
+ * SECOND PATTERN (08.09.2026, found in the measured qr68 output distribution
+ * -- 2064 occurrences, by far the largest individual finding): "move.l SRC,Dn"
+ * immediately followed by "tst.l Dn" (the SAME number, a DATA register d0-d7).
+ * MOVE.L sets N/Z on 68000 hardware
+ * exactly as TST.L would for the same value (V/C are
  * beiden auf 0 geloescht) -- das TST ist also niemals mehr als eine
  * Wiederholung, die Zeile faellt komplett weg. BEWUSST NUR d0-d7, NIE
  * a0-a6: "move.l SRC,An" wird von r68/qr68 als MOVEA assembliert (die
