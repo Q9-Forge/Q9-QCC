@@ -17,7 +17,7 @@
 # The final case INTENTIONALLY tests without remote: it must remain
 # byteidentisch bleiben, sonst hat die Aenderung den Normalfall beschaedigt.
 set -uo pipefail
-F=/Volumes/SSD1TB/projects/Q9-Forge
+F=/Volumes/SSD1TB/projects/Q9-Forge/Q9-QCC/Q9-BACKEND-68K/q9-qr68k
 W=/tmp/remote-diff
 rm -rf $W; mkdir -p $W; cd $W
 source /Volumes/SSD1TB/projects/MWOS/tools/macos/env/os9-toolchain.sh >/dev/null 2>&1
@@ -42,17 +42,17 @@ import sys
 d=open('r_$nm.r','rb').read()
 print('%d,%d,%d,%d,%d,%d' % tuple(d[12:18]))
 ")
-	$F/Q9-qr68/build/qr68k $nm.a -o=q_$nm.r -fdate=$st > qr68_$nm.log 2>&1
+	$F/build/qr68k $nm.a -o=q_$nm.r -fdate=$st > qr68_$nm.log 2>&1
 	if [ ! -f q_$nm.r ]; then
 		printf '  %-12s qr68: %s\n' "$nm" "$(head -2 qr68_$nm.log | tr '\n' ' ')"
 		ab=$((ab+1)); return
 	fi
-	if python3 $F/Q9-qr68/tools/rofcmp.py "$nm:r_$nm.r:q_$nm.r" >/dev/null 2>&1; then
+	if python3 $F/tools/rofcmp.py "$nm:r_$nm.r:q_$nm.r" >/dev/null 2>&1; then
 		printf '  %-12s BYTEIDENTISCH (%s Byte)\n' "$nm" "$(wc -c < q_$nm.r | tr -d ' ')"
 		gleich=$((gleich+1))
 	else
 		printf '  %-12s ABWEICHUNG\n' "$nm"
-		python3 $F/Q9-qr68/tools/rofcmp.py "$nm:r_$nm.r:q_$nm.r" 2>&1 | head -6 | sed 's/^/      /'
+		python3 $F/tools/rofcmp.py "$nm:r_$nm.r:q_$nm.r" 2>&1 | head -6 | sed 's/^/      /'
 		python3 - <<PYEOF
 import struct
 for f in ("r_$nm.r","q_$nm.r"):
