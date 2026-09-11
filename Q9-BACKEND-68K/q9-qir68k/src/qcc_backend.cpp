@@ -182,7 +182,7 @@ static int arrayOffset(const std::vector<Instr>& ir, const Function& fn, int wan
 
 static std::string slotAddress(int slot, const Function& fn, int line) {
 	if (slot < fn.nargs) {
-		// Bei links->rechts gepushten Argumenten liegt Parameter 0 am weitesten oben.
+		// With left-to-right argument pushes, parameter 0 is at the top.
 		return std::to_string(8 + 4 * (fn.nargs - 1 - slot)) + "(a6)";
 	}
 	if (slot >= fn.nargs + fn.locals) throw std::runtime_error("IR Zeile " + std::to_string(line) + ": Slot ausserhalb des Frames");
@@ -197,9 +197,9 @@ static void emitCompare(std::ostream& out, const std::string& branch, int& seria
 	out << yes << ":\tmoveq\t#1,d0\n" << done << ":\tmove.l\td0,-(a7)\n";
 }
 
-// 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
-// Schablonen bilden deshalb die definierte QCC-int32-Arithmetik nach. Sie
-// erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
+// The 68000 MULS/DIVS instructions support only 16-bit operands. These fixed,
+// PIC-friendly templates implement the defined QCC int32 arithmetic. They
+// preserve d2-d5 (ABI-friendly) and return only in d0.
 static void emitM68kCore(std::ostream& out) {
 	out << "; 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n";
 	out << "tc_mul_i32:\n";
