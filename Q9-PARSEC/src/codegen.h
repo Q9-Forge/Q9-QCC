@@ -55,14 +55,14 @@ int lexParseConfig(const char* buf);
 //------------------------------------------------------------------------------------------------
 int cgenParseConfig(const char* buf);
 int cgenWantOS9();
-const char* cgenStartRule();		// "" wenn nicht konfiguriert
+const char* cgenStartRule();		// "" when not configured
 
 //------------------------------------------------------------------------------------------------
 // ACTIONS configuration from the workfile's [USER-CODE] block (see ARCHITEKTUR.md §9).
-// buf = kompletter Roh-Blockinhalt, NULL/leer = keine Aktionen. Unterstuetzte Zeilen:
+// buf = complete raw block content; NULL/empty means no actions. Supported lines:
 //   ACTION AFTER <rule> CALL <name>     Call immediately after <rule> succeeds
-//   ROUTINE C <name> ... END            rohe C-Funktion void <name>(const char*,const char*)
-//   ROUTINE M68K <name> ... END         rohe 68k-Subroutine (Label <name>:, a0=Ende, rts)
+//   ROUTINE C <name> ... END            raw C function void <name>(const char*,const char*)
+//   ROUTINE M68K <name> ... END         raw 68k subroutine (label <name>:, a0=end, rts)
 // Must be called BEFORE genParserC()/genParser68k(). Always returns 1 (errors become
 // warnings and remove the affected action without aborting code generation).
 //------------------------------------------------------------------------------------------------
