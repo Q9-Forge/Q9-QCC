@@ -1459,7 +1459,7 @@ static void emitIR(FILE* out) {
 			   differences have no 16-bit PC-relative limit. */
 			emitTableBases(out, asmName, psectName);
 		}
-		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- vierter, tiefster
+		/* IMPORTANT (2026-07-26, found live on Q9 -- the fourth and deepest
 		   -largedata-Bug dieser Sitzung): a3/a4 werden bisher NUR beim
 		   Programmstart (main:) einmalig gesetzt UND nach jedem CALLEXT/
 		   CALLEXTP aufgefrischt (siehe emitCall()/emitLeaGlobal()-Kommentar)
@@ -1752,7 +1752,7 @@ static void emitIR(FILE* out) {
 				if (hasD1) fputs("\tmove.l\t(a7)+,d1\n", out);
 				if (hasD0) fputs("\tmove.l\t(a7)+,d0\n", out);
 				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t%d(a0),-(a7)\n", ai * 4);
-				/* WICHTIG (2026-07-24, live am echten Q9 gefunden): "jsr <name>" auf
+				/* IMPORTANT (2026-07-24, found live on the real Q9): "jsr <name>" to
 				   ein externes Symbol wird von r68/l68 NUR dann PIC-sicher (PC-
 				   relativ) aufgeloest, wenn es als "bsr" geschrieben wird -- ein
 				   rohes "jsr" assembliert stattdessen zu einer ABSOLUTEN Adresse
