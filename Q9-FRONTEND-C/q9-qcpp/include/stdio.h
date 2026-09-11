@@ -34,3 +34,6 @@ extern char* fgets(char*, int, FILE*);
 extern int ferror(FILE*);
 
 #endif
+
+/* C89 formatted input; implemented by the target runtime. */
+extern int sscanf(const char*, const char*, ...);
