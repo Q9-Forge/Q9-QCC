@@ -1171,12 +1171,12 @@ static void emitIR(FILE* out) {
 		fputs("\tbra\ttc_exit\n\n", out);
 	}
 	if (largeDataMode) {
-		/* Funktions-Indirektionstabelle (siehe emitCall()-Kommentar): MUSS direkt nach
-		   tc_start/main stehen (VOR den potenziell riesigen Funktionsrumpf-Texten),
-		   damit das einmalige "lea tc_functab(pc),a4" immer erreichbar bleibt, egal wie
-		   gross der Rest des Programms wird. Reihenfolge MUSS exakt zu funcIndex*4 (fuer
-		   QCC-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
-		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- echter PMMU-Absturz beim
+		/* Function indirection table (see emitCall()): MUST be directly after
+		   tc_start/main and before potentially large function bodies, so the one-time
+		   table-base load remains reachable regardless of program size. The order
+		   must exactly match funcIndex*4 for QCC functions and helperTableOffset()
+		   for runtime helpers. */
+		/* IMPORTANT (2026-07-26, found live on Q9 -- real PMMU crash during the
 		   allerersten Funktionsaufruf in main()): "dc.l <label>" ist auf OS-9
 		   KEINE automatisch relozierte absolute Adresse! Laut OS-9 for 68K
 		   Processors Technical Manual muss ein Assemblerprogrammierer absolute
