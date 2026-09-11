@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Stellt die Codeabschnitte zweier ROF-Dateien Zeile fuer Zeile gegenueber.
+"""Compare code sections from two ROF files source line by source line.
 
-Der Aufsatzpunkt ist r68s Listing (Option -l): es nennt zu jeder Quellzeile
-den Offset im Codeabschnitt. Daraus wird der Code in Stuecke je Quellzeile
-zerlegt und mit demselben Bereich aus qr68s Ausgabe verglichen -- so steht in
-der Meldung die Zeile, die falsch kodiert wurde, statt nur "erste Abweichung
-bei Offset 1234".
+The anchor is r68's listing (option -l), which gives the code-section offset
+for each source line. Code is split into source-line pieces and compared with
+the corresponding qr68 output, so the report names the incorrectly encoded
+line instead of only saying "first difference at offset 1234".
 
     insncmp.py <listing> <r68.r> <qr68.r> [quelle.a]
 """
