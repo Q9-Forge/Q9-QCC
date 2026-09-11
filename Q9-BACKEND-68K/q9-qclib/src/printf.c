@@ -165,9 +165,8 @@ void qp_int(int v)
  * Supported forms are %d %i %u %x %c %s %%, length modifier l, and precision
  * .number or .*; no other forms occur in the toolchain.
  * (nachgezaehlt an QCCs Bootstrap-Quelle: 203 %d, 155 %s, 67 %c,
- * 30 %.*s, 7 %ld). Die Laengenangabe l wird UEBERGANGEN, und das ist
- * keine Nachlaessigkeit: auf dem 68k sind int und long beide 32 Bit,
- * %ld und %d sind dasselbe.
+ * 30 %.*s, 7 %ld). The l length modifier is ignored deliberately: on 68k,
+ * int and long are both 32 bits, so %ld and %d are identical.
  *
  * Everything else is passed through UNCHANGED; a width such as
  * %20s erscheint also als Text, statt still falsch ausgerichtet zu
