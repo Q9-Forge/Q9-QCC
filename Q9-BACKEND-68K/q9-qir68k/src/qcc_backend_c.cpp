@@ -1461,18 +1461,16 @@ static void emitIR(FILE* out) {
 			emitTableBases(out, asmName, psectName);
 		}
 		/* IMPORTANT (2026-07-26, found live on Q9 -- the fourth and deepest
-		   -largedata-Bug dieser Sitzung): a3/a4 werden bisher NUR beim
-		   Programmstart (main:) einmalig gesetzt UND nach jedem CALLEXT/
-		   CALLEXTP aufgefrischt (siehe emitCall()/emitLeaGlobal()-Kommentar)
-		   -- das reicht NICHT, sobald eine Funktion PER FUNCDECL AUS EINER
-		   ANDEREN DATEI aufgerufen wird (Mehrdatei-Uebersetzung, jede Datei
-		   hat ihre EIGENE tc_functab/tc_gadata)! Live reproduziert: ruft
-		   Datei A eine in Datei B definierte Funktion auf (a4 zeigt zu
-		   diesem Zeitpunkt noch auf DATEI A's Tabelle, vom Aufrufer
-		   gesetzt), und DIESE Funktion ruft INTERN eine dritte Funktion
-		   (z.B. einen Laufzeit-Helfer wie tc_putint) per emitCall() auf, so
-		   verwendet dieser interne Aufruf FAELSCHLICH weiterhin Datei A's
-		   Tabelle (a4 wurde nie auf Datei B's EIGENE Tabelle umgestellt) --
+		   -largedata bug in this session): a3/a4 were previously initialized ONLY
+		   at program start (main:) and refreshed after each CALLEXT/CALLEXTP (see
+		   the emitCall()/emitLeaGlobal() comments). That is NOT sufficient when a
+		   function is called through FUNCDECL from ANOTHER file: each file has its
+		   OWN tc_functab/tc_gadata. Reproduction: file A calls a function defined in
+		   file B, so a4 still points to file A's table, and THAT function calls a
+		   third function internally
+		   (for example runtime helper tc_putint) through emitCall(). That internal
+		   call then INCORRECTLY continues using file A's table because a4 was never
+		   switched to file B's OWN table --
 		   der Tabellenoffset selbst ist korrekt (verifiziert), aber er zeigt
 		   in die FALSCHE Tabelle, ruft also eine VOELLIG ANDERE Funktion an
 		   derselben Indexposition auf. Symptom im minimalen Reproduktionsfall:
