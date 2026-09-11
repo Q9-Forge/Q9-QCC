@@ -152,10 +152,9 @@ static int lxFile;
 static int lxPos;
 static int lxLine;
 
-/* Peek-Zustand: rdPeek() liefert das logische Zeichen und legt in pkPos/pkLine
-   den Zustand NACH dem Verbrauchen ab; rdTake() uebernimmt ihn. Damit braucht
-   der Lexer kein Ungetc und die Zeilenzaehlung bleibt auch ueber
-   Zeilenfortsetzungen ("\" + Umbruch) hinweg richtig. */
+/* Peek state: rdPeek() returns the logical character and stores the state
+   AFTER consumption in pkPos/pkLine; rdTake() commits it. The lexer needs no
+   ungetc, and line counting remains correct across continuations. */
 static int pkCh;
 static int pkPos;
 static int pkLine;
@@ -2228,7 +2227,7 @@ static int evalTernary(void)
 	return c;
 }
 
-/* =============================================================== Ausgabe == */
+/* =============================================================== Output === */
 /* Function: outFlush
  * Writes buffered preprocessor output to the destination stream.
  * Parameters: None.
