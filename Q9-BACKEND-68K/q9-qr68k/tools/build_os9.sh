@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Baut qr68 als OS-9-Modul fuer den 68030 -- mit der eigenen Kette:
+# Build qr68 as an OS-9 module for the 68030 using the native toolchain:
 #
-#   1  qcpp        src/qr68.c            -> qr68.i      (Praeprozessor)
-#   2  qcir       @qr68.i               -> qr68.ir     (Compiler)
-#   3  qir_68k qr68.ir               -> qr68.s68    (Codeerzeugung)
-#   4  qr68        qr68.s68              -> qr68.r      (SICH SELBST)
-#   5  r68         q9_cstart.a           -> q9_cstart.r (Laufzeiteinstieg)
-#   6  l68         + clib/os_lib/sys.l   -> q9_qr68     (Modul)
+#   1  qcpp        src/qr68.c            -> qr68.i      (preprocessor)
+#   2  qcir        @qr68.i               -> qr68.ir     (compiler)
+#   3  qir_68k     qr68.ir               -> qr68.s68    (code generation)
+#   4  qr68        qr68.s68              -> qr68.r      (ITSELF)
+#   5  r68         q9_cstart.a           -> q9_cstart.r (runtime entry)
+#   6  l68         + clib/os_lib/sys.l  -> q9_qr68     (module)
 #
-# Schritt 4 ist der Witz an der Sache: qr68 assembliert seine eigene
-# Modulquelle. Fremd bleiben nur noch l68 und Microwares clib.
+# Step 4 is the key point: qr68 assembles its own module source. Only l68 and
+# Microware's clib remain external.
 #
-# Uebersetzt wird mit -D_Q9OS, das die Feldgroessen auf Zielmass setzt
+# Compile with -D_Q9OS, which sets table sizes to target dimensions
 # (s. Kommentar im Quelltext): QCCs Backend legt genullte Felder in den
 # INITIALISIERTEN Datenbereich, und der wandert vollstaendig ins Modul.
 #
-# Aufruf:  tools/build_os9.sh [ausgabeverzeichnis]
-# Exit:    0 = Modul gebaut, 2 = Aufbauproblem
+# Usage: tools/build_os9.sh [output-directory]
+# Exit:  0 = module built, 2 = setup failure
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -60,7 +60,7 @@ echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 [ "$msgs" = 0 ]  || { head -10 "$WORK/qr68.err"; die "Semantikmeldungen"; }
 
 echo "== 3/6 Backend (-os9 -largedata -remotedata) =="
-# -largedata ist Pflicht: qr68 haelt weit mehr als 32 KB globalen Zustand,
+# -largedata is required: qr68 holds far more than 32 KB of global state;
 # ohne die Indirektionstabelle meldet der Assembler "value out of range".
 "$QCC/build/qir_68k" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
 	>/dev/null || die "qir_68k"
@@ -82,7 +82,7 @@ w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:$WWORK\\q9_cstart.
 }
 size="$(wc -c < "$WORK/q9_qr68" | tr -d ' ')"
 
-# ToolSheds "ident" stuerzt an Modulen dieser Groesse ab (bei qcpp gemessen,
+# ToolShed's "ident" crashes on modules of this size (measured with qcpp,
 # Exit 138). Der Kopf wird deshalb direkt gelesen: Sync $4AFC, und M$Size
 # steht bei Offset 4 (davor M$ID und M$SysRev).
 hdr="$(od -A n -t x1 -N 8 "$WORK/q9_qr68" | tr -d ' \n')"
