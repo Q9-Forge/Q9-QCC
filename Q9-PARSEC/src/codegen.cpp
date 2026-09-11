@@ -575,7 +575,7 @@ static void freeRoutines(ActionRoutine* arr, int cnt) {
 	for (i = 0; i < cnt; i++) free(arr[i].text);
 }
 
-// haengt (name, text[0..textLen)) als neue Routine an *arr an, verdoppelt *arr bei Bedarf
+// Append (name, text[0..textLen)) as a new routine to *arr, doubling *arr when needed.
 static void pushRoutine(ActionRoutine** arr, int* cnt, int* cap, const char* name, const char* text, int textLen) {
 	ActionRoutine* slot;
 	if (*cnt >= *cap) {
@@ -607,7 +607,7 @@ static const char* routineText68k(const char* name) {
 	return NULL;
 }
 
-// letztes Wort einer Zeile (durch Leerraum getrennt) in out kopieren, max outMax-1 Zeichen
+// Copy the last whitespace-delimited word of a line to out, up to outMax-1 characters.
 static void lastWord(const char* line, char* out, int outMax) {
 	const char* pEnd = line + strlen(line);
 	const char* pStart;
@@ -621,8 +621,8 @@ static void lastWord(const char* line, char* out, int outMax) {
 	out[n] = '\0';
 }
 
-// wachsende Puffer sind ueber den Funktionsaufruf hinaus statisch (Kapazitaet bleibt
-// erhalten, wird beim naechsten Aufruf wiederverwendet statt neu allokiert)
+// Growing buffers remain allocated after the function call; their capacity is
+// reused on the next call instead of being allocated again.
 static char* lineBuf = NULL;
 static int lineBufCap = 0;
 static char* collectBuf = NULL;
@@ -725,9 +725,9 @@ int actionsParseConfig(const char* buf) {
 		}
 		}
 	}
-	// jede ACTION braucht mindestens EINE der beiden ROUTINEn, sonst verpufft sie
-	// vollstaendig -- das ist erlaubt (z.B. waehrend nur ein Backend entwickelt wird),
-	// aber eine klare Warnung ist besser als stilles Weglassen.
+	// Every ACTION needs at least one of the two routines or it has no effect.
+	// This is allowed while only one backend is being developed, but a clear
+	// warning is preferable to silently dropping it.
 	for (r = 0; r < AST_MAX_RULES; r++) {
 		if (ruleActionCall[r][0] == '\0') continue;
 		if (routineTextC(ruleActionCall[r]) == NULL && routineText68k(ruleActionCall[r]) == NULL) {
@@ -738,8 +738,8 @@ int actionsParseConfig(const char* buf) {
 	return 1;
 }
 
-// wortartiges Literal: beginnt wie ein Bezeichner und besteht nur aus Bezeichner-Zeichen
-// -> bekommt im syntaktischen Kontext einen Wortgrenzen-Check
+// Word-like literal: starts like an identifier and contains only identifier
+// characters; it receives a word-boundary check in syntactic context.
 static int isWordLiteral(const char* s) {
 	int i;
 	if (!(isalpha((unsigned char)s[0]) || s[0] == '_' || s[0] == '$')) return 0;
@@ -750,15 +750,14 @@ static int isWordLiteral(const char* s) {
 }
 
 //------------------------------------------------------------------------------------------------
-// AST-Validierung vor der Ausgabe
+// AST validation before emission
 //------------------------------------------------------------------------------------------------
-// Ein rekursiver Abstieg darf eine Wiederholung nur dann als einfache greedy-Schleife
-// erzeugen, wenn ihr Rumpf mindestens ein Zeichen konsumiert. Andernfalls waere die
-// erfolgreiche Iteration ohne Fortschritt eine Endlosschleife -- sowohl im C- als auch
-// im 68k-Backend. "nullable" bedeutet hier: kann der Knoten erfolgreich sein, ohne
-// Eingabe zu verbrauchen? Die Berechnung ist rein strukturell; NTS gelten konservativ
-// als nicht-nullable (eine nullable NTS in einer Wiederholung wird unten separat durch
-// die Regel-Fixpunktanalyse erkannt).
+// Recursive descent may generate a repetition as a simple greedy loop only when
+// its body consumes at least one character. Otherwise a successful iteration
+// without progress loops forever in both backends. "Nullable" means that a node
+// can succeed without consuming input. The calculation is structural; NTS are
+// conservatively treated as non-nullable and checked separately by the rule
+// fixed-point analysis below.
 static int nodeNullable(int id, const int* ruleNullable) {
 	AstNode* n = &nodes[id];
 	int child;
