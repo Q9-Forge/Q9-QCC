@@ -800,12 +800,11 @@ static void collectFunctions(void) {
 				if (x->argc != 3) fatal("ungueltiges LARRAY");
 				len = number(x->args[2], x->line);
 				if (len <= 0) fatal("LARRAY-Laenge muss positiv sein");
-				/* Ausrichtung war schon vor short nur 1 (Byte) oder 2 (alles
-				   andere, auch 4-Byte-Werte) -- 68k braucht fuer Word UND
-				   Long nur eine GERADE Adresse, keine 4er-Ausrichtung. Short
-				   faellt also einfach mit in den bestehenden "sonst"-Zweig,
-				   nur die tatsaechliche Elementgroesse (fuer frameBytes) wird
-				   jetzt echt dreiteilig ueber tagSize(). */
+				/* Alignment was 1 (byte) or 2 (everything else, including
+				   4-byte values) even before short: 68k word and long values need
+				   only an even address, not 4-byte alignment. short therefore uses
+				   the existing "otherwise" branch; only the actual element size
+				   for frameBytes is now selected by tagSize(). */
 				align = tagSize(x->args[1]) == 1 ? 1 : 2;
 				fn->frameBytes = (fn->frameBytes + align - 1) & ~(align - 1);
 				fn->frameBytes += len * tagSize(x->args[1]);
@@ -815,7 +814,7 @@ static void collectFunctions(void) {
 	}
 }
 
-/* 2026-07-26 (siehe registerExtern()-Kommentar oben): sammelt EINMAL vorab
+/* 2026-07-26 (see registerExtern() above): collect once before emission
    alle in dieser Datei per CALLEXT/CALLEXTP gerufenen externen Rohnamen
    (strlen/fopen/printf/...) -- muss VOR jeder Codeemission laufen, damit
    Tabellenindex UND Wrapper-Emission konsistent dieselbe Reihenfolge sehen. */
