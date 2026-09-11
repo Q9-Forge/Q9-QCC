@@ -1737,8 +1737,8 @@ static void emitIR(FILE* out) {
 				   NICHT Teil dieses Schritts, siehe docs/FORTSCHRITT.md. */
 				int nargsC = number(insP->args[1], insP->line);
 				int fixedCount = number(insP->args[2], insP->line);
-				/* BUG (2026-07-26/27, live auf Q9 gefunden, per capstone-Disassemblierung
-				   der ECHTEN clib.l-printf bestaetigt): die Annahme "NUR die FEST
+				/* BUG (2026-07-26/27, found live on Q9 and confirmed by Capstone
+				   disassembly of the REAL clib.l printf): the assumption that ONLY
 				   deklarierten Parameter gehen nach d0/d1, der GESAMTE variadische Teil
 				   auf den Stack" (2026-07-24-Fund) war FALSCH bzw. unvollstaendig. Die
 				   echte, kompilierte printf(char* fmt, ...) beginnt mit "move.l d0,-(a7)"
@@ -1755,13 +1755,12 @@ static void emitIR(FILE* out) {
 				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
 				int ai;
 				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
-				/* Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein freies
-				   Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen eigene
-				   Emission hinaus als gueltig vorausgesetzt). small: PC-relative "lea"
-				   passend zum PIC-Stil des restlichen Backends (vgl. tc_g_<name>(pc)-
-				   Zugriffe); large: derselbe a3-Indirektionsmechanismus wie bei echten
-				   Globalen (siehe emitLeaGlobal()-Kommentar) -- tc_extcall_tmp bekommt
-				   dafuer einen zusaetzlichen Tabelleneintrag NACH allen echten Globalen
+				/* Load the address ONCE into a0. a0 is a free scratch address register
+				   throughout this backend, and no IR opcode assumes it remains valid
+				   after its own emission. In small mode use a PC-relative "lea" in
+				   keeping with the rest of the PIC backend; in large mode use the same
+				   a3 indirection mechanism as real globals. tc_extcall_tmp therefore
+				   receives an additional table entry AFTER all real globals
 				   (Offset globalCount*4). */
 				if (stackArgs > 0) {
 					/* 2026-07-26: tc_gadata-Eintrag ist ein Link-Zeit-Offset, kein
