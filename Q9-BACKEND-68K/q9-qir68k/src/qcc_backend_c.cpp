@@ -847,7 +847,7 @@ static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 }
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
-	/* tc_cmp_yes_<id>/tc_cmp_done_<id> sind reine interne Sprungmarken, KEINE
+	/* tc_cmp_yes_<id>/tc_cmp_done_<id> are purely internal branch labels, NOT
 	   QCC-Symbole -- ohne psectName-Suffix kollidieren sie beim Mehrdatei-
 	   Link, sobald ZWEI separat kompilierte Dateien beide mindestens einen
 	   Vergleichsoperator benutzen (r68/l68 kennen kein Sichtbarkeitskonzept,
@@ -922,28 +922,27 @@ static void emitM68kCore(FILE* out) {
 	fputs("tc_udiv_skip:\tdbra\td4,tc_udiv_loop\n\tmove.l\td2,d0\n", out);
 	fputs("tc_udiv_done:\tmove.l\t(a7)+,d4\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 
-	/* Rest = Dividend - Quotient*Divisor. WICHTIG (2026-07-24, gefunden ueber
-	   tools/qcc68sim.py beim Debuggen der neuen -os9-putint-Ziffernzerlegung):
-	   vor "bsr tc_mul_i32" muss d0 den DIVISOR (d3) tragen, NICHT nochmal den
-	   Dividenden (d2) -- sonst wird Quotient*Dividend statt Quotient*Divisor
-	   gerechnet. Dieser Bug war seit Einfuehrung von tc_mod_i32/tc_umod_u32
-	   unentdeckt, weil kein einziger 68k-Backend-Test (nur die QCCVM-Tests)
-	   den "%"-Operator ueber den echten 68k-Pfad ausgefuehrt hat. */
+	/* Remainder = dividend - quotient*divisor. IMPORTANT (2026-07-24, found
+	   through tools/qcc68sim.py while debugging the new -os9-putint digit
+	   decomposition): before "bsr tc_mul_i32", d0 must contain the DIVISOR (d3),
+	   not the dividend (d2) again; otherwise the code computes quotient*dividend
+	   instead of quotient*divisor. This bug remained hidden since the introduction
+	   of tc_mod_i32/tc_umod_u32 because no 68k backend test (only QCCVM tests)
+	   executed the "%" operator through the real 68k path. */
 	fputs("tc_mod_i32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 	fputs("tc_umod_u32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 }
 
-/* Datenzugriffs-/Zeigeropcodes (PUSH..PDIFF), 2026-09-09 aus emitIR()
-   ausgelagert: mit short als dritter Groesse ueberall (tagSize/tagSuffix/
-   tagShift statt isByteWord) ist emitIR()s eigener 68k-Code -- den QCC sich
-   beim Selbsthosten SELBST erzeugt -- so weit gewachsen, dass qr68 einen
-   Sprung als "zu weit fuer die Wortform" ablehnte (kein Bug, echte Grenze:
-   weder r68 noch qr68 kennen eine lange Sprungform). Diese Auslagerung
-   verkuerzt die Sprungspannen in emitIR() selbst wieder, ohne an der
-   semantics; it is purely a size reduction. Returns 1 when handled, otherwise
-   0 so emitIR() continues with the remaining dispatch chain. */
+/* Data-access and pointer opcodes (PUSH..PDIFF), moved out of emitIR() on
+	 2026-09-09. With short as a third size (tagSize/tagSuffix/tagShift instead
+	 of isByteWord), emitIR()'s own 68k code, which QCC generates during
+	 self-hosting, became large enough for qr68 to reject a branch as too far for
+	 its word form. This is a real toolchain limit: neither r68 nor qr68 knows a
+	 long branch form. Moving this code shortens the branch spans in emitIR()
+	 again without changing semantics; it is purely a size reduction. Returns 1
+	 when handled, otherwise 0 so emitIR() continues with the remaining dispatch. */
 static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn, int* serial) {
 	char addrBuf[64];
 	char msg[300];
@@ -987,12 +986,12 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int ignored;
 		if (strcmp(insP->args[0], "L") == 0) {
 			int slotN = number(insP->args[1], insP->line);
-			/* A struct with exactly one longword (the bootstrap case
-			   TCType: vier char-Felder) wird als normaler 32-Bit-
-			   Parameter uebergeben. Seine Feldzugriffe verwenden trotzdem
-			   PUSHADDR L <param>; dafuer ist die Parameteradresse selbst
-			   korrekt. Nicht jede L-Adresse ist also ein LARRAY. Groessere
-			   Struct-by-value-Parameter brauchen weiterhin eine eigene ABI. */
+			/* A struct containing exactly one longword (the bootstrap case
+			   TCType: four char fields) is passed as an ordinary 32-bit parameter.
+			   Its field accesses still use PUSHADDR L <param>, for which the
+			   parameter address itself is correct. Therefore, not every L address
+			   denotes an LARRAY. Larger struct-by-value parameters still need a
+			   dedicated ABI. */
 			if (slotN < fn->nargs) {
 				slotAddress(addrBuf, slotN, fn, insP->line);
 				fprintf(out, "\tlea\t%s,a0\n", addrBuf);
