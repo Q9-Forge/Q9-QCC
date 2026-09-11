@@ -800,8 +800,8 @@ void appendUserCodeLine(const char* line) {
 	userCodeBuf[userCodeLen] = EOS;
 }
 
-// [LEXER]-Block: wie NUTZER-CODE roh erhalten; zusaetzlich wird er vor der
-// Codegenerierung an lexParseConfig() (codegen.cpp) uebergeben.
+// [LEXER] block: preserved verbatim like USER-CODE; additionally passed to
+// lexParseConfig() (codegen.cpp) before code generation.
 #define LEXER_CFG_LEN 4096
 char lexerCfgBuf[LEXER_CFG_LEN];
 int lexerCfgLen = 0;
@@ -818,8 +818,8 @@ void appendLexerCfgLine(const char* line) {
 	lexerCfgBuf[lexerCfgLen] = EOS;
 }
 
-// [CODEGEN]-Block: analog LEXER -- roh erhalten, vor der Codegenerierung an
-// cgenParseConfig() (codegen.cpp) uebergeben (z.B. M68K OS9 fuer r68/psect-Ausgabe).
+// [CODEGEN] block: preserved verbatim like LEXER and passed to cgenParseConfig()
+// (codegen.cpp) before generation, for example for 68k OS-9 r68/psect output.
 #define CGEN_CFG_LEN 4096
 char cgenCfgBuf[CGEN_CFG_LEN];
 int cgenCfgLen = 0;
@@ -837,14 +837,12 @@ void appendCgenCfgLine(const char* line) {
 }
 
 //------------------------------------------------------------------------------------------------
-// Escape-Sequenzen in Literalen
+// Escape sequences in literals
 //------------------------------------------------------------------------------------------------
-// Der Lexer liest Literale roh ein (inkl. Backslash-Sequenzen); HIER wird dekodiert,
-// bevor Tabelle und AST befuellt werden -- das Listing (EBNF-QUELLTEXT) zeigt weiterhin
-// die Original-Schreibweise. Unterstuetzt: \ddd (1-3 Oktalziffern, z.B. \042 = '"'),
-// \t \n \r, \\ und \" (alle anderen \x ergeben x). Das war schon die Absicht der
-// 2020er-Grammatiken (ebnf.ebnf: literal = "\042" {character} "\042".) -- bis jetzt
-// wurden die Sequenzen aber faelschlich als rohe Zeichen gematcht.
+// The lexer reads literals verbatim, including backslash escapes; decode them
+// here before filling the table and AST. The listing still shows the original
+// spelling. Supported: \ddd (1-3 octal digits, e.g. \042 = '"'), \t, \n, \r,
+// \\ and \"; all other \x sequences produce x.
 void decodeEscapes(char* s) {
 	char* r = s;
 	char* w = s;
@@ -866,7 +864,7 @@ void decodeEscapes(char* s) {
 			case 't': *w++ = '\t'; break;
 			case 'n': *w++ = '\n'; break;
 			case 'r': *w++ = '\r'; break;
-			default:  *w++ = *r;   break;	// \\ und \" und alles andere: das Zeichen selbst
+			default:  *w++ = *r;   break;	// \\ and \" and all other escapes: the character itself
 			}
 			r++;
 		}
@@ -877,9 +875,9 @@ void decodeEscapes(char* s) {
 	*w = EOS;
 }
 
-// Gegenstueck fuer die Arbeitsdatei: Steuerzeichen und Backslash als \ooo enkodieren,
-// damit die zeilenbasierte PARSER-TABELLE robust bleibt und der Fall-B-Reload per
-// decodeEscapes() den Originalinhalt zurueckerhaelt.
+// Workfile counterpart: encode control characters and backslashes as \ooo so
+// the line-based PARSER-TABELLE remains robust and case-B reload restores the
+// original content through decodeEscapes().
 void encodeTSField(const char* in, char* out, int outMax) {
 	int n = 0;
 
@@ -896,8 +894,8 @@ void encodeTSField(const char* in, char* out, int outMax) {
 	out[n] = EOS;
 }
 
-// Zeilenende (\n und ggf. Windows-\r) entfernen -- Arbeitsdateien koennen von beiden
-// Plattformen stammen.
+// Remove line endings (\n and optional Windows \r); workfiles may come from
+// either platform.
 void chompLine(char* line) {
 	size_t len = strlen(line);
 	while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
@@ -905,9 +903,8 @@ void chompLine(char* line) {
 	}
 }
 
-// TESTS-Block aus einer (alten) Arbeitsdatei retten, BEVOR sie per "w" ueberschrieben wird.
-// Eine alte CSV-.lextab (Vorgaenger-Format) hat keinen [TESTS]-Block -> es wird schlicht
-// nichts gefunden, das ist kein Fehler.
+// Preserve the TESTS block from an old workfile BEFORE opening it with "w".
+// Legacy CSV .lextab files have no [TESTS] block; finding nothing is harmless.
 void loadPreservedTests(const char* path) {
 	FILE* fp;
 	char line[WORKFILE_LINE];
