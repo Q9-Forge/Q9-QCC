@@ -2337,7 +2337,7 @@ static void emitEa(int k, int size)
 }
 
 /* ================================================================== use == */
-/* An r68 gemessen, denn geraten haette man es anders:
+/* Measured against r68; intuition would suggest a different behavior:
      use datei.a     und   use "datei.a"   -> genau dieser Pfad, also
                                               relativ zum ARBEITSverzeichnis
                                               (NICHT zum Verzeichnis der
@@ -2353,8 +2353,8 @@ static int USEDIR_MAX = 16;
 static int useDirs[16];
 static int useDirN;
 
-/* Symbole von der Kommandozeile (-a). Sie werden zu Beginn JEDES Durchlaufs
-   gesetzt, damit "ifdef" sie sieht. */
+/* Command-line symbols (-a). They are set at the start of EVERY pass so
+   "ifdef" can see them. */
 static int ARGDEF_MAX = 32;
 static int argDefName[32];
 static int argDefVal[32];
@@ -2407,7 +2407,7 @@ static void doUse(void)
 	angled = 0;
 	quoted = 0;
 	from = 0;
-	/* Das schliessende Zeichen wird nur weggenommen, wenn es da ist:
+	/* Remove the closing character only when it is present:
 	   im SDK steht "use <memc040.d)" (Tippfehler in systype.d), und r68
 	   uebersetzt die Datei damit anstandslos. */
 	if (lnArg[0] == '<') {
@@ -2426,7 +2426,7 @@ static void doUse(void)
 
 	id = -1;
 	if (quoted) {
-		/* Die Anfuehrungsform sucht im Verzeichnis der
+		/* Quoted form searches the directory of the
 		   EINSCHLIESSENDEN Datei -- gemessen: "use \"nachbar.a\""
 		   findet den Nachbarn auch dann, wenn das Arbeitsverzeichnis
 		   woanders liegt, waehrend das nackte "use nachbar.a" es
@@ -2480,8 +2480,8 @@ static void doUse(void)
 	curLine = 1;
 }
 
-/* ================================================================ Makros = */
-/* An r68 gemessen (Option -x zeigt die Ausdehnung im Listing):
+/* ================================================================ Macros == */
+/* Measured against r68 (option -x shows expansion in the listing):
      NAME macro / ... / endm     -- der Name steht im LABELfeld,
      \1 .. \9   die Argumente, TEXTUELL ersetzt, auch innerhalb von
                 Anfuehrungszeichen ("dc.b \"\\5\",0" im SDK),
@@ -2505,9 +2505,9 @@ static char macText[QR_MACTEXT];
 static int MACTEXT_MAX = QR_MACTEXT;
 static int macTop;
 
-static int macDefining;        /* 1 = Zeilen wandern in den Rumpf */
-static int macCounter;         /* fuer \@ */
-static int repActive;          /* 1 = Rumpf einer rept sammeln */
+static int macDefining;        /* 1 = lines are being added to the body. */
+static int macCounter;         /* For \@. */
+static int repActive;           /* 1 = collecting a rept body. */
 static int repCount;
 
 static int macFind(int name)
@@ -2521,7 +2521,7 @@ static int macFind(int name)
 	return -1;
 }
 
-/* Haengt die ROHE Zeile an den Rumpf des zuletzt begonnenen Makros. */
+/* Append the RAW line to the body of the most recently started macro. */
 static void macAppendLine(const char *line)
 {
 	int i;
@@ -2547,9 +2547,8 @@ static void expPut(int c)
 	srcArena[expTop] = c;
 }
 
-/* Schreibt den Rumpf [from..to) rueckwaerts in den Ausdehnungsspeicher und
-   ersetzt dabei die Platzhalter. Rueckwaerts, weil der Speicher von oben
-   nach unten waechst -- das Ergebnis steht danach vorwaerts richtig. */
+/* Write body [from..to) backwards into expansion storage and substitute
+   placeholders. The storage grows downward, so the result is forward-ordered. */
 static void macSubstitute(int from, int to, char *argp[], int argN,
 			  int serial)
 {
@@ -2561,7 +2560,7 @@ static void macSubstitute(int from, int to, char *argp[], int argN,
 	i = to;
 	while (i > from) {
 		i--;
-		/* "\Ln" -- die LAENGE des Arguments n, zweistellig dezimal
+		/* "\Ln" -- the LENGTH of argument n, as two decimal digits
 		   (gemessen: "a0" ergibt "02", ein leeres Argument "00"). Die
 		   SDK-Makros pruefen damit die Art eines Arguments:
 		   "ifne \L1-2 / fail ... must be a An register". Von hinten
@@ -2579,8 +2578,8 @@ static void macSubstitute(int from, int to, char *argp[], int argN,
 			continue;
 		}
 		if (i > from && macText[i - 1] == '\\') {
-			/* Der Platzhalter besteht aus zwei Zeichen; er wird
-			   hier von hinten gesehen. */
+			/* The placeholder consists of two characters; they are seen
+			   here in reverse order. */
 			k = macText[i] & 255;
 			i--;
 			if (k >= '1' && k <= '9') {
@@ -2620,7 +2619,7 @@ static void macSubstitute(int from, int to, char *argp[], int argN,
 static char macArgBuf[1024];
 static char *macArgP[9];
 
-/* Zerlegt das Operandenfeld des Aufrufs in bis zu neun Argumente.
+/* Split the invocation operand field into up to nine arguments.
    An r68 gemessen: getrennt wird an JEDEM Komma -- Klammern zaehlen NICHT
    mit. "REGMOVE2 d0,(a0,d2.w)" hat also DREI Argumente ("d0", "(a0",
    "d2.w)"), und genau darauf baut MACROS/longio.m: das Makro setzt sie mit
