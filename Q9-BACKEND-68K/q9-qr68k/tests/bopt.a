@@ -1,0 +1,94 @@
+* Sprungweitenwahl mit -b. Nur mit RFLAGS=-b sinnvoll:
+*   ./test/insndiff.sh test/bopt.a          (feste Weiten)
+*   RFLAGS=-b ./test/insndiff.sh test/bopt.a
+* Gemessen: mit -b uebergeht r68 den angegebenen Buchstaben ganz --
+* "bra.w" auf ein nahes Ziel wird kurz, "beq.s" auf ein fernes wird
+* zur Wortform -- und ein Ziel ausserhalb des Moduls bleibt Wortform.
+         opt     l
+         psect   bopt,0,0,1,0,0
+zurueck  nop
+         bra     zurueck
+         bra.s   zurueck
+         bra.w   zurueck
+         bsr     zurueck
+         beq     zurueck
+         bne.s   zurueck
+         bcs.w   zurueck
+         bra     weit
+         beq     weit
+         bsr     fremd
+         beq     fremd
+         dbra    d0,zurueck
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+         nop
+weit     nop
+         rts
+         ends

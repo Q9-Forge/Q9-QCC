@@ -1,0 +1,94 @@
+* Direktivenprobe: org/do und der Punkt, Ausrichtung und die Rundung der
+* Abschnittsgroessen. Orakel ist r68 (test/insndiff.sh).
+         opt     l
+
+* ---- org und do: der Strukturbeschreiber des SDK ------------------------
+* Gemessen: do.w und do.l richten auf GERADE aus (nicht auf ihre Breite),
+* do.b nicht; "." ist der org-Zaehler, und "org" bewegt den Ort im
+* Abschnitt nicht.
+         org     4
+V_A      do.b    1
+V_B      do.w    1
+V_C      do.l    2
+V_D      do.b    3
+V_E      do.w    1
+V_SIZE   equ     .
+         org     1
+W_A      do.l    1
+W_B      do      1
+W_SIZE   equ     .
+BREITE   equ     2
+         org     0
+Z_A      do.b    1
+Z_B      do.b    BREITE
+Z_SIZE   equ     .
+
+         psect   dir,0,0,1,0,0
+         dc.b    V_A,V_B,V_C,V_D,V_E,V_SIZE
+         dc.b    W_A,W_B,W_SIZE
+         dc.b    Z_A,Z_B,Z_SIZE
+         move.b  V_A(a2),d0
+         move.b  V_C(a2),d1
+
+* ---- org im Abschnitt bewegt den Ort NICHT ------------------------------
+         nop
+         org     $100
+nachorg  nop
+         dc.l    nachorg
+         dc.w    .
+
+* ---- "*" ist der Ort der ZEILE, nicht der laufende Ort ------------------
+* "dc.w *,*,*" auf Offset 2 ergibt dreimal $0002 (gemessen).
+         nop
+         dc.w    *,*,*
+         dc.l    *,*
+         nop
+         dc.b    *,*
+         align   2
+
+* ---- Ausdruecke ----------------------------------------------------------
+* "^" ist UNAER (Nicht), nicht XOR -- "$ff^$0f" waere ein Fehler; "~" kennt
+* r68 gar nicht.
+         dc.b    ^$0f
+         dc.w    ^$00ff
+         dc.b    -^$0f
+         dc.l    (BREITE!1)&$ff,BREITE*2,-BREITE,BREITE<<3,$40>>2
+* "|" tut es genauso wie "!"
+         dc.w    1|2|4,1!2
+
+* ---- Ausrichtung ---------------------------------------------------------
+         dc.b    1
+         align   4
+         dc.b    1,2,3
+         align   8
+         dc.b    1
+         dc.w    $1234
+         dc.b    1
+         dc.l    $12345678
+         align   2
+
+* ---- "set" und die Zahl der Durchlaeufe -------------------------------
+* r68 hat GENAU EINEN Messdurchlauf, und sein Ausgabelauf sieht die Werte,
+* wie sie am ENDE davon standen: hier kommt $0000 und $0005 heraus, denn
+* beim ersten Lesen von "SETA set SETB" war SETB noch unbekannt. Wer bis
+* zur Ruhe misst (wie qr68 fuer die Laengen), bekaeme zweimal $0005 --
+* deshalb stellt qr68 vor dem Ausgeben den Stand nach dem ersten Durchlauf
+* wieder her. Genau daran haengen die Descriptor-Quellen des SDK.
+         dc.w    SETA
+         dc.w    SETB
+SETA     set     SETB
+SETB     set     5
+
+* ---- ungerade Abschnittsgroessen (werden auf ein Vielfaches von 4
+*      gebracht, der Inhalt mit Nullen aufgefuellt) ----------------------
+         vsect
+d1:      dc.b    1
+d2:      dc.w    2
+u1:      ds.b    1
+u2:      ds.w    1
+u3:      ds.b    1
+u4:      ds.l    1
+u5:      ds.b    3
+         ends
+         rts
+         ends
