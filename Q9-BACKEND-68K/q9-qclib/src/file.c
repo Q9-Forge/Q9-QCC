@@ -143,14 +143,11 @@ char *qf_open(int *a)
 	if (m == 'r') {
 		rc = _os_open(name, QF_READ, &p);
 	} else if (m == 'w') {
-		/* Neu anlegen. Die Dateirechte $03 (Besitzer lesen und
-		   schreiben) sind NICHT an Microwares fopen nachgemessen --
-		   sobald ein Vergleichslauf sie prueft, gehoert der Wert
-		   hierher korrigiert. */
+		/* Create the file with owner read/write permissions. The exact mode
+		 * still needs confirmation against Microware fopen. */
 		rc = _os_create(name, QF_WRITE, &p, 0x03);
 	} else {
-		/* "a", "r+", "w+" sind nicht gemessen. Lieber nichts
-		   liefern als still den falschen Modus oeffnen. */
+		/* Unsupported modes fail explicitly instead of opening incorrectly. */
 		return 0;
 	}
 	if (rc != 0 || p == 0)
@@ -159,10 +156,7 @@ char *qf_open(int *a)
 	qf_rlen[frei] = 0;
 	qf_rpos[frei] = 0;
 	qf_err[frei] = 0;
-	/* qf_rbuf bleibt stehen: ein einmal geholter Puffer wird beim naechsten
-	   fopen desselben Platzes wiederverwendet. Freigeben kann qclib nicht
-	   (mem.c hat keine Freigabeliste), und ihn liegen zu lassen ist besser
-	   als bei jedem fopen einen neuen zu holen. */
+	/* Keep the buffer for reuse. qclib currently has no free-list allocator. */
 	return (char *) &qf_path[frei];
 }
 
@@ -189,8 +183,7 @@ int qf_close(int *a)
 	return 0;
 }
 
-/* Liefert die Zahl der vollstaendig gelesenen ELEMENTE, nicht der Bytes
-   -- so steht es in C89, und die Kette ruft durchweg mit size = 1. */
+/* Return the number of complete items read, as required by C89. */
 /* Function: qf_read
  * Reads complete items from a Q9 file.
  * Parameters: a IR argument frame containing buffer, size, count and handle.
@@ -220,7 +213,7 @@ int qf_read(int *a)
 	got = want;
 	rc = _os_read(*slot, buf, &got);
 	if (rc != 0) {
-		/* 211 ist E$EOF und kein Fehler (MWOS/SRC/DEFS/errno.h). */
+		/* 211 is E$EOF and is not an I/O error. */
 		if (rc != 211) {
 			i = qf_index(fp);
 			if (i >= 0)
