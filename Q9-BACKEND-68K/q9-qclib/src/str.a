@@ -1,0 +1,176 @@
+* Die Adapter der Stringfunktionen: strlen, strchr, strncmp und (seit
+* 2026-09-07, fuer qcc_backend_c.cpp) strcmp, strcat, strncpy, strrchr,
+* strtok, strtol, memset, memcpy.
+*
+* Derselbe Handgriff wie in file.a und printf.a, dort ausfuehrlich
+* begruendet: d1 wandert auf den Platz der Ruecksprungadresse, d0
+* darueber. Danach liegen Argument 1, 2, 3, ... lueckenlos hintereinander
+* (ab dem dritten hat sie der Aufrufer ohnehin schon dort abgelegt), und
+* der C-Rumpf ist ein gewoehnliches "... qs_xxx(int *a)".
+*
+* Das gilt UNVERAENDERT auch fuer strlen mit seinem EINEN Argument: der
+* Rumpf liest dann nur a[0], und was der Adapter aus d1 auf den
+* Ruecksprungplatz schreibt, sieht er nie. Ein eigener Adapter fuer den
+* Einargumentfall waere kuerzer, brauchte aber eine zweite Bauform, die
+* man beim Nachmessen erst wieder auseinanderhalten muss.
+
+         psect   qstr,0,0,0,0,0
+
+strlen:
+         move.l  (a7),a1                 * Ruecksprungadresse merken
+         move.l  d1,(a7)                 * Argument 2 an ihren Platz
+         move.l  d0,-(a7)                * Argument 1 darueber
+         move.l  a1,-(a7)                * Ruecksprungadresse sichern
+         pea     4(a7)                   * &args
+         bsr     tc_qs_len
+         addq.l  #4,a7                   * &args weg
+         move.l  (a7)+,a1                * Ruecksprungadresse zurueck
+         addq.l  #8,a7                   * Argument 1 und 2 weg
+         move.l  a1,-(a7)
+         rts
+
+strchr:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_chr
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+strncmp:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_ncmp
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+
+strcmp:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_cmp
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+strcat:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_cat
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+strncpy:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_ncpy
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+strrchr:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_rchr
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+strtok:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_tok
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+strtol:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_tol
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+memset:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_set
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+memcpy:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_cpy
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+tolower:
+         move.l  (a7),a1                 * Ruecksprungadresse merken
+         move.l  d1,(a7)                 * Argument 2 an ihren Platz
+         move.l  d0,-(a7)                * Argument 1 darueber
+         move.l  a1,-(a7)                * Ruecksprungadresse sichern
+         pea     4(a7)                   * &args
+         bsr     tc_qs_lower
+         addq.l  #4,a7                   * &args weg
+         move.l  (a7)+,a1                * Ruecksprungadresse zurueck
+         addq.l  #8,a7                   * Argument 1 und 2 weg
+         move.l  a1,-(a7)
+         rts
+
+         ends
