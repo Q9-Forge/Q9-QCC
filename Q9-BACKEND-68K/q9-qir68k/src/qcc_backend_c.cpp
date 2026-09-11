@@ -962,9 +962,8 @@ static void emitM68kCore(FILE* out) {
    Sprung als "zu weit fuer die Wortform" ablehnte (kein Bug, echte Grenze:
    weder r68 noch qr68 kennen eine lange Sprungform). Diese Auslagerung
    verkuerzt die Sprungspannen in emitIR() selbst wieder, ohne an der
-   Semantik irgendetwas zu aendern -- reiner Verschnitt. Rueckgabe 1, wenn
-   der Opcode hier behandelt wurde, sonst 0 (emitIR() macht dann mit dem
-   Rest der Kette weiter). */
+   semantics; it is purely a size reduction. Returns 1 when handled, otherwise
+   0 so emitIR() continues with the remaining dispatch chain. */
 static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn, int* serial) {
 	char addrBuf[64];
 	char msg[300];
@@ -1003,12 +1002,12 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		emitLeaGlobal(out, gidx, "a0");
 		fputs("\tmove.l\ta0,-(a7)\n", out);
 	} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
-		/* nur Frame-Layout, kein Code */
+		/* frame layout only, no code */
 	} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
 		int ignored;
 		if (strcmp(insP->args[0], "L") == 0) {
 			int slotN = number(insP->args[1], insP->line);
-			/* Ein Struct mit genau einem Langwort (der Bootstrap-Fall
+			/* A struct with exactly one longword (the bootstrap case
 			   TCType: vier char-Felder) wird als normaler 32-Bit-
 			   Parameter uebergeben. Seine Feldzugriffe verwenden trotzdem
 			   PUSHADDR L <param>; dafuer ist die Parameteradresse selbst
@@ -1031,8 +1030,8 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		}
 		fputs("\tmove.l\ta0,-(a7)\n", out);
 	} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && insP->argc == 3) {
-		/* 2026-09-09: isChar (bool) -> elemSize (1/2/4), short als
-		   dritte Groesse dazu. */
+		/* 2026-09-09: isChar (bool) became elemSize (1/2/4), with short
+		   added as the third size. */
 		int elemSize = tagSize(insP->args[2]);
 		int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
 		if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 &&
