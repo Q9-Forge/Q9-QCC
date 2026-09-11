@@ -221,7 +221,7 @@ Bedeutung von `etext` auf den Anfang der initialisierten Daten, und
 
 ## Der Prüfstand steht bereits
 
-`Q9-qr68/test/sdkdiff.sh` holt die `r68`-Kommandozeilen per
+`Q9-qr68k/tests/sdkdiff.sh` holt die `r68`-Kommandozeilen per
 `MWMAKEOPTS=-u os9make -nn -u` aus den SDK-Makefiles. **Derselbe
 Trockenlauf druckt die `l68`-Aufrufe mit:**
 

@@ -819,7 +819,7 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
 
 ## Der Korpus, mit den Aufrufen des SDK selbst
 
-**`./test/sdkdiff.sh` ist der Prüfstand, auf den es ankommt: 290 Aufrufe
+**`./tests/sdkdiff.sh` ist der Prüfstand, auf den es ankommt: 290 Aufrufe
 byteidentisch über 101 Quelldateien, eine einzige Abweichung — und die ist
 eine bewusste Verweigerung** (`sc68990`, s. u.).
 
@@ -830,7 +830,7 @@ sondern vor allem die **richtigen Schalter** — und darin steckten **elf
 echte Fehler**, vier davon still, also ohne Abbruch und mit falschen Bytes.
 Wer nur zählt, was durchläuft, misst seine eigene Konfiguration.
 
-Der ältere `./test/mwos.sh` bleibt daneben nützlich, wenn man eine bestimmte
+Der ältere `./tests/mwos.sh` bleibt daneben nützlich, wenn man eine bestimmte
 Gruppe aus einem bestimmten Port fahren will; er bekommt
 `PORTDIR`/`DRVDIR`/`UEXTRA` von Hand:
 
@@ -850,12 +850,12 @@ Dieselben Gruppen laufen auch aus den Ports **MVME147**, **CB030**,
 dieselben bewussten Verweigerungen bleibt alles byteidentisch.
 
 ```
-PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./test/mwos.sh
+PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./tests/mwos.sh
 ```
 
 ### Die Aufrufe aus den Makefiles holen, statt sie zu raten
 
-`./test/sdkdiff.sh` fährt denselben Vergleich, aber **ohne dass die
+`./tests/sdkdiff.sh` fährt denselben Vergleich, aber **ohne dass die
 Portkonfiguration von Hand gesetzt werden muss**. Der Hebel ist ein
 Trockenlauf des SDK-eigenen Make:
 
@@ -877,7 +877,7 @@ r68 -qb -u=. -u=..\..\..\..\SRC\DEFS -u=..\..\..\..\SRC\MACROS -aNODATAPORT \
 
 In den SDK-Baum wird dabei **nichts** geschrieben: `os9make` führt nichts
 aus, und die `-o=`-Angabe biegt das Skript auf ein Temporärverzeichnis um.
-Damit fällt das Raten weg, das `test/mwos.sh` nötig macht — und mit ihm der
+Damit fällt das Raten weg, das `tests/mwos.sh` nötig macht — und mit ihm der
 Verdacht, ein „übersprungen" sei eine Portfrage und kein Befund.
 
 Der Lauf über alle 197 Verzeichnisse, die etwas bauen:
@@ -917,7 +917,7 @@ Korpusteil aussieht und keiner ist.
 
 ```
 UEXTRA="…/PORTS/Q9 …/SRC/ROM/MVME050" PORTDIR=…/PORTS/Q9/ROM_CBOOT \
-    DRVDIR=…/SRC/IO/SCF/DRVR ./test/mwos.sh …/PORTS/Q9/ROM_CBOOT/sysinit.a
+    DRVDIR=…/SRC/IO/SCF/DRVR ./tests/mwos.sh …/PORTS/Q9/ROM_CBOOT/sysinit.a
 ```
 
 Die verbliebenen Abweichungen sind **alle** bewusste Verweigerungen, und
@@ -958,7 +958,7 @@ erst prüfbar. Auch die 68020-Formen mit Speicherindirektion
 ### Der Befehlsvorrat ist zu (2026-09-04)
 
 Die Restliste vom selben Tag — `bfextu`/`bfins`/`bfffo` (23×), `move16`
-(20×) und `pmove` (4×) — ist abgearbeitet und in `test/insn.a` festgehalten.
+(20×) und `pmove` (4×) — ist abgearbeitet und in `tests/insn.a` festgehalten.
 Beim Durchmessen kamen **drei weitere Lücken** heraus, die die Restliste
 nicht kannte, weil r68 die betroffenen Dateien ohne die zusätzlichen
 Suchverzeichnisse selbst nicht übersetzte:
@@ -1103,7 +1103,7 @@ geratener Fall wäre schlechter als keiner.
 `vsect` mit irgendetwas anderem als `remote` **bricht jetzt ab**. Vorher
 wäre ein Tippfehler dort genauso stillschweigend verschwunden.
 
-`test/remotetest.sh` hält vier Fälle gegen r68 — nur ein Fernblock,
+`tests/remotetest.sh` hält vier Fälle gegen r68 — nur ein Fernblock,
 gemischt (nicht-remote + initialisiert + remote), remote mit `align` und
 mehreren Marken, und **einen Fall ohne `remote`**, der unverändert
 byteidentisch bleiben muss. Alle vier gleich.
