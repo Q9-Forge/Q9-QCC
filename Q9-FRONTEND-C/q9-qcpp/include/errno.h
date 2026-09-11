@@ -1,11 +1,9 @@
 /* errno.h -- Q9-Werkzeugkette, bewusst minimal (s. stddef.h/string.h).
  *
- * Eigene Fassung, KEINE Uebernahme von Microwares DEFS/errno.h (Microware-
- * Copyright, ueber 1100 Zeilen OS-9-Fehlercodes). Q9-Tools/System/link.c
- * bindet diesen Header bisher nur ein, ohne "errno" oder einen der Codes
- * tatsaechlich zu benutzen -- deshalb bewusst LEER (nur die Wache). Sobald
- * ein Werkzeug einen echten Fehlercode braucht, kommt der einzeln dazu,
- * nicht die ganze Microware-Liste auf Vorrat.
+ * Local interface; it does not copy Microware's copyrighted DEFS/errno.h.
+ * Q9-Tools/System/link.c currently includes this guard without using errno or
+ * any error code, so the header is intentionally empty. Add individual codes
+ * when a tool needs them instead of importing the complete Microware list.
  */
 #ifndef Q9_ERRNO_H
 #define Q9_ERRNO_H
