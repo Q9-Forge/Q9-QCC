@@ -1,12 +1,14 @@
-//================================================================================
-// qcc_backend_c.cpp -- reines-C-Gegenstueck zu qcc_backend.cpp
+//=============================================================================
+// qcc_backend_c.cpp -- Q9 Stack-IR to position-independent 68k assembly
 //
-// Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
-// Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
-// Original (qcc_backend.cpp) bleibt unveraendert als Referenz liegen; siehe
-// docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5 fuer den Hintergrund. Um auf die
-// C++-Version zurueckzuschalten, in runtests.sh wieder qcc_backend.cpp bauen.
-//================================================================================
+// Purpose:
+//   Translate Q9 Stack-IR into OS-9-compatible 68k assembly using fixed tables
+//   and C-compatible runtime helpers so the backend can participate in QCC
+//   self-hosting.
+//
+// Edition history:
+//   2026-09-11  Introduced the English source-header format.
+//=============================================================================
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

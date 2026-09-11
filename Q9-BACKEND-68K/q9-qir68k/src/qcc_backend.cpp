@@ -1,12 +1,13 @@
-//================================================================================
-// qcc_backend.cpp -- QCC Stack-IR -> position-unabhaengiger 68k-Assembler
+//=============================================================================
+// qcc_backend.cpp -- Q9 Stack-IR to position-independent 68k assembly
 //
-// Eigenstaendiger Teil des QCCs, NICHT Teil des allgemeinen EBNF-
-// Generators. Die Ausgabe verwendet nur PC-relative interne Aufrufe/Spruenge und
-// Stackframe-relative Daten. Der 68k-Core liefert auch die fehlenden 32-Bit-
-// MUL/DIV-Helfer; eine austauschbare Target Runtime liefert nur noch tc_putint
-// und tc_exit. Der Prototyp schreibt dafuer assemble-bare Stubs mit aus.
-//================================================================================
+// Purpose:
+//   Reference C++ implementation of the Q9 68k backend. The generated output
+//   uses position-independent calls and stack-frame-relative data access.
+//
+// Edition history:
+//   2026-09-11  Introduced the English source-header format.
+//=============================================================================
 #include <fstream>
 #include <iostream>
 #include <map>
