@@ -221,7 +221,7 @@ static const char* phEmitFused(const char* labelStart, int labelLen,
 	return p;
 }
 
-/* Push unmittelbar gefolgt vom eigenen Pop, s. Kommentar am Dateianfang.
+/* Push immediately followed by its matching pop; see the file header.
  * Check the pop FIRST (read-only and harmless on failure); only after it
  * matches is it worth checking the preceding push in detail. */
 static int phFoldPushPop(void) {
@@ -315,11 +315,11 @@ static int phFoldMoveTst(void) {
 }
 
 /* THIRD PATTERN, see the file header: "move.l Dn,DST" -- the same
- * Datenregister, das die vorherige Zeile (phMatchMoveIntoDataReg) gerade
- * gefuellt hat. KEIN Label davor zugelassen (koennte Sprungziel sein,
- * dieselbe Vorsicht wie bei phMatchPop). DST reicht bis zum Zeilenende --
- * derselbe Aufbau wie phMatchPop, deshalb direkt an phEmitFused
- * uebergebbar, keine eigene Ersatzbau-Funktion noetig. */
+ * data register filled by the preceding phMatchMoveIntoDataReg line. No label
+ * is allowed before it because it could be a branch target, as with phMatchPop.
+ * DST extends to the end of the line and uses the same layout as phMatchPop,
+ * so it can be passed directly to phEmitFused without another replacement
+ * builder. */
 static int phMatchMoveFromDataReg(const char* line, const char* regStart, int regLen,
                                    const char** dstStart) {
 	const char* p;
@@ -335,7 +335,7 @@ static int phMatchMoveFromDataReg(const char* line, const char* regStart, int re
 static int phFoldLoadThenMove(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		/* One declarator per statement; see phFoldPushPop above. */
 		const char* labelStart;
 		const char* srcStart;
 		const char* regStart;
@@ -347,7 +347,7 @@ static int phFoldLoadThenMove(void) {
 		if (j < 0) continue;
 		if (!phMatchMoveFromDataReg(phLines[j], regStart, regLen, &dstStart)) continue;
 		if (labelLen == 0 && phSameText(srcStart, srcLen, dstStart)) {
-			/* SRC==DST, s. Verfeinerung am Dateianfang. */
+			/* SRC==DST; see the refinement in the file header. */
 			phRemoved[i] = 1;
 			phRemoved[j] = 1;
 			folded++;
@@ -361,9 +361,9 @@ static int phFoldLoadThenMove(void) {
 }
 
 /* FOURTH PATTERN, see the file header: "move.l SRC,-(a7)" WITHOUT
- * Klammer in SRC (kein Seiteneffekt) und OHNE Label (koennte Sprungziel
- * sein). Reine Existenzprobe -- die Zeile wird ersatzlos gestrichen, kein
- * SRC-Ruecktransport noetig. */
+ * parentheses in SRC (no side effect) and WITHOUT a label (which could be a
+ * branch target). This is an existence check only: remove the line entirely;
+ * no SRC restoration is needed. */
 static int phMatchDroppablePush(const char* line) {
 	const char* p;
 	const char* comma;
@@ -426,10 +426,10 @@ static int phParseSmallImm(const char* s, int len, int* value) {
 }
 
 /* FIFTH PATTERN, see the file header: "move.l #IMM,Dn" with IMM
- * im MOVEQ-Bereich, optional mit Label-Vorspann (das Label bleibt beim
- * Umbau erhalten -- anders als bei Mustern eins/drei/vier wird hier
- * nichts gestrichen, nur der Mnemonic-Text derselben Zeile ersetzt, das
- * Sprungziel ist also nie in Gefahr). */
+ * in the MOVEQ range, optionally preceded by a label. The label is preserved:
+ * unlike patterns one/three/four, this transformation removes nothing and
+ * replaces only the mnemonic text on the same line, so the branch target is
+ * never endangered. */
 static int phMatchMoveqCandidate(const char* line, const char** labelStart, int* labelLen,
                                    int* value, char* reg) {
 	const char* p;
