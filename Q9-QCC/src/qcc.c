@@ -16,6 +16,7 @@ static char startup[TEXT] = "cstart.a";
 static char libraries[TEXT] = "clib.l,os9.l,sys.l";
 static int dry_run;
 static int print_config;
+static char config_section[TEXT] = "global";
 
 static void copy_text(char *dst, const char *src) { strncpy(dst, src, TEXT - 1); dst[TEXT - 1] = '\0'; }
 static void usage(const char *name)
@@ -29,8 +30,9 @@ static void usage(const char *name)
 static void config_line(char *line)
 {
 	char key[TEXT], value[TEXT], section[TEXT];
-	if (sscanf(line, "[%127[^]]", section) == 1) return;
+	if (sscanf(line, "[%127[^]]", section) == 1) { copy_text(config_section, section); return; }
 	if (sscanf(line, "%127[^=]=%127s", key, value) != 2) return;
+	if (strcmp(config_section, "global") != 0 && strcmp(config_section, "target.OS9-68K") != 0) return;
 	if (strcmp(key, "target") == 0) copy_text(target, value);
 	else if (strcmp(key, "frontend") == 0) copy_text(frontend, value);
 	else if (strcmp(key, "cpu") == 0) copy_text(cpu, value);
