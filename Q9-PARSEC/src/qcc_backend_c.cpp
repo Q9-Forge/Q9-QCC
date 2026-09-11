@@ -780,7 +780,7 @@ static void collectFunctions(void) {
 				if (x->argc != 3) fatal("ungueltiges LARRAY");
 				len = number(x->args[2], x->line);
 				if (len <= 0) fatal("LARRAY-Laenge muss positiv sein");
-				/* Ausrichtung war schon vor short nur 1 (Byte) oder 2 (alles
+				/* Alignment was 1 (byte) or 2 (everything else) even before short
 				   andere, auch 4-Byte-Werte) -- 68k braucht fuer Word UND
 				   Long nur eine GERADE Adresse, keine 4er-Ausrichtung. Short
 				   faellt also einfach mit in den bestehenden "sonst"-Zweig,
@@ -1419,7 +1419,7 @@ static void emitIR(FILE* out) {
 		if (fn->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
-			/* cstart.r ruft den exportierten Einstieg nach der Microware-C-ABI
+			/* cstart.r calls the exported entry point according to the Microware C ABI
 			   auf: argc in d0, argv in d1. QCC-interne CALLs verwenden dagegen
 			   ausschliesslich den Operand-Stack (erstes Argument weiter oben).
 			   Ein parameterloses main braucht keinen Adapter; bei main(argc,argv)
@@ -1429,7 +1429,7 @@ static void emitIR(FILE* out) {
 				if (fn->nargs >= 1) fputs("\tmove.l\td0,-(a7)\n", out);
 				if (fn->nargs >= 2) fputs("\tmove.l\td1,-(a7)\n", out);
 				if (fn->nargs > 2) {
-					/* Cstart kann nur argc/argv liefern. Weitere Parameter bleiben
+					/* Cstart can provide only argc/argv. Additional parameters remain
 					   bewusst null statt aus undefiniertem Registerinhalt zu kommen. */
 					int mi;
 					for (mi = 2; mi < fn->nargs; mi++) fputs("\tmoveq\t#0,d0\n\tmove.l\td0,-(a7)\n", out);
@@ -1502,9 +1502,9 @@ static void emitIR(FILE* out) {
 		   keine PC-relativ-Grenze, im Gegensatz zu "d(pc)"-Adressierungs-
 		   arten). So kann JEDE Funktion, egal wie weit von ihrer eigenen
 		   Tabelle entfernt, diese trotzdem sicher erreichen. */
-		/* a3/a4 werden am Programmeinstieg gesetzt und von internen QCC-
-		   Funktionen nicht veraendert. Externe Aufrufe nutzen Wrapper, die
-		   diese ABI-Temporaerregister wiederherstellen. */
+		/* a3/a4 are set at program entry and are not changed by internal QCC
+		   functions. External calls use wrappers that restore these ABI
+		   temporary registers. */
 		/* BIG-ENDIAN FIX FOR char PARAMETERS (2026-08-10, found live in the
 		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
 		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
