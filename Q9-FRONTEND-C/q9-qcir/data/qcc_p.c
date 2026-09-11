@@ -1970,10 +1970,18 @@ void tc_globalend(const char* start, const char* end) {
 	}
 	/* Gibt es ueberhaupt ein Komma auf oberster Ebene? */
 	depth = 0; seg = 0;
+	{
+		int inString = 0, escaped = 0;
 	for (p = declStart; p < end; p++) {
-		if (*p == '[' || *p == '{') depth++;
+		if (inString) {
+			if (escaped) escaped = 0;
+			else if (*p == '\\') escaped = 1;
+			else if (*p == '"') inString = 0;
+		} else if (*p == '"') inString = 1;
+		else if (*p == '[' || *p == '{') depth++;
 		else if (*p == ']' || *p == '}') depth--;
 		else if (*p == ',' && depth == 0) { seg = p; break; }
+	}
 	}
 	if (!seg) { tcGlobalOne(start, end); return; }
 	/* erster Deklarator: Originaltext bis zum Komma, mit ";" abgeschlossen */
@@ -1987,9 +1995,15 @@ void tc_globalend(const char* start, const char* end) {
 	for (;;) {
 		const char* stop = 0;
 		int pre = (int)(declStart - start);
+		int inString = 0, escaped = 0;
 		depth = 0;
 		for (seg = p; seg < end; seg++) {
-			if (*seg == '[' || *seg == '{') depth++;
+			if (inString) {
+				if (escaped) escaped = 0;
+				else if (*seg == '\\') escaped = 1;
+				else if (*seg == '"') inString = 0;
+			} else if (*seg == '"') inString = 1;
+			else if (*seg == '[' || *seg == '{') depth++;
 			else if (*seg == ']' || *seg == '}') depth--;
 			else if ((*seg == ',' || *seg == ';') && depth == 0) { stop = seg; break; }
 		}
