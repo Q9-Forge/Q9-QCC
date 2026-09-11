@@ -653,25 +653,21 @@ void checkLeftRecursion() {
 //------------------------------------------------------------------------------------------------
 // Core idea (call/return rather than plain goto):
 //  - TS/RNG rows compare directly with the next input character (or the next
-//    Eingabeabschnitt bei TS) und ruecken bei Erfolg die Position weiter.
+//    input segment for TS) and advance the position on success.
 //  - NTS rows are a "subroutine call": remember the input position BEFORE the
-//    Aufruf, rufen die Zielregel (Addr-Spalte) rekursiv auf. Der native C++-Aufrufstack
-//    uebernimmt hier exakt die Rolle des Call/Return-Stacks, an dem wir vorher gescheitert
-//    waren -- ein Stack-Eintrag ist implizit (Rueckkehr-Zeile ueber trueAction/falseAction
-//    der aufrufenden Zeile, Ruecksetzposition ueber die lokale Variable curPos).
+//    call, then recursively invoke the target rule (Addr column). The native C++ call
+//    stack provides the Call/Return behavior; a stack entry is implicit in the caller's
+//    trueAction/falseAction return row and the local curPos reset position.
 //  - falseAction distinguishes two failure types: STAT_FALSE (or a jump to
-//    eine andere Zeile = naechste Alternative) heisst "gescheitert, OHNE Eingabe konsumiert
-//    zu haben" -- nur solche Fehlschlaege duerfen eine andere Alternative anspringen, denn
-//    die Maschine setzt Positionen nur an NTS-Aufruf-Grenzen zurueck. STAT_ERROR heisst
-//    "committed": ein Pflicht-Faktor hatte bereits konsumiert, der Fehlschlag ist endgueltig.
-//    term() verdrahtet das beim Erzeugen (Faktoren nach ueberspringbaren Gruppen bleiben
-//    STAT_FALSE, Faktoren nach sicher konsumierenden Faktoren werden STAT_ERROR).
-//    Bekannte Grenze: hat eine ueberspringbare Gruppe zur Laufzeit DOCH konsumiert und
-//    ein nachfolgender Faktor scheitert, springt die Maschine ohne Positions-Ruecksetzung
-//    weiter -- solche Stellen werden beim Erzeugen der Tabelle klar angewarnt (ambigF).
+//    another row = next alternative) means failure WITHOUT input consumption; only such
+//    failures may select another alternative because positions reset only at NTS-call
+//    boundaries. STAT_ERROR means "committed": a required factor consumed input and the
+//    failure is final. term() wires this during generation. Known limitation: if a
+//    skippable group did consume input and a following factor fails, the machine continues
+//    without resetting the position; table generation warns clearly (ambigF).
 //  - Left-recursive grammars would end in infinite recursion here, as with any
-//    Endlosrekursion enden -- deshalb wird vor dem Start immer checkLeftRecursion() geprueft
-//    und ein Testlauf bei gefundener Linksrekursion von main() gar nicht erst gestartet.
+//    infinite recursion; checkLeftRecursion() therefore runs before every start, and main()
+//    skips test execution when left recursion is found.
 const char* inputBuf = NULL;
 int inputLen = 0;
 
