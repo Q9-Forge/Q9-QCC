@@ -17,3 +17,16 @@ Q9-QCC/
 ├── tools/
 └── docs/
 ```
+
+## Aktueller Stand
+
+Der portable Kommandozeilenkern ist angelegt und unterstützt zunächst
+`--help`, `--version` und die Zielauswahl. Die eigentliche Pipeline wird
+schrittweise ergänzt; ein Aufruf mit Eingabedatei meldet bis dahin bewusst
+„Pipeline noch nicht implementiert“, statt einen unvollständigen Build
+vorzutäuschen.
+
+```sh
+make
+make test
+```
