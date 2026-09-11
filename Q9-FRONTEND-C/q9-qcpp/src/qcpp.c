@@ -310,6 +310,17 @@ static int internN(const char *s, int n)
 	return idx;
 }
 
+/*
+ * Function: intern
+ *
+ * Interns a NUL-terminated string in the shared pool.
+ *
+ * Parameters:
+ *   s  Input string.
+ *
+ * Returns:
+ *   Pool index of the string.
+ */
 static int intern(const char *s)
 {
 	return internN(s, strLen(s));
@@ -362,6 +373,17 @@ static void warn(const char *msg, const char *detail)
 /* ============================================================== Dateien === */
 /* Verzeichnisanteil eines Pfades (ohne Schlusstrenner), "" wenn keiner da ist.
    Erkennt "/" (OS-9/POSIX) und "\" (die SDK-Pfade unter Wine). */
+/*
+ * Function: dirOfPath
+ *
+ * Extracts and interns the directory part of a path.
+ *
+ * Parameters:
+ *   path  Input path.
+ *
+ * Returns:
+ *   Pool index of the directory, or the empty string when absent.
+ */
 static int dirOfPath(const char *path)
 {
 	int n;
@@ -445,6 +467,17 @@ static int fileLoad(const char *path)
    Echte Praeprozessoren nehmen dafuer Geraet und Inode; das braucht
    Systemaufrufe, die es auf beiden Zielen unterschiedlich gibt, deshalb hier
    bewusst der Pfadvergleich. */
+/*
+ * Function: onceSeen
+ *
+ * Checks whether a file has already been protected by #pragma once.
+ *
+ * Parameters:
+ *   path  File path to check.
+ *
+ * Returns:
+ *   Non-zero when the file was seen as a once-only include.
+ */
 static int onceSeen(const char *path)
 {
 	int name;
@@ -473,6 +506,17 @@ static int onceSeen(const char *path)
  * Ausgabe, sondern dass ohne LF die ganze Datei EINE Zeile war -- das erste
  * "#define" schluckte damit den gesamten Rest als Makrorumpf. Ein Fehler, den
  * am Host keine Eingabe zeigt. */
+/*
+ * Function: rdPeek
+ *
+ * Peeks at the next raw source byte without consuming it.
+ *
+ * Parameters:
+ *   None.
+ *
+ * Returns:
+ *   Next byte value, or -1 at end of input.
+ */
 static int rdPeek(void)
 {
 	int p;
@@ -526,6 +570,17 @@ static int rdPeek(void)
 	return c;
 }
 
+/*
+ * Function: rdTake
+ *
+ * Consumes one raw source byte and updates source position state.
+ *
+ * Parameters:
+ *   None.
+ *
+ * Returns:
+ *   Nothing.
+ */
 static void rdTake(void)
 {
 	lxPos = pkPos;
