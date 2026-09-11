@@ -19,7 +19,7 @@ byteidentisch, und `qr68` lässt sich in den SDK-Makefiles an die Stelle von
 | Prüfung | Ergebnis |
 |---|---|
 | 10 Proben (Kopf, Globale, Externe, vsect, Padding) | **byteidentisch** |
-| `test/insn.a`, `test/dir.a`, `test/mac.a`, `test/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
+| `tests/insn.a`, `tests/dir.a`, `tests/mac.a`, `tests/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
 | **Der MWOS-Korpus** — 290 Aufrufe über 101 Quellen, mit den Schaltern aus den SDK-Makefiles selbst | **byteidentisch**, eine einzige bewusste Verweigerung |
@@ -127,7 +127,7 @@ Die Kette dorthin kommt ohne Fremdcompiler aus, und Schritt 4 ist der Punkt:
 ```
 
 Auf dem 68030 assembliert das Modul dann eine Quelle, und das Ergebnis wird
-byteweise mit dem Hostlauf verglichen — geprüft mit `test/insn.a` (jede
+byteweise mit dem Hostlauf verglichen — geprüft mit `tests/insn.a` (jede
 kodierbare Form) und mit `q9kernel_entry.a` des Q9-OS-Kernels (153 KB,
 249 Symbole). Beide **byteidentisch**.
 
@@ -151,12 +151,12 @@ ROF-Kopf. Also:
 make test                          # Proben, Befehlstabelle, use, -b
 make backend                       # QCC-Backend-Quellen + Q9-OS-Kernel
 make check                         # beides
-./test/mwos.sh                     # die SCF-Treiber des SDK
+./tests/mwos.sh                    # die SCF-Treiber des SDK
 
-./test/difftest.sh                 # die eingebauten Proben
-./test/difftest.sh datei.a         # eine echte Quelle, ganze ROF-Datei
-./test/insndiff.sh datei.a         # Quellzeile für Quellzeile
-RFLAGS=-b ./test/insndiff.sh d.a   # dieselben Schalter auf beiden Seiten
+./tests/difftest.sh                # die eingebauten Proben
+./tests/difftest.sh datei.a        # eine echte Quelle, ganze ROF-Datei
+./tests/insndiff.sh datei.a        # Quellzeile für Quellzeile
+RFLAGS=-b ./tests/insndiff.sh d.a  # dieselben Schalter auf beiden Seiten
 ```
 
 `difftest.sh` vergleicht die ganze Datei und bleibt bei der ersten Abweichung
