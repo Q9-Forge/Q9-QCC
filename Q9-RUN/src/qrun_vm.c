@@ -265,7 +265,6 @@ static qrun_value_t qrun_load_local(qrun_vm_t* vm, int slot)
     }
     
     size_t frame_idx = vm->state[QRUN_FP] - 1;
-    qrun_array_t* local_arrays = frames[frame_idx].arrays;
     if (slot < 0 || slot >= (int)frames[frame_idx].nlocals_allocated) {
         fprintf(stderr, "Local slot out of bounds: %d\n", slot);
         return 0;
@@ -283,7 +282,6 @@ static void qrun_store_local(qrun_vm_t* vm, int slot, qrun_value_t val)
     }
     
     size_t frame_idx = vm->state[QRUN_FP] - 1;
-    qrun_array_t* local_arrays = frames[frame_idx].arrays;
     if (slot < 0 || slot >= (int)frames[frame_idx].nlocals_allocated) {
         fprintf(stderr, "Local slot out of bounds: %d\n", slot);
         return;
@@ -795,7 +793,6 @@ int qrun_vm_run(qrun_vm_t* vm)
             }
             
             size_t frame_idx = vm->state[QRUN_FP] - 1;
-    qrun_array_t* local_arrays = frames[frame_idx].arrays;
             qrun_array_t* arrays = frames[frame_idx].arrays;
             
             /* Expand arrays if needed */
@@ -817,7 +814,7 @@ int qrun_vm_run(qrun_vm_t* vm)
                This allows PUSHADDR L slot to return a valid heap pointer
                and STOREIND/LOADIND to work with local arrays */
             if (vm->state[QRUN_HEAP_SIZE] + size > vm->state[QRUN_HEAP_CAPACITY]) {
-                fprintf(stderr, "LARRAY: heap overflow (need %zu, have %zu)\n", 
+                fprintf(stderr, "LARRAY: heap overflow (need %d, have %d)\n", 
                         vm->state[QRUN_HEAP_SIZE] + size, vm->state[QRUN_HEAP_CAPACITY]);
                 vm->state[QRUN_HALTED] = 1;
                 break;
@@ -1106,7 +1103,7 @@ int qrun_vm_run(qrun_vm_t* vm)
                 /* Local array access - offset is into heap (from LARRAY) */
                 int heap_idx = offset;
                 if (heap_idx < 0 || heap_idx >= (int)vm->state[QRUN_HEAP_SIZE]) {
-                    fprintf(stderr, "LOADIND: heap pointer out of bounds (idx=%d, heap_size=%zu)\n", 
+                    fprintf(stderr, "LOADIND: heap pointer out of bounds (idx=%d, heap_size=%d)\n", 
                             heap_idx, vm->state[QRUN_HEAP_SIZE]);
                     vm->state[QRUN_HALTED] = 1;
                     break;

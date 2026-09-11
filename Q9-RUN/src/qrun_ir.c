@@ -335,7 +335,7 @@ int qrun_ir_parse(const char* filename,
                 if (type_str) type_str = qrun_string_pool_intern(lex->pool, type_str);
                 char* size_str = qrun_next_token(lex);
                 int size_val = size_str ? atoi(size_str) : 0;
-                char* init_str = qrun_next_token(lex);
+                qrun_next_token(lex);
                 
                 code[code_idx].arg_s = name;
                 code[code_idx].arg_type = type_str;
@@ -454,7 +454,7 @@ int qrun_ir_parse(const char* filename,
             /* GLOBALDECL <name> <type> - external global declaration (no-op) */
             /* Just parse and discard - these are for multi-file linking */
             if (arg_str) {
-                char* type_str = qrun_next_token(lex);
+                qrun_next_token(lex);
                 /* Type is discarded - we just ignore external declarations */
             }
             break;
@@ -464,7 +464,7 @@ int qrun_ir_parse(const char* filename,
             /* FUNCDECL <name> <nargs> - external function declaration (no-op) */
             /* Just parse and discard - these are for multi-file linking */
             if (arg_str) {
-                char* nargs_str = qrun_next_token(lex);
+                qrun_next_token(lex);
                 /* nargs is discarded - we just ignore external declarations */
             }
             break;
