@@ -27,7 +27,7 @@
  * geschriebenen Mnemonic), und MOVEA setzt KEINE Flags -- ein TST danach
  * waere dort echt gebraucht.
  *
- * DRITTES MUSTER (dieselbe Haeufigkeitsliste): "move.l SRC,Dn" unmittelbar
+ * THIRD PATTERN (same frequency list): "move.l SRC,Dn" immediately
  * gefolgt von "move.l Dn,DST" (dasselbe Datenregister) wird zu
  * "move.l SRC,DST" -- 385 Vorkommen allein fuer den Fall SRC="(a0)"/
  * DST="-(a7)". Sicher aus demselben Grund wie das erste Muster: der
@@ -42,7 +42,7 @@
  * mit eingebettetem Komma in diesem Backend), das rechteste Komma trennt
  * also immer sauber SRC von DST.
  *
- * VIERTES MUSTER (dieselbe Haeufigkeitsliste, 867 Vorkommen): "move.l
+ * FOURTH PATTERN (same frequency list, 867 occurrences): "move.l
  * Dn,-(a7)" unmittelbar gefolgt von "addq.l #4,a7" (oder "lea 4(a7),a7").
  * Der IR-Opcode DROP emittiert genau diese addq.l-Zeile ("Ausdruckswert
  * berechnen, Ergebnis verwerfen" -- z.B. eine Anweisung "f();", deren
