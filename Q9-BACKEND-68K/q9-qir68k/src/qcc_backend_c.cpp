@@ -315,33 +315,19 @@ static void emitAlign(FILE* out) {
    keiner Stelle im Backend belegt (a0=Skalar-Scratch, a1=Puffer in tc_putint/
    tc_putuint/tc_putchar, a2=Aufruf-Scratch fuer emitCall, a4=Funktionstabelle,
    a5/a6=Frame-Pointer je nach os9Mode). */
-	/* IMPORTANT (2026-07-26, found live on Q9; see the emitCall() comment):
-   tc_gadata enthaelt KEINE absoluten Adressen mehr, sondern Link-Zeit-Offsets
-   (Ziel minus Tabellenbasis) -- move.l laedt den Offset, "adda.l a3,reg" macht
-   daraus die echte Laufzeitadresse (a3 ist per "lea (pc)" bereits korrekt
-   geladen). reg ist an JEDER Aufrufstelle ein Adressregister (a0), adda.l
-   akzeptiert ein Adressregister als Quelle problemlos.
-   ZWEITER FUND (2026-07-26, live auf Q9, Ultra-C/C++ Processor Guide Table
-   1-12 "Register Use"): a3 (wie a4, a0-a2) ist laut offizieller Microware-ABI
-   ein reines TEMPORAER-Register ("The compiler uses all other registers for
-   temporaries") -- NUR d0/d1 (Parameter/Rueckgabe), a5 (Frame), a6 (Static
-   Storage) und a7 (Stack) sind reserviert. Jede ECHTE clib.l-Funktion
-   (fopen/strlen/fprintf/_os_write/...) darf a3 also ungefragt ueberschreiben.
-   Das urspruengliche Design ("a3 EINMAL beim Programmstart setzen, bleibt
-   fuer immer gueltig") bricht deshalb beim ERSTEN echten externen Aufruf nach
-   dem allerersten Globalzugriff -- live reproduziert (tc_putint ->
-   tc_io_write -> bsr _os_write zerstoerte a3, der naechste Globalzugriff las
-   von einer falschen Basisadresse).
-   ERSTER FIX-VERSUCH (verworfen): a3 vor JEDEM Zugriff per "lea (pc)" neu
-   laden -- brach den echten r68-Assembler ("value out of range"), weil "lea
-   X(pc)" selbst wieder der 16-Bit-PC-relativ-Distanzgrenze unterliegt, die
-   die ganze a3/a4-Indirektion ja gerade umgehen sollte. RICHTIGER FIX: a3/a4
-   werden NUR direkt NACH jedem CALLEXT/CALLEXTP neu geladen (siehe dortigen
-   Kommentar) -- das ist der EINZIGE Ort, an dem sie kaputtgehen koennen, und
-   die Auffrischung steht IMMER im selben Funktionskoerper wie der Aufruf
-   selbst (kurze Distanz, nie ueber 32 KB). emitLeaGlobal()/emitCall() selbst
-   bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
-   aufgefrischten Wert). */
+	/* IMPORTANT (2026-07-26, found live on Q9; see emitCall()): tc_gadata now
+	   contains link-time offsets (target minus table base), not absolute
+	   addresses. move.l loads the offset and adda.l a3,reg forms the runtime
+	   address; reg is always an address register (a0).
+	   SECOND FINDING: according to the Microware ABI, a3 (like a4 and a0-a2) is
+	   a temporary register. Only d0/d1, a5, a6, and a7 are reserved. Any real
+	   clib.l function may overwrite a3. The original design, which initialized
+	   a3 once at program start, therefore failed after the first external call.
+	   Reloading with lea X(pc) before every access was also rejected by r68 when
+	   the table was beyond the 16-bit PC-relative range. The fix is to reload
+	   a3/a4 immediately after every CALLEXT/CALLEXTP, where corruption can occur;
+	   the refresh is always close to the call. emitLeaGlobal()/emitCall() remain
+	   unchanged and use the most recently refreshed bases. */
 /* A global is ALL ZERO when no initializer assigns a value: an array without
    any GINIT or a scalar with initial value 0. These belong
    in the remote vsect; arrays WITH GINIT remain in the psect or their values
