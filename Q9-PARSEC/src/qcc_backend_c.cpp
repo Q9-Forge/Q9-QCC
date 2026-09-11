@@ -1397,19 +1397,15 @@ static void emitIR(FILE* out) {
 	}
 	} /* !partMode || runtimeMode */
 
-	/* os9Mode + largeDataMode: main ist der einzige Einsprungpunkt (kein
-	   eigener tc_start) und muss dort "lea tc_functab(pc),a4" ausfuehren --
-	   diese lea ist selbst PC-relativ und daher nur gueltig, wenn main DIREKT
-	   nach der Tabelle liegt. main kann aber an beliebiger Stelle in funcs[]
-	   registriert sein -- steht main nicht zuerst im Quelltext, koennen
-	   riesige Funktionsrumpf-Texte ZWISCHEN Tabelle und main landen (genau
-	   das brach beim 150-Funktionen-Skalierungstest fuer diese Erweiterung:
-	   main stand am Ende, >32 KB entfernt, "value out of range" bei echtem
-	   r68). Deshalb wird main hier -- NUR bei os9+largedata -- unabhaengig
-	   von ihrer Position in funcs[] als allererste Funktion emittiert. Die
-	   Funktionsindirektionstabelle selbst bleibt in Registrierungsreihenfolge
-	   (ihre Eintraege sind absolute, vom Linker aufgeloeste Adressen und
-	   haengen nicht von der Emissionsreihenfolge ab). */
+	/* os9Mode + largeDataMode: main is the sole entry point (there is no
+	   separate tc_start) and must execute "lea tc_functab(pc),a4". This lea is
+	   PC-relative and valid only when main is directly after the table. main may
+	   be registered at any position in funcs[]; if it is not first in the
+	   source, large function bodies could lie between the table and main. This
+	   caused "value out of range" in r68 during the 150-function scaling test.
+	   Therefore, only for os9+largedata, main is emitted first regardless of its
+	   registration position. The function table keeps registration order because
+	   its linker-resolved entries do not depend on emission order. */
 	if (os9Mode && largeDataMode) {
 		int mainIdx = findFunction("main");
 		oi = 0;
