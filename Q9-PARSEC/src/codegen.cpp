@@ -422,7 +422,8 @@ int lexParseConfig(const char* buf) {
 	return ok;
 }
 
-// Lexikalische Regeln = transitiver Abschluss der TOKEN-Wurzeln ueber NTS-Referenzen im AST
+// Lexical rules are the transitive closure of TOKEN roots through NTS
+// references in the AST.
 static void markLexicalNode(int id) {
 	AstNode* n = &nodes[id];
 	int child, idx;
@@ -460,7 +461,7 @@ static int computeLexicalSet() {
 }
 
 //------------------------------------------------------------------------------------------------
-// CODEGEN-Konfiguration ([CODEGEN]-Block der Arbeitsdatei)
+// CODEGEN configuration ([CODEGEN] block of the workfile)
 //------------------------------------------------------------------------------------------------
 static int cgenOS9 = 0;
 static char cgenPsect[GEN_NAME_LEN];
@@ -495,7 +496,7 @@ int cgenParseConfig(const char* buf) {
 
 		if (line[0] == '#' || line[0] == '\0') continue;
 		if (strncmp(line, "M68K PSECT", 10) == 0) {
-			// letztes Wort der Zeile = psect-Name
+			// The final word on the line is the psect name.
 			const char* pEnd = line + strlen(line);
 			while (pEnd > line && (pEnd[-1] == ' ' || pEnd[-1] == '\t')) pEnd--;
 			{
@@ -513,7 +514,7 @@ int cgenParseConfig(const char* buf) {
 			cgenOS9 = 1;
 		}
 		else if (strncmp(line, "START", 5) == 0) {
-			// letztes Wort der Zeile = Name der Startregel
+			// The final word on the line is the start-rule name.
 			const char* pEnd = line + strlen(line);
 			while (pEnd > line && (pEnd[-1] == ' ' || pEnd[-1] == '\t')) pEnd--;
 			{
@@ -535,39 +536,31 @@ int cgenParseConfig(const char* buf) {
 }
 
 //------------------------------------------------------------------------------------------------
-// ACTIONS-Konfiguration (im [NUTZER-CODE]-Block der Arbeitsdatei, siehe ARCHITEKTUR.md §9).
+// ACTIONS configuration (in the workfile's [USER-CODE] block; see ARCHITEKTUR.md §9).
 //------------------------------------------------------------------------------------------------
-// Zeilenformate:
-//   ACTION AFTER <regel> CALL <name>     Aufruf von <name> direkt nach Erfolg von <regel>,
-//                                        in BEIDEN Backends (falls die jeweilige ROUTINE
-//                                        existiert -- fehlt sie, wird der Aufruf mit einer
-//                                        Warnung weggelassen, kein harter Fehler).
-//   ROUTINE C <name> ... END            Roh-C-Funktion, wortwoertlich vor die erzeugten
-//                                        p_<regel>-Funktionen kopiert. Signatur MUSS
-//                                        "void <name>(const char* start, const char* end)"
-//                                        sein (start/end = Anfang/Ende des erkannten Textes).
-//   ROUTINE M68K <name> ... END         Rohe 68k-Subroutine, wortwoertlich ans Ende des
-//                                        erzeugten .s68 angehaengt (Label <name>: + rts).
+// Line formats:
+//   ACTION AFTER <rule> CALL <name>     call <name> after <rule> succeeds in both backends
+//   ROUTINE C <name> ... END             raw C function copied before generated p_<rule>
+//   ROUTINE M68K <name> ... END          raw 68k subroutine appended to generated .s68
 //                                        Aufruf ist "bsr <name>" mit a0 = Ende des erkannten
 //                                        Textes (wie beim C-Backend "end"); a0 MUSS
 //                                        unveraendert zurueckgegeben werden. d0/d1/d2 frei.
 //                                        (Der Regelanfang steht -- anders als bei C -- NICHT
 //                                        als eigenes Register bereit, siehe ARCHITEKTUR.md §9.)
-// Aktionen sind eine Grenzflaeche zu Nutzer-Code, keine Grammatik -- Fehler hier (unbekannte
-// Regel, fehlende ROUTINE) brechen die Codegenerierung nicht ab, sie werden nur gewarnt und
-// die betroffene Aktion faellt weg.
+// Actions are an interface to user code, not grammar. Errors here (unknown
+// rule or missing routine) produce warnings and remove the affected action;
+// code generation continues.
 //
-// Weder die Anzahl der ROUTINE-Bloecke noch die Laenge eines einzelnen Routine-Textes ist
-// im Voraus bekannt (haengt von der jeweiligen Grammatik ab) -- deshalb beides ueber
-// realloc-Verdopplung wachsend statt fester Arrays: bequem klein fuer ein 8/16-MB-
-// Zielsystem (Q9), ohne Obergrenze fuer grosse Projekte auf dem Host.
+// Neither the number of ROUTINE blocks nor the length of one routine is known
+// in advance, so both grow by realloc doubling instead of fixed arrays. This
+// stays small on an 8/16-MB Q9 target without limiting large host projects.
 #define ACTION_ROUTINE_INITIAL_CAP  8
 
 static char ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN];
 
 typedef struct {
 	char name[GEN_NAME_LEN];
-	char* text;		// malloc'd, exakt strlen(text)+1 gross
+	char* text;		// malloc'd, exactly strlen(text)+1 bytes
 } ActionRoutine;
 
 static ActionRoutine* routinesC = NULL;
