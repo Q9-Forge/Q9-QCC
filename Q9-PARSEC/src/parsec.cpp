@@ -1554,18 +1554,17 @@ void factor() {
 
 }
 
-// Nachbearbeitung fuer block()/repeat()/option(): expression() setzt fuer die letzte
-// (oder einzige) Alternative ihrer eigenen Zeile trueAction=STAT_TRUE (bzw. laesst
-// falseAction=STAT_FALSE), weil sie nicht wissen kann, dass sie gerade INNERHALB eines
-// (..)/{..}/[..]-Konstrukts steht statt am Ende der GANZEN Regel. STAT_TRUE wuerde zur
-// Laufzeit sofort die komplette Regel fuer beendet erklaeren -- korrekt nur, wenn dieses
-// Konstrukt tatsaechlich die aeusserste Regel selbst ist. Diese beiden Funktionen biegen
-// alle noch offenen STAT_TRUE/STAT_FALSE-Vorkommen im gerade abgeschlossenen Zeilenbereich
-// auf das um, was in DIESEM Kontext eigentlich gemeint ist (siehe Aufrufer).
+// Post-processing for block()/repeat()/option(): expression() sets the last
+// (or only) alternative's trueAction to STAT_TRUE, or leaves falseAction as
+// STAT_FALSE, because it cannot know whether it is inside a (..)/{..}/[..]
+// construct rather than at the end of the complete rule. STAT_TRUE would
+// incorrectly finish the whole rule at runtime when used inside a group. These
+// functions redirect open STAT_TRUE/STAT_FALSE entries in the completed range
+// to the meaning required by the current context (see the callers).
 void patchLocalTrue(int fromRow, int toRowExclusive, int target) {
 	int i;
 	for (i = fromRow; i < toRowExclusive; i++) {
-		// STAT_TRUE: die letzte Alternative eines nested "a|b" wurde per Kurzschluss
+		// STAT_TRUE: the last alternative of nested "a|b" was short-circuited
 		// dorthin gesetzt. "Dangling" (>= toRowExclusive): die letzte (oder einzige)
 		// Alternative eines nested Terms wurde von term()'s eigenem Backpatching noch
 		// auf "naechste Zeile" gesetzt, die es zu diesem Zeitpunkt noch gar nicht gibt --
@@ -1583,7 +1582,7 @@ void patchLocalFalse(int fromRow, int toRowExclusive, int target) {
 	int i;
 	for (i = fromRow; i < toRowExclusive; i++) {
 		if (lexTab[i].falseAction == STAT_FALSE) {
-			// Wird ein "nach ueberspringbarer Gruppe"-Fehlschlag auf eine ECHTE Zeile
+			// If a failure after a skippable group is redirected to a REAL row,
 			// umgebogen (naechste Alternative bzw. Fortsetzung nach [..]/{..}), kann die
 			// Maschine dort mit bereits konsumierter Eingabe weitermachen, falls die
 			// Gruppe zur Laufzeit doch etwas konsumiert hatte -- die flache Tabelle hat
