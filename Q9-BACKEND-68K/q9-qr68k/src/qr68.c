@@ -2698,8 +2698,8 @@ static int macSplitArgs(void)
 	return argN;
 }
 
-/* Dehnt den Makrorumpf in den Ausdehnungsspeicher aus und liest ab dann von
-   dort -- ueber denselben Stapel wie "use". */
+/* Expand the macro body into expansion storage and read from there using the
+   same stack as "use". */
 static void macExpand(int m)
 {
 	int argN;
@@ -2730,7 +2730,7 @@ static void macExpand(int m)
 	curLine = 1;
 }
 
-/* Wie macExpand, aber fuer "rept": ALLE Wiederholungen kommen in EINE
+/* Like macExpand, but for "rept": ALL repetitions are placed in ONE
    Ausdehnung. Sie einzeln zu schieben wuerde den Stapel sprengen -- in
    ROM/COMMON/mbugboot.a steht "REPT (MBBBoundary-MBBLenB)/4", und das sind
    je nach Modulgroesse Dutzende. */
@@ -2773,10 +2773,10 @@ static void repExpand(int m, int count)
    Der Operand von "endc" ist bei Microware ueblicherweise ein Kommentar --
    er wird nicht angesehen. */
 static int COND_MAX = 32;
-static int condActive[32];     /* 1 = dieser Zweig wird uebersetzt */
-static int condAny[32];        /* 1 = ein Zweig war schon wahr */
+static int condActive[32];     /* 1 = this branch is assembled */
+static int condAny[32];        /* 1 = a branch was already true */
 static int condN;
-static int condSkipN;          /* Zahl der Ebenen, die gerade ueberspringen */
+static int condSkipN;          /* Number of levels currently skipped */
 
 static int condDirective(const char *base)
 {
@@ -2811,7 +2811,7 @@ static void doCond(const char *base)
 
 	if (baseIs(base, "endc")) {
 		if (condN <= 0)
-			/* r68 uebergeht ein "endc" zu viel stillschweigend --
+			/* r68 silently ignores an extra "endc" --
 			   in MWOS/OS9/SRC/IO/SCF/DRVR/sc68990.a steht genau
 			   eines (acht "if", neun "endc"), und die Datei
 			   uebersetzt dort. */
