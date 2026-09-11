@@ -17,6 +17,6 @@ int main(void) {
         putchar(*s);
         s = s + 1;
     }
-    putchar(10); /* Zeilenumbruch */
+    putchar(10); /* line break */
     return 0;
 }
