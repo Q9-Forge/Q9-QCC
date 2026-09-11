@@ -56,14 +56,8 @@
  */
 
 /* --------------------------------------------------------------- libc ---- */
-/* Absichtlich vereinfachte Prototypen: FILE* wird als char* gefuehrt, damit
-   kein Header noetig ist (dieselbe Linie wie die Bootstrap-Praeambel). */
-extern char *fopen(const char *path, const char *mode);
-extern int fclose(char *f);
-extern int fread(char *buf, int size, int n, char *f);
-extern int fwrite(const char *buf, int size, int n, char *f);
-extern int printf(const char *fmt, ...);
-extern void exit(int code);
+#include <stdio.h>
+#include <stdlib.h>
 
 /* ------------------------------------------------------------ Grenzen ---- */
 /* Arraygroessen muessen Literale sein (QCCs constSize kennt nur Zahlen und
@@ -166,7 +160,7 @@ static int LXTMP_MAX = 8192;
 static char outBuf[8192];
 static int outN;
 static int outTotal;
-static char *outFp;
+static FILE *outFp;
 
 /* ---------------------------------------------------------- Tokenarten ---- */
 static int TK_EOF = 0;
@@ -384,7 +378,7 @@ static int dirOfPath(const char *path)
 
 static int fileLoad(const char *path)
 {
-	char *fp;
+	FILE *fp;
 	int got;
 	int want;
 	int start;
@@ -2005,7 +1999,7 @@ static int evalTernary(void)
 static void outFlush(void)
 {
 	if (outN > 0) {
-		if (fwrite(outBuf, 1, outN, outFp) != outN)
+		if ((int)fwrite(outBuf, 1, outN, outFp) != outN)
 			fatal("Ausgabe konnte nicht geschrieben werden", "");
 		outTotal = outTotal + outN;
 		outN = 0;
