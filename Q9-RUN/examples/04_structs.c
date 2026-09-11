@@ -1,7 +1,7 @@
 /* Structs: single variable, array of structs, and field access.
-   Zeigt: Feldoffsets (PUSH <offset> + IPADD/PADD), LOADIND/STOREIND,
-   den Unterschied zwischen einer einzelnen Struct-Variable (Adresse im
-   Slot) und einem Element eines Struct-Arrays (Adresse = Basis + i*Groesse). */
+   Shows field offsets (PUSH <offset> + IPADD/PADD), LOADIND/STOREIND,
+   and the difference between one struct variable (address in the slot) and
+   an element of a struct array (address = base + i*size). */
 struct Point {
     int x;
     int y;
