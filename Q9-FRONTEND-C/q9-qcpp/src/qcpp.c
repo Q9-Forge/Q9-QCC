@@ -2328,11 +2328,10 @@ static void outLineMarker(int file, int line)
 	outStr("\"\n");
 }
 
-/* Ein Token ausgeben. Zeilentreue: solange dieselbe Datei laeuft, werden
-   uebersprungene Zeilen (Direktiven, ausgeschaltete #if-Zweige) durch genau
-   so viele Umbrueche ersetzt. Damit zeigen die Diagnosen der naechsten Stufe
-   auf dieselbe Zeile wie in der Quelle -- der Grund, warum das hier nicht
-   einfach zusammengefaltet wird (-min tut das). */
+/* Emit one token. While the same file is active, skipped lines (directives
+   and inactive #if branches) are replaced by the same number of newlines.
+   This keeps diagnostics in later stages aligned with the source; -min
+   enables compacting them. */
 /* Function: outTok
  * Emits the current token and its required source whitespace.
  * Parameters: None.
@@ -2365,16 +2364,11 @@ static void outTok(void)
 	if (tkWs)
 		needSpace = 1;
 	if (!atOutBOL) {
-		/* Zwei Tokens duerfen nicht zu EINEM verschmelzen. Geprueft
-		   wird deshalb genau das: ob die beiden Zeichen an der Naht der
-		   Anfang eines Satzzeichens sind ("+" "+" -> "++", "<" "<" ->
-		   "<<") -- und zusaetzlich der Schraegstrich vor Stern oder
-		   Schraegstrich, der sonst einen Kommentar aus dem Nichts
-		   erzeugen wuerde. Ein pauschaler
-		   Zwischenraum zwischen allen Satzzeichen waere einfacher,
-		   veraendert aber die Ausgabe an Stellen, wo nichts droht
-		   (")" ";"), und das faellt beim Vergleich mit cc -E sofort
-		   auf. */
+		/* Prevent two tokens from merging into one. Check whether the two
+		   boundary characters would start a punctuation token, and also
+		   protect slash before '*' or '/'. Adding whitespace between every
+		   punctuation token would be simpler but would unnecessarily change
+		   output. */
 		if (isAlnumCh(lastCh) && isAlnumCh(c0))
 			needSpace = 1;
 		if (lastCh == '/' && (c0 == '*' || c0 == '/'))
@@ -2383,11 +2377,8 @@ static void outTok(void)
 			int q;
 			const char *pc;
 
-			/* Erst in einen Zeiger, dann indizieren:
-			   "punctList[q][0]" ist zweimaliges Indizieren eines
-			   Zeigerfeldes, das QCC ablehnt (gemessen: SEMERR).
-			   Ueber "char**" laufende Doppelindizes sind dagegen in
-			   Ordnung -- deshalb genau diese Form. */
+			/* Take a pointer first, then index it. This avoids the double
+			   indexing of a pointer array that the bootstrap QCC rejects. */
 			for (q = 0; q < punctN; q++) {
 				pc = punctList[q];
 				if (pc[0] == lastCh && pc[1] == c0) {
@@ -2432,7 +2423,7 @@ static void skipRestOfLine(void)
 	}
 }
 
-/* Rest der Zeile roh einsammeln (fuer #error, #pragma, #if). */
+/* Collect the rest of a line raw (for #error, #pragma and #if). */
 static int lineAt;
 static int lineN;
 
@@ -2449,7 +2440,7 @@ static void collectLine(void)
 		if (tkKind == TK_NL || tkKind == TK_EOF)
 			break;
 		if (agTop >= AG_MAX)
-			fatal("Zeilenpuffer voll (AG_MAX)", "");
+		fatal("line buffer full (AG_MAX)", "");
 		agKind[agTop] = tkKind;
 		agText[agTop] = tkText;
 		agWs[agTop] = tkWs;
@@ -2510,9 +2501,9 @@ static void doDefine(void)
 	nPar = 0;
 	parAt = parTop;
 
-	/* "(" UNMITTELBAR hinter dem Namen macht das Makro funktionsartig --
-	   mit Zwischenraum ist es ein gewoehnliches Makro, dessen Rumpf mit
-	   einer Klammer beginnt (C89 3.8.3). */
+	/* "(" immediately after the name makes the macro function-like. With
+	   intervening whitespace it is an object-like macro whose body starts
+	   with a parenthesis (C89 3.8.3). */
 	nextRaw();
 	wsBefore = tkWs;
 	if (tkKind == TK_PUNCT && poolEq(tkText, "(") && !wsBefore) {
@@ -2581,18 +2572,17 @@ static void doUndef(void)
 		fatal("#undef: Name erwartet, gefunden ", poolAt(tkText));
 	m = macFind(tkText);
 	if (m >= 0) {
-		/* Aus der Tabelle nehmen, indem der Name auf eine Marke gesetzt
-		   wird, die kein Bezeichner sein kann -- ein leerer Name waere
-		   der interne Text von TK_EOF/TK_ARGEND und koennte dort
-		   versehentlich treffen. */
+		/* Disable the entry by assigning a marker that cannot be an identifier.
+		   An empty name would be the internal text of TK_EOF/TK_ARGEND and
+		   could match accidentally. */
 		macName[m] = intern("#undef#");
 		macInUse[m] = 0;
 	}
 	skipRestOfLine();
 }
 
-/* Wert eines #if/#elif -Ausdrucks. "defined" wird VOR der Makroexpansion
-   aufgeloest -- sonst wuerde sein Operand mitexpandiert. */
+	/* Evaluate a #if/#elif expression. Resolve "defined" before macro
+	   expansion; otherwise its operand would be expanded as well. */
 /* Function: evalIfLine
  * Evaluates the expression following #if or #elif.
  * Parameters: None.
@@ -2614,7 +2604,7 @@ static int evalIfLine(void)
 	if (n == 0)
 		fatal("#if ohne Ausdruck", "");
 
-	/* Schritt 1: defined X / defined(X) -> 1 bzw. 0 */
+	/* Step 1: replace defined X / defined(X) with 1 or 0. */
 	evN = 0;
 	i = 0;
 	while (i < n) {
@@ -2659,7 +2649,7 @@ static int evalIfLine(void)
 		i++;
 	}
 
-	/* Schritt 2: den Rest expandieren */
+	/* Step 2: expand the remaining tokens. */
 	savePB = pbN;
 	pbPush(TK_ARGEND, intern(""), lxLine, lxFile, 0);
 	for (i = evN - 1; i >= 0; i--)
