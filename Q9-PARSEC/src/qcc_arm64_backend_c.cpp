@@ -159,12 +159,10 @@ static void readIR(const char* path) {
 }
 
 static void collectGlobals(void) {
-	/* GLOBAL/GARRAY/GINIT duerfen auch INNERHALB einer Funktion stehen -- eine "static"
-	   lokale Variable (siehe Data/qcc.lextab, tc_staticlocal) wird als ganz normaler
-	   GLOBAL registriert, an der Textstelle ihrer Deklaration, also moeglicherweise
-	   mitten in einer FUNC...ENDFUNC-Spanne. collectFunctions() prueft weiterhin, dass
-	   so eine Zeile innerhalb einer offenen Funktion oder vor der ersten Funktion liegt,
-	   nicht "zwischen" zwei Funktionen. */
+	/* GLOBAL/GARRAY/GINIT may also occur INSIDE a function. A static local
+	   variable is registered as a normal GLOBAL at its declaration position,
+	   possibly inside a FUNC...ENDFUNC span. collectFunctions() still requires
+	   every other line to be inside an open function or before the first one. */
 	int i, gi, idx, len;
 	char msg[300];
 	globalCount = 0;
@@ -177,8 +175,8 @@ static void collectGlobals(void) {
 				if (strcmp(globals[gi].name, x->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(x->args[1], x->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
-					/* siehe 68k-Backend: die MAX_ARRAY_LEN-Grenze gilt nur fuer tatsaechlich per
-					   GINIT gesetzte Indizes, nicht mehr fuer die deklarierte GARRAY-Laenge. */
+					/* As in the 68k backend, MAX_ARRAY_LEN limits only indices assigned
+					   by GINIT, not the declared GARRAY length. */
 					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
 					globals[gi].init[idx] = number(x->args[2], x->line);
 					if (globals[gi].isChar) globals[gi].init[idx] &= 255;
@@ -192,20 +190,20 @@ static void collectGlobals(void) {
 			continue;
 		}
 		if (strcmp(x->op, "GLOBAL") != 0 && strcmp(x->op, "GARRAY") != 0) continue;
-		// Original prueft Duplikat VOR der GARRAY/GLOBAL-Unterscheidung und meldet das
-		// einheitlich als "ungueltiges GLOBAL" -- bewusst NICHT dieselbe Meldung wie im
-		// 68k-Backend (dort getrennt je Zweig formuliert).
+		// The original checks duplicates BEFORE distinguishing GARRAY from GLOBAL
+		// and reports them uniformly as "invalid GLOBAL", deliberately differing
+		// from the 68k backend's branch-specific messages.
 		if (findGlobal(x->args[0]) >= 0) {
 			sprintf(msg, "IR Zeile %d: ungueltiges GLOBAL", x->line);
 			fatal(msg);
 		}
 		if (strcmp(x->op, "GARRAY") == 0) {
-			/* 4. Argument (2026-07-25, Mehrdatei-Uebersetzung): optionales isstatic-Flag,
-			   hier noch nicht ausgewertet. */
+			/* Fourth argument (2026-07-25, multi-file translation): optional
+			   isstatic flag, not interpreted here. */
 			if ((x->argc != 3 && x->argc != 4) || !isNumWord(x->args[1])) fatal("ungueltiges GARRAY");
 			len = number(x->args[2], x->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
-			/* KEINE MAX_ARRAY_LEN-Grenze mehr hier -- siehe Kommentar bei GINIT oben. */
+			/* No MAX_ARRAY_LEN limit here; see the GINIT comment above. */
 			if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
