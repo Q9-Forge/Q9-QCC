@@ -1,4 +1,13 @@
-/* qcc - universeller Q9-Treiber, Konfigurationskern */
+/*
+ * qcc -- universal Q9 compiler driver
+ *
+ * Purpose:
+ *   Loads the selected target configuration and executes the frontend,
+ *   backend, optimizer, assembler and linker stages.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -39,6 +48,10 @@ static int object_only;
 
 /* Plattformabstraktion: Host nutzt vorerst die C89-Funktion system().
  * Die OS-9-Runtime kann q9_system spaeter durch F$Fork/F$Load ersetzen. */
+/* Function: q9_system
+ * Executes one configured pipeline command.
+ * Parameters: command Shell command line.
+ * Returns: Command status returned by the runtime. */
 static int q9_system(const char *command)
 {
 	return system(command);
@@ -49,7 +62,15 @@ static char output[TEXT] = "";
 static int tmpdir_set;
 static char config_section[TEXT] = "global";
 
+/* Function: copy_text
+ * Copies bounded configuration text and always terminates it.
+ * Parameters: dst Destination buffer; src Source string.
+ * Returns: Nothing. */
 static void copy_text(char *dst, const char *src) { strncpy(dst, src, TEXT - 1); dst[TEXT - 1] = '\0'; }
+/* Function: usage
+ * Prints qcc command-line usage information.
+ * Parameters: name Program name.
+ * Returns: Nothing. */
 static void usage(const char *name)
 {
 	printf("Usage: %s [options] input...\n", name);
@@ -62,6 +83,10 @@ static void usage(const char *name)
 	printf("  --no-optimizer   Optimierer ueberspringen\n");
 	printf("  --help, --version\n");
 }
+/* Function: config_line
+ * Parses one configuration line and updates the active target settings.
+ * Parameters: line Mutable configuration line.
+ * Returns: Nothing. */
 static void config_line(char *line)
 {
 	char key[TEXT], value[TEXT], section[TEXT];
@@ -80,6 +105,10 @@ static void config_line(char *line)
 	else if (strcmp(key, "qcpp") == 0) copy_text(qcpp, value);
 	else if (strcmp(key, "qcir") == 0) copy_text(qcir, value);
 }
+/* Function: load_config
+ * Loads the first available qcc configuration file.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void load_config(void)
 {
 	FILE *f; char line[256];
@@ -90,6 +119,10 @@ static void load_config(void)
 	while (fgets(line, sizeof(line), f) != NULL) config_line(line);
 	fclose(f);
 }
+/* Function: resolve_tmpdir
+ * Selects the temporary directory from explicit options or the environment.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void resolve_tmpdir(void)
 {
 	const char *base;
@@ -100,11 +133,19 @@ static void resolve_tmpdir(void)
 		sprintf(tmpdir, "%s/qcc", base);
 	}
 }
+/* Function: show_config
+ * Prints the effective compiler-driver configuration.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void show_config(void)
 {
 	printf("target=%s\nfrontend=%s\ncpu=%s\nbackend=%s\noptimizer=%s\n", target, frontend, cpu, backend, optimizer);
 	printf("assembler=%s\nlinker=%s\nstartup=%s\nlibraries=%s\nqcpp=%s\nqcir=%s\n", assembler, linker, startup, libraries, qcpp, qcir);
 }
+/* Function: main
+ * Parses options and executes the configured compiler pipeline.
+ * Parameters: argc, argv Command-line argument count and vector.
+ * Returns: Process status, zero on success. */
 int main(int argc, char **argv)
 {
 	int i, inputs = 0;
