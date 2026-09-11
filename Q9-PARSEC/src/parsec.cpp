@@ -34,20 +34,19 @@
 //         │      │ Regeneration runs automatically (runTests); without .ebnf              │
 //         │      │ loadWorkfileAsGrammar() loads the table directly (case B). macOS/clang  │
 //         │      │ port (msvc_compat.h), extended OS identifier                         │
-// 26-07-19│ 2.10 │ Tabellen-Bugs 5+6 behoben: expression() patcht Alternativen jetzt ueber │ CF
-//         │      │ den ganzen Zeilenbereich (mehrfaktorige Alternativen "a" "b" | "c" und  │
-//         │      │ komplexe erste Faktoren [x] y | z waren falsch verdrahtet); term()      │
-//         │      │ unterscheidet Fehlschlag-ohne-Konsum (F) von committed (E) nach         │
-//         │      │ ueberspringbaren Gruppen; runtime-mehrdeutige Stellen -> WARNUNG        │
-// 26-07-19│ 2.20 │ [LEXER]-Block in der Arbeitsdatei (roh erhalten wie NUTZER-CODE, an     │ CF
-//         │      │ lexParseConfig() der Codegenerierung uebergeben); Kommentarfilter-Fix:  │
-//         │      │ '#' zaehlt nur noch am ZEILENANFANG als Kommentar (vorher verschwand    │
-//         │      │ z.B. die ganze Regelzeile expression = ... ("#") ... mitsamt Regel)     │
-// 26-07-19│ 2.30 │ [CODEGEN]-Block (roh erhalten): M68K OS9 erzeugt zusaetzlich            │ CF
-//         │      │ <basis>_os9.a im Microware-r68-Format (nam/psect/ends) -- mit echtem    │
-//         │      │ r68 via Wine/MWOS in der Suite verifiziert                              │
-// 26-07-19│ 2.11 │ Arbeitsdatei bewahrt jetzt auch [NUTZER-CODE] roh als Vorbereitung fuer │ CF
-//         │      │ semantische Aktionen; fehlerhafte Steuerzeichenpruefung korrigiert      │
+// 26-07-19│ 2.10 │ Table bugs 5+6 fixed: expression() now patches alternatives across    │ CF
+//         │      │ the full line range (multi-factor alternatives "a" "b" | "c" and      │
+//         │      │ complex first factors [x] y | z were wired incorrectly); term()         │
+//         │      │ distinguishes failure-without-consumption (F) from committed (E) after │
+//         │      │ skippable groups; runtime ambiguities produce a WARNING               │
+// 26-07-19│ 2.20 │ [LEXER] block preserved raw like USER-CODE and passed to                 │ CF
+//         │      │ lexParseConfig(); comment filter fix: '#' counts as a comment only at  │
+//         │      │ the START OF A LINE (previously a whole rule containing "#" disappeared)│
+// 26-07-19│ 2.30 │ [CODEGEN] block preserved raw: M68K OS9 additionally produces           │ CF
+//         │      │ <base>_os9.a in Microware r68 format (nam/psect/ends), verified with    │
+//         │      │ real r68 through Wine/MWOS in the suite                               │
+// 26-07-19│ 2.11 │ Workfile now also preserves [USER-CODE] raw for semantic actions;       │ CF
+//         │      │ corrected invalid control-character validation                       │
 //─────────┴──────┴─────────────────────────────────────────────────────────────────────────┴──────
 
 //------------------------------------------------------------------------------------------------
