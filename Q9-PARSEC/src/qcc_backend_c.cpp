@@ -158,7 +158,7 @@ static int* initAlloc(int n, int irLine)
 	return dst;
 }
 
-/* 2026-07-26, live auf Q9 gefunden (siehe emitLeaGlobal()/emitCall()-Kommentar
+/* 2026-07-26, found live on Q9 (see the emitLeaGlobal()/emitCall() comments):
    in qcc_backend_c.cpp): jeder CALLEXT/CALLEXTP-Aufruf ging bisher per rohem
    "bsr <rawname>" direkt an die externe clib.l-Funktion -- das zerstoert a3/a4
    (reine ABI-Temporaer-Register, siehe Ultra-C/C++ Processor Guide Table
@@ -391,7 +391,7 @@ static int findGlobal(const char* name) {
 	return -1;
 }
 
-/* -largedata (Funktionsaufruf-Teil, 2026-07-25, Nutzerwunsch "automatisch eine
+/* -largedata (function-call part, 2026-07-25, user request to "automatically
    jmp table bauen wenn die Spruenge zu gross werden"): bsr ist wie lea(pc)
    PC-relativ-16-Bit -- betrifft NICHT die internen bra/beq/bne-Sprungziele
    INNERHALB einer Funktion (LABEL/JMP/JZ/JNZ, immer durch die Groesse EINER
@@ -412,13 +412,11 @@ static int findGlobal(const char* name) {
    Aufrufstelle nachweislich frei. */
 static int helperTableOffset(const char* rawName) {
 	/* WRITTEN OUT INSTEAD OF A TABLE so QCC can translate this file
-	   (2026-09-07): ein Zeigerarray MIT Initialisierungsliste kennt QCCs
-	   Teilmenge nicht, und ein "static" im Funktionsrumpf davor auch nicht --
-	   beides bricht dort still ab (Schlusswort FAIL, keine Meldung). Das
-	   Backend muss selbst uebersetzbar sein, sonst kann es nie auf dem 68030
-	   laufen. Die Reihenfolge ist die Tabellenordnung und traegt den
-	   Rueckgabewert i * 4; wer hier etwas einfuegt, verschiebt die Offsets
-	   der -largedata-Funktionstabelle. */
+	   (2026-09-07): QCC's subset does not support an initialized pointer array
+	   or the preceding function-local static. Both fail silently there (FAIL,
+	   no diagnostic). The backend must translate itself or it can never run on
+	   the 68030. This order is the table order and returns i * 4; inserting an
+	   entry shifts all -largedata function-table offsets. */
 	if (strcmp(rawName, "tc_mul_i32")  == 0) return 0;
 	if (strcmp(rawName, "tc_div_i32")  == 0) return 4;
 	if (strcmp(rawName, "tc_udiv_u32") == 0) return 8;
@@ -796,10 +794,9 @@ static void collectFunctions(void) {
 	}
 }
 
-/* 2026-07-26 (siehe registerExtern()-Kommentar oben): sammelt EINMAL vorab
-   alle in dieser Datei per CALLEXT/CALLEXTP gerufenen externen Rohnamen
-   (strlen/fopen/printf/...) -- muss VOR jeder Codeemission laufen, damit
-   Tabellenindex UND Wrapper-Emission konsistent dieselbe Reihenfolge sehen. */
+/* 2026-07-26 (see registerExtern() above): collect all external raw names
+   called by CALLEXT/CALLEXTP in this file once before emission. This must run
+   before code generation so table indices and wrapper emission use one order. */
 static void collectExterns(void) {
 	int i;
 	for (i = 0; i < irCount; i++) {
