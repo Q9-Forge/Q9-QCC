@@ -1169,32 +1169,32 @@ static void emitIR(FILE* out) {
 	int oi;
 	int gi;
 
-	/* -part (2026-07-25): main darf in einer ANDEREN Datei des Mehrdatei-
-	   Programms stehen -- das meldet der echte Linker (l68) von selbst, falls
-	   keine der gelinkten Dateien es liefert. */
+	/* -part (2026-07-25): main may reside in another file of a multi-file
+	   program; the real linker (l68) reports an error if none of the linked
+	   files provides it. */
 	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
-	fprintf(out, "%s QCC 68k backend -- PIC Einzelmodul, erzeugt aus Stack-IR\n", fullCommentPrefix());
-	fprintf(out, "%s a7: Operand-Stack, %s: aktueller Frame, d0/d1: Scratch/Rueckgabe\n\n", fullCommentPrefix(), framePtr());
+	fprintf(out, "%s QCC 68k backend -- PIC single module, generated from stack IR\n", fullCommentPrefix());
+	fprintf(out, "%s a7: operand stack, %s: current frame, d0/d1: scratch/return value\n\n", fullCommentPrefix(), framePtr());
 	if (os9Mode) {
 		fprintf(out, "\tnam\t%s\n", psectName);
 		fprintf(out, "\tpsect\t%s,0,0,%d,0,0\n", psectName, trampolineMode ? 0 : 1);
 		if (trampolineMode)
-			/* r68 braucht fuer -j eine explizite Registerangabe. Der Register-
-			   wert wird nur beim Assemblieren benutzt; l68 -a erzeugt die
-			   eigentliche OS-9-relokierbare Sprungtabelle. */
+			/* r68 requires an explicit register operand for -j. The register
+			   value is used only during assembly; l68 -a creates the actual
+			   OS-9-relocatable jump table. */
 			fputs("\tspanreg\td7\n", out);
 		fputs("\n", out);
 		if (trampolineMode) {
-			/* l68 -a legt seine Sprungtabelle in den initialisierten
-			   Datenbereich. Ein expliziter Vsect-Anker sorgt dafuer, dass
-			   cstart dafuer auch eine OS-9-Datenbasis in A6 einrichtet. */
+			/* l68 -a places its jump table in the initialized data area. An
+			   explicit vsect anchor ensures that cstart establishes an OS-9
+			   data base in A6 for that area. */
 			fputs("\tvsect\n\tds.b\t1\n\tends\n\n", out);
 		}
-		fprintf(out, "%s Kein eigener tc_start-Boot-Code hier: cstart.r (echte Microware-\n", fullCommentPrefix());
-		fprintf(out, "%s C-Laufzeit) ruft \"main\" direkt auf und kuemmert sich selbst ums\n", fullCommentPrefix());
-		fprintf(out, "%s Beenden -- a6 bleibt dadurch als dessen statischer Datenzeiger\n", fullCommentPrefix());
-		fprintf(out, "%s unangetastet (siehe framePtr()-Kommentar oben im Quelltext).\n\n", fullCommentPrefix());
+		fprintf(out, "%s No private tc_start bootstrap here: cstart.r (the real Microware\n", fullCommentPrefix());
+		fprintf(out, "%s C runtime) calls \"main\" directly and handles termination itself;\n", fullCommentPrefix());
+		fprintf(out, "%s this leaves a6 untouched as its static data pointer (see the\n", fullCommentPrefix());
+		fprintf(out, "%s framePtr() comment above in the source).\n\n", fullCommentPrefix());
 	} else {
 		int mainIdx = findFunction("main");
 		fputs("tc_start:\n", out);
@@ -1205,33 +1205,32 @@ static void emitIR(FILE* out) {
 			mangledName(mainAsmName, "tc_", "main", funcs[mainIdx].isStatic);
 				emitCall(out, mainAsmName, 8 * 4 + externCount * 4 + mainIdx * 4, &serial, psectName);
 		} else {
-			fputs("\tbsr\ttc_main\n", out); /* main nicht in dieser Datei -- wie zuvor, siehe -part oben */
+			fputs("\tbsr\ttc_main\n", out); /* main is in another file; see -part above */
 		}
 		fputs("\tbra\ttc_exit\n\n", out);
 	}
 	if (largeDataMode) {
-		/* Funktions-Indirektionstabelle (siehe emitCall()-Kommentar): MUSS direkt nach
-		   tc_start/main stehen (VOR den potenziell riesigen Funktionsrumpf-Texten),
-		   damit das einmalige "lea tc_functab(pc),a4" immer erreichbar bleibt, egal wie
-		   gross der Rest des Programms wird. Reihenfolge MUSS exakt zu funcIndex*4 (fuer
-		   QCC-Funktionen) bzw. helperTableOffset() (fuer Laufzeit-Helfer) passen. */
-		/* WICHTIG (2026-07-26, live auf Q9 gefunden -- echter PMMU-Absturz beim
-		   allerersten Funktionsaufruf in main()): "dc.l <label>" ist auf OS-9
-		   KEINE automatisch relozierte absolute Adresse! Laut OS-9 for 68K
-		   Processors Technical Manual muss ein Assemblerprogrammierer absolute
-		   Adressmodi selbst vermeiden -- der einzige eingebaute Loader-
-		   Relokationsmechanismus (M$IRefs/F$Fork) gilt nur fuer
-		   Compiler-generierte initialisierte Zeigervariablen in vsects (eigenes,
-		   rohes MS-Word/Count/LS-Word-Tabellenformat), nicht fuer beliebige
-		   "dc.l label" in einem psect. l68 loest so ein "dc.l label" nur als
-		   psect-INTERNEN Offset auf (gueltig fuer einen angenommenen Ladeort 0),
-		   NICHT als echte Laufzeitadresse -- deshalb Tabelleneintraege jetzt als
-		   Link-Zeit-KONSTANTE Differenz zur Tabellenbasis selbst ("label-tab",
-		   von l68 rein psect-intern berechnet, KEINE Laufzeit-Relokation noetig,
-		   da beide Labels im selben Psect fest zueinander stehen). emitCall()
-		   addiert die per "lea (pc)" bereits korrekt geladene Tabellenbasis
-		   (a4) auf diesen Offset, BEVOR gesprungen wird. */
-		fprintf(out, "%s Funktions-Indirektionstabelle (-largedata): Link-Zeit-Offsets relativ zur Tabellenbasis (siehe emitCall())\n", fullCommentPrefix());
+		/* Function indirection table (see the emitCall() comment): it MUST follow
+		   tc_start/main directly, BEFORE potentially huge function bodies, so the
+		   single "lea tc_functab(pc),a4" remains reachable regardless of program
+		   size. The order MUST exactly match funcIndex*4 for QCC functions and
+		   helperTableOffset() for runtime helpers. */
+		/* IMPORTANT (2026-07-26, found live on Q9 -- an actual PMMU crash at the
+		   first function call in main()): "dc.l <label>" is NOT an automatically
+		   relocated absolute address on OS-9. According to the OS-9 for 68K
+		   Processors Technical Manual, an assembler programmer must avoid absolute
+		   addressing modes; the only built-in loader
+		   relocation mechanism (M$IRefs/F$Fork) applies only to compiler-generated
+		   initialized pointer variables in vsects (a dedicated raw
+		   MS-Word/Count/LS-Word table format), not to arbitrary "dc.l label" in a
+		   psect. l68 resolves such a "dc.l label" only as a psect-internal offset
+		   (valid for an assumed load address of 0), NOT as a real runtime address.
+		   Therefore, table entries are now link-time CONSTANT differences from the
+		   table base ("label-tab"). l68 computes these entirely within the psect,
+		   so no runtime relocation is needed because both labels have a fixed
+		   relationship in the same psect. emitCall() adds the table base (a4),
+		   already loaded correctly with "lea (pc)", to this offset BEFORE jumping. */
+		fprintf(out, "%s Function indirection table (-largedata): link-time offsets relative to the table base (see emitCall())\n", fullCommentPrefix());
 		emitAlign(out);
 		fprintf(out, "tc_functab__%s:\n", psectName);
 		fprintf(out, "\tdc.l\ttc_mul_i32-tc_functab__%s\n\tdc.l\ttc_div_i32-tc_functab__%s\n\tdc.l\ttc_udiv_u32-tc_functab__%s\n",
@@ -1239,14 +1238,12 @@ static void emitIR(FILE* out) {
 		fprintf(out, "\tdc.l\ttc_mod_i32-tc_functab__%s\n\tdc.l\ttc_umod_u32-tc_functab__%s\n", psectName, psectName);
 		fprintf(out, "\tdc.l\ttc_putint-tc_functab__%s\n\tdc.l\ttc_putuint-tc_functab__%s\n\tdc.l\ttc_putchar-tc_functab__%s\n",
 			psectName, psectName, psectName);
-		/* 2026-07-26 (siehe registerExtern()-Kommentar): externe CALLEXT/CALLEXTP-
-		   Ziele bekommen KEINEN direkten Tabelleneintrag auf den rohen externen
-		   Namen (der laege ausserhalb dieses Psects, "label-tab" waere dann keine
-		   Link-Zeit-Konstante mehr innerhalb DIESES Psects -- tatsaechlich hatten
-		   wir das fuer echte externe Symbole schon erfolgreich getestet, aber der
-		   eigentliche Grund fuer diese Tabelle ist ja gerade, a3/a4 NACH dem
-		   externen Aufruf aufzufrischen, siehe emitCallExtWrapper()) -- sondern
-		   auf den WRAPPER-Stub direkt darunter. */
+		/* 2026-07-26 (see the registerExtern() comment): external CALLEXT/CALLEXTP
+		   targets do NOT get a direct table entry for the raw external name. That
+		   name would be outside this psect, so "label-tab" would no longer be a
+		   link-time constant within THIS psect. The actual reason for this table
+		   is to refresh a3/a4 AFTER an external call (see emitCallExtWrapper()),
+		   so entries point to the WRAPPER stub directly below instead. */
 		for (fi = 0; fi < externCount; fi++) {
 			fprintf(out, "\tdc.l\ttc_extwrap_%s__%s-tc_functab__%s\n", externNames[fi], psectName, psectName);
 		}
