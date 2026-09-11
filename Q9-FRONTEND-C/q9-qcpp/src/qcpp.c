@@ -15,50 +15,10 @@
  * The detailed compatibility measurements and design decisions are kept in
  * the project documentation rather than in this source header.
  *
- * Sprachumfang: ISO C89 (ANSI X3.159-1989) Abschnitt 3.8 vollstaendig, plus
- * die Microware-Erweiterung "#asm"/"#endasm".
+ * Language scope: ISO C89 plus the Microware #asm/#endasm extension.
  *
- * ---------------------------------------------------------------------------
- * AM ORIGINAL GEMESSENE VERHALTENSWEISEN (xcc -pp, 2026-09-02)
- *
- * Nicht hergeleitet, sondern mit einer Sonde durch die echte Toolchain
- * bestimmt (s. README, Abschnitt "Messungen"):
- *
- *   - In "#asm"-Bloecken werden Makros SEHR WOHL expandiert ("#ASMVAL" wurde
- *     zu "#42"), C-Kommentare verschwinden, "*"-Assemblerkommentare bleiben.
- *   - xcc -pp entfernt die Marker "#asm"/"#endasm" aus der Ausgabe. qcpp
- *     BEHAELT sie (s. -asm-strip fuer das xcc-Verhalten): eine Ausgabe, in der
- *     Assemblertext nicht mehr als solcher erkennbar ist, laesst jede
- *     nachfolgende Stufe ueber C-Syntaxfehlern stehen statt ueber der Sache.
- *   - Vordefiniert sind "_OSK" und "_UCC", NICHT "_OS9000" und NICHT
- *     "__STDC__". Das ist hier der Standard; "-ansi" setzt __STDC__ auf 1.
- *     Das ist keine Kosmetik: 153 SDK-Header schalten damit zwischen
- *     K&R- und Prototyp-Deklarationen um, und nur den Prototyp-Zweig kann
- *     QCC lesen.
- *
- * ---------------------------------------------------------------------------
- * BEWUSSTE ENTSCHEIDUNGEN
- *
- *   - Geschrieben im QCC-Subset: keine Unions, kein "->", kein float, nur
- *     Blockkommentare, Arraygroessen als Literale, feste Tabellen statt
- *     malloc, Zeichenketten ueber einen internierenden Pool. Damit kann QCC
- *     diese Datei selbst uebersetzen, sobald qcpp sich selbst vorverarbeitet.
- *     KEINE zweite Fassung in "richtigem" C oder C++ -- die Aufteilung
- *     qcc_backend.cpp / qcc_backend_c.cpp hat dieses Projekt schon einmal 233
- *     Zeilen unbemerkte Divergenz gekostet.
- *   - Diagnosen gehen auf die STANDARDAUSGABE, das Ergebnis in eine DATEI
- *     (zweites Argument), wie bei qcc_backend. Grund: "stderr" ist bei
- *     Microware C ein Makro auf ein internes stdio-Objekt (_niob) -- genau
- *     das, was bootstrap_prepare.py bis heute wieder herausoperieren muss.
- *     Ohne stderr entfaellt das.
- *   - Meldungsformat wie bei QCC: "qcpp: <datei>:<zeile>: <text>".
- *   - An Modellgrenzen wird ABGEBROCHEN, nicht geraten (Tabellen voll,
- *     unbekannte Direktive, ungueltiges ##-Ergebnis). Stilles Weitermachen
- *     an solchen Stellen war hier schon mehrfach die Ursache langer
- *     Fehlersuchen.
- *   - __DATE__/__TIME__ liefern feste Werte (per -fdate=/-ftime= setzbar).
- *     Der Bootstrap wird byteweise mit einem Referenzlauf verglichen; eine
- *     Uhr in der Ausgabe wuerde diesen Vergleich unbrauchbar machen.
+ * Compatibility measurements, implementation constraints and design history
+ * belong in the project documentation, not in this source header.
  */
 
 /* --------------------------------------------------------------- libc ---- */
@@ -385,6 +345,18 @@ static int dirOfPath(const char *path)
 	return internN(path, cut);
 }
 
+/*
+ * Function: fileLoad
+ *
+ * Loads one source file into the shared source arena and registers its
+ * include metadata.
+ *
+ * Parameters:
+ *   path  Source file path.
+ *
+ * Returns:
+ *   The file identifier, or -1 when the file cannot be opened.
+ */
 static int fileLoad(const char *path)
 {
 	FILE *fp;
@@ -3113,6 +3085,17 @@ static void selfCheck(void)
 		fatal("innerer Fehler: LXTMP_MAX passt nicht zu lxTmp[]", "");
 }
 
+/*
+ * Function: main
+ *
+ * Parses command-line options and runs the preprocessing pipeline.
+ *
+ * Parameters:
+ *   argc, argv  Command-line argument count and vector.
+ *
+ * Returns:
+ *   0 on success; a non-zero process status on error.
+ */
 int main(int argc, char **argv)
 {
 	int i;
