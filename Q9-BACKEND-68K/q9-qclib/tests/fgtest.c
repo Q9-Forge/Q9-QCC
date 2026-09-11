@@ -21,16 +21,11 @@
  * und dass ferror danach NICHT anschlaegt.
  */
 
-extern char *fopen(const char *name, const char *mode);
-extern int fclose(char *fp);
-extern int fwrite(const char *buf, int size, int n, char *fp);
-extern char *fgets(char *buf, int n, char *fp);
-extern int ferror(char *fp);
-extern int printf(const char *fmt, ...);
+#include <stdio.h>
 
 int main()
 {
-	char *fp;
+	FILE *fp;
 	char muster[24];
 	char buf[8];
 	char *r;
