@@ -1,5 +1,5 @@
-/* Pruefquelle fuer qcpp auf echtem 68030. Deckt Makros, #, ##, #if mit
-   Vorrang, //-Kommentar, #asm und die Q9-Kennungen ab. */
+/* qcpp test source for a real 68030. Covers macros, #, ##, precedence in
+   #if, // comments, #asm, and the Q9 predefined identifiers. */
 #define N 40
 #define ADD(a,b) ((a)+(b))
 #define STR(x) #x
@@ -17,9 +17,9 @@ int kennungen = 4;
 #ifdef _OS9000
 int falsch = 1;
 #endif
-/* Vorzeichenlose #if-Arithmetik: auf dem Ziel laeuft das durch QCCs
-   CMPUGT/UDIV/USHR -- der Lauf im Emulator prueft also mit, ob QCCs
-   vorzeichenlose Codeerzeugung stimmt, nicht nur qcpps Auswerter. */
+/* Unsigned #if arithmetic: on the target this passes through QCC's
+   CMPUGT/UDIV/USHR. The emulator therefore checks unsigned code generation,
+   not only qcpp's evaluator. */
 #if 0xFFFFFFFF > 0 && 0x80000000 / 2 == 0x40000000 && 0x80000000 >> 4 == 0x08000000
 int unsigned_ok = 7;
 #endif
