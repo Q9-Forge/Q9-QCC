@@ -71,7 +71,7 @@ int main()
 	printf("gelesen %d: %s\n", n, buf);
 	fclose(fp);
 
-	/* Die drei Stringfunktionen. strchr gibt einen Zeiger IN die
+	/* The three string functions. strchr returns a pointer INTO the
 	   Zeichenkette zurueck, der Rest der Zeichenkette ist also der
 	   Nachweis; der Fehlschlag wird als 0/1 geprueft, nicht gedruckt. */
 	printf("str %d %s %d %d %d\n", strlen("Hallo Datei"),
@@ -79,13 +79,13 @@ int main()
 	       vorz(strncmp("ab", "ac", 2)), vorz(strncmp("ac", "ab", 2)));
 	printf("strchr0 %d\n", strchr("abc", 122) == 0);
 
-	/* sprintf, samt der Genauigkeit .* und der Laengenangabe l. */
+	/* sprintf, including .* precision and the l length modifier. */
 	sprintf(sbuf, "%d|%s|%c|%.*s", 42, "xy", 65, 3, "abcdef");
 	printf("sprintf %s\n", sbuf);
 	sprintf(sbuf, "%ld", -123456);
 	printf("langzahl %s\n", sbuf);
 
-	/* realloc muss den Inhalt mitnehmen -- der erzeugte Parser
+	/* realloc must preserve the content -- the generated parser
 	   verdoppelt damit sein Aktions-Log. Erst 100 Byte fuellen, dann auf
 	   4000 wachsen lassen und alles nachpruefen. */
 	p = realloc(0, 100);
@@ -110,7 +110,7 @@ int main()
 			gut = 0;
 		i++;
 	}
-	/* Und der neue Teil muss beschreibbar sein, sonst war die gewaehrte
+	/* The new portion must also be writable, otherwise the granted
 	   Groesse eine Luege. */
 	i = 100;
 	while (i < 4000) {
@@ -119,7 +119,7 @@ int main()
 	}
 	printf("realloc %d %d\n", gut, q[3999] & 255);
 
-	/* fprintf, fputs und fputc in eine Datei und wieder zurueck. */
+	/* fprintf, fputs, and fputc to a file and back. */
 	fp = fopen("/dd/qftest2.txt", "w");
 	if (fp == 0) {
 		printf("fopen w2 geht nicht\n");
@@ -131,7 +131,7 @@ int main()
 	fclose(fp);
 	printf("rueckgaben %d %d\n", n >= 0, i);
 
-	/* Die acht Funktionen, die qcc_backend_c.cpp braucht. fgets und ferror
+	/* The eight functions required by qcc_backend_c.cpp. fgets and ferror
 	   stehen NICHT hier: fuer fgets ist clib kein gueltiges Orakel (es
 	   trennt an $0d, siehe test/lineend68k.sh), und ferror liesse sich
 	   ohne einen echten Schreibfehler nicht vergleichen. */
@@ -143,7 +143,7 @@ int main()
 	strcat(sbuf, "de");
 	printf("strcat %s\n", sbuf);
 
-	/* strncpy fuellt eine kuerzere Quelle mit Nullen AUF -- bis n, nicht
+	/* strncpy pads a shorter source with zeros up to n, not
 	   weiter. Das '#' an Stelle 5 muss also stehen bleiben. */
 	memset(sbuf, 35, 8);
 	strncpy(sbuf, "xy", 5);
@@ -152,7 +152,7 @@ int main()
 
 	printf("strrchr %s\n", strrchr("a/b/c", 47));
 
-	/* strtok SCHREIBT in seinen Puffer, deshalb ein eigenes Feld und kein
+	/* strtok WRITES into its buffer, so use a dedicated field and no
 	   Zeichenkettenliteral. Zwei Trenner hintereinander duerfen kein
 	   leeres Feld ergeben. */
 	strncpy(tbuf, "eins zwei  drei", 19);
@@ -186,7 +186,7 @@ int main()
 	buf[i] = 0;
 	printf("zurueck %d: %s\n", n, buf);
 	fclose(fp);
-	/* EINE SCHLUSSMARKE, an der die Emulatorlaeufe erkennen, dass das
+	/* ONE END MARKER used by emulator runs to detect that the
 	   Programm durch ist. Ohne sie warteten sie auf den PROMPT -- und der
 	   steht nach dem Login noch im Puffer, trifft also sofort und der
 	   Escape killt das Modul, bevor es etwas ausgibt. Das ist am
