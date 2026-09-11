@@ -25,10 +25,9 @@ extern int _os_close(int path);
 extern int _os_read(int path, char *buf, int *count);
 extern int _os_write(int path, char *buf, int *count);
 
-#define QF_MAX   16     /* gleichzeitig offene Dateien */
+#define QF_MAX   16     /* Maximum number of simultaneously open files. */
 
-/* Zugriffsmodi, aus MWOS/OS9/SRC/DEFS/modes.h:
-   FAM_READ 0x01, FAM_WRITE 0x02. */
+/* Access modes: FAM_READ 0x01 and FAM_WRITE 0x02. */
 #define QF_READ  1
 #define QF_WRITE 2
 
@@ -37,33 +36,25 @@ int qf_path[QF_MAX];
 
 /* Per-file state fields, indexed like qf_path.
  *
- * WARUM ES SIE GIBT: fgets liest ZEILENweise. Ohne Puffer waere das ein
- * Systemaufruf je BYTE, und das Backend liest eine IR-Datei von ueber einem
- * Megabyte -- rund eine Million I$Read auf einem 68030. Deshalb holt fgets
- * einen Block und gibt die Zeilen daraus heraus.
+ * fgets reads line by line. Without a buffer this would require one system
+ * call per byte, so fgets reads a block and serves lines from it.
  *
- * Der Puffer entsteht erst beim ersten fgets (ueber realloc, also aus der
- * Arena in mem.c) und nur fuer die Dateien, die zeilenweise gelesen werden.
- * fread bleibt davon unberuehrt und geht weiter direkt zum System -- die
- * Werkzeuge der Kette holen ihre Eingabe in EINEM fread, da traegt eine
- * Pufferschicht nichts bei.
+ * The buffer is allocated lazily on the first fgets call and only for files
+ * read line by line. fread remains unbuffered for large toolchain inputs.
  *
  * Do not mix fgets and fread on the same stream: fread would skip bytes that
  * are already buffered. The toolchain does not do this. */
-char *qf_rbuf[QF_MAX];          /* Lesepuffer, 0 = noch keiner */
-int qf_rlen[QF_MAX];            /* gueltige Bytes darin */
-int qf_rpos[QF_MAX];            /* Leseposition darin */
-int qf_err[QF_MAX];             /* Fehlerkennung fuer ferror */
+char *qf_rbuf[QF_MAX];          /* Read buffer, zero before allocation. */
+int qf_rlen[QF_MAX];            /* Number of valid bytes. */
+int qf_rpos[QF_MAX];            /* Current read position. */
+int qf_err[QF_MAX];             /* Error flag for ferror. */
 
 #define QF_RBUF 1024
 
 extern char *realloc(char *p, int n);
 
-/* Der Tabellenindex hinter einem FILE*.
-   Ein FILE* IST die Adresse von qf_path[i]; gesucht wird durch Vergleich
-   statt durch Zeigerarithmetik -- QF_MAX ist 16, und ein "(fp - &qf_path[0])
-   / 4" waere eine Annahme ueber die Feldgroesse mehr. -1 = kein gueltiger
-   Eintrag. */
+/* A FILE handle is the address of qf_path[i]. Compare addresses directly
+ * instead of assuming a particular array element size. */
 /* Function: qf_index
  * Finds the table entry represented by a FILE handle.
  * Parameters: fp FILE handle.
