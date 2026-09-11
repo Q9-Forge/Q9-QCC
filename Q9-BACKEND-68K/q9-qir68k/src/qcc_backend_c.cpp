@@ -99,7 +99,7 @@ typedef struct {
 
 static Instr ir[MAX_IR_LINES];
 
-/* Textpool fuer die Argumente aller IR-Zeilen (s. Kommentar an Instr).
+/* Text pool for arguments of all IR lines (see the Instr comment).
    Groesse an echten Daten bemessen, nicht geraten: SourceQCC/ebnf.tc (12220
    IR-Zeilen) braucht 109 KB Argumenttext, codegen.tc (16469 Zeilen) 162 KB --
    also rund 9 Byte pro Zeile. Auf MAX_IR_LINES=65536 hochgerechnet sind das
@@ -109,7 +109,7 @@ static Instr ir[MAX_IR_LINES];
 #define ARG_POOL_BYTES  1048576
 static char argPool[ARG_POOL_BYTES];
 static int  argPoolUsed;
-/* Ziel fuer nicht belegte Argumentplaetze -- s. Instr-Kommentar. */
+/* Target for unused argument slots; see the Instr comment. */
 static char argEmpty[1];
 
 static int irCount = 0;
@@ -122,7 +122,7 @@ static int globalCount = 0;
 
 static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer registerExtern()/externTableOffset() vorwaertsdeklariert */
 
-/* Legt tok im Pool ab und liefert den Zeiger darauf. */
+/* Stores tok in the pool and returns its pointer. */
 static char* argIntern(const char* tok, int irLine)
 {
 	int len;
@@ -142,7 +142,7 @@ static char* argIntern(const char* tok, int irLine)
 	return dst;
 }
 
-/* Pool fuer die Initialisierer globaler Arrays (s. Kommentar an Global.init).
+/* Pool for global-array initializers (see the Global.init comment).
    Groesse an echten Daten bemessen: ebnf.tc braucht 20,5 KB, codegen.tc
    34,9 KB -- 256 KB lassen damit ueber das Siebenfache Luft. Wie bei den
    uebrigen Kapazitaetsgrenzen meldet Erschoepfung laut per fatal(). */
@@ -150,7 +150,7 @@ static char* argIntern(const char* tok, int irLine)
 static int initPool[INIT_POOL_INTS];
 static int initPoolUsed;
 
-/* Teilt n nullinitialisierte Elemente zu und liefert den Zeiger darauf. */
+/* Allocates n zero-initialized elements and returns their pointer. */
 static int* initAlloc(int n, int irLine)
 {
 	char msg[160];
