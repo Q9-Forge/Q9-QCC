@@ -534,8 +534,8 @@ static void libLink(void)
 	fortschritt = 1;
 	while (fortschritt) {
 		fortschritt = 0;
-		/* Den ERSTEN offenen Namen suchen: in der Reihenfolge der schon
-		   eingebundenen ROFs und darin in ROF-Reihenfolge. */
+		/* Find the first unresolved name in included-ROF order and then in
+		   reference order within each ROF. */
 		for (k = 0; k < rofN && !fortschritt; k++) {
 			at = rExtAt[k];
 			for (i = 0; i < rExtN[k]; i++) {
@@ -575,14 +575,14 @@ static void put16(int v)
 	put8(v);
 }
 
-/* Bis zur naechsten Grenze mit Nullbytes auffuellen (Dateiabstand). */
+/* Pad with zero bytes up to the next alignment boundary. */
 static void alignTo(int n)
 {
 	while ((outLen % n) != 0)
 		put8(0);
 }
 
-/* Auf das naechste Vielfache von n aufrunden. */
+/* Round up to the next multiple of n. */
 static int alignUp(int v, int n)
 {
 	while ((v % n) != 0)
@@ -606,8 +606,8 @@ static void patch32(int at, int v)
 	outBuf[at + 3] = v & 255;
 }
 
-/* Kopfparitaet: das Einerkomplement des XOR aller Kopfworte von $00 bis
-   $2d. Gemessen und an l68s Ausgabe nachgerechnet. */
+/* Header parity: one's complement of the XOR of all header words from $00
+   through $2d. Measured and verified against l68 output. */
 static int headerParity(void)
 {
 	int p;
@@ -619,11 +619,10 @@ static int headerParity(void)
 	return (~p) & 0xFFFF;
 }
 
-/* 24-Bit-CRC, Polynom $800063, Startwert $FFFFFF. Der abgelegte Wert ist
-   das KOMPLEMENT des Ergebnisses ueber das Modul ohne die drei CRC-Bytes.
-   Probe: rechnet man ueber das ganze Modul EINSCHLIESSLICH CRC, kommt
-   $800FE3 heraus -- die Konstante CRCCON aus module.h ist also der
-   Sollrest, nicht das Polynom. Beides an l68 nachgerechnet. */
+/* 24-bit CRC with polynomial $800063 and initial value $FFFFFF. Store the
+   complement of the result over the module excluding the three CRC bytes.
+   Verifying the complete module including CRC yields the expected residue
+   $800FE3. */
 static int moduleCrc(int len)
 {
 	int crc;
@@ -677,7 +676,7 @@ static void putIrefList(int *offs, int n)
 	put16(0);
 }
 
-/* Voranstellen -- s. putIrefList(). */
+/* Prepend an entry; see putIrefList(). */
 static void irefAdd(int *offs, int *n, int value)
 {
 	int i;
@@ -690,18 +689,16 @@ static void irefAdd(int *offs, int *n, int value)
 	*n = *n + 1;
 }
 
-/* Die lokalen Referenzen eines psect aufloesen. Zweierlei geschieht:
-   der Wert an der Referenzstelle wird um die Basis des ZIELabschnitts
-   erhoeht, und ein Langwort IN den Daten kommt zusaetzlich in die
-   passende Zeigerliste -- der Lader muss es beim Laden noch einmal
-   anfassen.
+/* Resolve local references of one psect. Add the target-section base to the
+   value at each reference site, and add each data longword to the appropriate
+   pointer list so the loader can adjust it again at load time.
 
    Typwort wie bei qr68 (dort vollstaendig dokumentiert):
      Bit 5     die Referenz LIEGT im Code (sonst in den Daten)
      Bit 3..4  Umfang: 01 = 1, 10 = 2, 11 = 4 Byte
      Bit 2     das ZIEL ist Code; Bit 0..1 sonst der Datenabschnitt
      Bit 6/7   abziehen / relativ */
-/* KEIN Waechter auf die Feldbreite -- gemessen, nicht angenommen.
+/* Do not guard intermediate field width; this behavior is measured.
    Ein Ausdruck wie "move.b PD_PAR-PD_OPT+M$DTyp(a1),d0" (so woertlich in
    den SCF-Treibern) erzeugt DREI Referenzen auf DASSELBE
    Byte-Displacement. ql68 verrechnet sie nacheinander und kappt dabei
@@ -748,18 +745,18 @@ static void applyLocalRefs(int k)
 		if (toCode)
 			base = bCode[k];
 		else if (type & 1)
-			base = bInit[k];       /* initialisierte Daten */
+			base = bInit[k];       /* Initialized data. */
 		else if (type & 2)
-			base = bRemote[k];     /* reservierte FERNdaten */
+			base = bRemote[k];     /* Reserved remote data. */
 		else
-			base = bUninit[k];     /* reservierte Daten     */
-		/* Bit 6: der Wert geht ABGEZOGEN ein. So entsteht die
+			base = bUninit[k];     /* Reserved data. */
+		/* Bit 6: subtract the value. This produces the
 		   Differenz zweier Bezuege in einem Ausdruck -- r68 legt fuer
 		   "PD_PAR-PD_OPT+M$DTyp(a1)" drei Referenzen auf denselben
 		   Offset ab, eine davon mit diesem Bit. */
 		if (type & 0x0040)
 			base = -base;
-		/* Der Zugriff auf die eigenen Daten laeuft ueber a6, und a6
+		/* Access to local data uses a6, and a6
 		   zeigt NICHT auf den Anfang des Datenbereichs, sondern $8000
 		   dahinter -- so reicht ein 16-Bit-Displacement +-32K weit.
 		   Gemessen: aus "move.l zeiger(a6),d1" mit zeiger auf
@@ -788,9 +785,8 @@ static void applyLocalRefs(int k)
 			    (outBuf[here + 3] & 255);
 			patch32(here, v + base);
 		}
-		/* Nur ein LANGWORT in den Daten ist ein Zeiger, den der Lader
-		   noch einmal anfassen muss. Ein kuerzeres Feld -- etwa das
-		   16-Bit-Displacement im Code -- ist hier endgueltig. */
+		/* Only a data longword is a pointer that the loader must adjust again.
+		   A shorter field, such as a 16-bit code displacement, is final here. */
 		if (!inCode && size == 3 && !(type & 0x0040)) {
 			if (toCode)
 				irefAdd(irefCode, &irefCodeN, bInit[k] + offs);
