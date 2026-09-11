@@ -1919,8 +1919,8 @@ static void splitOperands(void)
 	}
 }
 
-/* Uebernimmt die Anteile des zuletzt ausgewerteten Ausdrucks in das Fach
-   eines Operanden -- der zweite Operand wuerde sie sonst ueberschreiben. */
+/* Copy the terms of the last evaluated expression into an operand slot;
+   otherwise the second operand would overwrite them. */
 static void termCopy(int k)
 {
 	int i;
@@ -1994,8 +1994,8 @@ static void parseOperand(const char *s, int k)
 		}
 	}
 
-	/* Klammerform: die zum letzten ")" gehoerende oeffnende Klammer trennt
-	   Displacement und Basis. */
+	/* Parenthesized form: the opening parenthesis matching the final ")"
+	   separates displacement from base register. */
 	post = 0;
 	ie = n;
 	if (n >= 4 && s[n - 1] == '+' && s[n - 2] == ')') {
@@ -2045,10 +2045,9 @@ static void parseOperand(const char *s, int k)
 		    lowerCh(s[lp + 2] & 255) == 'c') {
 			if (blen == 2)
 				isPc = 1;
-			/* "pcr" ist Microwares zweite Schreibweise dafuer und
-			   verhaelt sich genauso -- gemessen: "ziel(pc)" und
-			   "ziel(pcr)" ergeben beide den Abstand vom
-			   Erweiterungswort. */
+			/* "pcr" is Microware's second spelling and behaves identically;
+			   both "target(pc)" and "target(pcr)" measure from the
+			   extension word. */
 			else if (blen == 3 && lowerCh(s[lp + 3] & 255) == 'r')
 				isPc = 1;
 		}
@@ -2068,7 +2067,7 @@ static void parseOperand(const char *s, int k)
 				int ilen;
 
 				ilen = (ie - 1) - (comma + 1);
-				/* Skalierung mit 1, 2, 4 oder 8 -- sie steht HINTER
+				/* Scaling by 1, 2, 4, or 8 follows the width
 				   der Breite ("d0.l*4"). r68 nimmt sie erst ab
 				   -m2 an, darunter meldet es "illegal addressing
 				   mode" (gemessen ueber -m0..-m6). Im Korpus
@@ -2133,7 +2132,7 @@ static void parseOperand(const char *s, int k)
 	if (post)
 		fatal("\"+\" ohne Klammerform: ", s);
 
-	/* Nackter Ausdruck: absolut. Ohne Zusatz nimmt r68 IMMER die lange
+	/* Bare expression: absolute. Without a suffix r68 ALWAYS selects long
 	   Form, ".w" waehlt die kurze. (Ein Symbol, das selbst auf ".w" oder
 	   ".l" endet, wird hier als Groessenangabe gelesen -- dieselbe
 	   Zweideutigkeit hat r68.) */
@@ -2201,9 +2200,8 @@ static int eaBits(int k)
 	return (eaModeBits(k) << 3) | eaRegBits(k);
 }
 
-/* Erweiterungswoerter eines Operanden, in der Reihenfolge, in der r68 sie
-   ablegt: erst die des Quell-, dann die des Zieloperanden. "size" ist der
-   Umfang des Befehls und zaehlt nur beim unmittelbaren Operanden. */
+/* Emit an operand's extension words in r68 order: source first, then target.
+   "size" is the instruction size and matters only for immediate operands. */
 static void emitEa(int k, int size)
 {
 	int m;
@@ -2214,9 +2212,8 @@ static void emitEa(int k, int size)
 	    m == AM_PRE)
 		return;
 	if (oOpen[k]) {
-		/* Erster Durchlauf, der Name ist noch unbekannt: hier zaehlt nur
-		   die Laenge. Wert, Abschnitt und Bereichsgrenzen pruefen die
-		   folgenden Durchlaeufe. */
+		/* First pass with an unknown name: count length only. Value, section,
+		   and range checks are performed on later passes. */
 		if (m == AM_ABSL || (m == AM_IMM && size == 4))
 			emitLong(0);
 		else
@@ -2224,7 +2221,7 @@ static void emitEa(int k, int size)
 		return;
 	}
 	if (m == AM_DISP) {
-		/* Ein verschiebbares Displacement ist normal: so greift die
+		/* A relocatable displacement is normal: this is how the OS-9 C ABI
 		   OS-9-C-ABI ueber a6 auf die eigenen Daten zu
 		   ("move.l #x,_stklimit(a6)"). Gemessen: Referenz mit
 		   $30|Zielabschnitt am Displacementwort -- $0030 fuer
@@ -2239,7 +2236,7 @@ static void emitEa(int k, int size)
 	if (m == AM_IDX || m == AM_PCIDX) {
 		d = oVal[k];
 		if (m == AM_IDX && termN[k] > 0) {
-			/* Ein verschiebbares Displacement gibt es auch hier:
+			/* A relocatable displacement is also possible here:
 			   "move.b d0,dat(a2,d5.w)" ergibt eine BYTEreferenz
 			   auf das niederwertige Byte des Erweiterungswortes
 			   ($0028 auf Offset 9, gemessen). So greift
@@ -2258,8 +2255,8 @@ static void emitEa(int k, int size)
 		if (m == AM_PCIDX) {
 			if (oSect[k] != SECT_CODE && oSect[k] != SECT_ABS)
 				fatal("PC-Bezug auf einen anderen Abschnitt: ", lnArg);
-			/* Nur ein Bezug auf eine Codestelle wird ausgerechnet;
-			   ein fester Wert steht direkt drin (s. AM_PCD). */
+			/* Only a reference to a code location is calculated; a fixed value
+			   is emitted directly (see AM_PCD). */
 			if (termN[k] > 0)
 				d = d - curPC;
 		} else if (oSect[k] != SECT_ABS) {
@@ -2273,7 +2270,7 @@ static void emitEa(int k, int size)
 		return;
 	}
 	if (m == AM_PCD) {
-		/* PC-relativ auf eine eigene Codestelle: der Abstand steht fest,
+		/* PC-relative reference to a local code location: the distance is fixed,
 		   der Binder braucht dafuer KEINE Referenz (gemessen an
 		   "lea start(pc),a3" -- im ROF steht dazu nichts). Auf einen
 		   externen Namen dagegen schon -- und im Displacementwort steht
