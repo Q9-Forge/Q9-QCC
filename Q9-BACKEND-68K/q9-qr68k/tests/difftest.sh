@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Differenztest: qr68 gegen Microwares r68.
+# Differential test: qr68 against Microware r68.
 #
-# r68 ist das Orakel. Verglichen wird BYTEWEISE -- nur die sechs
-# Zeitstempelbytes im ROF-Kopf (Offset 12..17) sind ausgenommen, denn sie sind
-# das Einzige, was r68 nicht reproduzierbar schreibt (nachgemessen: zwei Laeufe
-# derselben Quelle unterschieden sich in genau einem Sekundenbyte).
+# r68 is the oracle. Comparison is BYTE-FOR-BYTE; only the six
+# timestamp bytes in the ROF header (offset 12..17) are excluded because they
+# are the only non-reproducible r68 output (two runs differed in one seconds byte).
 #
-# Aufruf:
-#   ./test/difftest.sh              -- eingebaute Proben
-#   ./test/difftest.sh datei.a ...  -- echte Quellen
+# Usage:
+#   ./test/difftest.sh              -- built-in probes
+#   ./test/difftest.sh file.a ...   -- real sources
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -26,7 +25,7 @@ WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/w
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TMPWIN="$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 
-# r68 laufen lassen; der Zeitstempel, den es setzt, wird danach aus der Datei
+# Run r68; read its timestamp from the output file and pass it to qr68 with
 # gelesen und qr68 per -fdate= mitgegeben -- so bleibt der Vergleich streng,
 # ohne die sechs Bytes auszunehmen zu muessen.
 run_r68() {
@@ -79,8 +78,7 @@ start:   rts
          rts
          ends
 '
-	# Prueft zugleich die alphabetische Reihenfolge der Globalen und die
-	# Gruppierung mehrerer Referenzen unter einem Namen.
+	# Also checks alphabetical global ordering and grouping of references by name.
 	probe mehrere '         psect   mi,0,0,1,0,0
 a:       rts
 b:       rts
@@ -90,8 +88,8 @@ c:       nop
          jsr      x1
          ends
 '
-	# Getrennte Adressraeume fuer initialisierte und reservierte Daten,
-	# und die Sortierung ueber Quellreihenfolge hinweg.
+	# Separate address spaces for initialized and reserved data, including
+	# ordering independent of source order.
 	probe vsect '         psect   mi,0,0,1,0,0
          vsect
 wert:    dc.l    5
@@ -131,7 +129,7 @@ for name in $pairs; do
 		grep -iE "error" "$TMP/wine.log" | tail -3 | sed 's/^/      /'
 		continue
 	fi
-	# Zeitstempel aus r68s Ausgabe uebernehmen
+	# Copy the timestamp from r68 output.
 	stamp="$(python3 - "$TMP/$name.r" <<'PY'
 import sys
 d = open(sys.argv[1], "rb").read()
