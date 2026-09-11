@@ -1,4 +1,4 @@
-/* stdio.h -- Q9-Werkzeugkette, bewusst minimal (s. stddef.h). */
+/* stdio.h -- minimal Q9 standard-I/O interface. Edition: 2026-09-11. */
 #ifndef Q9_STDIO_H
 #define Q9_STDIO_H
 

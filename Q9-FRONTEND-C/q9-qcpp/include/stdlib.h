@@ -1,4 +1,4 @@
-/* stdlib.h -- Q9-Werkzeugkette, bewusst minimal (s. stddef.h).
+/* stdlib.h -- minimal Q9 standard-library interface. Edition: 2026-09-11.
  *
  * Nur was qcc_backend_c.cpp wirklich ruft (nachgezaehlt: exit einmal,
  * strtol einmal). Die Liste absichtlich NICHT vorsorglich verlaengern --
