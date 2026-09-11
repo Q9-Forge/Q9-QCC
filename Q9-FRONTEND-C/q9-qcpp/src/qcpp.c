@@ -517,20 +517,19 @@ static int onceSeen(const char *path)
 }
 
 /* ================================================================ Lexer === */
-/* Liefert das logische Zeichen an der aktuellen Position: Zeilenfortsetzungen
+/* Returns the logical character at the current position: line continuations
    ("\" unmittelbar vor dem Umbruch) sind uebersprungen, die dabei
-   uebergangenen Umbrueche in pkLine gezaehlt. -1 = Dateiende.
+   skipped newlines are counted in pkLine. -1 means end of file.
  *
- * HIER werden ausserdem alle drei Umbruchformen auf LF vereinheitlicht, damit
- * der restliche Lexer nur noch 10 kennt:
- *   LF       Unix / Host
- *   CR+LF    DOS -- so liegen Teile der SDK-Quellen vor
- *   CR       OS-9 -- so liegt JEDE Textdatei auf dem Ziel
- * Das CR-Allein ist am 2026-09-02 im Emulator aufgefallen: qcpp las die
- * Eingabe vollstaendig (590 Byte) und gab NICHTS aus. Ursache war nicht die
- * Ausgabe, sondern dass ohne LF die ganze Datei EINE Zeile war -- das erste
- * "#define" schluckte damit den gesamten Rest als Makrorumpf. Ein Fehler, den
- * am Host keine Eingabe zeigt. */
+ * All three newline forms are also normalized to LF so the rest of the lexer
+ * only has to handle 10:
+ *   LF       Unix / host
+ *   CR+LF    DOS -- used by parts of the SDK sources
+ *   CR       OS-9 -- used by every target text file
+ * The CR-only case was found in the emulator on 2026-09-02: qcpp read the
+ * complete input (590 bytes) but produced no output. Without LF the whole
+ * file was treated as one line, so the first "#define" consumed the rest as
+ * its macro body. The host did not expose this target-specific failure. */
 /*
  * Function: rdPeek
  *
@@ -647,9 +646,8 @@ static void lexNext(void)
 
 	ws = 0;
 
-	/* Zwischenraum und Kommentare. Ein Blockkommentar, der Zeilen
-	   ueberspannt, zaehlt als Zwischenraum -- die Zeilenzaehlung laeuft
-	   dabei mit, damit die Ausgabe weiter zeilentreu bleibt. */
+	/* Whitespace and comments. A block comment spanning lines counts as
+	   whitespace; line counting continues so output remains line-accurate. */
 	while (1) {
 		c = rdPeek();
 		if (c < 0)
@@ -688,9 +686,8 @@ static void lexNext(void)
 				continue;
 			}
 			if (c2 == '/') {
-				/* Zeilenkommentar: in C89 nicht vorgesehen, aber
-				   22 SDK-Dateien nutzen ihn -- deshalb als
-				   dokumentierte Erweiterung akzeptiert. */
+				/* Line comments are not part of C89, but 22 SDK files use them;
+				   accept them as a documented extension. */
 				rdTake();
 				while (1) {
 					c = rdPeek();
@@ -703,7 +700,7 @@ static void lexNext(void)
 				ws = 1;
 				continue;
 			}
-			/* echtes "/" -- schon verbraucht, als Token ausgeben */
+			/* A real "/"; it was already consumed, so emit it as a token. */
 			tkKind = TK_PUNCT;
 			if (c2 == '=') {
 				rdTake();
