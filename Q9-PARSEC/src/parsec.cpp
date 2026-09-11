@@ -1473,11 +1473,10 @@ void term(void) {
 
 	while (aktToken == TOKEN_IDENT || aktToken == TOKEN_LITERAL || aktToken == TOKEN_BLOCKON || aktToken == TOKEN_REPEATON || aktToken == TOKEN_OPTIONON || aktToken == TOKEN_SEQ) {
 		// Pre-wire the next factor: success -> next row. On failure:
-		// solange NUR ueberspringbare Gruppen vor diesem Faktor lagen, ist noch nichts
-		// konsumiert -> STAT_FALSE (Fehlschlag ohne Konsum, darf noch eine andere
-		// Alternative anspringen). Nach einem sicher konsumierenden Faktor dagegen
-		// STAT_ERROR: committed, kein Zuruecksetzen mehr. (War Bug Nr. 5: pauschal
-		// STAT_ERROR -- dadurch scheiterte z.B. [ "-" ] "a" "x" | "y" bei "ax".)
+		// As long as only skippable groups preceded this factor, no input has been
+		// consumed: use STAT_FALSE so another alternative may be tried. After a
+		// definitely consuming factor, use STAT_ERROR and do not backtrack. This
+		// avoids treating committed input as an alternative failure.
 		wasAmbig = (!committed && hadSkippable);
 		lexTab[aktTabIndex].trueAction = aktTabIndex+1;
 		lexTab[aktTabIndex].falseAction = committed ? STAT_ERROR : STAT_FALSE;
@@ -1489,16 +1488,15 @@ void term(void) {
 			factorStart = aktTabIndex;
 			factor();
 			if (committed) {
-				// Block-interne "Fehlschlag ohne Konsum"-Zeilen (F) liegen nach einem
-				// sicher konsumierenden Faktor in Wahrheit im committed-Bereich -> E,
-				// sonst wuerde ein spaeterer Alternativen-Dispatch faelschlich mit schon
-				// konsumierter Eingabe weitermachen.
+				// Block-internal failure-without-consumption rows (F) are committed
+				// after a definitely consuming factor; otherwise later alternative
+				// dispatch could continue with already consumed input.
 				patchLocalFalse(factorStart, aktTabIndex, STAT_ERROR);
 			}
 			else if (wasAmbig) {
-				// Faktor an "nur Ueberspringbares davor"-Position: seine F-Zeilen sind
-				// runtime-mehrdeutig (Gruppe koennte doch konsumiert haben) -- markieren,
-				// gewarnt wird erst, wenn daraus wirklich ein Zeilen-Sprung wird.
+				// A factor preceded only by skippable groups is runtime-ambiguous because
+				// a group may have consumed input. Mark its F rows and warn only when
+				// they actually become row jumps.
 				for (i = factorStart; i < aktTabIndex; i++) {
 					if (lexTab[i].falseAction == STAT_FALSE) {
 						lexTab[i].ambigF = 1;
@@ -1511,10 +1509,9 @@ void term(void) {
 	}
 	if (lineStackIndex > 0) {
 		last = pop();
-		// Nur anwenden, wenn der ERSTE Faktor "einfach" war (ident/literal) und daher
-		// noch KEIN eigenes trueAction/falseAction gesetzt hat. War er komplex (block/
-		// repeat/option), hat der sich schon selbst korrekt verdrahtet -- das hier wuerde
-		// es sonst wieder zerstoeren (der Bug hinter dem gescheiterten "num"-Test).
+		// Apply this only when the FIRST factor was simple (ident/literal) and has
+		// not set its own actions. Complex factors (block/repeat/option) already
+		// wired themselves correctly; changing them here would break that wiring.
 		if (!firstFactorComplex) {
 			lexTab[last].trueAction = last+1;
 			lexTab[last].falseAction = STAT_FALSE;
