@@ -1203,7 +1203,7 @@ static void addRef(int name, int type, int offs, int local)
 	refN++;
 }
 
-/* Das Typwort einer Referenz setzt sich aus drei gemessenen Teilen zusammen:
+/* A reference type word consists of three measured parts:
      $20   die Referenz LIEGT im Code (ohne das Bit: in den init. Daten),
      $18/$10/$08   ihr Umfang -- Langwort / Wort / Byte,
      unten der ZIELabschnitt, wie bei den Globalen: Code 4, initialisierte
@@ -1239,7 +1239,7 @@ static int refTypeFor(int size, int target)
 	return t;
 }
 
-/* PC-relative Referenz auf einen externen Namen: dasselbe Typwort, dazu
+/* PC-relative reference to an external name: use the same type word plus
    $80. Gemessen an "bsr fremd", "bra fremd", "beq fremd", "lea fremd(pc),a0"
    und "move.l fremd(pc),d0" -- alle fuenf ergeben $00b0 = $80|$30, also
    relativ, Wortbreite, im Code, Ziel unbekannt. Die kurze Sprungform lehnt
@@ -1249,7 +1249,7 @@ static void refPcExtern(int ext, int size)
 	addRef(ext, 0x80 | refTypeFor(size, SECT_EXTERN), curPC, 0);
 }
 
-/* Traegt je verschiebbarem Anteil des Ausdrucks EINE Referenz ein, alle auf
+/* Add one reference for each relocatable expression term, all at the same
    denselben Ort -- so legt r68 es ab. Der Ort ist die aktuelle Stelle, also
    VOR dem Ablegen der Bytes aufzurufen. "slot" waehlt das Termfach:
    0/1 fuer die Operanden eines Befehls, TERM_CUR fuer den gerade
@@ -1277,8 +1277,8 @@ static void refTerms(int slot, int size)
 }
 
 /* ============================================================== selfCheck = */
-/* Die Streutabellen fangen LEER an, und leer heisst -1 -- 0 waere ein
-   gueltiger Eintrag. */
+/* Hash tables start empty; empty is represented by -1 because zero is a
+   valid entry. */
 static void hashInit(void)
 {
 	int i;
@@ -1320,8 +1320,8 @@ static void selfCheck(void)
 		fatal("innerer Fehler: SYM_MAX passt nicht zu symNext[]", "");
 }
 
-/* ========================================================= Zeilenzerlegung */
-/* Microware-Format: Label in Spalte 1, Mnemonic eingerueckt, danach die
+/* ========================================================= Line splitting */
+/* Microware format: label in column 1, indented mnemonic, then operands and
    Operanden, danach Kommentar. "*" in Spalte 1 ist eine Kommentarzeile.
    Ein Label mit ":" ist GLOBAL -- gemessen an r68: aus "start: rts" wird ein
    Global-Eintrag im ROF, aus "start rts" nicht. */
@@ -1351,7 +1351,7 @@ static int splitLine(void)
 	if (c == '*' || c == ';')
 		return 0;
 
-	/* Labelfeld. Es endet am Leerzeichen ODER am Doppelpunkt -- und zwar
+	/* Label field. It ends at whitespace OR a colon, including when the
 	   auch dann, wenn das Mnemonic OHNE Trennzeichen folgt: in
 	   SRC/DEFS/funcs.a:725 steht "DC_GetCluts:do.b 1", und r68 nimmt das
 	   an (gemessen: "lab1:nop" ergibt $4e71 mit dem globalen Label lab1
@@ -1374,11 +1374,11 @@ static int splitLine(void)
 		}
 	}
 
-	/* Mnemonic */
+	/* Mnemonic. */
 	while (lxTmp[i] != 0 && isSpaceCh(lxTmp[i] & 255))
 		i++;
 	n = 0;
-	/* Das Mnemonic endet am Leerzeichen -- oder direkt am Operanden, wenn
+	/* The mnemonic ends at whitespace, or directly before an operand when
 	   der mit einem Zeichen anfaengt, das in keinem Mnemonic vorkommt.
 	   Gemessen, welche das sind:
 	     "ifeq(CPUType-SYS360)"  ja   (so steht es im SDK)
@@ -1403,8 +1403,8 @@ static int splitLine(void)
 	lnOp[n] = 0;
 	lnOpRaw[n] = 0;
 
-	/* Operanden -- Leerzeichen beenden das Feld, ausser innerhalb von
-	   Anfuehrungszeichen ("dc.b \"a b\"" muss ganz bleiben). */
+	/* Operands end at whitespace except inside quotes ("dc.b \"a b\"" must
+	   remain a single field). */
 	while (lxTmp[i] != 0 && isSpaceCh(lxTmp[i] & 255))
 		i++;
 	n = 0;
@@ -1444,7 +1444,7 @@ static int opIs(const char *s)
 	return 1;
 }
 
-/* Groessenbuchstabe eines Mnemonics ("move.l" -> 'l'), 0 wenn keiner. */
+/* Return a mnemonic size suffix ("move.l" -> 'l'), or zero when absent. */
 static int opSize(void)
 {
 	int i;
@@ -1458,7 +1458,7 @@ static int opSize(void)
 	return 0;
 }
 
-/* Mnemonic ohne Groessenbuchstaben in buf. */
+/* Copy the mnemonic without its size suffix to buf. */
 static void opBase(char *buf)
 {
 	int i;
