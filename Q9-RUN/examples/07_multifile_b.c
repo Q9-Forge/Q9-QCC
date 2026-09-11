@@ -1,4 +1,4 @@
-/* Mehrdatei-Beispiel, Teil B: definiert, was Teil A per extern erwartet. */
+/* Multi-file example, part B: defines what part A expects externally. */
 int shared_counter;
 
 int step(int n) {
