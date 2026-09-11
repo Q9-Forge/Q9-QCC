@@ -555,11 +555,9 @@ static int symIntern(int name)
 	return s;
 }
 
-/* Definiert (oder bestaetigt) ein Symbol. "track" heisst: eine Aenderung
-   gegenueber dem letzten Durchlauf zaehlt als Bewegung -- solange sich etwas
-   bewegt, sind die Adressen nicht verlaesslich und es folgt ein weiterer
-   Durchlauf. Fuer "set" ist das ausgeschaltet, denn dessen Wert darf sich
-   innerhalb eines Durchlaufs mehrfach aendern. */
+/* Define or confirm a symbol. With track enabled, changes from the previous
+   pass count as movement; addresses remain provisional until stable. Tracking
+   is disabled for set because its value may change several times per pass. */
 static void symDefine(int name, int value, int sect, int global, int track)
 {
 	int s;
@@ -578,10 +576,10 @@ static void symDefine(int name, int value, int sect, int global, int track)
 		symGlobal[s] = 1;
 }
 
-/* ============================================================= Zeilenleser */
-/* Liefert das logische Zeichen: CR, CR+LF und LF werden alle als LF
-   gemeldet. OS-9-Textdateien enden mit CR -- ohne diese Vereinheitlichung
-   ist die ganze Datei eine Zeile (bei qcpp im Emulator genau so passiert). */
+/* ============================================================= Line reader */
+/* Return the logical character: CR, CR+LF and LF are all reported as LF.
+   OS-9 text files end in CR; without normalization the complete file becomes
+   one line. */
 static int rdPeekCh;
 static int rdPeekPos;
 static int rdPeekLine;
@@ -622,17 +620,16 @@ static void rdTake(void)
 	curLine = rdPeekLine;
 }
 
-/* Einschlussstapel fuer "use". */
+/* Include stack for "use". */
 static int USE_MAX = 16;
 static int useFile[16];
 static int usePos[16];
 static int useLine[16];
-static int useExp[16];         /* Stand des Ausdehnungsspeichers beim Eintritt */
+static int useExp[16];         /* Expansion-stack position at entry. */
 static int useDepth;
 
-/* Eine Zeile in lxTmp holen (ohne Umbruch). Rueckgabe 0 = Dateiende der
-   aeussersten Datei; das Ende einer eingeschlossenen Datei kehrt still zur
-   einschliessenden zurueck. */
+/* Read one line into lxTmp without its newline. Return 0 at the outermost
+   end of file; an included-file end silently returns to its includer. */
 static int readLine(void)
 {
 	int n;
@@ -667,11 +664,11 @@ static int readLine(void)
 }
 
 /* ========================================================== Ausdruecke ==== */
-/* Microware-Syntax: $hex, %binaer, @oktal, 'z' Zeichen, Dezimal; Operatoren
+/* Microware syntax: $hex, %binary, @octal, 'z' character and decimal;
+   operators
    + - * / & (und) ! (oder) << >> und unaer - + ^ (Nicht), dazu Klammern.
    "*" allein ist der aktuelle Ort, "." der org-Zaehler.
-   An r68 gemessen: "^" ist UNAER (kein XOR -- "$ff^$0f" ist ein Fehler),
-   und "~" gibt es nicht. */
+   measured against r68: "^" is unary (not XOR), and "~" is not supported. */
 static const char *exP;
 static int exSect;             /* Abschnitt des Ergebnisses */
 static int exExtern;           /* Pool-Index eines externen Namens, sonst -1 */
