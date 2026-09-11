@@ -439,10 +439,11 @@ static void emitTableBases(FILE* out, const char* anchor, const char* psect) {
 	fprintf(out, "\tadda.l\t#(tc_gadata__%s-%s),a3\n", psect, anchor);
 }
 
-/* Emits a call to an ALREADY MANGLED assembler name (for QCC-
-   Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
-   Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
-   asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben.
+/* Emits a call to an ALREADY MANGLED assembler name (for QCC functions,
+   tableOffset = funcIndex*4) OR to a raw runtime-helper name
+   (tableOffset = helperTableOffset(...)). In small mode it emits the unchanged
+   "bsr asmName"; in large mode it uses a4/a2 table indirection as described
+   above.
    WICHTIG (2026-07-26, live auf Q9 gefunden): die Tabelle enthaelt KEINE
    absoluten Adressen mehr (siehe tc_functab-Emissionskommentar) -- a2 traegt
    nach dem move.l erst den Link-Zeit-Offset (Ziel minus Tabellenbasis), "adda.l
