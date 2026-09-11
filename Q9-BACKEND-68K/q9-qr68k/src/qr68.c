@@ -4489,7 +4489,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* Gemessen: $00C0 | Breite<<9 | ea, dann ein Erweiterungswort -- und
+	/* Measured: $00C0 | size<<9 | ea, followed by an extension word -- and
 	   das steht VOR den Erweiterungswoertern des Operanden
 	   ("chk2.w 8(a1),d3" -> $02e9 $3800 $0008). Im Erweiterungswort:
 	   Bit 15 = Adressregister, Bit 14..12 dessen Nummer, Bit 11 = chk2
@@ -4518,7 +4518,7 @@ static void doInstruction(void)
 	}
 
 	/* --- BCD pack and unpack (68020) --- */
-	/* Dieselbe Paarform wie abcd, dahinter die Korrektur als ganzes Wort:
+	/* Same paired form as abcd, followed by the adjustment as a full word:
 	   "pack d2,d3,#$1234" -> $8742 $1234, "unpk -(a2),-(a3),#$3030" ->
 	   $878a $3030. Grundworte pack $8140, unpk $8180. */
 	if (baseIs(base, "pack") || baseIs(base, "unpk")) {
@@ -4565,7 +4565,7 @@ static void doInstruction(void)
 		if (dc < 0 || dc > 7 || du < 0 || du > 7)
 			fatal("cas braucht zwei Datenregister: ", lnArg);
 		/* The third operand goes into slot 0; the first two are
-		   blosse Registernamen und brauchen keines. */
+			   plain register names and need none. */
 		parseOperand(opTxt2, 0);
 		needAlterable(0);
 		if (oMode[0] == AM_DN || oMode[0] == AM_AN)
@@ -4625,7 +4625,7 @@ static void doInstruction(void)
 	}
 
 	/* --- PMMU: flush and test (68030) --- */
-	/* Gemessen. Beide legen $F000 | ea ab und dahinter ein
+	/* Measured. Both emit $F000 | ea followed by an
 	   Erweiterungswort -- vor den Erweiterungswoertern des Operanden
 	   ("ptestr #1,8(a0),#7" -> $f028 $9e11 $0008).
 	   pflush: Bit 15..13 = 001, Bit 12..10 = Betriebsart, Bit 8..5 = Maske
@@ -4692,7 +4692,7 @@ static void doInstruction(void)
 		   Befehl prueft damit eine ganz andere Stelle. qr68 bricht
 		   dafuer ab, statt den Defekt nachzubauen oder still davon
 		   abzuweichen -- dieselbe Entscheidung wie bei bra.l. Heil ist
-		   nur "(aN)", und nur das steht in echtem Code. */
+			   only "(aN)"; that is the only form found in real code. */
 		if (oMode[1] != AM_IND)
 			fatal("ptest nur mit \"(aN)\" -- r68 V2.9.1 legt sonst die Ebene an die Stelle der Adresse: ", lnArg);
 		ext = 0x8000 | (lvl << 10) | fc;
@@ -4738,7 +4738,7 @@ static void doInstruction(void)
 	}
 
 	/* --- bit-field instructions (68020) --- */
-	/* Gemessen: $E8C0 | Kennung<<8 | ea, gefolgt von einem
+	/* Measured: $E8C0 | selector<<8 | ea, followed by an
 	   Erweiterungswort -- und das steht VOR den Erweiterungswoertern des
 	   Operanden ("bftst 8(a0){1:2}" -> $e8e8 $0042 $0008, "bfextu
 	   (a1,d1.l){d2:1},d7" -> $e9f1 $7881 $1800). Sein Aufbau:
@@ -4824,7 +4824,7 @@ static void doInstruction(void)
 	}
 
 	/* --- move one cache line (move16, 68040) --- */
-	/* Gemessen: die Form mit zwei Postinkrementen hat ein
+	/* Measured: the form with two post-increments has an
 	   Erweiterungswort ("move16 (a0)+,(a2)+" -> $f620 $a000: Ax unten im
 	   Befehlswort, Ay in Bit 14..12, Bit 15 gesetzt), die vier Formen mit
 	   absoluter Adresse dagegen keines -- dort steht die Adresse direkt
@@ -4864,7 +4864,7 @@ static void doInstruction(void)
 	}
 
 	/* --- move MMU registers (pmove, 68030) --- */
-	/* Gemessen: $F000 | ea, dann das Erweiterungswort aus mmuReg(); Bit 9
+	/* Measured: $F000 | ea, then the extension word from mmuReg(); bit 9
 	   gibt die Richtung an (0 = in das MMU-Register, 1 = heraus:
 	   "pmove tc,(a0)" -> $f010 $4200), Bit 8 ist das FD von "pmovefd"
 	   ("pmovefd (a0),tc" -> $f010 $4100). Auch hier steht das
@@ -4900,8 +4900,8 @@ static void doInstruction(void)
 	}
 
 	/* --- compare memory with memory --- */
-	/* Gemessen: "cmpm.l (a0)+,(a5)+" -> $bb88, der ERSTE Operand ist Ay
-	   (unten), der zweite Ax (Bits 11..9). */
+	/* Measured: "cmpm.l (a0)+,(a5)+" -> $bb88; the FIRST operand is Ay
+	   (low field), the second Ax (bits 11..9). */
 	if (baseIs(base, "cmpm")) {
 		if (size == 0)
 			size = 'w';
