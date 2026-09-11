@@ -1597,11 +1597,10 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "NARROWH") == 0) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#65535,d0\n\tmove.l\td0,(a7)\n", out);
 			} else if (strcmp(op, "SWAP") == 0) {
-				/* Vertauscht die obersten zwei Stackelemente. Gebraucht ueberall dort,
-				   wo ein Ergebniswert UNTER einer Adresse liegen bleiben muss --
-				   "(*p)++", "a[i]++" und die Kettenzuweisung scheiterten allesamt
-				   daran, dass sich der Stack bisher nicht umordnen liess (es gab nur
-				   DUP). */
+				/* Swaps the top two stack elements. Needed wherever a result must
+				   remain BELOW an address, such as "(*p)++", "a[i]++", and chained
+				   assignments. Previously the stack could not be reordered; only DUP
+				   was available. */
 				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "DUP") == 0 || strcmp(op, "DUPP") == 0) {
 				fputs("\tmove.l\t(a7),-(a7)\n", out);
@@ -1652,7 +1651,7 @@ static void emitIR(FILE* out) {
 				if (nargsC) fprintf(out, "\tlea\t%d(a7),a7\n", nargsC * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "PUSHFN") == 0 && insP->argc == 1) {
-				/* Adresse einer QCC-Funktion als Wert auf den Stack (Funktionszeiger).
+				/* Pushes the address of a QCC function as a value (function pointer).
 				   Im -largedata-Modus liegt sie NICHT als Symbol vor, sondern als
 				   Link-Zeit-Offset in der Funktionsindirektionstabelle: die echte
 				   Laufzeitadresse ist a4 + *(a4 + index*4) -- exakt dieselbe Rechnung,
@@ -1678,7 +1677,7 @@ static void emitIR(FILE* out) {
 					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
 				}
 			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
-				/* Indirekter Aufruf ueber einen Funktionszeiger. Stapelbelegung beim
+				/* Indirect call through a function pointer. Stack layout on entry
 				   Eintritt (von UNTEN nach oben): zuerst der Zeiger, darueber
 				   arg1..argN. Diese Reihenfolge ergibt sich zwangslaeufig aus dem
 				   Parsen: bei "ausdruck(args)" wird der Callee-Ausdruck VOR den
@@ -1701,7 +1700,7 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
-				/* Aufruf einer NICHT in dieser IR definierten (externen) Funktion, z.B.
+				/* Call to a function NOT defined in this IR (an external function), e.g.
 				   einer echten OS-9/Microware-clib-Funktion (strcmp, printf, malloc, ...).
 				   Nutzt die dokumentierte Microware-68K-C/C++-ABI (Ultra C/C++ Processor
 				   Guide, Kapitel "Passing Arguments to Functions") statt der sonst hier
