@@ -19,6 +19,7 @@
 
          psect   qstr,0,0,0,0,0
 
+* Function: strlen -- returns the length of a NUL-terminated string.
 strlen:
          move.l  (a7),a1                 * Ruecksprungadresse merken
          move.l  d1,(a7)                 * Argument 2 an ihren Platz
@@ -32,6 +33,7 @@ strlen:
          move.l  a1,-(a7)
          rts
 
+* Function: strchr -- finds the first matching byte in a string.
 strchr:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -45,6 +47,7 @@ strchr:
          move.l  a1,-(a7)
          rts
 
+* Function: strncmp -- compares at most n bytes of two strings.
 strncmp:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -59,6 +62,7 @@ strncmp:
          rts
 
 
+* Function: strcmp -- compares two NUL-terminated strings.
 strcmp:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -72,6 +76,7 @@ strcmp:
          move.l  a1,-(a7)
          rts
 
+* Function: strcat -- appends one string to another.
 strcat:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -85,6 +90,7 @@ strcat:
          move.l  a1,-(a7)
          rts
 
+* Function: strncpy -- copies at most n bytes between strings.
 strncpy:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -98,6 +104,7 @@ strncpy:
          move.l  a1,-(a7)
          rts
 
+* Function: strrchr -- finds the last matching byte in a string.
 strrchr:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -111,6 +118,7 @@ strrchr:
          move.l  a1,-(a7)
          rts
 
+* Function: strtok -- returns the next delimiter-separated token.
 strtok:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -124,6 +132,7 @@ strtok:
          move.l  a1,-(a7)
          rts
 
+* Function: strtol -- converts a string to a signed long value.
 strtol:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -137,6 +146,7 @@ strtol:
          move.l  a1,-(a7)
          rts
 
+* Function: memset -- fills a byte range with one value.
 memset:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -150,6 +160,7 @@ memset:
          move.l  a1,-(a7)
          rts
 
+* Function: memcpy -- copies a byte range to the destination.
 memcpy:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -163,6 +174,7 @@ memcpy:
          move.l  a1,-(a7)
          rts
 
+* Function: tolower -- converts one ASCII uppercase byte to lowercase.
 tolower:
          move.l  (a7),a1                 * Ruecksprungadresse merken
          move.l  d1,(a7)                 * Argument 2 an ihren Platz
