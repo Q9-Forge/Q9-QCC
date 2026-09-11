@@ -14,15 +14,15 @@
 #ifndef Q9_STDDEF_H
 #define Q9_STDDEF_H
 
-/* Auf dem 68k-Ziel und am Host sind int und Zeiger beide 32 Bit; die
-   Bootstrap-Teilmenge kennt kein eigenes vorzeichenloses Groessenmodell. */
+/* On the 68k target and the host, int and pointers are both 32 bits; the
+   bootstrap subset has no separate unsigned-size model. */
 typedef unsigned int size_t;
 
-/* NULL fehlte hier und ist 2026-09-07 dazugekommen: qcc_backend_c.cpp
-   braucht es (strtok(NULL, ...)), und ohne die Definition meldet QCC
-   "unknown variable NULL" -- richtig gemeldet, aber an der falschen
-   Stelle gesucht. Die 0 genuegt: die Teilmenge kennt kein (void*)0, und
-   auf dem 68k wie am Host ist ein Nullzeiger die Null. */
+/* NULL was added on 2026-09-07 because qcc_backend_c.cpp needs it
+   (strtok(NULL, ...)). Without this definition QCC reports "unknown variable
+   NULL". The diagnostic is valid, but the missing definition was the cause.
+   Zero is sufficient: the subset has no (void*)0, and a null pointer is zero
+   on both 68k and the host. */
 #define NULL 0
 
 #endif
