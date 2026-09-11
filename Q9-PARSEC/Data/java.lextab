@@ -1,0 +1,496 @@
+#================================================================================
+# EBNF-ARBEITSDATEI -- automatisch erzeugt von parsec
+# Die Bloecke [TESTS] und [NUTZER-CODE] sind zum Editieren gedacht und bleiben
+# beim Neu-Erzeugen erhalten. NUTZER-CODE ist vorbereitet, wird aber noch nicht
+# in C/68k eingebunden (Format/Architektur: docs/ARCHITEKTUR.md).
+# Existiert <basis>.ebnf, ist IMMER die .ebnf die Wahrheit; ohne .ebnf
+# kann diese Datei direkt als Grammatik geladen werden (PARSER-TABELLE-Block).
+#================================================================================
+
+[EBNF-QUELLTEXT]
+ <Java>                           = [ "package" <Name> ";" ] { "import" <Name> [ "." "*" ] ";" } { <ClassDecl> 
+                                  | <InterfaceDecl> 
+                                  | ";" } .
+
+ <ClassDecl>                      = { <Modifyer> } "class" <ident> [ "extends" <Name> ] [ "implements" <Name> { "," <Name> } ] "{" { <FieldDecl> 
+                                  | <MethodDecl> 
+                                  | <ConstructorDecl> 
+                                  | "static" <Block> } "}" .
+
+ <InterfaceDecl>                  = { <Modifyer> } "interface" <ident> [ "extends" <Name> { "," <Name> } ] "{" { <FieldDecl> 
+                                  | <MethodHeader> ";" } "}" .
+
+ <FieldDecl>                      = { <Modifyer> } <Type> <Var> { "," <Var> } ";" .
+
+ <Var>                            = <ident> { "[" "]" } [ "=" <VarInit> ] .
+
+ <VarInit>                        = <Expr> 
+                                  | <ArrayInit> .
+
+ <ArrayInit>                      = "{" <VarInit> { "," <VarInit> } "}" .
+
+ <MethodDecl>                     = <MethodHeader> ( <Block> 
+                                  | ";" ) .
+
+ <MethodHeader>                   = { <Modifyer> } ( <Type> 
+                                  | "void" ) <ident> "(" [ <FormPars> ] ")" { "[" "]" } [ "throws" <Name> { "," <Name> } ] .
+
+ <FormPars>                       = <FormPar> { "," <FormPar> } .
+
+ <FormPar>                        = <Type> <ident> { "[" "]" } .
+
+ <ConstructorDecl>                = { <Modifyer> } <ident> "(" [ <FormPars> ] ")" [ "throws" <Name> { "," <Name> } ] "{" [ <ConstructorCall> ] { <BlockStatement> } "}" .
+
+ <ConstructorCall>                = ( "this" 
+                                  | "super" ) "(" [ <ActPars> ] ")" .
+
+ <Modifyer>                       = "public" 
+                                  | "protected" 
+                                  | "private" 
+                                  | "static" 
+                                  | "abstract" 
+                                  | "final" 
+                                  | "native" 
+                                  | "synchronized" 
+                                  | "transient" 
+                                  | "volatile" .
+
+ <Block>                          = "{" { <BlockStatement> } "}" .
+
+ <BlockStatement>                 = <Type> <Var> { "," <Var> } ";" <Statement> .
+
+ <Statement>                      = { <ident> ":" } ( <Block> 
+                                  | [ <StatExpr> ] ";" 
+                                  | "if" "(" <Expr> ")" <Statement> [ "else" <Statement> ] 
+                                  | "while" "(" <Expr> ")" <Statement> 
+                                  | "for" "(" [ <ForInit> ] ";" [ <Expr> ] ";" [ <ForUpdate> ] ")" <Statement> 
+                                  | "do" <Statement> "while" "(" <Expr> ")" ";" 
+                                  | "switch" "(" <Expr> ")" "{" { <SwitchGroup> } { <SwitchLabel> } "}" 
+                                  | "break" [ <ident> ] ";" 
+                                  | "continue" [ <ident> ] ";" 
+                                  | "return" [ <Expr> ] ";" 
+                                  | "synchronized" "(" <Expr> ")" <Block> 
+                                  | "throw" <Expr> ";" 
+                                  | "try" <Block> { <CatchClause> } [ "finally" <Block> ] ) .
+
+ <StatExpr>                       = <Assignment> 
+                                  | <Designator> "(" [ <ActPars> ] ")" 
+                                  | <Expr> .
+
+ <SwitchGroup>                    = <SwitchLabel> { <SwitchLabel> } <BlockStatement> { <BlockStatement> } .
+
+ <SwitchLabel>                    = "case" <ConstExpr> ":" 
+                                  | "default" ":" .
+
+ <ForInit>                        = <StatExpr> { "," <StatExpr> } 
+                                  | <Type> <Var> { "," <Var> } ";" .
+
+ <ForUpdate>                      = <StatExpr> { "," <StatExpr> } .
+
+ <CatchClause>                    = "catch" "(" <FormPar> ")" <Block> .
+
+ <ConstExpr>                      = <Expr> .
+
+ <Expr>                           = <CondExpr> 
+                                  | <Assignment> .
+
+ <CondExpr>                       = <CondOrExpr> [ "?" <Expr> ":" <CondExpr> ] .
+
+ <CondOrExpr>                     = <CondAndExpr> { "||" <CondAndExpr> } .
+
+ <CondAndExpr>                    = <OrExpr> { "&&" <OrExpr> } .
+
+ <OrExpr>                         = <XorExpr> { "|" <XorExpr> } .
+
+ <XorExpr>                        = <AndExpr> { "^" <AndExpr> } .
+
+ <AndExpr>                        = <EqualExpr> { "&" <EqualExpr> } .
+
+ <ActPars>                        = <Expr> { "," <Expr> } .
+
+ <Assignment>                     = <Designator> <AssignOp> <Expr> .
+
+ <Designator>                     = ( <ident> 
+                                  | "this" 
+                                  | "super" ) { "." <ident> 
+                                  | "[" <Expr> "]" } .
+
+ <Literal>                        = <number> 
+                                  | <string> 
+                                  | <char> .
+
+[ENDE]
+
+[TS-SYMBOLTABELLE]
+# nr  typ  symbol
+0    TS   "package"
+1    TS   ";"
+2    TS   "import"
+3    TS   "."
+4    TS   "*"
+5    TS   "class"
+6    TS   "extends"
+7    TS   "implements"
+8    TS   ","
+9    TS   "{"
+10   TS   "static"
+11   TS   "}"
+12   TS   "interface"
+13   TS   "["
+14   TS   "]"
+15   TS   "="
+16   TS   "void"
+17   TS   "("
+18   TS   ")"
+19   TS   "throws"
+20   TS   "this"
+21   TS   "super"
+22   TS   "public"
+23   TS   "protected"
+24   TS   "private"
+25   TS   "abstract"
+26   TS   "final"
+27   TS   "native"
+28   TS   "synchronized"
+29   TS   "transient"
+30   TS   "volatile"
+31   TS   ":"
+32   TS   "if"
+33   TS   "else"
+34   TS   "while"
+35   TS   "for"
+36   TS   "do"
+37   TS   "switch"
+38   TS   "break"
+39   TS   "continue"
+40   TS   "return"
+41   TS   "throw"
+42   TS   "try"
+43   TS   "finally"
+44   TS   "case"
+45   TS   "default"
+46   TS   "catch"
+47   TS   "?"
+48   TS   "||"
+49   TS   "&&"
+50   TS   "|"
+51   TS   "^"
+52   TS   "&"
+[ENDE]
+
+[NTS-SYMBOLTABELLE]
+# nr  startzeile  name
+0    0           Java
+1    11          ClassDecl
+2    27          InterfaceDecl
+3    39          FieldDecl
+4    45          Var
+5    50          VarInit
+6    52          ArrayInit
+7    57          MethodDecl
+8    60          MethodHeader
+9    73          FormPars
+10   76          FormPar
+11   80          ConstructorDecl
+12   93          ConstructorCall
+13   98          Modifyer
+14   108         Block
+15   111         BlockStatement
+16   117         Statement
+17   180         StatExpr
+18   186         SwitchGroup
+19   190         SwitchLabel
+20   195         ForInit
+21   203         ForUpdate
+22   206         CatchClause
+23   211         ConstExpr
+24   212         Expr
+25   214         CondExpr
+26   219         CondOrExpr
+27   222         CondAndExpr
+28   225         OrExpr
+29   228         XorExpr
+30   231         AndExpr
+31   234         ActPars
+32   237         Assignment
+33   240         Designator
+34   248         Literal
+[ENDE]
+
+[PARSER-TABELLE]
+# zeile true false addr rngLo rngHi regel modus symbol
+# (symbol: Steuerzeichen/Backslash als \ooo enkodiert -- Zeilenformat!)
+0     1     3     -1    0     0     Java             TS   "package"
+1     2     -3    -1    0     0     -                NTS  Name
+2     3     -3    -1    0     0     -                TS   ";"
+3     4     8     -1    0     0     -                TS   "import"
+4     5     -3    -1    0     0     -                NTS  Name
+5     6     7     -1    0     0     -                TS   "."
+6     7     -3    -1    0     0     -                TS   "*"
+7     3     -3    -1    0     0     -                TS   ";"
+8     8     9     11    0     0     -                NTS  ClassDecl
+9     8     10    27    0     0     -                NTS  InterfaceDecl
+10    8     -1    -1    0     0     -                TS   ";"
+11    11    12    98    0     0     ClassDecl        NTS  Modifyer
+12    13    -2    -1    0     0     -                TS   "class"
+13    14    -3    -1    0     0     -                NTS  ident
+14    15    16    -1    0     0     -                TS   "extends"
+15    16    -3    -1    0     0     -                NTS  Name
+16    17    20    -1    0     0     -                TS   "implements"
+17    18    -3    -1    0     0     -                NTS  Name
+18    19    20    -1    0     0     -                TS   ","
+19    18    -3    -1    0     0     -                NTS  Name
+20    21    -3    -1    0     0     -                TS   "{"
+21    21    22    39    0     0     -                NTS  FieldDecl
+22    21    23    57    0     0     -                NTS  MethodDecl
+23    21    24    80    0     0     -                NTS  ConstructorDecl
+24    25    26    -1    0     0     -                TS   "static"
+25    21    -3    108   0     0     -                NTS  Block
+26    -1    -3    -1    0     0     -                TS   "}"
+27    27    28    98    0     0     InterfaceDecl    NTS  Modifyer
+28    29    -2    -1    0     0     -                TS   "interface"
+29    30    -3    -1    0     0     -                NTS  ident
+30    31    34    -1    0     0     -                TS   "extends"
+31    32    -3    -1    0     0     -                NTS  Name
+32    33    34    -1    0     0     -                TS   ","
+33    32    -3    -1    0     0     -                NTS  Name
+34    35    -3    -1    0     0     -                TS   "{"
+35    35    36    39    0     0     -                NTS  FieldDecl
+36    37    38    60    0     0     -                NTS  MethodHeader
+37    35    -3    -1    0     0     -                TS   ";"
+38    -1    -3    -1    0     0     -                TS   "}"
+39    39    40    98    0     0     FieldDecl        NTS  Modifyer
+40    41    -2    -1    0     0     -                NTS  Type
+41    42    -3    45    0     0     -                NTS  Var
+42    43    44    -1    0     0     -                TS   ","
+43    42    -3    45    0     0     -                NTS  Var
+44    -1    -3    -1    0     0     -                TS   ";"
+45    46    -2    -1    0     0     Var              NTS  ident
+46    47    48    -1    0     0     -                TS   "["
+47    46    -3    -1    0     0     -                TS   "]"
+48    49    -1    -1    0     0     -                TS   "="
+49    -1    -3    50    0     0     -                NTS  VarInit
+50    -1    51    212   0     0     VarInit          NTS  Expr
+51    -1    -2    52    0     0     -                NTS  ArrayInit
+52    53    -2    -1    0     0     ArrayInit        TS   "{"
+53    54    -3    50    0     0     -                NTS  VarInit
+54    55    56    -1    0     0     -                TS   ","
+55    54    -3    50    0     0     -                NTS  VarInit
+56    -1    -3    -1    0     0     -                TS   "}"
+57    58    -2    60    0     0     MethodDecl       NTS  MethodHeader
+58    -1    59    108   0     0     -                NTS  Block
+59    -1    -3    -1    0     0     -                TS   ";"
+60    60    61    98    0     0     MethodHeader     NTS  Modifyer
+61    63    62    -1    0     0     -                NTS  Type
+62    63    -2    -1    0     0     -                TS   "void"
+63    64    -3    -1    0     0     -                NTS  ident
+64    65    -3    -1    0     0     -                TS   "("
+65    66    66    73    0     0     -                NTS  FormPars
+66    67    -3    -1    0     0     -                TS   ")"
+67    68    69    -1    0     0     -                TS   "["
+68    67    -3    -1    0     0     -                TS   "]"
+69    70    -1    -1    0     0     -                TS   "throws"
+70    71    -3    -1    0     0     -                NTS  Name
+71    72    -1    -1    0     0     -                TS   ","
+72    71    -3    -1    0     0     -                NTS  Name
+73    74    -2    76    0     0     FormPars         NTS  FormPar
+74    75    -1    -1    0     0     -                TS   ","
+75    74    -3    76    0     0     -                NTS  FormPar
+76    77    -2    -1    0     0     FormPar          NTS  Type
+77    78    -3    -1    0     0     -                NTS  ident
+78    79    -1    -1    0     0     -                TS   "["
+79    78    -3    -1    0     0     -                TS   "]"
+80    80    81    98    0     0     ConstructorDecl  NTS  Modifyer
+81    82    -2    -1    0     0     -                NTS  ident
+82    83    -3    -1    0     0     -                TS   "("
+83    84    84    73    0     0     -                NTS  FormPars
+84    85    -3    -1    0     0     -                TS   ")"
+85    86    89    -1    0     0     -                TS   "throws"
+86    87    -3    -1    0     0     -                NTS  Name
+87    88    89    -1    0     0     -                TS   ","
+88    87    -3    -1    0     0     -                NTS  Name
+89    90    -3    -1    0     0     -                TS   "{"
+90    91    91    93    0     0     -                NTS  ConstructorCall
+91    91    92    111   0     0     -                NTS  BlockStatement
+92    -1    -3    -1    0     0     -                TS   "}"
+93    95    94    -1    0     0     ConstructorCall  TS   "this"
+94    95    -2    -1    0     0     -                TS   "super"
+95    96    -3    -1    0     0     -                TS   "("
+96    97    97    234   0     0     -                NTS  ActPars
+97    -1    -3    -1    0     0     -                TS   ")"
+98    -1    99    -1    0     0     Modifyer         TS   "public"
+99    -1    100   -1    0     0     -                TS   "protected"
+100   -1    101   -1    0     0     -                TS   "private"
+101   -1    102   -1    0     0     -                TS   "static"
+102   -1    103   -1    0     0     -                TS   "abstract"
+103   -1    104   -1    0     0     -                TS   "final"
+104   -1    105   -1    0     0     -                TS   "native"
+105   -1    106   -1    0     0     -                TS   "synchronized"
+106   -1    107   -1    0     0     -                TS   "transient"
+107   -1    -2    -1    0     0     -                TS   "volatile"
+108   109   -2    -1    0     0     Block            TS   "{"
+109   109   110   111   0     0     -                NTS  BlockStatement
+110   -1    -3    -1    0     0     -                TS   "}"
+111   112   -2    -1    0     0     BlockStatement   NTS  Type
+112   113   -3    45    0     0     -                NTS  Var
+113   114   115   -1    0     0     -                TS   ","
+114   113   -3    45    0     0     -                NTS  Var
+115   116   -3    -1    0     0     -                TS   ";"
+116   -1    -3    117   0     0     -                NTS  Statement
+117   118   119   -1    0     0     Statement        NTS  ident
+118   117   -3    -1    0     0     -                TS   ":"
+119   -1    120   108   0     0     -                NTS  Block
+120   121   121   180   0     0     -                NTS  StatExpr
+121   -1    122   -1    0     0     -                TS   ";"
+122   123   129   -1    0     0     -                TS   "if"
+123   124   -3    -1    0     0     -                TS   "("
+124   125   -3    212   0     0     -                NTS  Expr
+125   126   -3    -1    0     0     -                TS   ")"
+126   127   -3    117   0     0     -                NTS  Statement
+127   128   129   -1    0     0     -                TS   "else"
+128   -1    -3    117   0     0     -                NTS  Statement
+129   130   134   -1    0     0     -                TS   "while"
+130   131   -3    -1    0     0     -                TS   "("
+131   132   -3    212   0     0     -                NTS  Expr
+132   133   -3    -1    0     0     -                TS   ")"
+133   -1    -3    117   0     0     -                NTS  Statement
+134   135   143   -1    0     0     -                TS   "for"
+135   136   -3    -1    0     0     -                TS   "("
+136   137   137   195   0     0     -                NTS  ForInit
+137   138   -3    -1    0     0     -                TS   ";"
+138   139   139   212   0     0     -                NTS  Expr
+139   140   -3    -1    0     0     -                TS   ";"
+140   141   141   203   0     0     -                NTS  ForUpdate
+141   142   -3    -1    0     0     -                TS   ")"
+142   -1    -3    117   0     0     -                NTS  Statement
+143   144   150   -1    0     0     -                TS   "do"
+144   145   -3    117   0     0     -                NTS  Statement
+145   146   -3    -1    0     0     -                TS   "while"
+146   147   -3    -1    0     0     -                TS   "("
+147   148   -3    212   0     0     -                NTS  Expr
+148   149   -3    -1    0     0     -                TS   ")"
+149   -1    -3    -1    0     0     -                TS   ";"
+150   151   158   -1    0     0     -                TS   "switch"
+151   152   -3    -1    0     0     -                TS   "("
+152   153   -3    212   0     0     -                NTS  Expr
+153   154   -3    -1    0     0     -                TS   ")"
+154   155   -3    -1    0     0     -                TS   "{"
+155   155   156   186   0     0     -                NTS  SwitchGroup
+156   156   157   190   0     0     -                NTS  SwitchLabel
+157   -1    -3    -1    0     0     -                TS   "}"
+158   159   161   -1    0     0     -                TS   "break"
+159   160   160   -1    0     0     -                NTS  ident
+160   -1    -3    -1    0     0     -                TS   ";"
+161   162   164   -1    0     0     -                TS   "continue"
+162   163   163   -1    0     0     -                NTS  ident
+163   -1    -3    -1    0     0     -                TS   ";"
+164   165   167   -1    0     0     -                TS   "return"
+165   166   166   212   0     0     -                NTS  Expr
+166   -1    -3    -1    0     0     -                TS   ";"
+167   168   172   -1    0     0     -                TS   "synchronized"
+168   169   -3    -1    0     0     -                TS   "("
+169   170   -3    212   0     0     -                NTS  Expr
+170   171   -3    -1    0     0     -                TS   ")"
+171   -1    -3    108   0     0     -                NTS  Block
+172   173   175   -1    0     0     -                TS   "throw"
+173   174   -3    212   0     0     -                NTS  Expr
+174   -1    -3    -1    0     0     -                TS   ";"
+175   176   -2    -1    0     0     -                TS   "try"
+176   177   -3    108   0     0     -                NTS  Block
+177   177   178   206   0     0     -                NTS  CatchClause
+178   179   -1    -1    0     0     -                TS   "finally"
+179   -1    -3    108   0     0     -                NTS  Block
+180   -1    181   237   0     0     StatExpr         NTS  Assignment
+181   182   185   240   0     0     -                NTS  Designator
+182   183   -3    -1    0     0     -                TS   "("
+183   184   184   234   0     0     -                NTS  ActPars
+184   -1    -3    -1    0     0     -                TS   ")"
+185   -1    -2    212   0     0     -                NTS  Expr
+186   187   -2    190   0     0     SwitchGroup      NTS  SwitchLabel
+187   187   188   190   0     0     -                NTS  SwitchLabel
+188   189   -3    111   0     0     -                NTS  BlockStatement
+189   189   -1    111   0     0     -                NTS  BlockStatement
+190   191   193   -1    0     0     SwitchLabel      TS   "case"
+191   192   -3    211   0     0     -                NTS  ConstExpr
+192   -1    -3    -1    0     0     -                TS   ":"
+193   194   -2    -1    0     0     -                TS   "default"
+194   -1    -3    -1    0     0     -                TS   ":"
+195   196   198   180   0     0     ForInit          NTS  StatExpr
+196   197   198   -1    0     0     -                TS   ","
+197   196   -3    180   0     0     -                NTS  StatExpr
+198   199   -2    -1    0     0     -                NTS  Type
+199   200   -3    45    0     0     -                NTS  Var
+200   201   202   -1    0     0     -                TS   ","
+201   200   -3    45    0     0     -                NTS  Var
+202   -1    -3    -1    0     0     -                TS   ";"
+203   204   -2    180   0     0     ForUpdate        NTS  StatExpr
+204   205   -1    -1    0     0     -                TS   ","
+205   204   -3    180   0     0     -                NTS  StatExpr
+206   207   -2    -1    0     0     CatchClause      TS   "catch"
+207   208   -3    -1    0     0     -                TS   "("
+208   209   -3    76    0     0     -                NTS  FormPar
+209   210   -3    -1    0     0     -                TS   ")"
+210   -1    -3    108   0     0     -                NTS  Block
+211   -1    -2    212   0     0     ConstExpr        NTS  Expr
+212   -1    213   214   0     0     Expr             NTS  CondExpr
+213   -1    -2    237   0     0     -                NTS  Assignment
+214   215   -2    219   0     0     CondExpr         NTS  CondOrExpr
+215   216   -1    -1    0     0     -                TS   "?"
+216   217   -3    212   0     0     -                NTS  Expr
+217   218   -3    -1    0     0     -                TS   ":"
+218   -1    -3    214   0     0     -                NTS  CondExpr
+219   220   -2    222   0     0     CondOrExpr       NTS  CondAndExpr
+220   221   -1    -1    0     0     -                TS   "||"
+221   220   -3    222   0     0     -                NTS  CondAndExpr
+222   223   -2    225   0     0     CondAndExpr      NTS  OrExpr
+223   224   -1    -1    0     0     -                TS   "&&"
+224   223   -3    225   0     0     -                NTS  OrExpr
+225   226   -2    228   0     0     OrExpr           NTS  XorExpr
+226   227   -1    -1    0     0     -                TS   "|"
+227   226   -3    228   0     0     -                NTS  XorExpr
+228   229   -2    231   0     0     XorExpr          NTS  AndExpr
+229   230   -1    -1    0     0     -                TS   "^"
+230   229   -3    231   0     0     -                NTS  AndExpr
+231   232   -2    -1    0     0     AndExpr          NTS  EqualExpr
+232   233   -1    -1    0     0     -                TS   "&"
+233   232   -3    -1    0     0     -                NTS  EqualExpr
+234   235   -2    212   0     0     ActPars          NTS  Expr
+235   236   -1    -1    0     0     -                TS   ","
+236   235   -3    212   0     0     -                NTS  Expr
+237   238   -2    240   0     0     Assignment       NTS  Designator
+238   239   -3    -1    0     0     -                NTS  AssignOp
+239   -1    -3    212   0     0     -                NTS  Expr
+240   243   241   -1    0     0     Designator       NTS  ident
+241   243   242   -1    0     0     -                TS   "this"
+242   243   -2    -1    0     0     -                TS   "super"
+243   244   245   -1    0     0     -                TS   "."
+244   243   -3    -1    0     0     -                NTS  ident
+245   246   -1    -1    0     0     -                TS   "["
+246   247   -3    212   0     0     -                NTS  Expr
+247   243   -3    -1    0     0     -                TS   "]"
+248   -1    249   -1    0     0     Literal          NTS  number
+249   -1    250   -1    0     0     -                NTS  string
+250   -1    -2    -1    0     0     -                NTS  char
+[ENDE]
+
+[TESTS]
+# TEST "<eingabe>" OK|FAIL   -- wird bei jedem Lauf automatisch ausgefuehrt
+[ENDE]
+
+[LEXER]
+# Optional: aktiviert Whitespace-/Kommentar-Behandlung im ERZEUGTEN Parser.
+# WHITESPACE = " \t\r\n"
+# TOKEN ident            (Regel wird lexikalisch: Zeichen muessen adjazent sein)
+# COMMENT LINE = "//"
+[ENDE]
+
+[CODEGEN]
+# Optional: Ausgabe-Optionen der Codegenerierung.
+# M68K OS9               (zusaetzlich <basis>_os9.a im r68/psect-Format)
+# M68K PSECT = name      (psect-Name, Default: <basisname>_p)
+[ENDE]
+
+[NUTZER-CODE]
+# Reserviert fuer semantische Aktionen pro Regel; noch nicht generiert.
+# Siehe docs/ARCHITEKTUR.md, Abschnitt 7.
+[ENDE]
