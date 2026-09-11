@@ -22,9 +22,11 @@ static FILE* stderr;
 
 extern FILE* fopen(const char*, const char*);
 extern size_t fread(void*, size_t, size_t, FILE*);
+extern size_t fwrite(const void*, size_t, size_t, FILE*);
 extern int fclose(FILE*);
 extern int fprintf(FILE*, const char*, ...);
 extern int printf(const char*, ...);
+extern int puts(const char*);
 extern int fputc(int, FILE*);
 extern int fputs(const char*, FILE*);
 extern int sprintf(char*, const char*, ...);

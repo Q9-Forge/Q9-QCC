@@ -18,28 +18,9 @@
  * das nicht. Er gehoert in einen Test, der nur qclib faehrt.
  */
 
-extern int printf(const char *fmt, ...);
-extern int fprintf(char *fp, const char *fmt, ...);
-extern int sprintf(char *buf, const char *fmt, ...);
-extern char *fopen(const char *name, const char *mode);
-extern int fclose(char *fp);
-extern int fread(char *buf, int size, int n, char *fp);
-extern int fwrite(const char *buf, int size, int n, char *fp);
-extern int fputc(int c, char *fp);
-extern int fputs(const char *s, char *fp);
-extern int puts(const char *s);
-extern int strlen(const char *s);
-extern char *strchr(const char *s, int c);
-extern int strncmp(const char *a, const char *b, int n);
-extern char *realloc(char *p, int n);
-extern int strcmp(const char *a, const char *b);
-extern char *strcat(char *d, const char *s);
-extern char *strncpy(char *d, const char *s, int n);
-extern char *strrchr(const char *s, int c);
-extern char *strtok(char *s, const char *delim);
-extern long strtol(const char *s, char **end, int base);
-extern char *memset(char *d, int c, int n);
-extern char *memcpy(char *d, const char *s, int n);
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 int vorz(int v)
 {
@@ -52,7 +33,7 @@ int vorz(int v)
 
 int main()
 {
-	char *fp;
+	FILE *fp;
 	char *p;
 	char *q;
 	char buf[64];

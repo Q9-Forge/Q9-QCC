@@ -23,8 +23,8 @@
  * ihn steht am Ende nur "ging nicht".
  */
 
-extern int printf(const char *fmt, ...);
-extern char *realloc(char *p, int n);
+#include <stdio.h>
+#include <stdlib.h>
 extern int _os_srqmem(int want, int *granted, char **addr);
 extern int _os_srtmem(int size, char *addr);
 

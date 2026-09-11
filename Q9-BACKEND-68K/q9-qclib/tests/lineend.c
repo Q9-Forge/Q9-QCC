@@ -13,15 +13,11 @@
  * Dieses Programm wird gegen clib gebunden (qclib hat noch kein fgets).
  */
 
-extern char *fopen(const char *name, const char *mode);
-extern int fclose(char *fp);
-extern int fwrite(const char *buf, int size, int n, char *fp);
-extern char *fgets(char *buf, int n, char *fp);
-extern int printf(const char *fmt, ...);
+#include <stdio.h>
 
 int main()
 {
-	char *fp;
+	FILE *fp;
 	char muster[9];
 	char buf[64];
 	int i;
