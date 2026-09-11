@@ -1,10 +1,12 @@
 /*
- * ql68 -- der Binder der Q9-Werkzeugkette.
+ * ql68 -- Q9 ROF linker for OS-9/68k.
  *
- * Aufruf:  ql68 [Optionen] <eingabe.r> -O=<modul>
+ * Usage: ql68 [options] <input.r> -O=<module>
  *
- * Liest eine ROF-Datei (Microware Edition 9.1, wie sie qr68 und r68
- * schreiben) und erzeugt daraus ein ladbares OS-9/68k-Modul.
+ * Reads ROF objects and produces a loadable OS-9/68k module.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
  *
  * ALLES HIER IST AN l68 GEMESSEN, nicht aus der Dokumentation abgeleitet.
  * Die Dokumentation (MWOS/DOC/PDF/ultrac_use.pdf Kap. 6 und 9,
@@ -1597,6 +1599,10 @@ static void argAdd(char *a)
 	argN++;
 }
 
+/* Function: main
+ * Parses linker options, resolves ROF symbols and writes one OS-9 module.
+ * Parameters: argc, argv Command-line argument count and vector.
+ * Returns: Process status, zero on success. */
 int main(int argc, char **argv)
 {
 	const char *inPath[QL_ROF];
