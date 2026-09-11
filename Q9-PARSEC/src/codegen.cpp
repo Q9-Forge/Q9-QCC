@@ -1,15 +1,15 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   codegen.cpp                                                                    Ver. 1.50
 // Owner:  AF
-// Desc.:  AST-Aufbau + Codegenerierung fuer den EBNF-Uebersetzer (docs/ARCHITEKTUR.md).
-//         Der AST wird waehrend des normalen Parsens in parsec.cpp mit aufgebaut (additiv,
-//         die Tabellen-Erzeugung bleibt unangetastet). Aus dem AST entstehen zwei
-//         strukturgleiche Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl):
-//           - <basis>_p.c   C-Zwilling, auf dem Host kompilier- und testbar (Validierung)
-//           - <basis>.s68   68k-Assembler (Motorola-Syntax), das eigentliche Ziel
-//         Semantik: Alternative/Option/Wiederholung sichern die Eingabeposition und
-//         setzen sie bei Misserfolg zurueck -- damit hat der erzeugte Code die
-//         "committed"-Grenze der flachen Sprungtabelle NICHT (siehe ARCHITEKTUR.md §3).
+// Desc.:  AST construction and code generation for the EBNF translator
+//         (docs/ARCHITEKTUR.md). parsec.cpp builds the AST additively during
+//         normal parsing; table generation remains unchanged. The AST produces
+//         two structurally equivalent backtracking recursive-descent parsers:
+//           - <base>_p.c   host-testable C counterpart
+//           - <base>.s68   68k assembly (Motorola syntax), the primary target
+//         Alternatives, options and repetitions save and restore input
+//         positions on failure, so generated code has no flat-table committed
+//         boundary (see ARCHITEKTUR.md §3).
 //
 // Edition History
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
@@ -120,9 +120,9 @@ void astPushNTS(const char* name) {
 	pushNode(id);
 }
 
-// Stack[mark..] zu einem Knoten der Art 'kind' zusammenfassen. Genau ein Knoten auf dem
-// Bereich: unveraendert lassen (keine unnoetigen Einer-Gruppen). Null Knoten: leere
-// Sequenz (Epsilon) erzeugen -- so wird z.B. "empty = ." korrekt abgebildet.
+// Group Stack[mark..] into a node of kind 'kind'. Leave a range with one node
+// unchanged to avoid unnecessary unary groups. An empty range becomes an empty
+// sequence (epsilon), correctly representing rules such as "empty = .".
 static void groupAs(int kind, int mark) {
 	int id, i, prev;
 
@@ -187,8 +187,9 @@ void astFinishRule(const char* name) {
 //------------------------------------------------------------------------------------------------
 // Gemeinsame Helfer beider Backends
 //------------------------------------------------------------------------------------------------
-// Regelnamen duerfen '$' enthalten (EBNF-Ident), C-Bezeichner und manche Assembler nicht:
-// '$' wird zu '_'. Kollisionen prueft validateAstForCodegen() vor der Ausgabe.
+// Rule names may contain '$' (EBNF identifiers), while C identifiers and some
+// assemblers do not. Replace '$' with '_'; validateAstForCodegen() checks for
+// collisions before emission.
 static void sanitizeName(const char* in, char* out) {
 	int i = 0;
 	while (in[i] != '\0' && i < GEN_NAME_LEN - 1) {
