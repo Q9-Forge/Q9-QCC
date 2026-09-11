@@ -18,29 +18,20 @@
  * SECOND PATTERN (08.09.2026, found in the measured qr68 output distribution
  * -- 2064 occurrences, by far the largest individual finding): "move.l SRC,Dn"
  * immediately followed by "tst.l Dn" (the SAME number, a DATA register d0-d7).
- * MOVE.L sets N/Z on 68000 hardware
- * exactly as TST.L would for the same value (V/C are
- * beiden auf 0 geloescht) -- das TST ist also niemals mehr als eine
- * Wiederholung, die Zeile faellt komplett weg. BEWUSST NUR d0-d7, NIE
- * a0-a6: "move.l SRC,An" wird von r68/qr68 als MOVEA assembliert (die
- * einzige Opcode-Form fuer ein Adressregister-Ziel, unabhaengig vom
- * geschriebenen Mnemonic), und MOVEA setzt KEINE Flags -- ein TST danach
- * waere dort echt gebraucht.
+ * MOVE.L sets N/Z on 68000 hardware exactly as TST.L would for the same value
+ * (V/C are both cleared), so TST is only a repetition and can be removed.
+ * Deliberately limit this to d0-d7, never a0-a6: "move.l SRC,An" is assembled
+ * by r68/qr68 as MOVEA, the only opcode form for an address-register target,
+ * and MOVEA does not set flags, so TST would be required there.
  *
- * THIRD PATTERN (same frequency list): "move.l SRC,Dn" immediately
- * gefolgt von "move.l Dn,DST" (dasselbe Datenregister) wird zu
- * "move.l SRC,DST" -- 385 Vorkommen allein fuer den Fall SRC="(a0)"/
- * DST="-(a7)". Sicher aus demselben Grund wie das erste Muster: der
- * Registerinhalt wird zwischen den beiden Zeilen von nichts sonst
- * beobachtet. DST darf ALLES sein (auch "-(a7)" -- dann ist es dasselbe
- * Ergebnis wie Muster eins, nur ueber diesen Matcher gefunden), SRC
- * ebenso: 68k erlaubt Speicher-zu-Speicher-MOVE, und eine Adressierung
- * mit Seiteneffekt (Post-/Praedekrement) wertet ihre effektive Adresse in
- * einem wie in zwei Schritten exakt einmal aus -- die Verschmelzung
- * aendert daran nichts. Geprueft: alle 23.387 move.l-Zeilen in qr68s
- * eigener Ausgabe haben genau EIN Komma (keine indizierte Adressierung
- * mit eingebettetem Komma in diesem Backend), das rechteste Komma trennt
- * also immer sauber SRC von DST.
+ * THIRD PATTERN (same frequency list): "move.l SRC,Dn" immediately followed by
+ * "move.l Dn,DST" using the same data register becomes "move.l SRC,DST".
+ * This is safe for the same reason as pattern one: nothing else observes the
+ * register between the two lines. DST and SRC may use any supported addressing
+ * form; 68k permits memory-to-memory MOVE, and post-/pre-decrement addressing
+ * evaluates its effective address exactly once in either form. The fusion does
+ * not change that behavior. qr68 output was checked to contain exactly one
+ * comma in each move.l line, so the rightmost comma safely separates SRC/DST.
  *
  * FOURTH PATTERN (same frequency list, 867 occurrences): "move.l
  * Dn,-(a7)" unmittelbar gefolgt von "addq.l #4,a7" (oder "lea 4(a7),a7").
