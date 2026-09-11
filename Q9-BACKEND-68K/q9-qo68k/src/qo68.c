@@ -120,19 +120,17 @@ static void phLoad(const char* path) {
 	for (i = 0; i < phLineCount; i++) phRemoved[i] = 0;
 }
 
-/* Naechste NICHT gestrichene Zeile nach i, oder -1. Siehe Kommentar am
- * Dateianfang zu "mehrere Durchlaeufe": nach einer Faltung liegt die
- * logisch naechste Zeile nicht mehr zwingend bei i+1. */
+/* Return the next line after i that has not been removed, or -1. Folding can
+ * leave the logical next line at an index other than i+1. */
 static int phNextKept(int i) {
 	int j = i + 1;
 	while (j < phLineCount && phRemoved[j]) j++;
 	return j < phLineCount ? j : -1;
 }
 
-/* Erkennt "move.l SRC,-(a7)", optional mit einem "label:\t"-Vorspann auf
- * DERSELBEN Zeile (dieses Backend haengt Labels so an, siehe emitIR()).
- * Liest NUR -- schreibt nichts in die Zeile, damit ein Fehlschlag hier
- * (Pop passt am Ende doch nicht) den Originaltext nicht beschaedigt. */
+/* Recognize "move.l SRC,-(a7)", optionally preceded by a "label:\t" prefix
+ * on the same line. This function only reads the line; a failed match must
+ * not modify the original text. */
 static int phMatchPush(const char* line, const char** labelStart, int* labelLen,
                         const char** srcStart, int* srcLen) {
 	const char* p;
@@ -157,9 +155,8 @@ static int phMatchPush(const char* line, const char** labelStart, int* labelLen,
 	return 1;
 }
 
-/* Erkennt "move.l (a7)+,DST" -- KEIN Label davor: koennte ein Sprungziel
- * sein, und dafuer gibt es hier (noch) keine Sprungziel-Nachfuehrung
- * (s. o68-Kommentar oben am Dateianfang). Lieber nicht falten als falsch. */
+/* Recognize "move.l (a7)+,DST". A label is not accepted here because it may
+ * be a branch target and this optimizer does not yet retarget branches. */
 static int phMatchPop(const char* line, const char** dstStart) {
 	if (line[0] != '\t') return 0;
 	if (strncmp(line + 1, "move.l\t(a7)+,", 13) != 0) return 0;
@@ -167,8 +164,8 @@ static int phMatchPop(const char* line, const char** dstStart) {
 	return 1;
 }
 
-/* Vergleicht ein laengenbegrenztes SRC mit einem nullterminierten DST auf
- * Textgleichheit -- fuer die SRC==DST-Verfeinerung von Muster eins/drei. */
+/* Compare a length-limited source string with a null-terminated destination
+ * string. Used by the SRC==DST refinement of patterns one and three. */
 static int phSameText(const char* a, int aLen, const char* b) {
 	return (int)strlen(b) == aLen && strncmp(a, b, aLen) == 0;
 }
