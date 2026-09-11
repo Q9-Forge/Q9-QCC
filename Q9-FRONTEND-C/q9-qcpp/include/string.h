@@ -14,6 +14,7 @@
 extern size_t strlen(const char*);
 extern char* strchr(const char*, int);
 extern int strncmp(const char*, const char*, size_t);
+extern char* strstr(const char*, const char*);
 
 /* Dazu, was qcc_backend_c.cpp ruft (2026-09-07 nachgezaehlt: strcmp
    154-mal, strncpy 9-mal, memset 6-mal, strtok und strrchr je zweimal,
