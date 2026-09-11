@@ -18,6 +18,8 @@ test: $(TARGET)
 	@$(TARGET) --print-config | grep -q '^backend=qir68k'
 	@$(TARGET) --emit-ir tests/smoke.c >/dev/null
 	@grep -q '^FUNC main' build/qcc-tmp/output.ir
+	@$(TARGET) --emit-ir --tmpdir build/qcc-test -o build/qcc-test/result.ir tests/smoke.c >/dev/null
+	@grep -q '^PUSH 42' build/qcc-test/result.ir
 	@echo 'qcc smoke test: OK'
 
 clean:

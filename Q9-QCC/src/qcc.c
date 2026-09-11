@@ -20,6 +20,9 @@ static char qcir[TEXT] = "../Q9-FRONTEND-C/q9-qcir/build/qcir";
 static int dry_run;
 static int print_config;
 static int emit_ir;
+static int keep_files;
+static char tmpdir[TEXT] = "build/qcc-tmp";
+static char output[TEXT] = "";
 static char config_section[TEXT] = "global";
 
 static void copy_text(char *dst, const char *src) { strncpy(dst, src, TEXT - 1); dst[TEXT - 1] = '\0'; }
@@ -29,6 +32,8 @@ static void usage(const char *name)
 	printf("  --target NAME    Zielprofil\n  --frontend NAME  Frontend (Standard: c)\n");
 	printf("  --cpu TYPE       CPU an passende Werkzeuge weiterreichen\n");
 	printf("  --dry-run        Pipeline nur anzeigen\n  --print-config   Konfiguration anzeigen\n");
+	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  --tmpdir DIR     Zwischenverzeichnis\n");
+	printf("  --keep           Zwischendateien behalten\n  -o FILE           Ausgabedatei\n");
 	printf("  --help, --version\n");
 }
 static void config_line(char *line)
@@ -73,7 +78,14 @@ int main(int argc, char **argv)
 		if (strcmp(argv[i], "--version") == 0) { printf("qcc %s\n", QCC_VERSION); return 0; }
 		if (strcmp(argv[i], "--dry-run") == 0) { dry_run = 1; continue; }
 		if (strcmp(argv[i], "--emit-ir") == 0) { emit_ir = 1; continue; }
+		if (strcmp(argv[i], "--keep") == 0) { keep_files = 1; continue; }
 		if (strcmp(argv[i], "--print-config") == 0) { print_config = 1; continue; }
+		if (strcmp(argv[i], "--tmpdir") == 0 || strcmp(argv[i], "-o") == 0) {
+			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
+			if (strcmp(argv[i], "--tmpdir") == 0) copy_text(tmpdir, argv[++i]);
+			else copy_text(output, argv[++i]);
+			continue;
+		}
 		if (strcmp(argv[i], "--target") == 0 || strcmp(argv[i], "--frontend") == 0 || strcmp(argv[i], "--cpu") == 0) {
 			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
 			if (strcmp(argv[i], "--target") == 0) copy_text(target, argv[++i]);
@@ -101,12 +113,21 @@ int main(int argc, char **argv)
 	{
 		char command[512];
 		const char *input = argv[argc - 1];
-		if (system("mkdir -p build/qcc-tmp") != 0) return 4;
-		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s build/qcc-tmp/input.i", qcpp, input);
+		sprintf(command, "mkdir -p %s", tmpdir);
+		if (system(command) != 0) return 4;
+		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s %s/input.i", qcpp, input, tmpdir);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
-		sprintf(command, "%s @build/qcc-tmp/input.i > build/qcc-tmp/output.ir", qcir);
+		sprintf(command, "%s @%s/input.i > %s/output.ir", qcir, tmpdir, tmpdir);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
-		if (emit_ir) printf("build/qcc-tmp/output.ir\n"); else printf("build/qcc-tmp/output.ir\n");
+		if (output[0] != '\0') {
+			sprintf(command, "cp %s/output.ir %s", tmpdir, output);
+			if (system(command) != 0) { fprintf(stderr, "qcc: Ausgabedatei konnte nicht geschrieben werden\n"); return 4; }
+		}
+		if (!keep_files && !emit_ir) {
+			sprintf(command, "rm -f %s/input.i %s/output.ir", tmpdir, tmpdir);
+			if (system(command) != 0) return 4;
+		}
+		if (output[0] != '\0') printf("%s\n", output); else printf("%s/output.ir\n", tmpdir);
 	}
 	return 0;
 }
