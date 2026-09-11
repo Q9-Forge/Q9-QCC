@@ -2994,11 +2994,9 @@ static void needOps(int want)
 		fatal("falsche Zahl von Operanden: ", lnOp);
 }
 
-/* For instructions WITHOUT operands, the third field is already the
-   Kommentar -- im Korpus steht reichlich "rte   * Kommentar" ohne
-   Semikolon davor. Es wird deshalb nicht geprueft, sondern verworfen.
-   (Sonst waere ein Kommentar, der mit "*" beginnt, ein Operand: genau das
-   ist der aktuelle Ort.) */
+/* For instructions WITHOUT operands, the third field is already the comment;
+   the corpus contains many "rte   * comment" lines without a preceding
+   semicolon. It is therefore discarded rather than checked. */
 static void dropOps(void)
 {
 	oN = 0;
@@ -3028,7 +3026,7 @@ static int specialReg(const char *s)
 		c = lowerCh(s[2] & 255);
 	if (n == 3 && a == 'c' && b == 'c' && c == 'r')
 		return 1;
-	/* "cc" nimmt r68 ebenfalls fuer das Bedingungsregister (nicht aber
+	/* r68 also accepts "cc" for the condition-code register (but not
 	   "c" oder "ccrx"). In MWOS/OS9/SRC/IO/RBF/DRVR/rbvme10.a:1074 steht
 	   genau das -- offenbar ein Tippfehler, den r68 klaglos uebersetzt. */
 	if (n == 2 && a == 'c' && b == 'c')
@@ -3050,7 +3048,7 @@ static int specialReg(const char *s)
    diese drei Tabellen nicht -- daher die Funktion.
    ACHTUNG: fuer SYMBOLnamen gilt das nicht, die sind schreibungsabhaengig
    (gemessen, s. weiter oben). kwIs() darf deshalb nur auf feste
-   Schluesselwortlisten angewandt werden, nie auf einen Symbolvergleich. */
+   keyword lists, never to symbol comparisons. */
 static int kwIs(const char *s, const char *lit)
 {
 	int i;
@@ -3119,7 +3117,7 @@ static int controlReg(const char *s)
 /* MMU registers for pmove, with measured encodings in the
    Erweiterungswort: "pmove (a0),tc" ergibt $f010 $4000, srp $4800,
    crp $4c00, tt0 $0800, tt1 $0c00, mmusr $6000. r68 nimmt "psr" als zweite
-   Schreibweise fuer mmusr und lehnt "pcsr" ab. -1 = unbekannt. */
+   spelling for mmusr and rejects "pcsr". -1 = unknown. */
 static int mmuReg(const char *s)
 {
 	if (kwIs(s, "tc"))
@@ -3141,7 +3139,7 @@ static int mmuReg(const char *s)
 
 /* Function-code field of pflush/ptest (bits 4..0), measured against r68:
    "#n" wird 1nnnn ("pflush #15,#0" -> $301f), "dN" wird 01nnn
-   ("pflush d7,#0" -> $300f), "sfc" wird 00000 und "dfc" wird 00001. */
+   ("pflush d7,#0" -> $300f); "sfc" is 00000 and "dfc" is 00001. */
 static int pmmuFc(const char *s)
 {
 	int r;
@@ -3168,7 +3166,7 @@ static int pmmuFc(const char *s)
 }
 
 /* A fixed immediate value as operand text ("#7"), for instructions that
-   dort nichts Verschiebbares zulassen. */
+   that do not allow relocatable values. */
 static int immValue(const char *s, int lo, int hi, const char *what)
 {
 	int v;
@@ -3189,7 +3187,7 @@ static int immValue(const char *s, int lo, int hi, const char *what)
 /* Bit-field suffix "{offset:width}". It must be removed from the operand
    Operandentext abgeschnitten werden -- die geschweiften Klammern kennt es
    nicht. splitOperands() zaehlt sie nicht mit, das braucht es auch nicht:
-   im Zusatz steht kein Komma. */
+   the suffix contains no comma. */
 static char bfOffTxt[256];
 static char bfWidTxt[256];
 
