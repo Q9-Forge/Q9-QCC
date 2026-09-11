@@ -206,23 +206,23 @@ static int newLabel() {
 }
 
 //------------------------------------------------------------------------------------------------
-// LEXER-Konfiguration (scannerless, siehe ARCHITEKTUR.md §8)
+// LEXER configuration (scannerless; see ARCHITEKTUR.md §8)
 //------------------------------------------------------------------------------------------------
-// Design: kein separater Token-Puffer, sondern drei kleine Regeln direkt im erzeugten
-// Parser (nur wenn ein [LEXER]-Block konfiguriert ist):
+// Design: no separate token buffer, but three small rules directly in the
+// generated parser (only when a [LEXER] block is configured):
 //  1. Vor jedem Terminal (TS/RNG) und jedem Aufruf einer LEXIKALISCHEN Regel aus
-//     syntaktischem Kontext wird ws() gerufen: ueberliest WHITESPACE-Zeichen und
-//     Zeilenkommentare der Objektsprache.
-//  2. Innerhalb lexikalischer Regeln (transitiver Abschluss der TOKEN-Wurzeln) wird
-//     NICHTS uebersprungen -- Token-Zeichen muessen adjazent sein.
-//  3. Wortartige Literale ("MODULE", "IF", ...) bekommen im syntaktischen Kontext einen
-//     Wortgrenzen-Check: nach dem Literal darf KEIN Identifikator-Zeichen folgen
-//     ("MODULEX" ist nicht "MODULE" + "X"). Eine KEYWORDS-Liste ist damit unnoetig;
-//     Schluesselwort-vs-ident loest das Backtracking der geordneten Auswahl.
+//     syntactic context calls ws(), which skips WHITESPACE characters and
+//     object-language line comments.
+//  2. Inside lexical rules (the transitive closure of TOKEN roots), nothing is
+//     skipped; token characters must be adjacent.
+//  3. Word-like literals ("MODULE", "IF", ...) get a word-boundary check in
+//     syntactic context: no identifier character may follow the literal.
+//     A KEYWORDS list is unnecessary; ordered-choice backtracking resolves
+//     keyword versus identifier.
 #define LEX_MAX_ROOTS	32
 #define LEX_WS_MAX		32
 #define LEX_LC_MAX		8
-#define LEX_MARKERS_MAX	4		// mehrere gleichzeitige Kommentar-Marker, z.B. "#" UND "//"
+#define LEX_MARKERS_MAX	4		// Multiple simultaneous comment markers, e.g. "#" and "//".
 
 static int lexActive = 0;
 static char lexWs[LEX_WS_MAX + 1];
@@ -256,8 +256,8 @@ static int ruleIndexByName(const char* name) {
 	return -1;
 }
 
-// Einen "..."-String ab Position start entnehmen (Escapes \t \r \n \\ \" aufloesen).
-// Liefert Laenge oder -1; *nextOut zeigt hinter das schliessende '"'.
+// Extract a "..." string at start and decode \t \r \n \\ \" escapes.
+// Return its length or -1; *nextOut points after the closing '"'.
 static int lexUnquoteAt(const char* start, char* out, int outMax, const char** nextOut) {
 	const char* q1 = strchr(start, '"');
 	const char* q2;
@@ -276,7 +276,7 @@ static int lexUnquoteAt(const char* start, char* out, int outMax, const char** n
 			case 't': out[n++] = '\t'; break;
 			case 'r': out[n++] = '\r'; break;
 			case 'n': out[n++] = '\n'; break;
-			default:  out[n++] = *q1;  break;		// \\ und \" und alles andere: wie notiert
+			default:  out[n++] = *q1;  break;		// \\ and \" and all other escapes: as written
 			}
 		}
 		else {
@@ -288,8 +288,8 @@ static int lexUnquoteAt(const char* start, char* out, int outMax, const char** n
 	return n;
 }
 
-// Inhalt zwischen erstem und letztem '"' einer Konfigurationszeile entnehmen und
-// die ueblichen Escapes aufloesen (\t \r \n \\ \").
+// Extract the content between the first and last '"' in a configuration line
+// and decode the usual escapes (\t \r \n \\ \" ).
 static int lexUnquote(const char* line, char* out, int outMax) {
 	const char* q1 = strchr(line, '"');
 	const char* q2 = strrchr(line, '"');
@@ -348,7 +348,7 @@ int lexParseConfig(const char* buf) {
 			lexActive = 1;
 		}
 		else if (strncmp(line, "COMMENT LINE", 12) == 0) {
-			// mehrere COMMENT LINE-Zeilen sind erlaubt (z.B. "#" UND "//" gleichzeitig)
+			// Multiple COMMENT LINE rows are allowed, e.g. "#" and "//" together.
 			if (lexLineCommentCnt >= LEX_MARKERS_MAX) {
 				printf("LEXER: zu viele COMMENT LINE-Marker (max %d) -- ignoriert: %s\n",
 					LEX_MARKERS_MAX, line);
@@ -366,9 +366,8 @@ int lexParseConfig(const char* buf) {
 			}
 		}
 		else if (strncmp(line, "COMMENT BLOCK", 13) == 0) {
-			// zwei Strings: Anfang und Ende, z.B. COMMENT BLOCK = "(*" "*)"
-			// optional: COMMENT BLOCK NESTED = ... -> Kommentare schachteln
-			// mehrere COMMENT BLOCK-Zeilen sind erlaubt (z.B. "/* */" UND "(* *)" gleichzeitig)
+			// Two strings: opening and closing markers, e.g. COMMENT BLOCK = "(*" "*)".
+			// Optional NESTED enables nested comments. Multiple COMMENT BLOCK rows are allowed.
 			if (lexBlockCnt >= LEX_MARKERS_MAX) {
 				printf("LEXER: zu viele COMMENT BLOCK-Marker (max %d) -- ignoriert: %s\n",
 					LEX_MARKERS_MAX, line);
@@ -393,8 +392,8 @@ int lexParseConfig(const char* buf) {
 			}
 		}
 		else if (strncmp(line, "TOKEN", 5) == 0) {
-			// akzeptiert "TOKEN <regel>" und "TOKEN <TYP> = <regel>" -- massgeblich
-			// ist das LETZTE Wort der Zeile (der Regelname)
+			// Accept "TOKEN <rule>" and "TOKEN <TYPE> = <rule>"; the final word
+			// on the line is authoritative and names the rule.
 			const char* pWord = line + strlen(line);
 			while (pWord > line && (pWord[-1] == ' ' || pWord[-1] == '\t')) pWord--;
 			{
