@@ -82,41 +82,41 @@ int main(void)
 	/* 9  value semantics: callee must not change the original */
 	mark(9);  { struct P p; p.base = 1; p.pointers = 5; p.structId = 0; p.pad = 0;
 	            pointee(p); val(p.pointers); }
-	/* 10 ternaer + Array-Element mit Prae-Dekrement + Rueckgabe (tcTypePop) */
+	/* 10 ternary + array element with pre-decrement + return (tcTypePop) */
 	mark(10); vals[0].base = 105; vals[0].pointers = 0; vals[0].structId = 0; vals[0].pad = 0;
 	          vals[1].base = 99;  vals[1].pointers = 7; vals[1].structId = 0; vals[1].pad = 0;
 	          depth = 2;
 	          { struct P p = pop(); val(p.pointers); }
-	/* 11 derselbe Pfad, zweiter Pop */
+	/* 11 same path, second pop */
 	mark(11); { struct P p = pop(); val(p.base); }
-	/* 12 leerer Stapel -> der andere Ternaer-Zweig */
+	/* 12 empty stack -> the other ternary branch */
 	mark(12); { struct P p = pop(); val(p.base); }
-	/* 13 Feldzugriff DIREKT auf einer Funktionsrueckgabe (f().feld) */
+	/* 13 field access DIRECTLY on a function return (f().field) */
 	mark(13); { struct P p; p.base = 105; p.pointers = 1; p.structId = 0; p.pad = 0;
 	            val(pointee(p).base); }
-	/* 14 dito, anderes Feld. pointers=3, damit der Sollwert 2 ist und nicht 0 --
-	      0 ist der Wert, den der kaputte Pfad ohnehin liefert. */
+	/* 14 same, different field. pointers=3 makes the expected value 2, not 0;
+	      0 is what the broken path would produce. */
 	mark(14); { struct P p; p.base = 105; p.pointers = 3; p.structId = 0; p.pad = 0;
 	            val(pointee(p).pointers); }
-	/* 15 Rueckgabe direkt als Argument weitergereicht (Sollwert 1, nicht 0) */
+	/* 15 return passed directly as argument (expected value 1, not 0) */
 	mark(15); { struct P p; p.base = 105; p.pointers = 2; p.structId = 0; p.pad = 0;
 	            val(isPtr(pointee(p))); }
 
-	/* 16 &structVar: der Aufgerufene muss das Objekt des Aufrufers treffen */
+	/* 16 &structVar: callee must access the caller's object */
 	mark(16); { struct P p; p.base = 0; p.pointers = 0; p.structId = 0; p.pad = 0;
 	            fill(&p, 41); val(p.base); }
-	/* 17 dito, zweites Feld -- beweist, dass nicht nur ein Byte ankommt */
+	/* 17 same, second field -- proves that more than one byte arrives */
 	mark(17); { struct P p; p.base = 0; p.pointers = 0; p.structId = 0; p.pad = 0;
 	            fill(&p, 41); val(p.pointers); }
-	/* 18 && -- der Auslöser: tcLogicBegin holt seinen Typ ueber tcTypePop4(&left) */
+	/* 18 && -- trigger case: tcLogicBegin obtains its type through tcTypePop4(&left) */
 	mark(18); { int a; int b; a = 1; b = 1; if (a && b) val(7); else val(0); }
 
-	/* 19 ganze Struct aus einem 2D-Array lesen */
+	/* 19 read complete struct from a 2D array */
 	mark(19); grid[1][2].base = 88; grid[1][2].pointers = 4;
 	          grid[1][2].structId = 0; grid[1][2].pad = 0;
 	          gi = 1; gj = 2;
 	          { struct P x = grid[gi][gj]; val(x.base); }
-	/* 20 dito direkt als Argument (die Stelle, an der tc_arg prueft) */
+	/* 20 same, passed directly as an argument (where tc_arg checks it) */
 	mark(20); { struct P x; x.base = 88; x.pointers = 4; x.structId = 0; x.pad = 0;
 	            val(same(grid[gi][gj], x)); }
 
