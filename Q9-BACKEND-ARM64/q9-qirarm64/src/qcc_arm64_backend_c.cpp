@@ -562,9 +562,9 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadd\tx0,x0,w1,sxtw%s", scaleSuffix(x->args[0]));
 				push(o, "x0");
 			} else if (strcmp(op, "IPADDN") == 0 && x->argc == 1) {
-				/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
-				   statt einer festen Typtag-Groesse -- echte Multiplikation (w2 = Literal, mul,
-				   dann sign-extend + add), da scaleSuffix nur feste 1/4/8-Shifts kennt. */
+				/* Like IPADD, but scale by a runtime byte size such as structByteSize
+				   instead of a fixed type-tag size. Use multiplication because
+				   scaleSuffix supports only fixed 1/4/8 shifts. */
 				pop(o, "x0"); pop(o, "w1");
 				fprintf(o, "\tmov\tw2,#%s\n\tmul\tw1,w1,w2\n\tadd\tx0,x0,w1,sxtw\n", x->args[0]);
 				push(o, "x0");
@@ -648,8 +648,8 @@ static void emit(FILE* o) {
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
 			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
-				/* static lokale Variable: bereits von collectGlobals() ausgewertet, hier
-				   an dieser Stelle im Funktionskoerper ein reines No-op. */
+				/* Static locals were handled by collectGlobals(); this occurrence in
+				   the function body is a no-op. */
 			} else {
 				sprintf(msg, "IR Zeile %d: unbekannter Opcode %s", x->line, op);
 				fatal(msg);
@@ -662,11 +662,10 @@ static void emit(FILE* o) {
 		int gi, hasData = 0;
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
-			if (g->declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
-			// Skalare UND (seit 2026-07-25) Arrays OHNE jedes GINIT erreichen zerofill --
-			// echtes BSS braucht keine Element-Daten, nur die Gesamtgroesse in Byte, und
-			// erlaubt dadurch beliebig grosse nullinitialisierte Arrays (z.B. ein
-			// 8192-Elemente-AST-Knotenpuffer) OHNE eine .byte/.long-Zeile pro Element.
+			if (g->declOnly) continue; /* Defined in another file; no allocation here. */
+			// Scalars and (since 2026-07-25) arrays without any GINIT use zerofill.
+			// Real BSS needs only the total byte size, allowing arbitrarily large
+			// zero-initialized arrays without one .byte/.long line per element.
 			if (!g->isArray && g->initialValue == 0) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
