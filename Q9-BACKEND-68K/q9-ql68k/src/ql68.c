@@ -284,10 +284,8 @@ static int symFind(const char *name)
 	return -1;
 }
 
-/* Der ROF-Kopf ist 56 Byte, die Zaehler sind 32 Bit -- das ist Edition
-   9.1. (Edition 9.0 haette 16-Bit-Zaehler; osk-disasm/rof.c liest die
-   und passt deshalb nicht. Bestaetigt durch Microwares rdump, das fuer
-   qr68-Ausgaben "CPU/ROF type: 680x0/9.1" meldet.) */
+/* The ROF header is 56 bytes and uses 32-bit counts, which is edition 9.1.
+   Edition 9.0 used 16-bit counts and is not compatible with this parser. */
 static int rofParse(int at0)
 {
 	int at;
@@ -316,11 +314,10 @@ static int rofParse(int at0)
 	rStk[k] = be32(at0 + 32);
 	rEntry[k] = be32(at0 + 36);
 	rTrap[k] = be32(at0 + 40);
-	/* remotestatsiz -- reservierte FERNdaten. Sie zaehlen nicht gegen die
-	   64-KB-Grenze und liegen im Datenbereich HINTER den initialisierten
-	   Daten (an l68 gemessen, s. das Layout weiter unten).
-	   remoteidatsiz (Offset 48) bleibt ungemessen: dafuer gibt es in
-	   dieser Kette keinen Aufrufer, und qr68 erzeugt es nicht. */
+	/* remotestatsiz: reserved remote data. It does not count against the
+	   64 KiB limit and follows initialized data in the data area. The
+	   remoteidatsiz field at offset 48 remains unsupported because qr68 does
+	   not generate it. */
 	rRem[k] = be32(at0 + 44);
 	if (be32(at0 + 48) != 0)
 		fatal("remote INITIALISIERTE Daten sind noch nicht gemessen", "");
@@ -356,27 +353,19 @@ static int rofParse(int at0)
 	rLocalAt[k] = at + 4;
 	at = rLocalAt[k] + rLocalN[k] * 6;
 
-	/* Vier abschliessende Langwoerter -- sie sind in allen Proben null.
-	   Sie zaehlen zur Laenge, was beim Lesen einer Bibliothek zaehlt. */
+	/* Four trailing longwords; all observed objects contain zero here. They
+	   are part of the object length and therefore matter when scanning libs. */
 	return at + 16;
 }
 
-/* Eine Bibliothek ist KEIN Sonderformat, sondern eine Folge von ROFs --
-   nachgemessen an MWOS/OS9/68000/LIB/sys.l: sieben ROFs hintereinander,
-   1747 Globale, alle vom Typ $0006 (equ), und die Laengenrechnung landet
-   genau auf dem Dateiende. Genau das meint die Dokumentation mit
-   "sys.l ... contains only equ symbol definitions".
-
-   Die Laenge eines ROF ist: 56 + Name + Globale + Code + init. Daten +
-   externe Referenzen + lokale Referenzen + VIER abschliessende
-   Langwoerter. */
-/* Beim Verzeichnen einer Bibliothek gelesene Groessen. */
+/* A library is simply a sequence of ROFs, not a special format. The length
+   of one ROF is 56 + name + globals + code + initialized data + external
+   references + local references + four trailing longwords. */
+/* Sizes read while indexing a library. */
 static int libRofAt[QL_LIBROF];   /* Offset des ROF in inBuf */
 static int libRofN;
 
-/* Ueberspringt einen ROF ab at und liefert den Offset dahinter. Der
-   Aufbau steht im README ("Kopf, Name, Globale, Code, init. Daten,
-   externe Referenzen, lokale Referenzen, vier Langwoerter"). */
+/* Skip the ROF at at and return the following offset. */
 static int rofSkip(int at)
 {
 	int n;
@@ -404,9 +393,8 @@ static int rofSkip(int at)
 	return at + 4 + n * 6 + 16;
 }
 
-/* Wird der Name von einem schon eingebundenen ROF GEBRAUCHT und ist er
-   dort noch NICHT definiert? Genau dann holt der Binder das Modul, das
-   ihn definiert, aus der Bibliothek. */
+/* Is a name referenced by an included ROF but not defined there? In that
+   case the linker must fetch the defining module from a library. */
 static int nameIsOpen(const char *name)
 {
 	int k;
@@ -440,10 +428,9 @@ static int nameIsOpen(const char *name)
 	return 1;
 }
 
-/* Definiert der ROF an at genau diesen Namen? equ-Symbole zaehlen
-   NICHT: sie stehen schon in der Symboltabelle, und ihretwegen soll kein
-   Modul eingebunden werden -- sonst braechte jede Konstantendatei ihren
-   psect mit ins Modul (sys.l hat 1747 solcher Globalen). */
+/* Does the ROF at at define this name? Ignore equ symbols: they are already
+   in the symbol table and must not pull a constant-only psect into the
+   module. */
 static int rofDefines(int at, const char *name)
 {
 	int n;
@@ -466,13 +453,10 @@ static int rofDefines(int at, const char *name)
 	return 0;
 }
 
-/* Eine Bibliothek einlesen und VERZEICHNEN -- eingebunden wird erst in
-   libLink(), und nur was gebraucht wird.
-   Die Bibliothek landet in demselben Puffer wie die Eingaben, damit
-   rofParse() sie unveraendert parsen kann.
-   Die equ-Symbole werden sofort eingetragen: eine reine Konstantendatei
-   wie sys.l (1747 Globale, alle equ) traegt nichts zum Modul bei, ihre
-   Werte muessen aber verfuegbar sein. */
+/* Read and index a library. Linking happens later in libLink(), and only
+   required modules are included. Keep the library in the same buffer as
+   inputs so rofParse() can parse it without conversion. Register equ symbols
+   immediately because constant-only libraries still provide needed values. */
 static void libScan(const char *path)
 {
 	char *fp;
@@ -488,9 +472,8 @@ static void libScan(const char *path)
 	got = fread(&inBuf[inLen], 1, QL_IN - inLen, fp);
 	fclose(fp);
 	if (got <= 0) {
-		/* Zwei ganz verschiedene Faelle, die vorher dieselbe Meldung
-		   bekamen: eine wirklich leere Datei -- und ein voller
-		   Eingabepuffer, bei dem fread gar nichts mehr lesen KANN. */
+		/* Distinguish an actually empty file from a full input buffer where
+		   fread cannot read any additional bytes. */
 		if (inLen >= QL_IN)
 			fatal("Eingabepuffer voll (QL_IN): ", path);
 		fatal("Bibliothek ist leer: ", path);
