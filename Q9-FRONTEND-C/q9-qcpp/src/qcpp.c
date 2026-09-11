@@ -1043,8 +1043,8 @@ static int pasteText(int aText, int bText)
 	return internN(lxTmp, n);
 }
 
-/* Alle Satzzeichen aus C89 3.1.6, damit die Pruefung unten wirklich eine
-   Pruefung ist und nicht nur eine Laengenschaetzung. */
+/* All punctuation tokens from C89 3.1.6, so validation below checks the
+   actual token rather than only estimating its length. */
 static const char *punctList[48];
 static int punctN;
 
@@ -1142,9 +1142,9 @@ static int pasteCheck(int text)
 	return 0;
 }
 
-/* Argumente eines funktionsartigen Makros einsammeln (roh, unexpandiert).
-   Rueckgabe: Anzahl der Argumente. Die Tokenbereiche stehen in
-   argAt[]/argLen[], gezaehlt ab dem Stand von agTop beim Aufruf. */
+/* Collect raw, unexpanded arguments of a function-like macro. The argument
+   count is returned; ranges are stored in argAt[]/argLen[] from the agTop
+   value at entry. */
 static int argAt[64];
 static int argLen[64];
 
@@ -1168,7 +1168,7 @@ static int collectArgs(int m)
 	argLen[0] = 0;
 	pendingWs = 0;
 
-	/* die oeffnende Klammer hat der Aufrufer schon verbraucht */
+	/* The caller has already consumed the opening parenthesis. */
 	while (1) {
 		nextRaw();
 		if (tkKind == TK_EOF)
@@ -1182,11 +1182,9 @@ static int collectArgs(int m)
 			continue;
 		}
 		if (tkKind == TK_ARGEND) {
-			/* Ein Aufruf, dessen Klammer erst hinter der
-			   Argumentgrenze stuende: hier bewusst ein Abbruch --
-			   das Weiterlesen ueber die Grenze hinaus ist in C89
-			   undefiniert und wuerde die Reihenfolge der
-			   Expansionen unnachvollziehbar machen. */
+			/* If the closing parenthesis would be beyond the argument limit,
+			   abort deliberately: reading past the limit is undefined in C89
+			   and would make expansion order unpredictable. */
 			fatal("Makroaufruf reicht ueber die Argumentgrenze hinaus", "");
 		}
 		if (tkKind == TK_PUNCT && poolEq(tkText, "(")) {
@@ -1218,7 +1216,7 @@ static int collectArgs(int m)
 		argLen[nargs] = agTop - argAt[nargs];
 	}
 
-	/* "F()" bei genau einem erwarteten Parameter ist ein leeres Argument */
+	/* With exactly one expected parameter, "F()" is an empty argument. */
 	if (nargs == 0 && expect == 1) {
 		nargs = 1;
 		argAt[0] = startTop;
@@ -1232,17 +1230,15 @@ static int collectArgs(int m)
 	return nargs;
 }
 
-/* Ein Argument vollstaendig expandieren (Prescan, C89 3.8.3.1). Ergebnis wird
-   an das Ende des Argumentspeichers gelegt; Rueckgabe ist dessen Startindex,
-   die Laenge steht in preLen. */
+/* Fully expand one argument during the prescan (C89 3.8.3.1). The result is
+   appended to argument storage; return its start index and store its length
+   in preLen. */
 static int preLen;
 
-/* Die Expansion ist gegen Rekursion durch die Sperre des laufenden Makros
-   geschuetzt (C89 3.8.3.4), aber der Prescan von Argumenten steigt echt ab:
-   "F(F(F(...)))" schachtelt so tief wie der Quelltext es hergibt. Ohne eigene
-   Grenze waere der C-Stack die Grenze -- also ein Absturz statt einer
-   Meldung, und auf dem Ziel mit 512 KB Stack zuerst. Das widerspricht der
-   Linie dieses Programms, an Modellgrenzen abzubrechen. */
+/* Expansion is protected against direct recursion by locking the active
+   macro (C89 3.8.3.4), but argument prescan can still recurse through nested
+   calls such as "F(F(F(...)))". Bound the depth explicitly instead of
+   allowing a target-dependent C-stack overflow. */
 static int expDepth;
 #define EXP_DEPTH_MAX 200
 
@@ -1284,9 +1280,8 @@ static int prescanArg(int at, int n, int line, int file)
 	return outAt;
 }
 
-/* Makro m mit bereits eingesammelten Argumenten (oder ohne) einsetzen: den
-   Rumpf durchgehen, Parameter ersetzen, # und ## anwenden, Ergebnis auf den
-   Pushback legen. */
+/* Substitute collected arguments into macro m: walk its body, replace
+   parameters, apply # and ##, and push the result back for rescanning. */
 /* Function: substitute
  * Substitutes collected arguments into a macro replacement list.
  * Parameters: m Macro index; nargs Argument count; line, file Source location;
