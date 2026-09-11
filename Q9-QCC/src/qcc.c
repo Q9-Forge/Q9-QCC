@@ -23,6 +23,7 @@ static int emit_ir;
 static int keep_files;
 static char tmpdir[TEXT] = "build/qcc-tmp";
 static char output[TEXT] = "";
+static int tmpdir_set;
 static char config_section[TEXT] = "global";
 
 static void copy_text(char *dst, const char *src) { strncpy(dst, src, TEXT - 1); dst[TEXT - 1] = '\0'; }
@@ -64,6 +65,16 @@ static void load_config(void)
 	while (fgets(line, sizeof(line), f) != NULL) config_line(line);
 	fclose(f);
 }
+static void resolve_tmpdir(void)
+{
+	const char *base;
+	if (tmpdir_set) return;
+	base = getenv("TMP");
+	if (base == NULL || base[0] == '\0') base = getenv("TEMP");
+	if (base != NULL && base[0] != '\0') {
+		sprintf(tmpdir, "%s/qcc", base);
+	}
+}
 static void show_config(void)
 {
 	printf("target=%s\nfrontend=%s\ncpu=%s\nbackend=%s\noptimizer=%s\n", target, frontend, cpu, backend, optimizer);
@@ -82,7 +93,7 @@ int main(int argc, char **argv)
 		if (strcmp(argv[i], "--print-config") == 0) { print_config = 1; continue; }
 		if (strcmp(argv[i], "--tmpdir") == 0 || strcmp(argv[i], "-o") == 0) {
 			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
-			if (strcmp(argv[i], "--tmpdir") == 0) copy_text(tmpdir, argv[++i]);
+			if (strcmp(argv[i], "--tmpdir") == 0) { copy_text(tmpdir, argv[++i]); tmpdir_set = 1; }
 			else copy_text(output, argv[++i]);
 			continue;
 		}
@@ -99,6 +110,7 @@ int main(int argc, char **argv)
 	if (print_config) show_config();
 	if (inputs == 0 && !print_config) { fprintf(stderr, "qcc: keine Eingabedatei (siehe --help)\n"); return 2; }
 	if (inputs == 0) return 0;
+	resolve_tmpdir();
 	if (dry_run) {
 		printf("qcc: %d Eingabe(n), Frontend %s, Target %s, CPU %s\n", inputs, frontend, target, cpu);
 		printf("  1. qcpp -> .i\n  2. qcir -> .ir\n  3. %s\n", backend);
