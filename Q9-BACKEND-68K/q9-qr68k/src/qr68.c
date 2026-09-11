@@ -88,7 +88,7 @@ extern int fwrite(const char *buf, int size, int n, char *f);
 extern int printf(const char *fmt, ...);
 extern void exit(int code);
 
-/* ------------------------------------------------------------ Grenzen ---- */
+/* ------------------------------------------------------------ Limits ----- */
 /* Auf dem ZIEL sind die Felder kleiner. Das ist kein Geiz, sondern
    Notwendigkeit: QCCs Backend legt genullte Felder in den INITIALISIERTEN
    Datenbereich, und der wandert vollstaendig ins OS-9-Modul -- jedes
@@ -128,8 +128,8 @@ extern void exit(int code);
 #endif
 
 /* ------------------------------------------------------------ Grenzen ---- */
-/* Arraygroessen als Literale (QCCs constSize kennt nur Zahlen), daneben die
-   Spiegelvariable fuer die Pruefungen; selfCheck() vergleicht beides. */
+/* Array sizes are literals because QCC constSize accepts only numbers; the
+   mirror values are checked by selfCheck(). */
 static char pool[QR_POOL];
 static int POOL_MAX = QR_POOL;
 static int poolTop;
@@ -203,18 +203,18 @@ static char codeBuf[QR_CODE];
 static int CODE_MAX = QR_CODE;
 static int codeN;
 
-/* Initialisierte Daten (vsect) */
+/* Initialized data (vsect). */
 static char idataBuf[QR_IDATA];
 static int IDATA_MAX = QR_IDATA;
 static int idataN;
 
-/* Referenzen auf externe Namen und auf eigene Symbole */
+/* References to external names and local symbols. */
 static int REF_MAX = QR_REF;
-static int refName[QR_REF];     /* Pool-Index des Namens (extern) oder -1 */
+static int refName[QR_REF];     /* Name pool index (external), or -1. */
 static int refType[QR_REF];
 static int refOffs[QR_REF];
 static int refLocal[QR_REF];    /* 1 = lokale Referenz (eigenes Symbol) */
-static int refDone[QR_REF];     /* Merker beim Ausgeben der externen Namen */
+static int refDone[QR_REF];     /* Marked while emitting external names. */
 static int refN;
 
 static char lxTmp[4096];
