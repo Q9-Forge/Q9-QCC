@@ -1,26 +1,24 @@
 /* Memory probe for the target system.
  *
  * CREATED AFTER A FAILURE: running QCC against qclib on the target
- * (test/qcc_68k.sh) brach mit "qcc: kein Speicher fuer Aktions-Log" ab --
- * realloc hatte 0 geliefert.
+ * (test/qcc_68k.sh) failed with "qcc: kein Speicher fuer Aktions-Log" because
+ * realloc returned 0.
  *
  * Four measurements are performed in one emulator run:
- *   1. Der groesste freie Block. F$SRqMem mit -1 in d0.l liefert genau
+ *   1. The largest free block. F$SRqMem with -1 in d0.l returns exactly
  *      den (Handbuch: "If -1 is passed in d0.l, the largest block of free
  *      memory of the specified type is allocated").
- *   2. Die ECHTE Leiter des Parsers: erst der Eingabepuffer mit 524288
- *      Byte, dann das Aktions-Log von 1024 Eintraegen aufwaerts bis
- *      262144 -- das ist die am Host gemessene Endgroesse, ein Eintrag
- *      ist auf dem 68k 12 Byte gross. Genau diese Folge muss tragen.
- *   3. Der groesste freie Block DANACH. Er faellt um die ARENA, die
- *      qclib beim ersten realloc holt (groesster Block minus Reserve) --
- *      nicht um die Summe der Sprossen. Diese Zahl hat beim ersten
- *      Fehlschlag ein Leck ausgeschlossen und auf den Spitzenbedarf
- *      gezeigt.
- *   4. Wie weit die Leiter ueber den Bedarf hinaus traegt.
+ *   2. The parser's ACTUAL ladder: first the 524288-byte input buffer, then
+ *      the action log from 1024 entries up to 262144. This is the host-measured
+ *      final size; each entry occupies 12 bytes on 68k. The sequence must fit.
+ *   3. The largest free block AFTERWARD. It decreases by the arena qclib obtains
+ *      on the first realloc (largest block minus reserve), not by the sum of
+ *      ladder steps. This measurement ruled out a leak in the first failure
+ *      and identified the peak requirement.
+ *   4. How far the ladder extends beyond the required size.
  *
  * The error code is printed as well: _os_srqmem returns it, and without
- * ihn steht am Ende nur "ging nicht".
+ * without it, the final output would only say "failed".
  */
 
 #include <stdio.h>
@@ -87,7 +85,7 @@ int main()
 	printf("groesster Block nachher: %d\n", nachher);
 	printf("verbraucht: %d\n", vorher - nachher);
 
-	/* Und wie weit traegt es ueber den Bedarf hinaus? */
+	/* How far does it extend beyond the required size? */
 	while (n <= 50331648) {
 		q = realloc(log, n);
 		if (q == 0) {
@@ -99,11 +97,10 @@ int main()
 		n = n * 2;
 	}
 
-	/* Zurueckgegeben wird hier nichts: qclib haelt EINE Arena und hat
-	   kein free (siehe src/mem.c). Beim Prozessende gibt OS-9 sie
-	   ohnehin zurueck. Der groesste freie Block ist deshalb ab dem
-	   ersten realloc um die Arenagroesse kleiner -- das ist die
-	   Messgroesse, nicht ein Leck. */
+	/* Nothing is released here: qclib keeps one arena and has no free (see
+	   src/mem.c). OS-9 returns it when the process exits. The largest free block
+	   is therefore smaller by the arena size after the first realloc; that is
+	   the expected measurement, not a leak. */
 	printf("sonde zu ende\n");
 	return 0;
 }
