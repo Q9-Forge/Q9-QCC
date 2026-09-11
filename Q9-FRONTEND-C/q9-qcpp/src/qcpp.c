@@ -3419,9 +3419,9 @@ static void usage(void)
  * Returns: Nothing; terminates on an inconsistent build. */
 static void selfCheck(void)
 {
-	/* Die Arraygroessen stehen als Literal im Kopf und als Variable
-	   daneben (QCC laesst in Arraygrenzen nur Zahlen zu). Hier wird beides
-	   verglichen, damit die Verdopplung nicht auseinanderlaufen kann. */
+	/* Array sizes appear as literals in declarations because QCC accepts only
+	   numbers in array bounds. Compare them with the runtime limits so the
+	   duplicated values cannot drift apart. */
 	int slot;
 
 	slot = (int)sizeof(pbKind) / PB_MAX;    /* Groesse eines int-Slots */
@@ -3489,8 +3489,8 @@ int main(int argc, char **argv)
 	dateText = intern("\"Jan  1 1970\"");
 	timeText = intern("\"00:00:00\"");
 
-	/* Erst die Optionen einsammeln, dann die Vorbelegungen aufbauen: -D
-	   soll eine Vorbelegung ueberschreiben koennen. */
+	/* Collect options before creating predefined macros so -D can override
+	   one of the defaults. */
 	for (i = 1; i < argc; i++) {
 		char *a;
 
@@ -3543,11 +3543,9 @@ int main(int argc, char **argv)
 
 	setupBuiltins(wantAnsi, noPredef, dateText, timeText);
 
-	/* Das Argument einmal in einen eigenen Zeiger holen: "&argv[i][k]" ist
-	   die Adresse eines zweifach indizierten Ausdrucks, und die lehnt QCCs
-	   Grammatik ab (gemessen: FAIL). "&a[k]" auf einem char* geht. Lesende
-	   Doppelindizes wie "argv[i][0]" waeren in Ordnung -- der Zeiger macht
-	   die Schleife aber ohnehin lesbarer. */
+	/* Store each argument in a local pointer: the address of the doubly
+	   indexed expression "&argv[i][k]" is rejected by QCC, while "&a[k]"
+	   on char* is accepted. The local pointer also keeps this loop readable. */
 	for (i = 1; i < argc; i++) {
 		char *a;
 
@@ -3630,10 +3628,9 @@ int main(int argc, char **argv)
 	atOutBOL = 1;
 	atBOL = 1;
 
-	/* Die erste Marke muss hier stehen: outTok() gibt eine Marke nur beim
-	   DATEIWECHSEL aus, und die Eingabedatei ist von Anfang an die
-	   aktuelle. lastFile auf -1 zu setzen waere die kuerzere Loesung,
-	   wuerde aber die Zeilenauffuellung vor dem ersten Token verlieren. */
+	/* Emit the first marker here: outTok() emits markers only on file changes,
+	   but the input file is current from the start. Setting lastFile to -1
+	   would be shorter but would lose line padding before the first token. */
 	if (optLines)
 		outLineMarker(id, 1);
 
@@ -3641,11 +3638,9 @@ int main(int argc, char **argv)
 		nextRaw();
 		if (tkKind == TK_EOF) {
 			if (isDepth > 0) {
-				/* Verglichen wird gegen die Tiefe BEIM
-				   Einbinden, nicht gegen 0: ein #include
-				   innerhalb eines #if-Zweiges ist voellig
-				   normal, ein in der Header-Datei selbst
-				   offen gelassenes #if dagegen ein Fehler. */
+				/* Compare against the depth at include time, not zero: an
+				   #include inside an #if branch is normal, while an #if left
+				   open inside the header itself is an error. */
 				if (cdDepth != isCd[isDepth - 1])
 					fatal("#if in dieser Datei nicht geschlossen", "");
 				popInclude();
@@ -3679,10 +3674,9 @@ int main(int argc, char **argv)
 		outCh(10);
 	outFlush();
 	fclose(outFp);
-	/* Diese Meldung kommt NACH dem Schreiben und Schliessen. Genau dafuer
-	   ist sie da: die Lesemeldung oben steht am ANFANG des Laufs und taugt
-	   nicht als Endesignal -- test/run_selfhost_68k.exp hat darauf gewartet
-	   und dann den Emulator zu frueh beendet. */
+	/* Print this message only after writing and closing. The earlier read
+	   message appears at the start of the run and is not an end marker; the
+	   self-host test waits for this final message before stopping the emulator. */
 	if (optVerbose)
 		printf("qcpp: geschrieben: %d Byte nach %s\n", outTotal, outPath);
 	return 0;
