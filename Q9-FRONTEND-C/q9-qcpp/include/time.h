@@ -1,8 +1,8 @@
 /* time.h -- Q9-Werkzeugkette, bewusst minimal (s. stddef.h/string.h).
  *
- * Eigene Fassung, KEINE Uebernahme von Microwares DEFS/time.h (Microware-
- * Copyright). Nur die Typen, nicht die Funktionen: time_t/struct tm werden
- * schon zum PARSEN von Q9-Tools/System/touch,date,dir gebraucht, aber
+ * Local interface; it does not copy Microware's copyrighted DEFS/time.h.
+ * It provides types, not functions: time_t/struct tm are needed to parse
+ * Q9-Tools/System/touch,date,dir, but
  * time()/localtime() sind hier ABSICHTLICH noch nicht deklariert -- qclib
  * hat den dafuer noetigen OS-9-Uhrzeit-Syscall noch nicht (eigenes,
  * spaeteres Vorhaben). Diese Header bleiben sonst immer deckungsgleich mit
@@ -10,8 +10,8 @@
  * ohne Gegenstueck waere nur ein spaeterer Binder-Fehler statt eines
  * fruehen, klaren "unknown function".
  *
- * struct tm nur mit den sechs Feldern, die diese drei Werkzeuge lesen
- * (tm_wday/tm_yday/tm_isdst fehlen bewusst -- bei Bedarf ergaenzen).
+ * struct tm contains only the six fields read by these tools; add the others
+ * when required.
  */
 #ifndef Q9_TIME_H
 #define Q9_TIME_H

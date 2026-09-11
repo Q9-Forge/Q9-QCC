@@ -1,13 +1,13 @@
 /* stddef.h -- Q9-Werkzeugkette, bewusst minimal.
  *
- * Diese Header sind KEIN Ersatz fuer die Microware-Header, sondern die
- * Schnittmenge, die der Bootstrap braucht: alles darin muss von QCC selbst
- * lesbar sein. Die SDK-Header koennen das nicht sein -- 153 von ihnen
+ * These headers are not replacements for Microware headers; they are the
+ * subset needed by the bootstrap, and everything here must be readable by QCC.
+ * The SDK headers cannot satisfy that requirement: 153 of them
  * schalten an __STDC__ zwischen Prototypen und K&R-Deklarationen um, tragen
  * Compilerattribute und definieren stderr als Makro auf ein internes
  * stdio-Objekt (&_niob[2]).
  *
- * Genau deshalb gab es tools/bootstrap_prepare.py: es schnitt den
+ * This is why tools/bootstrap_prepare.py existed: it removed the
  * expandierten SDK-Vorspann weg und setzte eine eigene Praeambel davor. Mit
  * diesen Headern entsteht dieselbe Praeambel auf dem normalen Weg -- durch
  * #include.
