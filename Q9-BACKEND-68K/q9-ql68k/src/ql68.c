@@ -856,7 +856,7 @@ static void farCall(int si, int here, const char *name)
 	if (jtPlan)
 		return;
 
-	/* ZWEI Formen, beide an l68 gemessen -- und beide tragen dasselbe
+	/* Two forms, both measured against l68, share the same
 	   ROF-Typwort $00b0 (im Code, 2 Byte, relativ). Sie sind also nur am
 	   OPCODE zu unterscheiden:
 
@@ -885,9 +885,8 @@ static void farCall(int si, int here, const char *name)
 		outBuf[here - 1] = op & 255;
 		disp = jtBase + e * 6 + 2;
 	} else {
-		/* Das Handbuch nennt fuer -a nur "distant BSRs and LEAs".
-		   Alles andere waere ungemessen -- lieber abbrechen als
-		   raten. */
+		/* The manual mentions only distant BSRs and LEAs for -a. Other
+		   forms are unmeasured, so abort instead of guessing. */
 		fatal("-a kennt bisher nur bsr.w und lea d16(pc): ", name);
 		return;
 	}
@@ -939,8 +938,8 @@ static void applyExtRefs(int k)
 			else if (inCode && symType[si] != 6 &&
 				 (size == 2 || size == 3))
 				val = val + dataBias;
-			/* Bit 6: abziehen (Handbuch: "add the negative of the
-			   symbols location"). */
+			/* Bit 6: subtract (the manual says to add the negative of the
+			   symbol's location). */
 			if (type & 0x0040)
 				val = -val;
 			if (rel)
@@ -951,12 +950,9 @@ static void applyExtRefs(int k)
 			} else if (size == 2) {
 				v = ((outBuf[here] & 255) << 8) | (outBuf[here + 1] & 255);
 				v = v + val;
-				/* Ein PC-relativer Codebezug, der nicht mehr in
-				   das Wort passt: das ist der Fall, fuer den es
-				   -a gibt. HIER ist die richtige Pruefstelle --
-				   nach dem Aufaddieren ALLER Anteile. Ein
-				   Waechter auf den Zwischenwert waere falsch
-				   (s. den Messbefund ueber applyLocalRefs). */
+				/* A PC-relative code reference that no longer fits in the
+				   word is the case handled by -a. Check only after all
+				   contributions have been added; an intermediate check is wrong. */
 				if (rel && inCode && (v < -32768 || v > 32767)) {
 					farCall(si, here, &inBuf[nameAt]);
 					continue;
@@ -969,9 +965,8 @@ static void applyExtRefs(int k)
 				    ((outBuf[here + 2] & 255) << 8) |
 				    (outBuf[here + 3] & 255);
 				patch32(here, v + val);
-				/* Ein Langwort in den Daten, das auf Code oder
-				   Daten zeigt, muss der Lader noch anfassen.
-				   Bei einem absoluten (equ-) Symbol nicht. */
+				/* A data longword pointing to code or data needs another loader
+				   adjustment; an absolute equ symbol does not. */
 				if (!inCode && symType[si] != 6 && !(type & 0x0040)) {
 					if (symType[si] == 4)
 						irefAdd(irefCode, &irefCodeN, bInit[k] + offs);
@@ -985,10 +980,9 @@ static void applyExtRefs(int k)
 	}
 }
 
-/* Die Globalen aller psects eintragen, mit der Basis ihres Abschnitts.
-   Typwoerter nach Handbuch Kap. 6: 0 uninit. Daten, 1 init. Daten,
-   4 Code, 6 equ (5 = set und $0100/$0102 = Common kommen im Korpus nicht
-   vor und werden abgelehnt). */
+/* Register all psect globals with their section base. Type words follow the
+   OS-9 format: 0 uninitialized data, 1 initialized data, 4 code and 6 equ.
+   Unsupported types are rejected. */
 static void addGlobals(int k)
 {
 	int at;
@@ -1069,11 +1063,11 @@ static void emit(void)
 	if (!isDesc && !isDrvr)
 		dataBias = -0x8000;
 
-	/* --- Datenbereich auslegen: ERST alle reservierten, dann alle
+	/* --- Lay out data: all reserved data first, then all
 	   initialisierten Daten -- und zwar psect fuer psect in der
 	   Reihenfolge der Kommandozeile (Handbuch Abb. 9-2, an zwei psects
 	   nachgemessen: mvar landet auf $0c, svar auf $14). --- */
-	/* Mit -b=<n> bekommt JEDER psect-Block seine eigene Grenze -- und
+	/* With -b=<n>, every psect block gets its own boundary, counted in
 	   zwar im DATENbereich gezaehlt, nicht im Dateiabstand (gemessen:
 	   bei -b=16 stehen die dc-Daten auf Dateiabstand $78, jeder Block
 	   ist trotzdem 16 lang). Ohne -b= ist optAlign 1 und alignUp
