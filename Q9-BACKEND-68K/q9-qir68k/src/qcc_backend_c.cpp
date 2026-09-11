@@ -393,34 +393,30 @@ static int findGlobal(const char* name) {
 	return -1;
 }
 
-/* -largedata (Funktionsaufruf-Teil, 2026-07-25, Nutzerwunsch "automatisch eine
-   jmp table bauen wenn die Spruenge zu gross werden"): bsr ist wie lea(pc)
-   PC-relativ-16-Bit -- betrifft NICHT die internen bra/beq/bne-Sprungziele
-   INNERHALB einer Funktion (LABEL/JMP/JZ/JNZ, immer durch die Groesse EINER
-   Funktion begrenzt), sondern FUNKTIONSUEBERGREIFENDE Aufrufe (CALL/CALLP,
-   interne Laufzeit-Helfer wie tc_mul_i32), deren Aufrufstellen ueber ein
-   beliebig grosses Programm verstreut sein koennen.
-   Loesung: EIN Register (a4) wird EINMAL beim Programmstart auf die absolute
-   Adresse einer kleinen Tabelle (tc_functab) gesetzt ("lea tc_functab(pc),a4"
-   -- die Tabelle liegt bewusst DIREKT nach tc_start/main, bleibt also immer
-   erreichbar, WIE GROSS der Rest des Programms auch wird). Jeder Aufruf wird
-   dann zu "move.l N(a4),a2\njsr (a2)" statt "bsr X" -- a4-relative
-   Adressierung hat zwar auch nur 16-Bit-Displacement, aber die Tabelle selbst
-   waechst nur mit der ANZAHL der Funktionen (4 Byte/Eintrag), nicht mit der
-   Code-GROESSE -- bleibt fuer jede realistische Anzahl Funktionen klein genug.
-   a2 als Scratch-Register gewaehlt (NICHT a0/a1): a0 ist z.B. in IPADDN ueber
-   den bsr hinweg belegt (Pointer-Wert), a1 in tc_putint/tc_putuint/tc_putchar
-   (Puffer-Zeiger, siehe deren Definition) -- a2 ist an JEDER betroffenen
-   Aufrufstelle nachweislich frei. */
+/* -largedata (function-call part, 2026-07-25, requested as "automatically
+   build a jump table when calls are too far away"): like lea(pc), bsr uses a
+   16-bit PC-relative displacement. This does NOT affect internal bra/beq/bne
+   targets within one function (LABEL/JMP/JZ/JNZ are bounded by one function),
+   but it does affect cross-function calls (CALL/CALLP and runtime helpers such
+   as tc_mul_i32) whose call sites may be spread across an arbitrarily large
+   program.
+   Solution: one register (a4) is initialized ONCE at program start with the
+   address of a small table (tc_functab), deliberately placed directly after
+   tc_start/main so it remains reachable regardless of the size of the rest of
+   the program. Each call becomes "move.l N(a4),a2\njsr (a2)" instead of
+   "bsr X". The table grows only with the NUMBER of functions (4 bytes per
+   entry), not with code size, so a4-relative addressing remains practical.
+   a2 is used as scratch (NOT a0/a1): a0 carries a pointer across IPADDN's bsr,
+   while a1 is used as a buffer pointer by tc_putint/tc_putuint/tc_putchar;
+   a2 is demonstrably free at every affected call site. */
 static int helperTableOffset(const char* rawName) {
-	/* AUSGESCHRIEBEN STATT TABELLE, damit QCC diese Datei uebersetzen kann
-	   (2026-09-07): ein Zeigerarray MIT Initialisierungsliste kennt QCCs
-	   Teilmenge nicht, und ein "static" im Funktionsrumpf davor auch nicht --
-	   beides bricht dort still ab (Schlusswort FAIL, keine Meldung). Das
-	   Backend muss selbst uebersetzbar sein, sonst kann es nie auf dem 68030
-	   laufen. Die Reihenfolge ist die Tabellenordnung und traegt den
-	   Rueckgabewert i * 4; wer hier etwas einfuegt, verschiebt die Offsets
-	   der -largedata-Funktionstabelle. */
+	/* WRITTEN OUT INSTEAD OF A TABLE so QCC can compile this file
+	   (2026-09-07): QCC's subset does not support a pointer array with an
+	   initializer list, and a preceding "static" inside the function also
+	   fails silently (final status FAIL, no diagnostic). The backend must be
+	   self-compilable or it can never run on the 68030. This order is the table
+	   order and determines the returned offset i * 4; inserting an entry shifts
+	   all offsets in the -largedata function table. */
 	if (strcmp(rawName, "tc_mul_i32")  == 0) return 0;
 	if (strcmp(rawName, "tc_div_i32")  == 0) return 4;
 	if (strcmp(rawName, "tc_udiv_u32") == 0) return 8;
@@ -429,7 +425,7 @@ static int helperTableOffset(const char* rawName) {
 	if (strcmp(rawName, "tc_putint")   == 0) return 20;
 	if (strcmp(rawName, "tc_putuint")  == 0) return 24;
 	if (strcmp(rawName, "tc_putchar")  == 0) return 28;
-	fatal("interner Fehler: unbekannter Laufzeit-Helfer fuer -largedata-Funktionstabelle");
+	fatal("internal error: unknown runtime helper for -largedata function table");
 	return -1;
 }
 
@@ -504,17 +500,17 @@ static int isNumWord(const char* w) {
 	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
 }
 
-/* Byte size of a type tag for LOAD/STORE width and pointer/index-
-   Skalierung (2026-09-09, ersetzt das fruehere isByteWord(): mit short als
-   dritter Groesse reicht ein bool nicht mehr). 'h' -> 2, alles andere wie
-   bisher (Zeiger 'p' und alle 32-Bit-Skalare 'i'/'u' -> 4). */
+/* Byte size of a type tag for LOAD/STORE width and pointer/index scaling
+   (2026-09-09, replacing the former isByteWord(): short adds a third size, so
+   a boolean is no longer sufficient). 'h' -> 2; everything else remains as
+   before (pointer 'p' and all 32-bit scalars 'i'/'u' -> 4). */
 static int tagSize(const char* w) {
 	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
 	if (strcmp(w, "h") == 0) return 2;
 	return 4;
 }
 /* Shift amount for lsl.l/asr.l scaling in pointer arithmetic/indexing:
-   Byte 1x (kein Schieben), Word 2x, Long 4x. */
+   Byte 1x (no shift), word 2x, long 4x. */
 static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : 2; }
 /* 68k size suffix for move/dc/ds. */
 static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
