@@ -1737,18 +1737,15 @@ static void emitIR(FILE* out) {
 				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
 				int ai;
 				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
-				/* Adresse EINMAL in a0 (a0 ist in diesem Backend generell ein freies
-				   Scratch-Adressregister, wird von keinem IR-Opcode ueber dessen eigene
-				   Emission hinaus als gueltig vorausgesetzt). small: PC-relative "lea"
-				   passend zum PIC-Stil des restlichen Backends (vgl. tc_g_<name>(pc)-
-				   Zugriffe); large: derselbe a3-Indirektionsmechanismus wie bei echten
-				   Globalen (siehe emitLeaGlobal()-Kommentar) -- tc_extcall_tmp bekommt
-				   dafuer einen zusaetzlichen Tabelleneintrag NACH allen echten Globalen
-				   (Offset globalCount*4). */
+				/* Load the address ONCE into a0 (a0 is a free scratch address register
+				   throughout this backend; no IR opcode requires it to remain valid beyond
+				   its own emission). small uses PC-relative "lea" to match the backend's
+				   PIC style; large uses the same a3 indirection mechanism as real globals.
+				   tc_extcall_tmp consequently receives an additional table entry AFTER
+				   all real globals (offset globalCount*4). */
 				if (stackArgs > 0) {
-					/* 2026-07-26: tc_gadata-Eintrag ist ein Link-Zeit-Offset, kein
-					   absoluter Zeiger (siehe emitLeaGlobal()-Kommentar) -- adda.l
-					   noetig wie ueberall sonst. */
+					/* 2026-07-26: the tc_gadata entry is a link-time offset, not an
+					   absolute pointer (see emitLeaGlobal()); adda.l is required as usual. */
 					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n\tadda.l\ta3,a0\n", globalCount * 4);
 					else fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
 				}
