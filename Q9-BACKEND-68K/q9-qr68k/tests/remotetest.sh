@@ -2,20 +2,21 @@
 # "vsect remote" against r68, byte-for-byte. r68 is the oracle.
 #
 # WHY remote IS NEEDED: a non-remote vsect is addressed through d16(a6)
-# angesprochen und passt damit in 64 KB; l68 lehnt mehr ab ("non-remote data
-# allocation exceeds 64k bytes"). Remote-Daten zaehlen dort nicht mit -- l68
-# legt sie im Datenbereich HINTER die initialisierten Daten, aus dem
-# 16-Bit-Fenster heraus. Das ist der Weg, auf dem QCCs Datenmodell-Umbau
-# (genullte Globals in den vsect, Faktor ~6 kleinere Module) ueberhaupt durch
-# die Binder kommen kann.
+# addressed through a 16-bit displacement and therefore fits in 64 KB; l68
+# rejects anything larger ("non-remote data allocation exceeds 64k bytes").
+# Remote data is not counted there: l68 places it in the data area AFTER the
+# initialized data, outside the 16-bit window. This is how QCC's data-model
+# (zeroed globals in the vsect, producing modules about six times smaller)
+# can pass through the linker at all.
 #
 # Until 2026-09-07 qr68 SILENTLY DISCARDED "remote": ROFs with and
-# ohne remote waren byteidentisch, remotestatsiz blieb 0. Genau die
-# Fehlerklasse, die dieses Projekt sonst bekaempft -- und sie hat den Umbau
-# blockiert, ohne sich zu zeigen.
+# without remote data were byte-identical, while remotestatsiz remained zero.
+# This is exactly the class of error otherwise caught by this project; it had
+# blocked the refactoring without being visible.
 #
 # The final case INTENTIONALLY tests without remote: it must remain
-# byteidentisch bleiben, sonst hat die Aenderung den Normalfall beschaedigt.
+# remain byte-identical; otherwise the change would have damaged the normal
+# case.
 set -uo pipefail
 F=/Volumes/SSD1TB/projects/Q9-Forge/Q9-QCC/Q9-BACKEND-68K/q9-qr68k
 W=/tmp/remote-diff

@@ -3,8 +3,8 @@
 # require the same directory tree and -u= options.
 #
 # Also verify the search rule measured against r68:
-#   "use datei" und "use \"datei\"" -> relativ zum ARBEITSverzeichnis,
-#   "use <datei>"                   -> nur die -u=-Verzeichnisse.
+#   "use file" and "use \"file\"" -> relative to the WORKING directory,
+#   "use <file>"                    -> only the -u= directories.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -29,7 +29,7 @@ WERT     equ     $20
 tabelle: dc.l    WERT,WERT*2
 EOF
 cat > "$TMP/inc/tief.a" <<'EOF'
-* Eine eingeschlossene Datei, die selbst einschliesst.
+* An included file that includes another file itself.
          use     gleichauf.a
 ZWEITER  equ     WERT+1
 EOF
@@ -46,7 +46,7 @@ start:   move.l  #WERT,d0
          ends
 EOF
 cat > "$TMP/leer.a" <<'EOF'
-* Nur ein Kommentar -- prueft, dass eine leere Datei den Stapel nicht stoert.
+* A comment only -- verifies that an empty file does not disturb the stack.
 EOF
 cat > "$TMP/woanders.a" <<'EOF'
 woanders: moveq  #1,d0

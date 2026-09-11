@@ -61,7 +61,7 @@ echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 
 echo "== 3/6 Backend (-os9 -largedata -remotedata) =="
 # -largedata is required: qr68 holds far more than 32 KB of global state;
-# ohne die Indirektionstabelle meldet der Assembler "value out of range".
+# without the indirection table, the assembler reports "value out of range".
 "$QCC/build/qir_68k" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
 	>/dev/null || die "qir_68k"
 echo "  $(wc -c < "$WORK/qr68.s68" | tr -d ' ') Byte Assembler"
