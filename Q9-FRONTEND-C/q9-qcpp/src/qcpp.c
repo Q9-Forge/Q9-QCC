@@ -396,7 +396,7 @@ static void warn(const char *msg, const char *detail)
 	printf("qcpp: %s:%d: warning: %s%s\n", fn, lxLine, msg, detail);
 }
 
-/* ============================================================== Dateien === */
+/* ================================================================ Files === */
 /* Directory part of a path without a trailing separator, or "" when absent.
    Supports both "/" (OS-9/POSIX) and "\" (SDK paths under Wine). */
 /*
@@ -3080,7 +3080,7 @@ static void directive(void)
 	if (poolEq(name, "if")) {
 		if (skipping) {
 			condPush(0);
-			cdTaken[cdDepth - 1] = 1;   /* nie wieder aktiv werden */
+			cdTaken[cdDepth - 1] = 1;   /* never become active again */
 			skipRestOfLine();
 			return;
 		}
@@ -3420,7 +3420,7 @@ static void selfCheck(void)
 	   duplicated values cannot drift apart. */
 	int slot;
 
-	slot = (int)sizeof(pbKind) / PB_MAX;    /* Groesse eines int-Slots */
+	slot = (int)sizeof(pbKind) / PB_MAX;    /* Size of one int slot */
 
 	if ((int)sizeof(pool) != POOL_MAX)
 		fatal("innerer Fehler: POOL_MAX passt nicht zu pool[]", "");
