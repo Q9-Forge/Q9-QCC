@@ -1391,7 +1391,7 @@ static void genNode68k(FILE* fp, int id, int failLabel, int lexical) {
 
 // Runtime helpers for LEXER mode:
 //   ws   -- skips WHITESPACE characters and configured line comments.
-//           Zerstoert d1, laesst d0 unangetastet.
+//           Clobbers d1 and preserves d0.
 //   idch -- tests d1 for an identifier character; d0.b = 1 yes / 0 no.
 static void emitLexHelpers68k(FILE* fp, const char* cs) {
 	int lTop = newLabel();		// ws: Schleifenkopf
@@ -1541,7 +1541,7 @@ static void emitLexHelpers68k(FILE* fp, const char* cs) {
 	fprintf(fp, "\trts\n\n");
 }
 
-// Gemeinsamer Kern beider 68k-Ausgabeformate. os9=0: "nacktes" Motorola-Format
+// Shared core for both 68k output formats. os9=0: plain Motorola format
 // (vasm-compatible, labels only). os9=1 uses Microware r68 format: the same
 // code body, '*' for full comment lines, and a nam/psect/ends wrapper.
 static int genParser68kTo(const char* path, int os9, const char* baseName) {
