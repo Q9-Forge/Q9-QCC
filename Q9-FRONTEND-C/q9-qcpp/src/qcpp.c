@@ -2727,7 +2727,7 @@ static int findInclude(const char *name, int isAngle, int fromDir)
 	const char *d;
 	int k;
 
-	/* "..." zuerst im Verzeichnis der einbindenden Datei (C89 3.8.2) */
+	/* Search "..." first in the including file's directory (C89 3.8.2). */
 	if (!isAngle) {
 		n = 0;
 		d = poolAt(fromDir);
@@ -2839,7 +2839,7 @@ static void doInclude(void)
 
 	id = findInclude(name, isAngle, fromDir);
 	if (id == -2)
-		return;                       /* schon eingebunden, "#pragma once" */
+		return;                       /* Already included with "#pragma once". */
 	if (id < 0)
 		fatal("#include: Datei nicht gefunden: ", name);
 
@@ -2912,25 +2912,23 @@ static void doPragma(void)
 
 	collectLine();
 
-	/* "#pragma once" wird BEACHTET und nicht durchgegeben -- genau wie es
-	   cc -E tut (gemessen: dort erscheint die Zeile nicht in der Ausgabe).
-	   Ohne das wird ein Header, der sich so schuetzt (im MWOS-SDK z.B.
-	   SRC/DEFS/stdcomp.h), bei doppelter Einbindung zweimal ausgegeben. */
+	/* Honor "#pragma once" and do not pass it through, matching cc -E.
+	   Without this, a protected header such as MWOS SDK SRC/DEFS/stdcomp.h
+	   would be emitted twice when included through two paths. */
 	if (lineN == 1 && agKind[lineAt] == TK_ID && poolEq(agText[lineAt], "once")) {
 		flOnce[lxFile] = 1;
 		agTop = lineAt;
 		return;
 	}
 
-	/* alles andere unveraendert durchgeben -- welche Pragmas die naechste
-	   Stufe kennt, entscheidet nicht der Praeprozessor (C89 3.8.6). */
+	/* Pass all other pragmas through unchanged; later stages decide which
+	   pragmas they understand (C89 3.8.6). */
 	if (!atOutBOL)
 		outCh(10);
 	outStr("#pragma");
 	for (i = 0; i < lineN; i++) {
-		/* Abstaende der Quelle uebernehmen, nicht pauschal ein
-		   Leerzeichen: "warning ( disable : 4114)" soll genau so
-		   wieder herauskommen. */
+		/* Preserve source whitespace instead of inserting a fixed space so
+		   formatting such as "warning ( disable : 4114)" is retained. */
 		if (i == 0 || agWs[lineAt + i])
 			outCh(' ');
 		outStr(poolAt(agText[lineAt + i]));
@@ -2969,9 +2967,8 @@ static void doLineDir(void)
 		lxTmp[n] = 0;
 		if (flN >= FILE_MAX)
 			fatal("zu viele Dateien (FILE_MAX)", "");
-		/* Neuer Tabelleneintrag mit gleichem Puffer, anderem Namen:
-		   damit stimmen Meldungen und -lines-Marker, ohne dass der
-		   Lexer etwas davon merken muss. */
+		/* Add a table entry with the same buffer but a new name so diagnostics
+		   and -lines markers use the requested source name. */
 		id = flN;
 		flName[id] = intern(lxTmp);
 		flDir[id] = flDir[lxFile];
@@ -2999,9 +2996,8 @@ static void emitAsmMarker(const char *what)
 	outCh(10);
 }
 
-/* #asm ... #endasm: der Rumpf wird wie gewoehnlicher Text behandelt (Makros
-   werden expandiert, Kommentare fallen weg) -- so verhaelt sich xcc -pp,
-   gemessen. Direktiven im Rumpf gibt es nicht, ausser #endasm. */
+	/* #asm ... #endasm: process the body as ordinary text (expand macros and
+	   discard comments), matching xcc -pp. Only #endasm is recognized inside. */
 /* Function: doAsm
  * Copies an OS-9 assembler block to the preprocessed output.
  * Parameters: None.
@@ -3036,7 +3032,7 @@ static void doAsm(void)
 				lastFile = lxFile;
 				return;
 			}
-			/* kein #endasm: beide Tokens gehoeren zum Rumpf */
+			/* Not #endasm: both tokens belong to the body. */
 			pbPushCur();
 			if (pbN < save)
 				fatal("innerer Fehler: Stapel unterlaufen", "");
@@ -3063,9 +3059,8 @@ static void directive(void)
 	if (tkKind == TK_NL || tkKind == TK_EOF)
 		return;                       /* leere Direktive "#" */
 
-	/* "# 42 "datei"" -- die Zeilenmarken, die andere Praeprozessoren
-	   erzeugen. Beim Verketten von Werkzeugen kommt das vor, deshalb wie
-	   #line behandelt. */
+	/* "# 42 \"file\"" is the line-marker form emitted by other preprocessors;
+	   support it when tools are chained by treating it like #line. */
 	if (tkKind == TK_NUM) {
 		if (skipping) {
 			skipRestOfLine();
@@ -3085,7 +3080,7 @@ static void directive(void)
 	}
 	name = tkText;
 
-	/* Bedingungen wirken auch im uebersprungenen Bereich */
+	/* Conditional directives also take effect in skipped regions. */
 	if (poolEq(name, "if")) {
 		if (skipping) {
 			condPush(0);
@@ -3138,9 +3133,8 @@ static void directive(void)
 			condUpdateSkip();
 			return;
 		}
-		/* Der Ausdruck darf erst hier ausgewertet werden: in einem
-		   uebersprungenen Zweig steht oft etwas, das gar nicht
-		   auswertbar ist. */
+		/* Evaluate only here: a skipped branch often contains text that is
+		   not evaluable as an expression at all. */
 		skipping = 0;
 		if (evalIfLine()) {
 			cdActive[cdDepth - 1] = 1;
@@ -3221,8 +3215,8 @@ static void directive(void)
 	if (poolEq(name, "endasm"))
 		fatal("#endasm ohne #asm", "");
 	if (poolEq(name, "ident") || poolEq(name, "sccs")) {
-		/* Kennzeichnungsdirektiven aelterer Unix-Compiler: bewusst
-		   ueberlesen, sie tragen keine Bedeutung fuer die Uebersetzung. */
+		/* Identification directives from older Unix compilers have no effect
+		   on translation, so deliberately skip them. */
 		skipRestOfLine();
 		return;
 	}
@@ -3263,7 +3257,7 @@ static void setupBuiltins(int wantAnsi, int noPredef, int dateText, int timeText
 	defineMacro(intern("__TIME__"), 0, 0, 0, at, 1, 0);
 
 	if (!noPredef) {
-		/* _OSK und _UCC: am Original gemessen, xcc setzt genau diese
+		/* _OSK and _UCC: measured from the reference compiler; xcc sets exactly
 		   zwei (weder _OS9000 noch __STDC__).
 		   _Q9 und _Q9OS: EIGENE Kennungen der Q9-Kette. _Q9 heisst "mit
 		   den Q9-Werkzeugen uebersetzt" (also qcpp/QCC statt xcc/Ultra
@@ -3291,7 +3285,7 @@ static void setupBuiltins(int wantAnsi, int noPredef, int dateText, int timeText
 	}
 }
 
-/* -D name / -D name=wert */
+/* -D name / -D name=value. */
 /* Function: defineFromArg
  * Parses and registers one command-line -D definition.
  * Parameters: arg Definition text without the -D prefix.
@@ -3328,10 +3322,9 @@ static void defineFromArg(const char *arg)
 	name = internN(arg, eq);
 	at = mtTop;
 	bodyN = 0;
-	/* Der Wert wird als EIN Token uebernommen. Zusammengesetzte Werte
-	   ("-Dx=a+b") gehen damit als ein Stueck durch -- fuer die Faelle, die
-	   diese Kette braucht (Zahlen, Namen), ist das genau richtig; alles
-	   andere waere ein zweiter Lexerlauf ueber die Kommandozeile. */
+	/* Take the value as one token. Compound values such as "-Dx=a+b" pass
+	   through as one piece; this is sufficient for the numeric and identifier
+	   values used by this toolchain and avoids a second command-line lex pass. */
 	if (eq + 1 < n) {
 		if (mtTop >= MT_MAX)
 			fatal("Makrospeicher voll (MT_MAX)", "");
