@@ -734,7 +734,7 @@ static void lexNext(void)
 		return;
 	}
 
-	/* Bezeichner */
+	/* Identifier. */
 	if (isAlphaCh(c)) {
 		n = 0;
 		while (1) {
@@ -749,10 +749,9 @@ static void lexNext(void)
 		return;
 	}
 
-	/* Zahl im Sinne von C89 3.1.8 "preprocessing number": beginnt mit einer
-	   Ziffer (oder "." + Ziffer) und schluckt danach Buchstaben, Ziffern,
-	   Punkte und Exponentenvorzeichen. Assemblerzahlen wie "$0515B007" im
-	   #asm-Block passen dadurch ebenfalls. */
+	/* C89 3.1.8 preprocessing number: starts with a digit (or "." followed
+	   by a digit) and then consumes letters, digits, dots and exponent signs.
+	   This also accepts assembler numbers such as "$0515B007" in #asm blocks. */
 	if (isDigitCh(c)) {
 		n = 0;
 		while (1) {
@@ -778,7 +777,7 @@ static void lexNext(void)
 		return;
 	}
 
-	/* Zeichenkette / Zeichenkonstante */
+	/* String or character constant. */
 	if (c == '"' || c == 39) {
 		int quote;
 
@@ -809,9 +808,8 @@ static void lexNext(void)
 			}
 		}
 		if (!closed) {
-			/* In uebersprungenem Code (falscher #if-Zweig) darf ein
-			   unbalanciertes Anfuehrungszeichen nicht abbrechen --
-			   dort steht oft Text, der gar kein C ist. */
+			/* In skipped code (an inactive #if branch), an unmatched quote
+			   must not abort preprocessing because the text may not be C. */
 			if (!skipping) {
 				if (quote == '"')
 					fatal("Zeichenkette nicht geschlossen", "");
@@ -839,10 +837,8 @@ static void lexNext(void)
 		int savePos;
 		int saveLine;
 
-		/* "..." braucht zwei Zeichen Vorschau. Statt zurueckzurechnen
-		   (das geht bei einer uebersprungenen Zeilenfortsetzung schief)
-		   wird der Lexerzustand gemerkt und bei Nichttreffer wieder
-		   hergestellt. */
+		/* "..." needs two lookahead characters. Save and restore lexer state
+		   instead of rewinding, which fails across skipped line continuations. */
 		savePos = lxPos;
 		saveLine = lxLine;
 		rdTake();
@@ -886,7 +882,7 @@ static void lexNext(void)
 		if (two) {
 			rdTake();
 			n = lexAppend(n, c2);
-			/* dreistellig: <<= und >>= */
+			/* Three-character operators: <<= and >>=. */
 			if ((c == '<' && c2 == '<') || (c == '>' && c2 == '>')) {
 				if (rdPeek() == '=') {
 					rdTake();
@@ -912,7 +908,7 @@ static void lexNext(void)
 static void pbPush(int kind, int text, int line, int file, int ws)
 {
 	if (pbN >= PB_MAX)
-		fatal("Expansionsstapel voll (PB_MAX) -- Makrorekursion?", "");
+		fatal("expansion stack full (PB_MAX) -- macro recursion?", "");
 	pbKind[pbN] = kind;
 	pbText[pbN] = text;
 	pbLine[pbN] = line;
@@ -984,7 +980,7 @@ static int macIsParam(int m, int text)
 /* ==================================================== Makroexpansion ===== */
 static int expandOne(void);
 
-/* Aus rohen Tokens eine Zeichenkette bauen (# -Operator, C89 3.8.3.2). */
+/* Build a string from raw tokens (# operator, C89 3.8.3.2). */
 /* Function: stringizeArg
  * Converts a macro argument to a C string token.
  * Parameters: at Argument start; n Argument length.
@@ -1007,8 +1003,8 @@ static int stringizeArg(int at, int n)
 		kind = agKind[at + i];
 		k = strLen(s);
 		for (j = 0; j < k; j++) {
-			/* In Zeichenketten und Zeichenkonstanten muessen " und \
-			   verdoppelt werden. */
+			/* Quotes and backslashes inside string and character constants
+			   must be escaped again. */
 			if (kind == TK_STR || kind == TK_CH) {
 				if (s[j] == '"' || s[j] == 92)
 					len = lexAppend(len, 92);
