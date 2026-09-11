@@ -1,17 +1,16 @@
 #!/usr/bin/expect -f
-# Faehrt das von QCC gebaute qr68-Modul auf echtem 68030.
-# Wird von tools/test_68k.sh aufgerufen (Q9FLUX, QR68_IMAGE, MWOS, ROMIMG).
+# Run the qr68 module built by QCC on a real 68030.
+# Called by tools/test_68k.sh (Q9FLUX, QR68_IMAGE, MWOS, ROMIMG).
 #
-# Der Zeitrahmen ist weit: das Modul ist ueber 1 MB gross (QCCs Backend legt
-# genullte Felder in den INITIALISIERTEN Datenbereich -- s. Kommentar im
-# Quelltext), und das laedt der Emulator vom CF-Abbild nicht in einer
-# Sekunde.
+# Use a generous timeout: the module is over 1 MB (QCC's backend places zeroed
+# fields in initialized data; see the source comments), and the emulator does
+# not load that from the CF image within one second.
 set timeout 900
 set send_slow {1 .003}
 
-# Am ECHTEN Prompt ankern und beliebig viele Leerzeichen dahinter zulassen:
-# der OS-9-Prompt kommt mit mehreren, und ein Muster mit genau einem trifft
-# nie -- der Lauf haengt dann bis zur Zeitschranke.
+# Anchor on the REAL prompt and allow any number of trailing spaces:
+# the OS-9 prompt contains several spaces, and a pattern with exactly one
+# never matches, leaving the run stuck until the timeout.
 set prompt {ROOT# *$}
 
 set flux  $env(Q9FLUX)
@@ -38,18 +37,18 @@ for {set i 0} {$i < 10 && !$logged_in} {incr i} {
 }
 if {!$logged_in} { send_user "\n<<< LOGIN FEHLGESCHLAGEN >>>\n"; exit 1 }
 
-# NICHT auf den Prompt warten: der steht nach dem Login noch im Puffer und
-# traefe sofort -- der Emulator waere beendet, bevor das Modul geladen ist.
-# Gewartet wird auf die SCHREIB-Meldung von "-v", die erst nach fclose()
-# kommt; die Lesemeldung steht am Anfang und beweist nur das Laden.
+# Do NOT wait for the prompt: after login it is still buffered and would match
+# immediately; the emulator would exit before the module was loaded.
+# Wait for the WRITE message from "-v", which appears only after fclose();
+# the read message appears first and proves only that loading happened.
 send -s "/dd/CMDS/q9_qr68 -v /dd/insn.a /dd/insn.r\r"
 expect {
     -re {geschrieben: ([0-9]+) Byte Code} {
         send_user "\n<<< QR68 LIEF AUF 68K DURCH, $expect_out(1,string) Byte Code >>>\n"
     }
-    # An die DIAGNOSEFORM ankern (qr68: <datei>:<zeile>: <text>), nicht an
-    # "qr68: " allein: expect nimmt das im Strom zuerst passende Muster, und
-    # das traefe schon mitten in der -v-Zeile.
+    # Anchor on the DIAGNOSTIC FORM (qr68: <file>:<line>: <text>), not just
+    # "qr68: ": expect uses the first matching pattern in the stream, which
+    # would match in the middle of the -v line.
     -re {qr68: [^ \r\n]+:[0-9]+:} {
         send_user "\n<<< QR68 MELDET EINEN FEHLER >>>\n"
         exit 1
