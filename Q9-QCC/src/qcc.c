@@ -200,6 +200,12 @@ int main(int argc, char **argv)
 	{
 		char command[512];
 		const char *input = argv[argc - 1];
+		#if defined(_Q9OS) || defined(_OSK)
+		if (strncmp(input, "/dd/", 4) == 0) {
+			if (q9_system("chd /dd") != 0) return 4;
+			input += 4;
+		}
+		#endif
 		if (strcmp(tmpdir, "/dd") != 0) {
 			sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
 			if (q9_system(command) != 0) return 4;
