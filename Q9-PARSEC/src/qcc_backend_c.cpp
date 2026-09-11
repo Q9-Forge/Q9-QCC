@@ -454,8 +454,9 @@ static void emitTableBases(FILE* out, const char* anchor, const char* psect) {
    Versuch, a4 hier bei JEDEM Aufruf neu zu laden -- brach r68 mit "value out
    of range", siehe emitLeaGlobal()-Kommentar): a4 wird stattdessen NUR direkt
    NACH jedem CALLEXT/CALLEXTP neu geladen (dort, wo es kaputtgehen kann). */
-/* BUG 5 (2026-07-26, live auf Q9 gefunden, FUENFTER -largedata-Bug dieser
-   Sitzung): jede Funktion frischt a3/a4 seit dem Bug-4-Fix GLEICH NACH dem
+/* BUG 5 (2026-07-26, found live on Q9, the fifth -largedata bug in this
+   session): since the bug-4 fix, each function refreshes a3/a4 immediately
+   after its own
    eigenen "link" auf IHRE EIGENE Tabelle auf -- das heisst aber auch: NACH
    der Rueckkehr aus JEDEM internen Aufruf (CALL/CALLP, auch Laufzeit-Helfer
    wie tc_putint) zeigen a3/a4 auf die Tabelle der AUFGERUFENEN Funktion,
@@ -500,17 +501,17 @@ static int isNumWord(const char* w) {
 	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
 }
 
-/* Byte size of a type tag for LOAD/STORE width and pointer/index-
-   Skalierung (2026-09-09, ersetzt das fruehere isByteWord(): mit short als
-   dritter Groesse reicht ein bool nicht mehr). 'h' -> 2, alles andere wie
-   bisher (Zeiger 'p' und alle 32-Bit-Skalare 'i'/'u' -> 4). */
+/* Byte size of a type tag for LOAD/STORE width and pointer/index scaling
+   (2026-09-09, replacing isByteWord(): a bool is insufficient with short as a
+   third size). 'h' -> 2; all other types retain their previous size (pointer
+   'p' and all 32-bit scalars 'i'/'u' -> 4). */
 static int tagSize(const char* w) {
 	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
 	if (strcmp(w, "h") == 0) return 2;
 	return 4;
 }
 /* Shift amount for lsl.l/asr.l scaling in pointer arithmetic/indexing:
-   Byte 1x (kein Schieben), Word 2x, Long 4x. */
+   byte 1x (no shift), word 2x, long 4x. */
 static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : 2; }
 /* 68k size suffix for move/dc/ds. */
 static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
