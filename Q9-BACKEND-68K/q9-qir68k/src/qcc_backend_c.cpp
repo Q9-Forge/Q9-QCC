@@ -1512,7 +1512,7 @@ static void emitIR(FILE* out) {
 		/* a3/a4 are initialized at program entry and are not changed by internal
 		   QCC functions. External calls use wrappers that restore these ABI scratch
 		   registers. */
-		/* BIG-ENDIAN-KORREKTUR FUER char-PARAMETER (2026-08-10, live am
+		/* BIG-ENDIAN FIX FOR char PARAMETERS (2026-08-10, found in the
 		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
 		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
 		   PUSH/emitCall) -- der Bytewert eines char-Parameters steht damit im
@@ -1555,12 +1555,11 @@ static void emitIR(FILE* out) {
 				for (pk = fn->first; pk < fn->last; pk++) {
 					Instr* px = &ir[pk];
 					/* The opcode-name comparison MUST precede number() (short-circuit
-					   Auswertung) -- sonst faellt number() ueber JEDE einargumentige
-					   Instruktion her, auch "LABEL L0" oder "JMP L2", deren Argument
-					   gar keine Zahl ist. Genau das brach hier beim Umbau auf zwei
-					   Opcode-Paare (2026-09-09): number() lief unbedingt zuerst und
-					   "IR Zeile N: Zahl erwartet: L0" schlug beim naechsten Selbsthost-
-					   Lauf zu (SourceQCC/ebnf.tc, tcCopyBounded). */
+					   evaluation); otherwise number() would process every one-argument
+					   instruction, including "LABEL L0" and "JMP L2", whose argument is
+					   not numeric. This broke the two-opcode-pair change (2026-09-09):
+					   number() ran first and the next self-hosting run failed with
+					   "IR line N: number expected: L0" (SourceQCC/ebnf.tc, tcCopyBounded). */
 					if (px->argc == 1) {
 						if ((strcmp(px->op, "LOADC") == 0 || strcmp(px->op, "STOREC") == 0) &&
 						    number(px->args[0], px->line) == pslot) usedAsChar = 1;
