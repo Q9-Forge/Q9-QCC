@@ -1304,7 +1304,7 @@ static void selfCheck(void)
 /* ========================================================= Line splitting */
 /* Microware format: label in column 1, indented mnemonic, then operands and
    operands, then comment. "*" in column 1 is a comment line.
-   Ein Label mit ":" ist GLOBAL -- gemessen an r68: aus "start: rts" wird ein
+   A label with ":" is GLOBAL -- measured against r68: "start: rts" becomes a
    global ROF entry, while "start rts" does not. */
 static char lnLabel[256];
 static char lnOp[64];          /* Lowercase; instructions are case-insensitive. */
@@ -5710,7 +5710,7 @@ static void writeRof(void)
 	outWord(psTyLan);
 	outWord(psAttRev);
 	outWord(0);                    /* valid */
-outWord(249);                  /* series -- same as r68 V2.9.1 */
+	outWord(249);                  /* series -- same as r68 V2.9.1 */
 	outByte(dtYear);
 	outByte(dtMonth);
 	outByte(dtDay);
@@ -5725,7 +5725,7 @@ outWord(249);                  /* series -- same as r68 V2.9.1 */
 	outLong(psEntry);
 	outLong(psTrap);
 	outLong(remoteStatStorage);    /* remotestatsiz */
-outLong(0);                    /* remoteidatsiz -- no caller */
+	outLong(0);                    /* remoteidatsiz -- no caller */
 	outLong(0);                    /* debugsiz */
 	outStrZ(poolAt(psName));
 
