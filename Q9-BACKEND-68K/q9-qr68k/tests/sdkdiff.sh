@@ -13,11 +13,11 @@
 # NOTHING is written to the SDK tree: os9make executes nothing,
 # and redirects the -o= output to a temporary directory.
 #
-# Unlike test/mwos.sh, which receives PORTDIR/DRVDIR/UEXTRA manually, this gets
+# Unlike tests/mwos.sh, which receives PORTDIR/DRVDIR/UEXTRA manually, this gets
 # its configuration from the makefile.
 #
-#   ./test/sdkdiff.sh                -- all directories with a makefile
-#   ./test/sdkdiff.sh <dir> ...      -- only these
+#   ./tests/sdkdiff.sh               -- all directories with a makefile
+#   ./tests/sdkdiff.sh <dir> ...     -- only these
 #
 #   KEEP=<dir>    keep temporary files
 #   HUNKS=<n>     number of differences shown per mismatch

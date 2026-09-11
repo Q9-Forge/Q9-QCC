@@ -6,8 +6,8 @@
 # are the only non-reproducible r68 output (two runs differed in one seconds byte).
 #
 # Usage:
-#   ./test/difftest.sh              -- built-in probes
-#   ./test/difftest.sh file.a ...   -- real sources
+#   ./tests/difftest.sh             -- built-in probes
+#   ./tests/difftest.sh file.a ...  -- real sources
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
