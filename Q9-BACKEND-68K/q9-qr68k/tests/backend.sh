@@ -38,4 +38,4 @@ if [ ${#files[@]} -eq 0 ]; then
 	exit 0
 fi
 
-exec ./test/difftest.sh "${files[@]}"
+exec ./tests/difftest.sh "${files[@]}"
