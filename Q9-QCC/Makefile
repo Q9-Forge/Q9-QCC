@@ -21,6 +21,9 @@ test: $(TARGET)
 	@$(TARGET) --emit-ir --tmpdir build/qcc-test -o build/qcc-test/result.ir tests/smoke.c >/dev/null
 	@grep -q '^PUSH 42' build/qcc-test/result.ir
 	@TMP=build/qcc-env $(TARGET) --emit-ir tests/smoke.c | grep -q 'build/qcc-env/qcc/output.ir'
+	@$(TARGET) -E -o build/qcc-test/result.i tests/smoke.c >/dev/null
+	@grep -q 'putint' build/qcc-test/result.i
+	@$(TARGET) --dry-run --no-optimizer main.c | grep -q '3. qir68k'
 	@echo 'qcc smoke test: OK'
 
 clean:
