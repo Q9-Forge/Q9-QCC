@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # Differential test on MWOS SDK DRIVER SOURCES -- the most demanding
 # material: includes, macros, conditional assembly, branch sizing, and
-# Ausdrücke mit mehreren externen Anteilen, alles in einer Datei.
+# expressions with multiple external terms, all in one file.
 #
 # Assemble as the SDK makefiles do: from a
-# PORT-Verzeichnis heraus (dort liegt "defsfile", das "use defsfile" holt),
-# mit den Schaltern -qb -u=. -u=<DEFS> -u=<MACROS>.
+# PORT directory (which contains "defsfile", loaded by "use defsfile"),
+# with flags -qb -u=. -u=<DEFS> -u=<MACROS>.
 #
 #   ./tests/mwos.sh                -- all SCF drivers of the example port
 #   ./tests/mwos.sh file.a ...     -- selected sources
 #
 # UEXTRA adds further search directories (space-separated).
-# Der ROM-Code braucht das: ROM_CBOOT/sysinit.a holt sich "systype.d" aus
-# dem WURZELverzeichnis des Ports, nicht aus dem eigenen -- ohne den
-# zusaetzlichen -u faellt r68 auf sein eingebautes \mwos\OS9\SRC\DEFS
-# zurueck und bricht ab.
+# ROM code needs this: ROM_CBOOT/sysinit.a loads "systype.d" from the PORT
+# ROOT directory, not its own directory. Without the additional -u, r68 falls
+# back to its built-in \mwos\OS9\SRC\DEFS and fails.
 #
 #   UEXTRA=$MWOS/OS9/68030/PORTS/Q9 PORTDIR=... ./tests/mwos.sh .../sysinit.a
 set -uo pipefail
@@ -39,7 +38,7 @@ mkdir -p "$TMP"
 [ -n "${KEEP:-}" ] || trap 'rm -rf "$TMP"' EXIT
 
 # os9-toolchain.sh redirects MWOS to the WINE path; save the Unix path first,
-# vorher gerettet werden, sonst sucht qr68 seine Includes unter "M:\...".
+# must be saved first, otherwise qr68 searches for includes under "M:\...".
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
 source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
@@ -58,8 +57,8 @@ if [ ${#files[@]} -eq 0 ]; then
 fi
 
 # Paths for Wine. Everything below $MWOS is mapped to drive M:
-# -- mit einem "Z:"-Pfad findet r68 sein Suchverzeichnis NICHT (es faellt
-# dann auf sein eingebautes \mwos\OS9\SRC\DEFS zurueck).
+# -- a "Z:" path does NOT let r68 find its search directory (it falls back to
+# its built-in \mwos\OS9\SRC\DEFS).
 winpath() {
 	case "$1" in
 	"$MWOS"/*) printf 'M:%s' "$(printf '%s' "${1#$MWOS}" | sed 's#/#\\#g')";;
