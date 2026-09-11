@@ -218,6 +218,7 @@ static int textEndasm;
 /* ============================================================== Zeichen === */
 static int isSpaceCh(int c)
 {
+	/* C-Whitespace unabhaengig von der Host-Locale erkennen. */
 	if (c == ' ' || c == 9 || c == 11 || c == 12 || c == 13)
 		return 1;
 	return 0;
@@ -225,6 +226,7 @@ static int isSpaceCh(int c)
 
 static int isDigitCh(int c)
 {
+	/* Praeprozessor-Zahlen sind ASCII-Tokens, nicht locale-abhaengig. */
 	if (c >= '0' && c <= '9')
 		return 1;
 	return 0;
@@ -232,6 +234,7 @@ static int isDigitCh(int c)
 
 static int isAlphaCh(int c)
 {
+	/* Bezeichneralphabet des QCC-Subsets: ASCII plus Unterstrich. */
 	if (c >= 'a' && c <= 'z')
 		return 1;
 	if (c >= 'A' && c <= 'Z')
