@@ -74,7 +74,7 @@ typedef struct {
 	int elemSize;
 	int isArray;
 	int length;
-	/* 2026-08-11: war `int init[MAX_ARRAY_LEN]`, also 16 KB pro Global und bei
+	/* 2026-08-11: formerly `int init[MAX_ARRAY_LEN]`, or 16 KB per global; with
 	   MAX_GLOBALS=1024 ein statisches Feld von 16,8 MB -- der groesste Einzel-
 	   posten des Backends und auf dem Q9 (16 MB RAM) allein schon zu viel.
 	   Jetzt ein Zeiger in initPool, erst beim ERSTEN GINIT zugeteilt: Arrays
@@ -90,7 +90,7 @@ typedef struct {
 
 static Instr ir[MAX_IR_LINES];
 
-/* Textpool fuer die Argumente aller IR-Zeilen (s. Kommentar an Instr).
+/* Text pool for arguments of all IR lines (see the Instr comment).
    Groesse an echten Daten bemessen, nicht geraten: SourceQCC/ebnf.tc (12220
    IR-Zeilen) braucht 109 KB Argumenttext, codegen.tc (16469 Zeilen) 162 KB --
    also rund 9 Byte pro Zeile. Auf MAX_IR_LINES=65536 hochgerechnet sind das
@@ -100,7 +100,7 @@ static Instr ir[MAX_IR_LINES];
 #define ARG_POOL_BYTES  1048576
 static char argPool[ARG_POOL_BYTES];
 static int  argPoolUsed;
-/* Ziel fuer nicht belegte Argumentplaetze -- s. Instr-Kommentar. */
+/* Target for unused argument slots; see the Instr comment. */
 static char argEmpty[1];
 
 static int irCount = 0;
@@ -113,7 +113,7 @@ static int globalCount = 0;
 
 static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer registerExtern()/externTableOffset() vorwaertsdeklariert */
 
-/* Legt tok im Pool ab und liefert den Zeiger darauf. */
+/* Stores tok in the pool and returns its pointer. */
 static char* argIntern(const char* tok, int irLine)
 {
 	int len;
@@ -133,7 +133,7 @@ static char* argIntern(const char* tok, int irLine)
 	return dst;
 }
 
-/* Pool fuer die Initialisierer globaler Arrays (s. Kommentar an Global.init).
+/* Pool for global-array initializers (see the Global.init comment).
    Groesse an echten Daten bemessen: ebnf.tc braucht 20,5 KB, codegen.tc
    34,9 KB -- 256 KB lassen damit ueber das Siebenfache Luft. Wie bei den
    uebrigen Kapazitaetsgrenzen meldet Erschoepfung laut per fatal(). */
@@ -141,7 +141,7 @@ static char* argIntern(const char* tok, int irLine)
 static int initPool[INIT_POOL_INTS];
 static int initPoolUsed;
 
-/* Teilt n nullinitialisierte Elemente zu und liefert den Zeiger darauf. */
+/* Allocates n zero-initialized elements and returns their pointer. */
 static int* initAlloc(int n, int irLine)
 {
 	char msg[160];
@@ -281,7 +281,7 @@ static void emitAlign(FILE* out) {
 	fputs(os9Mode ? "\talign\t4\n" : "\teven\n", out);
 }
 
-/* "Speichermodell"-Schalter (2026-07-25, siehe -largedata in main()/usage()):
+	/* "Memory model" switch (2026-07-25, see -largedata in main()/usage()):
    Standardmodell ("small") adressiert JEDES Globale ausschliesslich PC-relativ
    ("lea tc_g_X(pc),a0") -- das ist eine ECHTE 68000-Hardware-Grenze (16-Bit-
    Displacement, +-32 KB Reichweite von der jeweiligen Instruktion aus), keine
@@ -411,7 +411,7 @@ static int findGlobal(const char* name) {
    (Puffer-Zeiger, siehe deren Definition) -- a2 ist an JEDER betroffenen
    Aufrufstelle nachweislich frei. */
 static int helperTableOffset(const char* rawName) {
-	/* AUSGESCHRIEBEN STATT TABELLE, damit QCC diese Datei uebersetzen kann
+	/* WRITTEN OUT INSTEAD OF A TABLE so QCC can translate this file
 	   (2026-09-07): ein Zeigerarray MIT Initialisierungsliste kennt QCCs
 	   Teilmenge nicht, und ein "static" im Funktionsrumpf davor auch nicht --
 	   beides bricht dort still ab (Schlusswort FAIL, keine Meldung). Das
@@ -441,7 +441,7 @@ static void emitTableBases(FILE* out, const char* anchor, const char* psect) {
 	fprintf(out, "\tadda.l\t#(tc_gadata__%s-%s),a3\n", psect, anchor);
 }
 
-/* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer QCC-
+/* Emits a call to an ALREADY MANGLED assembler name (for QCC-
    Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
    Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
    asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben.
@@ -502,7 +502,7 @@ static int isNumWord(const char* w) {
 	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
 }
 
-/* Byte-Groesse eines Typtags fuer LOAD/STORE-Breite und Zeiger-/Index-
+/* Byte size of a type tag for LOAD/STORE width and pointer/index-
    Skalierung (2026-09-09, ersetzt das fruehere isByteWord(): mit short als
    dritter Groesse reicht ein bool nicht mehr). 'h' -> 2, alles andere wie
    bisher (Zeiger 'p' und alle 32-Bit-Skalare 'i'/'u' -> 4). */
@@ -511,10 +511,10 @@ static int tagSize(const char* w) {
 	if (strcmp(w, "h") == 0) return 2;
 	return 4;
 }
-/* Schiebeweite fuer die lsl.l/asr.l-Skalierung bei Zeigerarithmetik/Index:
+/* Shift amount for lsl.l/asr.l scaling in pointer arithmetic/indexing:
    Byte 1x (kein Schieben), Word 2x, Long 4x. */
 static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : 2; }
-/* 68k-Groessensuffix fuer move/dc/ds. */
+/* 68k size suffix for move/dc/ds. */
 static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
 
 static int number(const char* text, int line) {
