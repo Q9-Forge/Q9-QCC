@@ -1,14 +1,14 @@
 /* Measurement, not pass/fail comparison: how does Microware clib split lines?
  *
- * Die Frage steht vor qclibs fgets. OS-9 nutzt herkoemmlich CR ($0d) als
- * Zeilenende, C schreibt LF ($0a) vor, und die IR-Dateien der Kette
- * entstehen mit $0a (an qclibs und clibs printf gemessen). Welches Byte
- * clibs fgets beendet, ist damit NICHT herleitbar -- also gemessen.
+ * The question predates qclib's fgets. OS-9 traditionally uses CR ($0d) as
+ * line ending, while C writes LF ($0a), and the chain's IR files are produced
+ * with $0a (measured with qclib and clib printf). Which byte clib's fgets uses
+ * to terminate a line cannot be inferred, so it is measured here.
  *
- * Geschrieben wird eine Datei mit ALLEN drei Faellen hintereinander:
+ * A file containing ALL THREE cases in sequence is written:
  *   A $0d B $0a C $0d $0a D
- * Danach liest fgets sie zurueck, und das Programm druckt jede Zeile als
- * Bytefolge. Aus der Aufteilung folgt die Antwort.
+ * fgets then reads it back, and the program prints each line as a byte
+ * sequence. The resulting split provides the answer.
  *
  * This program is linked against clib (qclib does not yet provide fgets).
  */
