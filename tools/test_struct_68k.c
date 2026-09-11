@@ -2,14 +2,14 @@
  *
  * Why not run it against qccvm.py in runtests.sh: the host VM is not a valid
  * oracle for structs. Its pointer_index() computes offset // type_size(tag), so
- * Zellenindex haengt also vom ZUGRIFFSTYP ab -- eine byteweise Kopie und ein
- * int-Zugriff landen bei arr[i] in verschiedenen Zellen. Auf echtem 68k
+ * The cell index therefore depends on ACCESS TYPE: a byte copy and an int
+ * access land in different cells for arr[i]. On real 68k
  * the same IR is correct on real 68k byte memory. Struct changes must therefore
  * be checked in the emulator.
  *
  * Output format: one "<id>:<value>\n" per case. The id is printed BEFORE the case,
- * damit ein Absturz (PMMU, Stack Overflow) am letzten gedruckten Marker
- * ablesbar ist statt nur als fehlende Ausgabe.
+ * so a crash (PMMU, stack overflow) can be located at the last printed marker
+ * instead of appearing only as missing output.
  */
 
 struct I { int a; int b; };

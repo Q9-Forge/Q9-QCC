@@ -1,12 +1,11 @@
 /* short regression test for the REAL 68k target (2026-09-10).
  *
  * Why not only qccvm.py (host VM): pointer_index()
- * rechnet offset // type_size(tag) -- ein struct-Feld-Layout, in dem ein
- * 2-Byte- und ein 4-Byte-Feld auf denselben Python-Listenplatz fallen
- * (z. B. "short a; short b; int c;": b liegt auf Byteoffset 2, c auf
- * Byteoffset 4 -- 2/2=1 und 4/4=1 kollidieren), ist im Orakel NICHT pruefbar.
- * Fall 7 unten ist genau diese Reihenfolge und daher NUR hier, nicht in
- * runtests.sh, aussagekraeftig.
+ * computes offset // type_size(tag), so a struct layout with 2-byte and
+ * 4-byte fields can map two fields to the same Python list slot. For example,
+ * in "short a; short b; int c;", b has offset 2 and c offset 4, but both
+ * produce slot 1. The host oracle cannot validate this. Case 7 below covers
+ * exactly this layout and is meaningful only here, not in runtests.sh.
  *
  * Output format matches test_struct_68k.c: one "<id>:<value>\n" per case.
  */
