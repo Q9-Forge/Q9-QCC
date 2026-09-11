@@ -1,20 +1,19 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   parsec.cpp                                                                      Ver. 2.30
 // Owner:  AF
-// Desc.:  EBNF-Uebersetzer (Wirth-Dialekt): parst eine .ebnf-Grammatik, erzeugt daraus eine
-//         Sprungtabelle mit Call/Return-Semantik (Stack-Maschine), fuehrt sie gegen Testeingaben
+// Desc.:  EBNF translator (Wirth dialect): parses a .ebnf grammar, generates a
+//         call/return jump table (stack machine), executes it against test input
 //         aus und verwaltet eine strukturierte Arbeitsdatei (<basis>.lextab) mit den Bloecken
 //         EBNF-QUELLTEXT, TS-/NTS-SYMBOLTABELLE, PARSER-TABELLE sowie den nutzer-editierbaren
-//         Bloecken TESTS und NUTZER-CODE.
-//         Endziel des Projekts: Codegenerierung (rekursiver Abstieg) fuer die Grammatik,
-//         zuerst als 68k-Assembler.
+//         TESTS and USER-CODE blocks.
+//         Project goal: recursive-descent code generation for the grammar,
+//         initially as 68k assembly.
 //
 // Call:   parsec <basis> [<teststring>]
-//         Fall A: <basis>.ebnf vorhanden -> Grammatik neu uebersetzen (die .ebnf ist die
-//                 Wahrheit), Arbeitsdatei <basis>.lextab neu schreiben (TESTS bleiben erhalten),
-//                 Listing nach <basis>.lexlst.
-//         Fall B: keine .ebnf -> Grammatik direkt aus der Arbeitsdatei <basis>.lextab laden.
-//         Danach: TESTS-Block ausfuehren; optional <teststring> gegen die Startregel testen.
+//         Case A: <base>.ebnf exists -> retranslate the grammar (the .ebnf is authoritative),
+//                 rewrite <base>.lextab while preserving TESTS, and write <base>.lexlst.
+//         Case B: no .ebnf -> load the grammar directly from <base>.lextab.
+//         Then execute TESTS; optionally test <teststring> against the start rule.
 //
 // Edition History
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
@@ -52,23 +51,22 @@
 //─────────┴──────┴─────────────────────────────────────────────────────────────────────────┴──────
 
 //------------------------------------------------------------------------------------------------
-// Unterstuetzter EBNF-Dialekt vs. ISO/IEC 14977:1996
+// Supported EBNF dialect vs. ISO/IEC 14977:1996
 //------------------------------------------------------------------------------------------------
-// Dieses Tool folgt bewusst dem "Wirth-Dialekt" (wie in den Pascal-/Modula-2-/Oberon-
-// Sprachberichten verwendet), NICHT der ISO/IEC-14977-Norm selbst. Wichtigste Abweichungen:
+// This tool deliberately follows the "Wirth dialect" used in Pascal, Modula-2
+// and Oberon language reports, not ISO/IEC 14977 itself. Main differences:
 //
-//  - Regelende:        "."                statt ISO's ";"
-//  - Kommentare:        "#", "//", "/* */" statt ISO's einzigem "(* ... *)"
-//  - NTS-Klammerung:    "<name>" optional  -- stammt eigentlich aus klassischem BNF,
-//                       nicht aus ISO 14977 (das kennt nur "nackte" Meta-Identifier)
-//  - Bereichsoperator:  "~" fuer Zeichenbereiche, z.B. "a"~"z"                 -- EIGENE
-//                       Erweiterung, in ISO 14977 NICHT enthalten. Bewusst NICHT "-"
-//                       gewaehlt, weil "-" in ISO 14977 bereits anders belegt ist
-//                       (dort: Except-/Mengendifferenz-Operator, z.B. letter - "e").
+//  - Rule terminator:   "."                instead of ISO's ";"
+//  - Comments:          "#", "//", "/* */" instead of ISO's only "(* ... *)"
+//  - NTS brackets:       optional "<name>", originating in classic BNF rather
+//                       than ISO 14977, which uses bare meta-identifiers
+//  - Range operator:     "~" for character ranges such as "a"~"z". This is a
+//                       deliberate extension; "-" is already ISO's set-
+//                       difference operator, for example letter - "e".
 //
-// Alle anderen Kernoperatoren (=, ,, |, [ ], { }, ( ), gequotete Terminale) sind zur
-// ISO-Bedeutung kompatibel. Wer explizit ISO-14977-konforme Grammatiken schreiben will,
-// sollte diese Erweiterungen (<name>, ~) meiden.
+// All other core operators (=, ,, |, [ ], { }, ( ), quoted terminals) are
+// compatible with ISO semantics. Grammars intended to be strictly ISO-14977
+// compliant should avoid the extensions (<name>, ~).
 //------------------------------------------------------------------------------------------------
 #include <iostream>
 #include <stdio.h>
@@ -2145,4 +2143,3 @@ char* getAktLine() {
 	}
 	return readPtr;
 }
-
