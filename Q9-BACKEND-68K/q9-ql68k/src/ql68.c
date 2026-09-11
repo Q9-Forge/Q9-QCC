@@ -1413,9 +1413,9 @@ static void usage(void)
 
 static int argStarts(const char *a, const char *p);
 
-/* Schalter, die das Modul NICHT veraendern -- angenommen und uebergangen,
-   damit die Aufrufe der SDK-Makefiles unveraendert durchlaufen. Jeder
-   einzelne ist gegen den Lauf OHNE ihn nachgemessen (test/optstest.sh):
+/* Options that do NOT change the module. Accept and ignore them so SDK
+   makefile invocations continue to work unchanged. Each was compared with
+   a run without the option (test/optstest.sh):
      -m[=]  Modulkarte, wahlweise in eine Datei
      -s[=]  dieselbe Karte mit Symbolen
      -w     Karte alphabetisch statt nach Adressen
@@ -1427,13 +1427,10 @@ static int argStarts(const char *a, const char *p);
      -q     still
      -f=    zusaetzliche DATEIrechte -- nicht der Modulkopf, dafuer -p=
      -mt<x> Umgang mit thread-fremdem Code
-   l68 nimmt die Einzelbuchstaben auch als BUENDEL: "-swam" der
-   ROM-Makefiles ist -s -w -a -m, "-gwj" druckt die Sprungtabellenkarte
-   (an l68 nachgemessen).
-   -a bleibt als BUCHSTABE in der Liste, weil "-swam" der ROM-Makefiles
-   sonst nicht mehr durchlaeuft -- es wird beim Auswerten aber eigens
-   herausgegriffen und schaltet die Sprungtabelle ein (s. farCall).
-   Im SDK-Korpus wirkt es nie; die eigene Kette kommt ohne es nicht aus. */
+   l68 also accepts single letters as bundles: "-swam" means -s -w -a -m,
+   while "-gwj" prints the jump-table map. -a remains in this compatibility
+   list so ROM makefile bundles pass through; option parsing extracts it and
+   enables the jump table. */
 static int harmlessOpt(const char *a)
 {
 	int i;
