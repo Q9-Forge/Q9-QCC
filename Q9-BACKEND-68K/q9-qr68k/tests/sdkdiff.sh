@@ -8,7 +8,7 @@
 # everything; otherwise they remain silent because .r files already exist.
 # This fixes every
 # r68 command line with its actual flags, search directories, and
-# -a-Definitionen fest.
+# -a definitions.
 #
 # NOTHING is written to the SDK tree: os9make executes nothing,
 # and redirects the -o= output to a temporary directory.
@@ -46,7 +46,7 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 
 # Everything below $MWOS is mapped to drive M: under Wine. With a
 # a "Z:" path does NOT let r68 find its search directory (it falls back to its
-# eingebautes \mwos\OS9\SRC\DEFS zurueck).
+# built-in \mwos\OS9\SRC\DEFS).
 winpath() {
 	case "$1" in
 	"$MWOS"/*) printf 'M:%s' "$(printf '%s' "${1#$MWOS}" | sed 's#/#\\#g')";;
@@ -131,7 +131,7 @@ for d in "${dirs[@]}"; do
 		usrc="$(unwin "$src")"
 		if [ ! -f "$d/$usrc" ]; then
 			# "os9make -nn" descends into sub-makes and prints
-			# deren Kommandos MIT DEM ARBEITSVERZEICHNIS DES KINDES.
+			# their commands with THE CHILD'S WORKING DIRECTORY.
 			# The paths are then invalid from here. Since each
 			# directory with a makefile is processed separately,
 			# this is duplication rather than a gap,
