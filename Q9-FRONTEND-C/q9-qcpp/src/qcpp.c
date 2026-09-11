@@ -182,6 +182,10 @@ static int textDefined;
 static int textEndasm;
 
 /* ============================================================== Zeichen === */
+/* Function: isSpaceCh
+ * Tests whether a byte is one of the supported C whitespace characters.
+ * Parameters: c Byte value.
+ * Returns: Non-zero when c is whitespace. */
 static int isSpaceCh(int c)
 {
 	/* C-Whitespace unabhaengig von der Host-Locale erkennen. */
@@ -190,6 +194,10 @@ static int isSpaceCh(int c)
 	return 0;
 }
 
+/* Function: isDigitCh
+ * Tests whether a byte is an ASCII decimal digit.
+ * Parameters: c Byte value.
+ * Returns: Non-zero for '0' through '9'. */
 static int isDigitCh(int c)
 {
 	/* Praeprozessor-Zahlen sind ASCII-Tokens, nicht locale-abhaengig. */
@@ -198,6 +206,10 @@ static int isDigitCh(int c)
 	return 0;
 }
 
+/* Function: isAlphaCh
+ * Tests whether a byte can start a QCC identifier.
+ * Parameters: c Byte value.
+ * Returns: Non-zero for ASCII letters and underscore. */
 static int isAlphaCh(int c)
 {
 	/* Bezeichneralphabet des QCC-Subsets: ASCII plus Unterstrich. */
@@ -210,6 +222,10 @@ static int isAlphaCh(int c)
 	return 0;
 }
 
+/* Function: isAlnumCh
+ * Tests whether a byte can continue a QCC identifier.
+ * Parameters: c Byte value.
+ * Returns: Non-zero for identifier letters, digits and underscore. */
 static int isAlnumCh(int c)
 {
 	if (isAlphaCh(c) || isDigitCh(c))
@@ -217,6 +233,10 @@ static int isAlnumCh(int c)
 	return 0;
 }
 
+/* Function: strLen
+ * Calculates the length of a NUL-terminated string.
+ * Parameters: s Input string.
+ * Returns: Number of characters before the terminating NUL. */
 static int strLen(const char *s)
 {
 	int n;
@@ -228,11 +248,19 @@ static int strLen(const char *s)
 }
 
 /* ================================================================= Pool === */
+/* Function: poolAt
+ * Returns a pointer into the interned string pool.
+ * Parameters: idx Pool index.
+ * Returns: Address of the string at idx. */
 static char *poolAt(int idx)
 {
 	return &pool[idx];
 }
 
+/* Function: poolEq
+ * Compares an interned pool string with an external string.
+ * Parameters: idx Pool index; s External string.
+ * Returns: Non-zero when both strings are equal. */
 static int poolEq(int idx, const char *s)
 {
 	int i;
