@@ -53,7 +53,7 @@ cp -c "$BASE" "$IMAGE" 2>/dev/null || cp "$BASE" "$IMAGE" || die "Abbild kopiere
 "$OS9" copy -l -r "$QUELLE" "$IMAGE,/insn.a" || die "ToolShed copy (Quelle)"
 
 echo "== Hostlauf zum Vergleich =="
-"$REPO/build/qr68" "$QUELLE" "$WORK/host.r" || die "Hostlauf"
+"$REPO/build/qr68k" "$QUELLE" "$WORK/host.r" || die "Hostlauf"
 echo "  $(wc -c < "$WORK/host.r" | tr -d ' ') Byte"
 
 echo "== Emulator =="
