@@ -1303,7 +1303,7 @@ static void selfCheck(void)
 
 /* ========================================================= Line splitting */
 /* Microware format: label in column 1, indented mnemonic, then operands and
-   Operanden, danach Kommentar. "*" in Spalte 1 ist eine Kommentarzeile.
+   operands, then comment. "*" in column 1 is a comment line.
    Ein Label mit ":" ist GLOBAL -- gemessen an r68: aus "start: rts" wird ein
    Global-Eintrag im ROF, aus "start rts" nicht. */
 static char lnLabel[256];
@@ -1792,11 +1792,11 @@ static int oReg[2];
 static int oVal[2];
 static int oSect[2];
 static int oExt[2];
-static int oIdx[2];            /* 0..7 = dN, 8..15 = aN, -1 = keiner */
+static int oIdx[2];            /* 0..7 = dN, 8..15 = aN, -1 = none */
 static int oIdxL[2];           /* 1 = .l, 0 = .w */
-static int oIdxScale[2];       /* Zweierlogarithmus der Skalierung: 0..3 */
-static int oOpen[2];           /* 1 = Wert im ersten Durchlauf noch offen */
-static int oN;                 /* Zahl der Operanden dieser Zeile */
+static int oIdxScale[2];       /* Binary logarithm of scale: 0..3 */
+static int oOpen[2];           /* 1 = value still unresolved on first pass */
+static int oN;                 /* Number of operands on this line */
 
 static char opTxt0[512];
 static char opTxt1[512];
@@ -2068,7 +2068,7 @@ static void parseOperand(const char *s, int k)
 
 				ilen = (ie - 1) - (comma + 1);
 				/* Scaling by 1, 2, 4, or 8 follows the width
-				   der Breite ("d0.l*4"). r68 nimmt sie erst ab
+				   the width ("d0.l*4"). r68 accepts it only from
 				   -m2 an, darunter meldet es "illegal addressing
 				   mode" (gemessen ueber -m0..-m6). Im Korpus
 				   steht sie in SRC/IO/SCF/DRVR/sc68360.a und in
@@ -2127,7 +2127,7 @@ static void parseOperand(const char *s, int k)
 			oMode[k] = AM_DISP;
 			return;
 		}
-		/* Sonst war die Klammer Teil des Ausdrucks -- faellt durch. */
+		/* Otherwise the parentheses were part of the expression; fall through. */
 	}
 	if (post)
 		fatal("\"+\" ohne Klammerform: ", s);
@@ -2289,7 +2289,7 @@ static void emitEa(int k, int size)
 		}
 		if (oSect[k] != SECT_CODE && oSect[k] != SECT_ABS)
 			fatal("PC-Bezug auf einen anderen Abschnitt: ", lnArg);
-		/* Zeigt der Ausdruck auf eine CODESTELLE, rechnet r68 den
+		/* If the expression points to a CODE location, r68 calculates the
 		   Abstand aus ("lea ziel(pc),a1" -> $ffec). Ist er dagegen ein
 		   fester Wert, steht er UNVERAENDERT als Abstand drin:
 		   "jmp 3(pc)" ergibt $0003, ebenso "lea WERT(pc),a2" mit
@@ -2316,7 +2316,7 @@ static void emitEa(int k, int size)
 	}
 	/* AM_IMM */
 	if (size == 1) {
-		/* Ein Byte-Sofortwert steht im NIEDERWERTIGEN Byte des
+		/* A byte immediate is stored in the LOW byte of the
 		   Erweiterungswortes, und eine Referenz darauf ist bytegross
 		   und zeigt genau dorthin: "move.b #fremd,d0" ergibt $0028 auf
 		   Offset 3 (gemessen). Die I-Formen machen es anders, die
