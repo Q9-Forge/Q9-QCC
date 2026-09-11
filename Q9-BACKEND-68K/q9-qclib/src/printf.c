@@ -159,17 +159,17 @@ void qp_int(int v)
 	qp_num(v, 10);
 }
 
-/* Der gemeinsame Formatierer. fi ist der Index der Formatzeichenkette,
- * die variadischen Argumente folgen ab fi+1.
+/* Shared formatter. fi is the format-string index; variadic arguments start
+ * at fi+1.
  *
- * Erkannt werden %d %i %u %x %c %s %% sowie die Laengenangabe l und eine
- * Genauigkeit .Zahl bzw. .* -- mehr kommt in der Kette nicht vor
+ * Supported forms are %d %i %u %x %c %s %%, length modifier l, and precision
+ * .number or .*; no other forms occur in the toolchain.
  * (nachgezaehlt an QCCs Bootstrap-Quelle: 203 %d, 155 %s, 67 %c,
  * 30 %.*s, 7 %ld). Die Laengenangabe l wird UEBERGANGEN, und das ist
  * keine Nachlaessigkeit: auf dem 68k sind int und long beide 32 Bit,
  * %ld und %d sind dasselbe.
  *
- * Alles andere wird UNVERAENDERT durchgereicht -- eine Breitenangabe wie
+ * Everything else is passed through UNCHANGED; a width such as
  * %20s erscheint also als Text, statt still falsch ausgerichtet zu
  * werden. Auch eine Genauigkeit an einer Zahl (%.3d, in C89 die
  * Mindestziffernzahl) faellt bewusst in diesen Zweig, statt
