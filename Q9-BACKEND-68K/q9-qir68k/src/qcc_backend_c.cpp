@@ -250,7 +250,7 @@ static char psectName[NAME_LEN] = "tc_prog";
    normal multi-file builds keep using their individual psect name. */
 static char staticUnit[NAME_LEN] = "";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
-/* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
+/* Register Use Table in the Ultra-C/C++ Processor Guide (ultrac_pg.pdf, chapter
    "68K" -> "Register Usage"): a5 = Frame/local pointer, a6 = STATIC STORAGE
    POINTER (not the frame pointer!). The real cstart.r/clib.l uses a6 as a
    pointer to its own static data area THROUGHOUT the lifetime of the program
@@ -285,7 +285,7 @@ static void emitAlign(FILE* out) {
 	fputs(os9Mode ? "\talign\t4\n" : "\teven\n", out);
 }
 
-/* "Speichermodell"-Schalter (2026-07-25, siehe -largedata in main()/usage()):
+/* Memory-model switch (2026-07-25, see -largedata in main()/usage()):
    Standardmodell ("small") adressiert JEDES Globale ausschliesslich PC-relativ
    ("lea tc_g_X(pc),a0") -- das ist eine ECHTE 68000-Hardware-Grenze (16-Bit-
    Displacement, +-32 KB Reichweite von der jeweiligen Instruktion aus), keine
@@ -315,7 +315,7 @@ static void emitAlign(FILE* out) {
    keiner Stelle im Backend belegt (a0=Skalar-Scratch, a1=Puffer in tc_putint/
    tc_putuint/tc_putchar, a2=Aufruf-Scratch fuer emitCall, a4=Funktionstabelle,
    a5/a6=Frame-Pointer je nach os9Mode). */
-/* WICHTIG (2026-07-26, live auf Q9 gefunden, siehe emitCall()-Kommentar):
+	/* IMPORTANT (2026-07-26, found live on Q9; see the emitCall() comment):
    tc_gadata enthaelt KEINE absoluten Adressen mehr, sondern Link-Zeit-Offsets
    (Ziel minus Tabellenbasis) -- move.l laedt den Offset, "adda.l a3,reg" macht
    daraus die echte Laufzeitadresse (a3 ist per "lea (pc)" bereits korrekt
@@ -1247,7 +1247,7 @@ static void emitIR(FILE* out) {
 		   Skalierungsproblem wie bei echten Globalen (PC-relatives
 		   "lea tc_extcall_tmp(pc),a0" direkt an der Aufrufstelle wuerde brechen,
 		   sobald der Abstand zum spaet liegenden Scratch-Puffer >32 KB wird). */
-		/* WICHTIG (2026-07-26, siehe tc_functab-Kommentar oben): auch hier
+		/* IMPORTANT (2026-07-26, see the tc_functab comment above): here too,
 		   Link-Zeit-Offsets relativ zur Tabellenbasis statt roher "dc.l label"
 		   -- exakt dieselbe OS-9-Positionsunabhaengigkeits-Anforderung betrifft
 		   Globalzugriffe genauso wie Funktionsaufrufe. emitLeaGlobal() addiert
