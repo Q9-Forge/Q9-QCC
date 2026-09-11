@@ -846,7 +846,7 @@ static int validateAstForCodegen() {
 	return 1;
 }
 
-// Druckbare Darstellung eines Zeichens fuer Kommentare
+// Printable representation of a character for generated comments.
 static void charComment(char c, char* out, int outMax) {
 	if (isprint((unsigned char)c)) {
 		snprintf(out, outMax, "'%c'", c);
@@ -857,13 +857,13 @@ static void charComment(char c, char* out, int outMax) {
 }
 
 //------------------------------------------------------------------------------------------------
-// C-Backend: semantischer Zwilling (auf dem Host testbar)
+// C backend: semantic counterpart, testable on the host.
 //------------------------------------------------------------------------------------------------
-// Erzeugte Struktur: static const char* p; pro Regel eine Funktion p_<name>() -> 1/0,
-// bei Misserfolg ist p unveraendert (Ruecksetzung an Regel-/Auswahl-/Options-/
-// Wiederholungs-Grenzen ueber lokalen save-Stack sv[]). main() nimmt die Eingabe als
-// argv[1], druckt OK/SEMERR/FAIL und liefert exit 0/1/1 -- damit kann runtests.sh die
-// TESTS-Bloecke der Arbeitsdatei direkt gegen den ERZEUGTEN Parser laufen lassen.
+// Generated structure: static const char* p and one p_<name>() -> 1/0 function
+// per rule. On failure p is unchanged through save-stack checkpoints at rule,
+// choice, option and repetition boundaries. main() reads argv[1], prints
+// OK/SEMERR/FAIL and returns 0/1/1 so runtests.sh can execute workfile TESTS
+// directly against the generated parser.
 static void emitCString(FILE* fp, const char* s) {
 	fputc('"', fp);
 	while (*s) {
@@ -882,9 +882,9 @@ static void emitCString(FILE* fp, const char* s) {
 	fputc('"', fp);
 }
 
-// Syntaktische Operator-Literale folgen bei aktivem Lexer der ueblichen
-// Longest-Match-Regel. Ohne diese Regel waere z.B. "a && &b" scannerlos auch
-// als "a & &b" lesbar, sobald die Sprache den Adressoperator unterstuetzt.
+// With the lexer active, syntactic operator literals use the usual longest-
+// match rule. Without it, "a && &b" could also be read as "a & &b" when the
+// language supports an address operator.
 static void emitLongerLiteralRejectC(FILE* fp, const char* text, int failLabel) {
 	int i, j; size_t len = strlen(text);
 	if (!lexActive || isWordLiteral(text)) return;
@@ -915,7 +915,7 @@ static void genNodeC(FILE* fp, int id, int failLabel, int lexical) {
 		fprintf(fp, ", %d) != 0) goto L%d;\n", (int)len, failLabel);
 		if (lexActive && !lexical) emitLongerLiteralRejectC(fp, n->text, failLabel);
 		if (lexActive && !lexical && isWordLiteral(n->text)) {
-			// Wortgrenze: "MODULEX" darf nicht als "MODULE" + Rest gelten
+			// Word boundary: "MODULEX" must not be accepted as "MODULE" plus a suffix.
 			fprintf(fp, "\tif (idch((unsigned char)p[%d])) goto L%d;\n", (int)len, failLabel);
 		}
 		fprintf(fp, "\tp += %d;\n", (int)len);
@@ -933,8 +933,8 @@ static void genNodeC(FILE* fp, int id, int failLabel, int lexical) {
 		char cName[GEN_NAME_LEN];
 		int idx = ruleIndexByName(n->text);
 		sanitizeName(n->text, cName);
-		// vor dem Einstieg in ein TOKEN (lexikalische Regel) aus syntaktischem Kontext
-		// Whitespace ueberlesen; syntaktische Unterregeln erledigen das selbst
+		// Before entering a TOKEN (lexical rule) from syntactic context, skip
+		// whitespace; syntactic subrules handle this themselves.
 		if (lexActive && !lexical && idx >= 0 && ruleIsLexical[idx]) {
 			fprintf(fp, "\tws();\n");
 		}
@@ -955,14 +955,12 @@ static void genNodeC(FILE* fp, int id, int failLabel, int lexical) {
 			genNodeC(fp, child, l1, lexical);
 			fprintf(fp, "\tgoto L%d;\n", lok);
 			if (nodes[child].nextSib >= 0) {
-				// naechste Alternative versuchen: Position UND Aktions-Log auf den
-				// Stand vor dieser (verworfenen) Alternative zuruecksetzen -- sonst
-				// bleiben Aktionen einer abgebrochenen Alternative im Log haengen
-				// (siehe ARCHITEKTUR.md §9.4/Test/actionrollback).
+				// Try the next alternative: restore both the position and action log
+				// to the state before this rejected alternative.
 				fprintf(fp, "L%d:\tp = sv[sp-1]; actionLogLen = svLog[sp-1];\n", l1);
 			}
 			else {
-				// letzte Alternative gescheitert -> Auswahl gescheitert
+				// Last alternative failed; the choice fails.
 				fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L%d;\n",
 					l1, failLabel);
 			}
