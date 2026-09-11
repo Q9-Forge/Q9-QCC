@@ -2,15 +2,13 @@
  * qcc_backend_peephole.c -- peephole optimizer for 68k output (-peephole)
  *
  * Operates on generated assembly text rather than IR --
- * dieselbe Stelle, an der Microwares eigener Optimierer o68 in der klassischen
- * Kette sitzt (cc -> cpp -> c68 -> o68 -> r68 -> l68, auf einer echten OS-9/68K-
- * Binaerdatei nachgemessen, 08.09.2026). Grund: die Verschwendung entsteht erst
- * bei der UMSETZUNG der abstrakten Stack-IR in echte 68k-Speicherzugriffe, nicht
- * in der IR selbst -- ein PUSH/POP-Paar in der IR ist dort keine ueberfluessige
- * Sequenz, sondern die Opcode-Semantik selbst (jeder Aufrufer verlaesst sich
- * darauf, dass sein Operand "vor ihm" auf dem Stapel liegt). Erst wenn das
- * 68k-Backend daraus "move.l X,-(a7)" gefolgt von "move.l (a7)+,Y" macht, ist
- * der Umweg ueber den Speicher sichtbar und entfernbar.
+ * This is the stage where Microware's o68 optimizer sits in the classic chain
+ * (cc -> cpp -> c68 -> o68 -> r68 -> l68, measured on a real OS-9/68k binary
+ * on 2026-09-08). Waste appears only when abstract stack IR becomes real 68k
+ * memory accesses, not in the IR itself: a PUSH/POP pair is part of opcode
+ * semantics, and callers rely on the operand being on the stack. Only after
+ * the backend emits "move.l X,-(a7)" followed by "move.l (a7)+,Y" is the
+ * removable memory round trip visible.
  *
  * ERSTES MUSTER: "move.l SRC,-(a7)" unmittelbar gefolgt von "move.l (a7)+,DST"
  * wird zu "move.l SRC,DST". Das ist an DIESER Stelle immer sicher, unabhaengig
