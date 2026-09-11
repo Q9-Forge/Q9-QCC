@@ -1471,43 +1471,17 @@ static void emitIR(FILE* out) {
 		   (for example runtime helper tc_putint) through emitCall(). That internal
 		   call then INCORRECTLY continues using file A's table because a4 was never
 		   switched to file B's OWN table --
-		   der Tabellenoffset selbst ist korrekt (verifiziert), aber er zeigt
-		   in die FALSCHE Tabelle, ruft also eine VOELLIG ANDERE Funktion an
-		   derselben Indexposition auf. Symptom im minimalen Reproduktionsfall:
-		   ein Aufruf zu "putint(99)" in einer cross-file Funktion rief
-		   stattdessen lautlos "tc_div_i32" auf (kein Absturz, aber keine
-		   Ausgabe) -- im echten, groesseren ebnf.tc+codegen.tc-Programm mit
-		   VIEL laengeren, unterschiedlich sortierten Tabellen fuehrt derselbe
-		   Mechanismus zum beobachteten PMMU-Absturz (falscher Tabelleneintrag
-		   zeigt auf Datenmuell, der als Adresse interpretiert wird). FIX:
-		   JEDE Funktion (nicht nur main) frischt a3/a4 auf IHRE EIGENE Tabelle
-		   auf, GLEICH NACH dem eigenen "link" -- unabhaengig davon, ob sie
-		   aus derselben oder einer anderen Datei aufgerufen wurde. Kostet
-		   zwei zusaetzliche Instruktionen pro Funktionsaufruf (ueberschaubarer
-		   Overhead), garantiert aber Korrektheit unabhaengig vom Aufrufer.
-		   main() selbst behaelt sein bereits vorhandenes Refresh VOR dem
-		   eigenen Label (siehe oben) -- das hier ist zusaetzlich, harmlos
-		   redundant fuer main, aber noetig fuer ALLE anderen Funktionen.
-		   ZWEITER FUND (direkt im Anschluss, live auf Q9): ein simples
-		   "lea tc_functab(pc),a4" HIER (an JEDER Funktion, potenziell weit
-		   von der eigenen Tabelle entfernt in einer grossen Datei) sprengt
-		   sofort wieder die 16-Bit-PC-relativ-Grenze ("value out of range"
-		   bei echtem r68, live reproduziert an writeWorkfile()) -- GENAU das
-		   Problem, das die ganze a3/a4-Indirektion ja eigentlich umgehen
-		   sollte. RICHTIGER FIX (verifiziert per direkter Byte-Analyse eines
-		   Minimaltests mit 20000 nop dazwischen, sowohl r68-Assemblierung ALS
-		   AUCH die erzeugten Bytes bestaetigt korrekt): PC-relative
-		   Adressierung selbst hat KEINE Moeglichkeit, weiter als 32 KB zu
-		   reichen -- das ist eine echte 68000-Hardwaregrenze, keine
-		   Syntaxfrage. Aber eine Funktion kann IMMER sicher (Distanz 0) ihre
-		   EIGENE Adresse per "lea <eigenerName>(pc),aX" laden (bezieht sich
-		   auf sich selbst!), und DANACH per "adda.l #(ziel-eigenerName),aX"
-		   eine LINK-ZEIT-KONSTANTE Differenz addieren -- diese Differenz ist
-		   ein reiner arithmetischer 32-Bit-Immediate-Wert OHNE jede
-		   Distanzbeschraenkung (nur "adda.l"/"add.l #imm32,Dn" selbst hat
-		   keine PC-relativ-Grenze, im Gegensatz zu "d(pc)"-Adressierungs-
-		   arten). So kann JEDE Funktion, egal wie weit von ihrer eigenen
-		   Tabelle entfernt, diese trotzdem sicher erreichen. */
+		   the table offset itself is correct, but it points into the WRONG table
+		   and therefore calls a completely different function at the same index.
+		   In the minimal reproduction, putint(99) silently called tc_div_i32.
+		   Larger ebnf.tc+codegen.tc builds instead crashed with a PMMU error when
+		   a wrong table entry was interpreted as an address. FIX: every function,
+		   not only main, refreshes a3/a4 to its OWN table immediately after link,
+		   regardless of the caller's file. This costs two instructions per
+		   function but guarantees correctness. A direct lea of the distant table
+		   would reintroduce the 68000 32 KB limit, so emitTableBases() first loads
+		   the function's own nearby PC-relative address and then adds the link-time
+		   32-bit difference to each table base. */
 		/* a3/a4 are initialized at program entry and are not changed by internal
 		   QCC functions. External calls use wrappers that restore these ABI scratch
 		   registers. */
