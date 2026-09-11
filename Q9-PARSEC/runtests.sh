@@ -5,13 +5,13 @@
 #================================================================================
 cd "$(dirname "$0")" || exit 1
 mkdir -p build
-clang++ -std=c++17 -Wall -Wno-format-security -o build/parsec Source/parsec.cpp Source/codegen.cpp || exit 1
+clang++ -std=c++17 -Wall -Wno-format-security -o build/parsec src/parsec.cpp src/codegen.cpp || exit 1
 
 fail=0
 
 # 1) Test-Grammatiken mit TESTS-Bloecken (Stack-Maschine gegen Erwartung)
 for g in seqtest alttest blocktest opttest reptest numtest rangetest optalt multalt actiontest calcexpr actionrollback; do
-	out=$(build/parsec "Test/$g" 2>&1)
+	out=$(build/parsec "tests/$g" 2>&1)
 	mm=$(echo "$out" | grep -c MISMATCH)
 	pass=$(echo "$out" | grep "PASS ===")
 	if [ "$mm" -ne 0 ]; then echo "FAIL  $g:"; echo "$out" | grep MISMATCH; fail=1
@@ -20,7 +20,7 @@ done
 
 # 2) Linksrekursions-Erkennung (muss anschlagen)
 for g in leftrec leftrec2 opt_leftrec; do
-	if build/parsec "Test/$g" 2>&1 | grep -q LINKSREKURSION; then echo "ok    $g: Linksrekursion erkannt"
+	if build/parsec "tests/$g" 2>&1 | grep -q LINKSREKURSION; then echo "ok    $g: Linksrekursion erkannt"
 	else echo "FAIL  $g: Linksrekursion NICHT erkannt"; fail=1; fi
 done
 
@@ -33,7 +33,7 @@ done
 #    referenziert IN/IS inzwischen gequotet als TS-Literale statt als undefinierte Regeln).
 for gc in ebnf:28 java:33 modula2:36 oberon0:0 oberon07:0; do
 	g=${gc%:*}; expect=${gc#*:}
-	out=$(build/parsec "Data/$g" 2>&1)
+	out=$(build/parsec "data/$g" 2>&1)
 	errs=$(echo "$out" | grep -c FEHLER)
 	lr=$(echo "$out" | grep -c LINKSREKURSION)
 	if [ "$lr" -ne 0 ]; then echo "FAIL  $g: falsche Linksrekursions-Meldung"; fail=1
@@ -47,8 +47,8 @@ done
 #    NICHT hier drin: seine ROUTINE C schreibt absichtlich zusaetzliche Ausgabe vor
 #    OK/FAIL (siehe 7b) -- der generische Vergleich hier erwartet reines OK/FAIL.
 for g in seqtest alttest blocktest opttest reptest numtest rangetest optalt multalt; do
-	if [ ! -f "Test/${g}_p.c" ]; then echo "FAIL  codegen $g: Test/${g}_p.c fehlt"; fail=1; continue; fi
-	if ! cc -w -o "build/${g}_p" "Test/${g}_p.c"; then echo "FAIL  codegen $g: C-Parser kompiliert nicht"; fail=1; continue; fi
+	if [ ! -f "tests/${g}_p.c" ]; then echo "FAIL  codegen $g: tests/${g}_p.c fehlt"; fail=1; continue; fi
+	if ! cc -w -o "build/${g}_p" "tests/${g}_p.c"; then echo "FAIL  codegen $g: C-Parser kompiliert nicht"; fail=1; continue; fi
 	mm=0; n=0
 	while IFS= read -r line; do
 		t=${line#TEST \"}
@@ -61,7 +61,7 @@ for g in seqtest alttest blocktest opttest reptest numtest rangetest optalt mult
 			mm=1; fail=1
 		fi
 	done <<EOT
-$(grep '^TEST ' "Test/$g.lextab")
+$(grep '^TEST ' "tests/$g.lextab")
 EOT
 	[ $mm -eq 0 ] && echo "ok    codegen $g: $n Tests gegen erzeugten C-Parser"
 done
@@ -69,8 +69,8 @@ done
 # 5) Semantik-Vorteil des Codegen-Pfads: die Tabelle akzeptiert bei
 #    s = [ "-" ] "a" | "b" .  die Eingabe "-b" faelschlich (gewarnte Grenze) --
 #    der ERZEUGTE Parser muss sie ablehnen (echtes Backtracking pro Alternative).
-build/parsec "Test/ambig" >/dev/null 2>&1
-if cc -w -o build/ambig_p Test/ambig_p.c 2>/dev/null; then
+build/parsec "tests/ambig" >/dev/null 2>&1
+if cc -w -o build/ambig_p tests/ambig_p.c 2>/dev/null; then
 	if [ "$(build/ambig_p -b)" = "FAIL" ] && [ "$(build/ambig_p -a)" = "OK" ]; then
 		echo "ok    codegen ambig: '-b' korrekt abgelehnt, '-a' erkannt"
 	else
@@ -81,12 +81,12 @@ else
 fi
 
 # 5b) LEXER-Modus: WHITESPACE + COMMENT LINE muessen im erzeugten C-Parser UND im
-#     simulierten 68k-Code gleich funktionieren (Test/lexcomment: num = digit {digit}
+#     simulierten 68k-Code gleich funktionieren (tests/lexcomment: num = digit {digit}
 #     mit TOKEN digit, Kommentar "//").
-build/parsec "Test/lexcomment" >/dev/null 2>&1
-if cc -w -o build/lexcomment_p Test/lexcomment_p.c 2>/dev/null; then
+build/parsec "tests/lexcomment" >/dev/null 2>&1
+if cc -w -o build/lexcomment_p tests/lexcomment_p.c 2>/dev/null; then
 	lcfail=0
-	for r in "build/lexcomment_p" "python3 tools/s68sim.py Test/lexcomment.s68"; do
+	for r in "build/lexcomment_p" "python3 tools/s68sim.py tests/lexcomment.s68"; do
 		[ "$($r '1 2 3' 2>&1)" = "OK" ] || { echo "FAIL  lexer ($r): '1 2 3'"; lcfail=1; }
 		[ "$($r "$(printf '1 // foo\n2 3')" 2>&1)" = "OK" ] || { echo "FAIL  lexer ($r): Kommentarzeile"; lcfail=1; }
 		[ "$($r '1 x 3' 2>&1)" = "FAIL" ] || { echo "FAIL  lexer ($r): '1 x 3' faelschlich OK"; lcfail=1; }
@@ -98,13 +98,13 @@ else
 fi
 
 # 5c) LEXER-Modus: MEHRERE gleichzeitige Kommentar-Marker (docs/ARCHITEKTUR.md §7.1,
-#     Nutzerwunsch): Test/multicomment konfiguriert "#" UND "//" als Zeilenkommentar
+#     Nutzerwunsch): tests/multicomment konfiguriert "#" UND "//" als Zeilenkommentar
 #     sowie "/* */" UND "(* *)" als Blockkommentar gleichzeitig -- alle vier muessen
 #     in C UND im simulierten 68k-Code funktionieren, unquotiertes "x" bleibt ein Fehler.
-build/parsec "Test/multicomment" >/dev/null 2>&1
-if cc -w -o build/multicomment_p Test/multicomment_p.c 2>/dev/null; then
+build/parsec "tests/multicomment" >/dev/null 2>&1
+if cc -w -o build/multicomment_p tests/multicomment_p.c 2>/dev/null; then
 	mcfail=0
-	for r in "build/multicomment_p" "python3 tools/s68sim.py Test/multicomment.s68"; do
+	for r in "build/multicomment_p" "python3 tools/s68sim.py tests/multicomment.s68"; do
 		[ "$($r '1 2 3' 2>&1)" = "OK" ] || { echo "FAIL  multicomment ($r): '1 2 3'"; mcfail=1; }
 		[ "$($r "$(printf '1 # Raute\n2 3')" 2>&1)" = "OK" ] || { echo "FAIL  multicomment ($r): '#'-Kommentar"; mcfail=1; }
 		[ "$($r "$(printf '1 // Slash\n2 3')" 2>&1)" = "OK" ] || { echo "FAIL  multicomment ($r): '//'-Kommentar"; mcfail=1; }
@@ -121,7 +121,7 @@ fi
 # 6) Schutz gegen eine Endlosschleife im generierten Parser: Der Rumpf einer
 # Wiederholung darf nicht ohne Eingabe erfolgreich sein. Der Generator muss die
 # Ausgabe bewusst verweigern statt einen haengenden C-/68k-Parser zu erzeugen.
-out=$(build/parsec "Test/nullable_repeat" 2>&1)
+out=$(build/parsec "tests/nullable_repeat" 2>&1)
 if echo "$out" | grep -q "Wiederholung hat einen leeren Rumpf"; then
 	echo "ok    codegen nullable_repeat: leere Wiederholung abgelehnt"
 else
@@ -130,20 +130,20 @@ fi
 
 # 7) Nutzertext fuer spaetere semantische Aktionen ist Teil der Arbeitsdatei und
 # darf beim Neu-Erzeugen nicht verloren gehen oder vom EBNF-Parser interpretiert werden.
-build/parsec "Test/usercode" >/dev/null 2>&1
-if grep -Fq 'ACTION C after s { frontend_emit_literal("a"); }' "Test/usercode.lextab" \
-	&& grep -Fq 'ACTION M68K after s { bsr frontend_emit_literal_a }' "Test/usercode.lextab"; then
+build/parsec "tests/usercode" >/dev/null 2>&1
+if grep -Fq 'ACTION C after s { frontend_emit_literal("a"); }' "tests/usercode.lextab" \
+	&& grep -Fq 'ACTION M68K after s { bsr frontend_emit_literal_a }' "tests/usercode.lextab"; then
 	echo "ok    arbeitsdatei usercode: NUTZER-CODE unveraendert erhalten"
 else
 	echo "FAIL  arbeitsdatei usercode: NUTZER-CODE verloren/verfaelscht"; fail=1
 fi
 
-# 7b) ACTION/ROUTINE-Mechanismus (docs/ARCHITEKTUR.md §9): Test/actiontest definiert
+# 7b) ACTION/ROUTINE-Mechanismus (docs/ARCHITEKTUR.md §9): tests/actiontest definiert
 #     "ACTION AFTER number CALL got_number" + ROUTINE C/M68K got_number im
 #     [NUTZER-CODE]-Block. Der generierte C-Zwilling muss die Routine beim
 #     Regelerfolg WIRKLICH aufrufen (start/end = erkannter Text); der 68k-Code
 #     muss denselben bsr fehlerfrei assemblieren (vasm-Check unten prueft das separat).
-if cc -w -o build/actiontest_p Test/actiontest_p.c 2>/dev/null; then
+if cc -w -o build/actiontest_p tests/actiontest_p.c 2>/dev/null; then
 	got=$(build/actiontest_p 123)
 	if [ "$got" = "$(printf 'ACTION got_number: 123\nOK')" ]; then
 		echo "ok    action actiontest: ROUTINE C wird mit korrektem Text aufgerufen"
@@ -151,10 +151,10 @@ if cc -w -o build/actiontest_p Test/actiontest_p.c 2>/dev/null; then
 		echo "FAIL  action actiontest: unerwartete Ausgabe: $got"; fail=1
 	fi
 else
-	echo "FAIL  action actiontest: Test/actiontest_p.c fehlt/kompiliert nicht"; fail=1
+	echo "FAIL  action actiontest: tests/actiontest_p.c fehlt/kompiliert nicht"; fail=1
 fi
 
-# 7c) ACTION/ROUTINE mit ECHTER Wertberechnung (nicht nur Seiteneffekt-Text): Test/calcexpr
+# 7c) ACTION/ROUTINE mit ECHTER Wertberechnung (nicht nur Seiteneffekt-Text): tests/calcexpr
 #     ist ein Operator-Praezedenz-Ausdruck (expr = term {addop term}. term = factor {mulop
 #     factor}.), die Aktionen fuehren einen globalen Werte-Stack in den ROUTINE-C-Koerpern
 #     (kein Wertrueckgabekanal im Mechanismus selbst, siehe ARCHITEKTUR.md §9.5). Bestaetigt
@@ -162,7 +162,7 @@ fi
 #     eigenstaendigen, vorbestehenden Bug im TABELLEN-Generator auf (rule()-Regelabschluss
 #     prüfte nur die letzte Tabellenzeile auf offene Vorwaertsreferenzen statt die ganze
 #     Regel -- siehe parsec.cpp rule(), gefixt).
-if cc -w -o build/calcexpr_p Test/calcexpr_p.c 2>/dev/null; then
+if cc -w -o build/calcexpr_p tests/calcexpr_p.c 2>/dev/null; then
 	cefail=0
 	[ "$(build/calcexpr_p '2+3*4')" = "$(printf 'RESULT: 14\nOK')" ] || { echo "FAIL  action calcexpr: 2+3*4 sollte 14 ergeben"; cefail=1; }
 	[ "$(build/calcexpr_p '10-2-3')" = "$(printf 'RESULT: 5\nOK')" ] || { echo "FAIL  action calcexpr: 10-2-3 sollte 5 ergeben (linksassoziativ)"; cefail=1; }
@@ -170,14 +170,14 @@ if cc -w -o build/calcexpr_p Test/calcexpr_p.c 2>/dev/null; then
 	if [ $cefail -eq 0 ]; then echo "ok    action calcexpr: Praezedenz+Linksassoziativitaet ueber ACTION-Werte-Stack korrekt"
 	else fail=1; fi
 else
-	echo "FAIL  action calcexpr: Test/calcexpr_p.c fehlt/kompiliert nicht"; fail=1
+	echo "FAIL  action calcexpr: tests/calcexpr_p.c fehlt/kompiliert nicht"; fail=1
 fi
 
-# 7d) Aktions-Rollback bei Backtracking (docs/ARCHITEKTUR.md §9.4): Test/actionrollback
+# 7d) Aktions-Rollback bei Backtracking (docs/ARCHITEKTUR.md §9.4): tests/actionrollback
 #     (stmt = tag "1" | tag "2". tag = "T".) matcht "tag" bei "T2" zuerst innerhalb der
 #     SPAETER verworfenen ersten Alternative, dann nochmal in der gewinnenden zweiten --
 #     OHNE Rollback des Aktions-Logs würde note_tag faelschlich 2x statt 1x feuern.
-if cc -w -o build/actionrollback_p Test/actionrollback_p.c 2>/dev/null; then
+if cc -w -o build/actionrollback_p tests/actionrollback_p.c 2>/dev/null; then
 	got=$(build/actionrollback_p T2)
 	if [ "$got" = "$(printf 'TAG#1\nOK')" ]; then
 		echo "ok    action actionrollback: verworfene Alternative feuert Aktion NICHT dauerhaft"
@@ -185,18 +185,18 @@ if cc -w -o build/actionrollback_p Test/actionrollback_p.c 2>/dev/null; then
 		echo "FAIL  action actionrollback: TAG-Zaehler falsch (Rollback fehlt): $got"; fail=1
 	fi
 else
-	echo "FAIL  action actionrollback: Test/actionrollback_p.c fehlt/kompiliert nicht"; fail=1
+	echo "FAIL  action actionrollback: tests/actionrollback_p.c fehlt/kompiliert nicht"; fail=1
 fi
 
 # 7e) Aktions-Rollback DURCH REKURSION hindurch (docs/ARCHITEKTUR.md §9.4, wichtig fuer
-#     einen spaeteren oberon0-Durchlauf mit echten Klammerausdruecken): Test/actionrollback2
+#     einen spaeteren oberon0-Durchlauf mit echten Klammerausdruecken): tests/actionrollback2
 #     (expr2 = "(" expr2 ")" "A" | "(" expr2 ")" "B" | leaf.) matcht "leaf" innerhalb eines
 #     VERSCHACHTELTEN expr2-Aufrufs zuerst in der verworfenen ersten Alternative, dann
 #     nochmal in der gewinnenden zweiten. NUR der erzeugte Parser wird hier geprueft (die
 #     TABELLE ist fuer dieses gemeinsame Praefix "PEG-committed" und lehnt "(x)B" bereits
-#     aus einem bekannten, unabhaengigen Grund ab, siehe Test/actionrollback2.lextab).
-build/parsec "Test/actionrollback2" >/dev/null 2>&1
-if cc -w -o build/actionrollback2_p Test/actionrollback2_p.c 2>/dev/null; then
+#     aus einem bekannten, unabhaengigen Grund ab, siehe tests/actionrollback2.lextab).
+build/parsec "tests/actionrollback2" >/dev/null 2>&1
+if cc -w -o build/actionrollback2_p tests/actionrollback2_p.c 2>/dev/null; then
 	got=$(build/actionrollback2_p "(x)B")
 	if [ "$got" = "$(printf 'LEAF#1\nOK')" ]; then
 		echo "ok    action actionrollback2: Rollback funktioniert auch durch Rekursion hindurch"
@@ -204,10 +204,10 @@ if cc -w -o build/actionrollback2_p Test/actionrollback2_p.c 2>/dev/null; then
 		echo "FAIL  action actionrollback2: LEAF-Zaehler falsch: $got"; fail=1
 	fi
 else
-	echo "FAIL  action actionrollback2: Test/actionrollback2_p.c fehlt/kompiliert nicht"; fail=1
+	echo "FAIL  action actionrollback2: tests/actionrollback2_p.c fehlt/kompiliert nicht"; fail=1
 fi
 if command -v python3 >/dev/null; then
-	got=$(python3 tools/s68sim.py Test/actionrollback2.s68 "(x)B" 2>&1)
+	got=$(python3 tools/s68sim.py tests/actionrollback2.s68 "(x)B" 2>&1)
 	if [ "$got" = "OK" ]; then
 		echo "ok    s68sim actionrollback2: Backtracking mit gemeinsamem Praefix im 68k-Code korrekt"
 	else
@@ -215,14 +215,14 @@ if command -v python3 >/dev/null; then
 	fi
 fi
 
-# 7f) Erster Interpreter-Test Richtung oberon0 (docs/ARCHITEKTUR.md §9.5): Test/miniOberon
+# 7f) Erster Interpreter-Test Richtung oberon0 (docs/ARCHITEKTUR.md §9.5): tests/miniOberon
 #     (VAR-Deklarationen, Zuweisung, Ausdruecke MIT Variablenreferenzen, echte Symboltabelle
 #     in den ROUTINE-C-Koerpern). Deckte den WICHTIGEN, unabhaengigen "entry vor fuehrendem
 #     ws()"-Bug auf (siehe ARCHITEKTUR.md §9.4c) -- ohne dessen Fix waeren start/end einer
 #     ACTION um das fuehrende Leerzeichen verschoben gewesen (nur bei aktivem [LEXER]-Block
 #     sichtbar, calcexpr/actiontest hatten keinen).
-build/parsec "Test/miniOberon" >/dev/null 2>&1
-if cc -w -o build/miniOberon_p Test/miniOberon_p.c 2>/dev/null; then
+build/parsec "tests/miniOberon" >/dev/null 2>&1
+if cc -w -o build/miniOberon_p tests/miniOberon_p.c 2>/dev/null; then
 	got=$(build/miniOberon_p 'VAR x; y; z; BEGIN x := 2 + 3 * 4; y := x - 1; z := x * y END')
 	exp=$(printf 'x = 14\ny = 13\nz = 182\n--- final state ---\nx = 14\ny = 13\nz = 182\nOK')
 	if [ "$got" = "$exp" ]; then
@@ -231,10 +231,10 @@ if cc -w -o build/miniOberon_p Test/miniOberon_p.c 2>/dev/null; then
 		echo "FAIL  action miniOberon: unerwartete Ausgabe:"; echo "$got"; fail=1
 	fi
 else
-	echo "FAIL  action miniOberon: Test/miniOberon_p.c fehlt/kompiliert nicht"; fail=1
+	echo "FAIL  action miniOberon: tests/miniOberon_p.c fehlt/kompiliert nicht"; fail=1
 fi
 
-# 8) Echte Sprachgrammatik: erzeugter Oberon-0-Parser (Data/oberon0_p.c) MIT
+# 8) Echte Sprachgrammatik: erzeugter Oberon-0-Parser (data/oberon0_p.c) MIT
 #    [LEXER]-Block (WHITESPACE + TOKEN ident/integer): richtige Programme mit
 #    Leerzeichen, Wortgrenzen-Check (MODULEX ist nicht MODULE + X). Die Faelle
 #    mit IF/WHILE/VAR kann ausserdem NUR der Codegen-Pfad (Backtracking pro
@@ -264,7 +264,7 @@ MODULE t; BEGIN x := END t|FAIL
 EOT
 	[ $o0fail -eq 0 ] && echo "ok    $name oberon0: 13 Programm-Tests (LEXER-Block inkl. geschachtelter Blockkommentare)"
 }
-if cc -w -o build/oberon0_p Data/oberon0_p.c 2>/dev/null; then
+if cc -w -o build/oberon0_p data/oberon0_p.c 2>/dev/null; then
 	oberon0_cases build/oberon0_p codegen
 else
 	echo "FAIL  codegen oberon0: C-Parser fehlt/kompiliert nicht"; fail=1
@@ -284,18 +284,18 @@ if command -v python3 >/dev/null; then
 			t=${line#TEST \"}
 			exp=${line##* }
 			inp=${t%\" *}
-			got=$(python3 tools/s68sim.py "Test/$g.s68" "$inp" 2>&1)
+			got=$(python3 tools/s68sim.py "tests/$g.s68" "$inp" 2>&1)
 			n=$((n+1))
 			if [ "$got" != "$exp" ]; then
 				echo "FAIL  s68sim $g: Eingabe \"$inp\" erwartet $exp, 68k-Code sagt: $got"
 				mm=1; fail=1
 			fi
 		done <<EOT
-$(grep '^TEST ' "Test/$g.lextab")
+$(grep '^TEST ' "tests/$g.lextab")
 EOT
 		[ $mm -eq 0 ] && echo "ok    s68sim $g: $n Tests gegen simulierten 68k-Code"
 	done
-	oberon0_cases "python3 tools/s68sim.py Data/oberon0.s68" s68sim
+	oberon0_cases "python3 tools/s68sim.py data/oberon0.s68" s68sim
 else
 	echo "warn  s68sim: python3 nicht gefunden -- 68k-Simulation uebersprungen"
 fi
@@ -306,7 +306,7 @@ fi
 #     Plattform), wird der Check uebersprungen.
 if [ -x tools/vasmm68k_mot ]; then
 	vfail=0; vcnt=0
-	for f in Data/oberon0.s68 Test/*.s68; do
+	for f in data/oberon0.s68 tests/*.s68; do
 		[ -f "$f" ] || continue
 		out=$(tools/vasmm68k_mot -Fbin -quiet -o /dev/null -m68000 "$f" 2>&1)
 		vcnt=$((vcnt+1))
@@ -319,14 +319,14 @@ else
 	echo "warn  vasm: tools/vasmm68k_mot fehlt -- Assembler-Check uebersprungen"
 fi
 
-# 11) OS-9/r68-Format: Data/oberon0.lextab hat "M68K OS9" im [CODEGEN]-Block ->
+# 11) OS-9/r68-Format: data/oberon0.lextab hat "M68K OS9" im [CODEGEN]-Block ->
 #     oberon0_os9.a (nam/psect/ends) muss mit der ECHTEN Microware-Toolchain
 #     (r68 via Wine/MWOS) assemblieren. Fehlt Wine oder MWOS, wird uebersprungen.
 WINE="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine"
 MWOS_TMP="/Volumes/SSD1TB/projects/MWOS/TMP"
-if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && [ -f Data/oberon0_os9.a ]; then
+if [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && [ -f data/oberon0_os9.a ]; then
 	mkdir -p "$MWOS_TMP"
-	cp Data/oberon0_os9.a "$MWOS_TMP/rtest.a"
+	cp data/oberon0_os9.a "$MWOS_TMP/rtest.a"
 	rm -f "$MWOS_TMP/rtest.r"
 	WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtest.a -o=M:\\TMP\\rtest.r -q" >/dev/null 2>&1
 	if [ -s "$MWOS_TMP/rtest.r" ]; then
@@ -340,26 +340,26 @@ else
 fi
 
 # 12) QCC: eigenstaendige Sprache -> Stack-IR -> qccvm (docs/ARCHITEKTUR.md Kap.10).
-#     Grammatik Data/qcc.ebnf + [NUTZER-CODE] emittieren Stack-IR; tools/qccvm
+#     Grammatik data/qcc.ebnf + [NUTZER-CODE] emittieren Stack-IR; tools/qccvm
 #     fuehrt die IR aus (Interpreter + Referenz-Orakel). Meilenstein 1: Ausdruecke,
 #     lokale Variablen, putint. (Kein 68k-Backend hier -- kommt in M4.)
 if command -v python3 >/dev/null 2>&1; then
 	# WICHTIGER FUND (2026-07-25): build/parsec hat ein festes internes Puffer-Limit
-	# fuer den [NUTZER-CODE]-Block (USER_CODE_LEN in Source/parsec.cpp) -- bei
+	# fuer den [NUTZER-CODE]-Block (USER_CODE_LEN in src/parsec.cpp) -- bei
 	# Ueberschreitung wird der Ueberschuss STILLSCHWEIGEND abgeschnitten (nur eine
 	# Warnzeile im stdout, die hier vorher mit ">/dev/null" verschluckt wurde).
 	# Das hat einmal drei ROUTINE-C-Bloecke (tc_ternarybegin/-middle/-end) aus
-	# Data/qcc.lextab geloescht, ohne dass ein einziger Build-Schritt einen
+	# data/qcc.lextab geloescht, ohne dass ein einziger Build-Schritt einen
 	# Fehler gemeldet hat -- nur ein spaeter fehlschlagender Ternary-Test hat es
 	# aufgedeckt. USER_CODE_LEN wurde deshalb grosszuegig erhoeht (128 KB -> 1 MB),
 	# UND hier wird die Ausgabe jetzt auf "WARNUNG" geprueft statt verschluckt.
-	ebnfout=$(build/parsec Data/qcc 2>&1)
+	ebnfout=$(build/parsec data/qcc 2>&1)
 	if echo "$ebnfout" | grep -q 'WARNUNG'; then
-		echo "FAIL  qcc: build/parsec meldet eine Kuerzungswarnung (siehe oben) -- Data/qcc.lextab wurde vermutlich abgeschnitten!"
+		echo "FAIL  qcc: build/parsec meldet eine Kuerzungswarnung (siehe oben) -- data/qcc.lextab wurde vermutlich abgeschnitten!"
 		echo "$ebnfout" | grep 'WARNUNG'
 		fail=1
 	fi
-	if cc -w -o build/qcc_p Data/qcc_p.c 2>/dev/null; then
+	if cc -w -o build/qcc_p data/qcc_p.c 2>/dev/null; then
 		tcfail=0
 		# Die Zahl der geprueften Programme wird GEZAEHLT, nicht eingetippt.
 		# Vorher stand in der Erfolgsmeldung eine feste "150", waehrend
@@ -647,7 +647,7 @@ if command -v python3 >/dev/null 2>&1; then
 
 		# --- Komma-Operator (2026-08-11) ---------------------------------------
 		# Nur INNERHALB von Klammern, siehe Kommentar bei commaExpr in
-		# Data/qcc.ebnf: in C trennt die Grammatik "expression" (mit Komma) von
+		# data/qcc.ebnf: in C trennt die Grammatik "expression" (mit Komma) von
 		# "assignment-expression" (ohne), und Argumentlisten/Initialisierer
 		# benutzen letztere. Die geklammerte Form ist eindeutig und deckt den
 		# Bedarf des Bootstrap-Ziels: tcConstIndex endet auf
@@ -688,7 +688,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# aber mit Rueckgabewert 0 und schrieb "OK" -- eine Kette
 		# "qcc_p x.c > x.ir && qcc_backend x.ir" erzeugte damit klaglos falschen
 		# Code. Der erzeugte Parser zaehlt jetzt in actionErrors (vom Generator
-		# deklariert, siehe Source/codegen.cpp) und liefert 1 statt 0.
+		# deklariert, siehe src/codegen.cpp) und liefert 1 statt 0.
 		# Die 58 Tests, die auf den MELDUNGSTEXT pruefen, sind davon unberuehrt:
 		# die Meldungen gehen unveraendert nach stderr.
 		tc_rc_fail() {
@@ -831,7 +831,7 @@ if command -v python3 >/dev/null 2>&1; then
 			fi
 		# 2026-07-24: direkte Indizierung ohne Zwischenvariable -- "func()[i]" und
 		# "text"[i] duerfen jetzt direkt indiziert werden (postfixIndex-Huellregel um
-		# die bestehende index-Regel, siehe Data/qcc.ebnf). Laufzeitreihenfolge auf
+		# die bestehende index-Regel, siehe data/qcc.ebnf). Laufzeitreihenfolge auf
 		# dem Stack ist [Pointer, Indexwert] wie bei "p + n" -- daher PADD+LOADIND statt
 		# PTRINDEX/LOADIND (das den Pointer zuerst erwartet). Bewusst NICHT Teil dieser
 		# Version: Indizierung als Zuweisungsziel (foo()[0] = 5;), verkettete Postfix-
@@ -881,7 +881,7 @@ if command -v python3 >/dev/null 2>&1; then
 			echo "FAIL  qcc: extern-Argumentanzahl-Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-09-08: "(void)" in einer extern-Deklaration/einem Funktionszeiger-
-		# typedef las bis dahin als EIN Parameter statt null (Data/qcc.ebnf las
+		# typedef las bis dahin als EIN Parameter statt null (data/qcc.ebnf las
 		# "void" ueber den normalen type-Zweig von externParam). funcParams kannte
 		# das Muster schon (voidParams | normalParams); externParams/fnPtrParams
 		# nutzen jetzt dieselbe zwei-Alternativen-Form (siehe Kommentar dort zur
@@ -995,11 +995,11 @@ if command -v python3 >/dev/null 2>&1; then
 			echo "FAIL  qcc: const-++/---Diagnose fehlt"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: "static" lokale Variablen -- persistieren ueber Aufrufe hinweg (als
-		# ganz normaler GLOBAL registriert, siehe tc_staticlocal in Data/qcc.lextab).
+		# ganz normaler GLOBAL registriert, siehe tc_staticlocal in data/qcc.lextab).
 		# "static" bei Funktionen/globalen Variablen ist ein reines No-op (interne
 		# Verlinkung ist bei einer einzigen Uebersetzungseinheit ohne Mehrdatei-Linkage
 		# bedeutungslos). Bewusst OHNE Initialisierer (siehe staticVarDecl-Kommentar in
-		# Data/qcc.ebnf) und OHNE struct/Array in dieser Version.
+		# data/qcc.ebnf) und OHNE struct/Array in dieser Version.
 		tc_check 'int bump(){ static int counter; counter = counter + 1; return counter; } int main(){ putint(bump()); putint(bump()); putint(bump()); }' '1\n2\n3'
 		tc_check 'static int add(int a, int b){ return a + b; } int main(){ putint(add(2, 3)); }' '5'
 		tc_check 'static int g = 7; int main(){ putint(g); }' '7'
@@ -1327,7 +1327,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# "int VOR den shorts" gewaehlt, die keine Kollision hat.
 		[ $tcfail -eq 0 ] && echo "ok    qcc: $tccount Programme inkl. Pointer, for/do-while/break/continue, struct (gemischte Feldtypen, anonym im typedef, Array-Felder inkl. direkter p.field[i]-Indizierung, Pointer-Felder inkl. direkter Indizierung DURCH sie, Arrays von structs inkl. arr[i].feld und ptr[i].feld, globale struct-Variablen/-Arrays/-Pointer)/typedef/enum, sizeof/++/--/switch/Casts/const/static (inkl. nicht-konstantem Laufzeit-Initialisierer)/Pointee-Constness/void/void*/Mehrdim-Arrays (bis TC_MAXDIMS)/extern/String-Literale (inkl. Array-Initialisierer + direkter Indizierung ohne Zwischenvariable) -> qccvm korrekt"
 	else
-		echo "FAIL  qcc: Data/qcc_p.c kompiliert nicht"; fail=1
+		echo "FAIL  qcc: data/qcc_p.c kompiliert nicht"; fail=1
 	fi
 else
 	echo "warn  qcc: python3 fehlt -- QCC/qccvm-Check uebersprungen"
@@ -1389,7 +1389,7 @@ fi
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (qcc_backend.cpp)
 #     bleibt als Referenz liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ -x tools/vasmm68k_mot ]; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend Source/qcc_backend_c.cpp 2>/dev/null && \
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend src/qcc_backend_c.cpp 2>/dev/null && \
 		build/qcc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/qcc_m4.ir && \
 		build/qcc_backend build/qcc_m4.ir build/qcc_m4.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_m4.bin build/qcc_m4.s68 2>/dev/null && \
@@ -1410,12 +1410,15 @@ if [ -x tools/vasmm68k_mot ]; then
 	# 4096 ist 0, der gesetzte Index 0 bleibt erhalten, das Nachbar-Array
 	# unversehrt.
 	printf 'GARRAY big i 5000 0\nGINIT big 0 111\nGARRAY nachbar i 2 0\nGINIT nachbar 0 222\nGINIT nachbar 1 333\nFUNC main 0 0\nPUSH 0\nRET\nENDFUNC\n' > build/qcc_oob.ir
+	if ! build/qcc_backend build/qcc_oob.ir build/qcc_oob.s68 -os9 2>/dev/null; then
+		echo "FAIL  qcc M4a-oob: Backend konnte grosses Array nicht erzeugen"; fail=1
+	fi
 	# Zeile 1 des Blocks ist die Marke, Element N steht also auf Zeile N+2.
 	# Tabulatoren werden vor dem Vergleich entfernt (die Ausgabe ist tabuliert).
 	oob_first=$(sed -n '/^tc_g_big:/,$p' build/qcc_oob.s68 | sed -n '2p' | tr -d ' \t')
 	oob_tail=$(sed -n '/^tc_g_big:/,$p' build/qcc_oob.s68 | sed -n '4098,5001p' | tr -d ' \t' | grep -vc '^dc.l0$')
 	oob_nb=$(sed -n '/^tc_g_nachbar:/,$p' build/qcc_oob.s68 | sed -n '2p' | tr -d ' \t')
-	if build/qcc_backend build/qcc_oob.ir build/qcc_oob.s68 -os9 2>/dev/null && \
+	if [ -s build/qcc_oob.s68 ] && \
 		[ "$oob_first" = "dc.l111" ] && [ "$oob_tail" = "0" ] && [ "$oob_nb" = "dc.l222" ]; then
 		echo "ok    qcc M4a-oob: grosses Array mit Initialisierer gibt jenseits MAX_ARRAY_LEN Nullen aus (kein Speicher hinter init[])"
 	else
@@ -1604,7 +1607,7 @@ if [ -x tools/vasmm68k_mot ]; then
 
 	# Selfhosting L2, Milestone B (2026-07-25): Pilot-Portierung des ACTION/ROUTINE-
 	# Ausschnitts aus codegen.cpp (ActionRoutine/pushRoutine/freeRoutines/routineTextC,
-	# Source/codegen.cpp:560-650) nach QCC -- testet Pointer-struct-Felder, ptr[i].feld
+	# src/codegen.cpp:560-650) nach QCC -- testet Pointer-struct-Felder, ptr[i].feld
 	# UND malloc/realloc/free ueber extern GLEICHZEITIG, in genau der Kombination, die der
 	# echte Generator braucht. Bewusste Vereinfachung ggue. dem C-Original: pushRoutine
 	# GIBT den (ggf. reallozierten) Array-Pointer zurueck statt ihn ueber einen ActionRoutine**-
@@ -1677,7 +1680,7 @@ if [ -x tools/vasmm68k_mot ]; then
 	fi
 
 	# Selfhosting L2 Vollport (2026-07-25): naechster Ausschnitt von codegen.cpp nach
-	# SourceQCC/codegen.tc portiert -- LEXER-Konfigurationsparser (lexUnquote/
+	# src-qcc/codegen.tc portiert -- LEXER-Konfigurationsparser (lexUnquote/
 	# lexUnquoteAt/lexParseConfig/markLexicalNode/computeLexicalSet, das [LEXER]-
 	# Konfigurationsblock-Handling). Haengt an strncmp/strchr/strrchr/strstr/memcpy
 	# (CALLEXT/clib.l) -- QCCVM kennt CALLEXT NICHT (keine libc-Simulation), daher
@@ -1725,7 +1728,7 @@ int main() {
 	r = ruleIndexByName("other"); putint(ruleIsLexical[r]);
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$cgtest_main" > build/qcc_cgtest.ir 2>build/qcc_cgtest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$cgtest_main" > build/qcc_cgtest.ir 2>build/qcc_cgtest.err && \
 			build/qcc_backend build/qcc_cgtest.ir build/qcc_cgtest_os9.a -os9 -largedata; then
 			cp build/qcc_cgtest_os9.a "$MWOS_TMP/cgtest.a"
 			rm -f "$MWOS_TMP/cgtest.r" "$MWOS_TMP/cgtest.out" "$MWOS_TMP/cgtest.sym"
@@ -1733,7 +1736,7 @@ int main() {
 			if [ -s "$MWOS_TMP/cgtest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\cgtest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\cgtest.out -s=M:\\TMP\\cgtest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/cgtest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: LEXER-Konfigurationsparser (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: LEXER-Konfigurationsparser (src-qcc/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (LEXER-Konfigurationsparser) fehlgeschlagen"; fail=1
 				fi
@@ -1742,7 +1745,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/cgtest.a "$MWOS_TMP"/cgtest.r "$MWOS_TMP"/cgtest.out "$MWOS_TMP"/cgtest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc kompiliert nicht sauber (siehe build/qcc_cgtest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc kompiliert nicht sauber (siehe build/qcc_cgtest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (LEXER-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -1750,7 +1753,7 @@ int main() {
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
 	# -- CODEGEN-Konfigurationsparser (cgenWantOS9/cgenStartRule/cgenParseConfig, das
-	# [CODEGEN]-Konfigurationsblock-Handling aus Source/codegen.cpp Zeilen 462-535).
+	# [CODEGEN]-Konfigurationsblock-Handling aus src/codegen.cpp Zeilen 462-535).
 	# Strukturell fast identisch zu lexParseConfig (letztes Wort einer Zeile
 	# extrahieren) -- braucht KEINE Anfuehrungszeichen im Konfigurationsformat, daher
 	# hier ohne den Backtick-Workaround aus dem LEXER-Test moeglich. Gleiche
@@ -1774,7 +1777,7 @@ int main() {
 	putint(s[6]);
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$cgentest_main" > build/qcc_cgentest.ir 2>build/qcc_cgentest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$cgentest_main" > build/qcc_cgentest.ir 2>build/qcc_cgentest.err && \
 			build/qcc_backend build/qcc_cgentest.ir build/qcc_cgentest_os9.a -os9 -largedata; then
 			cp build/qcc_cgentest_os9.a "$MWOS_TMP/cgentest.a"
 			rm -f "$MWOS_TMP/cgentest.r" "$MWOS_TMP/cgentest.out" "$MWOS_TMP/cgentest.sym"
@@ -1782,7 +1785,7 @@ int main() {
 			if [ -s "$MWOS_TMP/cgentest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\cgentest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\cgentest.out -s=M:\\TMP\\cgentest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/cgentest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: CODEGEN-Konfigurationsparser (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: CODEGEN-Konfigurationsparser (src-qcc/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (CODEGEN-Konfigurationsparser) fehlgeschlagen"; fail=1
 				fi
@@ -1791,7 +1794,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/cgentest.a "$MWOS_TMP"/cgentest.r "$MWOS_TMP"/cgentest.out "$MWOS_TMP"/cgentest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (CODEGEN-Konfigurationsparser) kompiliert nicht sauber (siehe build/qcc_cgentest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc (CODEGEN-Konfigurationsparser) kompiliert nicht sauber (siehe build/qcc_cgentest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (CODEGEN-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -1801,7 +1804,7 @@ int main() {
 	# -- ActionRoutine-Verwaltung UND ACTIONS-Konfigurationsparser (freeRoutines/
 	# pushRoutineC/pushRoutine68k/routineTextC/routineText68k/lastWord/growLineBuf/
 	# growCollectBuf/actionsParseConfig, das [NUTZER-CODE]-Block-Handling aus
-	# Source/codegen.cpp Zeilen 580-750). pushRoutineC/pushRoutine68k sind ZWEI fast
+	# src/codegen.cpp Zeilen 580-750). pushRoutineC/pushRoutine68k sind ZWEI fast
 	# identische Funktionen statt EINER generischen mit "ActionRoutine**"-Parameter
 	# wie im C++-Original (QCC hat keine Generik/Funktionszeiger, routinesC/
 	# routines68k sind hier wie im Original file-scope-Globale -- direktes Mutieren
@@ -1845,7 +1848,7 @@ int main() {
 	putint(t == 0);
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$actiontest_main" > build/qcc_actiontest.ir 2>build/qcc_actiontest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$actiontest_main" > build/qcc_actiontest.ir 2>build/qcc_actiontest.err && \
 			build/qcc_backend build/qcc_actiontest.ir build/qcc_actiontest_os9.a -os9 -largedata; then
 			cp build/qcc_actiontest_os9.a "$MWOS_TMP/actiontest.a"
 			rm -f "$MWOS_TMP/actiontest.r" "$MWOS_TMP/actiontest.out" "$MWOS_TMP/actiontest.sym"
@@ -1853,7 +1856,7 @@ int main() {
 			if [ -s "$MWOS_TMP/actiontest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\actiontest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\actiontest.out -s=M:\\TMP\\actiontest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/actiontest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: ActionRoutine/ACTIONS-Konfigurationsparser (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: ActionRoutine/ACTIONS-Konfigurationsparser (src-qcc/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (ActionRoutine/ACTIONS-Konfigurationsparser) fehlgeschlagen"; fail=1
 				fi
@@ -1862,7 +1865,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/actiontest.a "$MWOS_TMP"/actiontest.r "$MWOS_TMP"/actiontest.out "$MWOS_TMP"/actiontest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (ActionRoutine/ACTIONS-Konfigurationsparser) kompiliert nicht sauber (siehe build/qcc_actiontest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc (ActionRoutine/ACTIONS-Konfigurationsparser) kompiliert nicht sauber (siehe build/qcc_actiontest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (ActionRoutine/ACTIONS-Konfigurationsparser): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -1870,7 +1873,7 @@ int main() {
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
 	# -- AST-Validierung (isWordLiteral/nodeNullable/validateRepeatProgress/
-	# validateAstForCodegen, Zeilen 750-857 in Source/codegen.cpp). Prueft VOR der
+	# validateAstForCodegen, Zeilen 750-857 in src/codegen.cpp). Prueft VOR der
 	# Ausgabe: (1) eine Wiederholung mit nullbarem Rumpf (z.B. "{ [x] }") waere eine
 	# Endlosschleife im erzeugten Parser -- wird erkannt und abgelehnt (Fixpunkt-
 	# analyse ueber gegenseitig rekursive Regeln); (2) zwei Regeln, die nach der
@@ -1904,7 +1907,7 @@ int main() {
 	putint(validateAstForCodegen());
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$astvaltest_main" > build/qcc_astvaltest.ir 2>build/qcc_astvaltest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$astvaltest_main" > build/qcc_astvaltest.ir 2>build/qcc_astvaltest.err && \
 			build/qcc_backend build/qcc_astvaltest.ir build/qcc_astvaltest_os9.a -os9 -largedata; then
 			cp build/qcc_astvaltest_os9.a "$MWOS_TMP/astvaltest.a"
 			rm -f "$MWOS_TMP/astvaltest.r" "$MWOS_TMP/astvaltest.out" "$MWOS_TMP/astvaltest.sym"
@@ -1912,7 +1915,7 @@ int main() {
 			if [ -s "$MWOS_TMP/astvaltest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\astvaltest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\astvaltest.out -s=M:\\TMP\\astvaltest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/astvaltest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: AST-Validierung (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: AST-Validierung (src-qcc/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (AST-Validierung) fehlgeschlagen"; fail=1
 				fi
@@ -1921,7 +1924,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/astvaltest.a "$MWOS_TMP"/astvaltest.r "$MWOS_TMP"/astvaltest.out "$MWOS_TMP"/astvaltest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (AST-Validierung) kompiliert nicht sauber (siehe build/qcc_astvaltest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc (AST-Validierung) kompiliert nicht sauber (siehe build/qcc_astvaltest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (AST-Validierung): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -1929,7 +1932,7 @@ int main() {
 
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
 	# -- C-Backend-Codegenerator (emitCString/emitLongerLiteralRejectC/genNodeC,
-	# Source/codegen.cpp Zeilen 858-1000). Erste Beruehrung mit ECHTER Dateiausgabe
+	# src/codegen.cpp Zeilen 858-1000). Erste Beruehrung mit ECHTER Dateiausgabe
 	# (fopen/fprintf/fputc/fclose statt nur stdout-Diagnosen wie bisher) -- FILE*
 	# wird als "void*" gefuehrt (QCC hat keinen FILE-Struct-Typ, der ABI-Aufruf
 	# braucht nur einen opaken Zeiger). clib.l hat KEIN snprintf (nur sprintf,
@@ -1966,7 +1969,7 @@ int main() {
 	putint(1);
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$gennodetest_main" > build/qcc_gennodetest.ir 2>build/qcc_gennodetest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$gennodetest_main" > build/qcc_gennodetest.ir 2>build/qcc_gennodetest.err && \
 			build/qcc_backend build/qcc_gennodetest.ir build/qcc_gennodetest_os9.a -os9 -largedata; then
 			cp build/qcc_gennodetest_os9.a "$MWOS_TMP/gennodetest.a"
 			rm -f "$MWOS_TMP/gennodetest.r" "$MWOS_TMP/gennodetest.out" "$MWOS_TMP/gennodetest.sym"
@@ -1974,7 +1977,7 @@ int main() {
 			if [ -s "$MWOS_TMP/gennodetest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\gennodetest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\gennodetest.out -s=M:\\TMP\\gennodetest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/gennodetest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: C-Backend-Codegenerator (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: C-Backend-Codegenerator (src-qcc/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (C-Backend-Codegenerator) fehlgeschlagen"; fail=1
 				fi
@@ -1983,7 +1986,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/gennodetest.a "$MWOS_TMP"/gennodetest.r "$MWOS_TMP"/gennodetest.out "$MWOS_TMP"/gennodetest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (C-Backend-Codegenerator) kompiliert nicht sauber (siehe build/qcc_gennodetest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc (C-Backend-Codegenerator) kompiliert nicht sauber (siehe build/qcc_gennodetest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (C-Backend-Codegenerator): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -1992,7 +1995,7 @@ int main() {
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): naechster Ausschnitt
 	# -- genParserC (der Rest des C-Backends: Datei-Header, Lexer-Helfer ws()/idch(),
 	# Action-Log-Runtime-Geruest, eine p_<regel>()-Funktion pro Regel, main() --
-	# Source/codegen.cpp Zeilen 1002-1168). SECHS Stellen im C++-Original betten ein
+	# src/codegen.cpp Zeilen 1002-1168). SECHS Stellen im C++-Original betten ein
 	# Anfuehrungszeichen DIREKT in einen fprintf-Formatstring ein -- geht in QCC
 	# nicht (siehe Quirk in qcc-vollport-status.md), per fputc(34,fp)-Aufteilung
 	# umgeschrieben. ZWEI dieser Stellen haben zusaetzlich ein "%%"-Selbstescape im
@@ -2009,13 +2012,13 @@ int main() {
 	#    Nutzen) -- stattdessen jede betroffene Stelle per fputc(38,fp)/fputc(124,fp)
 	#    umgeschrieben (emitAndAnd/emitOrOr-Helfer), sodass "&&"/"||" nie als
 	#    zusammenhaengende Zeichenfolge in einem QCC-String-Literal auftaucht.
-	# 2. Ein ECHTER SKALIERUNGSBUG im 68k-Backend selbst (Source/qcc_backend_c.cpp):
+	# 2. Ein ECHTER SKALIERUNGSBUG im 68k-Backend selbst (src/qcc_backend_c.cpp):
 	#    das -largedata-Datenmodell lud JEDEN Tabelleneintrag bisher per EIGENEM
 	#    PC-relativem Label ("movea.l tc_ga_X(pc),reg") -- das brach, sobald der
 	#    GESAMTE Funktionscode zwischen einer fruehen Funktion (z.B. "main", die per
 	#    -largedata-Funktionsaufruf-Fix immer zuerst emittiert wird) und der Tabelle
 	#    selbst (die NACH allen Funktionsrumpf-Texten lag) mehr als 32 KB umfasste --
-	#    genau das trat beim ersten echten Skalierungstest fuer SourceQCC/codegen.tc
+	#    genau das trat beim ersten echten Skalierungstest fuer src-qcc/codegen.tc
 	#    auf (kumulatives Kompilat inzwischen weit ueber 32 KB Code) und liess
 	#    RUECKWIRKEND ALLE bisherigen Vollport-Regressionstests fehlschlagen (der
 	#    naechste Funktionsaufruf/Global-Zugriff konnte die Tabelle nicht mehr
@@ -2049,7 +2052,7 @@ int main() {
 	putint(ok);
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$genparsertest_main" > build/qcc_genparsertest.ir 2>build/qcc_genparsertest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$genparsertest_main" > build/qcc_genparsertest.ir 2>build/qcc_genparsertest.err && \
 			build/qcc_backend build/qcc_genparsertest.ir build/qcc_genparsertest_os9.a -os9 -largedata; then
 			cp build/qcc_genparsertest_os9.a "$MWOS_TMP/genparsertest.a"
 			rm -f "$MWOS_TMP/genparsertest.r" "$MWOS_TMP/genparsertest.out" "$MWOS_TMP/genparsertest.sym"
@@ -2057,7 +2060,7 @@ int main() {
 			if [ -s "$MWOS_TMP/genparsertest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparsertest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparsertest.out -s=M:\\TMP\\genparsertest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/genparsertest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: genParserC (SourceQCC/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: genParserC (src-qcc/codegen.tc) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (genParserC) fehlgeschlagen"; fail=1
 				fi
@@ -2066,7 +2069,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/genparsertest.a "$MWOS_TMP"/genparsertest.r "$MWOS_TMP"/genparsertest.out "$MWOS_TMP"/genparsertest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (genParserC) kompiliert nicht sauber (siehe build/qcc_genparsertest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc (genParserC) kompiliert nicht sauber (siehe build/qcc_genparsertest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (genParserC): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -2075,7 +2078,7 @@ int main() {
 	# Selfhosting L2 Vollport (2026-07-25, direkt im Anschluss): letzter Ausschnitt
 	# von codegen.cpp -- 68k-Backend (charComment/emitConsume68k/
 	# emitLongerLiteralReject68k/genNode68k/emitLexHelpers68k/genParser68kTo/
-	# genParser68k/genParser68kOS9, Source/codegen.cpp Zeilen 858+1181-1580). Damit
+	# genParser68k/genParser68kOS9, src/codegen.cpp Zeilen 858+1181-1580). Damit
 	# ist der GESAMTE Vollport von codegen.cpp abgeschlossen. Erzeugt reinen
 	# 68k-Assemblertext -- KEINE C-Operatoren (&&/||) und KEINE eingebetteten
 	# Anfuehrungszeichen im generierten Code, daher weder der emitAndAnd/emitOrOr-
@@ -2088,10 +2091,10 @@ int main() {
 	#    Gefixt per neuem emitQMark(fp)-Helfer (ein fputc(63,fp)), analog zu
 	#    emitAndAnd/emitOrOr.
 	# 2. Backend-eigene MAX_GLOBALS-Grenze (256, GETRENNT von der Frontend-
-	#    Grenze in Data/qcc.lextab) blockierte den Skalierungsnachweis: JEDES
+	#    Grenze in data/qcc.lextab) blockierte den Skalierungsnachweis: JEDES
 	#    String-Literal im QCC-Quelltext wird zu einem anonymen __strN-Global,
 	#    das kumulative Kompilat hat inzwischen weit ueber 256 davon. Erhoeht auf
-	#    1024 (Source/qcc_backend_c.cpp).
+	#    1024 (src/qcc_backend_c.cpp).
 	# 3. Ein WEITERER echter Skalierungsbug im 68k-Backend: tc_extcall_tmp (der
 	#    Scratch-Puffer fuer externe Aufrufe mit Stack-Argumenten) wurde bisher
 	#    IMMER per PC-relativem "lea tc_extcall_tmp(pc),a0" direkt an der
@@ -2123,7 +2126,7 @@ int main() {
 	putint(ok);
 	return 0;
 }'
-		if build/qcc_p "$(cat SourceQCC/codegen.tc)$genparser68ktest_main" > build/qcc_genparser68ktest.ir 2>build/qcc_genparser68ktest.err && \
+		if build/qcc_p "$(cat src-qcc/codegen.tc)$genparser68ktest_main" > build/qcc_genparser68ktest.ir 2>build/qcc_genparser68ktest.err && \
 			build/qcc_backend build/qcc_genparser68ktest.ir build/qcc_genparser68ktest_os9.a -os9 -largedata; then
 			cp build/qcc_genparser68ktest_os9.a "$MWOS_TMP/genparser68ktest.a"
 			rm -f "$MWOS_TMP/genparser68ktest.r" "$MWOS_TMP/genparser68ktest.out" "$MWOS_TMP/genparser68ktest.sym"
@@ -2131,7 +2134,7 @@ int main() {
 			if [ -s "$MWOS_TMP/genparser68ktest.r" ]; then
 				WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\l68.exe -a M:\\TMP\\cstart.r M:\\TMP\\genparser68ktest.r -l=M:\\TMP\\clib.l -l=M:\\TMP\\os_lib.l -l=M:\\TMP\\sys.l -o=M:\\TMP\\genparser68ktest.out -s=M:\\TMP\\genparser68ktest.sym" >/dev/null 2>&1
 				if [ -s "$MWOS_TMP/genparser68ktest.out" ]; then
-					echo "ok    qcc Selfhosting L2 Vollport: 68k-Backend (SourceQCC/codegen.tc, Vollport von codegen.cpp abgeschlossen) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
+					echo "ok    qcc Selfhosting L2 Vollport: 68k-Backend (src-qcc/codegen.tc, Vollport von codegen.cpp abgeschlossen) kompiliert, assembliert (echter r68) und linkt (echter l68 gegen echte clib.l) korrekt"
 				else
 					echo "FAIL  qcc Selfhosting L2 Vollport: echter l68-Link (68k-Backend) fehlgeschlagen"; fail=1
 				fi
@@ -2140,7 +2143,7 @@ int main() {
 			fi
 			rm -f "$MWOS_TMP"/genparser68ktest.a "$MWOS_TMP"/genparser68ktest.r "$MWOS_TMP"/genparser68ktest.out "$MWOS_TMP"/genparser68ktest.sym
 		else
-			echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/codegen.tc (68k-Backend) kompiliert nicht sauber (siehe build/qcc_genparser68ktest.err)"; fail=1
+			echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/codegen.tc (68k-Backend) kompiliert nicht sauber (siehe build/qcc_genparser68ktest.err)"; fail=1
 		fi
 	else
 		echo "warn  qcc Selfhosting L2 Vollport (68k-Backend): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echter Link uebersprungen"
@@ -2153,7 +2156,7 @@ int main() {
 	# docs/FORTSCHRITT.md). -largedata schaltet auf eine Indirektionstabelle mit
 	# absoluten (vom Linker aufgeloesten) Adressen um -- getestet mit einem
 	# struct-Array, das OHNE -largedata garantiert zu gross waere (analog zum
-	# urspruenglichen AST_MAX_NODES=8192-Fund in SourceQCC/codegen.tc).
+	# urspruenglichen AST_MAX_NODES=8192-Fund in src-qcc/codegen.tc).
 	largedata_src='struct Big { int a; char pad[52]; }; struct Big arr[2048]; int cnt; int main(){ arr[0].a=42; arr[2047].a=99; cnt=7; putint(arr[0].a); putint(arr[2047].a); putint(cnt); }'
 	if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
 	   [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
@@ -2712,7 +2715,7 @@ fi
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original bleibt als Referenz
 #     liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend Source/qcc_arm64_backend_c.cpp 2>/dev/null && \
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend src/qcc_arm64_backend_c.cpp 2>/dev/null && \
 		build/qcc_p 'int limit = 5; int debt = -20; unsigned int high = -1; char mark = 335; int counter; char next(char c){ return c + 1; } int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); counter = fact(limit); putint(counter); putint(debt / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/qcc_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_arm64.ir build/qcc_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_arm64 build/qcc_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
@@ -3049,10 +3052,10 @@ else
 fi
 
 # Selfhosting L2 Vollport (2026-07-26): parsec.cpp-Vollport, naechster Ausschnitt
-# nach SourceQCC/ebnf.tc -- writeWorkfile (Source/parsec.cpp:1007-1130, die
+# nach src-qcc/ebnf.tc -- writeWorkfile (src/parsec.cpp:1007-1130, die
 # komplette Arbeitsdatei-Ausgabe: EBNF-QUELLTEXT/TS-SYMBOLTABELLE/
 # NTS-SYMBOLTABELLE/PARSER-TABELLE/TESTS/LEXER/CODEGEN/NUTZER-CODE-Bloecke).
-# ZWEI neue, live gefundene und gefixte Backend-Bugs (Source/qcc_backend_c.cpp)
+# ZWEI neue, live gefundene und gefixte Backend-Bugs (src/qcc_backend_c.cpp)
 # waren Voraussetzung: (1) LABEL/JMP/JZ/JNZ ("tc_L<n>") und emitCompare()s interne
 # Sprungmarken ("tc_cmp_yes_<n>"/"tc_cmp_done_<n>") hingen nur von einem PRO-DATEI
 # neu bei 0 startenden Zaehler ab -- kollidierten beim Mehrdatei-Link, sobald
@@ -3125,8 +3128,8 @@ int wwtestFn() {
 
 	putint(1);
 }'
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$wwtest_main" > build/qcc_wwtest_a.ir 2>build/qcc_wwtest_a.err && \
-		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_wwtest_b.ir 2>build/qcc_wwtest_b.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)$wwtest_main" > build/qcc_wwtest_a.ir 2>build/qcc_wwtest_a.err && \
+		build/qcc_p "$(cat src-qcc/codegen.tc)" > build/qcc_wwtest_b.ir 2>build/qcc_wwtest_b.err && \
 		build/qcc_backend build/qcc_wwtest_a.ir build/qcc_wwtest_a.s68 -os9 -largedata -part && \
 		build/qcc_backend build/qcc_wwtest_b.ir build/qcc_wwtest_b.s68 -os9 -largedata -part; then
 		cp build/qcc_wwtest_a.s68 "$MWOS_TMP/wwtesta.a"
@@ -3135,20 +3138,20 @@ int wwtestFn() {
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtesta.a -o=M:\\TMP\\wwtesta.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\wwtestb.a -o=M:\\TMP\\wwtestb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/wwtesta.r" ] && [ -s "$MWOS_TMP/wwtestb.r" ]; then
-			echo "ok    qcc Selfhosting L2 Vollport: writeWorkfile (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: writeWorkfile (src-qcc/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
 			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (writeWorkfile) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/wwtesta.a "$MWOS_TMP"/wwtestb.a "$MWOS_TMP"/wwtesta.r "$MWOS_TMP"/wwtestb.r
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (writeWorkfile) kompiliert nicht sauber (siehe build/qcc_wwtest_a.err/build/qcc_wwtest_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (writeWorkfile) kompiliert nicht sauber (siehe build/qcc_wwtest_a.err/build/qcc_wwtest_b.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (writeWorkfile): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
-# nach SourceQCC/ebnf.tc -- rebuildFirstEdgesFromTable (Source/parsec.cpp:1132-1156,
+# nach src-qcc/ebnf.tc -- rebuildFirstEdgesFromTable (src/parsec.cpp:1132-1156,
 # Fall B: Linksrekursions-Kanten aus einer GELADENEN Arbeitsdatei rekonstruieren,
 # statt sie waehrend des normalen Parsens ueber das firstPos-Flag zu sammeln).
 # Haengt wie fast alles in ebnf.tc an extern strcmp/strlen (CALLEXT) -- QCCVM
@@ -3194,8 +3197,8 @@ int rebuildtestFn() {
 	putint(ruleNameListCnt);
 	putint(1);
 }'
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$rebuildtest_main" > build/qcc_rebuildtest_a.ir 2>build/qcc_rebuildtest_a.err && \
-		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_rebuildtest_b.ir 2>build/qcc_rebuildtest_b.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)$rebuildtest_main" > build/qcc_rebuildtest_a.ir 2>build/qcc_rebuildtest_a.err && \
+		build/qcc_p "$(cat src-qcc/codegen.tc)" > build/qcc_rebuildtest_b.ir 2>build/qcc_rebuildtest_b.err && \
 		build/qcc_backend build/qcc_rebuildtest_a.ir build/qcc_rebuildtest_a.s68 -os9 -largedata -part && \
 		build/qcc_backend build/qcc_rebuildtest_b.ir build/qcc_rebuildtest_b.s68 -os9 -largedata -part; then
 		cp build/qcc_rebuildtest_a.s68 "$MWOS_TMP/rebuilda.a"
@@ -3204,20 +3207,20 @@ int rebuildtestFn() {
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuilda.a -o=M:\\TMP\\rebuilda.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rebuildb.a -o=M:\\TMP\\rebuildb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/rebuilda.r" ] && [ -s "$MWOS_TMP/rebuildb.r" ]; then
-			echo "ok    qcc Selfhosting L2 Vollport: rebuildFirstEdgesFromTable (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: rebuildFirstEdgesFromTable (src-qcc/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
 			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (rebuildFirstEdgesFromTable) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/rebuilda.a "$MWOS_TMP"/rebuildb.a "$MWOS_TMP"/rebuilda.r "$MWOS_TMP"/rebuildb.r
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (rebuildFirstEdgesFromTable) kompiliert nicht sauber (siehe build/qcc_rebuildtest_a.err/build/qcc_rebuildtest_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (rebuildFirstEdgesFromTable) kompiliert nicht sauber (siehe build/qcc_rebuildtest_a.err/build/qcc_rebuildtest_b.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (rebuildFirstEdgesFromTable): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechster Ausschnitt
-# nach SourceQCC/ebnf.tc -- loadWorkfileAsGrammar (Source/parsec.cpp:1162-1231,
+# nach src-qcc/ebnf.tc -- loadWorkfileAsGrammar (src/parsec.cpp:1162-1231,
 # Fall B: PARSER-TABELLE/EBNF-QUELLTEXT direkt aus einer Arbeitsdatei laden, ohne
 # .ebnf). Das Original nutzt EIN grosses sscanf(...) mit NEUN Ausgabeparametern --
 # geht hier NICHT 1:1: (1) CALLEXT erlaubt max. 8 Stack-Argumente (neun
@@ -3306,8 +3309,8 @@ int lwtestFn() {
 	putint(quelltextLen);
 	putint(1);
 }'
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$lwtest_main" > build/qcc_lwtest_a.ir 2>build/qcc_lwtest_a.err && \
-		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_lwtest_b.ir 2>build/qcc_lwtest_b.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)$lwtest_main" > build/qcc_lwtest_a.ir 2>build/qcc_lwtest_a.err && \
+		build/qcc_p "$(cat src-qcc/codegen.tc)" > build/qcc_lwtest_b.ir 2>build/qcc_lwtest_b.err && \
 		build/qcc_backend build/qcc_lwtest_a.ir build/qcc_lwtest_a.s68 -os9 -largedata -part && \
 		build/qcc_backend build/qcc_lwtest_b.ir build/qcc_lwtest_b.s68 -os9 -largedata -part; then
 		cp build/qcc_lwtest_a.s68 "$MWOS_TMP/lwtesta.a"
@@ -3316,22 +3319,22 @@ int lwtestFn() {
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtesta.a -o=M:\\TMP\\lwtesta.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lwtestb.a -o=M:\\TMP\\lwtestb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/lwtesta.r" ] && [ -s "$MWOS_TMP/lwtestb.r" ]; then
-			echo "ok    qcc Selfhosting L2 Vollport: loadWorkfileAsGrammar (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: loadWorkfileAsGrammar (src-qcc/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
 			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (loadWorkfileAsGrammar) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/lwtesta.a "$MWOS_TMP"/lwtestb.a "$MWOS_TMP"/lwtesta.r "$MWOS_TMP"/lwtestb.r
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (loadWorkfileAsGrammar) kompiliert nicht sauber (siehe build/qcc_lwtest_a.err/build/qcc_lwtest_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (loadWorkfileAsGrammar) kompiliert nicht sauber (siehe build/qcc_lwtest_a.err/build/qcc_lwtest_b.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (loadWorkfileAsGrammar): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): naechste zwei
-# Ausschnitte nach SourceQCC/ebnf.tc -- runTests (Source/parsec.cpp:1233-1268,
+# Ausschnitte nach src-qcc/ebnf.tc -- runTests (src/parsec.cpp:1233-1268,
 # alle TEST-Zeilen durch execFrom jagen und mit dem erwarteten Ergebnis
-# vergleichen) UND loadPreservedTests (Source/parsec.cpp:920-993, TESTS/
+# vergleichen) UND loadPreservedTests (src/parsec.cpp:920-993, TESTS/
 # NUTZER-CODE/LEXER/CODEGEN-Bloecke aus einer alten Arbeitsdatei retten, bevor
 # sie ueberschrieben wird). ZWEI weitere Grenzfaelle gefunden: (1) dieselbe
 # arr[i].field[j]-Zuweisungsziel-Ablehnung wie bei loadWorkfileAsGrammar,
@@ -3391,8 +3394,8 @@ int rtlpFn() {
 	putint(mismatches);
 	putint(1);
 }'
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$rtlp_main" > build/qcc_rtlp_a.ir 2>build/qcc_rtlp_a.err && \
-		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_rtlp_b.ir 2>build/qcc_rtlp_b.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)$rtlp_main" > build/qcc_rtlp_a.ir 2>build/qcc_rtlp_a.err && \
+		build/qcc_p "$(cat src-qcc/codegen.tc)" > build/qcc_rtlp_b.ir 2>build/qcc_rtlp_b.err && \
 		build/qcc_backend build/qcc_rtlp_a.ir build/qcc_rtlp_a.s68 -os9 -largedata -part && \
 		build/qcc_backend build/qcc_rtlp_b.ir build/qcc_rtlp_b.s68 -os9 -largedata -part; then
 		cp build/qcc_rtlp_a.s68 "$MWOS_TMP/rtlpa.a"
@@ -3401,21 +3404,21 @@ int rtlpFn() {
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpa.a -o=M:\\TMP\\rtlpa.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\rtlpb.a -o=M:\\TMP\\rtlpb.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/rtlpa.r" ] && [ -s "$MWOS_TMP/rtlpb.r" ]; then
-			echo "ok    qcc Selfhosting L2 Vollport: runTests + loadPreservedTests (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: runTests + loadPreservedTests (src-qcc/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
 			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (runTests/loadPreservedTests) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/rtlpa.a "$MWOS_TMP"/rtlpb.a "$MWOS_TMP"/rtlpa.r "$MWOS_TMP"/rtlpb.r
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (runTests/loadPreservedTests) kompiliert nicht sauber (siehe build/qcc_rtlp_a.err/build/qcc_rtlp_b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (runTests/loadPreservedTests) kompiliert nicht sauber (siehe build/qcc_rtlp_a.err/build/qcc_rtlp_b.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (runTests/loadPreservedTests): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): die rekursive-
-# Abstiegs-Parsergruppe nach SourceQCC/ebnf.tc -- literal/ident/block/repeat/
-# option/factor/term/expression/rule (Source/parsec.cpp:1371-1774) PLUS die bisher
+# Abstiegs-Parsergruppe nach src-qcc/ebnf.tc -- literal/ident/block/repeat/
+# option/factor/term/expression/rule (src/parsec.cpp:1371-1774) PLUS die bisher
 # fehlenden Helfer push/pop/restart/errorMsg/test/addIdentList/patchLocalTrue/
 # patchLocalFalse (920-1330). Alle neun Kernfunktionen hatten bereits seit
 # Projektbeginn bare Prototypen in ebnf.tc (gegenseitige Rekursion) -- der
@@ -3431,8 +3434,8 @@ fi
 if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)" > build/qcc_parser1.ir 2>build/qcc_parser1.err && \
-		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_parser1b.ir 2>build/qcc_parser1b.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)" > build/qcc_parser1.ir 2>build/qcc_parser1.err && \
+		build/qcc_p "$(cat src-qcc/codegen.tc)" > build/qcc_parser1b.ir 2>build/qcc_parser1b.err && \
 		build/qcc_backend build/qcc_parser1.ir build/qcc_parser1.s68 -os9 -largedata -part && \
 		build/qcc_backend build/qcc_parser1b.ir build/qcc_parser1b.s68 -os9 -largedata -part; then
 		cp build/qcc_parser1.s68 "$MWOS_TMP/parser1a.a"
@@ -3441,21 +3444,21 @@ if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1a.a -o=M:\\TMP\\parser1a.r -q" >/dev/null 2>&1
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\parser1b.a -o=M:\\TMP\\parser1b.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/parser1a.r" ] && [ -s "$MWOS_TMP/parser1b.r" ]; then
-			echo "ok    qcc Selfhosting L2 Vollport: rekursive-Abstiegs-Parsergruppe (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: rekursive-Abstiegs-Parsergruppe (src-qcc/ebnf.tc) kompiliert und assembliert (echter r68, ebnf.tc+codegen.tc getrennt) korrekt"
 		else
 			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (Parsergruppe) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/parser1a.a "$MWOS_TMP"/parser1b.a "$MWOS_TMP"/parser1a.r "$MWOS_TMP"/parser1b.r
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (Parsergruppe) kompiliert nicht sauber (siehe build/qcc_parser1.err/build/qcc_parser1b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (Parsergruppe) kompiliert nicht sauber (siehe build/qcc_parser1.err/build/qcc_parser1b.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (Parsergruppe): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): der Lexer nach
-# SourceQCC/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
-# getAktLine/put/semantischeAnylyse (Source/parsec.cpp:1810-2147, 1906-1970).
+# src-qcc/ebnf.tc -- lexikalischeAnalyse/getNext/getAktChar/comment/
+# getAktLine/put/semantischeAnylyse (src/parsec.cpp:1810-2147, 1906-1970).
 # lexikalischeAnalyse/getAktChar/put/semantischeAnylyse hatten bereits bare
 # Prototypen; getNext/comment sind neu UND werden ihrerseits von getAktChar
 # bzw. getAktLine gerufen -- strikte Definitions-Reihenfolge eingehalten.
@@ -3521,26 +3524,26 @@ int lextestFn() {
 	putint(strcmp(aktName, "rule1"));
 	putint(1);
 }'
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)$lextest_main" > build/qcc_lextest_a.ir 2>build/qcc_lextest_a.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)$lextest_main" > build/qcc_lextest_a.ir 2>build/qcc_lextest_a.err && \
 		build/qcc_backend build/qcc_lextest_a.ir build/qcc_lextest_a.s68 -os9 -largedata -part; then
 		cp build/qcc_lextest_a.s68 "$MWOS_TMP/lextesta.a"
 		rm -f "$MWOS_TMP/lextesta.r"
 		WINEPREFIX="$HOME/.wine" "$WINE" cmd /c "M:\\DOS\\BIN\\r68.exe M:\\TMP\\lextesta.a -o=M:\\TMP\\lextesta.r -q" >/dev/null 2>&1
 		if [ -s "$MWOS_TMP/lextesta.r" ]; then
-			echo "ok    qcc Selfhosting L2 Vollport: Lexer (SourceQCC/ebnf.tc) kompiliert und assembliert (echter r68) korrekt"
+			echo "ok    qcc Selfhosting L2 Vollport: Lexer (src-qcc/ebnf.tc) kompiliert und assembliert (echter r68) korrekt"
 		else
 			echo "FAIL  qcc Selfhosting L2 Vollport: echte r68-Assemblierung (Lexer) fehlgeschlagen"; fail=1
 		fi
 		rm -f "$MWOS_TMP"/lextesta.a "$MWOS_TMP"/lextesta.r
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (Lexer) kompiliert nicht sauber (siehe build/qcc_lextest_a.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (Lexer) kompiliert nicht sauber (siehe build/qcc_lextest_a.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (Lexer): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- echte Assemblierung uebersprungen"
 fi
 
 # Selfhosting L2 Vollport (2026-07-26, direkt im Anschluss): ebnfMain/
-# ebnfSyntax/exitProgram (Source/parsec.cpp:170-334, 1357-1369, 322-334) --
+# ebnfSyntax/exitProgram (src/parsec.cpp:170-334, 1357-1369, 322-334) --
 # LETZTER Abschnitt des parsec.cpp-Vollports. QCC main() kann keine
 # argc/argv empfangen (kein Mechanismus dafuer in Grammatik/Backend) -- die
 # komplette Original-main()-Logik lebt deshalb in ebnfMain(char* baseArg),
@@ -3558,7 +3561,7 @@ fi
 #
 # DAS HIER IST DER MEILENSTEIN-TEST: zum ERSTEN Mal ein VOLLER l68-Link von
 # ebnf.tc (mit seiner echten main()) GEGEN codegen.tc, ohne jedes unresolved
-# Symbol -- der komplette QCC-Vollport von Source/parsec.cpp (Schritt 2 aus
+# Symbol -- der komplette QCC-Vollport von src/parsec.cpp (Schritt 2 aus
 # dem urspruenglichen 3-Schritt-Plan, siehe [[qcc-vollport-status]]) ist
 # damit strukturell/kompilatorisch VOLLSTAENDIG. (Was das noch NICHT
 # abdeckt: echte Ausfuehrung/Verhalten auf dem Q9-Emulator -- Schritt 3 des
@@ -3566,8 +3569,8 @@ fi
 if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/MWOS/DOS/BIN" ] && \
    [ -f "$MWOS_TMP/cstart.r" ] && [ -f "$MWOS_TMP/clib.l" ] && [ -f "$MWOS_TMP/os_lib.l" ] && [ -f "$MWOS_TMP/sys.l" ]; then
 	mkdir -p "$MWOS_TMP"
-	if build/qcc_p "$(cat SourceQCC/ebnf.tc)" > build/qcc_final1.ir 2>build/qcc_final1.err && \
-		build/qcc_p "$(cat SourceQCC/codegen.tc)" > build/qcc_final1b.ir 2>build/qcc_final1b.err && \
+	if build/qcc_p "$(cat src-qcc/ebnf.tc)" > build/qcc_final1.ir 2>build/qcc_final1.err && \
+		build/qcc_p "$(cat src-qcc/codegen.tc)" > build/qcc_final1b.ir 2>build/qcc_final1b.err && \
 		build/qcc_backend build/qcc_final1.ir build/qcc_final1.s68 -os9 -largedata -part -runtime && \
 		build/qcc_backend build/qcc_final1b.ir build/qcc_final1b.s68 -os9 -largedata -part; then
 		cp build/qcc_final1.s68 "$MWOS_TMP/final1a.a"
@@ -3587,7 +3590,7 @@ if [ -x build/qcc_backend ] && [ -x "$WINE" ] && [ -d "/Volumes/SSD1TB/projects/
 		fi
 		rm -f "$MWOS_TMP"/final1a.a "$MWOS_TMP"/final1b.a "$MWOS_TMP"/final1a.r "$MWOS_TMP"/final1b.r "$MWOS_TMP"/final1.out
 	else
-		echo "FAIL  qcc Selfhosting L2 Vollport: SourceQCC/ebnf.tc (ebnfMain/main) kompiliert nicht sauber (siehe build/qcc_final1.err/build/qcc_final1b.err)"; fail=1
+		echo "FAIL  qcc Selfhosting L2 Vollport: src-qcc/ebnf.tc (ebnfMain/main) kompiliert nicht sauber (siehe build/qcc_final1.err/build/qcc_final1b.err)"; fail=1
 	fi
 else
 	echo "warn  qcc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"

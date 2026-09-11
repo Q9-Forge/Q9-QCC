@@ -10,3 +10,7 @@ Die Optimierung, Assemblierung und das Linken sind separate Werkzeuge:
 ```
 
 Die produktiven Quellen liegen unter `src/`.
+
+`src/qcc_backend_candidate_review.cpp` ist ausdrücklich nur eine lokale
+Prüfkopie ohne Historie und kein Bestandteil des Builds. Sie wird erst nach
+einem separaten Inhaltsvergleich bewertet.
