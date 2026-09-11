@@ -33,6 +33,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -x "$REPO/build/qcir" ]     || die "build/qcir fehlt"
 [ -x "$REPO/build/qir68k" ]  || die "build/qir68k fehlt"
 [ -f "$REPO/build/qcc_p.bootstrap.c" ] || die "build/qcc_p.bootstrap.c fehlt (tools/build_xcc_bootstrap.sh)"
+[ -f "$REPO/test/bootstrap_probe.c" ] || die "test/bootstrap_probe.c fehlt"
 [ -f "$SRCIMG" ]                 || die "Image nicht gefunden: $SRCIMG"
 [ -d "$FLUX" ]                   || die "Q9-Flux nicht gefunden: $FLUX"
 
@@ -100,6 +101,8 @@ cp -c "$SRCIMG" "$IMG" 2>/dev/null || cp "$SRCIMG" "$IMG" || die "Image-Kopie"
 # Modul nicht starten (Fehler 214).  Kostet sonst eine Runde Ratlosigkeit.
 "$TS" attr -e -w -r -pe -pr "$IMG,/CMDS/q9_qcc_stage2" >/dev/null 2>&1 \
 	|| die "attr -e"
+"$TS" copy -l -r "$REPO/test/bootstrap_probe.c" "$IMG,/bootstrap_probe.c" >/dev/null 2>&1 \
+	|| die "ToolShed-copy der Rauchprobe"
 echo "  ok"
 
 echo "== 5/6 im Emulator: Rauchprobe, dann der eigene Parser =="
