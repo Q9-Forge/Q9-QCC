@@ -401,9 +401,9 @@ static int phFoldDropPush(void) {
 	return folded;
 }
 
-/* Liest s[0..len) als reine Dezimalzahl (optional ein fuehrendes "-"),
- * kein Zeichen ausser Ziffern erlaubt. Bricht frueh ab, sobald der Wert
- * den MOVEQ-Bereich sicher verlassen hat -- kein Ueberlaufrisiko in v. */
+/* Reads s[0..len) as a decimal number (optional leading "-"); digits only are
+ * accepted. Stops as soon as the value is outside the MOVEQ range, avoiding
+ * overflow in v. */
 static int phParseSmallImm(const char* s, int len, int* value) {
 	int i;
 	int neg;
@@ -425,7 +425,7 @@ static int phParseSmallImm(const char* s, int len, int* value) {
 	return 1;
 }
 
-/* FUENFTES MUSTER, s. Kommentar am Dateianfang: "move.l #IMM,Dn" mit IMM
+/* FIFTH PATTERN, see the file header: "move.l #IMM,Dn" with IMM
  * im MOVEQ-Bereich, optional mit Label-Vorspann (das Label bleibt beim
  * Umbau erhalten -- anders als bei Mustern eins/drei/vier wird hier
  * nichts gestrichen, nur der Mnemonic-Text derselben Zeile ersetzt, das
