@@ -1763,9 +1763,8 @@ static void emitIR(FILE* out) {
 				   receives an additional table entry AFTER all real globals
 				   (Offset globalCount*4). */
 				if (stackArgs > 0) {
-					/* 2026-07-26: tc_gadata-Eintrag ist ein Link-Zeit-Offset, kein
-					   absoluter Zeiger (siehe emitLeaGlobal()-Kommentar) -- adda.l
-					   noetig wie ueberall sonst. */
+					/* 2026-07-26: the tc_gadata entry is a link-time offset, not an
+					   absolute pointer; adda.l is required as elsewhere. */
 					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n\tadda.l\ta3,a0\n", globalCount * 4);
 					else fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
 				}
@@ -1829,9 +1828,9 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
 				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"), &serial, psectName);
 			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
-				/* static lokale Variable: bereits von collectGlobals() ausgewertet (Adresse/
-				   Initialwert stehen im DATA/BSS-Abschnitt) -- an dieser Stelle im Funktions-
-				   koerper ein reines No-op, keine Laufzeit-Aktion. */
+				/* Static local variable: already processed by collectGlobals() (address
+				   and initial value are emitted in DATA/BSS); this is a no-op in the
+				   function body and requires no runtime action. */
 			} else {
 				sprintf(msg, "IR Zeile %d: unbekannter oder unvollstaendiger Opcode %s", insP->line, op);
 				fatal(msg);
@@ -1842,19 +1841,17 @@ static void emitIR(FILE* out) {
 
 	{
 		int hasData = 0, hasBss = 0, gi;
-		/* Ein Array ohne GINIT ist C-semantisch vollstaendig nullinitialisiert.
-		   Es gehoert deshalb in einen OS-9-vsect statt als Millionen explizite
-		   "dc.b 0"-Zeichen in die r68-Eingabe geschrieben zu werden. Das ist
-		   besonders wichtig fuer den QCC-Bootstrap (mehrere MB Action-Log).
-		   Arrays MIT GINIT bleiben im DATA-Abschnitt, damit ihre Werte erhalten
-		   bleiben. */
+		/* An array without GINIT is fully zero-initialized by C semantics. It
+		   therefore belongs in an OS-9 vsect instead of expanding into millions
+		   of explicit "dc.b 0" bytes in r68 input. This is especially important
+		   for the QCC bootstrap, which contains several MB of action log. Arrays
+		   WITH GINIT remain in DATA so their values are preserved. */
 		for (gi = 0; gi < globalCount; gi++) {
-			if (globals[gi].declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
-			/* Ein NICHT-remoter vsect ist auf 64 KB begrenzt (l68 lehnt mehr ab),
-			   deshalb bleiben die initialisierten Globals im psect; nur die ganz
-			   genullten gehen in einen vsect remote, der diese Grenze nicht hat.
-			   Ohne -remotedata ist globalRemote() immer 0 -- die Ausgabe bleibt
-			   dann Byte fuer Byte die alte. */
+			if (globals[gi].declOnly) continue; /* defined in ANOTHER file; no storage here */
+			/* A non-remote vsect is limited to 64 KB (l68 rejects larger ones),
+			   so initialized globals remain in the psect; only entirely zero globals
+			   use a remote vsect without that limit. Without -remotedata,
+			   globalRemote() is always 0 and output remains byte-for-byte unchanged. */
 			if (globalRemote(gi)) hasBss = 1;
 			else hasData = 1;
 		}
