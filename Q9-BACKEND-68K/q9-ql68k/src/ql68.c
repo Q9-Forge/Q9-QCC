@@ -845,23 +845,19 @@ static void farCall(int si, int here, const char *name)
 	if (jtPlan)
 		return;
 
-	/* Two forms, both measured against l68, share the same
-	   ROF-Typwort $00b0 (im Code, 2 Byte, relativ). Sie sind also nur am
-	   OPCODE zu unterscheiden:
+	/* Two forms, both measured against l68, share ROF type word $00b0
+	   (code, two bytes, relative). Distinguish them by opcode:
 
 	     bsr.w ziel        $6100  ->  jsr d16(a6)         $4eae
 	     lea d16(pc),An    $41fa  ->  movea.l d16(a6),An  $206e | reg<<9
 
-	   Der Tabelleneintrag ist in beiden Faellen derselbe
-	   ("jmp $xxxxxxxx"), nur das Displacement zeigt woandershin: der
-	   SPRUNG geht auf den Eintragsanfang und laeuft durch den jmp, die
-	   ADRESSE dagegen wird aus dem Adressfeld dahinter geladen
-	   (Eintrag + 2). Genau dafuer fuehrt l68s "-j"-Karte zwei Spalten --
-	   "Indx" den Eintragsanfang, "Roff"/"Data Offset" das Adressfeld.
+	   Both forms use the same table entry ("jmp $xxxxxxxx"), but their
+	   displacements point differently: the jump targets the entry start and
+	   executes the jmp, while the address form loads the field at entry + 2.
+	   This is why the l68s -j map has separate entry and data-offset columns.
 
-	   Nachgemessen an qr68 gegen qclib: die sechs Bezuege auf
-	   tc_extcall_tmp wurden alle zu "movea.l $8282(a6),a0", waehrend der
-	   Eintrag selbst bei $8280 steht. */
+	   Measured with qr68 against qclib: six references to tc_extcall_tmp all
+	   became "movea.l $8282(a6),a0", while the entry itself was at $8280. */
 	op = ((outBuf[here - 2] & 255) << 8) | (outBuf[here - 1] & 255);
 	if (op == 0x6100) {
 		outBuf[here - 2] = 0x4E;
