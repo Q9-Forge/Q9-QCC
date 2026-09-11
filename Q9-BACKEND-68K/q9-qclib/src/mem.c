@@ -61,23 +61,19 @@
 extern int _os_srqmem(int want, int *granted, char **addr);
 extern int _os_srtmem(int size, char *addr);
 
-/* Was der Arena-Griff dem System uebriglaesst. OS-9 braucht selbst noch
-   Speicher, sobald das Programm eine Datei oeffnet oder einen Prozess
-   startet. Zwei Megabyte sind mit Absicht reichlich: die Kette braucht
-   den Rest nicht, und ein zu knapper Rest waere ein Fehler, der erst
-   spaeter und woanders auffaellt. */
+/* Memory left available to the system after acquiring the arena. OS-9 still
+   needs memory when a program opens a file or starts a process. Two MiB is
+   deliberately generous for this toolchain. */
 #define QM_RESERVE 2097152
 
-char *qm_base;                  /* Anfang der Arena, 0 = noch keine */
-int qm_size;                    /* gewaehrte Groesse */
-int qm_top;                     /* belegt, vom Arena-Anfang gezaehlt */
+char *qm_base;                  /* Arena base; zero means not acquired. */
+int qm_size;                    /* Granted arena size. */
+int qm_top;                     /* Used bytes from arena start. */
 
-/* Die Arena beim ersten Bedarf holen. 1 = da, 0 = kein Speicher.
-   Der Griff geht in zwei Schritten: F$SRqMem mit -1 liefert den GROESSTEN
-   freien Block (so das Handbuch), der wird sofort zurueckgegeben, und
-   dann wird um diese Groesse minus Reserve gebeten. So steht die
-   Arenagroesse nicht als Zahl im Code, sondern richtet sich nach der
-   Maschine. */
+/* Acquire the arena on first demand. Return 1 when available and 0 when
+   memory cannot be provided. First query the largest free block with
+   F$SRqMem(-1), return it, then request that size minus the reserve. This
+   keeps the arena size machine-dependent instead of hard-coded. */
 /* Function: qm_arena
  * Acquires the target memory arena on first allocation.
  * Parameters: None.
@@ -99,7 +95,7 @@ int qm_arena(void)
 	_os_srtmem(gr, p);
 	want = gr - QM_RESERVE;
 	if (want < 65536)
-		want = gr;              /* sehr kleine Maschine: dann eben alles */
+		want = gr;              /* Small machine: use the entire block. */
 	gr = 0;
 	p = 0;
 	rc = _os_srqmem(want, &gr, &p);
@@ -108,8 +104,8 @@ int qm_arena(void)
 	qm_base = p;
 	qm_size = gr;
 	qm_top = 0;
-	/* Auf vier ausrichten: das Handbuch verspricht nur eine GERADE
-	   Adresse, die Kopierschleife unten arbeitet aber langwortweise. */
+	/* Align to four bytes: the manual guarantees only an even address, while
+	   the copy loop below operates on longwords. */
 	while ((((int) qm_base) + qm_top) & 3)
 		qm_top = qm_top + 1;
 	return 1;
@@ -140,8 +136,7 @@ char *qm_realloc(int *a)
 		return 0;
 	if (qm_arena() == 0)
 		return 0;
-	/* Jede Blockgroesse auf vier aufrunden, damit der naechste Kopf
-	   wieder ausgerichtet liegt. */
+	/* Round every block size up to four bytes so the next header is aligned. */
 	n4 = ((want + 3) / 4) * 4;
 
 	cap = 0;
@@ -149,11 +144,10 @@ char *qm_realloc(int *a)
 		hdr = (int *) (alt - 8);
 		cap = hdr[0];
 		if (n4 <= cap)
-			return alt;             /* passt noch */
-		/* Der ZULETZT ausgegebene Block waechst an der Stelle: dann
-		   liegt hinter ihm der freie Rest der Arena. Das ist der Fall,
-		   den die Kette immer trifft -- ohne Kopie, ohne
-		   Spitzenbedarf. */
+			return alt;             /* Existing capacity is sufficient. */
+		/* The most recent block grows in place, leaving the unused arena
+		   directly behind it. This is the normal toolchain path and avoids
+		   both copying and a temporary peak allocation. */
 		off = (alt - 8) - qm_base;
 		if (off + 8 + cap == qm_top) {
 			if (off + 8 + n4 > qm_size)
@@ -172,9 +166,8 @@ char *qm_realloc(int *a)
 	neu = qm_base + qm_top + 8;
 	qm_top = qm_top + 8 + n4;
 
-	/* Umkopieren, langwortweise: beide Bloecke beginnen acht Byte hinter
-	   einer auf vier ausgerichteten Stelle. Bei mehreren Megabyte macht
-	   das den Unterschied zwischen vier Zugriffen und einem. */
+	/* Copy longword-wise: both blocks begin eight bytes after a four-byte
+	   aligned address. This matters for multi-megabyte allocations. */
 	if (cap > 0) {
 		lang = cap;
 		if (lang > n4)
