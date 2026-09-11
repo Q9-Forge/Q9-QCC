@@ -25,11 +25,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* ------------------------------------------------------------ Grenzen ---- */
-/* Arraygroessen muessen Literale sein (QCCs constSize kennt nur Zahlen und
-   + - *), die Spiegelvariablen darunter tragen denselben Wert fuer die
-   Bereichspruefungen. selfCheck() in main vergleicht beides per sizeof --
-   damit kann die Verdopplung nicht unbemerkt auseinanderlaufen. */
+/* ------------------------------------------------------------ Limits ----- */
+/* Array sizes must be literals because QCC's constSize accepts only numbers
+   and + - *. The mirror values below carry the same limits for range checks;
+   selfCheck() compares both through sizeof so they cannot drift unnoticed. */
 #define POOL_MAX 524288
 static char pool[POOL_MAX];
 static int poolTop;
@@ -88,9 +87,9 @@ static int agText[16384];
 static int agWs[16384];
 static int agTop;
 
-/* Ersetzungspuffer als Stapelspeicher (exTop), NICHT als einfaches Feld ab 0:
-   substitute() ruft beim Prescan eines Arguments wieder substitute() auf, ein
-   gemeinsames Feld ab 0 wuerde die aeussere Ersetzung dabei ueberschreiben. */
+/* Replacement storage is a stack (exTop), not a simple array starting at 0:
+   substitute() recursively calls itself while prescanning an argument, so a
+   shared array starting at 0 would overwrite the outer replacement. */
 #define EX_MAX 16384
 static int exKind[16384];
 static int exText[16384];
@@ -188,7 +187,7 @@ static int textEndasm;
  * Returns: Non-zero when c is whitespace. */
 static int isSpaceCh(int c)
 {
-	/* C-Whitespace unabhaengig von der Host-Locale erkennen. */
+	/* Recognize C whitespace independently of the host locale. */
 	if (c == ' ' || c == 9 || c == 11 || c == 12 || c == 13)
 		return 1;
 	return 0;
@@ -200,7 +199,7 @@ static int isSpaceCh(int c)
  * Returns: Non-zero for '0' through '9'. */
 static int isDigitCh(int c)
 {
-	/* Praeprozessor-Zahlen sind ASCII-Tokens, nicht locale-abhaengig. */
+	/* Preprocessor numbers are ASCII tokens, not locale-dependent. */
 	if (c >= '0' && c <= '9')
 		return 1;
 	return 0;
@@ -399,8 +398,8 @@ static void warn(const char *msg, const char *detail)
 }
 
 /* ============================================================== Dateien === */
-/* Verzeichnisanteil eines Pfades (ohne Schlusstrenner), "" wenn keiner da ist.
-   Erkennt "/" (OS-9/POSIX) und "\" (die SDK-Pfade unter Wine). */
+/* Directory part of a path without a trailing separator, or "" when absent.
+   Supports both "/" (OS-9/POSIX) and "\" (SDK paths under Wine). */
 /*
  * Function: dirOfPath
  *
@@ -486,12 +485,10 @@ static int fileLoad(const char *path)
 	return id;
 }
 
-/* Wurde dieser Pfad schon geladen UND hat er dabei "#pragma once" gesagt?
-   Verglichen wird der Pfad, unter dem geladen wurde -- derselbe Header ueber
-   zwei verschiedene Pfade ("./x.h" und "x.h") wird also nicht erkannt.
-   Echte Praeprozessoren nehmen dafuer Geraet und Inode; das braucht
-   Systemaufrufe, die es auf beiden Zielen unterschiedlich gibt, deshalb hier
-   bewusst der Pfadvergleich. */
+/* Was this path already loaded and did it contain "#pragma once"? Comparison
+   uses the load path, so the same header through "./x.h" and "x.h" is not
+   recognized as identical. Real preprocessors use device and inode data;
+   those system calls differ across targets, so paths are compared here. */
 /*
  * Function: onceSeen
  *
@@ -565,7 +562,7 @@ static int rdPeek(void)
 			line++;
 			continue;
 		}
-		/* "\" + CR + LF (DOS) und "\" + CR allein (OS-9) */
+		/* "\" + CR + LF (DOS) and "\" + CR alone (OS-9). */
 		if (c == 92 && p + 1 < end && srcArena[p + 1] == 13) {
 			p = p + 2;
 			if (p < end && srcArena[p] == 10)
@@ -577,7 +574,7 @@ static int rdPeek(void)
 	}
 
 	if (c == 13) {
-		/* CR bzw. CR+LF melden wir als LF, s. Kopfkommentar */
+		/* Report CR and CR+LF as LF; see the lexer comment above. */
 		pkCh = 10;
 		pkPos = p + 1;
 		if (pkPos < end && srcArena[pkPos] == 10)
@@ -1016,9 +1013,9 @@ static int stringizeArg(int at, int n)
 	return internN(lxTmp, len);
 }
 
-/* ##-Verkettung: die Schreibweisen zweier Tokens aneinanderhaengen und das
-   Ergebnis neu lexen. Ergibt das kein EINZELNES Token, ist das in C89 3.8.3.3
-   undefiniert -- hier ein Abbruch statt einer stillen Naeherung. */
+/* ## concatenation joins two token spellings and lexes the result again. If
+   the result is not a SINGLE token, C89 3.8.3.3 leaves it undefined; abort
+   instead of silently approximating it. */
 /* Function: pasteText
  * Concatenates two token texts for the ## operator.
  * Parameters: aText, bText Interned token text indices.
@@ -1982,8 +1979,8 @@ static int evalShift(void)
 	int v;
 	int lu;
 
-	/* Beim Schieben zaehlt nur die linke Seite: der rechte Operand geht
-	   nach C89 keine "usual arithmetic conversion" mit dem linken ein. */
+	/* For shifts only the left operand matters: C89 does not apply the usual
+	   arithmetic conversions between the right and left operands. */
 	v = evalAdd();
 	lu = evUns;
 	while (1) {
