@@ -1,0 +1,10 @@
+GLOBAL shared_counter 0 i 0
+FUNC step 1 0
+LOADL 0
+PUSH 1
+ADD
+RET
+PUSH 0
+RET
+ENDFUNC
+OK
