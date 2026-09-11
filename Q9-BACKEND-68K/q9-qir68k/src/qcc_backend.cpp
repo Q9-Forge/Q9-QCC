@@ -395,7 +395,7 @@ static void emitIR(std::ostream& out, const std::vector<Instr>& ir, const std::v
 		out << "\n";
 	}
 	emitM68kCore(out);
-	// Target-Runtime-Stubs: austauschbar; kein absoluter Zugriff und damit PIC-freundlich.
+	// Target runtime stubs: replaceable; no absolute access, so PIC-friendly.
 	out << "tc_putint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n";
 	out << "tc_putuint:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n";
 	out << "tc_putchar:\trts\t; Target Runtime ersetzt dies spaeter durch Ausgabe\n";

@@ -3,14 +3,13 @@
  * These headers are not replacements for Microware headers; they are the
  * subset needed by the bootstrap, and everything here must be readable by QCC.
  * The SDK headers cannot satisfy that requirement: 153 of them
- * schalten an __STDC__ zwischen Prototypen und K&R-Deklarationen um, tragen
- * Compilerattribute und definieren stderr als Makro auf ein internes
+ * switch on __STDC__ between prototypes and K&R declarations, carry compiler
+ * attributes, and define stderr as a macro for an internal
  * stdio-Objekt (&_niob[2]).
  *
  * This is why tools/bootstrap_prepare.py existed: it removed the
- * expandierten SDK-Vorspann weg und setzte eine eigene Praeambel davor. Mit
- * diesen Headern entsteht dieselbe Praeambel auf dem normalen Weg -- durch
- * #include.
+ * expanded SDK preamble and added a custom preamble. With these headers the
+ * same preamble is produced normally through #include.
  */
 #ifndef Q9_STDDEF_H
 #define Q9_STDDEF_H
