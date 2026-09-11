@@ -1,6 +1,6 @@
-/* Pruefprogramm fuer fgets und ferror.
+/* Test program for fgets and ferror.
  *
- * WARUM NICHT IN hello.c: fuer fgets ist Microwares clib KEIN gueltiges
+ * WHY NOT hello.c: Microware clib is NOT a valid fgets oracle.
  * Orakel. Gemessen mit test/lineend68k.sh trennt clibs fgets an $0d, weil
  * Microwares C n auf CR abbildet; QCC bildet es auf $0a ab, und alle
  * Dateien dieser Kette entstehen damit. Das Orakel ist deshalb die
@@ -8,10 +8,10 @@
  * einmal mit clang am Host und einmal gegen qclib auf dem 68030, und beide
  * Ausgaben muessen zeichengleich sein.
  *
- * Deshalb steht hier auch kein einziger OS-9-Pfad: der Dateiname ist
+ * There is therefore no OS-9-specific path here: the filename is
  * relativ, damit beide Seiten ihn benutzen koennen.
  *
- * Geprueft werden die Faelle, in denen sich fgets-Fassungen unterscheiden:
+ * The cases where fgets implementations differ are tested:
  *   - eine gewoehnliche Zeile
  *   - eine LEERE Zeile (nur der Umbruch)
  *   - eine Zeile, die LAENGER ist als der Puffer (Abschneiden bei n-1,

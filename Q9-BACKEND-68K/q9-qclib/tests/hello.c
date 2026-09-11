@@ -1,19 +1,19 @@
-/* Das Pruefprogramm der Bibliothek.
+/* Library comparison test.
  *
- * Es wird ZWEIMAL gebunden -- gegen qclib und gegen Microwares clib --
+ * It is linked TWICE, once against qclib and once against Microware clib,
  * und beide Module laufen im selben Emulatorlauf (test/vsclib.sh). Was
  * hier steht, muss also gegen BEIDE Bibliotheken dasselbe ausgeben.
  *
- * Daraus folgen zwei Regeln fuer neue Faelle:
+ * This gives two rules for new cases:
  *
- * 1. NUR NORMIERTES VERHALTEN pruefen. strncmp gibt in C89 bloss ein
+ * 1. Test only STANDARDIZED behavior. C89 specifies that strncmp returns
  *    VORZEICHEN zurueck ("greater than, equal to, or less than zero"),
  *    keinen bestimmten Wert -- clib liefert die Bytedifferenz, qclib
  *    -1/0/1. Deshalb geht alles durch vorz() statt direkt in die
  *    Ausgabe.
- * 2. KEINE Zeiger drucken. Die Adressen unterscheiden sich zwangslaeufig.
+ * 2. Do not print pointers; addresses necessarily differ.
  *
- * Der stderr-Fall (FILE* == 0) steht bewusst NICHT hier: qclib legt ihn
+ * The stderr case (FILE* == 0) is intentionally NOT here: qclib maps it
  * auf Pfad 2, clib laeuft damit ins Ungewisse -- vergleichen liesse sich
  * das nicht. Er gehoert in einen Test, der nur qclib faehrt.
  */
