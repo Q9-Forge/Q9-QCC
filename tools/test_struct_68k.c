@@ -139,7 +139,7 @@ int main(void)
 	/* 25 GLOBAL struct: separate emission sites again (LOADGP/PUSHADDR G) */
 	mark(25); { char *p; txt[4] = 75; ga.args[4] = txt + 4;
 	            p = ga.args[4]; val(p[0]); }
-	/* Ein Fall FEHLT hier bewusst: aarr[k].args[5] -- also Structschritt und
+	/* One case is intentionally missing: aarr[k].args[5], combining struct and
 	   Feldschritt in einem Ausdruck. QCC lehnt das mit
 	   "arr[i].field[j] not supported in this version" ab, das ist eine
 	   EIGENE Grenze und sauber gemeldet. Gebraucht wird sie nicht:
@@ -152,7 +152,7 @@ int main(void)
 	      IR nachgemessen, nicht gerechnet */
 	mark(26); val(sizeof(struct A));
 
-	/* 27 &arr[i] auf ein Array von Structs -- GLOBAL.
+	/* 27 &arr[i] on an array of structs -- GLOBAL.
 	      Hier stand ein STILLER Falschcode-Fehler (gefunden 2026-09-07):
 	      tc_addressref emittierte PTRINDEX mit dem Typtag, und tcTypeTag
 	      gibt fuer eine Struct 'i', also vier Byte Schrittweite. Bei
