@@ -1077,28 +1077,22 @@ static void emit(void)
 	     65000 + 400 initialisiert -> Modul
 	     65400 + 400 initialisiert -> Abbruch
 	   Es zaehlt also die SUMME aus reservierten und initialisierten Daten,
-	   und erlaubt ist "kleiner oder gleich 65536". Die Sprungtabelle liegt
-	   in den initialisierten Daten und zaehlt mit; deshalb steht die
-	   Pruefung HINTER ihrer Groesse. Die Grenze gilt auch bei -r= und ist
-	   von -M= unabhaengig (beides an l68 nachgemessen). l68 meldet
+	   and allows values less than or equal to 65536. The jump table resides
+	   in initialized data and counts toward the limit, so check after sizing it.
+	   The limit also applies to -r= and is independent of -M=. l68 reports
 	   "**** fatal - non-remote data allocation exceeds 64k bytes".
 
-	   WARUM DAS HIER FEHLTE UND WAS ES ANRICHTETE: ql68 hat den Fall
-	   klaglos gebaut -- 102 Byte Modul mit M$Mem = 70000, also ein Kopf,
-	   der stimmt, und Code, der seine Daten nicht erreichen kann. Genau
-	   diese Luecke hat beim Datenmodell-Versuch (2026-09-06) eine
-	   Machbarkeitsprobe gruen aussehen lassen, die mit l68 sofort
-	   aufgefallen waere. Eine Machbarkeitsprobe muss durch BEIDE Binder.
+	   This check prevents a module with a valid-looking header but unreachable
+	   data references. Feasibility tests must run through both linkers.
 
-	   REMOTE-Daten waeren ausgenommen ("non-remote" bei l68) -- ql68
-	   bricht bei ihnen ohnehin schon vorher ab, alles hier ist also
-	   nicht-remote. */
+	   Remote data would be exempt as with l68, but ql68 currently rejects it
+	   earlier; this check therefore covers only non-remote data. */
 	if (totalUninit + totalInit > 65536)
 		fatal("more than 64 KiB non-remote data -- d16(a6) cannot reach it", "");
 
-	/* --- Raw binary output: no header, name or CRC. Code starts at the
-	   liegt ab Dateianfang, dahinter IData und IRefs wie sonst auch.
-	   Auch der $8000-Vorspann auf die Daten entfaellt -- den legt in
+	/* --- Raw binary output: no header, name or CRC. Code starts at the file
+	   beginning, followed by IData and IRefs. The $8000 data bias is omitted;
+	   the startup code supplies it in
 	   dieser Betriebsart der Startcode selbst an (Handbuch Kap. 9:
 	   "the appropriate register must also point to the beginning of a
 	   global/static RAM area ... Some processors may require biasing"). */
@@ -1130,13 +1124,9 @@ static void emit(void)
 		symAdd("_btext", 0, 6);
 		symAdd("etext", idataAt, 6);
 		symAdd("_bidata", idataAt, 6);
-		/* Type 0 (data), not 6 (equ): "end" denotes the end of the
-		   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
-		   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
-		   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
-		/* "end" denotes the end of the ENTIRE data area, including remote
-		   eingeschlossen -- an l68 gemessen: mit 4 Byte initialisiert und
-		   8000 Byte remote steht end auf 8004. */
+		/* Type 0 (data), not 6 (equ): "end" denotes the data-area end and
+		   receives the a6 bias like every other data reference. */
+		/* "end" denotes the end of the entire data area, including remote data. */
 		symAdd("end", totalUninit + totalInit + totalRemote, 0);
 		symAdd("_enddata", totalUninit + totalInit + totalRemote, 0);
 		for (k = 0; k < rofN; k++) {
@@ -1148,13 +1138,9 @@ static void emit(void)
 		putIrefList(irefData, irefDataN);
 		symAdd("edata", irefAt, 6);
 		symAdd("_birefs", irefAt, 6);
-		/* If exactly ONE of the two lists is empty, l68 appends four
-		   Nullbytes an -- an sieben Faellen gemessen (keine, nur
-		   Code-, nur Daten-, beide Zeigerarten, je ein bis drei
-		   Stueck). Sind beide leer oder beide gefuellt, kommt nichts.
-		   Im Modulaufbau gibt es das NICHT; dort wird stattdessen auf
-		   gerade Gesamtlaenge aufgefuellt. Herleiten laesst sich das
-		   nicht, es ist eine Eigenheit von l68. */
+		/* If exactly one list is empty, l68 appends four zero bytes. This
+		   quirk applies only to raw output; regular modules are padded to an
+		   even total length instead. */
 		if ((irefCodeN == 0) != (irefDataN == 0))
 			put32(0);
 		return;
@@ -1163,9 +1149,9 @@ static void emit(void)
 	/* --- Header. Size fields are patched after layout. ------------------ */
 	put16(0x4AFC);                 /* M$ID    */
 	put16(1);                      /* M$SysRev */
-	put32(0);                      /* M$Size, spaeter */
+	put32(0);                      /* M$Size, patched later. */
 	put32(optOwner);               /* M$Owner */
-	put32(0);                      /* M$Name, spaeter */
+	put32(0);                      /* M$Name, patched later. */
 	put16(optAccess);              /* M$Accs  */
 	put16(rTyLan[rofRoot]);
 	n = rAttRev[rofRoot];
