@@ -1,6 +1,6 @@
 /* string.h -- minimal Q9 string and memory interface. Edition: 2026-09-11.
  *
- * Nur die drei Funktionen, die der erzeugte Parser wirklich ruft
+ * Only the functions actually called by the generated parser
  * (nachgezaehlt in Data/qcc_p.c: strncmp 274-mal, strlen 11-mal, strchr
  * einmal). Die Liste absichtlich NICHT vorsorglich verlaengern: der Bootstrap
  * wird byteweise mit einem Referenzlauf verglichen, und jede zusaetzliche
@@ -16,7 +16,7 @@ extern char* strchr(const char*, int);
 extern int strncmp(const char*, const char*, size_t);
 extern char* strstr(const char*, const char*);
 
-/* Dazu, was qcc_backend_c.cpp ruft (2026-09-07 nachgezaehlt: strcmp
+/* Additional functions called by qcc_backend_c.cpp (counted on 2026-09-07:
    154-mal, strncpy 9-mal, memset 6-mal, strtok und strrchr je zweimal,
    strcat und memcpy je einmal). Damit ist das Backend das erste Werkzeug
    der Kette, das mehr als die drei Parser-Funktionen braucht. */

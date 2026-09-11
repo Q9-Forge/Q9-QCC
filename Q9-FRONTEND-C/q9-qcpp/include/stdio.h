@@ -4,12 +4,11 @@
 
 #include <stddef.h>
 
-/* FILE bleibt ein undurchsichtiger Wert: die Teilmenge fasst nie hinein, und
-   ein "typedef int FILE" laesst sich von QCC lesen. Auf dem 68k ist ein
-   FILE* damit ein 32-Bit-Zeiger wie bei Microware. */
+/* FILE remains opaque: the subset never accesses its fields, and QCC can read
+   typedef int FILE. On 68k, FILE* is therefore a 32-bit pointer like Microware's. */
 typedef int FILE;
 
-/* stderr ist bei Microware ein MAKRO auf (&_niob[2]), also kein linkbares
+/* stderr is a macro for (&_niob[2]) in Microware, not a linkable
    Symbol -- am Host ist es __stderrp. Beides ist fuer diese Teilmenge
    bedeutungslos. Ein eigener Nullstrom haelt den erfolgreichen Weg des
    Compilers unabhaengig von jenem internen stdio-Objekt: der erzeugte Parser
@@ -30,8 +29,8 @@ extern int puts(const char*);
 extern int fputc(int, FILE*);
 extern int fputs(const char*, FILE*);
 extern int sprintf(char*, const char*, ...);
-/* fgets braucht das Backend fuer seine IR-Eingabe (eine Zeile je
-   Anweisung), ferror fuer die Kontrolle nach dem Schreiben. */
+/* fgets is needed by the backend for IR input (one instruction per line), and
+   ferror checks the result after writing. */
 extern char* fgets(char*, int, FILE*);
 extern int ferror(FILE*);
 
