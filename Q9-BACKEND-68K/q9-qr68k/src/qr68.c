@@ -5608,7 +5608,7 @@ static void symSnapshot(void)
 	}
 }
 
-/* Stellt ihn vor dem Ausgabelauf wieder her -- so sieht der dieselben Werte
+/* Restore it before the output pass so that it sees the same values
    wie r68s zweiter Durchlauf. */
 static void symRestore(void)
 {
@@ -5634,7 +5634,7 @@ static void reportPass(void)
 		       pass, codeN, idataN, symN);
 }
 
-/* Vergleich zweier Namen ueber ihre Bytewerte -- fuer die alphabetische
+/* Compare two names by byte value for alphabetical
    Reihenfolge der Globalen im ROF. */
 static int nameLess(int a, int b)
 {
@@ -5654,7 +5654,7 @@ static int nameLess(int a, int b)
 	}
 }
 
-/* ============================================================ ROF schreiben */
+/* ============================================================ Write ROF ==== */
 static void writeRof(void)
 {
 	int i;
@@ -5663,7 +5663,7 @@ static void writeRof(void)
 	int j;
 	int seen;
 
-	/* r68 fuellt den Code auf ein Vielfaches von vier auf: erst ein
+	/* r68 pads code to a multiple of four: first a
 	   NULLBYTE, falls die Laenge ungerade ist, dann Leerbefehle. Beides
 	   gemessen -- ein einzelnes "rts" ergibt codsz=4 mit $4E71 dahinter,
 	   und eine Quelle, die auf einer ungeraden Laenge endet (644475),
@@ -5687,7 +5687,7 @@ static void writeRof(void)
 		}
 	}
 
-	/* Die beiden Datengroessen werden ebenfalls auf ein Vielfaches von
+	/* The two data sizes are also padded to a multiple of
 	   vier gebracht -- gemessen an "ds.b 1/2/3" (statstorage 4) gegen
 	   "ds.b 5" (8) und "ds.b 9" (12), und ein einzelnes "dc.b 1" ergibt
 	   idatsz 4 mit drei Nullbytes im Inhalt. */
@@ -5729,7 +5729,7 @@ static void writeRof(void)
 	outLong(0);                    /* debugsiz */
 	outStrZ(poolAt(psName));
 
-	/* Globale Definitionen -- ALPHABETISCH sortiert. Das ist keine
+	/* Global definitions, sorted ALPHABETICALLY. This is not
 	   Kosmetik: r68 sortiert (gemessen an einer Quelle mit der Reihenfolge
 	   wert/puffer/start, ausgegeben wurde puffer/start/wert), und ohne
 	   dieselbe Reihenfolge gibt es keine Byteidentitaet. Sortiert wird
@@ -5769,7 +5769,7 @@ static void writeRof(void)
 			else if (symSect[best] == SECT_RDATA)
 				outWord(0x0002);
 			else if (symSect[best] == SECT_ABS)
-				/* Ein globales equ auf einen festen Wert --
+				/* A global equ with a fixed value --
 				   gemessen: Typ $0006, und in der Adresse
 				   steht der Wert selbst. */
 				outWord(0x0006);
@@ -5788,7 +5788,7 @@ static void writeRof(void)
 	for (i = 0; i < idataN; i++)
 		outByte(idataBuf[i] & 255);
 
-	/* Externe Namen mit ihren Referenzen: je Name ein Eintrag, darunter
+	/* External names with their references: one entry per name, followed by
 	   alle Vorkommen -- so legt r68 es ab (gemessen an drei jsr auf zwei
 	   verschiedene Namen). */
 	nExtNames = 0;
@@ -5805,7 +5805,7 @@ static void writeRof(void)
 		if (!seen)
 			nExtNames++;
 	}
-	/* Die Namen stehen ALPHABETISCH, wie die Globalen -- gemessen an einer
+	/* Names are ALPHABETICAL, like globals -- measured with a
 	   Quelle, die erst "realloc" und dann "_os_write" braucht: ausgegeben
 	   wird "_os_write" zuerst ($5f vor $72). Die Referenzen unter einem
 	   Namen stehen dagegen aufsteigend nach Offset. */
@@ -5855,7 +5855,7 @@ static void writeRof(void)
 		}
 	}
 
-	/* Lokale Referenzen: erst die, die IM CODE liegen, dann die in den
+	/* Local references: first those in CODE, then those in
 	   initialisierten Daten -- je Gruppe mit ABSTEIGENDEM Offset.
 	   Gemessen an zwei Quellen mit vsect vor bzw. hinter dem Code: die
 	   Reihenfolge haengt nicht an der Quellreihenfolge, sondern an der
@@ -5886,7 +5886,7 @@ static void writeRof(void)
 		}
 	}
 
-	/* Am Schluss schreibt r68 VIER Langwoerter, in allen gemessenen
+	/* Finally, r68 writes FOUR long words, in all measured
 	   Faellen null. Was sie bedeuten, ist offen: die einzige Beschreibung
 	   des Formats (osk-disasm/rof.c) hat genau diesen Abschnitt
 	   auskommentiert -- "common block variables... Do this after
@@ -6017,7 +6017,7 @@ int main(int argc, char **argv)
 		}
 		if (argEq(a, "-bt") || argEq(a, "-y") || argEq(a, "-j") ||
 		    argStarts(a, "-p") > 0) {
-			/* Diese Schalter aendern die Ausgabe und sind nicht
+			/* These switches change output and are not
 			   gemessen: -bt/-y machen Spruenge lang, -j legt eine
 			   Sprungtabelle an, -p richtet alle org aus. */
 			printf("qr68: Schalter %s aendert die Ausgabe und ist nicht nachgebildet\n",
@@ -6025,7 +6025,7 @@ int main(int argc, char **argv)
 			exit(2);
 		}
 		if (a[0] == '-' && a[1] == 'm' && a[2] != 0) {
-			/* -m<n> waehlt die Ziel-CPU -- und das AENDERT DIE
+			/* -m<n> selects the target CPU and CHANGES THE
 			   AUSGABE, anders als hier lange angenommen. Gemessen
 			   an einem psect mit einem einzelnen "rts":
 			     ohne -m      codsz=4, aufgefuellt mit $4e71 (nop)
@@ -6049,20 +6049,20 @@ int main(int argc, char **argv)
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'd' && a[2] != 0) {
-			/* -d<n> ist die Zeilenzahl je Listenseite -- betrifft
+			/* -d<n> is the number of lines per listing page; it affects
 			   nur das Listing. */
 			continue;
 		}
 		if (argEq(a, "-l") || argEq(a, "-g") || argEq(a, "-e") ||
 		    argEq(a, "-s") || argEq(a, "-n") || argEq(a, "-x") ||
 		    argEq(a, "-c") || argEq(a, "-f") || argEq(a, "-r")) {
-			/* Listing- und Meldungsschalter von r68: angenommen
+			/* r68 listing and diagnostic switches: accepted
 			   und uebergangen, damit die Aufrufe der SDK-Makefiles
 			   unveraendert laufen. */
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'q') {
-			/* r68 unterdrueckt damit Warnungen; qr68 gibt ohnehin
+			/* r68 suppresses warnings with this; qr68 already
 			   nur Fehler aus. Angenommen, damit die Aufrufe der
 			   SDK-Makefiles unveraendert laufen -- und zwar auch
 			   MIT angehaengtem Text: das Makefile von
@@ -6075,7 +6075,7 @@ int main(int argc, char **argv)
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'a' && a[2] != 0) {
-			/* -a<sym>[=<wert>] oder -a=<sym>[=<wert>]: Symbol von
+			/* -a<sym>[=<value>] or -a=<sym>[=<value>]: command-line symbol
 			   der Kommandozeile. Ohne Wert ist es 1 (gemessen). */
 			k = 2;
 			if (a[2] == '=')
@@ -6110,7 +6110,7 @@ int main(int argc, char **argv)
 		if (k == 0)
 			k = argStarts(a, "-O=");
 		if (k > 0 && a[k] != 0) {
-			/* So benennen die SDK-Makefiles die Ausgabe -- und zwar
+			/* This is how the SDK makefiles name the output -- and
 			   ausnahmslos: von den 300 Makefiles, die r68 aufrufen,
 			   benutzt keines die Stellung. Beide Schreibungen kommen
 			   vor ("-o=$(RDIR)/$@" und "-O=$@"), und die Stellung
@@ -6152,7 +6152,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	/* Mehrere Messdurchlaeufe, dann einer zum Ausgeben. Zwei feste
+	/* Several measuring passes, followed by one output pass. Two fixed
 	   Durchlaeufe reichen NICHT: r68 verkuerzt "add.l #4,d0" zu ADDQ, und
 	   zwar auch dann, wenn der Wert erst weiter unten definiert wird
 	   (gemessen). Die Befehlslaenge haengt damit an Symbolwerten, ein
