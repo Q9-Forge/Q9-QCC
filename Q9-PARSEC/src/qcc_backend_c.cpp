@@ -1853,12 +1853,11 @@ static void emitIR(FILE* out) {
 			if (globalRemote(gi)) hasBss = 1;
 			else hasData = 1;
 		}
-		/* Die -largedata-Datenindirektionstabelle (tc_gadata) wird NICHT mehr
-		   hier emittiert (siehe emitLeaGlobal()-Kommentar) -- sie sitzt jetzt
-		   VOR allen Funktionsrumpf-Texten, direkt nach tc_functab, damit sie
-		   ueber das einmalige "lea tc_gadata(pc),a3" immer erreichbar bleibt,
-		   egal wie gross der Rest des Programms (inkl. dieses DATA/BSS-Blocks)
-		   wird. */
+		/* The -largedata data indirection table (tc_gadata) is no longer emitted
+		   here (see emitLeaGlobal()). It now sits BEFORE all function bodies,
+		   directly after tc_functab, so the one-time "lea tc_gadata(pc),a3"
+		   remains reachable regardless of program size, including this DATA/BSS
+		   block. */
 		if (hasData) {
 			fprintf(out, "\n%s DATA-Aequivalent des flachen Einzelmoduls: statisch initialisierte int32-Globals\n", fullCommentPrefix());
 			emitAlign(out);
@@ -1872,9 +1871,9 @@ static void emitIR(FILE* out) {
 					if (!g->isArray) {
 						fprintf(out, "%s:\tdc.%c\t%d\n", gAsmName, tagSuffix(g->elemSize), g->initialValue);
 					} else if (!g->hasGinit) {
-						/* perLine nur Lesbarkeit des erzeugten Assemblers, keine
-						   Korrektheitsfrage -- 2026-09-09 fuer short (elemSize 2)
-						   einen Mittelwert dazugenommen. */
+						/* perLine affects only readability of generated assembly, not
+						   correctness; a middle value was added for short (elemSize 2)
+						   on 2026-09-09. */
 						int e, perLine = g->elemSize == 1 ? 40 : g->elemSize == 2 ? 30 : 20;
 						fprintf(out, "%s:\n", gAsmName);
 						for (e = 0; e < g->length; ) {
@@ -1886,19 +1885,15 @@ static void emitIR(FILE* out) {
 						}
 					} else {
 						fprintf(out, "%s:\n", gAsmName);
-						/* 2026-08-11 behobener Korrektheitsfehler: die Schleife lief bis
-						   g->length, init[] fasste aber nur MAX_ARRAY_LEN Elemente. Ein
-						   Array laenger als MAX_ARRAY_LEN MIT mindestens einem GINIT gab
-						   dadurch Speicher HINTER init[] aus -- nachweisbar die Folgefelder
-						   und der Name der naechsten globalen Variablen als Zahlen. Live
-						   reproduziert mit GARRAY-Laenge 5000 + einem GINIT: ab Index 4096
-						   erschienen Werte wie 1751343470 (= "nach", Name des Nachbarn).
-						   Indizes ab initLen sind logisch null (GINIT lehnt sie ab), werden
-						   also als 0 ausgegeben. */
+						/* Correctness fix from 2026-08-11: the loop used to run to
+						   g->length although init[] held only MAX_ARRAY_LEN elements.
+						   An array longer than MAX_ARRAY_LEN with a GINIT therefore read
+						   past init[], exposing following fields and the next global name
+						   as numbers. Indices at or beyond initLen are logically zero
+						   (GINIT rejects them) and are emitted as 0. */
 						for (e = 0; e < g->length; e++) {
-							/* Zwischenzeiger wie oben: durch ein skalares
-							   Zeigerfeld hindurch zu indizieren kann QCCs
-							   Teilmenge nicht. */
+							/* As above, use an intermediate pointer: QCC's subset cannot
+							   index through a scalar pointer field. */
 							int* gi2 = g->init;
 							int v = e < g->initLen ? gi2[e] : 0;
 							fprintf(out, "\tdc.%c\t%d\n", tagSuffix(g->elemSize), v);
@@ -1917,7 +1912,7 @@ static void emitIR(FILE* out) {
 				if (globalRemote(gi)) {
 					char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
-					/* ds.b richtet nicht aus; ein folgendes ds.l braucht die
+					/* ds.b does not align; a following ds.l needs the
 					   Langwortgrenze, sonst liest der 68000 ein ungerades Langwort.
 					   align im vsect ist gegen r68 geprueft (Q9-qr68/test/remotetest.sh). */
 					if (g->elemSize != 1) emitAlign(out);
