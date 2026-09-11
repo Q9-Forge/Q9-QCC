@@ -27,7 +27,7 @@ WORK="${1:-/tmp/qr68-os9}"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 
-[ -x "$REPO/build/qr68" ]        || die "build/qr68 fehlt (make)"
+[ -x "$REPO/build/qr68k" ]       || die "build/qr68k fehlt (make)"
 [ -x "$QCC/q9-cpp/build/qcpp" ]  || die "$QCC/q9-cpp/build/qcpp fehlt"
 [ -x "$QCC/build/qcir" ]        || die "$QCC/build/qcir fehlt"
 [ -x "$QCC/build/qir_68k" ]  || die "$QCC/build/qir_68k fehlt"
@@ -67,7 +67,7 @@ echo "== 3/6 Backend (-os9 -largedata -remotedata) =="
 echo "  $(wc -c < "$WORK/qr68.s68" | tr -d ' ') Byte Assembler"
 
 echo "== 4/6 qr68 assembliert sich selbst =="
-"$REPO/build/qr68" "$WORK/qr68.s68" "$WORK/qr68.r" || die "qr68 auf sich selbst"
+"$REPO/build/qr68k" "$WORK/qr68.s68" "$WORK/qr68.r" || die "qr68 auf sich selbst"
 echo "  $(wc -c < "$WORK/qr68.r" | tr -d ' ') Byte ROF"
 
 echo "== 5/6 r68 auf q9_cstart.a =="

@@ -24,7 +24,7 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QR68="$PWD/build/qr68"
+QR68="$PWD/build/qr68k"
 TOOLS="$PWD/tools"
 [ -x "$QR68" ] || { echo "FEHLER: build/qr68 fehlt -- vorher 'make'"; exit 2; }
 

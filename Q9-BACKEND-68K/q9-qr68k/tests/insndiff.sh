@@ -11,7 +11,7 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QR68=build/qr68
+QR68=build/qr68k
 [ -x "$QR68" ] || { echo "FEHLER: $QR68 fehlt -- vorher 'make'"; exit 2; }
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"

@@ -42,7 +42,7 @@ import sys
 d=open('r_$nm.r','rb').read()
 print('%d,%d,%d,%d,%d,%d' % tuple(d[12:18]))
 ")
-	$F/Q9-qr68/build/qr68 $nm.a -o=q_$nm.r -fdate=$st > qr68_$nm.log 2>&1
+	$F/Q9-qr68/build/qr68k $nm.a -o=q_$nm.r -fdate=$st > qr68_$nm.log 2>&1
 	if [ ! -f q_$nm.r ]; then
 		printf '  %-12s qr68: %s\n' "$nm" "$(head -2 qr68_$nm.log | tr '\n' ' ')"
 		ab=$((ab+1)); return
