@@ -1114,11 +1114,10 @@ void writeWorkfile(FILE* fp) {
 }
 
 // Case B: reconstruct left-recursion edges from the loaded table.
-// Idee: ein Fehlschlag konsumiert nie Eingabe -- alles, was vom Regelstart aus NUR ueber
-// falseAction-Kanten erreichbar ist, liegt an "erster Position" der Regel. Jede NTS-Zeile
-// auf diesem Weg ergibt eine Kante Regel->Zielregel (dieselbe Semantik, die beim normalen
-// Parsen ueber das firstPos-Flag entsteht; die dokumentierte Grenze "leere Regeln werden
-// nicht erkannt" gilt hier genauso).
+// Idea: a failure consumes no input. Everything reachable from a rule start
+// using only falseAction edges is at the rule's first position. Each NTS row
+// on this path creates a rule-to-target edge, with the same semantics as normal
+// parsing through firstPos. The documented empty-rule limitation also applies.
 void rebuildFirstEdgesFromTable() {
 	static int visited[LEXTAB_LEN];
 	int r, row, i;
@@ -1183,7 +1182,7 @@ int loadWorkfileAsGrammar(const char* path) {
 				else {
 					strncpy_s(e->ident, sizeof(e->ident), identBuf, IDENT_LEN);
 				}
-				// mode als persistente statische Strings (KEINE Pointer auf Puffer!)
+				// Keep mode as persistent static strings, never pointers into buffers.
 				if (strcmp(modeBuf, "TS") == 0)       e->mode = (char*)"TS";
 				else if (strcmp(modeBuf, "NTS") == 0) e->mode = (char*)"NTS";
 				else if (strcmp(modeBuf, "RNG") == 0) e->mode = (char*)"RNG";
@@ -1857,9 +1856,8 @@ void lexikalischeAnalyse() {
 				case '}': aktToken = TOKEN_REPEATOFF; 	break;
 				case ';': aktToken = TOKEN_END; 		break;
 				case '.': aktToken = TOKEN_END; 		break;
-				case '~': aktToken = TOKEN_RANGE; 		break;	// Bereichsoperator, bewusst nicht "-"
-														// (das ist in ISO 14977 bereits der
-														// Except-/Mengendifferenz-Operator)
+				case '~': aktToken = TOKEN_RANGE; 		break;	// Range operator; "-" is already
+																// ISO 14977's set-difference operator.
 				case EOF: aktToken = TOKEN_EXIT; 		break;
 				default:  aktToken = TOKEN_ERROR;
 					printf("LEX_ERROR: flasches Zeichen <%c>\n", aktChar);
@@ -2017,19 +2015,19 @@ char * comment() {
 			// search for end block comment
 			index = strstr(sourceBuffer, endBlockCommandString);
 			if (index != NULL) {
-				// end Block found, delete chars before end command string
+				// End-block marker found; delete everything before it.
 				strcpy_s(sourceBuffer, sizeof(sourceBuffer), index + strlen(endBlockCommandString));
 				charLen = (int)strlen(sourceBuffer);
 				flagBlockCommentActive = 0;
 			} else {
-				// end Block not found, delete whole line					
+				// End-block marker not found; delete the whole line.
 				sourceBuffer[0] = EOS;
 				charLen = 0;
 			}
 		}
 	} else {
 		if (flagBlockComment && strlen(startBlockCommandString) > 0 && strlen(endBlockCommandString) > 0) {
-			// search for start block comment
+			// Search for the start of a block comment.
 			index = strstr(sourceBuffer, startBlockCommandString);
 			if (index != NULL) {
 				// search for end block comment in same line
