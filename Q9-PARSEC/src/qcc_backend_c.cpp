@@ -548,9 +548,8 @@ static void readIR(const char* path) {
 		strncpy(insP->op, tok, OP_LEN - 1); insP->op[OP_LEN - 1] = '\0';
 		insP->line = line;
 		insP->argc = 0;
-		/* Alle Plaetze zuerst auf den leeren String zeigen lassen -- vormals
-		   waren nicht belegte Argumente "" (nullinitialisiertes Array), darauf
-		   duerfen Leser sich weiterhin verlassen. */
+		/* Point all slots to the empty string first. Unused arguments used to be
+		   "" in the zero-initialized array, and readers may still rely on that. */
 		for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
 		while ((tok = strtok(NULL, " \t\r\n")) != NULL) {
 			if (insP->argc < MAX_ARGS) {
@@ -563,13 +562,11 @@ static void readIR(const char* path) {
 }
 
 static void collectGlobals(void) {
-	/* GLOBAL/GARRAY/GINIT duerfen -- anders als frueher -- auch INNERHALB einer Funktion
-	   stehen: eine "static" lokale Variable (Data/qcc.lextab, tc_staticlocal) wird als
-	   ganz normaler GLOBAL registriert, an genau der Textstelle, an der ihre Deklaration
-	   im Quelltext steht, also moeglicherweise mitten in einer FUNC...ENDFUNC-Spanne.
-	   collectFunctions() prueft weiterhin, dass jede Zeile entweder zu GLOBAL/GARRAY/GINIT
-	   gehoert oder innerhalb einer offenen Funktion liegt -- eine Zeile "zwischen" zwei
-	   Funktionen ausserhalb jeder FUNC-Spanne bleibt also weiterhin ein Fehler. */
+	/* GLOBAL/GARRAY/GINIT may now also occur INSIDE a function: a static local
+	   variable is registered as a normal GLOBAL at its declaration position,
+	   possibly inside a FUNC...ENDFUNC span. collectFunctions() still requires
+	   every other line to belong to a global directive or an open function, so
+	   a line between two functions remains an error. */
 	int i, gi, idx, len;
 	char msg[300];
 	globalCount = 0;
@@ -582,27 +579,22 @@ static void collectGlobals(void) {
 				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
-					/* 2026-07-25: die MAX_ARRAY_LEN-Grenze gilt jetzt NUR fuer tatsaechlich per
-					   GINIT gesetzte Indizes (init[] ist ein fester Puffer), NICHT mehr fuer die
-					   deklarierte GARRAY-Laenge selbst -- ein grosses, aber unbenutztes/komplett
-					   nullinitialisiertes Array (z.B. ein 8192-Elemente-AST-Knotenpuffer) braucht
-					   dafuer keinen Speicher, siehe emitIR()-Nullfuellung weiter unten. */
+					/* 2026-07-25: MAX_ARRAY_LEN now limits only indices actually
+					   assigned by GINIT (init[] is a fixed buffer), not the declared
+					   GARRAY length. A large unused/zero-initialized array needs no
+					   initializer storage; see the zero fill in emitIR(). */
 					if (idx >= MAX_ARRAY_LEN) fatal("GINIT-Index ueberschreitet MAX_ARRAY_LEN");
 					if (globals[gi].init == NULL) {
-						/* Erst jetzt zuteilen -- und nur so viel, wie per GINIT
-						   ueberhaupt erreichbar ist (Indizes >= MAX_ARRAY_LEN
-						   lehnt die Pruefung oben ab). */
+						/* Allocate only now, and only as much as GINIT can reach
+						   (the check above rejects indices >= MAX_ARRAY_LEN). */
 						int want = globals[gi].length < MAX_ARRAY_LEN ? globals[gi].length : MAX_ARRAY_LEN;
 						globals[gi].init = initAlloc(want, insP->line);
 						globals[gi].initLen = want;
 					}
-					/* UEBER EINEN ZWISCHENZEIGER, damit QCC diese Datei
-					   uebersetzen kann (2026-09-07): "globals[gi].init[idx]"
-					   verlangt zweierlei, was die Teilmenge ablehnt --
-					   "arr[i].field[j] not supported" und "scalar struct
-					   field cannot be indexed". Beides ist sauber gemeldet
-					   und dokumentiert; der Zwischenzeiger ist das Idiom,
-					   das diese Datei ohnehin ueberall benutzt. */
+					/* Use an intermediate pointer so QCC can translate this file
+					   (2026-09-07): "globals[gi].init[idx]" uses nested indexing
+					   patterns that the subset rejects. The intermediate pointer is
+					   the idiom already used throughout this file. */
 					int* initP = globals[gi].init;
 					initP[idx] = number(insP->args[2], insP->line);
 					if (globals[gi].elemSize == 1) initP[idx] &= 255;
@@ -617,15 +609,16 @@ static void collectGlobals(void) {
 		}
 		if (strcmp(insP->op, "GLOBAL") != 0 && strcmp(insP->op, "GARRAY") != 0) continue;
 		if (strcmp(insP->op, "GARRAY") == 0) {
-			/* 4. Argument (2026-07-25, Mehrdatei-Uebersetzung): optionales isstatic-Flag,
-			   hier noch nicht ausgewertet (siehe collectFunctions/GLOBALDECL/FUNCDECL). */
+			/* Fourth argument (2026-07-25, multi-file translation): optional
+			   isstatic flag, not interpreted here (see collectFunctions and
+			   GLOBALDECL/FUNCDECL). */
 			if ((insP->argc != 3 && insP->argc != 4) || !isNumWord(insP->args[1])) fatal("ungueltiges GARRAY");
 			if (findGlobal(insP->args[0]) >= 0) fatal("doppelte globale Variable");
 			len = number(insP->args[2], insP->line);
 			if (len <= 0) fatal("GARRAY-Laenge muss positiv sein");
-			/* KEINE MAX_ARRAY_LEN-Grenze mehr hier -- siehe Kommentar bei GINIT weiter oben.
-			   Ein grosses, nie per GINIT gesetztes Array (komplett nullinitialisiert) braucht
-			   keinen init[]-Speicher und wird unten kompakt gefuellt. */
+			/* No MAX_ARRAY_LEN limit here; see the GINIT comment above. A large
+			   array never assigned by GINIT needs no init[] storage and is filled
+			   compactly below. */
 			if (globalCount >= MAX_GLOBALS) fatal("zu viele globale Variablen");
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
@@ -644,8 +637,8 @@ static void collectGlobals(void) {
 			sprintf(msg, "IR Zeile %d: doppelte globale Variable %s", insP->line, insP->args[0]);
 			fatal(msg);
 		}
-		/* argc>=3 statt ==3 (2026-07-25): 4. Argument ist das optionale isstatic-Flag
-		   (Mehrdatei-Uebersetzung), der Typtag bleibt immer an Position 2. */
+		/* argc>=3 instead of ==3 (2026-07-25): the fourth argument is the
+		   optional isstatic flag; the type tag remains at position 2. */
 		if (insP->argc >= 3 && !isNumWord(insP->args[2])) {
 			sprintf(msg, "IR Zeile %d: unbekannter Globaltyp", insP->line);
 			fatal(msg);
