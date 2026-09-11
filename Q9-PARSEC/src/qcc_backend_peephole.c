@@ -54,22 +54,13 @@
  * "label:\tmove.l\tDn,Dn".
  *
  * FIFTH PATTERN (09.09.2026, selected by frequency versus effort, not guessed):
- * "move.l #IMM,Dn" with IMM in the range -128..127 becomes
- * "moveq #IMM,Dn" -- 1928 Vorkommen in qr68s eigener Ausgabe (gegen 76 fuer
- * Sprungketten-Verkuerzung und 0 fuer bra-auf-naechste-Zeile, beide
- * verworfen: seltener UND nur mit datei-weiter Label-Verfolgung zu haben,
- * waere keine Ein-Zeilen-Regel mehr). MOVEQ ist die einzige Opcode-Form
- * fuer ein Sofortwert-MOVE.L in ein Datenregister mit demselben
- * Bytemuster-Effekt: 2 statt 6 Byte, UND setzt N/Z/V/C exakt wie MOVE.L
- * mit dieser Quelle (V/C beide auf 0). BEWUSST NUR Dn (nie An -- MOVEQ
- * kennt kein Adressregister-Ziel) und NUR wenn IMM eine reine Dezimalzahl
- * ist (optional ein fuehrendes "-", sonst nur Ziffern) -- diese Kette hat
- * an dieser Stelle nie etwas anderes emittiert (alle 2046 "move.l #...,dN"
- * in qr68s Ausgabe sind reine Dezimalzahlen), aber ein Symbol- oder
- * Ausdruckstext an dieser Stelle wuerde die Pruefung einfach durchfallen
- * lassen statt ihn falsch zu deuten.
+ * "move.l #IMM,Dn" with IMM in the range -128..127 becomes "moveq #IMM,Dn".
+ * This occurred 1,928 times in qr68's output. MOVEQ is the only opcode form
+ * for an immediate MOVE.L into a data register with the same flag behavior,
+ * but uses 2 bytes instead of 6. Limit this to Dn (never An) and to plain
+ * decimal values, so symbols or expressions are never misinterpreted.
  *
- * MUSS ALS LETZTES laufen, NICHT im Konvergenz-Durchlauf mit den anderen
+ * MUST run LAST, not in the convergence pass with the other four patterns:
  * vier: phMatchMoveIntoDataReg (Muster zwei/drei) sucht wortwoertlich den
  * Text "move.l\t" als Ausloeser. Liefe die MOVEQ-Umwandlung VORHER, saehe
  * ein anschliessendes "tst.l Dn" oder "move.l Dn,DST" sein Gegenstueck
@@ -79,28 +70,26 @@
  * reicht deshalb aus.
  *
  * MULTIPLE PASSES: removing one line often exposes the next opportunity --
- * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
- * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
- * wiederholt deshalb alle drei Muster, bis ein Durchlauf nichts mehr
- * aendert (klassisches Peephole-Verhalten, dieselbe Erwartung wie bei
- * o68). Die Fold-Funktionen duerfen sich deshalb NICHT auf physische
- * Nachbarschaft verlassen (phLines[i+1]) -- eine schon gestrichene Zeile
- * liegt weiterhin im Array, phNextKept() ueberspringt sie.
+ * "PUSH x / POP d0 / TST d0" first folds to "move.l x,d0", and only then is
+ * "tst.l d0" adjacent. peepholeRun() therefore repeats the three patterns
+ * until a pass makes no changes, as expected from a classic peephole pass.
+ * Fold functions must not rely on physical adjacency (phLines[i+1]): removed
+ * lines remain in the array and phNextKept() skips them.
  *
  * ARCHITECTURE for additional patterns (o68 lesson): read original lines only
- * (keine Mutation), Ersetzungen landen in einem eigenen Synthesepuffer, eine
- * Zeile wird durch Streichen markiert statt physisch verschoben (o68s remins-
- * Idee) -- neue Muster kommen als weitere phFold*-Funktionen dazu, nicht als
- * Sonderfaelle in einer bestehenden.
+ * (no mutation); replacements go into a dedicated synthesis buffer, and a
+ * line is marked removed instead of physically moved (the o68s remins idea).
+ * New patterns should be added as additional phFold* functions, not as special
+ * cases in an existing one.
  *
  * MEMORY SIZES ARE MEASURED, NOT GUESSED: qr68's own assembler output with
- * -remotedata (der groesste bisher auf dem Ziel gelaufene Fall ausserhalb des
- * Selbsthosts) hat 75.273 Zeilen / 1.588.771 Byte. Die Grenzen unten geben
+ * -remotedata (the largest target-side case outside self-hosting so far) has
+ * 75,273 lines / 1,588,771 bytes. The limits below provide
  * darauf reichlich Kopfraum; QCCs eigener Selbsthost-Bau (222.832 Zeilen /
- * 4,59 MB) sprengt sie bewusst -- -peephole ist fuer den noch nicht verdrahtet,
- * das waere eine eigene, spaetere Speicherbudget-Entscheidung. Ueberschreitung
- * bricht mit fatal() ab, wie jede andere Kapazitaetsgrenze in diesem Backend --
- * keine stille Kuerzung.
+ * 4.59 MB) deliberately exceeds them; -peephole is not yet wired into that
+ * path, which requires a separate future memory-budget decision. Exceeding a
+ * limit calls fatal(), like every other backend capacity limit, with no silent
+ * truncation.
  *================================================================================*/
 
 #define PH_MAX_LINES  100000
