@@ -1873,19 +1873,16 @@ static void emitIR(FILE* out) {
 						}
 					} else {
 						fprintf(out, "%s:\n", gAsmName);
-						/* 2026-08-11 behobener Korrektheitsfehler: die Schleife lief bis
-						   g->length, init[] fasste aber nur MAX_ARRAY_LEN Elemente. Ein
-						   Array laenger als MAX_ARRAY_LEN MIT mindestens einem GINIT gab
-						   dadurch Speicher HINTER init[] aus -- nachweisbar die Folgefelder
-						   und der Name der naechsten globalen Variablen als Zahlen. Live
-						   reproduziert mit GARRAY-Laenge 5000 + einem GINIT: ab Index 4096
-						   erschienen Werte wie 1751343470 (= "nach", Name des Nachbarn).
-						   Indizes ab initLen sind logisch null (GINIT lehnt sie ab), werden
-						   also als 0 ausgegeben. */
+						/* 2026-08-11 correctness fix: the loop used to run to g->length,
+						   although init[] held only MAX_ARRAY_LEN elements. An array longer
+						   than MAX_ARRAY_LEN with at least one GINIT therefore read past init[],
+						   exposing following fields and the next global's name as numbers.
+						   Reproduced with length 5000 and one GINIT: values such as 1751343470
+						   ("nach", the neighbor's name) appeared from index 4096 onward.
+						   Indices at or above initLen are logically zero and are emitted as 0. */
 						for (e = 0; e < g->length; e++) {
-							/* Zwischenzeiger wie oben: durch ein skalares
-							   Zeigerfeld hindurch zu indizieren kann QCCs
-							   Teilmenge nicht. */
+							/* Use an intermediate pointer as above: indexing through a scalar
+							   pointer field is outside QCC's supported subset. */
 							int* gi2 = g->init;
 							int v = e < g->initLen ? gi2[e] : 0;
 							fprintf(out, "\tdc.%c\t%d\n", tagSuffix(g->elemSize), v);
@@ -1895,7 +1892,7 @@ static void emitIR(FILE* out) {
 			}
 		}
 		if (hasBss) {
-			fprintf(out, "\n%s VSECT REMOTE: genullte Globals -- OS-9 legt den Bereich an und nullt ihn (gemessen), das Modul traegt kein einziges Nullbyte dafuer\n", fullCommentPrefix());
+			fprintf(out, "\n%s VSECT REMOTE: zero-initialized globals -- OS-9 allocates and clears the area (measured); the module carries no zero bytes for it\n", fullCommentPrefix());
 			if (os9Mode) fputs("\tvsect\tremote\n", out);
 			else fputs("\tsection .bss\n", out);
 			for (gi = 0; gi < globalCount; gi++) {
@@ -1904,9 +1901,9 @@ static void emitIR(FILE* out) {
 				if (globalRemote(gi)) {
 					char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
-					/* ds.b richtet nicht aus; ein folgendes ds.l braucht die
-					   Langwortgrenze, sonst liest der 68000 ein ungerades Langwort.
-					   align im vsect ist gegen r68 geprueft (Q9-qr68/test/remotetest.sh). */
+					/* ds.b does not align the next item; a following ds.l needs a
+					   longword boundary or the 68000 reads an odd longword. Alignment in
+					   the vsect was verified with r68 (Q9-qr68/test/remotetest.sh). */
 					if (g->elemSize != 1) emitAlign(out);
 					fprintf(out, "%s:\tds.%c\t%d\n", gAsmName, tagSuffix(g->elemSize),
 					        g->isArray ? g->length : 1);
