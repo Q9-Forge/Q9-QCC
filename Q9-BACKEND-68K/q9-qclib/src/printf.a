@@ -1,3 +1,6 @@
+* q9-qclib formatted-output ABI adapters: printf, fprintf and sprintf.
+* Edition history: 2026-09-11  Introduced the English source-header format.
+*
 * printf, fprintf, sprintf -- Adapter von Microwares Aufrufkonvention
 * auf ein zusammenhaengendes Argumentfeld.
 *

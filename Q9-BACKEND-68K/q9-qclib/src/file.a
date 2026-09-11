@@ -1,3 +1,7 @@
+* q9-qclib file ABI adapters: fopen, fclose, fread, fwrite, puts, fputc,
+* fputs, fgets and ferror.
+* Edition history: 2026-09-11  Introduced the English source-header format.
+*
 * Die Adapter fuer fopen, fclose, fread, fwrite, puts, fputc, fputs,
 * fgets und ferror.
 *

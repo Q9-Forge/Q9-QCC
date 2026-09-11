@@ -1,3 +1,6 @@
+* q9-qclib memory ABI adapter: realloc.
+* Edition history: 2026-09-11  Introduced the English source-header format.
+*
 * Der Adapter fuer realloc.
 *
 * Derselbe Handgriff wie in file.a, printf.a und str.a, dort begruendet:
