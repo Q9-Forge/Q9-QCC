@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# "vsect remote" gegen r68 -- byteweise. r68 ist das Orakel.
+# "vsect remote" against r68, byte-for-byte. r68 is the oracle.
 #
-# WOFUER remote GEBRAUCHT WIRD: ein nicht-remoter vsect wird ueber d16(a6)
+# WHY remote IS NEEDED: a non-remote vsect is addressed through d16(a6)
 # angesprochen und passt damit in 64 KB; l68 lehnt mehr ab ("non-remote data
 # allocation exceeds 64k bytes"). Remote-Daten zaehlen dort nicht mit -- l68
 # legt sie im Datenbereich HINTER die initialisierten Daten, aus dem
@@ -9,12 +9,12 @@
 # (genullte Globals in den vsect, Faktor ~6 kleinere Module) ueberhaupt durch
 # die Binder kommen kann.
 #
-# qr68 hat "remote" bis 2026-09-07 STILLSCHWEIGEND VERWORFEN: die ROFs mit und
+# Until 2026-09-07 qr68 SILENTLY DISCARDED "remote": ROFs with and
 # ohne remote waren byteidentisch, remotestatsiz blieb 0. Genau die
 # Fehlerklasse, die dieses Projekt sonst bekaempft -- und sie hat den Umbau
 # blockiert, ohne sich zu zeigen.
 #
-# Der letzte Fall pruefte ABSICHTLICH etwas OHNE remote: er muss unveraendert
+# The final case INTENTIONALLY tests without remote: it must remain
 # byteidentisch bleiben, sonst hat die Aenderung den Normalfall beschaedigt.
 set -uo pipefail
 F=/Volumes/SSD1TB/projects/Q9-Forge
@@ -36,7 +36,7 @@ fall() {   # $1 = Name, dann die Quelle auf stdin
 		printf '  %-12s r68 selbst kommt nicht durch: %s\n' "$nm" "$(head -2 r68_$nm.log | tr '\n' ' ')"
 		return
 	fi
-	# Den Zeitstempel von r68 uebernehmen, damit nur der Inhalt zaehlt.
+	# Copy r68's timestamp so only content is compared.
 	st=$(python3 -c "
 import sys
 d=open('r_$nm.r','rb').read()

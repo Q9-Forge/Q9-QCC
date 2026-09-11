@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Differenztest an den TREIBERQUELLEN des MWOS-SDK -- dem schwersten
-# Material: Includes, Makros, bedingte Assemblierung, Sprungweitenwahl und
+# Differential test on MWOS SDK DRIVER SOURCES -- the most demanding
+# material: includes, macros, conditional assembly, branch sizing, and
 # Ausdrücke mit mehreren externen Anteilen, alles in einer Datei.
 #
-# Assembliert wird so, wie es die SDK-Makefiles tun: aus einem
+# Assemble as the SDK makefiles do: from a
 # PORT-Verzeichnis heraus (dort liegt "defsfile", das "use defsfile" holt),
 # mit den Schaltern -qb -u=. -u=<DEFS> -u=<MACROS>.
 #
 #   ./test/mwos.sh                 -- alle SCF-Treiber des Beispielports
 #   ./test/mwos.sh datei.a ...     -- bestimmte Quellen
 #
-# UEXTRA nimmt weitere Suchverzeichnisse auf (durch Leerzeichen getrennt).
+# UEXTRA adds further search directories (space-separated).
 # Der ROM-Code braucht das: ROM_CBOOT/sysinit.a holt sich "systype.d" aus
 # dem WURZELverzeichnis des Ports, nicht aus dem eigenen -- ohne den
 # zusaetzlichen -u faellt r68 auf sein eingebautes \mwos\OS9\SRC\DEFS
@@ -37,7 +37,7 @@ TMP="${KEEP:-$(mktemp -d /tmp/qr68-mwos.XXXXXX)}"
 mkdir -p "$TMP"
 [ -n "${KEEP:-}" ] || trap 'rm -rf "$TMP"' EXIT
 
-# os9-toolchain.sh biegt MWOS auf den WINE-Pfad um -- der Unix-Pfad muss
+# os9-toolchain.sh redirects MWOS to the WINE path; save the Unix path first,
 # vorher gerettet werden, sonst sucht qr68 seine Includes unter "M:\...".
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -50,13 +50,13 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 files=("$@")
 if [ ${#files[@]} -eq 0 ]; then
 	for f in "$DRVDIR"/*.a; do
-		# Die "(2)"-Doubletten des SDK auslassen.
+		# Skip the SDK "(2)" duplicates.
 		case "$f" in *"("*) continue;; esac
 		files+=("$f")
 	done
 fi
 
-# Pfade fuer Wine. Alles unterhalb von $MWOS liegt dort auf dem Laufwerk M:
+# Paths for Wine. Everything below $MWOS is mapped to drive M:
 # -- mit einem "Z:"-Pfad findet r68 sein Suchverzeichnis NICHT (es faellt
 # dann auf sein eingebautes \mwos\OS9\SRC\DEFS zurueck).
 winpath() {
@@ -71,8 +71,7 @@ UDEFS="$(winpath "$MWOS/OS9/SRC/DEFS")"
 UMACS="$(winpath "$MWOS/OS9/SRC/MACROS")"
 TMPWIN="$(winpath "$TMP")"
 
-# Die zusaetzlichen Suchverzeichnisse, einmal fuer r68 (Wine) und einmal
-# fuer qr68 (Unix).
+# Additional search directories, once for r68 (Wine) and once for qr68 (Unix).
 RXTRA=""
 QXTRA=()
 for d in ${UEXTRA:-}; do
@@ -97,8 +96,7 @@ for f in "${files[@]}"; do
 	fi
 	stamp="$(python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); print(",".join(str(b) for b in d[12:18]))' "$TMP/$base.r")"
 	if [ -z "$stamp" ]; then
-		# r68 hat die Datei zwar angelegt, aber nichts hineingeschrieben
-		# -- es ist selbst nicht durchgekommen.
+		# r68 created the file but wrote nothing; it did not assemble it.
 		echo "  $(printf '%-20s' "$base") r68 kommt selbst nicht durch: $(grep -m1 -o 'fatal:.*' "$TMP/$base.r68" | head -1)"
 		skip=$((skip + 1))
 		continue
