@@ -16,16 +16,16 @@
 // Date    │ Ver. │ Description                                                             │ By
 //─────────┼──────┼─────────────────────────────────────────────────────────────────────────┼──────
 // 26-07-19│ 1.00 │ Initiale Version: AST-Stack-API, C-Backend, 68k-Backend                 │ CF
-// 26-07-19│ 1.10 │ AST-Validierung: nullable Wiederholungen und Namenskollisionen sichern │ CF
-// 26-07-19│ 1.20 │ LEXER-Modus (scannerless): ws()/idch()-Helfer in C- und 68k-Backend,   │ CF
-//         │      │ TOKEN-Abschluss = lexikalische Regeln ohne Whitespace-Skipping,        │
-//         │      │ Wortgrenzen-Check fuer wortartige Literale ("MODULEX" != "MODULE X")   │
-// 26-07-19│ 1.30 │ COMMENT BLOCK = "(*" "*)" (Blockkommentare der Objektsprache, nicht    │ CF
-//         │      │ geschachtelt; unterminiert laeuft bis Eingabeende) in C und 68k        │
-// 26-07-19│ 1.40 │ OS-9/r68-Ausgabeformat: [CODEGEN]-Block (M68K OS9, M68K PSECT),        │ CF
-//         │      │ genParser68kOS9 = gleicher Body mit nam/psect/ends + '*'-Kommentaren   │
-// 26-07-19│ 1.50 │ COMMENT BLOCK NESTED: geschachtelte Blockkommentare (Oberon/Modula-2), │ CF
-//         │      │ Tiefenzaehler in C (lokal) und 68k (d2; nur bei NESTED zerstoert)      │
+// 26-07-19│ 1.10 │ AST validation: nullable repetitions and name collisions protected │ CF
+// 26-07-19│ 1.20 │ LEXER mode (scannerless): ws()/idch() helpers in C and 68k,       │
+//         │      │ TOKEN closure = lexical rules without whitespace skipping,     │
+//         │      │ word-boundary check for word-like literals ("MODULEX" != "MODULE X") │
+// 26-07-19│ 1.30 │ COMMENT BLOCK = "(*" "*)" (object-language block comments, not │ CF
+//         │      │ nested; unterminated comments run to end of input) in C and 68k │
+// 26-07-19│ 1.40 │ OS-9/r68 output format: [CODEGEN] block (M68K OS9, M68K PSECT) │ CF
+//         │      │ genParser68kOS9 = same body with nam/psect/ends + '*' comments │
+// 26-07-19│ 1.50 │ COMMENT BLOCK NESTED: nested block comments (Oberon/Modula-2) │ CF
+//         │      │ nesting depth in C (local) and 68k (d2; clobbered only by NESTED) │
 //─────────┴──────┴─────────────────────────────────────────────────────────────────────────┴──────
 #include <stdio.h>
 #include <string.h>
