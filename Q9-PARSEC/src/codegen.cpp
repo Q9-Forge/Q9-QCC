@@ -1016,22 +1016,11 @@ int genParserC(const char* path) {
 	}
 	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
 	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n");
-	/* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gefunden per Diff der FAIL-LISTE
-	   gegen den Commit davor -- der reine Zaehlervergleich verdeckte ihn: die
-	   Suite ging von 189 ok/19 FAIL auf 181 ok/24 FAIL, weil derselbe Commit 8
-	   FAILs reparierte und 13 neue erzeugte): main() belegt den Eingabepuffer
-	   seit dem Umstieg auf INPUT_FILE_MAX dynamisch und ruft dafuer UNBEDINGT
-	   realloc() auf (s. u. bei inputFileBuf), die Deklaration wurde aber nur im
-	   Aktions-Log-Zweig weiter unten ausgegeben. Jede Grammatik OHNE
-	   ACTIONS-Block erzeugte damit C-Code ohne realloc-Deklaration. Apple clang
-	   21 macht aus einer impliziten Funktionsdeklaration einen FEHLER (seit C99
-	   ist sie ungueltig, seit clang 16 nicht mehr nur eine Warnung) -- das -w in
-	   runtests.sh unterdrueckt Warnungen, keine Fehler, deshalb schlugen alle 13
-	   codegen-/lexer-Tests mit "C-Parser kompiliert nicht" fehl.
-	   Bewusst KEIN #include <stdlib.h>: derselbe erzeugte Parser wird auf dem
-	   68k-Weg von QCC uebersetzt, das keine Header kennt -- die explizite
-	   extern-Deklaration ist die Form, die dort seit jeher traegt (sie stand aus
-	   genau diesem Grund schon im Aktionszweig, nur eben nicht unbedingt). */
+	/* Bug found and fixed (2026-09-01): main() allocates the input buffer with
+	   realloc(), but the declaration was emitted only when ACTIONS were present.
+	   Grammars without ACTIONS therefore generated invalid C on modern clang.
+	   Do not include stdlib.h: the generated parser is also compiled by the
+	   headerless 68k QCC path, so the explicit extern declaration is intentional. */
 	fprintf(fp, "extern char* realloc(char*, int);\n");
 	fprintf(fp, "#ifdef QCC_BUFFERED_OUTPUT\n#include <stdarg.h>\n");
 	fprintf(fp, "static char qccOutputBuffer[8192]; static int qccOutputUsed = 0;\n");
@@ -1050,10 +1039,9 @@ int genParserC(const char* path) {
 	   Q9-QCC/q9-cpp/tools/bootstrap.sh. */
 	fprintf(fp, "#define printf qccPrintf\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() (void)0\n#endif\n\n");
 	fprintf(fp, "static const char* p;\n");
-	/* Anker fuer Positionsangaben im Nutzercode (2026-09-01): der Zeiger p
-	   wandert waehrend des Parsens, der Anfang der Eingabe bleibt stehen. Aus
-	   beidem kann eine Aktion Zeile und Spalte zaehlen -- ohne diesen Anker
-	   kann eine Diagnose keinen Ort nennen. */
+	/* Anchor for user-code position diagnostics (2026-09-01): p advances during
+	   parsing while the input start remains fixed. Actions can derive line and
+	   column from both; without this anchor diagnostics have no location. */
 	fprintf(fp, "static const char* parserInputStart;\n");
 	/* Span of the action currently being replayed. Helpers without their own
 	   span can use it for diagnostics; p already points at input end then. */
