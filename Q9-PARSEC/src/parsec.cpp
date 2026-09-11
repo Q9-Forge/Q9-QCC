@@ -19,21 +19,21 @@
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
 // Date    │ Ver. │ Description                                                             │ By
 //─────────┼──────┼─────────────────────────────────────────────────────────────────────────┼──────
-// 20-04-28│ 1.00 │ Urspruengliche Version (Visual Studio, Windows): EBNF-Parser +          │ AF
-//         │      │ Tabellen-Erzeugung als CSV (.lextab) und Listing (.lexlst)              │
-// 26-07-19│ 1.10 │ Adressaufloesung fuer NTS-Referenzen (resolveCallAddresses) +           │ CF
-//         │      │ Linksrekursions-Erkennung ueber firstPos-Graph (checkLeftRecursion)     │
-// 26-07-19│ 1.20 │ Bereichsoperator "~" ("a"~"z", mode RNG) + optionale <name>-NTS-Syntax; │ CF
-//         │      │ ISO-14977-Abweichungen dokumentiert (Dialekt-Kommentar unten)           │
-// 26-07-19│ 1.30 │ Stack-Maschine execFrom(): Tabelle laeuft wirklich gegen Eingabetext;   │ CF
-//         │      │ dabei 4 alte Tabellen-Bugs behoben (Sequenz-Kurzschluss, mittlere       │
-//         │      │ Alternativen, {}/[]/() -Nachbearbeitung, komplexer erster Faktor)       │
-// 26-07-19│ 2.00 │ Arbeitsdatei-Format: .lextab ist jetzt strukturiert (EBNF-QUELLTEXT,    │ CF
+// 20-04-28│ 1.00 │ Original version (Visual Studio, Windows): EBNF parser +                │ AF
+//         │      │ table generation as CSV (.lextab) and listing (.lexlst)                 │
+// 26-07-19│ 1.10 │ Address resolution for NTS references (resolveCallAddresses) +          │ CF
+//         │      │ left-recursion detection through firstPos graph (checkLeftRecursion)   │
+// 26-07-19│ 1.20 │ Range operator "~" ("a"~"z", RNG mode) + optional <name>-NTS syntax;  │ CF
+//         │      │ ISO-14977 deviations documented (dialect comment below)                │
+// 26-07-19│ 1.30 │ Stack machine execFrom(): table runs against input text;                 │ CF
+//         │      │ four old table bugs fixed (sequence short-circuit, middle alternatives,│
+//         │      │ {}/[]/() post-processing, complex first factor)                        │
+// 26-07-19│ 2.00 │ Workfile format: .lextab is now structured (EBNF source,                │ CF
 //         │      │ TS-/NTS-SYMBOLTABELLE, PARSER-TABELLE, TESTS, NUTZER-CODE). Die          │
-//         │      │ editierbaren Bloecke bleiben beim Neu-Erzeugen erhalten.                 │
-//         │      │ Neu-Erzeugen erhalten und laufen automatisch (runTests); ohne .ebnf     │
-//         │      │ laedt loadWorkfileAsGrammar() die Tabelle direkt (Fall B). Portierung   │
-//         │      │ auf macOS/clang (msvc_compat.h), OS-Kennung erweitert                   │
+//         │      │ editable blocks survive regeneration.                                │
+//         │      │ Regeneration runs automatically (runTests); without .ebnf              │
+//         │      │ loadWorkfileAsGrammar() loads the table directly (case B). macOS/clang  │
+//         │      │ port (msvc_compat.h), extended OS identifier                         │
 // 26-07-19│ 2.10 │ Tabellen-Bugs 5+6 behoben: expression() patcht Alternativen jetzt ueber │ CF
 //         │      │ den ganzen Zeilenbereich (mehrfaktorige Alternativen "a" "b" | "c" und  │
 //         │      │ komplexe erste Faktoren [x] y | z waren falsch verdrahtet); term()      │
