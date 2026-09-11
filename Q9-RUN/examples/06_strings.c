@@ -1,6 +1,6 @@
 /* String literals. Demonstrates GARRAY/GINIT for the implicit char buffer
-   samt Nullterminator, ADDRG als Adresse eines Literals, direkte
-   Indizierung ohne Zwischenvariable. */
+   including the NUL terminator, ADDRG as a literal address, and direct
+   indexing without an intermediate variable. */
 int first_char(void) {
     return "Hallo"[0];
 }
