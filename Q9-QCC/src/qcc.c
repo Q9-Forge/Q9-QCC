@@ -200,8 +200,10 @@ int main(int argc, char **argv)
 	{
 		char command[512];
 		const char *input = argv[argc - 1];
-		sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
-		if (q9_system(command) != 0) return 4;
+		if (strcmp(tmpdir, "/dd") != 0) {
+			sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
+			if (q9_system(command) != 0) return 4;
+		}
 		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s %s/input.i", qcpp, input, tmpdir);
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
 		if (preprocess_only) {
