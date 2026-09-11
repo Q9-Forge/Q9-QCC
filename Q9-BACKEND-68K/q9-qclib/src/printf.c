@@ -8,37 +8,27 @@
  * Edition history:
  *   2026-09-11  Introduced the English source-header format.
  */
-/* printf, fprintf und sprintf fuer qclib -- der C-Rumpf.
+/* printf, fprintf, and sprintf implementation for qclib.
  *
- * Der Adapter in printf.a hat die Argumente vorher zu EINEM
- * zusammenhaengenden Feld gemacht (siehe dort, an l68/QCC nachgemessen):
+ * The printf.a adapter packs arguments into one contiguous field:
  *
  *     args[0] = erstes Argument, args[1] = zweites, ...
  *
- * Damit braucht es hier weder varargs (die QCC nicht DEFINIEREN kann)
- * noch die Adresse eines Parameters -- nur ein gewoehnliches Feld. Wo die
- * Formatzeichenkette steht, unterscheidet die drei Funktionen: bei printf
- * ist es args[0], bei fprintf und sprintf args[1].
+ * This avoids varargs and parameter-address handling in the bootstrap subset.
+ * The format string is args[0] for printf and args[1] for fprintf/sprintf.
  *
- * DIE SENKE IST EIN ZUSTAND, kein Argument: qp_sink schaltet zwischen
- * OS-9-Pfad (gepuffert, ueber _os_write) und Zeichenkettenpuffer (direkt).
- * Ein Argument waere sauberer, aber jede Ebene mehr kostet in diesem
- * Subset eine weitere Funktion; verschachtelt oder nebenlaeufig wird hier
- * nichts.
+ * The output sink is global state: qp_sink selects buffered OS-9 output via
+ * _os_write or direct output to a string buffer. This keeps the call surface
+ * compatible with the restricted compiler subset.
  *
- * error_code _os_write(path_id, const void*, u_int32*) -- count ist ein
- * IN/OUT-ZEIGER, Pfad 1 ist die Standardausgabe, Pfad 2 der Fehlerkanal.
- * QCC uebersetzt den Aufruf in genau die Microware-Konvention
- * (d0 = Pfad, d1 = Puffer, &count auf dem Stack).
+ * _os_write(path, buffer, &count) uses path 1 for standard output and path 2
+ * for diagnostics. QCC emits the Microware calling convention directly.
  *
- * ZEICHEN STEHEN HIER ALS ZAHL (37 statt eines Zeichenliterals). Die
- * Formatzeichen kommen so dicht vor, dass eine falsche Anfuehrung erst im
- * Zielprogramm auffiele; die Bedeutung steht jeweils als Kommentar
- * dahinter.
+ * Format characters are represented as numeric constants rather than
+ * character literals to keep the generated source within the bootstrap subset.
  *
- * Quelle bleibt im QCC-Subset: keine Zeichenkettenverkettung, kein
- * tab[i][k] auf Zeigerfeldern, kein static (das ist bei QCC wirkungslos).
- */
+ * The source remains within the QCC subset: no string concatenation, nested
+ * indexing through pointer fields, or function-local static storage. */
 
 extern int _os_write(int path, char *buf, int *count);
 

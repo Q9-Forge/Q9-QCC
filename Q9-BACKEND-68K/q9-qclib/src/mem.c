@@ -8,55 +8,14 @@
  * Edition history:
  *   2026-09-11  Introduced the English source-header format.
  */
-/* realloc fuer qclib -- der C-Rumpf.
+/* realloc implementation for qclib.
  *
- * QCCs erzeugter Parser braucht echte Umschichtung: das Aktions-Log
- * waechst durch VERDOPPELN (realloc(actionLog, n * sizeof(...))), der
- * Inhalt muss also erhalten bleiben. Die zweite Aufrufstelle,
- * realloc(0, 524288) fuer den Eingabepuffer, ist der einfache Fall.
- *
- * WARUM EINE ARENA UND NICHT JEDES MAL F$SRqMem -- das ist gemessen, und
- * die erste Fassung hat es falsch gemacht:
- *
- * Sie holte jeden neuen Block frisch vom System und gab den alten danach
- * zurueck. Damit leben beim Umschichten kurz der ALTE und der NEUE Block,
- * der Spitzenbedarf ist also das Dreifache der Endgroesse. Auf dem Ziel
- * (16 MB RAM, davon 14.348 K frei) ist der Lauf deshalb mit
- * "6291464 Byte angefragt, rc=237" gescheitert -- 237 ist E$NoRAM
- * (MWOS/SRC/DEFS/errno.h). Gebraucht wurden 3 MB alt plus 6 MB neu, dazu
- * das 858-KB-Modul, 1 MB Stack und der Eingabepuffer; der groesste
- * ZUSAMMENHAENGENDE Block reichte nicht mehr.
- *
- * Microwares clib macht es anders, und daran ist diese Fassung
- * ausgerichtet: ihr memory.c fuehrt eine eigene Segmentverwaltung
- * (_cmem_base, _cmem_segs, _cmem_allocp) ueber Systemspeicher, den es in
- * grossen Stuecken holt (TRAP $5c und $29, disassembliert).
- *
- * DIESE FASSUNG: EINE Arena, darin ein Belegungszeiger -- und der
- * ZULETZT ausgegebene Block waechst AN DER STELLE. Damit kostet die
- * Verdopplungsleiter des Parsers keine einzige Kopie und keinen
- * Spitzenbedarf: 512 KB Eingabepuffer plus 6 MB Log, fertig. Das ist
- * genau das Muster der Kette (ein fester Puffer, ein wachsender Block),
- * und es ist nachgemessen, nicht angenommen.
- *
- * WAS DIESE FASSUNG NICHT KANN: Speicher wieder hergeben. Es gibt keine
- * Freigabeliste, und ein Block, der nicht der letzte ist, laesst beim
- * Wachsen seinen alten Platz liegen. qclib hat kein free -- die Kette
- * ruft keines -- und beim Prozessende gibt OS-9 die Arena ohnehin
- * zurueck. Das ist bewusst so und keine Luecke, die noch zu schliessen
- * waere; sollte je ein Programm dieser Kette echtes free brauchen,
- * gehoert hierher eine Freigabeliste und nicht ein Flicken.
- *
- * VOR jedem ausgegebenen Block liegen acht Byte Kopf: im ersten Langwort
- * die nutzbare Groesse. Acht und nicht vier, damit der Rueckgabezeiger
- * die Ausrichtung des Blockanfangs behaelt.
- *
- * Registerbelegung und Servicenummer von F$SRqMem stehen in os9call.a,
- * dort dreifach belegt.
- *
- * Quelle im QCC-Subset: keine Zeichenkettenverkettung, kein
- * tab[i][k] auf Zeigerfeldern, kein static.
- */
+ * The allocator uses one arena and grows the most recent allocation in place.
+ * This avoids the temporary old-plus-new peak required by a conventional
+ * copying realloc, which is important on the memory-constrained Q9 target.
+ * qclib intentionally has no free operation: the toolchain does not need it
+ * and OS-9 releases the arena when the process exits. The implementation also
+ * stays within the QCC bootstrap subset. */
 
 extern int _os_srqmem(int want, int *granted, char **addr);
 extern int _os_srtmem(int size, char *addr);
