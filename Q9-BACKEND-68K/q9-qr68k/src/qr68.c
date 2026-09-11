@@ -5690,7 +5690,7 @@ static void writeRof(void)
 	/* The two data sizes are also padded to a multiple of
 	   vier gebracht -- gemessen an "ds.b 1/2/3" (statstorage 4) gegen
 	   "ds.b 5" (8) und "ds.b 9" (12), und ein einzelnes "dc.b 1" ergibt
-	   idatsz 4 mit drei Nullbytes im Inhalt. */
+	   idatsz 4 with three zero bytes in the content. */
 	while ((idataN % 4) != 0) {
 		if (idataN >= IDATA_MAX)
 			fatal("Datenspeicher voll (IDATA_MAX)", "");
@@ -5735,7 +5735,7 @@ static void writeRof(void)
 	   dieselbe Reihenfolge gibt es keine Byteidentitaet. Sortiert wird
 	   ueber die Bytewerte des Namens.
 	   Typwoerter, ebenfalls gemessen: Code $0004, initialisierte Daten
-	   $0001, reservierte Daten $0000, reservierte FERNdaten $0002. */
+	   $0001, reserved data $0000, reserved REMOTE data $0002. */
 	outLong(nGlob);
 	{
 		int done;
@@ -5771,7 +5771,7 @@ static void writeRof(void)
 			else if (symSect[best] == SECT_ABS)
 				/* A global equ with a fixed value --
 				   gemessen: Typ $0006, und in der Adresse
-				   steht der Wert selbst. */
+				   the value itself is stored. */
 				outWord(0x0006);
 			else
 				fatal("globaler Typ noch nicht gemessen: ",
@@ -5784,13 +5784,13 @@ static void writeRof(void)
 	for (i = 0; i < codeN; i++)
 		outByte(codeBuf[i] & 255);
 
-	/* Initialisierte Daten */
+	/* Initialized data */
 	for (i = 0; i < idataN; i++)
 		outByte(idataBuf[i] & 255);
 
 	/* External names with their references: one entry per name, followed by
 	   alle Vorkommen -- so legt r68 es ab (gemessen an drei jsr auf zwei
-	   verschiedene Namen). */
+	   different names). */
 	nExtNames = 0;
 	for (i = 0; i < refN; i++)
 		refDone[i] = 0;
@@ -5808,7 +5808,7 @@ static void writeRof(void)
 	/* Names are ALPHABETICAL, like globals -- measured with a
 	   Quelle, die erst "realloc" und dann "_os_write" braucht: ausgegeben
 	   wird "_os_write" zuerst ($5f vor $72). Die Referenzen unter einem
-	   Namen stehen dagegen aufsteigend nach Offset. */
+	   names are instead ordered by increasing offset. */
 	outLong(nExtNames);
 	{
 		int done;
@@ -5861,7 +5861,7 @@ static void writeRof(void)
 	   Reihenfolge haengt nicht an der Quellreihenfolge, sondern an der
 	   Gruppe (r68 haengt sie offenbar je Abschnitt vorne an eine Liste).
 	   Die Gruppe steht im Typwort: Bit $20 = liegt im Code.
-	   Die externen Referenzen dagegen stehen aufsteigend. */
+	   external references are instead ordered increasingly. */
 	{
 		int cnt;
 		int inCode;
@@ -5892,7 +5892,7 @@ static void writeRof(void)
 	   auskommentiert -- "common block variables... Do this after
 	   everything else is done". Sobald ein Fall auftritt, in dem sie nicht
 	   null sind, wird er gemessen; blind gefuellt wird hier nichts, die
-	   Nullen sind das Messergebnis. */
+	   zeros are the measured result. */
 	outLong(0);
 	outLong(0);
 	outLong(0);
@@ -6019,7 +6019,7 @@ int main(int argc, char **argv)
 		    argStarts(a, "-p") > 0) {
 			/* These switches change output and are not
 			   gemessen: -bt/-y machen Spruenge lang, -j legt eine
-			   Sprungtabelle an, -p richtet alle org aus. */
+			   the branch table; -p aligns all org counters. */
 			printf("qr68: Schalter %s aendert die Ausgabe und ist nicht nachgebildet\n",
 			       a);
 			exit(2);
@@ -6050,7 +6050,7 @@ int main(int argc, char **argv)
 		}
 		if (a[0] == '-' && a[1] == 'd' && a[2] != 0) {
 			/* -d<n> is the number of lines per listing page; it affects
-			   nur das Listing. */
+			   the listing only. */
 			continue;
 		}
 		if (argEq(a, "-l") || argEq(a, "-g") || argEq(a, "-e") ||
@@ -6058,7 +6058,7 @@ int main(int argc, char **argv)
 		    argEq(a, "-c") || argEq(a, "-f") || argEq(a, "-r")) {
 			/* r68 listing and diagnostic switches: accepted
 			   und uebergangen, damit die Aufrufe der SDK-Makefiles
-			   unveraendert laufen. */
+			   run unchanged. */
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'q') {
@@ -6071,12 +6071,12 @@ int main(int argc, char **argv)
 			   Zusatz stillschweigend. Gemessen: "-qQUADS360"
 			   definiert das Symbol QUADS360 NICHT, es wirkt genau
 			   wie ein nacktes "-q". ("-qb" faengt der Zweig
-			   darueber ab.) */
+			   above it.) */
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'a' && a[2] != 0) {
 			/* -a<sym>[=<value>] or -a=<sym>[=<value>]: command-line symbol
-			   der Kommandozeile. Ohne Wert ist es 1 (gemessen). */
+			   on the command line. Without a value it is 1 (measured). */
 			k = 2;
 			if (a[2] == '=')
 				k = 3;
@@ -6117,7 +6117,7 @@ int main(int argc, char **argv)
 			   relativ zur Quelle ist r68 egal (gemessen). Ohne
 			   Ausgabeangabe schreibt r68 GAR NICHTS -- es gibt keinen
 			   Vorgabenamen; qr68 bleibt dabei, das als Aufruffehler
-			   zu melden, statt still nichts zu tun. */
+			   report it instead of silently doing nothing. */
 			if (outPath != 0) {
 				printf("qr68: Ausgabedatei zweimal angegeben: %s\n", a);
 				exit(2);
@@ -6160,7 +6160,7 @@ int main(int argc, char **argv)
 	   Abgebrochen wird erst, wenn sich zwei Durchlaeufe hintereinander
 	   nichts mehr bewegt -- ein einzelner sauberer Durchlauf genuegt
 	   nicht, denn der erste kennt die Vorwaertsbezuege noch gar nicht und
-	   meldet deshalb faelschlich Ruhe. */
+	   therefore incorrectly reports stability. */
 	{
 		int ruhig;
 
