@@ -1,3 +1,13 @@
+/*
+ * q9-qclib memory allocator
+ *
+ * Purpose:
+ *   Provides the arena-backed realloc implementation used by the Q9 tools.
+ *   The allocator grows the most recent allocation in place when possible.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ */
 /* realloc fuer qclib -- der C-Rumpf.
  *
  * QCCs erzeugter Parser braucht echte Umschichtung: das Aktions-Log
@@ -68,6 +78,10 @@ int qm_top;                     /* belegt, vom Arena-Anfang gezaehlt */
    dann wird um diese Groesse minus Reserve gebeten. So steht die
    Arenagroesse nicht als Zahl im Code, sondern richtet sich nach der
    Maschine. */
+/* Function: qm_arena
+ * Acquires the target memory arena on first allocation.
+ * Parameters: None.
+ * Returns: Non-zero on success, zero when OS-9 cannot provide memory. */
 int qm_arena(void)
 {
 	char *p;
@@ -101,6 +115,10 @@ int qm_arena(void)
 	return 1;
 }
 
+/* Function: qm_realloc
+ * Allocates or grows a block in the qclib arena.
+ * Parameters: a Runtime argument frame containing pointer and new size.
+ * Returns: New block address, or null on allocation failure. */
 char *qm_realloc(int *a)
 {
 	char *alt;
