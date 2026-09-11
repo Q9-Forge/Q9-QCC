@@ -492,12 +492,10 @@ static void phWrite(const char* path) {
 	fclose(fp);
 }
 
-/* srcPath ist die von emitIR() beschriebene (temporaere, bei -peephole)
-   Datei; dstPath die eigentliche Zieldatei -- siehe Kommentar in main()
-   zu -peephole: dstPath darf hier zum ERSTEN und einzigen Mal angelegt
-   werden (OS-9s I$Create scheitert sonst an einer schon bestehenden
-   Datei). srcPath bleibt als .tmp-Datei liegen -- kein Aufrufer in
-   dieser Kette raeumt Zwischendateien auf, s. .i/.ir ueberall sonst. */
+/* srcPath is the temporary file written by emitIR() for -peephole; dstPath is
+   the real output file. dstPath may be created here for the FIRST and only
+   time because OS-9 I$Create fails when the file already exists. srcPath is
+   retained as a .tmp file, like other intermediate .i/.ir files in the chain. */
 static void peepholeRun(const char* srcPath, const char* dstPath) {
 	int total, roundTotal, kept, i, rounds, moveqCount;
 	phLoad(srcPath);
@@ -511,9 +509,8 @@ static void peepholeRun(const char* srcPath, const char* dstPath) {
 		total += roundTotal;
 		rounds++;
 	} while (roundTotal > 0);
-	/* ERST NACH der Konvergenz, s. Kommentar am Dateianfang zum fuenften
-	   Muster: MOVEQ-Zeilen wuerden Muster zwei/drei ihren Ausloesertext
-	   "move.l\t" entziehen. */
+	/* Only AFTER convergence, see the fifth-pattern note: MOVEQ lines would
+	   otherwise remove the "move.l\t" trigger text needed by patterns two/three. */
 	moveqCount = phFoldMoveq();
 	total += moveqCount;
 	kept = 0;
