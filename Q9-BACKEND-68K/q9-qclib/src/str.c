@@ -54,8 +54,8 @@ int qs_len(int *a)
 	return n;
 }
 
-/* strchr findet auch das abschliessende Nullzeichen -- deshalb wird erst
-   verglichen und dann auf das Ende geprueft. */
+/* strchr also matches the terminating NUL, so compare first and check for
+   the end afterwards. */
 /* Function: qs_chr
  * Finds the first occurrence of a byte in a string.
  * Parameters: a Runtime argument frame containing string and byte.
@@ -109,7 +109,7 @@ int qs_ncmp(int *a)
 }
 
 /* ---------------------------------------------------------------- strcmp */
-/* Wie strncmp, nur ohne Grenze. Verglichen wird auf unsigned char (C89). */
+/* Like strncmp, but without a length limit. Compare as unsigned char (C89). */
 /* Function: qs_cmp
  * Compares two NUL-terminated strings.
  * Parameters: a Runtime argument frame containing both strings.
@@ -140,8 +140,8 @@ int qs_cmp(int *a)
 }
 
 /* ---------------------------------------------------------------- strcat */
-/* Haengt an und gibt das Ziel zurueck. Der Aufrufer buergt fuer den Platz --
-   so steht es in C89, und eine Grenze gaebe es hier nicht zu pruefen. */
+/* Append to the destination and return it. The caller provides sufficient
+   space, as required by C89; no bound can be checked here. */
 /* Function: qs_cat
  * Appends one string to another.
  * Parameters: a Runtime argument frame containing destination and source.
@@ -168,11 +168,9 @@ char *qs_cat(int *a)
 }
 
 /* --------------------------------------------------------------- strncpy */
-/* C89 GENAU: hoechstens n Zeichen, und wenn die Quelle kuerzer ist, wird mit
-   Nullen AUFGEFUELLT bis n. Wenn sie nicht kuerzer ist, steht am Ende KEINE
-   Null -- deshalb schreibt qcc_backend_c.cpp hinter jedem strncpy die Null
-   selbst ("insP->op[OP_LEN - 1] = 0"). Wer hier die Null immer setzt, waere
-   bequemer und falsch. */
+/* Exact C89 behavior: copy at most n bytes and pad with NULs when the source
+   is shorter. If the source is at least n bytes long, no terminating NUL is
+   written; callers that need one must add it themselves. */
 /* Function: qs_ncpy
  * Copies at most n bytes between strings.
  * Parameters: a Runtime argument frame containing destination, source and n.
@@ -200,8 +198,8 @@ char *qs_ncpy(int *a)
 }
 
 /* --------------------------------------------------------------- strrchr */
-/* Das LETZTE Vorkommen. Die abschliessende Null gehoert dazu (C89), deshalb
-   laeuft die Schleife bis EINSCHLIESSLICH der Null. */
+/* Find the last occurrence. The terminating NUL is included (C89), so the
+   scan continues through that byte. */
 /* Function: qs_rchr
  * Finds the last occurrence of a byte in a string.
  * Parameters: a Runtime argument frame containing string and byte.
@@ -380,8 +378,8 @@ int qs_tol(int *a)
 }
 
 /* ------------------------------------------------------- memset / memcpy */
-/* Beide stehen in string.h und deshalb hier -- mem.c ist die Speicher-
-   BESCHAFFUNG (realloc), nicht die Speicherarbeit. */
+/* Both functions are declared in string.h and belong here; mem.c handles
+   allocation (realloc), not byte operations. */
 /* Function: qs_set
  * Fills a byte range with one value.
  * Parameters: a Runtime argument frame containing destination, value and n.
@@ -404,11 +402,9 @@ char *qs_set(int *a)
 	return d;
 }
 
-/* Kopiert VORWAERTS. Ueberlappende Bereiche sind in C89 bei memcpy
-   undefiniert (dafuer gibt es memmove); die Kette kopiert nur
-   Getrenntes. Langwortweise, wenn beide Seiten und die Laenge es zulassen --
-   bei den Argumentfeldern des Backends sind das wenige Byte, bei einer
-   Tabellenkopie viele. */
+/* Copy forward. Overlapping regions are undefined for memcpy in C89 (use
+   memmove instead); this toolchain copies only disjoint ranges. Use longword
+   copies when both addresses and the length permit it. */
 /* Function: qs_cpy
  * Copies a byte range from source to destination.
  * Parameters: a Runtime argument frame containing destination, source and n.
@@ -445,10 +441,9 @@ char *qs_cpy(int *a)
 }
 
 /* --------------------------------------------------------------- tolower */
-/* Fuer Q9-Tools/System/grep -i (Gross-/Kleinschreibung ignorieren, s.
-   ctype.h). Nur der lateinische ASCII-Bereich -- reicht fuer die Kette, wie
-   ueberall sonst kein Vorratsbau. Alles ausserhalb A-Z kommt unveraendert
-   zurueck, wie es C89 fuer tolower() vorschreibt. */
+/* Used by Q9 tools/system/grep -i. Only the ASCII Latin range is needed by
+   the toolchain; bytes outside A-Z are returned unchanged as required by
+   C89 tolower(). */
 /* Function: qs_lower
  * Converts one ASCII uppercase byte to lowercase.
  * Parameters: a Runtime argument frame containing the byte.
