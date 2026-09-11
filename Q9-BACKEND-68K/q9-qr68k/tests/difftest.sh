@@ -26,8 +26,8 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TMPWIN="$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 
 # Run r68; read its timestamp from the output file and pass it to qr68 with
-# gelesen und qr68 per -fdate= mitgegeben -- so bleibt der Vergleich streng,
-# ohne die sechs Bytes auszunehmen zu muessen.
+# read and pass to qr68 with -fdate=; this keeps comparison strict without
+# excluding the six bytes.
 run_r68() {
 	arch -x86_64 "$WINE_BIN" cmd /c \
 		"Z: && cd $TMPWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $1 -o=$2" \
