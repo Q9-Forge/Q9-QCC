@@ -28,7 +28,8 @@ QR68="$PWD/build/qr68k"
 TOOLS="$PWD/tools"
 [ -x "$QR68" ] || { echo "FEHLER: build/qr68 fehlt -- vorher 'make'"; exit 2; }
 
-: "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+: "${MWOS_HOST:=/Volumes/SSD1TB/projects/MWOS}"
+MWOS="$MWOS_HOST"
 [ -d "$MWOS/OS9" ] || { echo "uebersprungen: $MWOS/OS9 fehlt"; exit 0; }
 
 TMP="${KEEP:-$(mktemp -d /tmp/qr68-sdk.XXXXXX)}"
