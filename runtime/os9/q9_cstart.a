@@ -178,103 +178,103 @@ newarg_t:
         clr.b   -1(a0)                            * CR des Environmentendes loeschen
         move.l  d2,-(sp)                         * argc sichern
 
-* CIO-Initialisierung --------------------------------------------------------
+* CIO initialization ---------------------------------------------------------
 
 iobinit:
-        move.l  #_iobinit-*-8,a0                 * Relokativer _iobinit-Aufruf
+        move.l  #_iobinit-*-8,a0                 * Relative _iobinit call
         jsr     (pcr,a0.l)
-        bcs     die                             * Fehler: Programm beenden
+        bcs     die                             * Error: terminate program
 
-* Hauptprogramm aufrufen -----------------------------------------------------
+* Call the main program ------------------------------------------------------
 
-        bsr.s   _fixtop                         * Speichergrenzen vorbereiten
-        movem.l (sp)+,d0-d1                      * argc und argv laden
-        suba.l  a5,a5                            * Zukuenftigen Framepointer loeschen
-        move.l  environ(a6),-(sp)               * envp an main uebergeben
-        move.l  #main-*-8,a0                     * Relokativer main-Aufruf
+        bsr.s   _fixtop                         * Prepare memory limits
+        movem.l (sp)+,d0-d1                      * Load argc and argv
+        suba.l  a5,a5                            * Clear future frame pointer
+        move.l  environ(a6),-(sp)               * Pass envp to main
+        move.l  #main-*-8,a0                     * Relative main call
         jsr     (pcr,a0.l)
-        moveq   #0,d0                            * Rueckgabestatus fuer exit()
-        move.l  #exit-*-8,a0                     * Relokativer exit-Aufruf
+        moveq   #0,d0                            * Return status for exit()
+        move.l  #exit-*-8,a0                     * Relative exit call
         jsr     (pcr,a0.l)
 
-* Speicher- und Stackverwaltung ---------------------------------------------
+* Memory and stack management ------------------------------------------------
 
 _fixtop:
-        move.l  #end,a0                         * Ende der statischen Daten
-        adda.l  a6,a0                            * In reale Adresse umwandeln
-        move.l  a0,_mtop(a6)                    * Aktuelles Speicherende
-        move.l  a7,_sttop(a6)                   * Obergrenze des Stacks
-        move.l  a7,_stbot(a6)                   * Untere reservierte Stackgrenze
-        move.l  #-252,d0                         * Sicherheitsabstand
+        move.l  #end,a0                         * End of static data
+        adda.l  a6,a0                            * Convert to actual address
+        move.l  a0,_mtop(a6)                    * Current memory end
+        move.l  a7,_sttop(a6)                   * Top of stack
+        move.l  a7,_stbot(a6)                   * Bottom of reserved stack
+        move.l  #-252,d0                         * Safety margin
 
 _stkchec:
 _stkcheck:
-        add.l   a7,d0                            * Neue Stackgrenze berechnen
-        cmp.l   _stbot(a6),d0                    * Bereits reservierter Bereich?
-        blo.s   stk10                           * Weiter pruefen
-        rts                                     * Genuegend Stack vorhanden
+        add.l   a7,d0                            * Calculate new stack limit
+        cmp.l   _stbot(a6),d0                    * Already reserved area?
+        blo.s   stk10                           * Continue checking
+        rts                                     * Sufficient stack available
 stk10:
-        cmp.l   _mtop(a6),d0                     * Datenbereich ueberschritten?
-        blo.s   fsterr                          * Ja: Stackfehler
-        move.l  d0,_stbot(a6)                    * Neue Grenze speichern
+        cmp.l   _mtop(a6),d0                     * Data area exceeded?
+        blo.s   fsterr                          * Yes: stack error
+        move.l  d0,_stbot(a6)                    * Save new limit
         rts
 
 fsterr:
-        lea     fixserr(pc),a0                  * Fehlermeldung ausgeben
+        lea     fixserr(pc),a0                  * Print error message
         bsr.s   PrtMsg
-        move.l  #CError,-(a7)                   * Fehlercode fuer _exit
-        move.l  #_os_exit-*-8,a0                * Relokativer _os_exit-Aufruf
+        move.l  #CError,-(a7)                   * Error code for _exit
+        move.l  #_os_exit-*-8,a0                * Relative _os_exit call
         jsr     (pcr,a0.l)
 
-* OS-9-Fehlermeldung ---------------------------------------------------------
+* OS-9 error message ---------------------------------------------------------
 
 PrtMsg:
-        move.w  d1,-(sp)                        * Fehlercode sichern
-        moveq   #100,d1                         * Maximale Meldungsgroesse
-        moveq   #2,d0                           * Standardausgabe
-        os9     I$WritLn                         * Meldung schreiben
-        move.w  (sp)+,d1                        * Fehlercode wiederherstellen
+        move.w  d1,-(sp)                        * Save error code
+        moveq   #100,d1                         * Maximum message size
+        moveq   #2,d0                           * Standard output
+        os9     I$WritLn                         * Write message
+        move.w  (sp)+,d1                        * Restore error code
         rts
 
-* Oeffentliche Laufzeitfunktionen --------------------------------------------
+* Public runtime functions ---------------------------------------------------
 
 stacksiz:
-        move.l  _sttop(a6),d0                   * Anfangsadresse des Stacks
-        sub.l   _stbot(a6),d0                   * Aktuell reservierte Groesse
+        move.l  _sttop(a6),d0                   * Initial stack address
+        sub.l   _stbot(a6),d0                   * Currently reserved size
         rts
 
 freemem:
-        move.l  _stbot(a6),d0                   * Untere Stackgrenze
-        sub.l   _mtop(a6),d0                    * Freier Speicherbereich
+        move.l  _stbot(a6),d0                   * Bottom of stack
+        sub.l   _mtop(a6),d0                    * Free memory area
         rts
 
-* Uninitialisierter Trap-Handler ---------------------------------------------
-* Eintritt:  A7 caller-a6, 4(A7) trap code, 6(A7) vector, 8(A7) return PC.
+* Uninitialized trap handler -------------------------------------------------
+* Entry: A7 caller-a6, 4(A7) trap code, 6(A7) vector, 8(A7) return PC.
 
 stacked         set     6*4                     * Offset nach Registersave
 trapinit:
-        movem.l d0-d1/a0-a3,-(a7)               * Arbeitsregister sichern
-        move.w  6+stacked(a7),d0               * Trapvektor lesen
-        subi.w  #$80,d0                         * Trapnummer bilden
-        asr.w   #2,d0                           * Trapnummer skalieren
-        cmpi.w  #T$Math,d0                      * Mathematik-Trap?
+        movem.l d0-d1/a0-a3,-(a7)               * Save working registers
+        move.w  6+stacked(a7),d0               * Read trap vector
+        subi.w  #$80,d0                         * Calculate trap number
+        asr.w   #2,d0                           * Scale trap number
+        cmpi.w  #T$Math,d0                      * Mathematics trap?
         bne.s   tryuser
-        lea     m1nam(pc),a0                   * Mathematikmodul
+        lea     m1nam(pc),a0                   * Mathematics module
 trap_x:
-        moveq   #0,d1                           * Kein Zusatzspeicher
-        os9     F$TLink                         * Trapmodul laden
+        moveq   #0,d1                           * No additional memory
+        os9     F$TLink                         * Load trap module
         bcc.s   trap_y
 tryuser:
-        move.l  #_utinit-*-8,a1                 * Benutzer-Trapinitialisierung
+        move.l  #_utinit-*-8,a1                 * User trap initialization
         jsr     (pcr,a1.l)
         bcs.s   die
 trap_y:
-        movem.l (a7)+,d0-d1/a0-a3               * Arbeitsregister restaurieren
-        addq.l  #8,a7                           * Trapparameter entfernen
-        subq.l  #4,(a7)                         * Ruecksprungadresse korrigieren
+        movem.l (a7)+,d0-d1/a0-a3               * Restore working registers
+        addq.l  #8,a7                           * Remove trap parameters
+        subq.l  #4,(a7)                         * Correct return address
         rts
 
-* Konstanten und Fehlermeldungen ---------------------------------------------
+* Constants and error messages ------------------------------------------------
 
         dc.w    $4afb                          * Debugger-Markierung
         dc.w    StrEnd-*-2                      * Debugger-Stringlaenge
@@ -288,37 +288,37 @@ m1nam:
         dc.b    "math",0
         align
 EVNULL:
-        dc.l    0                               * Leere Environmentliste
+        dc.l    0                               * Empty environment list
 StrEnd:
 
-* Fehlerausgang ---------------------------------------------------------------
+* Error exit ------------------------------------------------------------------
 
 badtrap:
-        move.l  #E$IllFnc,d1                    * Fehlercode setzen
+        move.l  #E$IllFnc,d1                    * Set error code
 die:
-        move.l  a0,-(sp)                        * Handlername sichern
-        lea     TrapErr(pc),a0                  * Allgemeine Fehlermeldung
+        move.l  a0,-(sp)                        * Save handler name
+        lea     TrapErr(pc),a0                  * General error message
         bsr     PrtMsg
-        movea.l #_iob,a1                        * CIO-Pufferbasis
-        adda.l  a6,a1                           * In Prozessadresse umwandeln
-        lea     TrapEr1(pc),a0                  * Meldungspraefix
+        movea.l #_iob,a1                        * CIO buffer base
+        adda.l  a6,a1                           * Convert to process address
+        lea     TrapEr1(pc),a0                  * Message prefix
         bsr.s   mover
-        move.l  (sp)+,a0                        * Handlername zurueckholen
-        subq.l  #1,a1                           * CR-Position korrigieren
+        move.l  (sp)+,a0                        * Restore handler name
+        subq.l  #1,a1                           * Correct CR position
         bsr.s   mover
-        lea     TrapEr1(pc),a0                  * Meldungssuffix
-        subq.l  #1,a1                           * CR-Position korrigieren
+        lea     TrapEr1(pc),a0                  * Message suffix
+        subq.l  #1,a1                           * Correct CR position
         bsr.s   mover
-        move.b  #CR,-1(a1)                      * Meldung abschliessen
-        movea.l #_iob,a0                        * CIO-Pufferbasis
-        adda.l  a6,a0                           * In Prozessadresse umwandeln
+        move.b  #CR,-1(a1)                      * Terminate message
+        movea.l #_iob,a0                        * CIO buffer base
+        adda.l  a6,a0                           * Convert to process address
         bsr     PrtMsg
         os9     F$Exit                          * Prozess beenden
         os9     F$Exit                          * Debugger-Sicherheitsausgang
 
 mover:
-        move.b  (a0)+,(a1)+                     * Zeichen kopieren
-        bne.s   mover                           * Bis Nullbyte kopieren
+        move.b  (a0)+,(a1)+                     * Copy character
+        bne.s   mover                           * Copy through terminating NUL
         rts
 
         ends
