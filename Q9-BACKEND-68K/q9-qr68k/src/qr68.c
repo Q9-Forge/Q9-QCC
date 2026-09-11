@@ -1,7 +1,7 @@
 /*
  * qr68 -- Q9 68k assembler with OS-9 ROF output
  *
- * Aufruf:  qr68 [Optionen] <eingabe.a> <ausgabe.r>
+ * Usage: qr68 [options] <input.a> <output.r>
  *
  * Purpose: replace Microware r68. The preprocessor (qcpp) and
  * compiler frontend (QCC) can run on the target; assembler and linker
@@ -11,73 +11,67 @@
  *   2026-09-11  Introduced the English source-header format.
  *
  * ---------------------------------------------------------------------------
- * DAS ROF-FORMAT, AM ORIGINAL GEMESSEN (2026-09-03)
+ * ROF FORMAT, MEASURED AGAINST THE ORIGINAL (2026-09-03)
  *
- * Es gibt genau eine Beschreibung des Formats -- MWOS/APPS/src/osk-disasm
- * (rof.c/rof.h, ein Disassembler) -- und die stimmt in einem wesentlichen
- * Punkt NICHT mit dem ueberein, was r68 schreibt: dort werden die Zaehler
- * (Globale, Externe, Referenzen) mit fread_w als 16-Bit-Woerter gelesen,
- * r68 schreibt sie aber als 32-Bit-Langwoerter. Nachgemessen mit Proben von
- * 0, 1, 2 und 3 Symbolen. Deshalb hier das gemessene Layout:
+ * The only format description is MWOS/APPS/src/osk-disasm (rof.c/rof.h, a
+ * disassembler). It differs from r68 in one important detail: the counts
+ * (globals, externals, references) are read there as 16-bit words with
+ * fread_w, while r68 writes them as 32-bit long words. This was measured
+ * with samples containing 0, 1, 2, and 3 symbols. The measured layout is:
  *
  *   Kopf (56 Byte, alles big-endian):
  *     0  sync            4   $DEADFACE
- *     4  ty_lan          2   Typ/Sprache      (psect-Parameter 2)
- *     6  att_rev         2   Attribute/Rev    (psect-Parameter 3)
+ *     4  ty_lan          2   type/language    (psect parameter 2)
+ *     6  att_rev         2   attributes/rev   (psect parameter 3)
  *     8  valid           2   0
- *    10  series          2   Assembler-Kennung, r68 V2.9.1 schreibt 249
- *    12  rdate           6   Jahr-1900, Monat, Tag, Stunde, Minute, Sekunde
- *    18  edition         2   (psect-Parameter 4)
- *    20  statstorage     4   Groesse der statischen Daten (vsect)
- *    24  idatsz          4   Groesse der initialisierten Daten
- *    28  codsz           4   Groesse des Codes
- *    32  stksz           4   (psect-Parameter 5)
- *    36  code_begin      4   Einsprungpunkt  (psect-Parameter 6)
- *    40  utrap           4   Trap-Einsprung  (psect-Parameter 7, sonst -1)
+ *    10  series          2   assembler id; r68 V2.9.1 writes 249
+ *    12  rdate           6   year-1900, month, day, hour, minute, second
+ *    18  edition         2   (psect parameter 4)
+ *    20  statstorage     4   static data size (vsect)
+ *    24  idatsz          4   initialized data size
+ *    28  codsz           4   code size
+ *    32  stksz           4   (psect parameter 5)
+ *    36  code_begin      4   entry point (psect parameter 6)
+ *    40  utrap           4   trap entry (psect parameter 7, otherwise -1)
  *    44  remotestatsiz   4
  *    48  remoteidatsiz   4
  *    52  debugsiz        4
  *
  *   danach:
- *     Psect-Name, NUL-terminiert
- *     Anzahl Globale (4)
- *       je Global:  Name (NUL-term), Typ (2), Adresse (4)
- *     Code (codsz Byte) -- r68 fuellt mit NOP ($4E71) auf ein Vielfaches
- *                          von 4 auf
- *     Initialisierte Daten (idatsz Byte)
- *     Anzahl externer Namen (4)
- *       je Name:  Name (NUL-term), Anzahl Referenzen (4),
- *                 je Referenz: Typ (2), Offset im Code (4)
- *     Anzahl lokaler Referenzen (4)
- *       je Referenz: Typ (2), Offset (4)
- *     Anzahl Common-Bloecke (4)
+ *     Psect name, NUL-terminated
+ *     Number of globals (4)
+ *       each global: name (NUL-terminated), type (2), address (4)
+ *     Code (codsz bytes), padded by r68 with NOP ($4E71) to a multiple of 4
+ *     Initialized data (idatsz bytes)
+ *     Number of external names (4)
+ *       each name: name (NUL-terminated), reference count (4),
+ *                  each reference: type (2), code offset (4)
+ *     Number of local references (4)
+ *       each reference: type (2), offset (4)
+ *     Number of common blocks (4)
  *
- * Gemessene Typwoerter: Global auf einem Code-Label = $0004; externe
- * Referenz, 32 Bit absolut im Code = $0038. Weitere Faelle werden beim
- * Ausbau einzeln gemessen, nicht geraten.
+ * Measured type words: global code label = $0004; external 32-bit absolute
+ * code reference = $0038. Additional cases are measured individually.
  *
  * ---------------------------------------------------------------------------
- * PRUEFSTEIN
+ * VALIDATION
  *
- * r68 ist byteweise reproduzierbar -- bis auf die sechs Zeitstempelbytes im
- * Kopf. qr68 gilt als richtig, wenn seine Ausgabe zu der von r68
- * byteidentisch ist, diese sechs Bytes ausgenommen (test/difftest.sh).
- * Das ist ein echtes Orakel: kein selbstgeschriebener Sollwert, der erst
- * selbst richtig sein muesste.
+ * r68 is byte-reproducible except for the six timestamp bytes in the header.
+ * qr68 is considered correct when its output matches r68 byte-for-byte except
+ * for those bytes (test/difftest.sh). This uses the original assembler as the
+ * oracle rather than a separately authored expected output.
  *
  * ---------------------------------------------------------------------------
- * STAND
+ * STATUS
  *
- * Erste Etappe: Rahmen, Symbole, Ausdruecke, psect/vsect/ends, dc/ds/align,
- * equ/set und die Befehle rts/nop/jsr -- genug, um den ROF-Schreiber gegen
- * r68 zu stellen. Die Befehlstabelle wird danach vom Korpus getrieben
- * ausgebaut (644 handgeschriebene Dateien, 207.847 Zeilen in MWOS + Q9-OS).
- * Alles, was noch nicht kodiert werden kann, bricht mit Meldung ab -- nicht
- * still uebergangen.
+ * First stage: framework, symbols, expressions, psect/vsect/ends, dc/ds/align,
+ * equ/set, and rts/nop/jsr -- enough to compare the ROF writer with r68. The
+ * instruction table is expanded from the corpus (644 handwritten files,
+ * 207,847 lines in MWOS + Q9-OS). Unsupported input fails with a diagnostic.
  *
- * Geschrieben im QCC-Subset wie qcpp (keine Unions, kein "->", kein float,
- * Arraygroessen als Literale, feste Tabellen statt malloc), damit qr68 sich
- * spaeter selbst uebersetzen laesst.
+ * Written in the QCC subset used by qcpp (no unions, no "->", no float,
+ * literal array sizes, fixed tables instead of malloc), so qr68 can later
+ * compile itself.
  */
 
 /* --------------------------------------------------------------- libc ---- */
@@ -120,7 +114,7 @@ extern void exit(int code);
 #define QR_MACTEXT 131072
 #endif
 
-/* ------------------------------------------------------------ Grenzen ---- */
+/* ------------------------------------------------------------- Limits ---- */
 /* Array sizes are literals because QCC constSize accepts only numbers; the
    mirror values are checked by selfCheck(). */
 static char pool[QR_POOL];
@@ -154,7 +148,7 @@ static int flStart[64];
 static int flEnd[64];
 static int flN;
 
-/* Symbole */
+/* Symbols */
 static int SYM_MAX = QR_SYM;
 static int symName[QR_SYM];
 static int symValue[QR_SYM];
@@ -166,11 +160,10 @@ static int symPass[QR_SYM];     /* Pass of the last definition; see ifdef. */
 static int SYMHASH_MAX = QR_SYMHASH;
 static int symHead[QR_SYMHASH];
 static int symNext[QR_SYM];
-/* Pool-Index eines externen Namens, auf den dieses Symbol steht, sonst -1.
-   "IRQCtrl equ u_icr" (so in MWOS/.../sc68070.a:64) bindet einen Namen an
-   einen EXTERNEN -- jede Benutzung von IRQCtrl muss danach wieder eine
-   Referenz auf u_icr erzeugen. Ohne das fehlen im ROF stillschweigend
-   Referenzen, und der Binder setzt die Adresse nie ein. */
+/* Pool index of the external name bound to this symbol, or -1. "IRQCtrl equ
+   u_icr" (MWOS/.../sc68070.a:64) binds a name to an external symbol; every
+   use of IRQCtrl must then create a reference to u_icr. Otherwise the ROF
+   silently lacks references and the linker never installs the address. */
 static int symExt[QR_SYM];
 /* "set"-Symbole: r68 hat GENAU EINEN Messdurchlauf, und sein Ausgabelauf
    sieht die Werte, wie sie am ENDE dieses ersten Durchlaufs standen.
@@ -187,7 +180,7 @@ static int symSnapSect[QR_SYM];
 static int symSnapped[QR_SYM];
 static int symN;
 
-/* Codeausgabe */
+/* Code output */
 static char codeBuf[QR_CODE];
 static int CODE_MAX = QR_CODE;
 static int codeN;
@@ -213,7 +206,7 @@ static char outBuf[8192];
 static int outN;
 static char *outFp;
 
-/* Abschnittskennungen */
+/* Section identifiers */
 static int SECT_NONE = 0;
 static int SECT_CODE = 1;
 static int SECT_IDATA = 2;     /* vsect: initialisierte Daten */
@@ -1490,8 +1483,8 @@ static int baseIs(const char *base, const char *s)
 
 /* ============================================================== psect ==== */
 /* psect name,ty_lan,att_rev,edition,stack,entry[,trapentry]
-   Die sieben Angaben landen unveraendert im ROF-Kopf; fehlt die siebte, ist
-   utrap -1 (an r68 gemessen). */
+   The seven values are copied unchanged into the ROF header. If the seventh
+   value is absent, utrap is -1 (measured against r68). */
 static void doPsect(void)
 {
 	const char *p;
@@ -1562,9 +1555,8 @@ static void doPsect(void)
 }
 
 /* ========================================================== dc / ds ====== */
-/* r68 richtet vor allem, was mindestens ein Wort breit ist, selbst auf eine
-   gerade Adresse aus -- gemessen an "dc.b 1,2,3 / nop": das nop steht auf 4,
-   das Fuellbyte auf 3. Das gilt fuer Befehle wie fuer dc.w/dc.l. */
+/* r68 aligns objects at least one word wide to an even address. Measured with
+   "dc.b 1,2,3 / nop": nop starts at 4 and the fill byte is at 3. */
 static void alignEven(void)
 {
 	if (curSect == SECT_RDATA) {
@@ -1577,8 +1569,7 @@ static void alignEven(void)
 		return;
 	}
 	if (curSect == SECT_UDATA) {
-		/* Im reservierten Bereich wird nichts abgelegt, nur gezaehlt
-		   (gemessen: "u1 ds.b 1 / u2 ds.w 1" ergibt u2 = 2). */
+		/* Reserved data is counted but not emitted. */
 		if ((udataPC % 2) != 0) {
 			udataPC++;
 			if (udataPC > statStorage)
@@ -1610,8 +1601,8 @@ static void doDc(int size)
 		fatal("dc ohne Operanden", "");
 
 	while (p[i] != 0) {
-		/* Zeichenkette -- aber NUR in doppelten Anfuehrungszeichen.
-		   In einfachen steht eine ZAHL, kein Text: an r68 gemessen
+		/* A string is recognized only inside double quotes. A character
+		   literal is a NUMBER, not text; measured against r68,
 		   lehnt "dc.b 'abc'" mit "value out of range" ab (es ist der
 		   Wert $616263), waehrend "dc.b \"a\"+1" mit "bad operand"
 		   abgelehnt wird -- auf einen Text kann man nicht rechnen.
@@ -1637,8 +1628,8 @@ static void doDc(int size)
 		q = 0;
 		while (p[i] != 0) {
 			if (q != 0) {
-				/* In Anfuehrungszeichen trennt ein Komma nicht --
-				   "dc.b ','+1" ist EIN Operand (gemessen: $2d). */
+				/* A comma inside quotes is not a separator;
+				   "dc.b ','+1" is one operand. */
 				if (p[i] == q)
 					q = 0;
 			} else if (p[i] == '"' || p[i] == 39) {
@@ -1711,16 +1702,10 @@ static void doDs(int size)
 	fatal("ds ohne Abschnitt", "");
 }
 
-/* Gemessen: im CODE fuellt r68 mit einem Leerbefehl auf -- ein einzelnes
-   ungerades Byte davor aber mit 0, denn der Leerbefehl ist ein WORT und
-   braucht selbst eine gerade Adresse. In den initialisierten Daten wird
-   durchgehend mit 0 gefuellt ("d1 dc.b 1 / align 4 / d2 dc.l 7" ergibt
-   "01 00 00 00 00 00 00 07").
-   WELCHER Leerbefehl, haengt an -m<n>: ohne Angabe ist es NOP ($4E71), ab
-   -m2 aber TRAPF ($51FC) -- der 2-Byte-Leerbefehl des 68020. Gemessen an
-   "dc.b 1 / align 4 / rts / rts": ohne -m kommt $4e71, mit -m2 $51fc.
-   Daran hingen cache030/cache040/cache349 in SYSMODS/SYSCACHE, die aus
-   derselben Quelle mit -m3 bzw. -m4 gebaut werden. */
+/* Measured behavior: CODE is padded with a no-op. A preceding odd byte is
+   padded with zero because the no-op is a word. Initialized data is padded
+   with zero. Without -m, or below -m2, use NOP ($4E71); from -m2 onward use
+   TRAPF ($51FC), the 68020 two-byte no-op. */
 static int fillWord(void)
 {
 	if (optMpuSet && optMpu >= 2)
@@ -1728,8 +1713,8 @@ static int fillWord(void)
 	return 0x4E71;
 }
 
-/* "do.b/.w/.l [anzahl]" -- legt einen Namen auf den org-Zaehler und schiebt
-   ihn weiter. Liefert die Adresse, die das Label der Zeile bekommt. */
+/* "do.b/.w/.l [count]" places a name at the org counter and advances it.
+   Return the address assigned to the line's label. */
 static int doDo(int size)
 {
 	int count;
@@ -1773,7 +1758,7 @@ static void doAlign(void)
 		return;
 	}
 	if (curSect == SECT_UDATA) {
-		/* Dort wird nichts abgelegt, nur gezaehlt. */
+		/* Reserved data is counted but not emitted. */
 		while ((udataPC % a) != 0)
 			udataPC++;
 		if (udataPC > statStorage)
@@ -1793,9 +1778,8 @@ static void doAlign(void)
 }
 
 /* =========================================================== Operanden === */
-/* Die Adressierungsarten als Modell. Die Zahl ist NICHT das Modefeld des
-   Befehlswortes -- das liefern eaModeBits()/eaRegBits().
-   An r68 gemessen und deshalb hier so und nicht anders:
+/* Addressing modes as an internal model. The number is NOT the instruction
+   mode field; eaModeBits()/eaRegBits() provide that. Measured against r68:
    - die Klammerform "(4,a5)" kennt r68 NICHT ("parenthesis needed"),
      nur "4(a5)";
    - ein nackter Ausdruck wird IMMER absolut lang, auch wenn er in 16 Bit
