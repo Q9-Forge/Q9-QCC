@@ -46,8 +46,8 @@ static int preprocess_only;
 static int assembly_only;
 static int object_only;
 
-/* Plattformabstraktion: Host nutzt vorerst die C89-Funktion system().
- * Die OS-9-Runtime kann q9_system spaeter durch F$Fork/F$Load ersetzen. */
+/* Platform abstraction: the host currently uses the C89 system() function.
+ * The OS-9 runtime can later replace q9_system with F$Fork/F$Load. */
 /* Function: q9_system
  * Executes one configured pipeline command.
  * Parameters: command Shell command line.
