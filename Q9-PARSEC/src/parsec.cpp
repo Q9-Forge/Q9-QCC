@@ -1218,8 +1218,8 @@ int loadWorkfileAsGrammar(const char* path) {
 	return 1;
 }
 
-// Alle TEST-Zeilen durch die Stack-Maschine jagen und mit dem erwarteten Ergebnis
-// vergleichen. Liefert die Anzahl der MISMATCHes (0 = alles gruen).
+// Run all TEST rows through the stack machine and compare the expected result.
+// Return the number of mismatches (0 means all tests passed).
 int runTests() {
 	int i, mismatches = 0;
 
@@ -1377,7 +1377,7 @@ void rule() {
 		put();
 		test(TOKEN_END, (char *)"END Symbol .");
 		
-		// UEBER DIE GANZE REGEL scannen, nicht nur die letzte Zeile: ein {..}/[..]/(..)
+		// Scan the ENTIRE rule, not only its last row: a final {..}/[..]/(..)
 		// als LETZTES Konstrukt der Regel patcht seine eigene falseAction/trueAction
 		// (Schleifen-/Gruppen-Ende) auf "aktTabIndex zum Zeitpunkt des Patches" -- steht
 		// danach nichts mehr in DIESER Regel, zeigt das faelschlich auf die naechste Regel
@@ -1419,7 +1419,7 @@ void expression() {
 	term();
 
 	while (aktToken == TOKEN_OR) {
-		// Diese Alternative ist fertig geparst (aktToken zeigt jetzt auf '|').
+		// This alternative has been parsed (aktToken now points to '|').
 		// Ueber den GANZEN Zeilenbereich der Alternative (nicht nur die Startzeile --
 		// das war Bug Nr. 6: bei mehrfaktorigen Alternativen wie "a" "b" | "c" erklaerte
 		// schon der Erfolg des ERSTEN Faktors die ganze Regel fuer fertig, und bei
@@ -1444,7 +1444,7 @@ void expression() {
 		term();
 		expressionCount--;
 	}
-	// Letzte (oder einzige) Alternative: term() hat ihre Startzeile bereits korrekt
+	// Last (or only) alternative: term() has already set its start row correctly
 	// gesetzt (Sequenz-Fortsetzung intern bzw. STAT_FALSE nach aussen); rule() biegt
 	// ein "dangling" trueAction am Regelende automatisch auf STAT_TRUE um. Hier also
 	// nichts mehr anfassen -- nur den Stack balancieren (Wert wird nicht mehr gebraucht).
@@ -1471,13 +1471,13 @@ void term(void) {
 
 	push(aktTabIndex);
 	factor();
-	firstFactorComplex = lastFactorWasComplex;	// NUR direkt nach dem ERSTEN Faktor auswerten,
-												// bevor er von weiteren factor()-Aufrufen ueberschrieben wird
+	firstFactorComplex = lastFactorWasComplex;	// Read immediately after the FIRST factor,
+																// before later factor() calls overwrite it.
 	if (lastFactorSkippable) hadSkippable = 1;
 	else committed = 1;
 
 	while (aktToken == TOKEN_IDENT || aktToken == TOKEN_LITERAL || aktToken == TOKEN_BLOCKON || aktToken == TOKEN_REPEATON || aktToken == TOKEN_OPTIONON || aktToken == TOKEN_SEQ) {
-		// Vorverdrahtung des naechsten Faktors: Erfolg -> naechste Zeile. Misserfolg:
+		// Pre-wire the next factor: success -> next row. On failure:
 		// solange NUR ueberspringbare Gruppen vor diesem Faktor lagen, ist noch nichts
 		// konsumiert -> STAT_FALSE (Fehlschlag ohne Konsum, darf noch eine andere
 		// Alternative anspringen). Nach einem sicher konsumierenden Faktor dagegen
