@@ -1251,22 +1251,11 @@ static void emitIR(FILE* out) {
 			else fprintf(out, "\tdc.l\t%s-tc_gadata__%s\n", gAsmName, psectName);
 		}
 		fprintf(out, "\tdc.l\ttc_extcall_tmp-tc_gadata__%s\n", psectName);
-		/* 2026-07-26 (see the registerExtern() comment above): one wrapper stub per
-		   externer Funktion, DIREKT hier (nah an tc_functab/tc_gadata, also immer
-		   PC-relativ sicher erreichbar) platziert. "jsr (a2)" (von der Aufrufstelle,
-		   ueber den a4-Tabellenmechanismus) hat bereits EINE Ruecksprungadresse auf
-		   a7 gepusht -- die wird zuerst nach d7 (freies Scratch-Register)
-		   herausgeholt, DAMIT "bsr rawname" exakt dieselbe Stack-Position fuer
-		   seine EIGENE Ruecksprungadresse UND fuer eventuelle Stack-Argumente
-		   sieht, die die Aufrufstelle VOR dem jsr bereits gepusht hat (ohne diesen
-		   Zwischenschritt saehe die externe Funktion ihre eigenen Stack-Argumente
-		   um vier Byte verschoben -- durch die zusaetzliche jsr-Ruecksprungadresse
-		   des Wrappers). Nach der Rueckkehr von rawname (d0 traegt den
-		   Rueckgabewert, bleibt unangetastet) a3/a4 auffrischen (siehe
-		   emitCall()/emitLeaGlobal()-Kommentar), dann die urspruengliche
-		   Ruecksprungadresse aus d7 zurueckpushen und rts -- geht exakt zur
-		   Aufrufstelle zurueck, als waere direkt "bsr rawname" aufgerufen worden,
-		   nur mit aufgefrischtem a3/a4. */
+		/* 2026-07-26 (see registerExtern()): place one wrapper per external
+		   function directly beside the tables. The wrapper saves the return address
+		   in d7, calls the raw external name, refreshes a3/a4, restores the return
+		   address, and returns. This preserves the caller's d0/d1/stack layout while
+		   protecting the large-data table bases from ABI-clobbering library calls. */
 		for (fi = 0; fi < externCount; fi++) {
 			fprintf(out, "tc_extwrap_%s__%s:\n", externNames[fi], psectName);
 			fprintf(out, "\tmove.l\t(a7)+,d7\n");
