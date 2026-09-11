@@ -1115,32 +1115,23 @@ int genParserC(const char* path) {
 		fprintf(fp, "\t\treturn;\n\t}\n}\n\n");
 	}
 	if (routinesCCnt > 0) {
-		// Aktionen feuern NICHT sofort beim Regelerfolg, sondern werden nur PROTOKOLLIERT
-		// (actionLogPush) und erst am Ende bei ENDGUELTIGEM Gesamterfolg abgespielt
-		// (actionLogReplay). Grund: ein Backtracking-Parser kann eine bereits erfolgreich
-		// gematchte Regel spaeter DOCH verwerfen, wenn eine umschliessende Alternative
-		// zurueckspringt -- Positions-Rollback existiert (sv[]), fuer Aktions-Nebeneffekte
-		// bisher nicht. svLog[] laeuft parallel zu sv[] und rollt actionLogLen beim
-		// Zuruecksetzen einer Alternative/Option/Wiederholung mit zurueck (siehe genNodeC
-		// AST_ALT/OPT/REP) sowie beim Fehlschlag einer ganzen Regel (entryLog).
-		// Siehe ARCHITEKTUR.md §9.4, Test/actionrollback fuer die Reproduktion ohne diesen
-		// Mechanismus (ROUTINE C note_tag feuerte dort bei "T2" faelschlich 2x statt 1x).
-		/* 2026-07-25 GEFUNDEN: ACTION_LOG_MAX war 4096 -- bei Ueberschreitung wurden
-		   WEITERE Aktionen STILLSCHWEIGEND verworfen (nur "if (actionLogLen < MAX)",
-		   kein Fehler), was sich als scheinbar erfolgreicher, aber HALB LEERER Parse
-		   aeusserte (z.B. bei einem groesseren QCC-Programm mit vielen Funktionen:
-		   "OK" wurde gedruckt, aber spaetere Funktionen/main fehlten in der IR-Ausgabe
-		   komplett) -- entdeckt beim Testen des -largedata-Funktionsaufruf-Schalters
-		   mit mehreren generierten Testfunktionen. Behoben nach demselben Muster wie
-		   die anderen heute gefundenen stillen Puffer-Grenzen (parsec.cpp USER_CODE_LEN,
-		   68k-Backend MAX_ARRAY_LEN): Grenze grosszuegig erhoeht UND ein lauter Fehler
-		   statt stillem Verwerfen. */
+		// Actions are not executed immediately after rule success. They are logged
+		// by actionLogPush and replayed only after complete success. Backtracking
+		// may later reject an apparently successful rule; svLog[] therefore rolls
+		// actionLogLen back alongside the position stack at alternative, option,
+		// repetition and whole-rule failure boundaries. See ARCHITEKTUR.md §9.4.
+		/* 2026-07-25: ACTION_LOG_MAX used to be 4096; excess actions were silently
+		   discarded, producing an apparently successful but incomplete parse. This
+		   was found with larger QCC programs and fixed using the same growth pattern
+		   other previously silent buffer limits (parsec.cpp USER_CODE_LEN and the
+		   68k backend MAX_ARRAY_LEN): increase the limit generously and fail loudly
+		   instead of discarding data silently. */
 		/* Host-side generated parsers need room for the full Tiny-C source;
 		   the compact OS-9 selfhost variant uses a smaller limit in
 		   SourceTinyC/codegen.tc. */
 		fprintf(fp, "extern void exit(int);\n");
-		/* realloc wird jetzt unbedingt im Kopf deklariert (s. o.) -- hier
-		   entfernt, damit die Deklaration nicht doppelt im erzeugten C steht. */
+		/* realloc is declared at the top now; omit it here to avoid duplicating
+		   the declaration in generated C. */
 		/* Function pointers in a dynamically allocated record are not reliable
 		   on the self-hosted 68k path.  Keep a stable routine ID instead and
 		   dispatch directly after parsing has completed. */
@@ -1155,7 +1146,7 @@ int genParserC(const char* path) {
 		fprintf(fp, "\tactionLogLen++;\n}\n");
 		fprintf(fp, "static void actionLogReplay(void) {\n");
 		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);\n}\n\n");
-		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
+		fprintf(fp, "/* ACTION routines from [USER-CODE] (copied verbatim) */\n");
 		for (r = 0; r < routinesCCnt; r++) {
 			fprintf(fp, "%s\n", routinesC[r].text);
 		}
