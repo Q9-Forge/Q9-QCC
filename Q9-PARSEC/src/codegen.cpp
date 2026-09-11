@@ -210,7 +210,7 @@ static int newLabel() {
 //------------------------------------------------------------------------------------------------
 // Design: no separate token buffer, but three small rules directly in the
 // generated parser (only when a [LEXER] block is configured):
-//  1. Vor jedem Terminal (TS/RNG) und jedem Aufruf einer LEXIKALISCHEN Regel aus
+//  1. Before each terminal (TS/RNG) and each call to a lexical rule from
 //     syntactic context calls ws(), which skips WHITESPACE characters and
 //     object-language line comments.
 //  2. Inside lexical rules (the transitive closure of TOKEN roots), nothing is
@@ -542,11 +542,10 @@ int cgenParseConfig(const char* buf) {
 //   ACTION AFTER <rule> CALL <name>     call <name> after <rule> succeeds in both backends
 //   ROUTINE C <name> ... END             raw C function copied before generated p_<rule>
 //   ROUTINE M68K <name> ... END          raw 68k subroutine appended to generated .s68
-//                                        Aufruf ist "bsr <name>" mit a0 = Ende des erkannten
-//                                        Textes (wie beim C-Backend "end"); a0 MUSS
-//                                        unveraendert zurueckgegeben werden. d0/d1/d2 frei.
-//                                        (Der Regelanfang steht -- anders als bei C -- NICHT
-//                                        als eigenes Register bereit, siehe ARCHITEKTUR.md §9.)
+//                                        call as "bsr <name>" with a0 = end of recognized
+//                                        text (like C backend "end"); a0 MUST be preserved.
+//                                        d0/d1/d2 are free. The rule start is not provided
+//                                        in a separate register; see ARCHITEKTUR.md §9.
 // Actions are an interface to user code, not grammar. Errors here (unknown
 // rule or missing routine) produce warnings and remove the affected action;
 // code generation continues.
@@ -1252,7 +1251,7 @@ int genParserC(const char* path) {
 // Each rule <name> becomes subroutine p_<name>; entry point "parse" calls the start rule.
 // TS literals compare all characters with offsets and consume them in one step,
 // Schritt -> ein TS konsumiert nie teilweise; NUL am Eingabeende laesst jeden Vergleich
-// von selbst scheitern (kein separater Laengencheck noetig).
+// fail naturally; no separate length check is needed.
 static void emitConsume68k(FILE* fp, int len) {
 	if (len == 0) {
 		return;			// Empty literal "" always matches and consumes nothing.
@@ -1309,7 +1308,7 @@ static void genNode68k(FILE* fp, int id, int failLabel, int lexical) {
 		}
 		if (lexActive && !lexical) emitLongerLiteralReject68k(fp, n->text, failLabel);
 		if (lexActive && !lexical && isWordLiteral(n->text)) {
-			// Wortgrenze: Folgezeichen darf kein Identifikator-Zeichen sein
+			// Word boundary: the following character must not be an identifier character.
 			fprintf(fp, "\tmove.b\t%d(a0),d1\n", len);
 			fprintf(fp, "\tbsr\tidch\n");
 			fprintf(fp, "\ttst.b\td0\n");
