@@ -2,9 +2,9 @@
  *
  * Only the functions actually called by the generated parser
  * (nachgezaehlt in Data/qcc_p.c: strncmp 274-mal, strlen 11-mal, strchr
- * einmal). Die Liste absichtlich NICHT vorsorglich verlaengern: der Bootstrap
- * wird byteweise mit einem Referenzlauf verglichen, und jede zusaetzliche
- * Deklaration ist eine Aenderung an der Eingabe des Compilers.
+ * once). Do not extend the list proactively: the bootstrap is compared
+ * byte-for-byte with a reference run, and every extra declaration changes the
+ * compiler input.
  */
 #ifndef Q9_STRING_H
 #define Q9_STRING_H

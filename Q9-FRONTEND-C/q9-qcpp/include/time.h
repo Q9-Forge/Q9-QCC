@@ -3,9 +3,9 @@
  * Local interface; it does not copy Microware's copyrighted DEFS/time.h.
  * It provides types, not functions: time_t/struct tm are needed to parse
  * Q9-Tools/System/touch,date,dir, but
- * time()/localtime() sind hier ABSICHTLICH noch nicht deklariert -- qclib
- * hat den dafuer noetigen OS-9-Uhrzeit-Syscall noch nicht (eigenes,
- * spaeteres Vorhaben). Diese Header bleiben sonst immer deckungsgleich mit
+ * time()/localtime() are intentionally not declared yet: qclib does not have
+ * the required OS-9 clock syscall (a future project). These headers otherwise
+ * remain aligned with
  * dem, was qclib tatsaechlich bereitstellt (s. string.h); eine Deklaration
  * ohne Gegenstueck waere nur ein spaeterer Binder-Fehler statt eines
  * fruehen, klaren "unknown function".
