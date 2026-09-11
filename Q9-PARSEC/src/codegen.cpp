@@ -1056,19 +1056,15 @@ int genParserC(const char* path) {
 	   beidem kann eine Aktion Zeile und Spalte zaehlen -- ohne diesen Anker
 	   kann eine Diagnose keinen Ort nennen. */
 	fprintf(fp, "static const char* parserInputStart;\n");
-	/* Spanne der gerade abgespielten Aktion. Hilfsfunktionen ohne eigene
-	   Spanne koennen daran den Ort einer Meldung festmachen -- der Zeiger p
-	   steht beim Abspielen laengst am Eingabeende und taugt dafuer nicht. */
+	/* Span of the action currently being replayed. Helpers without their own
+	   span can use it for diagnostics; p already points at input end then. */
 	fprintf(fp, "static const char* parserActionAt;\n");
 	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
 	if (routinesCCnt > 0) {
-		// 2026-08-11: Fehlerzaehler fuer die ACTION-Routinen. Ohne ihn meldete ein
-		// erzeugter Parser semantische Fehler zwar auf stderr, endete aber mit
-		// Rueckgabewert 0 und schrieb "OK" -- eine aufrufende Build-Kette
-		// ("parser x.c > x.ir && backend x.ir") erzeugte dann klaglos falschen
-		// Code. Bewusst hier oben deklariert, damit der [NUTZER-CODE]-Block ihn
-		// sieht; bewusst nur bei vorhandenen Aktionen, damit aktionsfreie
-		// Grammatiken bitgleich bleiben.
+		// 2026-08-11: count ACTION routine errors. Without this, a generated
+		// parser reported semantic errors on stderr but returned 0 and printed
+		// "OK", allowing a build chain to consume incorrect code. Declare it
+		// only when actions exist so action-free grammars remain byte-identical.
 		fprintf(fp, "static int actionErrors = 0;\t/* ACTION-Routinen zaehlen hoch; != 0 => Rueckgabewert 1 */\n");
 	}
 	fprintf(fp, "\n");
@@ -1088,9 +1084,9 @@ int genParserC(const char* path) {
 		}
 		for (r = 0; r < lexBlockCnt; r++) {
 			if (lexBlockNested[r]) {
-				// geschachtelt (Oberon/Modula-2): Tiefenzaehler; Ende-Sequenz VOR Start-Sequenz
-				// pruefen (wichtig bei ueberlappenden Zeichen wie "(*" / "*)").
-				// Ein unterminierter Kommentar laeuft bis zum Eingabeende.
+				// Nested (Oberon/Modula-2): track depth and check the closing sequence
+				// before the opening sequence, which matters for overlaps such as "(*"/"*)".
+				// An unterminated comment runs to end of input.
 				fprintf(fp, "\t\tif (strncmp(p, ");
 				emitCString(fp, lexBlockOn[r]);
 				fprintf(fp, ", %d) == 0) {\n", lexBlockOnLen[r]);
@@ -1106,7 +1102,7 @@ int genParserC(const char* path) {
 				fprintf(fp, "\t\t\t}\n\t\t\tcontinue;\n\t\t}\n");
 			}
 			else {
-				// nicht geschachtelt; ein unterminierter Kommentar laeuft bis zum Eingabeende
+				// Not nested; an unterminated comment runs to end of input.
 				fprintf(fp, "\t\tif (strncmp(p, ");
 				emitCString(fp, lexBlockOn[r]);
 				fprintf(fp, ", %d) == 0) { p += %d; while (*p && strncmp(p, ",
