@@ -65,12 +65,10 @@ typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
 	/* Multi-file translation (2026-07-25): declOnly is registered by FUNCDECL,
-	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei) --
-	   first/last/locals/frameBytes bleiben dann unbenutzt (0/-1). isStatic
-	   steuert die Namensverfremdung (siehe mangledName()) -- r68/l68 kennen
-	   KEIN Sichtbarkeitskonzept (siehe docs/STATUS.md), Mangling ist die einzige
-	   Moeglichkeit, dass zwei Dateien denselben privaten Helfernamen frei
-	   verwenden koennen, ohne dass l68 "duplicate symbol" meldet. */
+	   without a body in this file (defined in another QCC file); first/last/
+	   locals/frameBytes remain unused (0/-1). isStatic controls name mangling.
+	   r68/l68 have no visibility concept, so mangling is the only way for two
+	   files to use the same private helper name without a duplicate symbol. */
 	int declOnly, isStatic;
 } Function;
 
@@ -78,12 +76,12 @@ typedef struct {
 	char name[NAME_LEN];
 	int initialValue;
 	/* 2026-09-09: formerly "isChar" (bool), now the actual size with short in
-	   Byte (1/2/4) geworden -- s. tagSize(). Alle Leseseiten unten wechseln
-	   von "isChar ? X : Y" auf einen dreiteiligen Schalter. */
+	   bytes (1/2/4); see tagSize(). Readers use a three-way switch instead of
+	   "isChar ? X : Y". */
 	int elemSize;
 	int isArray;
 	int length;
-	/* 2026-08-11: war `int init[MAX_ARRAY_LEN]`, also 16 KB pro Global und bei
+	/* 2026-08-11: formerly `int init[MAX_ARRAY_LEN]`, or 16 KB per global; with
 	   MAX_GLOBALS=1024 ein statisches Feld von 16,8 MB -- der groesste Einzel-
 	   posten des Backends und auf dem Q9 (16 MB RAM) allein schon zu viel.
 	   Jetzt ein Zeiger in initPool, erst beim ERSTEN GINIT zugeteilt: Arrays
