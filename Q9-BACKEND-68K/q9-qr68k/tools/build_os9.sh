@@ -13,7 +13,7 @@
 #
 # Compile with -D_Q9OS, which sets table sizes to target dimensions
 # (s. Kommentar im Quelltext): QCCs Backend legt genullte Felder in den
-# INITIALISIERTEN Datenbereich, und der wandert vollstaendig ins Modul.
+# INITIALIZED data area, which is copied completely into the module.
 #
 # Usage: tools/build_os9.sh [output-directory]
 # Exit:  0 = module built, 2 = setup failure
@@ -83,8 +83,8 @@ w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:$WWORK\\q9_cstart.
 size="$(wc -c < "$WORK/q9_qr68" | tr -d ' ')"
 
 # ToolShed's "ident" crashes on modules of this size (measured with qcpp,
-# Exit 138). Der Kopf wird deshalb direkt gelesen: Sync $4AFC, und M$Size
-# steht bei Offset 4 (davor M$ID und M$SysRev).
+# Exit 138). Read the header directly instead: sync $4AFC, with M$Size at
+# offset 4 (preceded by M$ID and M$SysRev).
 hdr="$(od -A n -t x1 -N 8 "$WORK/q9_qr68" | tr -d ' \n')"
 [ "${hdr:0:4}" = "4afc" ] || die "Modulkopf ohne Sync 4AFC: $hdr"
 msize=$((0x${hdr:8:8}))
