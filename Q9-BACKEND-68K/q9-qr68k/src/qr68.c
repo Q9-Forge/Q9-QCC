@@ -281,7 +281,7 @@ static int orgPC;
 static int curFile;
 static int curLine;
 static int curSect;
-static int curPC;              /* Offset im aktuellen Abschnitt */
+static int curPC;              /* Offset within the current section. */
 /* Location where the CURRENT statement starts. This is exactly what "*"
    returns for the entire statement: "dc.w *,*,*" at offset 2 produces three
    values of $0002 (measured). Using the advancing location would be wrong
@@ -667,9 +667,9 @@ static int exExtern;           /* External-name pool index, or -1. */
 static int TERM_MAX = 8;
 static int termSect[24];       /* SECT_CODE/IDATA/UDATA/EXTERN */
 static int termName[24];       /* Pool-Index bei EXTERN, sonst -1 */
-static int termNeg[24];        /* 1 = wird abgezogen */
+static int termNeg[24];        /* 1 = term is subtracted */
 static int termN[3];
-static int TERM_CUR = 2;       /* Fach des laufenden Ausdrucks */
+static int TERM_CUR = 2;       /* Slot of the active expression */
 
 static void termAdd(int sect, int name)
 {
@@ -1084,7 +1084,7 @@ static int evalExpr(const char *s)
 	return v;
 }
 
-/* ================================================================ Ausgabe = */
+/* ================================================================ Output ==== */
 static void outFlush(void)
 {
 	if (outN > 0) {
@@ -1307,8 +1307,8 @@ static void selfCheck(void)
    Ein Label mit ":" ist GLOBAL -- gemessen an r68: aus "start: rts" wird ein
    Global-Eintrag im ROF, aus "start rts" nicht. */
 static char lnLabel[256];
-static char lnOp[64];          /* kleingeschrieben -- Befehle sind egal welcher Schreibung */
-static char lnOpRaw[64];       /* wie geschrieben -- MAKRONAMEN sind es nicht */
+static char lnOp[64];          /* Lowercase; instructions are case-insensitive. */
+static char lnOpRaw[64];       /* Original spelling; macro names are not. */
 static char lnArg[1024];
 static int lnGlobal;
 
@@ -2608,7 +2608,7 @@ static void macSubstitute(int from, int to, char *argp[], int argN,
 				continue;
 			}
 			if (k == '0')
-				continue;      /* liefert nichts */
+				continue;      /* Emits nothing. */
 			fatal("unbekannter Platzhalter im Makro (nur \\1..\\9, \\#, \\@, \\0)",
 			      "");
 		}
