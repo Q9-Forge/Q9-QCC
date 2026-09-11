@@ -30,6 +30,8 @@ test: $(TARGET)
 	@$(TARGET) -E -o build/qcc-test/result.i tests/smoke.c >/dev/null
 	@grep -q 'putint' build/qcc-test/result.i
 	@$(TARGET) --dry-run --no-optimizer main.c | grep -q '3. qir68k'
+	@$(TARGET) -c -o build/qcc-test/result.r tests/smoke.c >/dev/null
+	@test -s build/qcc-test/result.r
 	@echo 'qcc smoke test: OK'
 
 clean:
