@@ -3843,7 +3843,7 @@ static void doInstruction(void)
 			fatal("link braucht einen Sofortwert als Rahmengroesse: ",
 			      lnArg);
 		if (size == 'l') {
-			/* 68020, gemessen: "link.l a5,#4" -> $480d $00000004. */
+			/* 68020, measured: "link.l a5,#4" -> $480d $00000004. */
 			emitWord(0x4808 | v);
 			emitEa(1, 4);
 			return;
