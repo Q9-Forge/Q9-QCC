@@ -9,23 +9,14 @@
  * Edition history:
  *   2026-09-11  Introduced the English source-header format.
  */
-/* fopen, fclose, fread, fwrite, puts, fputc, fputs, fgets, ferror fuer qclib.
+/*
+ * The public FILE handle is the address of a Q9 path-table entry. The entry
+ * stores the OS-9 path number; Microware's private FILE layout is not copied.
+ * The implementation is intentionally unbuffered because the toolchain reads
+ * and writes large blocks, making an additional buffer unnecessary.
  *
- * Der FILE* der C-Ebene ist hier die ADRESSE eines Tabelleneintrags, und
- * der Eintrag enthaelt die OS-9-Pfadnummer. Microwares FILE-Struktur mit
- * ihren dreizehn Feldern (_ptr/_base/_end/_flag/_fd/_ungetc/...) wird
- * NICHT nachgebaut: sie ist nur dann bindend, wenn fremder Code sie liest
- * -- und der einzige fremde Leser waere Microwares eigene clib, gegen die
- * niemand gleichzeitig bindet. Was q9_cstart.a von `_iob` erwartet, ist
- * blosser Platz (siehe iob.a).
- *
- * Bewusst NICHT gepuffert: die Werkzeuge der Kette lesen und schreiben in
- * grossen Bloecken (qr68 und ql68 holen ihre Eingabe mit einem einzigen
- * fread), da traegt eine Pufferschicht nichts bei und kostet nur Speicher
- * und Fehlermoeglichkeiten.
- *
- * Quelle im QCC-Subset: keine Zeichenkettenverkettung, kein
- * tab[i][k] auf Zeigerfeldern, kein static.
+ * The source stays within the QCC subset: no string concatenation, no indexed
+ * access through pointer fields and no static local variables.
  */
 
 extern int _os_open(char *name, int mode, int *path);
@@ -41,12 +32,10 @@ extern int _os_write(int path, char *buf, int *count);
 #define QF_READ  1
 #define QF_WRITE 2
 
-/* Je offener Datei ein Eintrag mit der Pfadnummer; 0 heisst frei.
-   Pfad 0 ist die Standardeingabe und kann hier nicht vorkommen, weil
-   fopen sie nie liefert -- die 0 ist also als "frei" eindeutig. */
+/* One path-table entry per open file; zero means unused. */
 int qf_path[QF_MAX];
 
-/* Begleitfelder je offener Datei -- gleicher Index wie qf_path.
+/* Per-file state fields, indexed like qf_path.
  *
  * WARUM ES SIE GIBT: fgets liest ZEILENweise. Ohne Puffer waere das ein
  * Systemaufruf je BYTE, und das Backend liest eine IR-Datei von ueber einem
@@ -59,10 +48,8 @@ int qf_path[QF_MAX];
  * Werkzeuge der Kette holen ihre Eingabe in EINEM fread, da traegt eine
  * Pufferschicht nichts bei.
  *
- * ACHTUNG, die Folge daraus: fgets und fread auf DERSELBEN Datei zu mischen
- * geht schief, weil fread die schon gepufferten Bytes ueberspringt. Die
- * Kette tut es nicht, und lieber diese Zeile hier als eine stille
- * Fehlerquelle. */
+ * Do not mix fgets and fread on the same stream: fread would skip bytes that
+ * are already buffered. The toolchain does not do this. */
 char *qf_rbuf[QF_MAX];          /* Lesepuffer, 0 = noch keiner */
 int qf_rlen[QF_MAX];            /* gueltige Bytes darin */
 int qf_rpos[QF_MAX];            /* Leseposition darin */
@@ -96,7 +83,7 @@ int qf_index(char *fp)
 	return -1;
 }
 
-/* Den Lesepuffer nachfuellen. 1 = es gibt Bytes, 0 = Ende oder Fehler. */
+/* Refills one per-file read buffer. */
 /* Function: qf_fill
  * Fills the read buffer for an open file.
  * Parameters: i File table index.
@@ -119,8 +106,7 @@ int qf_fill(int i)
 	n = QF_RBUF;
 	rc = _os_read(qf_path[i], buf, &n);
 	if (rc != 0) {
-		/* Dateiende ist KEIN Fehler: OS-9 meldet es als E$EOF (211), und
-		   ferror darf danach nicht anschlagen. Jeder andere Code ist einer. */
+		/* End of file is not an error; OS-9 reports E$EOF (211). */
 		if (rc != 211)
 			qf_err[i] = 1;
 		qf_rlen[i] = 0;
