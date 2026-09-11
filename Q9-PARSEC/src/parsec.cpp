@@ -133,8 +133,8 @@ char lastString[IDENT_LEN+1];
 FILE* fpIn, * fpOut, * fpLst;
 int aktTabIndex = 0;
 unsigned int errorCnt = 0;
-int tableReady = 0;		// 1 sobald eine vollstaendige Tabelle vorliegt (Parse ohne Abbruch
-						// bzw. Arbeitsdatei geladen) -- erst dann darf writeWorkfile() laufen
+int tableReady = 0;		// 1 once a complete table exists (successful parse or loaded workfile);
+						// only then may writeWorkfile() run
 
 //void test(int checkTS, char* msg);
 void put();
@@ -199,13 +199,13 @@ int main(int argc, char* argv[]) {
 	printf("Parsec EBNF Translator on %s\n", OS);
 	astReset();
 
-	// WICHTIG (Reihenfolge!): den TESTS-Block der alten Arbeitsdatei retten, BEVOR sie
-	// spaeter per "w" geoeffnet und damit geleert wird.
+	// IMPORTANT (ordering): preserve the TESTS block from the old workfile
+	// BEFORE opening it with "w", which would clear it.
 	loadPreservedTests(outputFileName);
 
 	fileRet = fopen_s(&fpIn, inputFileName, "r");
 	if (fileRet != 0) {
-		// Fall B: keine .ebnf-Quelle -- die Arbeitsdatei selbst ist die Grammatik-Quelle.
+		// Case B: no .ebnf source; the workfile itself is the grammar source.
 		fallB = 1;
 		printf("Hinweis: '%s' nicht gefunden -- lade Grammatik aus Arbeitsdatei '%s'\n",
 			inputFileName, outputFileName);
@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	if (fallB) {
-		// Fall A erledigt all das innerhalb von ebnfSyntax()/semantischeAnylyse()
+		// Case A performs all of this inside ebnfSyntax()/semantischeAnylyse().
 		resolveCallAddresses();
 		rebuildFirstEdgesFromTable();
 		checkLeftRecursion();
@@ -238,9 +238,9 @@ int main(int argc, char* argv[]) {
 		ebnfSyntax();
 	}
 
-	// Arbeitsdatei erst JETZT (nach loadPreservedTests) neu schreiben -- und nur, wenn
-	// tatsaechlich eine vollstaendige Tabelle entstanden ist. Bei Parse-Fehlern bleibt
-	// die alte Arbeitsdatei (inkl. TESTS-Block) unangetastet statt wie frueher geleert.
+	// Rewrite the workfile only now (after loadPreservedTests), and only when a
+	// complete table was produced. On parse errors, preserve the old workfile
+	// including its TESTS block instead of clearing it as before.
 	if (tableReady) {
 		fileRet = fopen_s(&fpOut, outputFileName, "w");
 		if (fileRet != 0) {
@@ -255,10 +255,10 @@ int main(int argc, char* argv[]) {
 			outputFileName);
 	}
 
-	// Codegenerierung (siehe docs/ARCHITEKTUR.md): nur im Fall A (echte .ebnf geparst,
-	// nur dann existiert der AST) und nur bei fehlerfreier, nicht-linksrekursiver
-	// Grammatik. Erzeugt den C-Zwilling (<basis>_p.c, Host-testbar) und den
-	// 68k-Parser (<basis>.s68).
+	// Code generation (see docs/ARCHITEKTUR.md): only in case A, where the real
+	// .ebnf was parsed and an AST exists, and only for an error-free grammar
+	// without left recursion. Generate the host-testable C counterpart
+	// (<base>_p.c) and the 68k parser (<base>.s68).
 	if (!fallB && tableReady && errorCnt == 0 && !leftRecursionFound) {
 		actionsParseConfig(userCodeBuf);
 		if (!lexParseConfig(lexerCfgBuf) || !cgenParseConfig(cgenCfgBuf)) {
@@ -267,7 +267,7 @@ int main(int argc, char* argv[]) {
 		else if (genParserC(cgenCName) && genParser68k(cgen68kName)) {
 			printf("CODEGEN: '%s' und '%s' erzeugt.\n", cgenCName, cgen68kName);
 			if (cgenWantOS9()) {
-				// Basisname ohne Verzeichnis-Anteil als Default-psect-Name
+				// Use the basename without its directory as the default psect name.
 				const char* base = argv[1];
 				const char* slash = strrchr(base, '/');
 				if (slash == NULL) slash = strrchr(base, '\\');
@@ -283,9 +283,9 @@ int main(int argc, char* argv[]) {
 
 	runTests();
 
-	// Optionaler Testlauf: ebnf <basisname> <teststring>
-	// Fuehrt die erzeugte Tabelle als Stack-Maschine gegen <teststring> aus,
-	// beginnend an Zeile 0 (= Startregel = die erste in der .ebnf definierte Regel).
+	// Optional test run: ebnf <basename> <teststring>. Execute the generated
+	// table as a stack machine against <teststring>, starting at row 0 (the
+	// first rule defined in the .ebnf and therefore the start rule).
 	if (argc >= 3) {
 		if (leftRecursionFound) {
 			printf("\nHinweis: Grammatik ist linksrekursiv -- Testlauf uebersprungen (wuerde nie enden).\n");
