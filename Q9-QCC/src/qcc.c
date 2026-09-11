@@ -19,7 +19,7 @@
  * needed by the pipeline.  Keep this translation at the driver boundary so
  * the compiler stages themselves remain platform-neutral. */
 #if defined(_Q9OS) || defined(_OSK)
-#define QCC_MKDIR "makdir"
+#define QCC_MKDIR "makdir -e"
 #define QCC_COPY  "copy"
 #define QCC_REMOVE "del"
 #else
