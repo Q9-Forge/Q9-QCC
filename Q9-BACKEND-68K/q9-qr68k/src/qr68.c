@@ -4356,8 +4356,8 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Cachebefehle (68040) --- */
-	/* Gemessen: $F400 | Cache<<6 | (Zurueckschreiben ? $20 : 0) |
+	/* --- cache instructions (68040) --- */
+	/* Measured: $F400 | cache<<6 | (write-back ? $20 : 0) |
 	   Bereich<<3 | Register. Cache: nc 0, dc 1, ic 2, bc 3;
 	   Bereich: Zeile 1, Seite 2, alles 3. "cinva bc" -> $f4d8,
 	   "cpushl dc,(a1)" -> $f469. */
@@ -4405,8 +4405,8 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Mit Uebertrag und BCD: die Paarform --- */
-	/* Gemessen: das ZIEL steht in Bit 11..9, die Quelle unten, Bit 3
+	/* --- with extend and BCD: paired form --- */
+	/* Measured: the DESTINATION is in bits 11..9, the source below, bit 3
 	   waehlt die Speicherform: "addx.w d2,d3" -> $d742,
 	   "addx.l -(a2),-(a3)" -> $d78a. Grundworte addx $d100, subx $9100,
 	   abcd $c100, sbcd $8100. Ohne Groessenbuchstaben ist es das WORT
@@ -4463,8 +4463,8 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Bereichspruefung --- */
-	/* Gemessen: die Breite steht in Bit 8..7, und zwar Wort 3, Langwort 2
+	/* --- range checking --- */
+	/* Measured: size is in bits 8..7: word 3, long 2
 	   ("chk.w (a0),d0" -> $4190, "chk.l (a0),d2" -> $4510). Ohne
 	   Groessenbuchstaben ist es das Wort ("chk (a0),d3" -> $4790). Der
 	   Sofortwert hat die Breite des Befehls: "chk.w #7,d1" -> $43bc $0007,
@@ -4517,7 +4517,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- BCD packen und auspacken (68020) --- */
+	/* --- BCD pack and unpack (68020) --- */
 	/* Dieselbe Paarform wie abcd, dahinter die Korrektur als ganzes Wort:
 	   "pack d2,d3,#$1234" -> $8742 $1234, "unpk -(a2),-(a3),#$3030" ->
 	   $878a $3030. Grundworte pack $8140, unpk $8180. */
@@ -4544,7 +4544,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Vergleichen und tauschen (68020) --- */
+	/* --- compare and swap (68020) --- */
 	/* Gemessen: "cas.w d0,d1,(a2)" -> $0cd2 $0040. Die Breite steht in
 	   Bit 10..9, und zwar Byte 1, Wort 2, Langwort 3 -- eins mehr als das
 	   uebliche Groessenfeld. Im Erweiterungswort Du in Bit 8..6, Dc unten;
@@ -4564,7 +4564,7 @@ static void doInstruction(void)
 		du = regNum(opTxt1, strLen(opTxt1));
 		if (dc < 0 || dc > 7 || du < 0 || du > 7)
 			fatal("cas braucht zwei Datenregister: ", lnArg);
-		/* Der dritte Operand kommt in Fach 0 -- die beiden ersten sind
+		/* The third operand goes into slot 0; the first two are
 		   blosse Registernamen und brauchen keines. */
 		parseOperand(opTxt2, 0);
 		needAlterable(0);
@@ -4576,7 +4576,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Haltepunkt, Rueckkehr mit Abraeumen, Modulaufruf (68020) --- */
+	/* --- breakpoint, return-and-discard, module call (68020) --- */
 	/* Gemessen: "bkpt #7" -> $484f, "rtd #-4" -> $4e74 $fffc,
 	   "callm #255,8(a1)" -> $06e9 $00ff $0008 (die Argumentzahl steht VOR
 	   der Adresse), "rtm d0" -> $06c0 und "rtm a3" -> $06cb. */
@@ -4624,7 +4624,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- PMMU: Puffer leeren und pruefen (68030) --- */
+	/* --- PMMU: flush and test (68030) --- */
 	/* Gemessen. Beide legen $F000 | ea ab und dahinter ein
 	   Erweiterungswort -- vor den Erweiterungswoertern des Operanden
 	   ("ptestr #1,8(a0),#7" -> $f028 $9e11 $0008).
@@ -4684,7 +4684,7 @@ static void doInstruction(void)
 			       "ptest braucht die Ebene als festen Sofortwert 0..7: ");
 		parseOperand(opTxt1, 1);
 		needControl(1);
-		/* r68-DEFEKT: braucht die Adressierungsart Erweiterungswoerter,
+		/* r68 BUG: it needs extension words for the addressing mode,
 		   legt r68 an deren Stelle die EBENE ab -- die Adresse geht
 		   ganz verloren. Gemessen: "ptestr #1,16(a0),#3" ergibt
 		   $f028 $8e11 $0003 statt $0010, und "ptestr #1,$1234.w,#3"
@@ -4737,7 +4737,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Bitfeldbefehle (68020) --- */
+	/* --- bit-field instructions (68020) --- */
 	/* Gemessen: $E8C0 | Kennung<<8 | ea, gefolgt von einem
 	   Erweiterungswort -- und das steht VOR den Erweiterungswoertern des
 	   Operanden ("bftst 8(a0){1:2}" -> $e8e8 $0042 $0008, "bfextu
@@ -4823,7 +4823,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- eine Cachezeile bewegen (move16, 68040) --- */
+	/* --- move one cache line (move16, 68040) --- */
 	/* Gemessen: die Form mit zwei Postinkrementen hat ein
 	   Erweiterungswort ("move16 (a0)+,(a2)+" -> $f620 $a000: Ax unten im
 	   Befehlswort, Ay in Bit 14..12, Bit 15 gesetzt), die vier Formen mit
@@ -4863,7 +4863,7 @@ static void doInstruction(void)
 		fatal("move16 kennt nur (aN)+,(aM)+ und die vier Formen mit absoluter Adresse: ", lnArg);
 	}
 
-	/* --- MMU-Register bewegen (pmove, 68030) --- */
+	/* --- move MMU registers (pmove, 68030) --- */
 	/* Gemessen: $F000 | ea, dann das Erweiterungswort aus mmuReg(); Bit 9
 	   gibt die Richtung an (0 = in das MMU-Register, 1 = heraus:
 	   "pmove tc,(a0)" -> $f010 $4200), Bit 8 ist das FD von "pmovefd"
@@ -4899,7 +4899,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Speicher mit Speicher vergleichen --- */
+	/* --- compare memory with memory --- */
 	/* Gemessen: "cmpm.l (a0)+,(a5)+" -> $bb88, der ERSTE Operand ist Ay
 	   (unten), der zweite Ax (Bits 11..9). */
 	if (baseIs(base, "cmpm")) {
@@ -4915,7 +4915,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- ueber ein Peripherieregister (movep) --- */
+	/* --- transfer through a peripheral register (movep) --- */
 	/* Gemessen: "movep.w d1,(a0)" -> $0388 $0000, "movep.l (a0),d0" ->
 	   $0148 $0000. Die Betriebsart in Bit 8..6: 4 = Wort aus dem
 	   Speicher, 5 = Langwort aus dem Speicher, 6 = Wort dorthin,
@@ -4957,7 +4957,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Register tauschen --- */
+	/* --- exchange registers --- */
 	/* Gemessen: "exg d0,d1" $c141, "exg a0,a1" $c149, "exg d0,a1" $c189 --
 	   und "exg a1,d0" ergibt DASSELBE $c189, r68 dreht die gemischte Form
 	   also so, dass das Datenregister im Rx-Feld steht. */
@@ -4986,7 +4986,7 @@ static void doInstruction(void)
 		fatal("exg tauscht nur Register: ", lnArg);
 	}
 
-	/* --- Kontrollregister (68010) --- */
+	/* --- control registers (68010) --- */
 	if (baseIs(base, "movec")) {
 		int cr;
 		int rn;
