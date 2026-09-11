@@ -58,7 +58,7 @@
  *
  * r68 is byte-reproducible except for the six timestamp bytes in the header.
  * qr68 is considered correct when its output matches r68 byte-for-byte except
- * for those bytes (test/difftest.sh). This uses the original assembler as the
+ * for those bytes (tests/difftest.sh). This uses the original assembler as the
  * oracle rather than a separately authored expected output.
  *
  * ---------------------------------------------------------------------------
@@ -2882,7 +2882,7 @@ static void doCond(const char *base)
 
 /* =============================================================== Opcodes == */
 /* Encodings follow the M68000PRM; every generated form is compared with
-   test/insn.a gegen r68 gestellt.
+   tests/insn.a against r68.
 
    Was r68 dabei von sich aus umformt (gemessen, sonst gaebe es keine
    Byteidentitaet):

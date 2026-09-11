@@ -6,8 +6,8 @@
 # difference to its source line. This allows the instruction table to be
 # processed in one pass.
 #
-#   ./test/insndiff.sh                 -- test/insn.a
-#   ./test/insndiff.sh datei.a ...
+#   ./tests/insndiff.sh                 -- tests/insn.a
+#   ./tests/insndiff.sh file.a ...
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

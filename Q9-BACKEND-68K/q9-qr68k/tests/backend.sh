@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Differential test on REAL material: sources produced by QCC's backend.
 #
-# Built-in probes in difftest.sh check individual cases, and test/insn.a checks
+# Built-in probes in difftest.sh check individual cases, and tests/insn.a checks
 # the instruction table. This runs what actually arrives in the chain
 # qir_68k -> qr68 -> l68: complete modules, up to 146,000 lines. This is the
 # test that matters.
 #
-#   ./test/backend.sh              -- all discovered modules
-#   QCC_BUILD=... ./test/backend.sh
+#   ./tests/backend.sh             -- all discovered modules
+#   QCC_BUILD=... ./tests/backend.sh
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

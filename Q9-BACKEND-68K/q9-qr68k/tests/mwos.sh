@@ -7,8 +7,8 @@
 # PORT-Verzeichnis heraus (dort liegt "defsfile", das "use defsfile" holt),
 # mit den Schaltern -qb -u=. -u=<DEFS> -u=<MACROS>.
 #
-#   ./test/mwos.sh                 -- alle SCF-Treiber des Beispielports
-#   ./test/mwos.sh datei.a ...     -- bestimmte Quellen
+#   ./tests/mwos.sh                -- all SCF drivers of the example port
+#   ./tests/mwos.sh file.a ...     -- selected sources
 #
 # UEXTRA adds further search directories (space-separated).
 # Der ROM-Code braucht das: ROM_CBOOT/sysinit.a holt sich "systype.d" aus
@@ -16,7 +16,7 @@
 # zusaetzlichen -u faellt r68 auf sein eingebautes \mwos\OS9\SRC\DEFS
 # zurueck und bricht ab.
 #
-#   UEXTRA=$MWOS/OS9/68030/PORTS/Q9 PORTDIR=... ./test/mwos.sh .../sysinit.a
+#   UEXTRA=$MWOS/OS9/68030/PORTS/Q9 PORTDIR=... ./tests/mwos.sh .../sysinit.a
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
