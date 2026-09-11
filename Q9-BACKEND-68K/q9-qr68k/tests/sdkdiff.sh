@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # Differential test over the ENTIRE corpus, using the invocations from the SDK
-# selbst benutzt, statt sie je Port zu raten.
+# actually uses, instead of guessing them per port.
 #
 # The mechanism: "os9make -nn -u" PRINTS commands instead of executing them,
-# und steigt dabei in die Untermakes ab ("-nn" = wie "-n", aber Verzeichnisse
-# wechseln und Untermakes ebenfalls mit "-nn" aufrufen). MWMAKEOPTS=-u sorgt
-# dafuer, dass auch die Untermakes alles neu bauen wollen -- sonst schweigen
-# sie, weil die .r-Dateien im Baum schon liegen. Damit steht jede
+# and descends into sub-makes ("-nn" = like "-n", but also changes directories
+# and invokes sub-makes with "-nn"). MWMAKEOPTS=-u makes sub-makes rebuild
+# everything; otherwise they remain silent because .r files already exist.
+# This fixes every
 # r68-Kommandozeile mit ihren echten Schaltern, Suchverzeichnissen und
 # -a-Definitionen fest.
 #
 # NOTHING is written to the SDK tree: os9make executes nothing,
-# und die -o=-Angabe wird auf ein Temporaerverzeichnis umgebogen.
+# and redirects the -o= output to a temporary directory.
 #
-# Das ist der Unterschied zu test/mwos.sh, das PORTDIR/DRVDIR/UEXTRA von Hand
-# gesetzt bekommt: hier kommt die Konfiguration aus dem Makefile.
+# Unlike test/mwos.sh, which receives PORTDIR/DRVDIR/UEXTRA manually, this gets
+# its configuration from the makefile.
 #
-#   ./test/sdkdiff.sh                -- alle Verzeichnisse mit einem makefile
-#   ./test/sdkdiff.sh <verz> ...     -- nur diese
+#   ./test/sdkdiff.sh                -- all directories with a makefile
+#   ./test/sdkdiff.sh <dir> ...      -- only these
 #
-#   KEEP=<verz>   Zwischendateien behalten
-#   HUNKS=<n>     wie viele Unterschiede je Abweichung gezeigt werden
+#   KEEP=<dir>    keep temporary files
+#   HUNKS=<n>     number of differences shown per mismatch
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -35,8 +35,7 @@ TMP="${KEEP:-$(mktemp -d /tmp/qr68-sdk.XXXXXX)}"
 mkdir -p "$TMP"
 [ -n "${KEEP:-}" ] || trap 'rm -rf "$TMP"' EXIT
 
-# os9-toolchain.sh biegt MWOS auf den WINE-Pfad um -- der Unix-Pfad muss
-# vorher gerettet werden.
+# os9-toolchain.sh redirects MWOS to the WINE path; save the Unix path first.
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
 source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
@@ -45,7 +44,7 @@ MWOS="$MWOS_UNIX"
 WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine"
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 
-# Alles unterhalb von $MWOS liegt unter Wine auf dem Laufwerk M:. Mit einem
+# Everything below $MWOS is mapped to drive M: under Wine. With a
 # "Z:"-Pfad findet r68 sein Suchverzeichnis NICHT (es faellt dann auf sein
 # eingebautes \mwos\OS9\SRC\DEFS zurueck).
 winpath() {
@@ -63,7 +62,7 @@ if [ ${#dirs[@]} -eq 0 ]; then
 		case "$mf" in *"("*) continue;; esac
 		dirs+=("$(dirname "$mf")")
 	done < <(find "$MWOS/OS9" -name makefile -not -path "*/(*" | sort)
-	# Zwei Verzeichnisse des SDK haben nur "*.make" und kein "makefile"
+	# Two SDK directories have only "*.make" and no "makefile"
 	# daneben (SRC/SYSMODS/GCLOCK und PORTS/common/RBF/cfide). Ohne sie
 	# fiele die halbe Uhrengruppe unter den Tisch.
 	while IFS= read -r mk; do
@@ -97,8 +96,8 @@ for d in "${dirs[@]}"; do
 	fi
 	ndirs=$((ndirs + 1))
 	dwin="$(winpath "$d")"
-	# Die Kommandos holen. Fehler des Trockenlaufs sind egal -- was an
-	# r68-Zeilen herauskommt, zaehlt.
+	# Collect commands. Dry-run errors do not matter; only extracted r68 lines
+	# count.
 	: > "$TMP/cmds"
 	for mkf in "${mkfiles[@]}"; do
 		arch -x86_64 "$WINE_BIN" cmd /c \
@@ -106,7 +105,7 @@ for d in "${dirs[@]}"; do
 			2>/dev/null | tr -d '\r' | grep -E '^[[:space:]]*r68([[:space:]]|$)' >> "$TMP/cmds" || true
 	done
 	[ -s "$TMP/cmds" ] || continue
-	# Dieselbe Zeile kann aus mehreren "*.make" kommen.
+	# The same line may come from multiple "*.make" files.
 	sort -u "$TMP/cmds" -o "$TMP/cmds"
 
 	while IFS= read -r line; do
