@@ -1,0 +1,10 @@
+         psect   abs2,$0101,$8000,1,100,start
+start    moveq   #0,d0
+         nop
+         nop
+spaet    rts
+         vsect
+p        dc.l    spaet
+q        dc.l    start
+         ends
+         ends
