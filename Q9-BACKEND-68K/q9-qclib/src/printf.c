@@ -164,15 +164,14 @@ void qp_int(int v)
  *
  * Supported forms are %d %i %u %x %c %s %%, length modifier l, and precision
  * .number or .*; no other forms occur in the toolchain.
- * (nachgezaehlt an QCCs Bootstrap-Quelle: 203 %d, 155 %s, 67 %c,
+ * (counted in the QCC bootstrap source: 203 %d, 155 %s, 67 %c,
  * 30 %.*s, 7 %ld). The l length modifier is ignored deliberately: on 68k,
  * int and long are both 32 bits, so %ld and %d are identical.
  *
  * Everything else is passed through UNCHANGED; a width such as
- * %20s erscheint also als Text, statt still falsch ausgerichtet zu
- * werden. Auch eine Genauigkeit an einer Zahl (%.3d, in C89 die
- * Mindestziffernzahl) faellt bewusst in diesen Zweig, statt
- * stillschweigend zu verschwinden.
+ * %20s therefore remains text instead of being silently misaligned. A
+ * precision on a number (%.3d, the C89 minimum digit count) also deliberately
+ * follows this branch instead of disappearing silently.
  */
 /* Function: qp_run
  * Interprets one format string and its argument frame.
