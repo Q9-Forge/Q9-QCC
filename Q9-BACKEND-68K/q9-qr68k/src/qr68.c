@@ -225,44 +225,35 @@ static int psEntry;
 static int psTrap;
 static int psSeen;
 
-/* Im vsect haben initialisierte (dc) und reservierte (ds) Daten JE EINEN
-   EIGENEN Adressraum, beide ab 0 -- an r68 gemessen: bei "d1 dc.l / d2 dc.l /
-   u1 ds.b 4 / u2 ds.b 4" kommen die Adressen 0,4 und 0,4 heraus, idatsz=8 und
-   statstorage=8. */
+/* Initialized (dc) and reserved (ds) vsect data each have their OWN address
+   space, both starting at zero. Measured with "d1 dc.l / d2 dc.l / u1 ds.b 4 /
+   u2 ds.b 4": the addresses are 0,4 and 0,4, with idatsz=8 and statstorage=8. */
 static int idataPC;
 static int udataPC;
-static int statStorage;        /* reservierte Groesse im vsect */
+static int statStorage;        /* Reserved size in the vsect. */
 
 /* "vsect remote" -- ein DRITTER Adressraum, ebenfalls ab 0.
  *
- * WOFUER: ein nicht-remoter vsect wird ueber d16(a6) angesprochen und passt
- * damit in 64 KB; l68 lehnt mehr ab ("non-remote data allocation exceeds 64k
- * bytes"). Remote-Daten zaehlen dort nicht mit, und l68 legt sie im
- * Datenbereich HINTER die initialisierten Daten -- aus dem 16-Bit-Fenster
- * heraus. Gemessen an l68 (ein psect mit 8000 nicht-remote, 8 Byte
- * initialisiert, 70000 remote):
- *     blk  (nicht remote)  -> Datenoffset     0
- *     iblk (initialisiert) -> Datenoffset  8000
- *     rblk (remote)        -> Datenoffset  8008
- *     M$Mem = 78008
- * Der Datenbereich ist also derselbe; remote aendert die REIHENFOLGE und
- * schaltet die 64-KB-Pruefung ab.
+ * PURPOSE: a non-remote vsect is addressed through d16(a6) and therefore
+ * fits in 64 KB; l68 rejects larger allocations. Remote data is not included
+ * in that window. l68 places it in the data area AFTER initialized data.
+ * Measured with 8000 bytes of non-remote data, 8 initialized bytes, and
+ * 70000 remote bytes: blk -> 0, iblk -> 8000, rblk -> 8008, M$Mem = 78008.
+ * The data area is shared; remote changes the order and disables the 64K check.
  *
- * qr68 hat "remote" bis 2026-09-07 STILLSCHWEIGEND VERWORFEN: die ROFs mit
- * und ohne remote waren byteidentisch, remotestatsiz blieb 0. Genau die
- * Fehlerklasse, die dieses Projekt sonst bekaempft -- und sie hat den
- * Datenmodell-Umbau blockiert, denn ohne remote kommt er nicht durch l68.
+ * Until 2026-09-07 qr68 silently discarded "remote": ROFs with and without
+ * remote were byte-identical and remotestatsiz remained zero. This prevented
+ * the data-model change because the result could not pass through l68.
  *
- * Im ROF: Groesse in remotestatsiz (Offset 44), Symbole tragen das Typwort
- * $0002 (gemessen: nicht-remote $0000, initialisiert $0001, remote $0002). */
+ * In the ROF, the size is stored in remotestatsiz (offset 44); symbols carry
+ * type word $0002 (measured: non-remote $0000, initialized $0001, remote $0002). */
 static int rdataPC;
-static int remoteStatStorage;  /* reservierte Groesse im vsect remote */
-static int inRemoteVsect;      /* 1, solange ein "vsect remote" offen ist */
+static int remoteStatStorage;  /* Reserved size in the remote vsect. */
+static int inRemoteVsect;      /* 1 while a "vsect remote" is open. */
 
-/* Zeitstempel: fest, damit die Ausgabe reproduzierbar ist. Mit -fdate=
-   setzbar, damit der Differenztest gegen r68 dessen Stempel nachbilden
-   kann. */
-static int dtYear = 126;       /* Jahr - 1900 */
+/* Fixed timestamp for reproducible output. -fdate= overrides it so the
+   differential test can reproduce the timestamp emitted by r68. */
+static int dtYear = 126;       /* Year - 1900. */
 static int dtMonth = 1;
 static int dtDay = 1;
 static int dtHour = 0;
@@ -270,12 +261,12 @@ static int dtMin = 0;
 static int dtSec = 0;
 
 static int optVerbose;
-static int optBranch;          /* -b: Sprungweiten selbst waehlen */
-static int optMpu;             /* -m<n>: Ziel-CPU */
-static int optMpuSet;          /* 1 = -m<n> war angegeben */
-static int pass;               /* Nummer des Durchlaufs, ab 1 */
-static int emitting;           /* 1 = letzter Durchlauf, Ausgabe in die Puffer */
-static int symMoved;           /* 1 = in diesem Durchlauf hat sich ein Wert bewegt */
+static int optBranch;          /* -b: choose branch sizes explicitly. */
+static int optMpu;             /* -m<n>: target CPU. */
+static int optMpuSet;          /* 1 = -m<n> was specified. */
+static int pass;               /* Pass number, starting at 1. */
+static int emitting;           /* 1 = final pass; emit into the buffers. */
+static int symMoved;           /* 1 = a value changed during this pass. */
 
 /* Der org-Zaehler ist NICHT der Ort im Abschnitt: "org" setzt ihn,
    "do.b/.w/.l" legt darauf Namen ab, "." liest ihn. So beschreiben die
