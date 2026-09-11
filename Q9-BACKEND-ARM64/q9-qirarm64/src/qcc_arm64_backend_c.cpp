@@ -380,11 +380,9 @@ static void slotStr(char* out_, int n, const Function* f, int line) {
 	else sprintf(out_, "#-%d", 16 * (n - f->nargs + 1));
 }
 
-/* Kann "mov w0,#v" das als EINE Instruktion (movz/movn-Alias) kodieren? --
-   nur wenn eine der beiden 16-Bit-Haelften von v ODER von ~v Null ist.
-   2026-09-10 gefunden (nicht short-spezifisch, aber blockierte dessen
-   Verifikation): 99999/100000 -- vorher nie als PUSH-Literal gebraucht --
-   erfuellen KEINE der beiden Formen; clang lehnt "mov w0,#99999" ab. */
+/* Can "mov w0,#v" be encoded as one instruction (movz/movn alias)? Only if
+   one 16-bit half of v or ~v is zero. This was found during short validation:
+   most values do not satisfy either form, and clang rejects "mov w0,#99999". */
 static int fitsSingleMov(unsigned int v) {
 	return (v & 0xffffu) == 0 || (v >> 16) == 0 || (~v & 0xffffu) == 0 || (~v >> 16) == 0;
 }
@@ -392,8 +390,8 @@ static int fitsSingleMov(unsigned int v) {
 static void push(FILE* o, const char* reg) { fprintf(o, "\tstr\t%s,[sp,#-16]!\n", reg); }
 static void pop(FILE* o, const char* reg) { fprintf(o, "\tldr\t%s,[sp]\n\tadd\tsp,sp,#16\n", reg); }
 
-// Skalierungssuffix fuer add/sub bei Pointerarithmetik: char/bool=1 (kein Shift),
-// short=#1 (*2), Pointer=#3 (*8), sonst=#2 (*4). Immer gefolgt von "\n".
+// Scaling suffix for add/sub pointer arithmetic: char/bool=1 (no shift),
+// short=#1 (*2), pointer=#3 (*8), otherwise=#2 (*4). Always includes "\n".
 static const char* scaleSuffix(const char* typeWord) {
 	if (isByteWord(typeWord)) return "\n";
 	if (isShortWord(typeWord)) return " #1\n";
@@ -406,15 +404,14 @@ static void emit(FILE* o) {
 	char msg[300];
 	char slotBuf[32];
 
-	/* -part (2026-07-25): main darf in einer ANDEREN Datei stehen -- das meldet
-	   der echte Linker (ld) von selbst, falls keine der gelinkten Dateien es
-	   liefert. */
+	/* -part (2026-07-25): main may be in another file. The real linker (ld)
+	   reports an error if none of the linked files provides it. */
 	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 	fputs("; QCC ARM64/Darwin -- PIC Programmmodul\n\t.text\n\t.p2align\t2\n", o);
 
 	for (fi = 0; fi < funcCount; fi++) {
 		Function* f = &funcs[fi];
-		if (f->declOnly) continue; /* definiert in einer ANDEREN Datei, kein Rumpf hier */
+		if (f->declOnly) continue; /* Defined in another file; no body here. */
 		if (!f->isStatic) fprintf(o, "\t.globl\t_tc_%s\n", f->name);
 		fprintf(o, "_tc_%s:\n\tstp\tx29,x30,[sp,#-16]!\n\tmov\tx29,sp\n", f->name);
 		if (f->frameBytes) fprintf(o, "\tsub\tsp,sp,#%d\n", f->frameBytes);
@@ -465,7 +462,7 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadrp\tx0,_tc_g_%s@PAGE\n\tadd\tx0,x0,_tc_g_%s@PAGEOFF\n", x->args[0], x->args[0]);
 				push(o, "x0");
 			} else if (strcmp(op, "LARRAY") == 0 && x->argc == 3) {
-				/* nur Frame-Layout, kein Code */
+				/* Frame layout only; no code is emitted. */
 			} else if (strcmp(op, "PUSHADDR") == 0 && x->argc == 2) {
 				int ignored;
 				if (strcmp(x->args[0], "L") == 0) {
@@ -487,8 +484,8 @@ static void emit(FILE* o) {
 				}
 				fputs("\tstr\tx0,[sp,#-16]!\n", o);
 			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && x->argc == 3) {
-				/* 2026-09-10: isChar (bool) -> isByteWord/isShortWord auf dem
-				   Original-Tag, short als dritte Groesse dazu. */
+				/* 2026-09-10: use isByteWord/isShortWord on the original tag,
+				   with short as a third element size. */
 				int isPointer = strcmp(x->args[2], "p") == 0;
 				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
 				if (strcmp(x->args[2], "i") != 0 && !isByteWord(x->args[2]) && !isShortWord(x->args[2]) && !isPointer)
