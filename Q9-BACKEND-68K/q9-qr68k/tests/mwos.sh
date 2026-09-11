@@ -24,7 +24,8 @@ QR68="$PWD/build/qr68k"
 TOOLS="$PWD/tools"
 [ -x "$QR68" ] || { echo "FEHLER: build/qr68 fehlt -- vorher 'make'"; exit 2; }
 
-: "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+: "${MWOS_HOST:=/Volumes/SSD1TB/projects/MWOS}"
+MWOS="$MWOS_HOST"
 : "${PORTDIR:=$MWOS/OS9/68060/PORTS/MVME172/SCF}"
 : "${DRVDIR:=$MWOS/OS9/SRC/IO/SCF/DRVR}"
 

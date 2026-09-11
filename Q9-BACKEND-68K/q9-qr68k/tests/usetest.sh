@@ -12,7 +12,8 @@ QR68="$PWD/build/qr68k"
 TOOLS="$PWD/tools"
 [ -x "$QR68" ] || { echo "FEHLER: build/qr68 fehlt -- vorher 'make'"; exit 2; }
 
-: "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+: "${MWOS_HOST:=/Volumes/SSD1TB/projects/MWOS}"
+MWOS="$MWOS_HOST"
 TMP="$(mktemp -d /tmp/qr68-use.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 

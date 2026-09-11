@@ -14,7 +14,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 QR68=build/qr68k
 [ -x "$QR68" ] || { echo "FEHLER: $QR68 fehlt -- vorher 'make'"; exit 2; }
 
-: "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
+: "${MWOS_HOST:=/Volumes/SSD1TB/projects/MWOS}"
+MWOS="$MWOS_HOST"
 TMP="$(mktemp -d /tmp/qr68-insn.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
