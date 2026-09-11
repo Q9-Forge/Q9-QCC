@@ -1030,6 +1030,10 @@ static int pasteText(int aText, int bText)
 static const char *punctList[48];
 static int punctN;
 
+/* Function: setupPuncts
+ * Initializes the punctuation-token table.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void setupPuncts(void)
 {
 	punctN = 0;
@@ -1547,6 +1551,10 @@ static int expandOne(void)
 	return 1;
 }
 
+/* Function: nextExpanded
+ * Reads the next token after recursively applying macro expansion.
+ * Parameters: None.
+ * Returns: Nothing; updates the current token. */
 static void nextExpanded(void)
 {
 	while (!expandOne())
@@ -3260,6 +3268,10 @@ static void setupBuiltins(int wantAnsi, int noPredef, int dateText, int timeText
 }
 
 /* -D name / -D name=wert */
+/* Function: defineFromArg
+ * Parses and registers one command-line -D definition.
+ * Parameters: arg Definition text without the -D prefix.
+ * Returns: Nothing. */
 static void defineFromArg(const char *arg)
 {
 	int i;
@@ -3312,6 +3324,10 @@ static void defineFromArg(const char *arg)
 	defineMacro(name, 0, 0, 0, at, bodyN, 0);
 }
 
+/* Function: undefFromArg
+ * Removes one command-line -U definition.
+ * Parameters: arg Macro name without the -U prefix.
+ * Returns: Nothing. */
 static void undefFromArg(const char *arg)
 {
 	int m;
@@ -3321,6 +3337,10 @@ static void undefFromArg(const char *arg)
 		macName[m] = intern("#undef#");
 }
 
+/* Function: argEq
+ * Compares two command-line argument strings.
+ * Parameters: a, b Strings to compare.
+ * Returns: Non-zero when equal. */
 static int argEq(const char *a, const char *b)
 {
 	int i;
@@ -3336,6 +3356,10 @@ static int argEq(const char *a, const char *b)
 	return 1;
 }
 
+/* Function: argStarts
+ * Checks whether a command-line argument has a given prefix.
+ * Parameters: a Argument; pre Prefix.
+ * Returns: Non-zero when the prefix matches. */
 static int argStarts(const char *a, const char *pre)
 {
 	int i;
@@ -3349,6 +3373,10 @@ static int argStarts(const char *a, const char *pre)
 	return i;
 }
 
+/* Function: usage
+ * Prints command-line usage information and terminates with an error status.
+ * Parameters: None.
+ * Returns: Does not return. */
 static void usage(void)
 {
 	printf("qcpp -- C-Praeprozessor der Q9-Werkzeugkette\n");
