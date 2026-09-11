@@ -18,80 +18,44 @@
  * "move.l (a7)+,DST" becomes "move.l SRC,DST". This is safe here because
  * the push is immediately followed only by its matching pop.
  *
- * ZWEITES MUSTER (08.09.2026, an der echten Haeufigkeitsverteilung von
- * qr68s eigener Ausgabe gefunden -- 2064 Vorkommen, der mit Abstand groesste
- * Einzelfund): "move.l SRC,Dn" unmittelbar gefolgt von "tst.l Dn" (DIESELBE
- * Nummer, ein DATENregister d0-d7). MOVE.L setzt N/Z auf 68000-Hardwareebene
- * bereits GENAUSO wie TST.L es fuer denselben Wert taete (V/C werden bei
- * beiden auf 0 geloescht) -- das TST ist also niemals mehr als eine
- * Wiederholung, die Zeile faellt komplett weg. BEWUSST NUR d0-d7, NIE
- * a0-a6: "move.l SRC,An" wird von r68/qr68 als MOVEA assembliert (die
- * einzige Opcode-Form fuer ein Adressregister-Ziel, unabhaengig vom
- * geschriebenen Mnemonic), und MOVEA setzt KEINE Flags -- ein TST danach
- * waere dort echt gebraucht.
+ * SECOND PATTERN (2026-09-08, selected from qr68's measured output):
+ * "move.l SRC,Dn" immediately followed by "tst.l Dn" (the same data
+ * register d0-d7). MOVE.L already sets N/Z exactly as TST.L would for the
+ * same value; both clear V/C. The TST is therefore redundant. This rule is
+ * intentionally limited to data registers: "move.l SRC,An" is assembled as
+ * MOVEA, which does not set flags, so a following TST is meaningful.
  *
- * DRITTES MUSTER (dieselbe Haeufigkeitsliste): "move.l SRC,Dn" unmittelbar
- * gefolgt von "move.l Dn,DST" (dasselbe Datenregister) wird zu
- * "move.l SRC,DST" -- 385 Vorkommen allein fuer den Fall SRC="(a0)"/
- * DST="-(a7)". Sicher aus demselben Grund wie das erste Muster: der
- * Registerinhalt wird zwischen den beiden Zeilen von nichts sonst
- * beobachtet. DST darf ALLES sein (auch "-(a7)" -- dann ist es dasselbe
- * Ergebnis wie Muster eins, nur ueber diesen Matcher gefunden), SRC
- * ebenso: 68k erlaubt Speicher-zu-Speicher-MOVE, und eine Adressierung
- * mit Seiteneffekt (Post-/Praedekrement) wertet ihre effektive Adresse in
- * einem wie in zwei Schritten exakt einmal aus -- die Verschmelzung
- * aendert daran nichts. Geprueft: alle 23.387 move.l-Zeilen in qr68s
- * eigener Ausgabe haben genau EIN Komma (keine indizierte Adressierung
- * mit eingebettetem Komma in diesem Backend), das rechteste Komma trennt
- * also immer sauber SRC von DST.
+ * THIRD PATTERN: "move.l SRC,Dn" immediately followed by
+ * "move.l Dn,DST" using the same data register becomes "move.l SRC,DST".
+ * The register value is not observed between the two instructions. Both
+ * operands may use the full addressing modes emitted by this backend,
+ * including side effects; the effective address is evaluated exactly once
+ * in either form. The rightmost comma separates source and destination
+ * because this backend does not emit indexed operands containing commas.
  *
- * VIERTES MUSTER (dieselbe Haeufigkeitsliste, 867 Vorkommen): "move.l
- * Dn,-(a7)" unmittelbar gefolgt von "addq.l #4,a7" (oder "lea 4(a7),a7").
- * Der IR-Opcode DROP emittiert genau diese addq.l-Zeile ("Ausdruckswert
- * berechnen, Ergebnis verwerfen" -- z.B. eine Anweisung "f();", deren
- * Rueckgabewert niemand liest). Ein Push, dem SOFORT sein eigenes
- * Verwerfen folgt, hat auf A7 keinen Nettoeffekt und sein Wert wird von
- * NICHTS gelesen -- ANDERS als bei den ersten drei Mustern wird hier
- * NICHTS ersetzt, BEIDE Zeilen verschwinden ersatzlos. BEWUSST NUR SRC
- * OHNE Klammer (kein "(a0)", "(a0)+" o.ae.): eine Adressierung mit
- * Seiteneffekt (Post-/Praedekrement) MUESSTE weiterhin ausgewertet
- * werden, auch wenn ihr Wert verworfen wird -- nur ein reines Register
- * oder ein Sofortwert ist wirklich folgenlos zu streichen.
+ * FOURTH PATTERN: "move.l Dn,-(a7)" immediately followed by
+ * "addq.l #4,a7" (or "lea 4(a7),a7"). The IR DROP opcode emits this exact
+ * cleanup after computing and discarding an expression value. Since the
+ * pushed value is never read and A7 has no net change, both lines can be
+ * removed. The source must not have side effects such as post-increment or
+ * pre-decrement; a pure register or immediate value is safe to discard.
  *
- * VERFEINERUNG zu Muster eins/drei (08.09.2026, 776 Vorkommen bereits im
- * Ergebnis der ersten vier Muster gemessen): faellt SRC mit DST zusammen
- * ("move.l d0,-(a7)" gefolgt von "move.l (a7)+,d0", DIESELBE Nummer beide
- * Male), waere die Verschmelzung "move.l d0,d0" -- eine echte, aber
- * wirkungslose Instruktion. Sicherer und kleiner: BEIDE Zeilen verschwinden
- * ersatzlos, genau wie bei Muster vier. NUR wenn KEIN Label auf der ersten
- * Zeile haengt -- sonst ginge das Sprungziel verloren; in dem (seltenen)
- * Fall bleibt die alte Verschmelzung zu "label:\tmove.l\tDn,Dn" bestehen,
- * harmlos, nur nicht ideal.
+ * REFINEMENT of patterns one and three: if SRC and DST are identical, the
+ * merged instruction would be a useless self-move. Remove both instructions
+ * instead, but only when the first line has no label; otherwise the branch
+ * target must be preserved and the harmless self-move remains.
  *
- * FUENFTES MUSTER (09.09.2026, ueber Haeufigkeit gegen Aufwand entschieden,
- * nicht geraten): "move.l #IMM,Dn" mit IMM im Bereich -128..127 wird zu
- * "moveq #IMM,Dn" -- 1928 Vorkommen in qr68s eigener Ausgabe (gegen 76 fuer
- * Sprungketten-Verkuerzung und 0 fuer bra-auf-naechste-Zeile, beide
- * verworfen: seltener UND nur mit datei-weiter Label-Verfolgung zu haben,
- * waere keine Ein-Zeilen-Regel mehr). MOVEQ ist die einzige Opcode-Form
- * fuer ein Sofortwert-MOVE.L in ein Datenregister mit demselben
- * Bytemuster-Effekt: 2 statt 6 Byte, UND setzt N/Z/V/C exakt wie MOVE.L
- * mit dieser Quelle (V/C beide auf 0). BEWUSST NUR Dn (nie An -- MOVEQ
- * kennt kein Adressregister-Ziel) und NUR wenn IMM eine reine Dezimalzahl
- * ist (optional ein fuehrendes "-", sonst nur Ziffern) -- diese Kette hat
- * an dieser Stelle nie etwas anderes emittiert (alle 2046 "move.l #...,dN"
- * in qr68s Ausgabe sind reine Dezimalzahlen), aber ein Symbol- oder
- * Ausdruckstext an dieser Stelle wuerde die Pruefung einfach durchfallen
- * lassen statt ihn falsch zu deuten.
+ * FIFTH PATTERN: "move.l #IMM,Dn" with IMM in the range -128..127 becomes
+ * "moveq #IMM,Dn". MOVEQ is two bytes instead of six and preserves the same
+ * condition-code effect for this immediate source. The rule is limited to
+ * data registers and plain decimal constants, so symbols and expressions
+ * cannot be misinterpreted.
  *
- * MUSS ALS LETZTES laufen, NICHT im Konvergenz-Durchlauf mit den anderen
- * vier: phMatchMoveIntoDataReg (Muster zwei/drei) sucht wortwoertlich den
- * Text "move.l\t" als Ausloeser. Liefe die MOVEQ-Umwandlung VORHER, saehe
- * ein anschliessendes "tst.l Dn" oder "move.l Dn,DST" sein Gegenstueck
- * nicht mehr -- die Faltungschance ginge verloren. MOVEQ-Zeilen selbst
- * bieten dafuer keine neue Faltungschance (die Quelle ist ein Sofortwert,
- * nie textgleich mit einem Zielregister), ein einzelner Durchlauf am Ende
- * reicht deshalb aus.
+ * The fifth pattern MUST run last, not in the convergence pass with the
+ * other four. phMatchMoveIntoDataReg deliberately looks for the literal
+ * "move.l\t" prefix; converting first would hide later fold opportunities.
+ * MOVEQ itself cannot create another matching opportunity, so one final pass
+ * is sufficient.
  *
  * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
  * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
