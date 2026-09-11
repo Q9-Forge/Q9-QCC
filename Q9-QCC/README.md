@@ -29,6 +29,10 @@ schrittweise ergänzt; ein Aufruf mit Eingabedatei meldet bis dahin bewusst
 „Pipeline noch nicht implementiert“, statt einen unvollständigen Build
 vorzutäuschen.
 
+Der aktuelle 68k-Peephole-Code läuft als integrierter `-peephole`-Nachlauf des
+68k-Backends; ein separates `qo68k`-Binary wird erst angelegt, wenn die
+Schnittstelle dafür stabilisiert ist.
+
 ```sh
 make
 make test
