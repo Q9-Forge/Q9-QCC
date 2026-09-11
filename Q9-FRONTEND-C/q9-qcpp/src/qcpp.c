@@ -250,6 +250,18 @@ static int poolEq(int idx, const char *s)
 
 static void fatal(const char *msg, const char *detail);
 
+/*
+ * Function: internN
+ *
+ * Interns a byte range in the shared string pool and returns its pool index.
+ *
+ * Parameters:
+ *   s  Input character range.
+ *   n  Number of characters, excluding the terminating NUL.
+ *
+ * Returns:
+ *   Pool index of the unique string. Terminates the process if a table is full.
+ */
 static int internN(const char *s, int n)
 {
 	int h;
@@ -304,6 +316,17 @@ static int intern(const char *s)
 }
 
 /* ============================================================ Diagnosen === */
+/*
+ * Function: fatal
+ *
+ * Reports a preprocessing error and terminates the process.
+ *
+ * Parameters:
+ *   msg, detail  Primary and supplementary diagnostic text.
+ *
+ * Returns:
+ *   Does not return.
+ */
 static void fatal(const char *msg, const char *detail)
 {
 	const char *fn;
@@ -315,6 +338,17 @@ static void fatal(const char *msg, const char *detail)
 	exit(1);
 }
 
+/*
+ * Function: warn
+ *
+ * Reports a non-fatal preprocessing diagnostic.
+ *
+ * Parameters:
+ *   msg, detail  Primary and supplementary diagnostic text.
+ *
+ * Returns:
+ *   Nothing.
+ */
 static void warn(const char *msg, const char *detail)
 {
 	const char *fn;
@@ -507,6 +541,17 @@ static int lexAppend(int n, int c)
 }
 
 /* Ein Token aus der Datei holen. Setzt tkKind/tkText/tkLine/tkFile/tkWs. */
+/*
+ * Function: lexNext
+ *
+ * Reads the next preprocessing token from the raw input stream.
+ *
+ * Parameters:
+ *   None.
+ *
+ * Returns:
+ *   Nothing; updates the current token state.
+ */
 static void lexNext(void)
 {
 	int c;
@@ -1272,6 +1317,18 @@ static void substitute(int m, int nargs, int line, int file, int leadWs)
 
 /* Ein Token holen und dabei expandieren. Rueckgabe 0 heisst: es wurde
    expandiert, der Aufrufer muss erneut fragen. */
+/*
+ * Function: expandOne
+ *
+ * Expands one currently available macro invocation, if applicable.
+ *
+ * Parameters:
+ *   None.
+ *
+ * Returns:
+ *   Non-zero when the current token was left unchanged; zero when expansion
+ *   consumed the macro invocation.
+ */
 static int expandOne(void)
 {
 	int m;
