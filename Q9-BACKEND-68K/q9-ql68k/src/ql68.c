@@ -1024,22 +1024,17 @@ static void emit(void)
 	   Gemessen an sc8x30.a (Treiber sc172): _mexec = $3c zeigt auf die
 	   Routinentabelle, die die ersten 14 Codebytes sind; _mdata = $114
 	   sind die 276 Byte ds; der Name liegt auf $664 = $3c + 1576. */
-	/* Header extension size depends on the LANGUAGE, not the type.
-	   der Typ -- an den gebundenen SDK-Modulen nachgemessen, indem der
-	   Codeanfang aus M$Name minus Codegroesse zurueckgerechnet wurde:
+	/* Header extension size depends on the LANGUAGE, not the type. This was
+	   measured from linked SDK modules by deriving code start from M$Name and
+	   code size:
 
-	     Sprache 0  keine Erweiterung, Code auf $30, Name dahinter
-	                (Descriptoren "0f00", aber auch das Init-Modul
-	                "0c00" -- Sprache 0 heisst "nicht ausfuehrbar",
-	                so ein Modul braucht keine Einsprungfelder)
-	     sonst      12 Byte _mexec/_mexcpt/_mdata, Code auf $3c,
-	                Name dahinter (Treiber "0e01", Systemmodule "0c01",
-	                Unterprogramme "0201")
-	     Typ 1      mod_exec mit 24 Byte, Name VOR dem Code, dazu
-	                IData- und IRefs-Abschnitt
+	     Language 0  no extension, code at $30, name after code
+	     Other       12-byte _mexec/_mexcpt/_mdata extension, code at $3c
+	     Type 1      mod_exec with 24-byte extension, name before code,
+                 followed by IData and IRefs sections
 
-	   Die Typliste, die hier zuerst stand, war eine Fehlverallgemeinerung:
-	   Typ 12 kommt in BEIDEN Formen vor, je nach Sprache. */
+	   The original type-only rule was an invalid generalization: type 12
+	   occurs in both forms depending on language. */
 	i = (rTyLan[rofRoot] >> 8) & 255;
 	isDesc = (rTyLan[rofRoot] & 255) == 0;
 	isDrvr = !isDesc && i != 1;
