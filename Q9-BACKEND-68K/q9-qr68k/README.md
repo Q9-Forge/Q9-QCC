@@ -1,9 +1,9 @@
 # Q9-qr68 — der 68k-Assembler der Q9-Werkzeugkette
 
-Ausführbares Programm: **`qr68`**
+Ausführbares Programm: **`qr68k`**
 
 ```
-qr68 [Optionen] <eingabe.a> <ausgabe.r>
+qr68k [Optionen] <eingabe.a> <ausgabe.r>
 ```
 
 Ziel: Microwares `r68` ersetzen. Präprozessor (`qcpp`) und Compiler-Frontend
