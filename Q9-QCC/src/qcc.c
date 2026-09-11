@@ -203,7 +203,7 @@ int main(int argc, char **argv)
 		const char *input = argv[argc - 1];
 		#if defined(_Q9OS) || defined(_OSK)
 		if (strncmp(input, "/dd/", 4) == 0) {
-			sprintf(os9_input, "../../%s", input + 4);
+			sprintf(os9_input, "../%s", input + 4);
 			input = os9_input;
 		}
 		#endif
