@@ -1,5 +1,6 @@
 # Build- und lokale Testartefakte
 /build/
+**/build/
 *.o
 *.a
 *.so
