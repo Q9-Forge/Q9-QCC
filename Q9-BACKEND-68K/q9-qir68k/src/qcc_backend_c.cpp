@@ -399,7 +399,7 @@ static void fatal(const char* msg) {
 	fprintf(stderr, "qcc_backend: %s\n", msg);
 	exit(1);
 }
-#include "qcc_backend_peephole.c"
+#include "../../q9-qo68k/src/qo68.c"
 
 static int findFunction(const char* name) {
 	int i;

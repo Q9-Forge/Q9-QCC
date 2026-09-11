@@ -2,7 +2,7 @@
 # short-Regressionstest auf dem ECHTEN 68k-Ziel (Q9-Flux-Emulator).
 #
 # Fuehrt tools/test_short_68k.c durch die komplette Kette
-#   qcir -> qir_68k -> r68 -> l68 -> ToolShed -> Emulator
+#   qcir -> qir68k -> r68 -> l68 -> ToolShed -> Emulator
 # und vergleicht die Ausgabe fallweise mit der Erwartung unten.
 #
 # Warum das nicht ausschliesslich in runtests.sh gegen qccvm.py laeuft:
@@ -47,7 +47,7 @@ EXPECT_WHAT=(
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -x "$REPO/build/qcir" ]    || die "build/qcir fehlt -- erst bauen"
-[ -x "$REPO/build/qir_68k" ] || die "build/qir_68k fehlt"
+[ -x "$REPO/build/qir68k" ] || die "build/qir68k fehlt"
 [ -f "$IMG" ]                || die "Image nicht gefunden: $IMG"
 [ -d "$FLUX" ]               || die "Q9-Flux nicht gefunden: $FLUX"
 
@@ -74,11 +74,11 @@ fi
 echo "  ok ($(wc -l < t.ir | tr -d ' ') IR-Zeilen)"
 
 echo "== 2/5 Backend + Assembler + Linker =="
-"$REPO/build/qir_68k" t.ir t.s68 -os9 >/dev/null || die "qir_68k"
+"$REPO/build/qir68k" t.ir t.s68k -os9 >/dev/null || die "qir68k"
 w 'Z: && cd \tmp\qcc-short68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
 [ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
-w 'Z: && cd \tmp\qcc-short68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe t.s68 -o=t.r'
-[ -f t.r ] || die "r68 auf t.s68"
+w 'Z: && cd \tmp\qcc-short68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe t.s68k -o=t.r'
+[ -f t.r ] || die "r68 auf t.s68k"
 w 'set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\l68.exe -a Z:\tmp\qcc-short68k\q9_cstart.r Z:\tmp\qcc-short68k\t.r -l=M:\OS9\68020\LIB\clib.l -l=M:\OS9\68020\LIB\os_lib.l -l=M:\OS9\68000\LIB\sys.l -M=64K -o=Z:\tmp\qcc-short68k\q9_shorttest'
 [ -f q9_shorttest ] || die "l68"
 echo "  ok ($(wc -c < q9_shorttest | tr -d ' ') Byte Modul)"

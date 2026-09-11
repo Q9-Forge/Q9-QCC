@@ -18,22 +18,23 @@
 #     entspricht
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # .../Q9-QCC/q9-cpp
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # .../Q9-FRONTEND-C/q9-qcpp
+QCC="$(cd "$REPO/../.." && pwd)"                         # .../Q9-QCC
 QCC="$(cd "$REPO/.." && pwd)"                             # .../Q9-QCC
 cd "$QCC"
 
-SRC=Data/qcc_p.c
-OUT=q9-cpp/build/qcc_p.q9.c
-IR=q9-cpp/build/qcc_p.q9.ir
-ERR=q9-cpp/build/qcc_p.q9.err
+SRC="$QCC/Q9-FRONTEND-C/q9-qcir/data/qcc_p.c"
+OUT="$REPO/build/qcc_p.q9.c"
+IR="$REPO/build/qcc_p.q9.ir"
+ERR="$REPO/build/qcc_p.q9.err"
 REF=build/qcc_p.bootstrap.ir      # Referenz des alten xcc+Python-Weges, falls da
 
-[ -x q9-cpp/build/qcpp ] || { echo "FEHLER: q9-cpp/build/qcpp fehlt (make)"; exit 2; }
+[ -x "$REPO/build/qcpp" ] || { echo "FEHLER: qcpp fehlt (make)"; exit 2; }
 [ -x build/qcir ] || { echo "FEHLER: build/qcir fehlt"; exit 2; }
-mkdir -p q9-cpp/build
+mkdir -p "$REPO/build"
 
 echo "== 1/3 vorverarbeiten (qcpp + eigene Header) =="
-q9-cpp/build/qcpp -Iq9-cpp/include "$SRC" "$OUT"
+"$REPO/build/qcpp" -I"$REPO/include" "$SRC" "$OUT"
 echo "  $OUT ($(wc -c < "$OUT" | tr -d ' ') Byte)"
 
 echo "== 2/3 QCC uebersetzt das Ergebnis =="

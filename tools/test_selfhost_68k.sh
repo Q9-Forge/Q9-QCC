@@ -31,7 +31,7 @@ KEEP=0
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -x "$REPO/build/qcir" ]     || die "build/qcir fehlt"
-[ -x "$REPO/build/qir_68k" ]  || die "build/qir_68k fehlt"
+[ -x "$REPO/build/qir68k" ]  || die "build/qir68k fehlt"
 [ -f "$REPO/build/qcc_p.bootstrap.c" ] || die "build/qcc_p.bootstrap.c fehlt (tools/build_xcc_bootstrap.sh)"
 [ -f "$SRCIMG" ]                 || die "Image nicht gefunden: $SRCIMG"
 [ -d "$FLUX" ]                   || die "Q9-Flux nicht gefunden: $FLUX"
@@ -69,15 +69,15 @@ echo "  ok ($(wc -l < stage1.ir | tr -d ' ') IR-Zeilen, $(wc -c < stage1.ir | tr
 # -largedata ist Pflicht: der Parser hat weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet r68 "value out of range".
 echo "== 2/6 Backend (-os9 -largedata -remotedata) =="
-"$REPO/build/qir_68k" stage1.ir stage2.s68 -os9 -largedata -remotedata >/dev/null \
-	|| die "qir_68k"
-echo "  ok ($(wc -l < stage2.s68 | tr -d ' ') Assemblerzeilen)"
+"$REPO/build/qir68k" stage1.ir stage2.s68k -os9 -largedata -remotedata >/dev/null \
+	|| die "qir68k"
+echo "  ok ($(wc -l < stage2.s68k | tr -d ' ') Assemblerzeilen)"
 
 echo "== 3/6 r68 + l68 =="
 w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
 [ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
 w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe stage2.s68 -o=stage2.r'
-[ -f stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68"; }
+[ -f stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68k"; }
 # -M=1024K: der Parser steigt rekursiv ab.  Mit dem Standard-Stack (3072 Byte)
 # bricht schon die Rauchprobe mit "**** Stack Overflow ****" ab.
 w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcc-selfhost\\q9_cstart.r Z:\\tmp\\qcc-selfhost\\stage2.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcc-selfhost\\q9_qcc_stage2"
