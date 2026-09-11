@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Zeigt ALLE Stellen, an denen sich zwei ROF-Codeabschnitte unterscheiden --
-wortweise und gegeneinander ausgerichtet.
+"""Show ALL differences between two ROF code sections, word-wise and aligned.
 
-rofcmp.py meldet die erste Abweichung; sobald aber ein Befehl eine andere
-Laenge hat, verschiebt sich alles danach und jede Folgeabweichung ist nur
-noch Rauschen. Hier richtet difflib die beiden Folgen wieder aneinander aus,
-so dass die wenigen ECHTEN Unterschiede uebrig bleiben.
+rofcmp.py reports the first difference; when an instruction has a different
+length, everything afterward shifts and every subsequent difference is noise.
+Here difflib realigns both sequences so only the few REAL differences remain.
 
     rofhunks.py <r68.r> <qr68.q> [max]
 """

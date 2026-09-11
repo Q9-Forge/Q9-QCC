@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Vergleicht zwei ROF-Dateien byteweise -- die sechs Zeitstempelbytes im
-Kopf (Offset 12..17) ausgenommen, denn nur die sind bei r68 nicht
-reproduzierbar. Meldet die erste Abweichung mit Kontext.
+"""Compare two ROF files byte-for-byte, excluding the six timestamp bytes in
+the header (offset 12..17), which are the only non-reproducible r68 bytes.
+Report the first difference with context.
 """
 import sys
 
