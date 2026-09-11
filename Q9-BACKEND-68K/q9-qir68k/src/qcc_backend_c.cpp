@@ -254,10 +254,6 @@ static int remoteDataMode = 0;
 /* Experimenteller Fernaufrufpfad; ohne -trampolines bleibt der getestete
    Tabellenpfad unveraendert. */
 static int trampolineMode = 0;
-/* -peephole (2026-09-08): Nachlauf ueber den bereits erzeugten Assemblertext,
-   s. Source/qcc_backend_peephole.c. Unabhaengig von -os9/-largedata/
-   -remotedata -- arbeitet rein textuell auf der Ausgabedatei. */
-static int peepholeMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 /* -unit=<name> groups artificially split IR parts that originated from one
    translation unit.  It deliberately affects only static-symbol mangling:
@@ -399,8 +395,6 @@ static void fatal(const char* msg) {
 	fprintf(stderr, "qcc_backend: %s\n", msg);
 	exit(1);
 }
-#include "../../q9-qo68k/src/qo68.c"
-
 static int findFunction(const char* name) {
 	int i;
 	for (i = 0; i < funcCount; i++) if (strcmp(funcs[i].name, name) == 0) return i;
@@ -1990,7 +1984,6 @@ static void emitIR(FILE* out) {
 int main(int argc, char* argv[]) {
 	FILE* out;
 	char msg[300];
-	char tmpPath[300];
 	int i;
 	if (argc < 3) {
 		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata] [-trampolines] [-unit=name]\n", argv[0]);
@@ -2012,9 +2005,6 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "              psect. OS-9 nullt den Datenbereich selbst, das Modul wird dadurch\n");
 		fprintf(stderr, "              erheblich kleiner; der Zugriff ist a6-relativ mit 32 Bit und kennt\n");
 		fprintf(stderr, "              damit weder die 32-KB- noch die 64-KB-Grenze. Nur mit -os9.\n");
-		fprintf(stderr, "  -peephole:  Nachlauf ueber die Assemblerausgabe, entfernt ueberfluessige\n");
-		fprintf(stderr, "              Speicherumwege (push, sofort gefolgt vom eigenen pop). Wirkt\n");
-		fprintf(stderr, "              unabhaengig von -os9/-largedata/-remotedata.\n");
 		fprintf(stderr, "  -trampolines: optionaler relokierbarer Fernaufrufpfad; nur mit -largedata.\n");
 		fprintf(stderr, "  -unit=name: gemeinsamer static-Namensraum fuer kuenstlich gesplittete Teile.\n");
 		fprintf(stderr, "                Zusammen mit r68 -j und l68 -a verwenden; erzeugt eine\n");
@@ -2027,7 +2017,6 @@ int main(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
 		else if (strcmp(argv[i], "-largedata") == 0) largeDataMode = 1;
 		else if (strcmp(argv[i], "-remotedata") == 0) remoteDataMode = 1;
-		else if (strcmp(argv[i], "-peephole") == 0) peepholeMode = 1;
 		else if (strcmp(argv[i], "-trampolines") == 0) trampolineMode = 1;
 		else if (strncmp(argv[i], "-unit=", 6) == 0 && argv[i][6] != '\0') {
 			strncpy(staticUnit, argv[i] + 6, NAME_LEN - 1);
@@ -2091,24 +2080,10 @@ int main(int argc, char* argv[]) {
 		psectName[n] = '\0';
 		strcat(psectName, "_p");
 	}
-	/* -peephole schreibt ERST in eine temporaere Datei: die ECHTE
-	   Zieldatei darf peepholeRun() nur EINMAL anlegen. w-Modus geht auf
-	   OS-9 ueber I$Create (qf_open in qclib) -- das legt eine NEUE Datei
-	   an und scheitert, wenn sie schon existiert (kein Ueberschreiben
-	   wie bei fopen(...,"w") auf dem Host). Ohne diese Zwischendatei
-	   wuerde peepholeRun() versuchen, argv[2] ein zweites Mal anzulegen --
-	   auf dem 68030 gemessen: "kann Ausgabedatei nicht neu schreiben". */
-	if (peepholeMode) {
-		sprintf(tmpPath, "%s.tmp", argv[2]);
-		out = fopen(tmpPath, "w");
-		if (!out) { sprintf(msg, "kann Zwischendatei nicht schreiben: %s", tmpPath); fatal(msg); }
-	} else {
-		out = fopen(argv[2], "w");
-		if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
-	}
+	out = fopen(argv[2], "w");
+	if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
 	emitIR(out);
 	if (ferror(out)) fatal("Schreibfehler in Assembler-Ausgabe");
 	fclose(out);
-	if (peepholeMode) peepholeRun(tmpPath, argv[2]);
 	return 0;
 }
