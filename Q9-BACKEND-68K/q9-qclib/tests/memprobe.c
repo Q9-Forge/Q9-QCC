@@ -1,10 +1,10 @@
-/* Messsonde fuer den Speicher des Ziels.
+/* Memory probe for the target system.
  *
- * ENTSTANDEN AUS EINEM FEHLSCHLAG: der Ziellauf von QCC gegen qclib
+ * CREATED AFTER A FAILURE: running QCC against qclib on the target
  * (test/qcc_68k.sh) brach mit "qcc: kein Speicher fuer Aktions-Log" ab --
  * realloc hatte 0 geliefert.
  *
- * Vier Messungen in einem Emulatorlauf:
+ * Four measurements are performed in one emulator run:
  *   1. Der groesste freie Block. F$SRqMem mit -1 in d0.l liefert genau
  *      den (Handbuch: "If -1 is passed in d0.l, the largest block of free
  *      memory of the specified type is allocated").
@@ -19,7 +19,7 @@
  *      gezeigt.
  *   4. Wie weit die Leiter ueber den Bedarf hinaus traegt.
  *
- * Der Fehlercode wird mitgedruckt: _os_srqmem gibt ihn zurueck, und ohne
+ * The error code is printed as well: _os_srqmem returns it, and without
  * ihn steht am Ende nur "ging nicht".
  */
 
