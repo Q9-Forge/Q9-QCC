@@ -149,10 +149,10 @@ static int irefDataN;
 #define QL_ZBUF    65536            /* Text of -z= files. */
 #define QL_JT     1024              /* Eintraege der Sprungtabelle */
 
-/* --- Die Sprungtabelle von -a ------------------------------------------
-   Ein `bsr.w ziel` reicht nur +-32K weit. Liegt das Ziel weiter, legt l68
+/* --- Jump table for -a -------------------------------------------------
+   A `bsr.w target` reaches only +-32 KiB. For a more distant target, l68
    mit -a einen 6 Byte langen Eintrag `jmp $xxxxxxxx` ($4ef9) in den
-   INITIALISIERTEN DATEN an und macht aus dem Aufruf `jsr d16(a6)`
+   initialized data and changes the call to `jsr d16(a6)`
    ($4eae); das Displacement ist der Datenabstand des Eintrags MIT dem
    $8000-Bias. Alles an `l68 -a -j` nachgemessen, das seine Rechnung
    selbst druckt.
@@ -171,8 +171,8 @@ static int irefDataN;
    pruefbar, wo l68 selbst exakt ist; bei Bibliotheksfaellen weicht ql68
    bewusst ab -- die Tabelle ist dann kleiner, das Modul aber richtig.
 
-   Die Tabelle verschiebt den CODE nicht (sie liegt in den Daten), deshalb
-   genuegen zwei Durchlaeufe: einer zaehlt, einer schreibt. */
+   The table does not move CODE because it resides in data, so two passes
+   are sufficient: one counts and one writes. */
 static int optJumpTab;         /* -a */
 static int jtPlan;             /* 1 = Zaehllauf */
 static int jtSym[QL_JT];       /* One entry per symbol, not per call. */
@@ -642,7 +642,7 @@ static int moduleCrc(int len)
 	return crc ^ 0xFFFFFF;
 }
 
-/* Eine Zeigerliste des IRefs-Abschnitts ausgeben: Gruppen aus
+/* Emit one pointer list of the IRefs section: groups of
    <msw><Anzahl><lsw...>, beendet durch eine Gruppe der Anzahl 0.
 
    Die Reihenfolge ist NICHT sortiert, sondern umgekehrte
