@@ -1706,45 +1706,21 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
-				/* Aufruf einer NICHT in dieser IR definierten (externen) Funktion, z.B.
-				   einer echten OS-9/Microware-clib-Funktion (strcmp, printf, malloc, ...).
-				   Nutzt die dokumentierte Microware-68K-C/C++-ABI (Ultra C/C++ Processor
-				   Guide, Kapitel "Passing Arguments to Functions") statt der sonst hier
-				   verwendeten reinen Stack-ABI fuer QCC-EIGENE Funktionen: die ERSTEN
-				   BEIDEN FEST DEKLARIERTEN Parameter -> d0/d1 (GENAU wie bei einem
-				   nicht-variadischen Aufruf), ALLE weiteren Argumente (der variadische
-				   "..."-Teil, z.B. printfs Werte nach dem Formatstring) auf den Stack, in
-				   UMGEKEHRTER Erscheinungsreihenfolge gepusht (das erste ueberzaehlige
-				   Argument landet dadurch am NAECHSTEN zur Ruecksprungadresse).
-				   WICHTIG (2026-07-24, live gegen die echte Microware-clib.l auf Q9
-				   gefunden UND korrigiert): das dritte IR-Feld ist NICHT die Gesamtzahl
-				   der Argumente oder ein reines variadic-Bool, sondern tcFunctionNargs[f]
-				   -- die Anzahl der FEST DEKLARIERTEN Parameter laut extern-Deklaration
-				   ("..." selbst zaehlt nicht mit). Der fruehere Stand nahm faelschlich an,
-				   ein variadischer Aufruf lege AUSNAHMSLOS alles auf den Stack (0 Register)
-				   -- das entsprach nur unserem eigenen, nie gegen echten Compiler-Code
-				   verifizierten Mock-Test. Der ECHTE, von xcc erzeugte Aufrufcode zu
-				   printf(fmt, x) zeigt: der Formatstring selbst (1 fest deklarierter
-				   Parameter) landet ganz normal in d0, NUR x (der variadische Teil) auf
-				   dem Stack -- das PMMU-Absturzbild auf Q9 (Adresse 1 statt eines echten
-				   Pointers) entstand exakt daraus, dass unser altes "0 Register bei
-				   variadisch"-Schema den Formatstring faelschlich auf den Stack statt nach
-				   d0 legte.
-				   Unser eigener Stack-IR liefert alle Argumente bereits in
-				   Erscheinungsreihenfolge auf a7 (1. Argument am weitesten unten, da
-				   zuerst gepusht) -- die obersten "stackArgs" Werte werden daher zuerst
-				   in ein festes Scratch-Feld ausgelagert (tc_extcall_tmp), damit sie
-				   NICHT verloren gehen, wenn darunter noch d0/d1 herausgeholt werden
-				   muessen; anschliessend werden sie in DERSELBEN (bereits umgekehrten)
-				   Reihenfolge zurueckgepusht. Der Aufruf selbst geht per "jsr" auf den
-				   ROHEN Funktionsnamen (kein "tc_"-Praefix wie bei internen Aufrufen) --
-				   das eigentliche Linken gegen die reale clib.l (externe Symbolaufloesung
-				   via l68 statt der aktuellen "vasm -Fbin"-Direktassemblierung) ist noch
-				   NICHT Teil dieses Schritts, siehe docs/FORTSCHRITT.md. */
+				/* Call an external function not defined in this IR, such as an OS-9/
+				   Microware clib function (strcmp, printf, malloc, ...). Use the
+				   documented Microware 68k C/C++ ABI instead of QCC's internal stack ABI:
+				   the first two arguments overall go in d0/d1 and remaining arguments go
+				   on the stack in reverse order. The third IR field is the number of
+				   fixed parameters from the declaration and is retained for validation.
+				   QCC's IR presents arguments in source order on a7, so stack arguments
+				   are first copied to tc_extcall_tmp while d0/d1 are extracted, then
+				   pushed back in the required order. The raw external symbol is called
+				   without the internal "tc_" prefix; final linking against clib.l is
+				   performed by l68 (see docs/FORTSCHRITT.md). */
 				int nargsC = number(insP->args[1], insP->line);
 				int fixedCount = number(insP->args[2], insP->line);
-				/* BUG (2026-07-26/27, live auf Q9 gefunden, per capstone-Disassemblierung
-				   der ECHTEN clib.l-printf bestaetigt): die Annahme "NUR die FEST
+				/* BUG (2026-07-26/27, found live on Q9 and confirmed by Capstone
+				   disassembly of the real clib.l printf): the assumption that ONLY FIXED
 				   deklarierten Parameter gehen nach d0/d1, der GESAMTE variadische Teil
 				   auf den Stack" (2026-07-24-Fund) war FALSCH bzw. unvollstaendig. Die
 				   echte, kompilierte printf(char* fmt, ...) beginnt mit "move.l d0,-(a7)"
