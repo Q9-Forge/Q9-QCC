@@ -2620,7 +2620,7 @@ static char macArgBuf[1024];
 static char *macArgP[9];
 
 /* Split the invocation operand field into up to nine arguments.
-   An r68 gemessen: getrennt wird an JEDEM Komma -- Klammern zaehlen NICHT
+   Measured against r68: split at EVERY comma; parentheses do NOT count
    mit. "REGMOVE2 d0,(a0,d2.w)" hat also DREI Argumente ("d0", "(a0",
    "d2.w)"), und genau darauf baut MACROS/longio.m: das Makro setzt sie mit
    "move.b \1,\2,\3" wieder zusammen und prueft vorher "\#-3".
@@ -2670,7 +2670,7 @@ static int macSplitArgs(void)
 		out++;
 	}
 
-	/* r68 entfernt die umgebenden doppelten Anfuehrungszeichen eines
+	/* r68 removes surrounding double quotes from an
 	   Arguments. Gemessen an einem Makro mit dem Rumpf
 	     dc.b "\1",0 / dc.b \L1
 	   und dem Aufruf M "abc": heraus kommt $61 $62 $63 $00 und die Laenge
@@ -2681,7 +2681,7 @@ static int macSplitArgs(void)
 	   Treibernamen schon in Anfuehrungszeichen
 	   (SBFDesc ...,IRQPrior,"sbviper") und der Rumpf setzt ihn in
 	   dc.b "\5",0 ein. */
-	/* Der Zwischenzeiger ist Absicht: "macArgP[i][k]" waere ein
+	/* The intermediate pointer is intentional: "macArgP[i][k]" would be a
 	   zweistufiger Index auf ein Zeigerfeld, und den kann QCC nicht
 	   ("array is not two-dimensional"). */
 	for (i = 0; i < argN; i++) {
@@ -3442,7 +3442,7 @@ static void doBranch(int cond, int size)
 		if (ext < 0 && !exOpen) {
 			d = v - (curPC + 2);
 			if (d == 0) {
-				/* Abstand 0 -- das Ziel ist die naechste
+				/* Distance 0 means the target is the next
 				   Anweisung. r68 laesst den Befehl mit -b
 				   dann GANZ WEG (gemessen). qr68 tut das
 				   NICHT, und zwar aus einem messbaren Grund:
@@ -3567,7 +3567,7 @@ static void doArith(const char *base, int size)
 	sf = sizeField(size);
 	needOps(2);
 
-	/* Auch die GRUNDFORM darf nach ccr/sr: "and.w #$fe,ccr" wird $023c,
+	/* The BASIC FORM also accepts ccr/sr: "and.w #$fe,ccr" becomes $023c,
 	   "or.w #1,ccr" wird $003c und "and.w #$fe,sr" wird $027c -- alles
 	   gemessen. Ohne das wuerde "ccr" als Symbolname gelesen und die
 	   Zeile vier Byte zu lang (so in PORTS/AtariST/SCF/sc_mfp_uart.a:184
@@ -3608,7 +3608,7 @@ static void doArith(const char *base, int size)
 			      lnOp);
 		if (size == 'b')
 			fatal("die A-Form gibt es nicht als Byte: ", lnOp);
-		/* Sofortwert 1..8 wird auch hier zu ADDQ/SUBQ (gemessen:
+		/* Immediate values 1..8 also become ADDQ/SUBQ here (measured:
 		   "sub.l #4,a0" -> 5988, "add.l #9,a0" -> ADDA). */
 		if (oMode[0] == AM_IMM && (isAdd || isSub) &&
 		    oExt[0] < 0 && oSect[0] == SECT_ABS &&
@@ -3648,7 +3648,7 @@ static void doArith(const char *base, int size)
 	}
 
 	/* Data register source and memory destination -> the "Dn to ea"
-	   Richtung. EOR kennt nur diese. */
+	   direction. EOR supports only this form. */
 	if (oMode[0] == AM_DN && oMode[1] != AM_DN) {
 		if (isCmp)
 			fatal("cmp kann nur nach einem Datenregister vergleichen: ",
@@ -3782,7 +3782,7 @@ static void doInstruction(void)
 		emitWord(0x4AFC);
 		return;
 	}
-	/* Der Systemaufruf: r68 hat ihn eingebaut (kein Makro aus einer
+	/* System call: r68 implements it directly (not as a macro from an
 	   Include-Datei). Gemessen: "os9 F$Link" wird $4E40 (trap #0) und ein
 	   WORT mit dem Aufrufcode. */
 	if (baseIs(base, "os9")) {
@@ -3790,7 +3790,7 @@ static void doInstruction(void)
 
 		needNoSize(size);
 		needOps(1);
-		/* Der Aufrufcode darf ein externer Name sein -- die Namen
+		/* The call code may be an external name; names
 		   stehen im SDK in einer Bibliothek, nicht in einer
 		   Definitionsdatei. r68 legt dann eine Wortreferenz an
 		   ($0030, gemessen an "os9 F$IRQ"). */
@@ -3961,14 +3961,14 @@ static void doInstruction(void)
 		parseOperand(opTxt1, 1);
 		if (oMode[0] != AM_IMM)
 			fatal("moveq braucht einen Sofortwert: ", lnArg);
-		/* r68 nimmt hier mehr als -128..127: "moveq #$ff,d0" wird
+		/* r68 accepts values beyond -128..127 here: "moveq #$ff,d0" becomes
 		   $70ff und "moveq #-129,d0" wird $707f, erst ab 256 meldet
 		   es "value out of range" (gemessen). Der Wert wird also
 		   schlicht auf ein Byte gestutzt. */
 		if (termN[0] == 0 && !oOpen[0] &&
 		    (oVal[0] < -256 || oVal[0] > 255))
 			fatal("moveq-Wert passt nicht in ein Byte: ", lnArg);
-		/* Der Wert steht im niederwertigen Byte des Befehlswortes; ein
+		/* The value is stored in the low byte of the opcode; an
 		   externer Name dort ist erlaubt und ergibt eine BYTEreferenz
 		   genau auf dieses Byte ("moveq #fremd,d1" -> $0028 auf
 		   Offset 1, gemessen). */
