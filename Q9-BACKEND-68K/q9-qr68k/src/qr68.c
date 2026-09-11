@@ -5274,7 +5274,7 @@ static void runPass(void)
 	refN = 0;
 	/* Also reset state SET by the source, not only state that is
 	   fortschreibt -- sonst schlaegt im zweiten Durchlauf die Wache gegen
-	   ein zweites psect an. */
+	   a second psect. */
 	psSeen = 0;
 	useDepth = 0;
 	orgPC = 0;
@@ -5297,7 +5297,7 @@ static void runPass(void)
 	/* Reset REMOTE data just like local data; otherwise it grows
 	   sie ueber die Durchlaeufe weiter und qr68 meldet zu Recht
 	   "Adressen werden nicht stabil". Genau das ist beim ersten Anlauf
-	   passiert. */
+	   happens. */
 	remoteStatStorage = 0;
 	rdataPC = 0;
 	inRemoteVsect = 0;
@@ -5316,7 +5316,7 @@ static void runPass(void)
 		   wandert JEDE Zeile roh in den Speicher, ohne sie anzusehen.
 		   Das steht vor der bedingten Assemblierung, weil ein "ifeq"
 		   im Rumpf erst bei der Ausdehnung gilt. Ein "macro" innerhalb
-		   eines uebersprungenen Blocks wird gar nicht erst erreicht. */
+		   a skipped block is never reached. */
 		if (macDefining) {
 			if (baseIs(base, "endm") && !repActive) {
 				macEnd[macN - 1] = macTop;
@@ -5347,7 +5347,7 @@ static void runPass(void)
 			continue;
 
 		/* Macro definition; the name is in the label field and is
-		   deshalb VOR der Labelbehandlung abgefangen. */
+		   therefore it is handled BEFORE label processing. */
 		if (baseIs(base, "macro")) {
 			if (lnLabel[0] == 0)
 				fatal("macro ohne Namen im Labelfeld", "");
@@ -5380,7 +5380,7 @@ static void runPass(void)
 		/* In a vsect, the directive on the SAME line determines whether
 		   welchen Adressraum ein Label gehoert: "dc" in die
 		   initialisierten Daten, "ds" in die reservierten. Deshalb
-		   wird der Abschnitt VOR dem Label festgelegt. */
+		   the section is selected BEFORE the label. */
 		if (curSect == SECT_IDATA || curSect == SECT_UDATA ||
 		    curSect == SECT_RDATA) {
 			if (baseIs(base, "ds")) {
@@ -5388,7 +5388,7 @@ static void runPass(void)
 				   dc bleibt in den initialisierten Daten -- fuer
 				   remote-INITIALISIERTE Daten (remoteidatsiz) gibt es
 				   in dieser Kette keinen Aufrufer, und lieber nur der
-				   gemessene Fall als ein geratener. */
+				   measured case rather than an assumption. */
 				if (inRemoteVsect) {
 					curSect = SECT_RDATA;
 					curPC = rdataPC;
@@ -5401,7 +5401,7 @@ static void runPass(void)
 				curPC = idataPC;
 			} else if (baseIs(base, "ends") ||
 				   baseIs(base, "endsect")) {
-				/* faellt unten durch */
+				/* Fall through. */
 			} else if (lnOp[0] != 0 && !baseIs(base, "equ") &&
 				   !baseIs(base, "set") && !baseIs(base, "align") &&
 				   !baseIs(base, "use") && !baseIs(base, "org") &&
@@ -5428,7 +5428,7 @@ static void runPass(void)
 		   Globalenliste. Daran haengen die *stat-Dateien in SRC/DEFS,
 		   die ihre Feldabstaende per "use" noch VOR der psect-Zeile
 		   holen -- r68 legt fuer scfstat.a null Globale an, qr68 legte
-		   21 an. Der Wert des Symbols gilt in beiden Faellen. */
+		   21. The symbol value is valid in both cases. */
 		if (curSect == SECT_NONE)
 			lnGlobal = 0;
 
@@ -5439,7 +5439,7 @@ static void runPass(void)
 			name = intern(lnLabel);
 			if (baseIs(base, "do")) {
 				/* As with equ/set, the label does NOT receive the location
-				   im Abschnitt, sondern den org-Zaehler. */
+				   in the section, but the org counter. */
 				symDefine(name, doDo(size), SECT_ABS,
 					  lnGlobal, 1);
 				continue;
@@ -5463,7 +5463,7 @@ static void runPass(void)
 				   es mit "Compat: set $00". qr68 machte daraus
 				   einen Globalen, den r68 nicht hat.
 				   Bei "X: equ 1" ist der Doppelpunkt dagegen
-				   ganz normal. */
+				   normally. */
 				if (opIs("set") && lnGlobal) {
 					int si;
 
@@ -5484,7 +5484,7 @@ static void runPass(void)
 				   nur der Zahlwert; r68 legt dafuer ebenfalls
 				   keine Referenzen an (an sc68070.a
 				   nachgeprueft: dessen Code und Referenzen
-				   stimmen so byteweise). */
+				   therefore match byte-for-byte). */
 				if (termN[2] == 1 &&
 				    termSect[16] == SECT_EXTERN) {
 					sx = termName[16];
@@ -5516,7 +5516,7 @@ static void runPass(void)
 		if (baseIs(base, "vsect")) {
 			/* "vsect remote"; everything else after vsect would be a
 			   Tippfehler, und den zu verschweigen waere genau der
-			   Mangel, der hier behoben wird. */
+			   deficiency fixed here. */
 			inRemoteVsect = 0;
 			if (lnArg[0] != 0) {
 				if (baseIs(lnArg, "remote"))
@@ -5609,7 +5609,7 @@ static void symSnapshot(void)
 }
 
 /* Restore it before the output pass so that it sees the same values
-   wie r68s zweiter Durchlauf. */
+   as r68's second pass. */
 static void symRestore(void)
 {
 	int i;
@@ -5635,7 +5635,7 @@ static void reportPass(void)
 }
 
 /* Compare two names by byte value for alphabetical
-   Reihenfolge der Globalen im ROF. */
+   order of globals in the ROF. */
 static int nameLess(int a, int b)
 {
 	int i;
@@ -5670,7 +5670,7 @@ static void writeRof(void)
 	   wird mit genau EINEM $00 auf 644476 gebracht. Ohne den ersten
 	   Schritt kaeme eine ungerade Laenge nie auf ein Vielfaches von vier.
 	   Der zweite Schritt haengt an -m<n> (s. fillWord() und die
-	   Optionsauswertung): mit -m0/-m1 unterbleibt er ganz. */
+	   option parsing): it is omitted entirely with -m0/-m1. */
 	if ((codeN % 2) != 0) {
 		if (codeN >= CODE_MAX)
 			fatal("Codespeicher voll (CODE_MAX)", "");
@@ -5710,7 +5710,7 @@ static void writeRof(void)
 	outWord(psTyLan);
 	outWord(psAttRev);
 	outWord(0);                    /* valid */
-	outWord(249);                  /* series -- wie r68 V2.9.1 */
+outWord(249);                  /* series -- same as r68 V2.9.1 */
 	outByte(dtYear);
 	outByte(dtMonth);
 	outByte(dtDay);
@@ -5725,7 +5725,7 @@ static void writeRof(void)
 	outLong(psEntry);
 	outLong(psTrap);
 	outLong(remoteStatStorage);    /* remotestatsiz */
-	outLong(0);                    /* remoteidatsiz -- kein Aufrufer */
+outLong(0);                    /* remoteidatsiz -- no caller */
 	outLong(0);                    /* debugsiz */
 	outStrZ(poolAt(psName));
 
@@ -6036,7 +6036,7 @@ int main(int argc, char **argv)
 			   nimmt r68 ausserdem den SKALIERTEN INDEX an, darunter
 			   lehnt es ihn ab ("illegal addressing mode").
 			   Daran haengen SYSCACHE (cache030/040/349 werden mit
-			   -m3/-m4 gebaut) und die CPU32-Ports (-m2). */
+			   built with -m3/-m4) and CPU32 ports (-m2). */
 			optMpu = 0;
 			k = 2;
 			while (a[k] >= '0' && a[k] <= '9') {
