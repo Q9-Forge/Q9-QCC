@@ -1625,6 +1625,10 @@ static int arithDiv(int a, int b, int uns)
 	return a / b;
 }
 
+/* Function: arithMod
+ * Computes the C89 remainder for preprocessor integers.
+ * Parameters: a Dividend; b Divisor; uns Unsigned-arithmetic flag.
+ * Returns: Remainder, or reports division by zero. */
 static int arithMod(int a, int b, int uns)
 {
 	unsigned int ua;
@@ -1638,6 +1642,10 @@ static int arithMod(int a, int b, int uns)
 	return a % b;
 }
 
+/* Function: arithShr
+ * Performs a right shift using the selected signedness.
+ * Parameters: a Value; b Shift count; uns Unsigned-arithmetic flag.
+ * Returns: Shifted integer value. */
 static int arithShr(int a, int b, int uns)
 {
 	unsigned int ua;
@@ -1650,6 +1658,10 @@ static int arithShr(int a, int b, int uns)
 }
 
 /* mode: 0 = "<", 1 = ">", 2 = "<=", 3 = ">=" */
+/* Function: arithCmp
+ * Compares two preprocessor integers.
+ * Parameters: a, b Operands; uns Unsigned-arithmetic flag; mode Comparison.
+ * Returns: Integer truth value. */
 static int arithCmp(int a, int b, int uns, int mode)
 {
 	unsigned int ua;
@@ -1675,6 +1687,10 @@ static int arithCmp(int a, int b, int uns, int mode)
 	return (a >= b);
 }
 
+/* Function: evIsPunct
+ * Tests whether an expression token is punctuation text.
+ * Parameters: s Token text.
+ * Returns: Non-zero when s is a punctuation token. */
 static int evIsPunct(const char *s)
 {
 	if (evI >= evN)
@@ -1686,6 +1702,10 @@ static int evIsPunct(const char *s)
 
 /* Suffix nach den Ziffern pruefen: u/U macht die Konstante vorzeichenlos,
    l/L ist in diesem 32-Bit-Modell wirkungslos. */
+/* Function: evSuffixUns
+ * Detects an unsigned integer suffix in a numeric token.
+ * Parameters: s Token text; from Suffix start; n Token length.
+ * Returns: Non-zero when the suffix denotes unsigned arithmetic. */
 static int evSuffixUns(const char *s, int from, int n)
 {
 	int i;
@@ -1700,6 +1720,10 @@ static int evSuffixUns(const char *s, int from, int n)
 	return 0;
 }
 
+/* Function: evNumValue
+ * Parses an interned numeric preprocessing token.
+ * Parameters: text Interned token text index.
+ * Returns: Integer token value. */
 static int evNumValue(int text)
 {
 	const char *s;
@@ -2305,6 +2329,10 @@ static void outNum(int v)
 		outCh(buf[i]);
 }
 
+/* Function: outLineMarker
+ * Emits a source line marker for the current output position.
+ * Parameters: file Source file identifier; line Source line number.
+ * Returns: Nothing. */
 static void outLineMarker(int file, int line)
 {
 	const char *s;
@@ -2993,6 +3021,10 @@ static void doLineDir(void)
 	lxLine = newLine;
 }
 
+/* Function: emitAsmMarker
+ * Emits an assembler block marker when assembler text is preserved.
+ * Parameters: what Marker text.
+ * Returns: Nothing. */
 static void emitAsmMarker(const char *what)
 {
 	if (optAsmStrip)
