@@ -18,7 +18,7 @@
 /* Host and OS-9 use different command names for the small file operations
  * needed by the pipeline.  Keep this translation at the driver boundary so
  * the compiler stages themselves remain platform-neutral. */
-#ifdef _Q9OS
+#if defined(_Q9OS) || defined(_OSK)
 #define QCC_MKDIR "makdir"
 #define QCC_COPY  "copy"
 #define QCC_REMOVE "del"
