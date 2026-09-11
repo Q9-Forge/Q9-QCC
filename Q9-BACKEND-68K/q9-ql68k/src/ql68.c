@@ -507,20 +507,17 @@ static void libScan(const char *path)
 	}
 }
 
-/* Die Bibliothekssuche -- BEDARFSGESTEUERT, nicht in
-   Bibliotheksreihenfolge. An l68 nachgemessen: bei einer Bibliothek in
+/* Library search is demand-driven, not library-order driven. Measured with
+   l68: for a library ordered (qprintf, printf_p, qiob, qos9), l68 links
    der Reihenfolge (qprintf, printf_p, qiob, qos9) bindet l68
    qiob, qos9, qprintf, printf_p ein. Es arbeitet also die offenen
    Referenzen der Reihe nach ab und holt zu jeder das Modul, das sie
    definiert: _initarg (aus dem Startcode) holt qiob, dessen _os_exit
    holt qos9, dann printf aus dem Programm qprintf, dessen tc_printf_a
    printf_p.
-   Wer in Bibliotheksreihenfolge einbindet, bekommt dieselbe Groesse,
-   aber andere Adressen -- und damit ein anderes Modul.
-   Die Ordnungsregel des Handbuchs ("the order in which the psects appear
-   in a simple library file is important") bleibt davon unberuehrt: sie
-   sagt, welche Module GEFUNDEN werden, nicht in welcher Folge sie
-   eingebunden werden. */
+   Linking in library order would produce the same size but different
+   addresses and therefore a different module. Library order still decides
+   which module is found, not the order in which selected modules are laid out. */
 static void libLink(void)
 {
 	int fortschritt;
@@ -794,24 +791,19 @@ static void applyLocalRefs(int k)
 	}
 }
 
-/* Den Wert eines Symbols aufloesen. Absolute (equ-) Symbole gelten wie
-   sie sind; Code- und Datensymbole bekommen die Basis ihres psect. */
+/* Resolve a symbol value. Absolute equ symbols are used as-is; code and data
+   symbols are stored with their psect base. */
 static int symResolve(int si)
 {
 	return symValue[si];
 }
 
-/* Die externen Referenzen eines psect aufloesen. Der Wert des Symbols
-   wird an der Referenzstelle AUFADDIERT -- der Assembler hat dort schon
-   den konstanten Anteil des Ausdrucks abgelegt (bei qr68 gemessen).
-   Ist Bit 7 gesetzt, ist der Bezug RELATIV zur Referenzstelle: gemessen
-   an "jsr sub1(pc)" -- sub1 liegt auf $5a, das Erweiterungswort auf $52,
-   abgelegt wird $0008. */
-/* Ein Aufruf, der nicht mehr in sein Wort passt. Ohne -a bricht l68 hier
-   ab ("The value of symbol 'x' ($...) is too large for a word operand") --
-   ql68 tut dasselbe, statt still ein falsches Displacement abzulegen.
-   Mit -a bekommt das Symbol einen Tabelleneintrag, und der Aufruf wird
-   umgeschrieben. */
+/* Resolve external references of one psect. Add the symbol value to the
+   reference site; the assembler has already emitted the constant expression
+   part. If bit 7 is set, the reference is relative to its site. */
+/* Handle a call that no longer fits its word. Without -a, l68 aborts; ql68
+   does the same instead of emitting an invalid displacement. With -a, assign
+   the symbol a jump-table entry and rewrite the call. */
 /* Die Eintraege fuellen: "jmp $xxxxxxxx" auf das aufgeloeste Symbol.
    Beide Formen von -a teilen sich denselben Eintrag -- der Sprung laeuft
    durch den jmp, der Adresszugriff liest das Feld dahinter (s. farCall). */
@@ -823,9 +815,8 @@ static void putJumpTable(void)
 		outBuf[jtAt + i * 6] = 0x4e;
 		outBuf[jtAt + i * 6 + 1] = 0xf9;
 		patch32(jtAt + i * 6 + 2, symResolve(jtSym[i]));
-		/* Die Zieladresse steht in den DATEN und muss vom Lader
-		   angepasst werden -- als Code- oder als Datenzeiger, je
-		   nachdem, worauf sie zeigt. */
+		/* The target address is in DATA and must be adjusted by the loader as
+		   a code or data pointer, depending on its target type. */
 		if (symType[jtSym[i]] == 4)
 			irefAdd(irefCode, &irefCodeN, jtBase + i * 6 + 2);
 		else
