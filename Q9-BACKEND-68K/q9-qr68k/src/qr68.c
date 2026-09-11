@@ -5021,7 +5021,7 @@ static void doInstruction(void)
 		emitWord(ext);
 		return;
 	}
-	/* --- ueber die Funktionscodes (68010) --- */
+	/* --- via function codes (68010) --- */
 	/* Gemessen: "moves.l d0,(a0)" $0e90 + $0800 (Bit 11 = Register nach
 	   Speicher), "moves.l (a0),d0" $0e90 + $0000. */
 	if (baseIs(base, "moves")) {
@@ -5057,7 +5057,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- ein Operand --- */
+	/* --- one operand --- */
 	if (baseIs(base, "clr")) {
 		doOneEa(0x4200, size);
 		return;
@@ -5121,7 +5121,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Schieben und Rotieren --- */
+	/* --- shifts and rotates --- */
 	if (baseIs(base, "asl")) {
 		doShift(0, 1, size);
 		return;
@@ -5155,10 +5155,10 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- bedingtes Setzen --- */
+	/* --- conditional set --- */
 	if (base[0] == 's') {
 		cond = condOf(&base[1]);
-		/* "st" und "sf" -- immer wahr bzw. immer falsch. Die kennt
+		/* "st" and "sf" -- always true and always false. These are
 		   condOf() nicht, weil es zwei Zeichen verlangt (sonst waere
 		   jedes "s?" eine Bedingung). */
 		if (baseIs(base, "st"))
@@ -5179,7 +5179,7 @@ static void doInstruction(void)
 		}
 	}
 
-	/* --- bedingter Ausnahmesprung (trapcc, 68020) --- */
+	/* --- conditional trap (trapcc, 68020) --- */
 	/* Gemessen: $50F8 | Bedingung<<8 | Form -- Form 4 ohne Operand
 	   ("trapeq" -> $57fc), 2 mit Wort ("trapeq.w #7" -> $57fa $0007),
 	   3 mit Langwort ("trapeq.l #7" -> $57fb $00000007). "trapt" und
@@ -5222,7 +5222,7 @@ static void doInstruction(void)
 	fatal("Befehl noch nicht kodierbar: ", lnOp);
 }
 
-/* Legt die Zeile mindestens ein Wort ab? Dann richtet r68 vorher aus -- und
+/* Does the statement emit at least one word? If so, r68 aligns it first -- and
    zwar BEVOR das Label der Zeile seinen Wert bekommt. Gemessen an
    "dc.b 1 / lab: nop": lab hat den Wert 2, nicht 1. */
 static int lineAligns(void)
@@ -5250,7 +5250,7 @@ static int lineAligns(void)
 			return 0;
 		return 1;
 	}
-	/* Ein Makroaufruf legt selbst nichts ab -- was der Rumpf ablegt,
+	/* A macro invocation emits nothing itself; whatever the body emits,
 	   richtet sich dort aus. r68 macht es genauso: zwei Aufrufe, die je
 	   ein "dc.b" ausdehnen, ergeben zwei aufeinanderfolgende Bytes. */
 	if (lnOpRaw[0] != 0 && macFind(intern(lnOpRaw)) >= 0)
@@ -5258,7 +5258,7 @@ static int lineAligns(void)
 	return 1;
 }
 
-/* ============================================================ Ein Durchlauf */
+/* ================================================================ One pass */
 static void runPass(void)
 {
 	int size;
@@ -5272,7 +5272,7 @@ static void runPass(void)
 	codeN = 0;
 	idataN = 0;
 	refN = 0;
-	/* Auch die Zustaende zuruecksetzen, die die Quelle SETZT und nicht nur
+	/* Also reset state SET by the source, not only state that is
 	   fortschreibt -- sonst schlaegt im zweiten Durchlauf die Wache gegen
 	   ein zweites psect an. */
 	psSeen = 0;
@@ -5294,7 +5294,7 @@ static void runPass(void)
 			symDefine(argDefName[i], argDefVal[i], SECT_ABS, 0, 0);
 	}
 	statStorage = 0;
-	/* Die FERNdaten genauso zuruecksetzen wie die nahen -- sonst wachsen
+	/* Reset REMOTE data just like local data; otherwise it grows
 	   sie ueber die Durchlaeufe weiter und qr68 meldet zu Recht
 	   "Adressen werden nicht stabil". Genau das ist beim ersten Anlauf
 	   passiert. */
@@ -5312,7 +5312,7 @@ static void runPass(void)
 		size = opSize();
 		opBase(base);
 
-		/* Einen Makro- oder rept-Rumpf sammeln: bis "endm"/"endr"
+		/* Collect a macro or rept body until "endm"/"endr"
 		   wandert JEDE Zeile roh in den Speicher, ohne sie anzusehen.
 		   Das steht vor der bedingten Assemblierung, weil ein "ifeq"
 		   im Rumpf erst bei der Ausdehnung gilt. Ein "macro" innerhalb
@@ -5335,7 +5335,7 @@ static void runPass(void)
 			continue;
 		}
 
-		/* Bedingte Assemblierung: in einem uebersprungenen Block wird
+		/* Conditional assembly: inside a skipped block,
 		   nur noch nach if/else/endc gesehen -- alles andere darf dort
 		   auch unuebersetzbar sein (gemessen: r68 meldet in einem
 		   falschen ifdef-Zweig nicht einmal einen unbekannten Namen). */
@@ -5346,7 +5346,7 @@ static void runPass(void)
 		if (condSkipN > 0)
 			continue;
 
-		/* Makrodefinition -- der Name steht im Labelfeld und wird
+		/* Macro definition; the name is in the label field and is
 		   deshalb VOR der Labelbehandlung abgefangen. */
 		if (baseIs(base, "macro")) {
 			if (lnLabel[0] == 0)
@@ -5377,14 +5377,14 @@ static void runPass(void)
 		if (baseIs(base, "endm") || baseIs(base, "endr"))
 			fatal("endm/endr ohne macro/rept", "");
 
-		/* Im vsect entscheidet die Direktive der SELBEN Zeile, in
+		/* In a vsect, the directive on the SAME line determines whether
 		   welchen Adressraum ein Label gehoert: "dc" in die
 		   initialisierten Daten, "ds" in die reservierten. Deshalb
 		   wird der Abschnitt VOR dem Label festgelegt. */
 		if (curSect == SECT_IDATA || curSect == SECT_UDATA ||
 		    curSect == SECT_RDATA) {
 			if (baseIs(base, "ds")) {
-				/* In einem "vsect remote" geht ds in den FERNbereich.
+				/* In a "vsect remote", ds goes into the REMOTE area.
 				   dc bleibt in den initialisierten Daten -- fuer
 				   remote-INITIALISIERTE Daten (remoteidatsiz) gibt es
 				   in dieser Kette keinen Aufrufer, und lieber nur der
@@ -5415,14 +5415,14 @@ static void runPass(void)
 			}
 		}
 
-		/* Ausrichten, bevor das Label seinen Wert bekommt. */
+		/* Align before assigning the label value. */
 		if (lineAligns())
 			alignEven();
 
-		/* Ab hier steht der Ort der Zeile fest -- das ist "*". */
+		/* From here the statement location is fixed; this is "*". */
 		stmtPC = curPC;
 
-		/* Ein ":"-Label wird nur dann GLOBAL, wenn es INNERHALB des
+		/* A colon label becomes GLOBAL only when it is INSIDE the
 		   psect steht. Gemessen an einer Probe mit Labels davor, darin
 		   und nach "ends": nur die inneren stehen in r68s
 		   Globalenliste. Daran haengen die *stat-Dateien in SRC/DEFS,
@@ -5432,13 +5432,13 @@ static void runPass(void)
 		if (curSect == SECT_NONE)
 			lnGlobal = 0;
 
-		/* Label setzen, bevor der Befehl den Ort veraendert. */
+		/* Set the label before the instruction changes the location. */
 		if (lnLabel[0] != 0) {
 			int name;
 
 			name = intern(lnLabel);
 			if (baseIs(base, "do")) {
-				/* Wie equ/set: das Label bekommt NICHT den Ort
+				/* As with equ/set, the label does NOT receive the location
 				   im Abschnitt, sondern den org-Zaehler. */
 				symDefine(name, doDo(size), SECT_ABS,
 					  lnGlobal, 1);
@@ -5448,7 +5448,7 @@ static void runPass(void)
 				int v;
 				int sx;
 
-				/* Ein "set"-Symbol wird NIE global -- und ein
+				/* A "set" symbol is NEVER global; and a
 				   NEUES mit Doppelpunkt lehnt r68 sogar ab.
 				   Gemessen (auch aus einer Include-Datei, auch
 				   mit -q, auch in einer ifdef-Klammer):
@@ -5474,7 +5474,7 @@ static void runPass(void)
 					lnGlobal = 0;
 				}
 				v = evalExpr(lnArg);
-				/* Steht rechts GENAU EIN externer Name, erbt
+				/* If the right side contains EXACTLY ONE external name, inherit
 				   das Symbol ihn: "IRQCtrl equ u_icr" (so in
 				   sc68070.a) muss bei jeder Benutzung wieder
 				   eine Referenz auf u_icr erzeugen.
@@ -5493,7 +5493,7 @@ static void runPass(void)
 					if (exSect == SECT_EXTERN)
 						exSect = SECT_ABS;
 				}
-				/* "set" darf sich innerhalb eines Durchlaufs
+				/* "set" may change repeatedly within one pass;
 				   aendern und zaehlt deshalb nicht als
 				   Bewegung, "equ" schon. */
 				symDefine(name, v, exSect, lnGlobal,
@@ -5514,7 +5514,7 @@ static void runPass(void)
 			continue;
 		}
 		if (baseIs(base, "vsect")) {
-			/* "vsect remote" -- alles andere hinter vsect waere ein
+			/* "vsect remote"; everything else after vsect would be a
 			   Tippfehler, und den zu verschweigen waere genau der
 			   Mangel, der hier behoben wird. */
 			inRemoteVsect = 0;
@@ -5570,7 +5570,7 @@ static void runPass(void)
 		if (baseIs(base, "end")) {
 			break;
 		}
-		/* Nur beschreibend, ohne Wirkung auf die Ausgabe. */
+		/* Descriptive only; no effect on output. */
 		if (baseIs(base, "nam") || baseIs(base, "ttl") ||
 		    baseIs(base, "page") || baseIs(base, "opt") ||
 		    baseIs(base, "spc") || baseIs(base, "pag"))
@@ -5594,7 +5594,7 @@ static void runPass(void)
 	}
 }
 
-/* Haelt den Stand der "set"-Symbole nach dem ersten Durchlauf fest. */
+/* Save the state of "set" symbols after the first pass. */
 static void symSnapshot(void)
 {
 	int i;
