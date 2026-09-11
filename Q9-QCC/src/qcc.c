@@ -237,7 +237,7 @@ int main(int argc, char **argv)
 			if (!keep_files) { sprintf(command, "%s %s/input.i %s/output.ir", QCC_REMOVE, tmpdir, tmpdir); q9_system(command); }
 			return 0;
 		}
-		/* Vollstaendiger Standardlauf: Backend, Optimierer, Assembler, Linker. */
+		/* Complete default pipeline: backend, optimizer, assembler, linker. */
 		sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
 		if (optimizer[0] != '\0') {
