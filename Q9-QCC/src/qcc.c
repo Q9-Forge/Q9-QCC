@@ -149,15 +149,19 @@ int main(int argc, char **argv)
 		}
 		sprintf(command, "%s @%s/input.i > %s/output.ir", qcir, tmpdir, tmpdir);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
-		if (assembly_only) {
-			sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k", tmpdir, tmpdir);
+		if (assembly_only || object_only) {
+			sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
 			if (system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
 			if (optimizer[0] != '\0') {
 				sprintf(command, "../Q9-BACKEND-68K/q9-qo68k/build/qo68k %s/output.s68k %s/output.opt.s68k", tmpdir, tmpdir);
 				if (system(command) != 0) { fprintf(stderr, "qcc: qo68k fehlgeschlagen\n"); return 4; }
 			}
+			if (object_only) {
+				sprintf(command, "../Q9-BACKEND-68K/q9-qr68k/build/qr68k %s/%s %s/output.r", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);
+				if (system(command) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
+			}
 			if (output[0] != '\0') {
-				sprintf(command, "cp %s/%s %s", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", output);
+				sprintf(command, "cp %s/%s %s", tmpdir, object_only ? "output.r" : (optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"), output);
 				if (system(command) != 0) return 4;
 			}
 			if (!keep_files) { sprintf(command, "rm -f %s/input.i %s/output.ir", tmpdir, tmpdir); system(command); }
