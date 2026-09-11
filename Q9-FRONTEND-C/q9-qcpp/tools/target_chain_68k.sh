@@ -21,8 +21,8 @@
 # Exit:    0 = beide Stufen byteidentisch, 1 = abweichend/Fehler, 2 = Aufbau
 set -uo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"     # .../Q9-QCC/q9-cpp
-QCC="$(cd "$REPO/.." && pwd)"                               # .../Q9-QCC
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"     # .../Q9-FRONTEND-C/q9-qcpp
+QCC="$(cd "$REPO/../.." && pwd)"                             # .../Q9-QCC
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 : "${Q9FLUX:=$QCC/../Q9-Flux-68k}"
@@ -33,7 +33,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -x "$REPO/build/qcpp" ]       || die "q9-cpp/build/qcpp fehlt (make)"
 [ -x "$QCC/build/qcir" ]       || die "build/qcir fehlt"
-[ -x "$QCC/build/qir_68k" ] || die "build/qir_68k fehlt"
+[ -x "$QCC/build/qir68k" ] || die "build/qir68k fehlt"
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
 	die "build/qcc_p.bootstrap.c fehlt (tools/build_xcc_bootstrap.sh oder q9-cpp/tools/bootstrap.sh)"
 [ -f "$BASE" ]                  || die "Ausgangsimage fehlt: $BASE"
@@ -72,9 +72,9 @@ check_module() {
 build_module() {
 	local ir="$1" name="$2" stack="$3"
 
-	"$QCC/build/qir_68k" "$ir" "$WORK/$name.s68" -os9 -largedata >/dev/null ||
-		die "qir_68k fuer $name"
-	w "Z: && cd $WORKWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $name.s68 -o=$name.r"
+	"$QCC/build/qir68k" "$ir" "$WORK/$name.s68k" -os9 -largedata >/dev/null ||
+		die "qir68k fuer $name"
+	w "Z: && cd $WORKWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe $name.s68k -o=$name.r"
 	[ -f "$WORK/$name.r" ] || {
 		grep -iE "error|out of range" "$WORK/wine.log" | head -5
 		die "r68 fuer $name"

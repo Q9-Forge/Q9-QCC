@@ -6,7 +6,7 @@ PROJECT="$(cd "$(dirname "$0")" && pwd)"
 OUT="${PROJECT}/build"
 WORK="${OUT}/.work"
 PARSER="${QCC_PARSER:-${ROOT}/build/qcir}"
-BACKEND="${QCC_BACKEND:-${ROOT}/build/qir_68k}"
+BACKEND="${QCC_BACKEND:-${ROOT}/build/qir68k}"
 MERGE="${QCC_MERGE:-${ROOT}/tools/qcc_merge.py}"
 MWOS_TMP="${MWOS_TMP:-/Volumes/SSD1TB/projects/MWOS/TMP}"
 WINE_APP="${WINE_APP:-$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/wine}"
@@ -32,8 +32,8 @@ while (($# > 0)); do
     shift
 done
 
-[[ -x "$PARSER" ]] || { echo "qcc_p fehlt: $PARSER" >&2; exit 2; }
-[[ -x "$BACKEND" ]] || { echo "qcc_backend fehlt: $BACKEND" >&2; exit 2; }
+[[ -x "$PARSER" ]] || { echo "qcir fehlt: $PARSER" >&2; exit 2; }
+[[ -x "$BACKEND" ]] || { echo "qir68k fehlt: $BACKEND" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "python3 fehlt" >&2; exit 2; }
 
 rm -rf "$WORK"
@@ -65,35 +65,35 @@ done
 echo "MERGE    ${#irs[@]} IR-Dateien -> project.ir"
 python3 "$MERGE" "${irs[@]}" > "${WORK}/project.ir"
 
-echo "BACKEND  project.ir -> ${OUTPUT_NAME}.s68"
-"$BACKEND" "${WORK}/project.ir" "${WORK}/${OUTPUT_NAME}.s68" -os9 -largedata
+echo "BACKEND  project.ir -> ${OUTPUT_NAME}.s68k"
+"$BACKEND" "${WORK}/project.ir" "${WORK}/${OUTPUT_NAME}.s68k" -os9 -largedata
 
 if (( NO_LINK )); then
-    cp "${WORK}/${OUTPUT_NAME}.s68" "${OUT}/${OUTPUT_NAME}.s68"
+    cp "${WORK}/${OUTPUT_NAME}.s68k" "${OUT}/${OUTPUT_NAME}.s68k"
     echo "FERTIG   Link uebersprungen (--no-link)"
-    echo "         Ausgabe: ${OUT}/${OUTPUT_NAME}.s68"
+    echo "         Ausgabe: ${OUT}/${OUTPUT_NAME}.s68k"
     exit 0
 fi
 
 [[ -x "$WINE_APP" ]] || {
     echo "WARNUNG: Wine fehlt: $WINE_APP" >&2
-    echo "         Assemblerdatei bleibt in ${OUT}/${OUTPUT_NAME}.s68"
-    cp "${WORK}/${OUTPUT_NAME}.s68" "${OUT}/${OUTPUT_NAME}.s68"
+    echo "         Assemblerdatei bleibt in ${OUT}/${OUTPUT_NAME}.s68k"
+    cp "${WORK}/${OUTPUT_NAME}.s68k" "${OUT}/${OUTPUT_NAME}.s68k"
     exit 0
 }
 
 for file in cstart.r clib.l os_lib.l sys.l; do
     [[ -f "${MWOS_TMP}/${file}" ]] || {
         echo "WARNUNG: MWOS-Datei fehlt: ${MWOS_TMP}/${file}" >&2
-        echo "         Assemblerdatei bleibt in ${OUT}/${OUTPUT_NAME}.s68"
-        cp "${WORK}/${OUTPUT_NAME}.s68" "${OUT}/${OUTPUT_NAME}.s68"
+        echo "         Assemblerdatei bleibt in ${OUT}/${OUTPUT_NAME}.s68k"
+        cp "${WORK}/${OUTPUT_NAME}.s68k" "${OUT}/${OUTPUT_NAME}.s68k"
         exit 0
     }
 done
 
-cp "${WORK}/${OUTPUT_NAME}.s68" "${MWOS_TMP}/qcc_project.s68"
+cp "${WORK}/${OUTPUT_NAME}.s68k" "${MWOS_TMP}/qcc_project.s68k"
 WINEPREFIX="$WINEPREFIX" arch -x86_64 "$WINE_APP" cmd /c \
-    "${MWOS_WIN_ROOT}\\DOS\\BIN\\r68.exe ${MWOS_WIN_ROOT}\\TMP\\qcc_project.s68 -o=${MWOS_WIN_ROOT}\\TMP\\qcc_project.r -q"
+    "${MWOS_WIN_ROOT}\\DOS\\BIN\\r68.exe ${MWOS_WIN_ROOT}\\TMP\\qcc_project.s68k -o=${MWOS_WIN_ROOT}\\TMP\\qcc_project.r -q"
 link_status=0
 WINEPREFIX="$WINEPREFIX" arch -x86_64 "$WINE_APP" cmd /c \
     "${MWOS_WIN_ROOT}\\DOS\\BIN\\l68.exe -a ${MWOS_WIN_ROOT}\\TMP\\cstart.r ${MWOS_WIN_ROOT}\\TMP\\qcc_project.r -l=${MWOS_WIN_ROOT}\\TMP\\clib.l -l=${MWOS_WIN_ROOT}\\TMP\\os_lib.l -l=${MWOS_WIN_ROOT}\\TMP\\sys.l -o=${MWOS_WIN_ROOT}\\TMP\\qcc_project.out -s=${MWOS_WIN_ROOT}\\TMP\\qcc_project.sym" || link_status=$?

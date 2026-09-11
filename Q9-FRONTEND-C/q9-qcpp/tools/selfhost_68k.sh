@@ -17,8 +17,8 @@
 # Exit:    0 = Fixpunkt, 1 = abweichend/Fehler, 2 = Aufbauproblem
 set -uo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"     # .../Q9-QCC/q9-cpp
-QCC="$(cd "$REPO/.." && pwd)"                               # .../Q9-QCC
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"     # .../Q9-FRONTEND-C/q9-qcpp
+QCC="$(cd "$REPO/../.." && pwd)"                             # .../Q9-QCC
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 : "${Q9FLUX:=$QCC/../Q9-Flux-68k}"
@@ -30,7 +30,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -x "$REPO/build/qcpp" ]      || die "q9-cpp/build/qcpp fehlt (make)"
 [ -x "$QCC/build/qcir" ]      || die "build/qcir fehlt"
-[ -x "$QCC/build/qir_68k" ] || die "build/qir_68k fehlt"
+[ -x "$QCC/build/qir68k" ] || die "build/qir68k fehlt"
 [ -f "$BASE" ]                 || die "Ausgangsimage fehlt: $BASE"
 [ -x "$Q9FLUX/build/macos/q9.exe" ] || die "q9.exe fehlt (in Q9-Flux: make host)"
 
@@ -66,17 +66,17 @@ echo "  $(wc -l < "$WORK/self.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 echo "== 3/6 Backend (-os9 -largedata) =="
 # -largedata ist Pflicht: qcpp haelt weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet r68 "value out of range".
-"$QCC/build/qir_68k" "$WORK/self.ir" "$WORK/qcpp.s68" -os9 -largedata >/dev/null ||
-	die "qir_68k"
-echo "  $(wc -c < "$WORK/qcpp.s68" | tr -d ' ') Byte Assembler"
+"$QCC/build/qir68k" "$WORK/self.ir" "$WORK/qcpp.s68k" -os9 -largedata >/dev/null ||
+	die "qir68k"
+echo "  $(wc -c < "$WORK/qcpp.s68k" | tr -d ' ') Byte Assembler"
 
 echo "== 4/6 r68 + l68 =="
 w "Z: && cd \\tmp\\qcpp-selfhost && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_cstart.a -o=q9_cstart.r"
 [ -f "$WORK/q9_cstart.r" ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
-w "Z: && cd \\tmp\\qcpp-selfhost && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe qcpp.s68 -o=qcpp.r"
+w "Z: && cd \\tmp\\qcpp-selfhost && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe qcpp.s68k -o=qcpp.r"
 [ -f "$WORK/qcpp.r" ] || {
 	grep -iE "error|out of range" "$WORK/wine.log" | head -10
-	die "r68 auf qcpp.s68"
+	die "r68 auf qcpp.s68k"
 }
 w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcpp-selfhost\\q9_cstart.r Z:\\tmp\\qcpp-selfhost\\qcpp.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcpp-selfhost\\q9_qcpp"
 [ -f "$WORK/q9_qcpp" ] || {
