@@ -48,8 +48,8 @@ typedef struct {
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
-	int hasGinit; /* 2026-07-25: mind. ein GINIT fuer dieses Array gesehen (siehe emitIR) */
-	int declOnly, isStatic; /* siehe Function */
+	int hasGinit; /* 2026-07-25: at least one GINIT seen for this array (see emitIR) */
+	int declOnly, isStatic; /* see Function */
 } Global;
 
 static Instr ir[MAX_IR_LINES];
