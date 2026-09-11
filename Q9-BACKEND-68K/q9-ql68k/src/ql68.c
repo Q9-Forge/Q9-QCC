@@ -82,26 +82,20 @@ static int bInit[QL_ROF];    /* dc-data offset. */
 static int bRemote[QL_ROF];  /* Remote-data offset. */
 static int bIDataMod[QL_ROF];/* dc-data module offset. */
 
-/* Data-pointer bias. For a program (mod_exec), a6 points
-   a6 NICHT auf den Anfang des Datenbereichs, sondern $8000 dahinter --
-   so reicht ein 16-Bit-Displacement +-32K weit. Ein TREIBER bekommt
-   seinen statischen Speicher dagegen direkt (in a2) und kennt keinen
-   Vorspann. Gemessen: "move.l zeiger(a6),d1" mit zeiger auf $000c ergibt
-   im Programm $800c, "move.w d2,$001c(a2)" im Treiber sc172 dagegen
-   $001c. */
+/* Data-pointer bias. In a program (mod_exec), a6 points $8000 beyond the
+   data-area start so a 16-bit displacement reaches the full 64 KiB window.
+   A driver receives static storage directly in a2 and has no bias. */
 static int dataBias;         /* Data-pointer bias for program modules. */
 
 /* -r=<base>: raw binary output instead of a module. -1 disables it. */
 static int optRaw = -1;
-/* In der rohen Ausgabe bekommt ein Codebezug IM CODE die Basis
-   aufaddiert, ein Zeiger IN DEN DATEN dagegen nicht -- den setzt erst der
-   Startcode ueber die Zeigerliste. Gemessen an einem Label auf Codeoffset
-   6: im Code wird daraus $1006, in den Daten bleibt es $0006. */
+/* In raw output, add the base to code references in code, but not to data
+   pointers in data; the startup code applies those through pointer lists. */
 static int rawCodeBias;
 
 static char modName[256];
-static int optOwner = 65536;       /* M$Owner $00010000, ohne -gu= (gemessen) */
-static int optAccess = 1365;       /* M$Accs  $0555,     ohne -p=  (gemessen) */
+static int optOwner = 65536;       /* M$Owner $00010000 without -gu=. */
+static int optAccess = 1365;       /* M$Accs $0555 without -p=. */
 static int optEdition = -1;        /* -e=: override the psect value. */
 /* -M=<n>[K]: stack-size increment. The number is always in KiB, so -M=1
    and -M=1K both add 1024, while -M=100 adds 102400 (measured). */
@@ -126,17 +120,9 @@ static int irefCodeN;
 static int irefData[QL_IREF];
 static int irefDataN;
 
-/* Symbol table. Capacity is measured, not guessed: QCC's own
-   Parser (stage2.r aus qcc_backend -os9 -largedata) bringt 14.193
-   Globale mit 325.828 Byte Namenstext -- QCC macht aus jeder Sprungmarke
-   ein Globalsymbol. Dazu q9_cstart.r (55) und qclib.l (433), zusammen
-   14.681 Namen und 334.019 Byte. Die alten 8.192/262.144 reichten fuer
-   das SDK (Assembler, kleine Module), aber nicht fuer die eigene Kette.
-
-   Am ZIEL bleibt es bei den alten Massen: dort begrenzt schon QL_IN das
-   Ganze auf 512-KB-Eingaben, und jedes zusaetzliche Feld waechst 1:1 ins
-   Modul (QCCs Backend legt genullte Felder in den INITIALISIERTEN
-   Datenbereich). Ein grosszuegiges QL_SYM waere dort nur Ballast. */
+/* Symbol table. Capacity is measured, not guessed. Host builds need space
+   for the QCC self-hosting objects; target builds retain smaller limits
+   because every zero-initialized field increases the module data area. */
 #ifdef _Q9OS
 #define QL_SYM    8192
 #define QL_POOL   262144
@@ -145,7 +131,7 @@ static int irefDataN;
 #define QL_POOL  1048576
 #endif
 #define QL_LIB    16
-#define QL_ARGS   1024              /* Argumente nach dem Aufloesen von -z= */
+#define QL_ARGS   1024              /* Arguments after expanding -z=. */
 #define QL_ZBUF    65536            /* Text of -z= files. */
 #define QL_JT     1024              /* Eintraege der Sprungtabelle */
 
@@ -173,8 +159,8 @@ static int irefDataN;
 
    The table does not move CODE because it resides in data, so two passes
    are sufficient: one counts and one writes. */
-static int optJumpTab;         /* -a */
-static int jtPlan;             /* 1 = Zaehllauf */
+static int optJumpTab;         /* -a. */
+static int jtPlan;             /* 1 = counting pass. */
 static int jtSym[QL_JT];       /* One entry per symbol, not per call. */
 static int jtN;
 static int jtBase;             /* Data offset of the table. */
