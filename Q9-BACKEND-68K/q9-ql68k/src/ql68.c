@@ -232,8 +232,7 @@ static int be32(int at)
 	       ((inBuf[at + 2] & 255) << 8) | (inBuf[at + 3] & 255);
 }
 
-/* Skip a NUL-terminated name and return the following offset.
-   dahinter. */
+/* Skip a NUL-terminated name and return the following offset. */
 static int skipName(int at)
 {
 	while (at < inLen && inBuf[at] != 0)
@@ -270,9 +269,8 @@ static void symAdd(const char *name, int value, int type)
 	symN++;
 }
 
-/* -1 = unbekannt. Die zuletzt eingetragene Definition gewinnt, damit die
-   vom Binder gesetzten Symbole eine gleichnamige aus der Bibliothek
-   verdecken. */
+/* Return -1 when unknown. The most recently registered definition wins so
+   linker-defined symbols override library definitions with the same name. */
 static int symFind(const char *name)
 {
 	int i;
@@ -1462,9 +1460,8 @@ static int argStarts(const char *a, const char *p)
 	return i;
 }
 
-/* Der Modulname kommt aus dem AUSGABENAMEN, nicht aus dem psect --
-   gemessen: zwei Laeufe mit verschiedenen -O= unterscheiden sich genau im
-   Namen und im CRC darueber. Verzeichnisanteile fallen weg. */
+/* Derive the module name from the output name, not from the psect. Directory
+   components are removed. */
 static void nameFromPath(const char *path)
 {
 	int i;
@@ -1485,7 +1482,7 @@ static void nameFromPath(const char *path)
 	modName[i] = 0;
 }
 
-/* --- Die Argumentliste, in der -z= schon aufgeloest ist --- */
+/* --- Argument list after expanding -z= -------------------------------- */
 static char *argList[QL_ARGS];
 static int argN;
 static char zBuf[QL_ZBUF];
@@ -1493,12 +1490,9 @@ static int zLen;
 
 static void argAdd(char *a);
 
-/* -z=<datei>: JEDE ZEILE ist EIN Eintrag. An l68 gemessen -- steht
-   "od.r -M=8K" in einer Zeile, sucht l68 eine Datei dieses Namens
-   ("can't open file, od.r -M=8K"). Dateinamen und Optionen duerfen sich
-   mischen, und die Reihenfolge ist egal: zwei Laeufe mit vertauschten
-   Zeilen ergaben dieselben Bytes. Die Zeilen treten an die Stelle des
-   -z=, ein -z= darin wird wieder aufgeloest. */
+/* -z=<file>: each line is one argument. File names and options may be mixed
+   in any order; lines replace the -z= option, and nested -z= files are
+   expanded recursively. */
 static void loadZ(const char *path)
 {
 	char *fp;
