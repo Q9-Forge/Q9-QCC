@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Befehlsvergleich gegen r68, Quellzeile fuer Quellzeile.
+# Instruction comparison against r68, source line by source line.
 #
-# Anders als difftest.sh (das die ganze ROF-Datei byteweise vergleicht und bei
-# der ersten Abweichung stehen bleibt) faehrt das hier r68 mit Listing und
-# ordnet jede Abweichung der Quellzeile zu, aus der sie stammt. Damit laesst
-# sich eine Befehlstabelle in einem Durchgang abarbeiten.
+# Unlike difftest.sh, which compares the complete ROF byte-for-byte and stops
+# at the first difference, this runs r68 with a listing and maps every
+# difference to its source line. This allows the instruction table to be
+# processed in one pass.
 #
 #   ./test/insndiff.sh                 -- test/insn.a
 #   ./test/insndiff.sh datei.a ...
@@ -25,7 +25,7 @@ WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/w
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TMPWIN="$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 
-# Zusaetzliche Schalter fuer BEIDE Seiten, z. B. RFLAGS=-b.
+# Additional flags for BOTH sides, for example RFLAGS=-b.
 : "${RFLAGS:=}"
 
 files=("$@")
@@ -61,7 +61,7 @@ PY
 	fi
 	python3 tools/insncmp.py "$TMP/$base.lst" "$TMP/$base.r" "$TMP/$base.q" \
 		"$TMP/$base.a" || fail=1
-	# Zusaetzlich die ganze Datei, damit Referenzen und Kopf nicht durchrutschen.
+	# Also compare the complete file so references and the header are covered.
 	python3 tools/rofcmp.py "$base:$TMP/$base.r:$TMP/$base.q" > "$TMP/$base.full" ||
 		{ sed 's/^/  /' "$TMP/$base.full" | head -6; fail=1; }
 done
