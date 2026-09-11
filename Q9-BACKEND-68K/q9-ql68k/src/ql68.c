@@ -532,7 +532,7 @@ static void libLink(void)
 	}
 }
 
-/* -------------------------------------------------------------- Ausgabe */
+/* -------------------------------------------------------------- Output */
 static void put8(int v)
 {
 	if (outLen >= QL_OUT)
@@ -781,9 +781,9 @@ static int symResolve(int si)
 /* Handle a call that no longer fits its word. Without -a, l68 aborts; ql68
    does the same instead of emitting an invalid displacement. With -a, assign
    the symbol a jump-table entry and rewrite the call. */
-/* Die Eintraege fuellen: "jmp $xxxxxxxx" auf das aufgeloeste Symbol.
-   Beide Formen von -a teilen sich denselben Eintrag -- der Sprung laeuft
-   durch den jmp, der Adresszugriff liest das Feld dahinter (s. farCall). */
+/* Fill the entries with "jmp $xxxxxxxx" for the resolved symbol. Both -a
+   forms share one entry: the branch uses the JMP, while the address access
+   reads the field behind it (see farCall). */
 static void putJumpTable(void)
 {
 	int i;
@@ -1291,10 +1291,9 @@ static void emit(void)
 	symAdd("_btext", 0, 6);
 	symAdd("etext", outLen, 6);
 	symAdd("_etext", outLen, 6);
-	/* Typ 0 (Daten), nicht 6 (equ): "end" bezeichnet das Ende des
-	   DATENbereichs und bekommt deshalb den a6-Vorspann wie jeder
-	   andere Datenbezug -- an l68 gemessen, das aus $250 im Code
-	   $ffff8250 macht. Mit Typ 6 blieb der Vorspann aus. */
+	/* Type 0 (data), not 6 (equ): "end" denotes the end of the data area and
+	 * therefore receives the a6 bias like every other data reference. This was
+	 * measured against l68, which turns $250 in code into $ffff8250. */
 	symAdd("end", totalUninit + totalInit + totalRemote, 0);
 	symAdd("_enddata", totalUninit + totalInit + totalRemote, 0);
 
