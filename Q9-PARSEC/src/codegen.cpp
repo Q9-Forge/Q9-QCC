@@ -830,8 +830,8 @@ static int validateAstForCodegen() {
 		}
 	}
 
-	// '$' wird fuer beide Backends zu '_' normalisiert. Eine Kollision wuerde sonst
-	// doppelte C-Funktionen bzw. 68k-Labels erzeugen und ist daher ein klarer Fehler.
+	// Normalize '$' to '_' for both backends. Otherwise a collision could create
+	// duplicate C functions or 68k labels and is therefore a hard error.
 	for (r = 0; r < ruleCnt; r++) {
 		sanitizeName(rules[r].name, a);
 		for (s = r + 1; s < ruleCnt; s++) {
@@ -1169,11 +1169,9 @@ int genParserC(const char* path) {
 		fprintf(fp, "\tconst char* sv[64]; int svLog[64]; int sp;\n");
 		fprintf(fp, "\tconst char* entry; int entryLog;\n");
 		if (lexActive && !ruleIsLexical[r]) {
-			// entry MUSS erst NACH einem eventuellen fuehrenden ws() erfasst werden --
-			// sonst landet Whitespace/Kommentar vor dem eigentlichen Regelinhalt im
-			// start/end-Bereich, den eine ACTION dieser Regel bekommt (ws() ist
-			// idempotent, ein zusaetzlicher Aufruf hier ist fuer die Parser-Semantik
-			// ein No-Op, korrigiert aber start/end fuer alle ACTION-Aufrufe).
+			// Capture entry only AFTER optional leading ws(); otherwise whitespace or
+			// comments would be included in the action's start/end span. ws() is
+			// idempotent, so this extra call is semantically a no-op but fixes spans.
 			fprintf(fp, "\tws();\n");
 		}
 		fprintf(fp, "\tsp = 0; entry = p; entryLog = actionLogLen;\n");
@@ -1225,12 +1223,9 @@ int genParserC(const char* path) {
 	// are normal because later definitions may be absent. Keep the three cases
 	// distinct: OK / SEMERR / FAIL, with return values 0 / 1 / 1.
 	//
-	// Das Wort heisst bewusst SEMERR und nicht SEMFAIL: der erste Versuch hiess
-	// so und enthielt damit "FAIL" als Teilzeichenkette, worauf jeder Aufrufer
-	// hereinfiel, der per Teilstring statt zeilenweise prueft (genau das tat
-	// bootstrap_survey.py -- die 346 Falschmeldungen blieben deshalb auch nach
-	// der Trennung der Faelle bestehen). Ein Marker, der einen anderen enthaelt,
-	// ist eine Falle; die drei Woerter sind jetzt paarweise teilstring-fremd.
+	// The marker is deliberately SEMERR rather than SEMFAIL: the latter contains
+	// "FAIL", which confused substring-based callers such as bootstrap_survey.py.
+	// The three result markers are now pairwise substring-distinct.
 	const char* afterParse = routinesCCnt > 0
 		? " actionLogReplay(); if (actionErrors != 0) { printf(\"SEMERR\\n\"); QCC_OUTPUT_FLUSH(); return 1; }"
 		: "";
@@ -1253,9 +1248,9 @@ int genParserC(const char* path) {
 // Register convention (see ARCHITEKTUR.md §4/§5):
 //   a0   = NUL-terminated input pointer, advanced on success
 //   d0.b = 1 success / 0 failure (a0 unchanged on failure)
-//   d1   = Scratch fuer Bereichsvergleiche; Ruecksetzpunkte liegen auf dem Stack -(a7)
-// Jede Regel <name> wird Subroutine p_<name>; Einstieg "parse" ruft die Startregel.
-// TS-Literale vergleichen erst alle Zeichen (mit Offsets) und konsumieren dann in einem
+//   d1   = scratch register for range comparisons; save points use stack -(a7)
+// Each rule <name> becomes subroutine p_<name>; entry point "parse" calls the start rule.
+// TS literals compare all characters with offsets and consume them in one step,
 // Schritt -> ein TS konsumiert nie teilweise; NUL am Eingabeende laesst jeden Vergleich
 // von selbst scheitern (kein separater Laengencheck noetig).
 static void emitConsume68k(FILE* fp, int len) {
@@ -1395,10 +1390,10 @@ static void genNode68k(FILE* fp, int id, int failLabel, int lexical) {
 	}
 }
 
-// Laufzeit-Helfer fuer den LEXER-Modus:
-//   ws   -- ueberliest WHITESPACE-Zeichen und (falls konfiguriert) Zeilenkommentare.
+// Runtime helpers for LEXER mode:
+//   ws   -- skips WHITESPACE characters and configured line comments.
 //           Zerstoert d1, laesst d0 unangetastet.
-//   idch -- prueft d1: Identifikator-Zeichen? d0.b = 1 ja / 0 nein.
+//   idch -- tests d1 for an identifier character; d0.b = 1 yes / 0 no.
 static void emitLexHelpers68k(FILE* fp, const char* cs) {
 	int lTop = newLabel();		// ws: Schleifenkopf
 	int lSkip = newLabel();		// ws: ein Zeichen ueberlesen
@@ -1548,9 +1543,8 @@ static void emitLexHelpers68k(FILE* fp, const char* cs) {
 }
 
 // Gemeinsamer Kern beider 68k-Ausgabeformate. os9=0: "nacktes" Motorola-Format
-// (vasm-kompatibel, nur Labels). os9=1: Microware-r68-Format -- gleicher Code-Body
-// (r68 akzeptiert Label-Doppelpunkte und ";"-Endkommentare, empirisch verifiziert),
-// aber '*' fuer VOLLE Kommentarzeilen plus nam/psect/ends-Rahmen.
+// (vasm-compatible, labels only). os9=1 uses Microware r68 format: the same
+// code body, '*' for full comment lines, and a nam/psect/ends wrapper.
 static int genParser68kTo(const char* path, int os9, const char* baseName) {
 	FILE* fp;
 	int r, fail;
