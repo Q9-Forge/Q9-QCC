@@ -1,15 +1,12 @@
-* Q9 OS-9/68000 C-Startmodul
+* Q9 OS-9/68000 C startup module
 * -----------------------------------------------------------------------------
-* Eigenstaendige Q9-Fassung des Microware-C-Startcodes.
+* Purpose: initialize the C runtime and call main(argc, argv, envp).
+* Based on: Microware OS-9 Professional V3.3 cstart.a, Edition 7.
+* Q9 edition: 2026-09-11
 *
-* Zweck       : Initialisiert die C-Laufzeit und ruft main(argc, argv, envp).
-* Grundlage   : Microware OS-9 Professional V3.3, cstart.a, Edition 7.
-* Q9-Stand    : 2026-08-13
-*
-* Die Ablaufsemantik und die OS-9/C-ABI bleiben unveraendert. Die Kommentare
-* wurden neu gefasst; Inline-Kommentare beginnen einheitlich ab Spalte 48.
-* Die Definitionsdatei bleibt zunaechst die Microware-Datei. Sie wird spaeter
-* durch eine Q9-eigene Definitionsdatei ersetzt.
+* The startup sequence and OS-9/C ABI are kept compatible with the reference
+* runtime. The definitions file is still external and will be replaced by a
+* Q9-owned version in a later runtime work package.
 * -----------------------------------------------------------------------------
 
         use     q9defs.d                         * Q9-Definitionen; siehe q9defsfile
@@ -71,6 +68,11 @@ _stklimit:dc.l  0                               * Noch nicht verifizierter Stack
 *   A3  Modulbasis, A4 System-Globals, A5 Parameterbereich, A6 Prozessdaten
 *   D3  Anzahl geerbter Pfade, D5 Parameterlaenge, D6 Anfangsdatengroesse
 
+* Function: _cstart
+* Establishes the process data area, initializes runtime state and invokes
+* the application entry point.
+* Parameters: OS-9 process registers and inherited argument state.
+* Returns: Normally does not return; process termination is handled by exit.
 _cstart:
         move.l  a6,_glob_data(a6)                * Statische Datenbasis sichern
         move.l  a3,_modhead(a6)                 * Modulheader sichern
