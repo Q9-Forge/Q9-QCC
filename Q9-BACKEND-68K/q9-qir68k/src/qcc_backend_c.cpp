@@ -357,16 +357,16 @@ static void emitAlign(FILE* out) {
    bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
    aufgefrischten Wert). */
 /* Ein Globales ist GANZ null, wenn kein Initialisierer einen Wert setzt: ein
-   Array ohne jedes GINIT, ein Skalar mit Initialwert 0. Genau diese gehoeren
-   in den vsect remote -- Arrays MIT GINIT bleiben im psect, sonst waeren ihre
-   Werte weg. */
+   An array without any GINIT or a scalar with initial value 0. These belong
+   in the remote vsect; arrays WITH GINIT remain in the psect or their values
+   would be lost. */
 static int globalAllZero(Global* g) {
 	if (g->isArray) return !g->hasGinit;
 	return g->initialValue == 0;
 }
 /* Does this global reside in the remote vsect? Keep the decision in one place
-   Antwort an mehreren Emissionsstellen gebraucht wird (Datenausgabe, Tabelle,
-   acht Zugriffsformen) -- eine Regel ueber Adressierung gilt nie nur an einer. */
+   because it is needed by several emission sites (data output, tables, and
+   eight access forms); an addressing rule must not be duplicated. */
 static int globalRemote(int gidx) {
 	if (!remoteDataMode) return 0;
 	if (globals[gidx].declOnly) return 0;
