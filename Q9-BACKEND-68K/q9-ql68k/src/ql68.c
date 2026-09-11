@@ -41,7 +41,7 @@ extern int fwrite(const char *buf, int size, int n, char *fp);
 #define QL_IN     33554432            /* Inputs and libraries. */
 #define QL_OUT    33554432            /* Output buffer. */
 #endif
-#define QL_IREF   16384               /* Zeiger je Liste */
+#define QL_IREF   16384               /* Pointers per list. */
 
 static char inBuf[QL_IN];
 static int inLen;
@@ -60,7 +60,7 @@ static int rAttRev[QL_ROF];
 static int rEdition[QL_ROF];
 static int rStat[QL_ROF];    /* Uninitialized data (ds in vsect). */
 static int rIDat[QL_ROF];    /* Initialized data (dc in vsect). */
-static int rRem[QL_ROF];     /* reservierte FERNdaten (ds im vsect remote) */
+static int rRem[QL_ROF];     /* Reserved remote data (ds in vsect remote). */
 static int rCod[QL_ROF];
 static int rStk[QL_ROF];
 static int rEntry[QL_ROF];
@@ -133,15 +133,14 @@ static int irefDataN;
 #define QL_LIB    16
 #define QL_ARGS   1024              /* Arguments after expanding -z=. */
 #define QL_ZBUF    65536            /* Text of -z= files. */
-#define QL_JT     1024              /* Eintraege der Sprungtabelle */
+#define QL_JT     1024              /* Jump-table entries. */
 
 /* --- Jump table for -a -------------------------------------------------
    A `bsr.w target` reaches only +-32 KiB. For a more distant target, l68
-   mit -a einen 6 Byte langen Eintrag `jmp $xxxxxxxx` ($4ef9) in den
-   initialized data and changes the call to `jsr d16(a6)`
-   ($4eae); das Displacement ist der Datenabstand des Eintrags MIT dem
-   $8000-Bias. Alles an `l68 -a -j` nachgemessen, das seine Rechnung
-   selbst druckt.
+   with -a creates a 6-byte `jmp $xxxxxxxx` entry ($4ef9) in initialized
+   data and changes the call to `jsr d16(a6)`
+   ($4eae); the displacement is the entry's data distance including the
+   $8000 bias. All details were measured from `l68 -a -j` output.
 
    ql68 creates only entries that are actually needed. l68 estimates instead;
    `-j` may report `guess=11 Actual=7`, leaving unused `4ef9 00000000`
