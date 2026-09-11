@@ -3248,7 +3248,7 @@ static int bfSplit(char *s)
 	return 1;
 }
 
-/* Ein Feld des Bitfeldzusatzes. "dN" steht fuer ein Datenregister -- das
+/* One field of the bit-field suffix. "dN" denotes a data register;
    meldet bfField() ueber bfIsReg, so wie evalExpr() seine Nebenbefunde
    ueber exSect/exExtern/exOpen meldet. (QCC kann auch einen
    Zeiger-Ausgabeparameter; die Hausform ist hier nur die einheitlichere.)
@@ -3287,7 +3287,7 @@ static int bfField(const char *s)
 	return v & 31;
 }
 
-/* Registerliste "d0-d7/a0-a6" -> Maske in der NORMALEN Ordnung: Bit 0 = d0
+/* Register list "d0-d7/a0-a6" -> mask in NORMAL order: bit 0 = d0
    ... Bit 7 = d7, Bit 8 = a0 ... Bit 15 = a7. Rueckgabe -1, wenn der Text
    keine Liste ist -- daran erkennt movem, welcher der beiden Operanden die
    Liste ist. */
@@ -3339,7 +3339,7 @@ static int regList(const char *s)
 	return mask;
 }
 
-/* Bei -(An) legt movem die Maske UMGEKEHRT ab: Bit 0 = a7 ... Bit 15 = d0.
+/* For -(An), movem stores the mask in REVERSE order: bit 0 = a7 ... bit 15 = d0.
    Gemessen an "movem.l d0-d7/a0-a6,-(sp)" -> $FFFE gegen "(sp)+,..." ->
    $7FFF. */
 static int regMaskReverse(int mask)
@@ -3361,7 +3361,7 @@ static void needNoSize(int size)
 		fatal("dieser Befehl hat keinen Groessenbuchstaben: ", lnOp);
 }
 
-/* Ein Datenregister als Operand -- fuer die Befehle, die nur eines zulassen. */
+/* A data register operand, for instructions that allow only one. */
 static int needDn(int k)
 {
 	if (oMode[k] != AM_DN)
@@ -3376,7 +3376,7 @@ static int needAn(int k)
 	return oReg[k];
 }
 
-/* Ziel eines Datenbefehls: alles ausser unmittelbar und PC-relativ. */
+/* Destination of a data instruction: anything except immediate and PC-relative. */
 static void needAlterable(int k)
 {
 	int m;
@@ -3386,7 +3386,7 @@ static void needAlterable(int k)
 		fatal("dieser Operand kann kein Ziel sein: ", lnArg);
 }
 
-/* Kontrolladresse: fuer jsr/jmp/lea/pea. */
+/* Control address, for jsr/jmp/lea/pea. */
 static void needControl(int k)
 {
 	int m;
@@ -3397,7 +3397,7 @@ static void needControl(int k)
 		fatal("dieser Operand ist keine Kontrolladresse: ", lnArg);
 }
 
-/* Sprungbefehle. */
+/* Branch instructions. */
 static void doBranch(int cond, int size)
 {
 	int v;
@@ -3420,7 +3420,7 @@ static void doBranch(int cond, int size)
 		fatal("lange Sprungform nicht unterstuetzt -- r68 V2.9.1 erzeugt dafuer \"6000 00000000\", also weder das noetige $FF noch den Abstand: ",
 		      lnOp);
 
-	/* Mit -b waehlt r68 die Weite SELBST und uebergeht dabei einen
+	/* With -b, r68 chooses the size ITSELF and ignores a specified
 	   angegebenen Buchstaben: "bra.w" auf ein nahes Ziel wird kurz,
 	   "beq.s" auf ein fernes wird zur Wortform (beides gemessen). Ein
 	   Ziel ausserhalb des Moduls bleibt die Wortform.
@@ -3430,7 +3430,7 @@ static void doBranch(int cond, int size)
 	   ab, statt eine Bedeutungsaenderung nachzubauen. */
 	if (optBranch) {
 		if (exOpen && ext < 0) {
-			/* Erster Durchlauf, das Ziel ist noch unbekannt: hier
+			/* First pass, target still unknown: assume the SHORT form.
 			   wird die KURZE Form angenommen. Das ist kein Detail,
 			   sondern der Unterschied zwischen zwei Fixpunkten --
 			   waere die Annahme die Wortform, blieben Spruenge
