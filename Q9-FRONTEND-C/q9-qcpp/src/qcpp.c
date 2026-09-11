@@ -1,13 +1,19 @@
 /*
- * qcpp -- C-Praeprozessor der Q9-Werkzeugkette
+ * qcpp -- C preprocessor for the Q9 toolchain
  *
- * Aufruf:  qcpp [Optionen] <eingabe.c> <ausgabe.i>
+ * Usage: qcpp [options] <input.c> <output.i>
  *
- * Ziel: die letzten Fremdteile aus dem QCC-Selbsthost-Weg entfernen. Bisher
- * lief die Vorverarbeitung ueber "xcc -pp" (Microware, via Wine) oder
- * "cc -E" plus tools/bootstrap_prepare.py. Beides steht auf dem Mac, nicht
- * auf OS-9 -- ein Image mit ausschliesslich eigenen Werkzeugen kann es also
- * nicht enthalten.
+ * Purpose:
+ *   Provide a self-hostable ISO C89 preprocessor for the Q9 compiler chain.
+ *   The implementation is deliberately limited to the language subset that
+ *   can be compiled by QCC itself and supports the OS-9 #asm extension.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ *   2026-09-11  Replaced local stdio declarations with standard headers.
+ *
+ * The detailed compatibility measurements and design decisions are kept in
+ * the project documentation rather than in this source header.
  *
  * Sprachumfang: ISO C89 (ANSI X3.159-1989) Abschnitt 3.8 vollstaendig, plus
  * die Microware-Erweiterung "#asm"/"#endasm".
