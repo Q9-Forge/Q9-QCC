@@ -1,3 +1,10 @@
+* q9-qclib I/O base
+*
+* Purpose: provide the minimal I/O symbols and storage required by q9_cstart.
+*
+* Edition history:
+*   2026-09-11  Introduced the English source-header format.
+*
 * _iob und die Anschluesse, die q9_cstart.a erwartet.
 *
 * GEMESSEN an q9_cstart.a (eigener Startcode, Q9-QCC/runtime/os9):
@@ -23,12 +30,21 @@
          psect   qiob,0,0,0,0,0
 
 _iobinit:
+* Function: _iobinit
+* Initializes the minimal Q9 I/O state.
+* Returns: Nothing.
          rts
 
 _initarg:
+* Function: _initarg
+* Provides the start-code argument initialization hook.
+* Returns: Nothing.
          rts
 
 _utinit:
+* Function: _utinit
+* Provides the user-trap initialization hook.
+* Returns: Nothing.
          rts
 
 * exit(status) -- Microware-Konvention: erstes Argument in d0.
@@ -36,6 +52,10 @@ _utinit:
 * den Fall, dass ein Debugger den ersten abfaengt (so macht es auch
 * q9_cstart.a).
 exit:
+* Function: exit
+* Terminates the current process through the Q9 OS-9 wrapper.
+* Parameters: d0 Process status.
+* Returns: Normally does not return.
          bsr     _os_exit                * d0 traegt den Status schon
          bsr     _os_exit
          rts
