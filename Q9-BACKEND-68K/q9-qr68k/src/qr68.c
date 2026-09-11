@@ -277,16 +277,15 @@ static int symMoved;           /* 1 = a value changed during this pass. */
    ueberhaupt nicht: nach "nop / org 8" steht das naechste Label auf 2. */
 static int orgPC;
 
-/* Zustand der aktuellen Zeile */
+/* Current source-line state. */
 static int curFile;
 static int curLine;
 static int curSect;
 static int curPC;              /* Offset im aktuellen Abschnitt */
-/* Der Ort, an dem die AKTUELLE ZEILE beginnt. Genau den liefert "*", und
-   zwar unveraendert fuer die ganze Zeile: "dc.w *,*,*" auf Offset 2 ergibt
-   dreimal $0002 (gemessen). Wer stattdessen den laufenden Ort nimmt, liegt
-   ab dem zweiten Wert daneben -- in SYSMODS/SYSCACHE/syscache.a:383 steht
-   "dc.w F$CCtl,UsrCCtl-*-4". */
+/* Location where the CURRENT statement starts. This is exactly what "*"
+   returns for the entire statement: "dc.w *,*,*" at offset 2 produces three
+   values of $0002 (measured). Using the advancing location would be wrong
+   from the second value onward; syscache.a:383 uses this behavior. */
 static int stmtPC;
 
 /* =============================================================== Zeichen == */
@@ -347,8 +346,7 @@ static char *poolAt(int idx)
 	return &pool[idx];
 }
 
-/* Streuwert eines Namens -- klein gehalten, damit er auch auf dem 68030
-   billig bleibt. */
+/* Name hash kept small so it remains inexpensive on the 68030. */
 static int nameHash(const char *s, int n)
 {
 	int h;
@@ -463,7 +461,7 @@ static int fileLoad(const char *path)
 	return id;
 }
 
-/* Check whether a file is already loaded. Load each file only once even if
+	/* Check whether a file is already loaded. Load each file only once even if
    multiple passes reach it through "use", otherwise the source arena grows
    on every pass. */
 static int fileFind(const char *path)
@@ -489,9 +487,9 @@ static int fileGet(const char *path)
 	return fileLoad(path);
 }
 
-/* ================================================================ Symbole = */
-/* Symbole werden ueber ihren Pool-Index gefunden; der ist bereits eindeutig,
-   also genuegt eine Streuung darueber. */
+/* ================================================================ Symbols = */
+/* Symbols are found through their pool index, which is already unique, so a
+   hash of that index is sufficient. */
 static int symBucket(int name)
 {
 	int h;
@@ -647,16 +645,15 @@ static int readLine(void)
 	return 1;
 }
 
-/* ========================================================== Ausdruecke ==== */
-/* Microware syntax: $hex, %binary, @octal, 'z' character and decimal;
-   operators
-   + - * / & (und) ! (oder) << >> und unaer - + ^ (Nicht), dazu Klammern.
-   "*" allein ist der aktuelle Ort, "." der org-Zaehler.
-   measured against r68: "^" is unary (not XOR), and "~" is not supported. */
+/* ========================================================= Expressions ==== */
+/* Microware syntax: $hex, %binary, @octal, 'z' character, and decimal;
+   operators + - * / & (and) ! (or) << >>, unary - + ^ (not), and parentheses.
+   "*" alone is the current location; "." is the org counter. Measured
+   against r68: "^" is unary (not XOR), and "~" is not supported. */
 static const char *exP;
 static int exSect;             /* Abschnitt des Ergebnisses */
 static int exExtern;           /* Pool-Index eines externen Namens, sonst -1 */
-/* Die VERSCHIEBBAREN ANTEILE eines Ausdrucks, mit Vorzeichen. r68 loest
+/* The RELOCATABLE TERMS of an expression, with signs. r68 does not resolve
    "PD_PAR-PD_OPT+M$DTyp" nicht auf, sondern legt DREI Referenzen auf
    denselben Offset ab: $0030, $0070 (das $40 heisst "abziehen") und $0030.
    Ebenso ergibt "dc.l EA+EB" zwei Referenzen und "dc.l basis+basis" zwei
@@ -665,8 +662,8 @@ static int exExtern;           /* Pool-Index eines externen Namens, sonst -1 */
    (gemessen an "dc.l dat-basis" mit dat im vsect: Wert 0, keine Referenz).
    Genau davon leben die Indirektionstabellen von QCCs -largedata.
 
-   Die Anteile liegen in drei Faechern: 0 und 1 fuer die beiden Operanden
-   eines Befehls, 2 fuer den gerade ausgewerteten Ausdruck. */
+   Terms are stored in three slots: 0 and 1 for instruction operands, and 2
+   for the expression currently being evaluated. */
 static int TERM_MAX = 8;
 static int termSect[24];       /* SECT_CODE/IDATA/UDATA/EXTERN */
 static int termName[24];       /* Pool-Index bei EXTERN, sonst -1 */
