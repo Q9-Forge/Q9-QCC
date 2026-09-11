@@ -39,6 +39,7 @@
 * ausgeschriebene Faelle sind hier leichter zu lesen als eine
 * Makroexpansion, die man beim Nachmessen erst wieder aufloesen muss.
 
+* Function: fopen -- opens a file; returns a Q9 FILE handle.
 fopen:
          move.l  (a7),a1                 * Ruecksprungadresse merken
          move.l  d1,(a7)                 * Argument 2 an ihren Platz
@@ -52,6 +53,7 @@ fopen:
          move.l  a1,-(a7)
          rts
 
+* Function: fclose -- closes a Q9 FILE handle; returns status in d0.
 fclose:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -65,6 +67,7 @@ fclose:
          move.l  a1,-(a7)
          rts
 
+* Function: fread -- reads complete items into the caller buffer.
 fread:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -78,6 +81,7 @@ fread:
          move.l  a1,-(a7)
          rts
 
+* Function: fwrite -- writes complete items from the caller buffer.
 fwrite:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -91,6 +95,7 @@ fwrite:
          move.l  a1,-(a7)
          rts
 
+* Function: puts -- writes a string followed by a newline.
 puts:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -105,6 +110,7 @@ puts:
          rts
 
 
+* Function: fputc -- writes one character to a selected stream.
 fputc:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -118,6 +124,7 @@ fputc:
          move.l  a1,-(a7)
          rts
 
+* Function: fputs -- writes a string without a newline.
 fputs:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -132,6 +139,7 @@ fputs:
          rts
 
 
+* Function: fgets -- reads one line into the caller buffer.
 fgets:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -145,6 +153,7 @@ fgets:
          move.l  a1,-(a7)
          rts
 
+* Function: ferror -- returns the stream error state.
 ferror:
          move.l  (a7),a1
          move.l  d1,(a7)
