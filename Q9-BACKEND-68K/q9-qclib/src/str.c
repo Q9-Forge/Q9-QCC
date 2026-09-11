@@ -207,12 +207,11 @@ char *qs_rchr(int *a)
 }
 
 /* ---------------------------------------------------------------- strtok */
-/* Der Zustand zwischen zwei Aufrufen: die Stelle HINTER dem letzten Fund.
-   strtok ist damit nicht wiedereintrittsfaehig -- so ist die Funktion in C89
-   definiert, das ist keine Einschraenkung dieser Fassung. */
+/* State shared between calls: the position AFTER the last match. strtok is
+   therefore not reentrant, as specified by C89; this is intentional here. */
 char *qs_tokp;
 
-/* Steht c in der Trennerliste? */
+/* Is c present in the delimiter list? */
 int qs_istrenner(char *delim, int c)
 {
 	int i;
