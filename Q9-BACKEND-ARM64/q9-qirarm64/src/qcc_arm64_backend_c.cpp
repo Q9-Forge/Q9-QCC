@@ -66,12 +66,11 @@ static int funcCount = 0;
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
 
-/* -part (2026-07-25, Mehrdatei-Uebersetzung): diese Datei ist EIN TEIL eines
-   Mehrdatei-Programms -- die main/funcCount-Pflicht wird gelockert, siehe
-   collectFunctions()/emit(). Anders als beim 68k-Backend gibt es hier KEIN
-   "-runtime"-Aequivalent: putint/putchar/exit werden extern in
-   runtime/arm64_darwin/start.s bereitgestellt (nie pro Datei emittiert), es
-   gibt also keinen gemeinsamen Anker, den nur EINE Datei tragen duerfte. */
+/* -part (2026-07-25, multi-file translation): this file is one part of a
+   multi-file program, so the main/funcCount requirement is relaxed; see
+   collectFunctions()/emit(). Unlike the 68k backend, there is no -runtime
+   equivalent here: putint/putchar/exit are provided externally by
+   runtime/arm64_darwin/start.s and are never emitted per file. */
 static int partMode = 0;
 
 static void fatal(const char* msg) {
@@ -100,22 +99,21 @@ static int isByteWord(const char* w) {
 	return strcmp(w, "c") == 0 || strcmp(w, "b") == 0;
 }
 
-/* short (2026-09-10, s. qcc_backend_c.cpp fuer das 68k-Gegenstueck): echter
-   16-Bit-Typ, wie char IMMER nullerweitert (ldrh/strh zero-extenden auf
-   ARM64 ohnehin automatisch in w0, wie ldrb es schon fuer char tut). */
+/* short (2026-09-10; see qcc_backend_c.cpp for the 68k counterpart): a real
+   16-bit type, always zero-extended like char. ARM64 ldrh/strh already zero-
+   extend into w0, just as ldrb does for char. */
 static int isShortWord(const char* w) { return strcmp(w, "h") == 0; }
 
-/* Elementgroesse eines Typtags in Byte -- gebraucht fuer Array-/Zeiger-
-   Adressierung. Anders als beim 68k-Backend ist ein Zeiger hier 8 Byte
-   (ARM64), nicht 4. */
+/* Return the size of a type tag in bytes for array and pointer addressing.
+   Unlike the 68k backend, a pointer is 8 bytes on ARM64, not 4. */
 static int elemBytes(const char* w) {
 	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
 	if (strcmp(w, "h") == 0) return 2;
 	if (strcmp(w, "p") == 0) return 8;
 	return 4;
 }
-/* ldr/str-Groessensuffix: "b" (Byte), "h" (Halfword), "" (Word/Doubleword --
-   welches von beiden ergibt sich aus dem gewaehlten Register w/x). */
+/* Return the ldr/str size suffix: "b" (byte), "h" (halfword), or ""
+   (word/doubleword, selected by the w/x register). */
 static const char* elemSuffix(const char* w) {
 	if (isByteWord(w)) return "b";
 	if (isShortWord(w)) return "h";
