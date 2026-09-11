@@ -15,8 +15,8 @@ static char assembler[TEXT] = "qr68k";
 static char linker[TEXT] = "ql68k";
 static char startup[TEXT] = "cstart.a";
 static char libraries[TEXT] = "clib.l,os9.l,sys.l";
-static char qcpp[TEXT] = "Q9-FRONTEND-C/q9-qcpp/build/qcpp";
-static char qcir[TEXT] = "Q9-FRONTEND-C/q9-qcir/build/qcir";
+static char qcpp[TEXT] = "../Q9-FRONTEND-C/q9-qcpp/build/qcpp";
+static char qcir[TEXT] = "../Q9-FRONTEND-C/q9-qcir/build/qcir";
 static int dry_run;
 static int print_config;
 static int emit_ir;
@@ -52,7 +52,8 @@ static void config_line(char *line)
 static void load_config(void)
 {
 	FILE *f; char line[256];
-	f = fopen("Q9-QCC/config/qcc.conf", "r");
+	f = fopen("config/qcc.conf", "r");
+	if (f == NULL) f = fopen("Q9-QCC/config/qcc.conf", "r");
 	if (f == NULL) f = fopen("/dd/SYS/qcc.conf", "r");
 	if (f == NULL) return;
 	while (fgets(line, sizeof(line), f) != NULL) config_line(line);
@@ -100,13 +101,12 @@ int main(int argc, char **argv)
 	{
 		char command[512];
 		const char *input = argv[argc - 1];
-		if (system("mkdir -p build/qcc") != 0) return 4;
-		sprintf(command, "%s -I Q9-FRONTEND-C/q9-qcpp/include %s build/qcc/input.i", qcpp, input);
+		if (system("mkdir -p build/qcc-tmp") != 0) return 4;
+		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s build/qcc-tmp/input.i", qcpp, input);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
-		if (emit_ir) sprintf(command, "%s @build/qcc/input.i", qcir);
-		else sprintf(command, "%s @build/qcc/input.i > build/qcc/output.ir", qcir);
+		sprintf(command, "%s @build/qcc-tmp/input.i > build/qcc-tmp/output.ir", qcir);
 		if (system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
-		if (emit_ir) printf("build/qcc/input.i\n"); else printf("build/qcc/output.ir\n");
+		if (emit_ir) printf("build/qcc-tmp/output.ir\n"); else printf("build/qcc-tmp/output.ir\n");
 	}
 	return 0;
 }
