@@ -963,6 +963,10 @@ static int macIsParam(int m, int text)
 static int expandOne(void);
 
 /* Aus rohen Tokens eine Zeichenkette bauen (# -Operator, C89 3.8.3.2). */
+/* Function: stringizeArg
+ * Converts a macro argument to a C string token.
+ * Parameters: at Argument start; n Argument length.
+ * Returns: Interned string-token text index. */
 static int stringizeArg(int at, int n)
 {
 	int i;
@@ -997,6 +1001,10 @@ static int stringizeArg(int at, int n)
 /* ##-Verkettung: die Schreibweisen zweier Tokens aneinanderhaengen und das
    Ergebnis neu lexen. Ergibt das kein EINZELNES Token, ist das in C89 3.8.3.3
    undefiniert -- hier ein Abbruch statt einer stillen Naeherung. */
+/* Function: pasteText
+ * Concatenates two token texts for the ## operator.
+ * Parameters: aText, bText Interned token text indices.
+ * Returns: Interned concatenated token text index. */
 static int pasteText(int aText, int bText)
 {
 	int n;
@@ -1075,6 +1083,10 @@ static void setupPuncts(void)
 	punctList[punctN++] = "##";
 }
 
+/* Function: pasteCheck
+ * Validates the result of token pasting.
+ * Parameters: text Interned pasted token text index.
+ * Returns: Non-zero when the result is a valid token. */
 static int pasteCheck(int text)
 {
 	const char *s;
@@ -1212,6 +1224,10 @@ static int preLen;
 static int expDepth;
 #define EXP_DEPTH_MAX 200
 
+/* Function: prescanArg
+ * Expands macros in one function-macro argument before substitution.
+ * Parameters: at, n Argument range; line, file Source location.
+ * Returns: Number of generated tokens. */
 static int prescanArg(int at, int n, int line, int file)
 {
 	int i;
@@ -1249,6 +1265,11 @@ static int prescanArg(int at, int n, int line, int file)
 /* Makro m mit bereits eingesammelten Argumenten (oder ohne) einsetzen: den
    Rumpf durchgehen, Parameter ersetzen, # und ## anwenden, Ergebnis auf den
    Pushback legen. */
+/* Function: substitute
+ * Substitutes collected arguments into a macro replacement list.
+ * Parameters: m Macro index; nargs Argument count; line, file Source location;
+ *             leadWs Leading-whitespace flag.
+ * Returns: Nothing; writes replacement tokens to the pushback buffer. */
 static void substitute(int m, int nargs, int line, int file, int leadWs)
 {
 	int i;
@@ -2373,6 +2394,10 @@ static void defineMacro(int name, int isFunc, int nPar, int parAt, int bodyAt,
 	macKind[m] = kind;
 }
 
+/* Function: doDefine
+ * Parses and stores one #define directive.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void doDefine(void)
 {
 	int name;
@@ -2450,6 +2475,10 @@ static void doDefine(void)
 	defineMacro(name, isFunc, nPar, parAt, bodyAt, bodyN, 0);
 }
 
+/* Function: doUndef
+ * Removes one macro definition from the active macro table.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void doUndef(void)
 {
 	int m;
@@ -2650,6 +2679,10 @@ static int findInclude(const char *name, int isAngle, int fromDir)
 	return -1;
 }
 
+/* Function: doInclude
+ * Resolves and loads one #include directive.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void doInclude(void)
 {
 	int isAngle;
@@ -2735,6 +2768,10 @@ static int popInclude(void)
 	return 1;
 }
 
+/* Function: doErrorDir
+ * Handles #error and #warning directives.
+ * Parameters: isWarn Selects warning instead of fatal error.
+ * Returns: Nothing. */
 static void doErrorDir(int isWarn)
 {
 	int i;
@@ -2763,6 +2800,10 @@ static void doErrorDir(int isWarn)
 	fatal("#error ", lxTmp);
 }
 
+/* Function: doPragma
+ * Handles supported #pragma directives.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void doPragma(void)
 {
 	int i;
@@ -2798,6 +2839,10 @@ static void doPragma(void)
 	agTop = lineAt;
 }
 
+/* Function: doLineDir
+ * Handles a #line directive and updates source location state.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void doLineDir(void)
 {
 	int newLine;
@@ -2851,6 +2896,10 @@ static void emitAsmMarker(const char *what)
 /* #asm ... #endasm: der Rumpf wird wie gewoehnlicher Text behandelt (Makros
    werden expandiert, Kommentare fallen weg) -- so verhaelt sich xcc -pp,
    gemessen. Direktiven im Rumpf gibt es nicht, ausser #endasm. */
+/* Function: doAsm
+ * Copies an OS-9 assembler block to the preprocessed output.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void doAsm(void)
 {
 	int save;
@@ -2895,6 +2944,10 @@ static void doAsm(void)
 	}
 }
 
+/* Function: directive
+ * Dispatches the current preprocessor directive.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void directive(void)
 {
 	int name;
