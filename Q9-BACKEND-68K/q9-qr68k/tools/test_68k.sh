@@ -2,7 +2,7 @@
 # Target run: qr68 assembles on a real 68030 and must produce the same
 # bytes as the host build.
 #
-#   1  tools/build_os9.sh  baut das Modul (qr68 assembliert sich selbst)
+#   1  tools/build_os9.sh  builds the module (qr68 assembles itself)
 #   2  Populate image      module to /CMDS, tests/insn.a to /dd
 #   3  Emulator            q9_qr68 -v /dd/insn.a /dd/insn.r
 #   4  Comparison          /dd/insn.r == host run of the same source
