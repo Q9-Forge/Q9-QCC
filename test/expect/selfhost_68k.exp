@@ -54,7 +54,7 @@ if {!$li} { send_log "\nSELFHOST: LOGIN FAILED\n"; exit 1 }
 
 # Erst ein kleiner Quelltext. Scheitert der schon, ist das Modul defekt und
 # der grosse Lauf sagt nichts aus.
-send -s "/dd/CMDS/$modul --tmpdir qcc @$probe\r"
+send -s "/dd/CMDS/$modul --tmpdir qcc $probe\r"
 expect {
     -re {FUNC}           { send_log "\nSELFHOST: SMOKE OK\n" }
     -re {PMMU}           { send_log "\nSELFHOST: SMOKE PMMU\n"; exit 1 }
@@ -68,7 +68,7 @@ expect -re $prompt
 # unnoetig langsam. Fehlermeldungen bleiben auf dem Terminal und landen so im
 # Log, wo der aufrufende Pruefstand sie zaehlt.
 send_log "\nSELFHOST: LAUF BEGINNT\n"
-send -s "/dd/CMDS/$modul --tmpdir qcc @$quelle >$aus\r"
+send -s "/dd/CMDS/$modul --tmpdir qcc $quelle >$aus\r"
 # WICHTIG: nach diesem Block NICHT noch einmal auf den Prompt warten -- der
 # Prompt ist hier schon verbraucht, ein zweites "expect prompt" haengt bis zum
 # Timeout.
