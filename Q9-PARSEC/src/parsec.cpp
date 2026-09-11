@@ -1556,14 +1556,10 @@ void factor() {
 void patchLocalTrue(int fromRow, int toRowExclusive, int target) {
 	int i;
 	for (i = fromRow; i < toRowExclusive; i++) {
-		// STAT_TRUE: the last alternative of nested "a|b" was short-circuited
-		// dorthin gesetzt. "Dangling" (>= toRowExclusive): die letzte (oder einzige)
-		// Alternative eines nested Terms wurde von term()'s eigenem Backpatching noch
-		// auf "naechste Zeile" gesetzt, die es zu diesem Zeitpunkt noch gar nicht gibt --
-		// genau der Fall, den sonst nur rule() am Ende der GANZEN Regel aufloest (dort zu
-		// STAT_TRUE). Innerhalb von (..)/{..}/[..] muss das HIER, auf unseren eigenen
-		// Kontext bezogen, aufgeloest werden statt dem aeusseren rule()-Cleanup ueberlassen
-		// zu werden -- sonst "gewinnt" hinterher das falsche (zu globale) Cleanup.
+		// STAT_TRUE means a nested alternative was short-circuited to this point.
+		// A dangling target (>= toRowExclusive) is a nested term's next-row
+		// placeholder, which does not exist yet. Resolve it here in the local
+		// group context instead of leaving it to the outer rule cleanup.
 		if (lexTab[i].trueAction == STAT_TRUE || lexTab[i].trueAction >= toRowExclusive) {
 			lexTab[i].trueAction = target;
 		}
@@ -1575,10 +1571,10 @@ void patchLocalFalse(int fromRow, int toRowExclusive, int target) {
 	for (i = fromRow; i < toRowExclusive; i++) {
 		if (lexTab[i].falseAction == STAT_FALSE) {
 			// If a failure after a skippable group is redirected to a REAL row,
-			// umgebogen (naechste Alternative bzw. Fortsetzung nach [..]/{..}), kann die
-			// Maschine dort mit bereits konsumierter Eingabe weitermachen, falls die
-			// Gruppe zur Laufzeit doch etwas konsumiert hatte -- die flache Tabelle hat
-			// keinen Ruecksetzpunkt dafuer. Bekannte Grenze, wird klar gewarnt.
+			// redirected (next alternative or continuation after [..]/{..}), the
+			// machine may continue with consumed input if the group matched at
+			// runtime. The flat table has no reset point for this known limitation;
+			// issue a clear warning.
 			if (target >= 0 && lexTab[i].ambigF && !ambigFalseWarned) {
 				printf("WARNUNG: Regel '%s': Pflicht-Faktor nach ueberspringbarer Gruppe ([..]/{..})\n"
 					"         vor einer Alternative/umschliessenden Gruppe: konsumiert die Gruppe\n"
