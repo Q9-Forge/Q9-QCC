@@ -3425,7 +3425,7 @@ static void doBranch(int cond, int size)
 	   Abstand 0 -- das Ziel ist die naechste Anweisung -- laesst r68 den
 	   Befehl GANZ WEG. Das ist bei bra/Bcc gleichbedeutend, bei bsr aber
 	   nicht (die Ruecksprungadresse fehlt dann); dort bricht qr68 lieber
-	   ab, statt eine Bedeutungsaenderung nachzubauen. */
+	   instead of reproducing a semantic change. */
 	if (optBranch) {
 		if (exOpen && ext < 0) {
 			/* First pass, target still unknown: assume the SHORT form.
@@ -3435,7 +3435,7 @@ static void doBranch(int cond, int size)
 			   lang, die knapp hineinpassen, sobald sie selbst
 			   kuerzer werden (an r68 gemessen: zwei bsr/bcc mit
 			   Abstand 126 in sc8x30.a). Weil Spruenge danach nur
-			   noch wachsen, kommt die Schleife zur Ruhe. */
+			   still grow, the iteration reaches a fixed point. */
 			emitWord(0x6000 | (cond << 8));
 			return;
 		}
@@ -3459,7 +3459,7 @@ static void doBranch(int cond, int size)
 				   Zustand, in dem r68 die Datei sieht); steht
 				   der Abstand am Ende wirklich auf 0, bricht
 				   qr68 ab, statt eine falsche Kodierung
-				   ($6000 waere die WORTform) auszugeben. */
+				   (where $6000 would be the WORD form). */
 				if (emitting)
 					fatal("Sprung auf die unmittelbar folgende Anweisung -- r68 laesst den Befehl mit -b weg, qr68 kann das nicht stabil nachbilden: ",
 					      lnArg);
@@ -3784,7 +3784,7 @@ static void doInstruction(void)
 	}
 	/* System call: r68 implements it directly (not as a macro from an
 	   Include-Datei). Gemessen: "os9 F$Link" wird $4E40 (trap #0) und ein
-	   WORT mit dem Aufrufcode. */
+	   WORD containing the call code. */
 	if (baseIs(base, "os9")) {
 		int code;
 
@@ -3793,7 +3793,7 @@ static void doInstruction(void)
 		/* The call code may be an external name; names
 		   stehen im SDK in einer Bibliothek, nicht in einer
 		   Definitionsdatei. r68 legt dann eine Wortreferenz an
-		   ($0030, gemessen an "os9 F$IRQ"). */
+		   ($0030, measured with "os9 F$IRQ"). */
 		subStr(opTxt0, 0, strLen(opTxt0));
 		code = evalExpr(exBuf);
 		emitWord(0x4E40);
@@ -4449,7 +4449,7 @@ static void doInstruction(void)
 		fatal("nur dN,dM oder -(aN),-(aM): ", lnArg);
 	}
 
-	/* Gemessen: $4800 | ea, immer ein Byte ("nbcd 8(a1)" -> $4829 $0008). */
+	/* Measured: $4800 | ea, always one byte ("nbcd 8(a1)" -> $4829 $0008). */
 	if (baseIs(base, "nbcd")) {
 		if (size != 0 && size != 'b')
 			fatal("nbcd rechnet immer mit einem Byte: ", lnOp);
@@ -4493,7 +4493,7 @@ static void doInstruction(void)
 	   das steht VOR den Erweiterungswoertern des Operanden
 	   ("chk2.w 8(a1),d3" -> $02e9 $3800 $0008). Im Erweiterungswort:
 	   Bit 15 = Adressregister, Bit 14..12 dessen Nummer, Bit 11 = chk2
-	   (ohne das Bit ist es cmp2). Ohne Groessenbuchstaben das Wort. */
+	   (without the bit it is cmp2). Without a suffix, use word size. */
 	if (baseIs(base, "chk2") || baseIs(base, "cmp2")) {
 		int ext;
 
@@ -4520,7 +4520,7 @@ static void doInstruction(void)
 	/* --- BCD pack and unpack (68020) --- */
 	/* Same paired form as abcd, followed by the adjustment as a full word:
 	   "pack d2,d3,#$1234" -> $8742 $1234, "unpk -(a2),-(a3),#$3030" ->
-	   $878a $3030. Grundworte pack $8140, unpk $8180. */
+	   $878a $3030. Base words are pack $8140 and unpk $8180. */
 	if (baseIs(base, "pack") || baseIs(base, "unpk")) {
 		int op;
 		int adj;
@@ -4545,12 +4545,12 @@ static void doInstruction(void)
 	}
 
 	/* --- compare and swap (68020) --- */
-	/* Gemessen: "cas.w d0,d1,(a2)" -> $0cd2 $0040. Die Breite steht in
+	/* Measured: "cas.w d0,d1,(a2)" -> $0cd2 $0040. Size is in
 	   Bit 10..9, und zwar Byte 1, Wort 2, Langwort 3 -- eins mehr als das
 	   uebliche Groessenfeld. Im Erweiterungswort Du in Bit 8..6, Dc unten;
 	   es steht VOR den Erweiterungswoertern des Operanden
 	   ("cas.w d0,d1,8(a2)" -> $0cea $0040 $0008). Ohne Groessenbuchstaben
-	   das Wort. */
+	   the word. */
 	if (baseIs(base, "cas")) {
 		int dc;
 		int du;
@@ -4577,9 +4577,9 @@ static void doInstruction(void)
 	}
 
 	/* --- breakpoint, return-and-discard, module call (68020) --- */
-	/* Gemessen: "bkpt #7" -> $484f, "rtd #-4" -> $4e74 $fffc,
+	/* Measured: "bkpt #7" -> $484f, "rtd #-4" -> $4e74 $fffc,
 	   "callm #255,8(a1)" -> $06e9 $00ff $0008 (die Argumentzahl steht VOR
-	   der Adresse), "rtm d0" -> $06c0 und "rtm a3" -> $06cb. */
+	   the address), "rtm d0" -> $06c0 and "rtm a3" -> $06cb. */
 	if (baseIs(base, "bkpt")) {
 		needNoSize(size);
 		needOps(1);
@@ -4635,7 +4635,7 @@ static void doInstruction(void)
 	   $3010 / $3410 / $3810 / $3c10.
 	   ptest: Bit 15..13 = 100, Bit 12..10 = Ebene, Bit 9 = lesen,
 	   Bit 8 = ein Adressregister ist genannt, Bit 7..5 dessen Nummer,
-	   Bit 4..0 der Funktionscode ("ptestr #0,(a1),#3,a2" -> $f011 $8f50). */
+	   bits 4..0 are the function code ("ptestr #0,(a1),#3,a2" -> $f011 $8f50). */
 	if (baseIs(base, "pflusha")) {
 		needNoSize(size);
 		dropOps();
@@ -4699,9 +4699,9 @@ static void doInstruction(void)
 		if (baseIs(base, "ptestr"))
 			ext = ext | 0x0200;
 		if (oN == 4) {
-			/* Gemessen: "ptestr #0,(a1),#3,a2" -> $f011 $8f50 --
+			/* Measured: "ptestr #0,(a1),#3,a2" -> $f011 $8f50 --
 			   Bit 8 zeigt an, dass ein Adressregister genannt ist,
-			   Bit 7..5 tragen seine Nummer. */
+	   bits 7..5 contain its number. */
 			parseOperand(opTxt3, 0);
 			an = needAn(0);
 			ext = ext | 0x0100 | (an << 5);
@@ -4710,7 +4710,7 @@ static void doInstruction(void)
 		emitWord(ext);
 		return;
 	}
-	/* Gemessen: "psave -(a7)" -> $f127, "prestore (a7)+" -> $f15f. */
+	/* Measured: "psave -(a7)" -> $f127, "prestore (a7)+" -> $f15f. */
 	if (baseIs(base, "psave") || baseIs(base, "prestore")) {
 		int op;
 
@@ -4724,7 +4724,7 @@ static void doInstruction(void)
 		emitEa(0, 4);
 		return;
 	}
-	/* Gemessen: "lpstop #$2700" -> $f800 $01c0 $2700 (CPU32/68060). */
+	/* Measured: "lpstop #$2700" -> $f800 $01c0 $2700 (CPU32/68060). */
 	if (baseIs(base, "lpstop")) {
 		needNoSize(size);
 		needOps(1);
@@ -4916,10 +4916,10 @@ static void doInstruction(void)
 	}
 
 	/* --- transfer through a peripheral register (movep) --- */
-	/* Gemessen: "movep.w d1,(a0)" -> $0388 $0000, "movep.l (a0),d0" ->
+	/* Measured: "movep.w d1,(a0)" -> $0388 $0000, "movep.l (a0),d0" ->
 	   $0148 $0000. Die Betriebsart in Bit 8..6: 4 = Wort aus dem
 	   Speicher, 5 = Langwort aus dem Speicher, 6 = Wort dorthin,
-	   7 = Langwort dorthin. Ein fehlendes Displacement ist 0. */
+	   7 = long word to memory. A missing displacement is 0. */
 	if (baseIs(base, "movep")) {
 		int opm;
 		int dn;
