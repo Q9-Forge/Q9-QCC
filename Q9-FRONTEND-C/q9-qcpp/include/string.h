@@ -1,4 +1,4 @@
-/* string.h -- Q9-Werkzeugkette, bewusst minimal (s. stddef.h).
+/* string.h -- minimal Q9 string and memory interface. Edition: 2026-09-11.
  *
  * Nur die drei Funktionen, die der erzeugte Parser wirklich ruft
  * (nachgezaehlt in Data/qcc_p.c: strncmp 274-mal, strlen 11-mal, strchr

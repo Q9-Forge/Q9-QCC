@@ -1,4 +1,4 @@
-/* ctype.h -- Q9-Werkzeugkette, bewusst minimal (s. stddef.h/string.h).
+/* ctype.h -- minimal Q9 character-classification interface. Edition: 2026-09-11.
  *
  * Eigene Fassung, KEINE Uebernahme von Microwares DEFS/ctype.h (das steht
  * unter Microware-Copyright und ist nicht frei weitergebbar) -- nur die
