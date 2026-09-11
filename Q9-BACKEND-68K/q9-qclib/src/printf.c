@@ -1,3 +1,13 @@
+/*
+ * q9-qclib formatted output
+ *
+ * Purpose:
+ *   Implements printf-family formatting for the Q9 68k runtime without
+ *   relying on compiler varargs support.
+ *
+ * Edition history:
+ *   2026-09-11  Introduced the English source-header format.
+ */
 /* printf, fprintf und sprintf fuer qclib -- der C-Rumpf.
  *
  * Der Adapter in printf.a hat die Argumente vorher zu EINEM
@@ -44,6 +54,10 @@ int qp_len;                     /* belegt */
 
 /* Den Sammelpuffer ausgeben und leeren. Bei der Zeichenkettensenke gibt
    es nichts zu leeren -- dort schreibt qp_putc direkt ans Ziel. */
+/* Function: qp_flush
+ * Flushes the active output sink.
+ * Parameters: None.
+ * Returns: Nothing. */
 void qp_flush(void)
 {
 	int n;
@@ -65,6 +79,10 @@ void qp_flush(void)
 	qp_len = 0;
 }
 
+/* Function: qp_putc
+ * Sends one character to the active output sink.
+ * Parameters: c Character value.
+ * Returns: Nothing. */
 void qp_putc(int c)
 {
 	qp_cnt = qp_cnt + 1;
@@ -81,6 +99,10 @@ void qp_putc(int c)
 
 /* Zeichenkette ausgeben, hoechstens prec Zeichen; prec < 0 = ohne Grenze.
    Damit deckt eine Schleife %s und %.*s ab. */
+/* Function: qp_putn
+ * Emits a bounded string segment.
+ * Parameters: s String; prec Maximum character count.
+ * Returns: Nothing. */
 void qp_putn(char *s, int prec)
 {
 	int i;
@@ -100,6 +122,10 @@ void qp_putn(char *s, int prec)
 
 /* Vorzeichenlos zur Basis b. Die Ziffern entstehen rueckwaerts, deshalb
    erst in ein kleines Feld und dann verkehrt herum heraus. */
+/* Function: qp_num
+ * Emits an unsigned integer in the requested base.
+ * Parameters: v Value; b Base.
+ * Returns: Nothing. */
 void qp_num(unsigned int v, int b)
 {
 	char d[12];
@@ -129,6 +155,10 @@ void qp_num(unsigned int v, int b)
 /* Der kleinste int hat kein positives Gegenstueck: -v ergibt dasselbe
    Bitmuster. Das geht hier trotzdem richtig aus, weil qp_num sein
    Argument VORZEICHENLOS liest -- aus $80000000 wird 2147483648. */
+/* Function: qp_int
+ * Emits a signed decimal integer.
+ * Parameters: v Value.
+ * Returns: Nothing. */
 void qp_int(int v)
 {
 	if (v < 0) {
@@ -155,6 +185,10 @@ void qp_int(int v)
  * Mindestziffernzahl) faellt bewusst in diesen Zweig, statt
  * stillschweigend zu verschwinden.
  */
+/* Function: qp_run
+ * Interprets one format string and its argument frame.
+ * Parameters: args Runtime arguments; fi Format-string index.
+ * Returns: Number of emitted characters, or a negative format error. */
 int qp_run(int *args, int fi)
 {
 	char *f;
@@ -258,6 +292,10 @@ int qp_run(int *args, int fi)
  * Ziel also nicht. Eine gemeinsame Fassung muesste in Assembler stehen
  * und waere laenger als die Wiederholung.
  */
+/* Function: qp_pathof
+ * Resolves a FILE handle to an OS-9 path number.
+ * Parameters: fp FILE handle value.
+ * Returns: OS-9 path number. */
 int qp_pathof(int fp)
 {
 	int *slot;
@@ -270,6 +308,10 @@ int qp_pathof(int fp)
 	return *slot;
 }
 
+/* Function: printf_a
+ * Formats output to the standard output stream.
+ * Parameters: args Runtime argument frame.
+ * Returns: Formatted character count. */
 int printf_a(int *args)
 {
 	qp_sink = 0;
@@ -282,6 +324,10 @@ int printf_a(int *args)
    Rueckgabewert. Ohne diese Zeile haette fprintf die Zeichenzahl
    gemeldet, waehrend qp_flush die Bytes verwirft -- ein stiller
    Erfolgsbericht fuer eine Ausgabe, die nie stattfand. */
+/* Function: fprintf_a
+ * Formats output to a selected FILE stream.
+ * Parameters: args Runtime argument frame.
+ * Returns: Formatted character count. */
 int fprintf_a(int *args)
 {
 	int p;
@@ -296,6 +342,10 @@ int fprintf_a(int *args)
 
 /* sprintf haengt die abschliessende Null an; sie zaehlt nicht zum
    Rueckgabewert, so steht es in C89. */
+/* Function: sprintf_a
+ * Formats output into a caller-provided character buffer.
+ * Parameters: args Runtime argument frame.
+ * Returns: Formatted character count. */
 int sprintf_a(int *args)
 {
 	int n;
