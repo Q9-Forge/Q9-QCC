@@ -1469,7 +1469,7 @@ static void emitIR(FILE* out) {
 		   functions. External calls use wrappers that restore these ABI
 		   temporary registers. */
 		/* BIG-ENDIAN FIX FOR char PARAMETERS (2026-08-10, found live in the
-		   selbstgehosteten EBNF-Generator gefunden). Der Aufrufer legt JEDES
+		   self-hosted EBNF generator). The caller places EVERY
 		   Argument als volles 32-Bit-Langwort ab ("move.l #wert,-(a7)", siehe
 		   PUSH/emitCall) -- der Bytewert eines char-Parameters steht damit im
 		   NIEDERWERTIGSTEN Byte des Slots, auf dem Big-Endian-68k also bei
