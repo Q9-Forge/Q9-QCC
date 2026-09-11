@@ -1171,23 +1171,21 @@ static void emit(void)
 		put8(0);                   /* Reserve  */
 	put32(0);                      /* M$HdExt  */
 	put16(0);                      /* M$HdExtSz */
-	put16(0);                      /* M$Parity, spaeter */
+	put16(0);                      /* M$Parity, patched later. */
 	if (isDrvr) {
-		put32(0);              /* _mexec, spaeter */
-		put32(0);              /* _mexcpt, ggf. spaeter */
+		put32(0);              /* _mexec, patched later. */
+		put32(0);              /* _mexcpt, patched later if present. */
 		put32(totalUninit + totalInit + totalRemote);   /* _mdata */
 	} else if (!isDesc) {
-		put32(0);              /* M$Exec, spaeter  */
-		/* M$Excpt, spaeter. Fehlt der siebte psect-Parameter, traegt
-		   r68 utrap = -1 ein und l68 macht daraus im Modul die 0
-		   (gemessen). Ist er gesetzt, gilt dieselbe Rechnung wie fuer
-		   M$Exec: Codebasis + utrap. An q9_cstart.a nachgemessen --
-		   utrap $180 im ROF, Codebasis $54, M$Excpt $1d4 im Modul. */
+		put32(0);              /* M$Exec, patched later. */
+		/* M$Excpt, patched later. If the seventh psect parameter is absent,
+		   r68 records utrap = -1 and l68 emits zero. Otherwise use the same
+		   calculation as M$Exec: code base + utrap. */
 		put32(0);
 		put32(totalUninit + totalInit + totalRemote);   /* M$Data  */
 		put32(rStk[rofRoot] + optStackAdd);      /* M$Stack */
-		put32(0);                         /* M$IData, spaeter */
-		put32(0);                         /* M$IRefs, spaeter */
+		put32(0);                         /* M$IData, patched later. */
+		put32(0);                         /* M$IRefs, patched later. */
 	}
 
 	/* A DEVICE descriptor (type 15) has no mod_exec extension:
