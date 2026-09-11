@@ -251,8 +251,8 @@ static int largeDataMode = 0;
    32-KB-Grenze der PC-relativen Adressierung noch die 64-KB-Grenze eines
    nicht-remoten vsects. Siehe docs/FORTSCHRITT.md. */
 static int remoteDataMode = 0;
-/* Experimenteller Fernaufrufpfad; ohne -trampolines bleibt der getestete
-   Tabellenpfad unveraendert. */
+/* Experimental long-call path; without -trampolines the tested table path
+   remains unchanged. */
 static int trampolineMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 /* -unit=<name> groups artificially split IR parts that originated from one
@@ -291,7 +291,7 @@ static char* mangledName(char* buf, const char* prefix, const char* name, int is
 	else sprintf(buf, "%s%s", prefix, name);
 	return buf;
 }
-/* vasm kennt "even" (Ausrichtung auf gerade Adresse); der echte Microware-r68-
+/* vasm supports "even" (alignment to an even address); the real Microware r68
    Assembler kennt "even" NICHT (empirisch verifiziert: "bad mnemonic"), wohl
    aber "align 4" (Longword-Ausrichtung -- strenger als "even", aber fuer
    dc.l-Daten das eigentlich Gemeinte und ebenfalls empirisch verifiziert). */
@@ -364,7 +364,7 @@ static int globalAllZero(Global* g) {
 	if (g->isArray) return !g->hasGinit;
 	return g->initialValue == 0;
 }
-/* Liegt dieses Globale im vsect remote? EINE Stelle beantwortet das, weil die
+/* Does this global reside in the remote vsect? Keep the decision in one place
    Antwort an mehreren Emissionsstellen gebraucht wird (Datenausgabe, Tabelle,
    acht Zugriffsformen) -- eine Regel ueber Adressierung gilt nie nur an einer. */
 static int globalRemote(int gidx) {
@@ -457,7 +457,7 @@ static void emitTableBases(FILE* out, const char* anchor, const char* psect) {
 	fprintf(out, "\tadda.l\t#(tc_gadata__%s-%s),a3\n", psect, anchor);
 }
 
-/* Emittiert einen Aufruf zu einem SCHON MANGLED Assembler-Namen (fuer QCC-
+/* Emits a call to an ALREADY MANGLED assembler name (for QCC-
    Funktionen, tableOffset = funcIndex*4) ODER einem rohen Laufzeit-Helfer-
    Namen (tableOffset = helperTableOffset(...)) -- small: unveraendert "bsr
    asmName"; large: Tabellen-Indirektion ueber a4/a2, siehe Kommentar oben.
@@ -518,7 +518,7 @@ static int isNumWord(const char* w) {
 	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
 }
 
-/* Byte-Groesse eines Typtags fuer LOAD/STORE-Breite und Zeiger-/Index-
+/* Byte size of a type tag for LOAD/STORE width and pointer/index-
    Skalierung (2026-09-09, ersetzt das fruehere isByteWord(): mit short als
    dritter Groesse reicht ein bool nicht mehr). 'h' -> 2, alles andere wie
    bisher (Zeiger 'p' und alle 32-Bit-Skalare 'i'/'u' -> 4). */
@@ -527,10 +527,10 @@ static int tagSize(const char* w) {
 	if (strcmp(w, "h") == 0) return 2;
 	return 4;
 }
-/* Schiebeweite fuer die lsl.l/asr.l-Skalierung bei Zeigerarithmetik/Index:
+/* Shift amount for lsl.l/asr.l scaling in pointer arithmetic/indexing:
    Byte 1x (kein Schieben), Word 2x, Long 4x. */
 static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : 2; }
-/* 68k-Groessensuffix fuer move/dc/ds. */
+/* 68k size suffix for move/dc/ds. */
 static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
 
 static int number(const char* text, int line) {
