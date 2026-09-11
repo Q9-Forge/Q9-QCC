@@ -222,15 +222,15 @@ static const char* phEmitFused(const char* labelStart, int labelLen,
 }
 
 /* Push unmittelbar gefolgt vom eigenen Pop, s. Kommentar am Dateianfang.
- * Pop wird ZUERST geprueft (lesend, folgenlos bei Fehlschlag) -- erst wenn
- * er passt, lohnt sich die genauere Pruefung des Push davor. */
+ * Check the pop FIRST (read-only and harmless on failure); only after it
+ * matches is it worth checking the preceding push in detail. */
 static int phFoldPushPop(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* NICHT "const char *a, *b, *c;" -- mehrere Zeiger-Deklaratoren in
-		   EINER Anweisung sind ein stiller QCC-Abbruch (FAIL, 0 Meldungen,
-		   08.09.2026 gefunden; unabhaengig von "const", "char *a, *b;"
-		   bricht ebenso), noch nicht behoben. Je ein eigener Deklarator. */
+		/* Do NOT use "const char *a, *b, *c;": multiple pointer declarators in
+		   one statement silently abort QCC (FAIL, no diagnostic; found 2026-09-08).
+		   The restriction is independent of const and remains unresolved. Use one
+		   declarator per statement. */
 		const char* labelStart;
 		const char* srcStart;
 		const char* dst;
@@ -242,8 +242,8 @@ static int phFoldPushPop(void) {
 		if (!phMatchPop(phLines[j], &dst)) continue;
 		if (!phMatchPush(phLines[i], &labelStart, &labelLen, &srcStart, &srcLen)) continue;
 		if (labelLen == 0 && phSameText(srcStart, srcLen, dst)) {
-			/* SRC==DST: Push und Pop heben sich vollstaendig auf, s.
-			   Verfeinerung oben -- kein Ersatzbau noetig. */
+			/* SRC==DST: push and pop cancel completely; see the refinement above.
+			   No replacement line is needed. */
 			phRemoved[i] = 1;
 			phRemoved[j] = 1;
 			folded++;
@@ -256,10 +256,9 @@ static int phFoldPushPop(void) {
 	return folded;
 }
 
-/* Erkennt "move.l SRC,Dn" (Dn eines von d0-d7 -- NIE a0-a6, s. Kommentar
- * am Dateianfang zu Muster zwei/drei), optional mit Label-Vorspann.
- * Liefert SOWOHL SRC (fuer Muster drei) ALS AUCH nur das Zielregister
- * (fuer Muster zwei) -- eine Funktion statt zwei fast identischer. */
+/* Recognizes "move.l SRC,Dn" (Dn is d0-d7, NEVER a0-a6; see the pattern notes
+ * above), optionally with a label prefix. Returns both SRC (for pattern three)
+ * and the destination register (for pattern two) in one shared matcher. */
 static int phMatchMoveIntoDataReg(const char* line, const char** labelStart, int* labelLen,
                                    const char** srcStart, int* srcLen,
                                    const char** regStart, int* regLen) {
