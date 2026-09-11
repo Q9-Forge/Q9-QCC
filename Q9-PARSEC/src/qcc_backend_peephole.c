@@ -293,12 +293,12 @@ static int phMatchTst(const char* line, const char* regStart, int regLen) {
 	return strncmp(line + 7, regStart, regLen) == 0;
 }
 
-/* Kein Ersatzbau noetig -- die Move-Zeile bleibt UNVERAENDERT stehen, nur
- * das ueberfluessige TST verschwindet. */
+/* No replacement is needed: the move remains unchanged and only the redundant
+ * TST is removed. */
 static int phFoldMoveTst(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		/* One declarator per statement; see phFoldPushPop above. */
 		const char* labelStart;
 		const char* srcStart;
 		const char* regStart;
@@ -314,7 +314,7 @@ static int phFoldMoveTst(void) {
 	return folded;
 }
 
-/* DRITTES MUSTER, s. Kommentar am Dateianfang: "move.l Dn,DST" -- dasselbe
+/* THIRD PATTERN, see the file header: "move.l Dn,DST" -- the same
  * Datenregister, das die vorherige Zeile (phMatchMoveIntoDataReg) gerade
  * gefuellt hat. KEIN Label davor zugelassen (koennte Sprungziel sein,
  * dieselbe Vorsicht wie bei phMatchPop). DST reicht bis zum Zeilenende --
@@ -360,7 +360,7 @@ static int phFoldLoadThenMove(void) {
 	return folded;
 }
 
-/* VIERTES MUSTER, s. Kommentar am Dateianfang: "move.l SRC,-(a7)" OHNE
+/* FOURTH PATTERN, see the file header: "move.l SRC,-(a7)" WITHOUT
  * Klammer in SRC (kein Seiteneffekt) und OHNE Label (koennte Sprungziel
  * sein). Reine Existenzprobe -- die Zeile wird ersatzlos gestrichen, kein
  * SRC-Ruecktransport noetig. */
