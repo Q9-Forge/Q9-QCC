@@ -587,6 +587,10 @@ static void rdTake(void)
 	lxLine = pkLine;
 }
 
+/* Function: lexAppend
+ * Appends one byte to the temporary token buffer.
+ * Parameters: n Current length; c Byte to append.
+ * Returns: Updated token length. */
 static int lexAppend(int n, int c)
 {
 	if (n + 1 >= LXTMP_MAX)
@@ -879,6 +883,10 @@ static void lexNext(void)
 }
 
 /* ============================================================= Pushback === */
+/* Function: pbPush
+ * Adds one token to the preprocessing pushback buffer.
+ * Parameters: kind, text, line, file, ws Token fields.
+ * Returns: Nothing. */
 static void pbPush(int kind, int text, int line, int file, int ws)
 {
 	if (pbN >= PB_MAX)
@@ -891,11 +899,19 @@ static void pbPush(int kind, int text, int line, int file, int ws)
 	pbN++;
 }
 
+/* Function: pbPushCur
+ * Saves the current token in the pushback buffer.
+ * Parameters: None.
+ * Returns: Nothing. */
 static void pbPushCur(void)
 {
 	pbPush(tkKind, tkText, tkLine, tkFile, tkWs);
 }
 
+/* Function: nextRaw
+ * Reads the next token without macro expansion.
+ * Parameters: None.
+ * Returns: Nothing; updates the current token. */
 static void nextRaw(void)
 {
 	if (pbN > 0) {
@@ -913,6 +929,10 @@ static void nextRaw(void)
 }
 
 /* ======================================================== Makrotabelle === */
+/* Function: macFind
+ * Looks up a macro by its interned name.
+ * Parameters: name Interned macro name.
+ * Returns: Macro index, or -1 when not found. */
 static int macFind(int name)
 {
 	int i;
@@ -924,6 +944,10 @@ static int macFind(int name)
 	return -1;
 }
 
+/* Function: macIsParam
+ * Checks whether text names a parameter of a function-like macro.
+ * Parameters: m Macro index; text Interned token text.
+ * Returns: Parameter index, or -1 when not a parameter. */
 static int macIsParam(int m, int text)
 {
 	int i;
@@ -1090,6 +1114,10 @@ static int pasteCheck(int text)
 static int argAt[64];
 static int argLen[64];
 
+/* Function: collectArgs
+ * Collects arguments for the current function-like macro invocation.
+ * Parameters: m Macro index.
+ * Returns: Non-zero on success, zero on malformed input. */
 static int collectArgs(int m)
 {
 	int depth;
