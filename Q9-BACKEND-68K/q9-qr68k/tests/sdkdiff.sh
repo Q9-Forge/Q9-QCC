@@ -7,7 +7,7 @@
 # and invokes sub-makes with "-nn"). MWMAKEOPTS=-u makes sub-makes rebuild
 # everything; otherwise they remain silent because .r files already exist.
 # This fixes every
-# r68-Kommandozeile mit ihren echten Schaltern, Suchverzeichnissen und
+# r68 command line with its actual flags, search directories, and
 # -a-Definitionen fest.
 #
 # NOTHING is written to the SDK tree: os9make executes nothing,
@@ -45,7 +45,7 @@ WINE_BIN="$HOME/.local/wine-stable/Wine Stable.app/Contents/Resources/wine/bin/w
 export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 
 # Everything below $MWOS is mapped to drive M: under Wine. With a
-# "Z:"-Pfad findet r68 sein Suchverzeichnis NICHT (es faellt dann auf sein
+# a "Z:" path does NOT let r68 find its search directory (it falls back to its
 # eingebautes \mwos\OS9\SRC\DEFS zurueck).
 winpath() {
 	case "$1" in
@@ -53,7 +53,7 @@ winpath() {
 	*)         printf 'Z:%s' "$(printf '%s' "$1" | sed 's#/#\\#g')";;
 	esac
 }
-# Windows-Pfad aus dem Makefile -> Unix, fuer qr68.
+# Windows path from the makefile -> Unix, for qr68.
 unwin() { printf '%s' "$1" | sed 's#\\#/#g'; }
 
 dirs=("$@")
@@ -63,8 +63,8 @@ if [ ${#dirs[@]} -eq 0 ]; then
 		dirs+=("$(dirname "$mf")")
 	done < <(find "$MWOS/OS9" -name makefile -not -path "*/(*" | sort)
 	# Two SDK directories have only "*.make" and no "makefile"
-	# daneben (SRC/SYSMODS/GCLOCK und PORTS/common/RBF/cfide). Ohne sie
-	# fiele die halbe Uhrengruppe unter den Tisch.
+	# beside it (SRC/SYSMODS/GCLOCK and PORTS/common/RBF/cfide). Without them,
+	# half of the clock group would be omitted.
 	while IFS= read -r mk; do
 		md="$(dirname "$mk")"
 		[ -f "$md/makefile" ] && continue
@@ -83,7 +83,7 @@ ok=0; bad=0; skip=0; dup=0; ndirs=0; ncmd=0
 : > "$TMP/geprueft"
 
 for d in "${dirs[@]}"; do
-	# Ohne "makefile" die einzelnen "*.make" fahren.
+	# If there is no "makefile", run the individual "*.make" files.
 	mkfiles=("")
 	if [ ! -f "$d/makefile" ]; then
 		mkfiles=()
@@ -130,13 +130,12 @@ for d in "${dirs[@]}"; do
 		tag="$ncmd-$base"
 		usrc="$(unwin "$src")"
 		if [ ! -f "$d/$usrc" ]; then
-			# "os9make -nn" steigt in die Untermakes ab und druckt
+			# "os9make -nn" descends into sub-makes and prints
 			# deren Kommandos MIT DEM ARBEITSVERZEICHNIS DES KINDES.
-			# Die Pfade zeigen dann von hier aus ins Leere. Da jedes
-			# Verzeichnis mit einem makefile ohnehin einzeln
-			# angefahren wird, ist das keine Luecke, sondern eine
-			# Doppelung -- nachgewiesen, indem die Quelle relativ zu
-			# einem Unterverzeichnis gesucht wird.
+			# The paths are then invalid from here. Since each
+			# directory with a makefile is processed separately,
+			# this is duplication rather than a gap,
+			# as proven by searching for the source relative to a subdirectory.
 			found=""
 			for sub in "$d"/*/; do
 				[ -f "$sub$usrc" ] && { found="$sub"; break; }
@@ -152,7 +151,7 @@ for d in "${dirs[@]}"; do
 			continue
 		fi
 
-		# r68 -- mit den Original-Schaltern, nur die Ausgabe umgebogen.
+		# r68 -- original flags, with only the output redirected.
 		arch -x86_64 "$WINE_BIN" cmd /c \
 			"${dwin%%:*}: && cd ${dwin#*:} && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe ${rargs[*]+${rargs[*]}} $src -o=$(winpath "$TMP")\\$tag.r" \
 			> "$TMP/$tag.r68" 2>&1
@@ -170,10 +169,9 @@ for d in "${dirs[@]}"; do
 		fi
 		if python3 "$TOOLS/rofcmp.py" "$base:$TMP/$tag.r:$TMP/$tag.q" | grep -q "gleich ("; then
 			ok=$((ok + 1))
-			# EIN Aufruf ist Quelle PLUS Schalter -- dieselbe Quelle
-			# mit -m3 und -m4 sind zwei verschiedene Tests. Daneben
-			# wird mitgeschrieben, welche QUELLDATEIEN abgedeckt
-			# sind; die Pfade werden am Ende normalisiert.
+			# ONE invocation is source PLUS flags; the same source
+			# with -m3 and -m4 represents two different tests. Also record
+			# which SOURCE FILES are covered; paths are normalized at the end.
 			printf '%s\n' "$d/$usrc" >> "$TMP/geprueft"
 		else
 			{ echo "  x $base ($d) ABWEICHUNG:"
