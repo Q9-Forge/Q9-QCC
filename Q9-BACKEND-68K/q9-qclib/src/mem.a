@@ -10,6 +10,7 @@
 
          psect   qmem,0,0,0,0,0
 
+* Function: realloc -- allocates or grows an arena-backed memory block.
 realloc:
          move.l  (a7),a1                 * Ruecksprungadresse merken
          move.l  d1,(a7)                 * Argument 2 an ihren Platz

@@ -26,6 +26,7 @@
 
          psect   qprintf,0,0,0,0,0
 
+* Function: printf -- formats output to standard output.
 printf:
          move.l  (a7),a1                 * Ruecksprungadresse merken
          move.l  d1,(a7)                 * arg1 an ihren Platz
@@ -45,6 +46,7 @@ printf:
 * lueckenlose Feld, und welcher Eintrag die Formatzeichenkette ist,
 * entscheidet allein der C-Rumpf (qp_run mit fi = 0 oder 1).
 
+* Function: fprintf -- formats output to a selected stream.
 fprintf:
          move.l  (a7),a1
          move.l  d1,(a7)
@@ -58,6 +60,7 @@ fprintf:
          move.l  a1,-(a7)
          rts
 
+* Function: sprintf -- formats output into a caller buffer.
 sprintf:
          move.l  (a7),a1
          move.l  d1,(a7)
