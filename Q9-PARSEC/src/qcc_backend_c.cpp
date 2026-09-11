@@ -311,13 +311,11 @@ static void emitAlign(FILE* out) {
    keiner Stelle im Backend belegt (a0=Skalar-Scratch, a1=Puffer in tc_putint/
    tc_putuint/tc_putchar, a2=Aufruf-Scratch fuer emitCall, a4=Funktionstabelle,
    a5/a6=Frame-Pointer je nach os9Mode). */
-/* WICHTIG (2026-07-26, live auf Q9 gefunden, siehe emitCall()-Kommentar):
-   tc_gadata enthaelt KEINE absoluten Adressen mehr, sondern Link-Zeit-Offsets
-   (Ziel minus Tabellenbasis) -- move.l laedt den Offset, "adda.l a3,reg" macht
-   daraus die echte Laufzeitadresse (a3 ist per "lea (pc)" bereits korrekt
-   geladen). reg ist an JEDER Aufrufstelle ein Adressregister (a0), adda.l
-   akzeptiert ein Adressregister als Quelle problemlos.
-   ZWEITER FUND (2026-07-26, live auf Q9, Ultra-C/C++ Processor Guide Table
+/* IMPORTANT (2026-07-26, found live on Q9; see emitCall()): tc_gadata contains
+   link-time offsets, not absolute addresses. move.l loads the offset and
+   adda.l a3,reg converts it to the runtime address. reg is always an address
+   register at these sites, which adda.l accepts as source.
+   SECOND FINDING (2026-07-26, live on Q9, Ultra-C/C++ Processor Guide Table
    1-12 "Register Use"): a3 (wie a4, a0-a2) ist laut offizieller Microware-ABI
    ein reines TEMPORAER-Register ("The compiler uses all other registers for
    temporaries") -- NUR d0/d1 (Parameter/Rueckgabe), a5 (Frame), a6 (Static
@@ -328,12 +326,12 @@ static void emitAlign(FILE* out) {
    dem allerersten Globalzugriff -- live reproduziert (tc_putint ->
    tc_io_write -> bsr _os_write zerstoerte a3, der naechste Globalzugriff las
    von einer falschen Basisadresse).
-   ERSTER FIX-VERSUCH (verworfen): a3 vor JEDEM Zugriff per "lea (pc)" neu
+   FIRST FIX ATTEMPT (discarded): reload a3 before EVERY access with "lea (pc)"
    laden -- brach den echten r68-Assembler ("value out of range"), weil "lea
    X(pc)" selbst wieder der 16-Bit-PC-relativ-Distanzgrenze unterliegt, die
    die ganze a3/a4-Indirektion ja gerade umgehen sollte. RICHTIGER FIX: a3/a4
    werden NUR direkt NACH jedem CALLEXT/CALLEXTP neu geladen (siehe dortigen
-   Kommentar) -- das ist der EINZIGE Ort, an dem sie kaputtgehen koennen, und
+   comment); this is the ONLY place where they can be clobbered, and the
    die Auffrischung steht IMMER im selben Funktionskoerper wie der Aufruf
    selbst (kurze Distanz, nie ueber 32 KB). emitLeaGlobal()/emitCall() selbst
    bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
