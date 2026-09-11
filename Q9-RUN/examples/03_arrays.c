@@ -1,5 +1,5 @@
-/* Lokale und globale Arrays. Zeigt: LARRAY/GARRAY/GINIT,
-   LOADIDX/STOREIDX (indizierter Zugriff), Adressbildung PUSHADDR. */
+/* Local and global arrays. Demonstrates LARRAY/GARRAY/GINIT,
+   LOADIDX/STOREIDX (indexed access), and address formation with PUSHADDR. */
 int global_table[4];
 
 int fill_and_sum(int n) {

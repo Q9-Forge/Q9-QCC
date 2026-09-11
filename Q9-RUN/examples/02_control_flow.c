@@ -1,6 +1,5 @@
-/* Verzweigung und Schleifen. Zeigt: LABEL, bedingte/unbedingte Spruenge,
-   Vergleichsoperatoren (CMPLT/CMPEQ/...), das Zusammenspiel von Bedingung
-   und Sprungziel in der Stack-IR. */
+/* Branches and loops. Demonstrates LABEL, conditional/unconditional jumps,
+   comparison operators (CMPLT/CMPEQ/...), and stack-IR control flow. */
 int max(int a, int b) {
     if (a > b) {
         return a;
