@@ -1378,12 +1378,10 @@ void rule() {
 		test(TOKEN_END, (char *)"END Symbol .");
 		
 		// Scan the ENTIRE rule, not only its last row: a final {..}/[..]/(..)
-		// als LETZTES Konstrukt der Regel patcht seine eigene falseAction/trueAction
-		// (Schleifen-/Gruppen-Ende) auf "aktTabIndex zum Zeitpunkt des Patches" -- steht
-		// danach nichts mehr in DIESER Regel, zeigt das faelschlich auf die naechste Regel
-		// (Zeilennummern sind fortlaufend ueber alle Regeln hinweg). Betrifft nicht
-		// zwingend die LETZTE Zeile der Regel (z.B. bei "X = A {B A}.": die dangling
-		// Referenz sitzt auf der B-Zeile, nicht auf der letzten A-Zeile).
+		// as the rule's final construct patches its own falseAction/trueAction
+		// (loop/group end) to aktTabIndex at patch time. If nothing follows in
+		// THIS rule, that would incorrectly target the next rule. The dangling
+		// reference need not be on the final row, for example in "X = A {B A}.".
 		{
 			int i;
 			for (i = ruleStart; i < aktTabIndex; i++) {
@@ -1411,8 +1409,8 @@ void rule() {
 
 int expressionCount = 0;
 void expression() {
-	int entryFirstPos = firstPos;		// jede Alternative beginnt an derselben "ersten Position"
-	int altStart = aktTabIndex;		// Startzeile DER AKTUELLEN Alternative
+	int entryFirstPos = firstPos;		// Every alternative starts at the same first position.
+	int altStart = aktTabIndex;		// Start row of the current alternative.
 	int astM = astMark();			// AST: alle Alternativen dieser Auswahl sammeln
 
 	push(aktTabIndex);
@@ -1420,16 +1418,13 @@ void expression() {
 
 	while (aktToken == TOKEN_OR) {
 		// This alternative has been parsed (aktToken now points to '|').
-		// Ueber den GANZEN Zeilenbereich der Alternative (nicht nur die Startzeile --
-		// das war Bug Nr. 6: bei mehrfaktorigen Alternativen wie "a" "b" | "c" erklaerte
-		// schon der Erfolg des ERSTEN Faktors die ganze Regel fuer fertig, und bei
-		// komplexen ersten Faktoren wie [ "-" ] ... | ... wurde deren eigene
-		// Verdrahtung zerstoert) gilt:
-		//  - Erfolg der Alternative (STAT_TRUE oder "dangling" Vorwaertsreferenz
-		//    hinter das Alternativen-Ende) -> ganze Auswahl fertig (kurzschliessen)
-		//  - Misserfolg ohne Konsum (STAT_FALSE) -> Start der NAECHSTEN Alternative
-		//    (= aktueller aktTabIndex, dort schreibt der naechste term() gleich hin).
-		// Committed-Fehlschlaege (STAT_ERROR) bleiben unveraendert Fehler.
+		// Apply this to the ENTIRE row range of the alternative, not only its
+		// start row. Earlier code incorrectly completed multi-factor alternatives
+		// after the first factor and damaged complex first-factor wiring.
+		//  - success (STAT_TRUE or a dangling forward reference beyond the end)
+		//    completes the selection;
+		//  - failure without consumption (STAT_FALSE) starts the next alternative;
+		//  - committed failures (STAT_ERROR) remain errors.
 		patchLocalTrue(altStart, aktTabIndex, STAT_TRUE);
 		patchLocalFalse(altStart, aktTabIndex, aktTabIndex);
 
@@ -1440,14 +1435,14 @@ void expression() {
 		lexikalischeAnalyse();
 		expressionCount++;
 		firstPos = entryFirstPos;
-		altStart = aktTabIndex;		// Start der naechsten Alternative merken
+		altStart = aktTabIndex;		// Remember the next alternative's start row.
 		term();
 		expressionCount--;
 	}
 	// Last (or only) alternative: term() has already set its start row correctly
-	// gesetzt (Sequenz-Fortsetzung intern bzw. STAT_FALSE nach aussen); rule() biegt
-	// ein "dangling" trueAction am Regelende automatisch auf STAT_TRUE um. Hier also
-	// nichts mehr anfassen -- nur den Stack balancieren (Wert wird nicht mehr gebraucht).
+	// already set the start row (internal sequence continuation or STAT_FALSE
+	// outward). rule() redirects a dangling trueAction at rule end to STAT_TRUE;
+	// nothing else is needed here except balancing the stack.
 	if (lineStackIndex > 0) {
 		pop();
 	}
