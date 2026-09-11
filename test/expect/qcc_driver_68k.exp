@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 240
+set send_slow {1 .003}
+set image [lindex $argv 0]
+set mwos /Volumes/SSD1TB/projects/MWOS
+cd /Volumes/SSD1TB/projects/Q9-Forge/Q9-Flux-68k
+spawn ./build/macos/q9.exe --rom $mwos/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN --cf $image
+expect "devices online"
+send "\r"
+set logged 0
+for {set i 0} {$i < 10 && !$logged} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re {[#$] ?$} { set logged 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$logged} { exit 1 }
+send -s "/dd/CMDS/qcc --emit-ir -o /dd/driver.ir /dd/driver_probe.c\r"
+expect {
+    -re {[#$] ?$} {}
+    -re {FAIL|SEMERR|qcc:|error|Error} { exit 1 }
+    timeout { exit 1 }
+}
+send -s "dir -e /dd/driver.ir\r"
+expect {
+    -re {driver\.ir} { send "\x1d"; expect eof; exit 0 }
+    timeout { exit 1 }
+}
