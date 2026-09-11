@@ -1754,14 +1754,14 @@ void literal() {
 			strncat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), loChar, IDENT_LEN);
 			strcat_s(lexTab[aktTabIndex].TS, sizeof(lexTab[aktTabIndex].TS), "\"");
 		}
-		// aktToken zeigt bereits auf das naechste Token (s.o. vorausgeschaut) --
-		// hier KEIN weiteres lexikalischeAnalyse() mehr aufrufen!
+		// aktToken already points to the next token; do not call
+		// lexikalischeAnalyse() again here.
 	}
 }
 
 
 //------------------------------------------------------------------------------------------------
-// Lexikalische Analyse
+// Lexical analysis
 //------------------------------------------------------------------------------------------------
 int flagEOF = 0;
 
@@ -1805,7 +1805,7 @@ void lexikalischeAnalyse() {
 		aktToken = TOKEN_EXIT;
 		return;
 	}
-	// Check for idends
+	// Check for identifiers.
 	if (isFirstIdentChar(aktChar)) {
 		aktName[index++] = aktChar;
 		getAktChar();
@@ -1820,8 +1820,8 @@ void lexikalischeAnalyse() {
 		lastToken = aktToken;
 		aktToken = TOKEN_IDENT;
 	} else if (aktChar == '<') {
-		// Alternative NTS-Schreibweise <name> -- wird wie ein normaler Bezeichner behandelt,
-		// Parser/Semantik sehen keinen Unterschied zu einem "nackten" ident.
+		// Alternative NTS spelling <name>; treat it as a normal identifier so the
+		// parser and semantic analysis see no difference from a bare identifier.
 		getAktChar();
 		while (isIdentChar(aktChar)) {
 			if (index < IDENT_LEN) {
@@ -1887,7 +1887,7 @@ void lexikalischeAnalyse() {
 
 
 //------------------------------------------------------------------------------------------------
-// Semantische analyser
+// Semantic analysis
 //------------------------------------------------------------------------------------------------
 int tableIdentFlag = 0;
 
@@ -2066,17 +2066,16 @@ char * comment() {
 		}
 	}
 
-	// filter start line comments -- NUR wenn das Kommentarzeichen das ERSTE
-	// Nicht-Leerzeichen der Zeile ist. (Vorher wurde ein '#' IRGENDWO in der Zeile
-	// als Kommentar gewertet -- damit verschwand z.B. die komplette Regelzeile
-	// expression = ... ("=" | "#" | ...) ... wegen des gequoteten "#"-Literals!)
+	// Filter start-of-line comments only when the marker is the first non-space
+	// character. Previously any '#' was treated as a comment, which could delete
+	// a complete rule containing a quoted "#" literal.
 	if (flagStartLineComment && strlen(startLineCommentString) > 0) {
 		index = sourceBuffer;
 		while (*index == ' ' || *index == '\t') {
 			index++;
 		}
 		if (strncmp(index, startLineCommentString, strlen(startLineCommentString)) == 0) {
-			// start line comment found, delete whole line
+			// Start-of-line comment found; delete the whole line.
 			sourceBuffer[0] = EOS;
 			charLen = 0;
 		}
@@ -2084,10 +2083,10 @@ char * comment() {
 
 	// filter rest line comments
 	if (flagRestLineComment && strlen(restLineCommendString) > 0) {
-		// search for start line comment
+		// Search for a rest-of-line comment marker.
 		index = strstr(sourceBuffer, restLineCommendString);
 		if (index != NULL) {
-			// rest line comment found, delete rest of line
+			// Rest-of-line comment found; delete the remainder.
 			*index = EOS;
 			charLen = (int)strlen(sourceBuffer);
 		}
@@ -2100,7 +2099,7 @@ char* readPtr = NULL;
 char* getAktLine() {
 
 	while (charLen == 0 && !feof(fpIn)) {
-		// Einlesen bis etwas im buffer oder EOF
+		// Read until the buffer contains data or EOF is reached.
 		lineCnt++;
 		readPtr = fgets(sourceBuffer, CHARBUFFER_LEN, fpIn);
 		if (readPtr != NULL) {
@@ -2113,19 +2112,19 @@ char* getAktLine() {
 		}
 	}
 	if (charLen == 0 && feof(fpIn)) {
-		// EOF
+		// EOF.
 		printf("EOF\n");
 		flagEOF = true;
 		sourceBuffer[0] = EOS;
 		readPtr = sourceBuffer;
 	}
 	else if (charLen == 0 && !feof(fpIn)) {
-		// Fehler Buffer leer aber kein EOF
+		// Error: buffer is empty but EOF was not reached.
 		printf("LINE %-3d %s Scanner read Error, \n", lineCnt, sourceBuffer);
 		sourceBuffer[0] = EOL;
 		readPtr = sourceBuffer;
 	} else if (charLen > 0) {
-		// Return Buffer
+		// Return buffer.
 		//printf("LINE %-3d %s\n", lineCnt, sourceBuffer);
 		readPtr = sourceBuffer;
 	}
