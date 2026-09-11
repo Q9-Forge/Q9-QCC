@@ -1045,9 +1045,9 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-		/* small: direkter PC-relativer Wert-Load (Kurzform); large: erst die
-		   Adresse aus der Indirektionstabelle holen, dann dereferenzieren --
-		   siehe emitLeaGlobal()-Kommentar. */
+		/* small: direct PC-relative value load (short form); large: first obtain
+		   the address from the indirection table, then dereference it (see the
+		   emitLeaGlobal() comment). */
 		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 		else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 	} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
@@ -1100,7 +1100,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
 		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
 	} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && insP->argc == 1) {
-		/* 2026-09-09: byte (bool) -> elemSize (1/2/4). */
+		/* 2026-09-09: byte flag (bool) -> elemSize (1/2/4). */
 		int elemSize = tagSize(insP->args[0]);
 		int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 		if (strcmp(op, "LOADIND") == 0) {
@@ -1124,10 +1124,11 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tlsl.l\t#%d,d0\n", tagShift(insP->args[0]));
 		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
 	} else if (strcmp(op, "IPADDN") == 0 && insP->argc == 1) {
-		/* wie IPADD, aber Skalierung um eine LAUFZEIT-Byte-Groesse (z.B. structByteSize)
-		   statt einer festen Typtag-Groesse -- kein lsl.l (Groesse ist beliebig, nicht
-		   nur 1/4), echte Multiplikation ueber tc_mul_i32 (siehe emitM68kCore). a0 (Pointer)
-		   bleibt beim bsr unangetastet -- tc_mul_i32 nutzt nur d0-d4. */
+		/* Like IPADD, but scale by a RUNTIME byte size (for example structByteSize)
+		   instead of a fixed type-tag size. No lsl.l is possible because the size
+		   is arbitrary rather than limited to 1/2/4; use tc_mul_i32 instead (see
+		   emitM68kCore). a0 (the pointer) remains untouched across bsr because
+		   tc_mul_i32 uses only d0-d4. */
 		fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n", insP->args[0]);
 		emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"), serial, psectName);
 		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
