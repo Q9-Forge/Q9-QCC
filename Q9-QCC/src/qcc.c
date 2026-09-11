@@ -1,57 +1,89 @@
-/*
- * qcc - universeller Q9-Treiber
- *
- * Bewusst nur der portable Kommandozeilenkern. Die eigentliche
- * Werkzeugkette wird in den folgenden Schritten als Pipeline ergänzt.
- */
+/* qcc - universeller Q9-Treiber, Konfigurationskern */
 #include <stdio.h>
 #include <string.h>
 
-#define QCC_VERSION "0.1.0-dev"
+#define QCC_VERSION "0.2.0-dev"
+#define TEXT 128
 
+static char target[TEXT] = "OS9-68K";
+static char frontend[TEXT] = "c";
+static char cpu[TEXT] = "68000";
+static char optimizer[TEXT] = "qo68k";
+static char backend[TEXT] = "qir68k";
+static char assembler[TEXT] = "qr68k";
+static char linker[TEXT] = "ql68k";
+static char startup[TEXT] = "cstart.a";
+static char libraries[TEXT] = "clib.l,os9.l,sys.l";
+static int dry_run;
+static int print_config;
+
+static void copy_text(char *dst, const char *src) { strncpy(dst, src, TEXT - 1); dst[TEXT - 1] = '\0'; }
 static void usage(const char *name)
 {
 	printf("Usage: %s [options] input...\n", name);
-	printf("Options:\n");
-	printf("  --target ARCH   Zielarchitektur (z. B. 68k, x86, arm64)\n");
-	printf("  --help           diese Hilfe anzeigen\n");
-	printf("  --version        Version anzeigen\n");
+	printf("  --target NAME    Zielprofil\n  --frontend NAME  Frontend (Standard: c)\n");
+	printf("  --cpu TYPE       CPU an passende Werkzeuge weiterreichen\n");
+	printf("  --dry-run        Pipeline nur anzeigen\n  --print-config   Konfiguration anzeigen\n");
+	printf("  --help, --version\n");
 }
-
+static void config_line(char *line)
+{
+	char key[TEXT], value[TEXT], section[TEXT];
+	if (sscanf(line, "[%127[^]]", section) == 1) return;
+	if (sscanf(line, "%127[^=]=%127s", key, value) != 2) return;
+	if (strcmp(key, "target") == 0) copy_text(target, value);
+	else if (strcmp(key, "frontend") == 0) copy_text(frontend, value);
+	else if (strcmp(key, "cpu") == 0) copy_text(cpu, value);
+	else if (strcmp(key, "backend") == 0) copy_text(backend, value);
+	else if (strcmp(key, "optimizer") == 0) copy_text(optimizer, value);
+	else if (strcmp(key, "assembler") == 0) copy_text(assembler, value);
+	else if (strcmp(key, "linker") == 0) copy_text(linker, value);
+	else if (strcmp(key, "startup") == 0) copy_text(startup, value);
+	else if (strcmp(key, "libraries") == 0) copy_text(libraries, value);
+}
+static void load_config(void)
+{
+	FILE *f; char line[256];
+	f = fopen("Q9-QCC/config/qcc.conf", "r");
+	if (f == NULL) f = fopen("/dd/SYS/qcc.conf", "r");
+	if (f == NULL) return;
+	while (fgets(line, sizeof(line), f) != NULL) config_line(line);
+	fclose(f);
+}
+static void show_config(void)
+{
+	printf("target=%s\nfrontend=%s\ncpu=%s\nbackend=%s\noptimizer=%s\n", target, frontend, cpu, backend, optimizer);
+	printf("assembler=%s\nlinker=%s\nstartup=%s\nlibraries=%s\n", assembler, linker, startup, libraries);
+}
 int main(int argc, char **argv)
 {
-	int i;
-	int inputs = 0;
-
+	int i, inputs = 0;
+	load_config();
 	for (i = 1; i < argc; ++i) {
-		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-			usage(argv[0]);
-			return 0;
-		}
-		if (strcmp(argv[i], "--version") == 0) {
-			printf("qcc %s\n", QCC_VERSION);
-			return 0;
-		}
-		if (strcmp(argv[i], "--target") == 0) {
-			if (i + 1 >= argc) {
-				fprintf(stderr, "qcc: --target erwartet eine Architektur\n");
-				return 2;
-			}
-			++i;
+		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(argv[0]); return 0; }
+		if (strcmp(argv[i], "--version") == 0) { printf("qcc %s\n", QCC_VERSION); return 0; }
+		if (strcmp(argv[i], "--dry-run") == 0) { dry_run = 1; continue; }
+		if (strcmp(argv[i], "--print-config") == 0) { print_config = 1; continue; }
+		if (strcmp(argv[i], "--target") == 0 || strcmp(argv[i], "--frontend") == 0 || strcmp(argv[i], "--cpu") == 0) {
+			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
+			if (strcmp(argv[i], "--target") == 0) copy_text(target, argv[++i]);
+			else if (strcmp(argv[i], "--frontend") == 0) copy_text(frontend, argv[++i]);
+			else copy_text(cpu, argv[++i]);
 			continue;
 		}
-		if (argv[i][0] == '-') {
-			fprintf(stderr, "qcc: unbekannte Option: %s\n", argv[i]);
-			return 2;
-		}
+		if (argv[i][0] == '-') { fprintf(stderr, "qcc: unbekannte Option: %s\n", argv[i]); return 2; }
 		++inputs;
 	}
-
-	if (inputs == 0) {
-		fprintf(stderr, "qcc: keine Eingabedatei (siehe --help)\n");
-		return 2;
+	if (print_config) show_config();
+	if (inputs == 0 && !print_config) { fprintf(stderr, "qcc: keine Eingabedatei (siehe --help)\n"); return 2; }
+	if (inputs == 0) return 0;
+	if (dry_run) {
+		printf("qcc: %d Eingabe(n), Frontend %s, Target %s, CPU %s\n", inputs, frontend, target, cpu);
+		printf("  1. qcpp -> .i\n  2. qcir -> .ir\n  3. %s\n", backend);
+		if (optimizer[0] != '\0') printf("  4. %s (optional)\n", optimizer);
+		printf("  5. %s -> .r\n  6. %s (%s; %s)\n", assembler, linker, startup, libraries);
+		return 0;
 	}
-
-	fprintf(stderr, "qcc: Pipeline noch nicht implementiert; Eingaben erkannt: %d\n", inputs);
+	fprintf(stderr, "qcc: Pipeline noch nicht implementiert; --dry-run verwenden\n");
 	return 3;
 }

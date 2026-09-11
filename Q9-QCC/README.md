@@ -15,13 +15,14 @@ Q9-QCC/
 ├── include/
 ├── tests/
 ├── tools/
-└── docs/
+├── docs/
+└── config/qcc.conf
 ```
 
 ## Aktueller Stand
 
 Der portable Kommandozeilenkern ist angelegt und unterstützt zunächst
-`--help`, `--version` und die Zielauswahl. Die eigentliche Pipeline wird
+`--help`, `--version`, Konfigurationsladen, `--dry-run` und die Zielauswahl. Die eigentliche Pipeline wird
 schrittweise ergänzt; ein Aufruf mit Eingabedatei meldet bis dahin bewusst
 „Pipeline noch nicht implementiert“, statt einen unvollständigen Build
 vorzutäuschen.

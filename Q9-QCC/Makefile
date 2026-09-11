@@ -14,6 +14,8 @@ $(TARGET): src/qcc.c
 test: $(TARGET)
 	@$(TARGET) --version | grep -q '^qcc '
 	@$(TARGET) --help | grep -q 'Usage:'
+	@$(TARGET) --dry-run main.c | grep -q 'qcpp -> .i'
+	@$(TARGET) --print-config | grep -q '^backend=qir68k'
 	@echo 'qcc smoke test: OK'
 
 clean:
