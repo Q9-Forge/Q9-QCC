@@ -232,7 +232,7 @@ static int idataPC;
 static int udataPC;
 static int statStorage;        /* Reserved size in the vsect. */
 
-/* "vsect remote" -- ein DRITTER Adressraum, ebenfalls ab 0.
+/* "vsect remote" -- a THIRD address space, also starting at zero.
  *
  * PURPOSE: a non-remote vsect is addressed through d16(a6) and therefore
  * fits in 64 KB; l68 rejects larger allocations. Remote data is not included
