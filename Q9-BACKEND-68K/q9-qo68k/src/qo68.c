@@ -316,10 +316,9 @@ static int phFoldLoadThenMove(void) {
 	return folded;
 }
 
-/* VIERTES MUSTER, s. Kommentar am Dateianfang: "move.l SRC,-(a7)" OHNE
- * Klammer in SRC (kein Seiteneffekt) und OHNE Label (koennte Sprungziel
- * sein). Reine Existenzprobe -- die Zeile wird ersatzlos gestrichen, kein
- * SRC-Ruecktransport noetig. */
+/* Match the fourth pattern: "move.l SRC,-(a7)" with no parentheses in SRC
+ * and no label. This is only an existence check; the line is removed without
+ * replacement and no source-value recovery is needed. */
 static int phMatchDroppablePush(const char* line) {
 	const char* p;
 	const char* comma;
@@ -357,9 +356,9 @@ static int phFoldDropPush(void) {
 	return folded;
 }
 
-/* Liest s[0..len) als reine Dezimalzahl (optional ein fuehrendes "-"),
- * kein Zeichen ausser Ziffern erlaubt. Bricht frueh ab, sobald der Wert
- * den MOVEQ-Bereich sicher verlassen hat -- kein Ueberlaufrisiko in v. */
+/* Parse s[0..len) as a decimal integer with an optional leading "-". Reject
+ * every non-digit and stop as soon as the value is outside MOVEQ's range,
+ * avoiding overflow in v. */
 static int phParseSmallImm(const char* s, int len, int* value) {
 	int i;
 	int neg;
@@ -381,11 +380,9 @@ static int phParseSmallImm(const char* s, int len, int* value) {
 	return 1;
 }
 
-/* FUENFTES MUSTER, s. Kommentar am Dateianfang: "move.l #IMM,Dn" mit IMM
- * im MOVEQ-Bereich, optional mit Label-Vorspann (das Label bleibt beim
- * Umbau erhalten -- anders als bei Mustern eins/drei/vier wird hier
- * nichts gestrichen, nur der Mnemonic-Text derselben Zeile ersetzt, das
- * Sprungziel ist also nie in Gefahr). */
+/* Match the fifth pattern: "move.l #IMM,Dn" with IMM in MOVEQ's range,
+ * optionally preceded by a label. The label is preserved because this rule
+ * replaces only the mnemonic text and does not remove the line. */
 static int phMatchMoveqCandidate(const char* line, const char** labelStart, int* labelLen,
                                    int* value, char* reg) {
 	const char* p;
@@ -413,7 +410,7 @@ static int phMatchMoveqCandidate(const char* line, const char** labelStart, int*
 static int phFoldMoveq(void) {
 	int i, folded = 0;
 	for (i = 0; i < phLineCount; i++) {
-		/* Je ein eigener Deklarator -- s. Kommentar in phFoldPushPop oben. */
+		/* Keep pointer declarations separate; see phFoldPushPop above. */
 		const char* labelStart;
 		int labelLen, value;
 		char reg;
@@ -448,12 +445,10 @@ static void phWrite(const char* path) {
 	fclose(fp);
 }
 
-/* srcPath ist die von emitIR() beschriebene (temporaere, bei -peephole)
-   Datei; dstPath die eigentliche Zieldatei -- siehe Kommentar in main()
-   zu -peephole: dstPath darf hier zum ERSTEN und einzigen Mal angelegt
-   werden (OS-9s I$Create scheitert sonst an einer schon bestehenden
-   Datei). srcPath bleibt als .tmp-Datei liegen -- kein Aufrufer in
-   dieser Kette raeumt Zwischendateien auf, s. .i/.ir ueberall sonst. */
+/* srcPath is the temporary file written by emitIR() for -peephole; dstPath is
+ * the actual output file. dstPath must be created here exactly once because
+ * OS-9's I$Create fails when the file already exists. srcPath remains as a
+ * .tmp file, consistent with the other intermediate .i/.ir files. */
 /* Function: peepholeRun
  * Reads assembly, applies safe local rewrites and writes optimized assembly.
  * Parameters: srcPath Input assembly; dstPath Optimized output assembly.
@@ -471,9 +466,8 @@ static void peepholeRun(const char* srcPath, const char* dstPath) {
 		total += roundTotal;
 		rounds++;
 	} while (roundTotal > 0);
-	/* ERST NACH der Konvergenz, s. Kommentar am Dateianfang zum fuenften
-	   Muster: MOVEQ-Zeilen wuerden Muster zwei/drei ihren Ausloesertext
-	   "move.l\t" entziehen. */
+	/* Run MOVEQ only after convergence; otherwise it would hide the literal
+	 * "move.l\t" trigger used by patterns two and three. */
 	moveqCount = phFoldMoveq();
 	total += moveqCount;
 	kept = 0;
