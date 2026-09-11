@@ -1964,13 +1964,13 @@ int main(int argc, char* argv[]) {
 	collectExterns();
 	if (remoteDataMode) {
 		int gi;
-		/* a6 ist nur im -os9-Modus frei. Im vasm-Format IST a6 der Frame-Pointer
-		   (siehe framePtr()) -- ein adda.l a6,reg zeigte dort auf den Stackframe. */
+		/* a6 is free only in -os9 mode. In vasm format a6 IS the frame pointer
+		   (see framePtr()), so adda.l a6,reg would address the stack frame. */
 		if (!os9Mode) fatal("-remotedata braucht -os9: nur dort ist a6 der Datenbereichszeiger und nicht der Frame-Pointer");
-		/* Dateiuebergreifende Globals: diese Datei kann NICHT wissen, ob die
-		   DEFINIERENDE Datei das Symbol in den psect oder in den vsect remote
-		   gelegt hat -- der Zugriffsweg unterscheidet sich aber (PC-relativ oder
-		   Tabelle gegen a6-relativ). Lieber melden als still falsch adressieren. */
+		/* Cross-file globals: this file CANNOT know whether the DEFINING file put
+		   the symbol in the psect or remote vsect. The access path differs (PC-
+		   relative/table-based versus a6-relative), so report the ambiguity rather
+		   than silently generating an incorrect address. */
 		for (gi = 0; gi < globalCount; gi++) {
 			if (globals[gi].declOnly) {
 				sprintf(msg, "-remotedata und dateiuebergreifendes Globales %s: der Zugriffsweg haengt von der definierenden Datei ab", globals[gi].name);
@@ -1979,18 +1979,18 @@ int main(int argc, char* argv[]) {
 		}
 	}
 	if (!largeDataMode) {
-		/* Heuristik-Warnung (2026-07-25, siehe -largedata/emitLeaGlobal()): wir koennen
-		   NICHT wissen, ob r68 die PC-relative Reichweite tatsaechlich ueberschreiten
-		   wird (haengt von der GESAMTEN Code+Daten-Distanz ab, die erst der Assembler
-		   kennt) -- aber ein grober Schwellenwert ueber die reine globale Datenmenge
-		   gibt fruehzeitig einen Hinweis, BEVOR ein kryptisches "value out of range"
-		   vom echten r68 kommt. 16000 Byte ist bewusst konservativ (deutlich unter den
-		   theoretischen 32 KB), da Code UND andere Symbole denselben Adressraum teilen. */
+		/* Heuristic warning (2026-07-25, see -largedata/emitLeaGlobal()): we CANNOT
+		   know whether r68 will actually exceed the PC-relative range because the
+		   assembler knows the complete code/data distance only later. A rough
+		   threshold based on global data size nevertheless provides an early warning
+		   before the real r68 reports the cryptic "value out of range". 16000 bytes
+		   is deliberately conservative, well below the theoretical 32 KB, because
+		   code and other symbols share the same address space. */
 		long totalGlobalBytes = 0; int gi;
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue;
-			if (globalRemote(gi)) continue; /* liegt im Datenbereich, nicht im psect -- keine PC-relative Distanz */
+			if (globalRemote(gi)) continue; /* in the data area, not the psect; no PC-relative distance */
 			totalGlobalBytes += (long)g->elemSize * (g->isArray ? g->length : 1);
 		}
 		if (totalGlobalBytes > 16000) {
@@ -2001,8 +2001,8 @@ int main(int argc, char* argv[]) {
 		}
 	}
 	if (os9Mode) {
-		/* psect-Name aus dem Ausgabedateinamen ableiten (ohne Pfad/Endung), analog
-		   zum Default in codegen.cpp (genParser68kTo: <basisname>_p). */
+		/* Derive the psect name from the output filename (without path/extension),
+		   matching the default in codegen.cpp (genParser68kTo: <basename>_p). */
 		const char* base = strrchr(argv[2], '/');
 		const char* dot;
 		int n, i;
