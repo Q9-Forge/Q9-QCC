@@ -165,7 +165,7 @@ static int symNext[QR_SYM];
    use of IRQCtrl must then create a reference to u_icr. Otherwise the ROF
    silently lacks references and the linker never installs the address. */
 static int symExt[QR_SYM];
-/* "set"-Symbole: r68 hat GENAU EINEN Messdurchlauf, und sein Ausgabelauf
+/* "set" symbols: r68 performs EXACTLY ONE measuring pass, and its output pass
    sieht die Werte, wie sie am ENDE dieses ersten Durchlaufs standen.
    Gemessen an "dc.w A / dc.w B / A set B / B set 5": r68 legt $0000 und
    $0005 ab -- A ist beim dc.w noch das, was der erste Durchlauf hinterlassen
@@ -209,13 +209,13 @@ static char *outFp;
 /* Section identifiers */
 static int SECT_NONE = 0;
 static int SECT_CODE = 1;
-static int SECT_IDATA = 2;     /* vsect: initialisierte Daten */
-static int SECT_UDATA = 3;     /* vsect: reservierte Daten (ds) */
-static int SECT_ABS = 4;       /* equ/set: absoluter Wert */
+static int SECT_IDATA = 2;     /* vsect: initialized data */
+static int SECT_UDATA = 3;     /* vsect: reserved data (ds) */
+static int SECT_ABS = 4;       /* equ/set: absolute value */
 static int SECT_EXTERN = 5;
-static int SECT_RDATA = 6;     /* vsect remote: reservierte FERNdaten (ds) */
+static int SECT_RDATA = 6;     /* vsect remote: reserved remote data (ds) */
 
-/* Psect-Angaben */
+/* Psect parameters. */
 static int psName;
 static int psTyLan;
 static int psAttRev;
@@ -268,13 +268,13 @@ static int pass;               /* Pass number, starting at 1. */
 static int emitting;           /* 1 = final pass; emit into the buffers. */
 static int symMoved;           /* 1 = a value changed during this pass. */
 
-/* Der org-Zaehler ist NICHT der Ort im Abschnitt: "org" setzt ihn,
+/* The org counter is NOT the location within a section: "org" sets it,
    "do.b/.w/.l" legt darauf Namen ab, "." liest ihn. So beschreiben die
    Definitionsdateien des SDK ihre Strukturen (1593 "do" in 127 Dateien).
    An r68 gemessen: "org 4 / A do.b 1 / B do.w 1 / C do.l 2" ergibt
    A=4, B=6, C=8 -- do.w und do.l richten vorher auf GERADE aus (nicht auf
    ihre eigene Breite), do.b nicht. Und "org" bewegt den Ort im Abschnitt
-   ueberhaupt nicht: nach "nop / org 8" steht das naechste Label auf 2. */
+   at all: after "nop / org 8" the next label is at 2. */
 static int orgPC;
 
 /* Current source-line state. */
@@ -288,7 +288,7 @@ static int curPC;              /* Offset im aktuellen Abschnitt */
    from the second value onward; syscache.a:383 uses this behavior. */
 static int stmtPC;
 
-/* =============================================================== Zeichen == */
+/* ============================================================= Characters == */
 static int isSpaceCh(int c)
 {
 	if (c == ' ' || c == 9 || c == 11 || c == 12 || c == 13)
@@ -651,8 +651,8 @@ static int readLine(void)
    "*" alone is the current location; "." is the org counter. Measured
    against r68: "^" is unary (not XOR), and "~" is not supported. */
 static const char *exP;
-static int exSect;             /* Abschnitt des Ergebnisses */
-static int exExtern;           /* Pool-Index eines externen Namens, sonst -1 */
+static int exSect;             /* Section referenced by the result. */
+static int exExtern;           /* External-name pool index, or -1. */
 /* The RELOCATABLE TERMS of an expression, with signs. r68 does not resolve
    "PD_PAR-PD_OPT+M$DTyp" nicht auf, sondern legt DREI Referenzen auf
    denselben Offset ab: $0030, $0070 (das $40 heisst "abziehen") und $0030.
@@ -1765,15 +1765,15 @@ static void doAlign(void)
 		emitByte(0);
 }
 
-/* =========================================================== Operanden === */
+/* =========================================================== Operands ==== */
 /* Addressing modes as an internal model. The number is NOT the instruction
    mode field; eaModeBits()/eaRegBits() provide that. Measured against r68:
-   - die Klammerform "(4,a5)" kennt r68 NICHT ("parenthesis needed"),
-     nur "4(a5)";
-   - ein nackter Ausdruck wird IMMER absolut lang, auch wenn er in 16 Bit
-     passt ("move.l $1000,d0" -> 2039); ".w" am Operanden erzwingt kurz;
-   - "0(a5)" bleibt die Displacementform (41ed 0000), nur "(a5)" ist die
-     indirekte. r68 verkuerzt hier nichts. */
+   - r68 does NOT accept the parenthesized form "(4,a5)" ("parenthesis
+     needed"); use "4(a5)";
+   - a bare expression is ALWAYS absolute long, even if it fits in 16 bits
+     ("move.l $1000,d0" -> 2039); ".w" on the operand forces short;
+   - "0(a5)" remains displacement form (41ed 0000); only "(a5)" is indirect.
+     r68 does not shorten this form. */
 static int AM_DN = 0;
 static int AM_AN = 1;
 static int AM_IND = 2;
@@ -1800,18 +1800,18 @@ static int oN;                 /* Zahl der Operanden dieser Zeile */
 
 static char opTxt0[512];
 static char opTxt1[512];
-/* Den dritten Operanden gibt es nur bei pack/unpk und cas. Er bekommt
+/* The third operand exists only for pack/unpk and cas. It has NO slot in
    KEINEN Platz in oMode[]/oReg[]/... -- deren Index 2 gehoert dem
    Zwischenspeicher des Ausdrucksauswerters (termN[2]). Die drei Befehle
    kommen ohne aus: bei pack/unpk ist der dritte Operand ein reiner
    Sofortwert, bei cas sind die ersten beiden blosse Datenregister, sodass
    der dritte in Fach 0 geparst werden kann. */
 static char opTxt2[512];
-/* Und einen vierten -- nur ptest kennt ihn ("ptestr #0,(a1),#3,a2"). */
+/* A fourth operand is needed only by ptest ("ptestr #0,(a1),#3,a2"). */
 static char opTxt3[512];
 static char exBuf[1024];
 
-/* Kopiert s[from..to) nach exBuf. */
+/* Copy s[from..to) to exBuf. */
 static void subStr(const char *s, int from, int to)
 {
 	int i;
@@ -1823,7 +1823,7 @@ static void subStr(const char *s, int from, int to)
 	exBuf[to - from] = 0;
 }
 
-/* "d3" -> 3, "a3" und "sp" -> 8+3, sonst -1. */
+/* "d3" -> 3, "a3" and "sp" -> 8+3, otherwise -1. */
 static int regNum(const char *s, int n)
 {
 	int c0;
@@ -1868,8 +1868,8 @@ static void putOperand(int k, int from, int to)
 	d[len] = 0;
 }
 
-/* Zerlegt das Operandenfeld an den Kommas der obersten Ebene. Klammern und
-   Anfuehrungszeichen zaehlen mit -- "move.b #',',d0" hat zwei Operanden. */
+/* Split the operand field at top-level commas. Parentheses and quotes count;
+   "move.b #',',d0" has two operands. */
 static void splitOperands(void)
 {
 	int i;
