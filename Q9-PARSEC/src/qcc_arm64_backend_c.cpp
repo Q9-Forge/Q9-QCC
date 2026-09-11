@@ -1,11 +1,11 @@
 //============================================================================
-// qcc_arm64_backend_c.cpp -- reines-C-Gegenstueck zu qcc_arm64_backend.cpp
+// qcc_arm64_backend_c.cpp -- pure-C counterpart to qcc_arm64_backend.cpp
 //
-// Verhaltensgleicher Nachbau ohne STL/Exceptions/std::string: feste globale
-// Tabellen + lineare Suche, im selben Stil wie parsec.cpp/codegen.cpp. Das
-// Original (qcc_arm64_backend.cpp) bleibt unveraendert als Referenz liegen;
-// siehe docs/SELFHOSTING_LUECKENLISTE.md Abschnitt 5. Um auf die C++-Version
-// zurueckzuschalten, in runtests.sh wieder qcc_arm64_backend.cpp bauen.
+// Behaviorally equivalent implementation without STL/exceptions/std::string:
+// fixed global tables plus linear search, following parsec.cpp/codegen.cpp.
+// The original qcc_arm64_backend.cpp remains as a reference; see section 5 of
+// docs/SELFHOSTING_LUECKENLISTE.md. To switch back to C++, build
+// qcc_arm64_backend.cpp in runtests.sh again.
 //============================================================================
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,16 +31,13 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
-	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
-	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei).
-	   isStatic steuert die .globl-Emission (siehe emit()) -- anders als beim
-	   68k/l68-Ziel (kein Sichtbarkeitskonzept, siehe qcc_backend_c.cpp)
-	   unterstuetzt Mach-O/ld ECHTE lokale Symbole: ein Label OHNE .globl ist
-	   fuer andere Objektdateien schlicht unsichtbar (empirisch verifiziert --
-	   zwei separat kompilierte .o mit je einem lokalen "_tc_priv" linken ohne
-	   Konflikt, "duplicate symbol" tritt NICHT auf). Deshalb reicht hier reines
-	   Weglassen von .globl, KEINE Namensverfremdung noetig (Unterschied zu
-	   qcc_backend_c.cpp!). */
+	/* Multi-file translation (2026-07-25): declOnly is registered by FUNCDECL
+	   without a body in this file (defined in another QCC file). isStatic
+	   controls .globl emission (see emit()). Unlike the 68k/l68 target, Mach-O/ld
+	   supports real local symbols: a label without .globl is invisible to other
+	   object files. This was verified empirically with two separate objects that
+	   each define local "_tc_priv" symbols and link without a duplicate symbol.
+	   Therefore omitting .globl is sufficient; no name mangling is needed. */
 	int declOnly, isStatic;
 } Function;
 
@@ -53,8 +50,8 @@ typedef struct {
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
-	int hasGinit; /* 2026-07-25: mind. ein GINIT fuer dieses Array gesehen (siehe emitIR) */
-	int declOnly, isStatic; /* siehe Function */
+	int hasGinit; /* 2026-07-25: at least one GINIT seen for this array (see emitIR) */
+	int declOnly, isStatic; /* see Function */
 } Global;
 
 static Instr ir[MAX_IR_LINES];
@@ -66,12 +63,11 @@ static int funcCount = 0;
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
 
-/* -part (2026-07-25, Mehrdatei-Uebersetzung): diese Datei ist EIN TEIL eines
-   Mehrdatei-Programms -- die main/funcCount-Pflicht wird gelockert, siehe
-   collectFunctions()/emit(). Anders als beim 68k-Backend gibt es hier KEIN
-   "-runtime"-Aequivalent: putint/putchar/exit werden extern in
-   runtime/arm64_darwin/start.s bereitgestellt (nie pro Datei emittiert), es
-   gibt also keinen gemeinsamen Anker, den nur EINE Datei tragen duerfte. */
+/* -part (2026-07-25, multi-file translation): this file is one part of a
+   multi-file program, so the main/funcCount requirement is relaxed; see
+   collectFunctions()/emit(). Unlike the 68k backend, there is no -runtime
+   equivalent here: putint/putchar/exit are provided externally by
+   runtime/arm64_darwin/start.s and are never emitted per file. */
 static int partMode = 0;
 
 static void fatal(const char* msg) {
@@ -100,22 +96,21 @@ static int isByteWord(const char* w) {
 	return strcmp(w, "c") == 0 || strcmp(w, "b") == 0;
 }
 
-/* short (2026-09-10, s. qcc_backend_c.cpp fuer das 68k-Gegenstueck): echter
-   16-Bit-Typ, wie char IMMER nullerweitert (ldrh/strh zero-extenden auf
-   ARM64 ohnehin automatisch in w0, wie ldrb es schon fuer char tut). */
+/* short (2026-09-10, see qcc_backend_c.cpp for the 68k counterpart): real
+   16-bit type, always zero-extended like char. ARM64 ldrh/strh already zero
+   extend into w0 automatically, just as ldrb does for char. */
 static int isShortWord(const char* w) { return strcmp(w, "h") == 0; }
 
-/* Elementgroesse eines Typtags in Byte -- gebraucht fuer Array-/Zeiger-
-   Adressierung. Anders als beim 68k-Backend ist ein Zeiger hier 8 Byte
-   (ARM64), nicht 4. */
+/* Element size of a type tag in bytes, used for array/pointer addressing.
+   Unlike the 68k backend, a pointer is 8 bytes here (ARM64), not 4. */
 static int elemBytes(const char* w) {
 	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
 	if (strcmp(w, "h") == 0) return 2;
 	if (strcmp(w, "p") == 0) return 8;
 	return 4;
 }
-/* ldr/str-Groessensuffix: "b" (Byte), "h" (Halfword), "" (Word/Doubleword --
-   welches von beiden ergibt sich aus dem gewaehlten Register w/x). */
+/* ldr/str size suffix: "b" (byte), "h" (halfword), or "" (word/doubleword;
+   the selected w/x register determines which one). */
 static const char* elemSuffix(const char* w) {
 	if (isByteWord(w)) return "b";
 	if (isShortWord(w)) return "h";
