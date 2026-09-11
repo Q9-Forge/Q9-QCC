@@ -248,41 +248,35 @@ static char psectName[NAME_LEN] = "tc_prog";
    normal multi-file builds keep using their individual psect name. */
 static char staticUnit[NAME_LEN] = "";
 static const char* fullCommentPrefix(void) { return os9Mode ? "*" : ";"; }
-/* Register Use Table im Ultra-C/C++-Prozessorhandbuch (ultrac_pg.pdf, Kapitel
-   "68K" -> "Register Usage"): a5 = Frame/local pointer, a6 = STATIC STORAGE
-   POINTER (nicht Frame-Pointer!). Das echte cstart.r/clib.l nutzt a6 als
-   Zeiger auf den eigenen statischen Datenbereich UEBER DIE GESAMTE LAUFZEIT
-   des (mit unserem Code zu EINEM Modul zusammengelinkten) Programms -- wird
-   dieser Wert von unserem eigenen Code ueberschrieben (was das Default-/vasm-
-   Format mit "link a6,#N" tut), stuerzt jeder nachfolgende echte clib-Aufruf
-   mit einem PMMU-Fehler ab (live am echten Q9 verifiziert, 2026-07-24: ein
-   Testmodul, das a6 als eigenen Frame-Pointer benutzte UND anschliessend
-   _os_write aufrief, brachte den Emulator zum Absturz -- a6 zeigte auf den
-   eigenen Frame statt auf den echten statischen Datenbereich). Deshalb NUR im
-   -os9-Modus a5 statt a6 als Frame-Pointer verwenden (a6 bleibt dann komplett
-   unangetastet); das Default-/vasm-Format bleibt bei a6 (keine Notwendigkeit,
-   keine Regression an den QCCVM-/Simulator-Tests). */
+/* Register Use Table in the Ultra-C/C++ Processor Guide (ultrac_pg.pdf,
+   chapter "68K" -> "Register Usage"): a5 is the frame/local pointer and a6
+   is the static-storage pointer, not the frame pointer. The real cstart.r/
+   clib.l code uses a6 as a pointer to its static data for the entire lifetime
+   of the program. If our code overwrites it (as the default/vasm format does
+   with "link a6,#N"), every later clib call fails with a PMMU error. This was
+   verified on the real Q9 on 2026-07-24: a test module using a6 as its frame
+   pointer and then calling _os_write crashed the emulator. Therefore only
+   -os9 mode uses a5 as frame pointer, leaving a6 untouched; the default/vasm
+   format remains on a6 to avoid unnecessary QCCVM/simulator regressions. */
 static const char* framePtr(void) { return os9Mode ? "a5" : "a6"; }
-/* Namensverfremdung fuer static-Symbole (Mehrdatei-Uebersetzung, 2026-07-25):
-   r68/l68 kennen KEIN Sichtbarkeitskonzept (kein xdef/xref, jedes Label ist
-   beim Linken automatisch fuer JEDE andere gelinkte Datei sichtbar -- empirisch
-   verifiziert, siehe docs/STATUS.md). Ohne Verfremdung wuerde "static" seinen
-   Hauptzweck verfehlen: zwei unabhaengig kompilierte Dateien koennen jeweils
-   einen privaten Helfer GLEICHEN Namens haben wollen (z.B. beide ein eigenes
-   "static int init()"), was l68 sonst als "duplicate symbol" ablehnt (ebenso
-   empirisch bestaetigt). Nur eine KONVENTION, KEINE echte Durchsetzung -- der
-   psect-Name (aus dem Ausgabedateinamen abgeleitet, siehe main()) ist bereits
-   der natuerliche Ort fuer Eindeutigkeit pro Datei. */
+/* Name mangling for static symbols (multi-file translation, 2026-07-25):
+   r68/l68 have no visibility concept (no xdef/xref; every label is
+   automatically visible to every other linked file; see docs/STATUS.md).
+   Without mangling, static would lose its main purpose: independently
+   compiled files could each define a private helper with the same name, such
+   as "static int init()", which l68 rejects as a duplicate symbol. This is a
+   convention rather than enforcement; the psect name, derived from the output
+   filename in main(), is the natural per-file uniqueness source. */
 static char* mangledName(char* buf, const char* prefix, const char* name, int isStatic) {
 	if (os9Mode && isStatic) sprintf(buf, "%s%s__%s", prefix, name,
 		staticUnit[0] ? staticUnit : psectName);
 	else sprintf(buf, "%s%s", prefix, name);
 	return buf;
 }
-/* vasm kennt "even" (Ausrichtung auf gerade Adresse); der echte Microware-r68-
-   Assembler kennt "even" NICHT (empirisch verifiziert: "bad mnemonic"), wohl
-   aber "align 4" (Longword-Ausrichtung -- strenger als "even", aber fuer
-   dc.l-Daten das eigentlich Gemeinte und ebenfalls empirisch verifiziert). */
+/* vasm supports "even" (alignment to an even address), but the real Microware
+   r68 assembler does not (verified: "bad mnemonic"). It does support
+   "align 4" (longword alignment), which is stricter than "even" but is the
+   intended alignment for dc.l data and was also verified. */
 static void emitAlign(FILE* out) {
 	fputs(os9Mode ? "\talign\t4\n" : "\teven\n", out);
 }
@@ -344,17 +338,17 @@ static void emitAlign(FILE* out) {
    selbst (kurze Distanz, nie ueber 32 KB). emitLeaGlobal()/emitCall() selbst
    bleiben unveraendert (verlassen sich weiterhin auf den zuletzt
    aufgefrischten Wert). */
-/* Ein Globales ist GANZ null, wenn kein Initialisierer einen Wert setzt: ein
-   Array ohne jedes GINIT, ein Skalar mit Initialwert 0. Genau diese gehoeren
-   in den vsect remote -- Arrays MIT GINIT bleiben im psect, sonst waeren ihre
-   Werte weg. */
+/* A global is entirely zero when no initializer assigns a value: an array
+   without any GINIT or a scalar with initial value 0. These belong in the
+   remote vsect; arrays WITH GINIT remain in the psect or their values would
+   be lost. */
 static int globalAllZero(Global* g) {
 	if (g->isArray) return !g->hasGinit;
 	return g->initialValue == 0;
 }
-/* Liegt dieses Globale im vsect remote? EINE Stelle beantwortet das, weil die
-   Antwort an mehreren Emissionsstellen gebraucht wird (Datenausgabe, Tabelle,
-   acht Zugriffsformen) -- eine Regel ueber Adressierung gilt nie nur an einer. */
+/* Does this global reside in the remote vsect? Keep the decision in one place
+   because it is needed by several emission sites (data output, tables, and
+   eight access forms); an addressing rule must not be duplicated. */
 static int globalRemote(int gidx) {
 	if (!remoteDataMode) return 0;
 	if (globals[gidx].declOnly) return 0;
