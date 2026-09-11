@@ -733,12 +733,11 @@ static void collectFunctions(void) {
 		if (insP->argc != 2 && insP->argc != 3) fatal("ungueltiges FUNCDECL");
 		existing = findFunction(insP->args[0]);
 		if (existing >= 0) {
-			/* Vorwaertsdeklaration innerhalb DERSELBEN Datei, deren echter Rumpf
-			   bereits (an anderer Stelle im selben IR) gefunden wurde -- das ist
-			   der normale Fall bei gegenseitig rekursiven Funktionen (A ruft B vor
-			   dessen Definition auf), KEIN Duplikat. Nur wenn die vorhandene
-			   Registrierung selbst noch declOnly ist (zwei FUNCDECL fuer denselben
-			   Namen ohne jemals einen echten Rumpf), bleibt es ein echter Fehler. */
+			/* A forward declaration in the SAME file whose real body was already
+			   found elsewhere in the IR is normal for mutually recursive functions
+			   (A calls B before B is defined), not a duplicate. It remains an error
+			   only when the existing registration is itself declOnly (two FUNCDECL
+			   entries for the same name without any real body). */
 			if (!funcs[existing].declOnly) continue;
 			fprintf(stderr, "qcc_backend: doppelte Funktion %s\n", insP->args[0]); fatal("doppelte Funktion");
 		}
@@ -759,10 +758,10 @@ static void collectFunctions(void) {
 		int k;
 		for (k = fn->first; k < fn->last; k++) {
 			Instr* x = &ir[k];
-			/* LOADLH/STORELH (2026-09-09, short) MUESSEN hier mitgezaehlt werden --
-			   sonst bleibt ein Slot, der NUR ueber sie angesprochen wird, unterhalb
-			   von "highest" und fn->locals faellt zu klein aus (Frame zu kurz,
-			   spaetere Slots ueberschreiben sich). */
+			/* LOADLH/STORELH (2026-09-09, short) MUST be included here. Otherwise a
+			   slot accessed ONLY through them remains below "highest", making
+			   fn->locals too small. The frame would then be too short and later
+			   slots could overwrite one another. */
 			if ((strcmp(x->op, "LOADL") == 0 || strcmp(x->op, "STOREL") == 0 || strcmp(x->op, "LOADC") == 0 ||
 				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADLH") == 0 || strcmp(x->op, "STORELH") == 0 ||
 				strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
@@ -795,10 +794,10 @@ static void collectFunctions(void) {
 	}
 }
 
-/* 2026-07-26 (see registerExtern() above): collect once before emission
-   alle in dieser Datei per CALLEXT/CALLEXTP gerufenen externen Rohnamen
-   (strlen/fopen/printf/...) -- muss VOR jeder Codeemission laufen, damit
-   Tabellenindex UND Wrapper-Emission konsistent dieselbe Reihenfolge sehen. */
+/* 2026-07-26 (see registerExtern() above): collect, before emission, all raw
+   external names called in this file through CALLEXT/CALLEXTP
+   (strlen/fopen/printf/...). This must happen BEFORE any code emission so the
+   table indices and wrapper emission observe the same order. */
 static void collectExterns(void) {
 	int i;
 	for (i = 0; i < irCount; i++) {
