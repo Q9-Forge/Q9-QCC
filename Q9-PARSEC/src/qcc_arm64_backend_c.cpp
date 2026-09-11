@@ -404,7 +404,7 @@ static void emit(FILE* o) {
 	char msg[300];
 	char slotBuf[32];
 
-	/* -part (2026-07-25): main darf in einer ANDEREN Datei stehen -- das meldet
+	/* -part (2026-07-25): main may be in ANOTHER file; the linker reports this
 	   der echte Linker (ld) von selbst, falls keine der gelinkten Dateien es
 	   liefert. */
 	if (!partMode && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
@@ -665,9 +665,9 @@ static void emit(FILE* o) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue; /* definiert in einer ANDEREN Datei, keine Speicherallokation hier */
 			// Scalars AND (since 2026-07-25) arrays WITHOUT any GINIT use zero fill --
-			// echtes BSS braucht keine Element-Daten, nur die Gesamtgroesse in Byte, und
-			// erlaubt dadurch beliebig grosse nullinitialisierte Arrays (z.B. ein
-			// 8192-Elemente-AST-Knotenpuffer) OHNE eine .byte/.long-Zeile pro Element.
+			// Real BSS needs no element data, only the total byte size, allowing
+			// arbitrarily large zero-initialized arrays without one .byte/.long line
+			// per element.
 			if (!g->isArray && g->initialValue == 0) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
