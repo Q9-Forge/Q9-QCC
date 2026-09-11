@@ -31,16 +31,11 @@ typedef struct {
 typedef struct {
 	char name[NAME_LEN];
 	int nargs, first, last, locals, frameBytes;
-	/* Mehrdatei-Uebersetzung (2026-07-25): declOnly = per FUNCDECL registriert,
-	   OHNE Rumpf in dieser Datei (definiert in einer anderen QCC-Datei).
-	   isStatic steuert die .globl-Emission (siehe emit()) -- anders als beim
-	   68k/l68-Ziel (kein Sichtbarkeitskonzept, siehe qcc_backend_c.cpp)
-	   unterstuetzt Mach-O/ld ECHTE lokale Symbole: ein Label OHNE .globl ist
-	   fuer andere Objektdateien schlicht unsichtbar (empirisch verifiziert --
-	   zwei separat kompilierte .o mit je einem lokalen "_tc_priv" linken ohne
-	   Konflikt, "duplicate symbol" tritt NICHT auf). Deshalb reicht hier reines
-	   Weglassen von .globl, KEINE Namensverfremdung noetig (Unterschied zu
-	   qcc_backend_c.cpp!). */
+	/* Multi-file translation (2026-07-25): declOnly is registered by FUNCDECL
+	   without a body in this file (defined in another QCC file). isStatic
+	   controls .globl emission. Unlike the 68k/l68 target, Mach-O/ld supports
+	   local symbols: a label without .globl is invisible to other object files.
+	   Therefore omitting .globl is sufficient; no name mangling is needed. */
 	int declOnly, isStatic;
 } Function;
 
