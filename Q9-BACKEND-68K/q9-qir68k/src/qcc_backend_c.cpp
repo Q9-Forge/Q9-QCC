@@ -115,7 +115,7 @@ static int funcCount = 0;
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
 
-static void fatal(const char* msg); /* Definition weiter unten, hier nur fuer registerExtern()/externTableOffset() vorwaertsdeklariert */
+static void fatal(const char* msg); /* Defined below; forward declaration for registerExtern()/externTableOffset(). */
 
 /* Stores tok in the pool and returns its pointer. */
 static char* argIntern(const char* tok, int irLine)
@@ -131,7 +131,7 @@ static char* argIntern(const char* tok, int irLine)
 		fatal(msg);
 	}
 	dst = &argPool[argPoolUsed];
-	memcpy(dst, tok, len);   /* kein (size_t)-Cast: QCC kennt "(unsigned)" ohne "int" noch nicht, und der implizite Uebergang genuegt */
+	memcpy(dst, tok, len);   /* No (size_t) cast: QCC does not yet support "(unsigned)" without "int"; implicit conversion is sufficient. */
 	dst[len] = '\0';
 	argPoolUsed += len + 1;
 	return dst;
@@ -885,9 +885,9 @@ static void emitCompare(FILE* out, const char* branch, int* serial) {
 	fprintf(out, "tc_cmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_cmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName, id, psectName);
 }
 
-// 68000 hat MULS/DIVS nur fuer 16-Bit-Operanden. Diese festen, PIC-faehigen
-// Schablonen bilden deshalb die definierte QCC-int32-Arithmetik nach. Sie
-// erhalten d2-d5 (ABI-freundlich) und geben ausschliesslich d0 zurueck.
+// The 68000 provides MULS/DIVS only for 16-bit operands. These fixed PIC-safe
+// templates therefore implement the defined QCC int32 arithmetic. They
+// preserve d2-d5 for ABI compatibility and return only d0.
 static void emitM68kCore(FILE* out) {
 	fprintf(out, "%s 68k-Core: int32 MUL/DIV, keine OS- oder Q9-Abhaengigkeit\n", fullCommentPrefix());
 	fputs("tc_mul_i32:\n", out);
@@ -1554,7 +1554,7 @@ static void emitIR(FILE* out) {
 				int off;
 				for (pk = fn->first; pk < fn->last; pk++) {
 					Instr* px = &ir[pk];
-					/* Der Opcode-Name-Vergleich MUSS vor number() stehen (Kurzschluss-
+					/* The opcode-name comparison MUST precede number() (short-circuit
 					   Auswertung) -- sonst faellt number() ueber JEDE einargumentige
 					   Instruktion her, auch "LABEL L0" oder "JMP L2", deren Argument
 					   gar keine Zahl ist. Genau das brach hier beim Umbau auf zwei
