@@ -454,7 +454,7 @@ static void emitTableBases(FILE* out, const char* anchor, const char* psect) {
    Versuch, a4 hier bei JEDEM Aufruf neu zu laden -- brach r68 mit "value out
    of range", siehe emitLeaGlobal()-Kommentar): a4 wird stattdessen NUR direkt
    NACH jedem CALLEXT/CALLEXTP neu geladen (dort, wo es kaputtgehen kann). */
-/* BUG 5 (2026-07-26, live auf Q9 gefunden, FUENFTER -largedata-Bug dieser
+/* BUG 5 (2026-07-26, found live on Q9, the fifth -largedata bug in this
    Sitzung): jede Funktion frischt a3/a4 seit dem Bug-4-Fix GLEICH NACH dem
    eigenen "link" auf IHRE EIGENE Tabelle auf -- das heisst aber auch: NACH
    der Rueckkehr aus JEDEM internen Aufruf (CALL/CALLP, auch Laufzeit-Helfer
@@ -1855,9 +1855,9 @@ static void emitIR(FILE* out) {
 					if (!g->isArray) {
 						fprintf(out, "%s:\tdc.%c\t%d\n", gAsmName, tagSuffix(g->elemSize), g->initialValue);
 					} else if (!g->hasGinit) {
-						/* perLine nur Lesbarkeit des erzeugten Assemblers, keine
-						   Korrektheitsfrage -- 2026-09-09 fuer short (elemSize 2)
-						   einen Mittelwert dazugenommen. */
+						/* perLine affects only readability of the generated assembly, not
+						   correctness; a middle value was added for short (elemSize 2) on
+						   2026-09-09. */
 						int e, perLine = g->elemSize == 1 ? 40 : g->elemSize == 2 ? 30 : 20;
 						fprintf(out, "%s:\n", gAsmName);
 						for (e = 0; e < g->length; ) {
