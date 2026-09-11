@@ -43,14 +43,14 @@ static int flName[512];
 static int flDir[512];
 static int flStart[512];
 static int flEnd[512];
-static int flOnce[512];     /* Datei hat "#pragma once" gesehen */
+static int flOnce[512];     /* File has seen "#pragma once". */
 static int flN;
 
 #define INC_MAX 64
 static int isFile[64];
 static int isPos[64];
 static int isLine[64];
-static int isCd[64];        /* #if-Tiefe beim Einbinden, s. Hauptschleife */
+static int isCd[64];        /* #if depth while including; see main loop. */
 static int isDepth;
 
 #define PB_MAX 16384
@@ -140,7 +140,7 @@ static int TK_NL = 7;
 static int TK_ENDMAC = 8;
 static int TK_ARGEND = 9;
 
-/* aktuelles Token */
+/* Current token. */
 static int tkKind;
 static int tkText;
 static int tkLine;
@@ -148,7 +148,7 @@ static int tkFile;
 static int tkWs;
 static int tkFromPB;
 
-/* Lexerzustand der aktuellen Datei */
+/* Lexer state for the current file. */
 static int lxFile;
 static int lxPos;
 static int lxLine;
@@ -161,7 +161,7 @@ static int pkCh;
 static int pkPos;
 static int pkLine;
 
-/* Schalter */
+/* Options. */
 static int optLines;
 static int optMin;
 static int optAsmStrip;
@@ -170,7 +170,7 @@ static int skipping;
 static int atBOL;
 static int inAsm;
 
-/* Ausgabezustand */
+/* Output state. */
 static int lastFile;
 static int lastLine;
 static int lastCh;
@@ -370,7 +370,7 @@ static void fatal(const char *msg, const char *detail)
 {
 	const char *fn;
 
-	fn = "<keine Datei>";
+	fn = "<no file>";
 	if (lxFile >= 0 && lxFile < flN)
 		fn = poolAt(flName[lxFile]);
 	printf("qcpp: %s:%d: %s%s\n", fn, lxLine, msg, detail);
@@ -395,7 +395,7 @@ static void warn(const char *msg, const char *detail)
 	fn = "<keine Datei>";
 	if (lxFile >= 0 && lxFile < flN)
 		fn = poolAt(flName[lxFile]);
-	printf("qcpp: %s:%d: Warnung: %s%s\n", fn, lxLine, msg, detail);
+	printf("qcpp: %s:%d: warning: %s%s\n", fn, lxLine, msg, detail);
 }
 
 /* ============================================================== Dateien === */
@@ -453,18 +453,15 @@ static int fileLoad(const char *path)
 	if (fp == 0)
 		return -1;
 	if (flN >= FILE_MAX)
-		fatal("zu viele Dateien (FILE_MAX)", "");
+		fatal("too many files (FILE_MAX)", "");
 
 	start = srcTop;
 	while (1) {
 		if (srcTop >= SRC_MAX)
 			fatal("Quelltextspeicher voll (SRC_MAX)", "");
-		/* In Haeppchen von 4 KB lesen, NICHT den ganzen freien Rest in
-		   einem Zug anfordern. Ein einzelnes fread ueber 2 MB kam auf
-		   OS-9/68K mit 0 zurueck (am 2026-09-02 im Emulator gemessen:
-		   Eingabe 590 Byte, Ausgabe leer) -- die Microware-libc oder
-		   der RBF-Treiber mag die Groesse nicht. Am Host ist beides
-		   gleichwertig. */
+		/* Read in 4 KiB chunks instead of requesting the entire remaining
+		   arena. A single fread larger than 2 MiB returned zero on OS-9/68K;
+		   the target clib or RBF driver does not accept that size. */
 		want = SRC_MAX - srcTop;
 		if (want > 4096)
 			want = 4096;
