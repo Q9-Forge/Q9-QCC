@@ -2765,8 +2765,8 @@ static void repExpand(int m, int count)
 	curLine = 1;
 }
 
-/* ==================================================== bedingt uebersetzen */
-/* ifeq/ifne/ifgt/ifge/iflt/ifle <ausdruck>, ifdef/ifndef <name>, else, endc.
+/* ================================================ Conditional assembly ==== */
+/* ifeq/ifne/ifgt/ifge/iflt/ifle <expression>, ifdef/ifndef <name>, else, endc.
    Der Ausdruck wird gegen NULL geprueft: "ifeq NULL" mit NULL=0 uebersetzt,
    "ifeq DEFINIERT" mit 1 nicht (an r68 gemessen, ebenso die Schachtelung und
    dass ein uebersprungener Block auch Unuebersetzbares enthalten darf).
@@ -2837,8 +2837,8 @@ static void doCond(const char *base)
 		return;
 	}
 
-	/* Ein if innerhalb eines uebersprungenen Blocks wird nur gezaehlt --
-	   sein Ausdruck darf unauswertbar sein. */
+	/* An if inside a skipped block is only counted; its expression may be
+	   unevaluable. */
 	if (condSkipN > 0) {
 		condPush(0);
 		condAny[condN - 1] = 1;
@@ -2846,7 +2846,7 @@ static void doCond(const char *base)
 	}
 
 	if (baseIs(base, "ifdef") || baseIs(base, "ifndef")) {
-		/* "definiert" heisst: in DIESEM Durchlauf schon definiert.
+		/* "Defined" means defined during THIS pass.
 		   Sonst waere die Bedingung im ersten Durchlauf anders als in
 		   den folgenden (die Symboltabelle bleibt ja stehen) -- und
 		   r68 entscheidet in seinem ersten Durchlauf. */
@@ -2880,8 +2880,8 @@ static void doCond(const char *base)
 	condPush(active);
 }
 
-/* ============================================================== Befehle == */
-/* Kodierungen nach dem M68000PRM; jede erzeugte Form ist mit
+/* =============================================================== Opcodes == */
+/* Encodings follow the M68000PRM; every generated form is compared with
    test/insn.a gegen r68 gestellt.
 
    Was r68 dabei von sich aus umformt (gemessen, sonst gaebe es keine
@@ -2921,10 +2921,8 @@ static int sizeField(int c)
 	return 0;
 }
 
-/* Umfang des Sofortwertes bei den I-Formen (addi/subi/andi/ori/eori/cmpi):
-   ein Byte-Sofortwert wird dort als ganzes WORT abgelegt, mit Vorzeichen und
-   mit einer Wortreferenz -- gemessen an "cmpi.b #-1,d0" ($ffff) gegen
-   "move.b #-1,d0" ($00ff). */
+/* Immediate size for I-forms (addi/subi/andi/ori/eori/cmpi): a byte immediate
+   is stored as a full WORD, sign-extended and with a word reference. */
 static int immBytes(int c)
 {
 	if (c == 'b')
@@ -2932,7 +2930,7 @@ static int immBytes(int c)
 	return sizeBytes(c);
 }
 
-/* Umfangsfeld von MOVE: Byte 1, Wort 3, Langwort 2. */
+/* MOVE size field: byte 1, word 3, long 2. */
 static int moveSizeField(int c)
 {
 	if (c == 'b')
@@ -2945,7 +2943,7 @@ static int moveSizeField(int c)
 	return 0;
 }
 
-/* Bedingungsfeld: genau zwei Zeichen, sonst -1. */
+/* Condition field: exactly two characters, otherwise -1. */
 static int condOf(const char *s)
 {
 	int a;
@@ -2996,7 +2994,7 @@ static void needOps(int want)
 		fatal("falsche Zahl von Operanden: ", lnOp);
 }
 
-/* Fuer Befehle OHNE Operanden ist das dritte Feld der Zeile schon der
+/* For instructions WITHOUT operands, the third field is already the
    Kommentar -- im Korpus steht reichlich "rte   * Kommentar" ohne
    Semikolon davor. Es wird deshalb nicht geprueft, sondern verworfen.
    (Sonst waere ein Kommentar, der mit "*" beginnt, ein Operand: genau das
@@ -3010,7 +3008,7 @@ static void dropOps(void)
 	opTxt3[0] = 0;
 }
 
-/* Sonderregister, die als Operandentext auftreten und KEIN Ausdruck sind:
+/* Special registers that occur as operand text and are NOT expressions:
    1 = ccr, 2 = sr, 3 = usp, sonst 0. Die muessen abgefangen werden, bevor
    parseOperand() sie als Symbolnamen liest. */
 static int specialReg(const char *s)
@@ -3042,7 +3040,7 @@ static int specialReg(const char *s)
 	return 0;
 }
 
-/* Wie baseIs(), aber schreibungsunabhaengig. Fuer Schluesselwoerter, die als
+/* Like baseIs(), but case-insensitive. For keywords used as operands:
    OPERAND auftreten: Kontrollregister (movec), MMU-Register (pmove),
    Cachekennungen. r68 nimmt die in jeder Schreibung -- gemessen:
    "movec d0,DFC" ergibt $4E7B $0001, "pmove (A0),TC" ergibt $f010 $4000,
@@ -3068,7 +3066,7 @@ static int kwIs(const char *s, const char *lit)
 	return 1;
 }
 
-/* Kontrollregister fuer movec, mit den gemessenen Kennungen (movec d0,vbr
+/* Control registers for movec, with measured encodings (movec d0,vbr
    ergibt $4E7B $0801, movec a0,usp ergibt $8800): sfc 0, dfc 1, cacr 2,
    usp $800, vbr $801, caar $802, msp $803, isp $804.
    Dazu die des 68040/68060, an denen ROM_CBOOT/sysinit.a der Ports MVME167
@@ -3118,7 +3116,7 @@ static int controlReg(const char *s)
 	return -1;
 }
 
-/* MMU-Register fuer pmove, mit den gemessenen Kennungen im
+/* MMU registers for pmove, with measured encodings in the
    Erweiterungswort: "pmove (a0),tc" ergibt $f010 $4000, srp $4800,
    crp $4c00, tt0 $0800, tt1 $0c00, mmusr $6000. r68 nimmt "psr" als zweite
    Schreibweise fuer mmusr und lehnt "pcsr" ab. -1 = unbekannt. */
@@ -3141,7 +3139,7 @@ static int mmuReg(const char *s)
 	return -1;
 }
 
-/* Das Funktionscodefeld von pflush/ptest (Bit 4..0), an r68 gemessen:
+/* Function-code field of pflush/ptest (bits 4..0), measured against r68:
    "#n" wird 1nnnn ("pflush #15,#0" -> $301f), "dN" wird 01nnn
    ("pflush d7,#0" -> $300f), "sfc" wird 00000 und "dfc" wird 00001. */
 static int pmmuFc(const char *s)
@@ -3169,7 +3167,7 @@ static int pmmuFc(const char *s)
 	return 0x10 | v;
 }
 
-/* Ein fester Sofortwert als Operandentext ("#7"), fuer die Befehle, die
+/* A fixed immediate value as operand text ("#7"), for instructions that
    dort nichts Verschiebbares zulassen. */
 static int immValue(const char *s, int lo, int hi, const char *what)
 {
@@ -3188,7 +3186,7 @@ static int immValue(const char *s, int lo, int hi, const char *what)
 	return v;
 }
 
-/* Der Bitfeldzusatz "{offset:breite}". Er muss VOR parseOperand() vom
+/* Bit-field suffix "{offset:width}". It must be removed from the operand
    Operandentext abgeschnitten werden -- die geschweiften Klammern kennt es
    nicht. splitOperands() zaehlt sie nicht mit, das braucht es auch nicht:
    im Zusatz steht kein Komma. */
