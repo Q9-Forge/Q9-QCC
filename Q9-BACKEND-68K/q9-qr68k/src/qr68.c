@@ -4027,7 +4027,7 @@ static void doInstruction(void)
 		int sp1;
 
 		if (size == 0) {
-			/* Ohne Groessenbuchstaben ist "move" ein Wort,
+		/* Without a size suffix, "move" is a word,
 			   "movea" aber ein LANGWORT -- gemessen an
 			   "movea PD_BUF(a1),a0" ($2069) gegen "move d0,d1"
 			   ($3200). So steht es in den RBF-Treibern. */
@@ -4036,7 +4036,7 @@ static void doInstruction(void)
 				size = 'l';
 		}
 		needOps(2);
-		/* SR, CCR und USP sind keine Ausdruecke -- gemessen:
+		/* SR, CCR, and USP are not expressions; measured examples:
 		   "move.w sr,d0" $40c0, "move.w ccr,d0" $42c0 (68010),
 		   "move.w d0,sr" $46c0, "move.w d0,ccr" $44c0,
 		   "move.l usp,a0" $4e68, "move.l a0,usp" $4e60. */
@@ -4098,7 +4098,7 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Rechnen --- */
+	/* --- arithmetic --- */
 	if (baseIs(base, "add") || baseIs(base, "sub") || baseIs(base, "and") ||
 	    baseIs(base, "or") || baseIs(base, "eor") || baseIs(base, "cmp")) {
 		doArith(base, size);
@@ -4135,7 +4135,7 @@ static void doInstruction(void)
 		if (size == 0)
 			size = 'w';
 		needOps(2);
-		/* Nach CCR oder SR: eigene Befehlsworte, der Sofortwert ist in
+		/* To CCR or SR: dedicated opcodes; the immediate value is a
 		   BEIDEN Faellen ein ganzes Wort. Gemessen: "ori #1,ccr"
 		   $003c $0001 (r68 warnt dabei "word sized immediate used with
 		   CCR", gibt aber das Wort aus), "andi #$fe,ccr" $023c,
@@ -4168,7 +4168,7 @@ static void doInstruction(void)
 		if (oMode[0] != AM_IMM)
 			fatal("die I-Form braucht einen Sofortwert: ", lnArg);
 		needAlterable(1);
-		/* Auch die AUSGESCHRIEBENE Form verkuerzt r68: "addi.b #1,d5"
+		/* r68 also shortens the EXPLICIT form: "addi.b #1,d5"
 		   wird $5205, also ADDQ (gemessen). Fuer andi/ori/eori/cmpi
 		   gibt es keine Kurzform, die bleiben stehen. */
 		if ((baseIs(base, "addi") || baseIs(base, "subi")) &&
@@ -4285,7 +4285,7 @@ static void doInstruction(void)
 				if (!longDiv)
 					ext = ext | 0x0400;
 			} else {
-				/* Ohne "dr:" traegt r68 in das untere Feld
+			/* Without "dr:", r68 writes dq again into the low field
 				   NICHT 0 ein, sondern noch einmal dq --
 				   gemessen an "divu.l #x,d1" aus
 				   SYSMODS/GCLOCK/tk162.a: $1001, nicht $1000
@@ -4319,8 +4319,8 @@ static void doInstruction(void)
 		return;
 	}
 
-	/* --- Bitbefehle --- */
-	/* Gemessen: statisch "btst #2,d6" $0806 + Wort $0002, dynamisch
+	/* --- bit instructions --- */
+	/* Measured: static "btst #2,d6" is $0806 plus word $0002; dynamic
 	   "btst d1,d6" $0306; die Art steht in Bit 7..6 (btst 0, bchg 1,
 	   bclr 2, bset 3): "bset #3,d0" $08c0, "bclr #3,(a0)" $0890,
 	   "bchg d1,d0" $0340. Den Umfang bestimmt der Zieloperand
