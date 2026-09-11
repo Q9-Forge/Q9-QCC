@@ -57,38 +57,33 @@
  * MOVEQ itself cannot create another matching opportunity, so one final pass
  * is sufficient.
  *
- * MEHRERE DURCHLAEUFE: eine Streichung legt oft die naechste frei --
- * "PUSH x / POP d0 / TST d0" faltet das erste Muster zu "move.l x,d0",
- * und ERST DANACH steht "tst.l d0" unmittelbar daneben. peepholeRun()
- * wiederholt deshalb alle drei Muster, bis ein Durchlauf nichts mehr
- * aendert (klassisches Peephole-Verhalten, dieselbe Erwartung wie bei
- * o68). Die Fold-Funktionen duerfen sich deshalb NICHT auf physische
- * Nachbarschaft verlassen (phLines[i+1]) -- eine schon gestrichene Zeile
- * liegt weiterhin im Array, phNextKept() ueberspringt sie.
+ * MULTIPLE PASSES: removing one instruction often exposes the next pattern.
+ * For example, "PUSH x / POP d0 / TST d0" first becomes "move.l x,d0" and
+ * only then exposes the redundant TST. peepholeRun() therefore repeats the
+ * patterns until a pass makes no change. Fold functions must not rely on
+ * physical adjacency (phLines[i+1]); removed lines remain in the array and
+ * phNextKept() skips them.
  *
- * ARCHITEKTUR fuer weitere Muster (o68-Lehre): reines LESEN der Originalzeilen
- * (keine Mutation), Ersetzungen landen in einem eigenen Synthesepuffer, eine
- * Zeile wird durch Streichen markiert statt physisch verschoben (o68s remins-
- * Idee) -- neue Muster kommen als weitere phFold*-Funktionen dazu, nicht als
- * Sonderfaelle in einer bestehenden.
+ * ARCHITECTURE FOR FUTURE PATTERNS: read original lines without mutation,
+ * place replacements in a separate synthesis buffer, and mark removed lines
+ * instead of moving them physically. New patterns should be added as further
+ * phFold* functions rather than as special cases in an existing matcher.
  *
- * SPEICHERGROESSEN GEMESSEN, NICHT GERATEN: qr68s eigene Assemblerausgabe mit
- * -remotedata (der groesste bisher auf dem Ziel gelaufene Fall ausserhalb des
- * Selbsthosts) hat 75.273 Zeilen / 1.588.771 Byte. Die Grenzen unten geben
- * darauf reichlich Kopfraum; QCCs eigener Selbsthost-Bau (222.832 Zeilen /
- * 4,59 MB) sprengt sie bewusst -- -peephole ist fuer den noch nicht verdrahtet,
- * das waere eine eigene, spaetere Speicherbudget-Entscheidung. Ueberschreitung
- * bricht mit fatal() ab, wie jede andere Kapazitaetsgrenze in diesem Backend --
- * keine stille Kuerzung.
+ * MEMORY SIZES ARE MEASURED: qr68's own -remotedata assembly output, the
+ * largest target-run case outside the self-host build, contains 75,273 lines
+ * and 1,588,771 bytes. The limits below leave generous headroom. QCC's own
+ * self-host build intentionally exceeds them; -peephole is not wired into
+ * that path yet and needs a separate memory-budget decision. Overflow calls
+ * fatal(), like every other capacity limit in this backend; it never truncates
+ * silently.
  *================================================================================*/
 
 #define PH_MAX_LINES  100000
-#define PH_TEXT_BYTES 2097152   /* 2 MB, ~35% Kopfraum ueber qr68 (1,59 MB) */
-#define PH_SYNTH_BYTES PH_TEXT_BYTES /* eine ersetzte Zeile ist nie laenger als
-                                        die beiden Originalzeilen zusammen --
-                                        die Summe aller Ersetzungen passt also
-                                        immer in denselben Rahmen wie der
-                                        Originaltext. */
+#define PH_TEXT_BYTES 2097152   /* 2 MB, ~35% headroom over qr68 (1.59 MB) */
+#define PH_SYNTH_BYTES PH_TEXT_BYTES /* A replacement is never longer than
+                                        the two original lines combined, so
+                                        all replacements fit within the same
+                                        bound as the original text. */
 
 static char phText[PH_TEXT_BYTES];
 static const char* phLines[PH_MAX_LINES];
