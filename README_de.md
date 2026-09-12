@@ -1,5 +1,9 @@
 # Q9-QCC
 
+
+<img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/0f469c58-eebb-429b-91bd-9fc9ef6df503" />
+
+
 *English version: [README.md](README.md)*
 
 Der gemeinsame projektübergreifende Kontext und die verbindlichen Namen
