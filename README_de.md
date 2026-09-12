@@ -12,21 +12,23 @@ weiterlebt.
 
 ## Abhängigkeit zu Q9-Parsec
 
-Der QCC-Parser `Data/qcc_p.c` wird vom EBNF-Generator aus Q9-Parsec erzeugt.
+Der C-Frontend-Parser `Q9-FRONTEND-C/q9-qcir/data/qcc_p.c` wird vom
+EBNF-Generator `qparsec` erzeugt.
 Er ist hier **eingecheckt** (in Q9-Parsec ist dieselbe Datei nur ein
 unversioniertes Bauartefakt), damit dieses Repo ohne Generator übersetzbar
 bleibt:
 
 ```
-Data/qcc.ebnf + Data/qcc.lextab  --[parsec aus Q9-Parsec]-->  Data/qcc_p.c
+Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf + qcc.lextab  --[qparsec]-->  qcc_p.c
 ```
 
 **Achtung, Falle:** ohne die `.lextab` entsteht ein Parser ohne Lexer und
 ohne Aktionen — die `.ebnf` allein trägt das nicht. Mit beiden Dateien ist
 die Erzeugung bitgleich reproduzierbar; nach jeder Grammatikänderung
-`Data/qcc_p.c` neu erzeugen und mitcommitten.
+`qcc_p.c` neu erzeugen und mitcommitten.
 
-Die QCC-Sprachdefinition `Data/qcc.ebnf`/`qcc.lextab` wird **hier** gepflegt;
+Die QCC-Sprachdefinition `Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf`/
+`qcc.lextab` wird **hier** gepflegt;
 Q9-Parsec hält davon eine Kopie, weil seine Regressionssuite QCC mittestet
 (siehe „Bekannte Lücke" unten). Q9-Parsec zum Bauen des Generators
 zusätzlich auschecken:
@@ -56,9 +58,25 @@ Teilstring-Prüfung hereinfiel.
 
 ## Struktur
 
-- `Source/qcc_backend*.cpp`, `qcc_arm64_backend*.cpp` — IR-zu-68k- bzw.
+Das Repository ist nach Werkzeuggruppen gegliedert:
+
+```text
+Q9-QCC/
+├── Q9-QCC/                 universeller Treiber: qcc
+├── Q9-PARSEC/              Parsergenerator: qparsec
+├── Q9-RUN/                 Stack-IR-Interpreter: qrun
+├── Q9-FRONTEND-C/          qcpp und qcir
+├── Q9-BACKEND-68K/         qir68k, qo68k, q9-qclib, q9-devs
+├── Q9-BACKEND-x86/         x86-Werkzeugkette
+└── Q9-BACKEND-ARM64/       ARM64-Werkzeugkette
+```
+
+Jedes Teilprojekt verwendet bei Bedarf `src/`, `include/`, `data/`, `tests/`,
+`tools/`, `docs/` und `build/`. `build/` enthält nur lokale Bauartefakte.
+
+- `Q9-BACKEND-68K/q9-qir68k/src/` — IR-zu-68k-Backendquellen
   IR-zu-ARM64-Codegenerierung
-- `SourceQCC/` — der EBNF-Generator selbst, nach QCC portiert
+- `Q9-FRONTEND-C/q9-qcir/src/bootstrap/` — QCC-Bootstrapquellen
   (Selfhosting-Nachweis: beweist, dass dieser Compiler ein echtes,
   größeres Programm übersetzen kann)
 - `runtime/arm64_darwin/` — Laufzeit-Unterstützung fürs ARM64-Testbackend
@@ -82,8 +100,8 @@ deckungsgleich**; damit das so bleibt, gilt eine feste Zuständigkeit:
 | Datei | gepflegt in |
 |---|---|
 | `Data/qcc.ebnf`, `Data/qcc.lextab` | **Q9-QCC** |
-| `Source/qcc_backend_c.cpp`, `Source/qcc_arm64_backend_c.cpp` | **Q9-QCC** |
-| `SourceQCC/ebnf.tc`, `SourceQCC/codegen.tc` | **Q9-Parsec** (Generator-Zwillinge) |
+| `Q9-BACKEND-68K/q9-qir68k/src/` | **Q9-BACKEND-68K** |
+| `Q9-FRONTEND-C/q9-qcir/src/bootstrap/` | **Q9-FRONTEND-C** (Bootstrap-Zwillinge) |
 | `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` | **Q9-Parsec** (dort läuft die Suite) |
 | `runtime/arm64_darwin/start.s`, `LICENSE` | beliebig, gleich halten |
 

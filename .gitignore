@@ -1,0 +1,30 @@
+# Build- und lokale Testartefakte
+/.archive/
+/build/
+**/build/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.elf
+*.mod
+*.lst
+*.map
+
+# Generierte bzw. temporäre Compilerstufen
+*.ir
+*.s68
+*.s68k
+*.sx86
+*.r
+*.opt.s68k
+*.opt.sx86
+*.lexlst
+
+# Python-/macOS-/Editorartefakte
+__pycache__/
+.DS_Store
+.vscode/
+*.swp
+*~

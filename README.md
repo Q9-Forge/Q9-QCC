@@ -13,21 +13,22 @@ preserved), which now lives on as [Q9-Parsec](https://github.com/Q9-Forge/Q9-Par
 
 ## Dependency on Q9-Parsec
 
-The QCC parser `Data/qcc_p.c` is produced by the EBNF generator from
+The C frontend parser `Q9-FRONTEND-C/q9-qcir/data/qcc_p.c` is produced by the EBNF generator from
 Q9-Parsec. It **is checked in here** (in Q9-Parsec the same file is only an
 unversioned build artifact), so that this repo stays buildable without the
 generator:
 
 ```
-Data/qcc.ebnf + Data/qcc.lextab  --[parsec from Q9-Parsec]-->  Data/qcc_p.c
+Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf + qcc.lextab  --[qparsec]-->  qcc_p.c
 ```
 
 **Watch out:** without the `.lextab` you get a parser with no lexer and no
 actions -- the `.ebnf` alone does not carry them. With both files the
-generation is reproducible bit for bit; regenerate `Data/qcc_p.c` after every
+generation is reproducible bit for bit; regenerate `qcc_p.c` after every
 grammar change and commit it along.
 
-The QCC language definition `Data/qcc.ebnf`/`qcc.lextab` is maintained
+The QCC language definition `Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf`/
+`qcc.lextab` is maintained
 **here**; Q9-Parsec keeps a copy of it because its regression suite tests QCC
 as well (see "Known gap" below). Also check out Q9-Parsec to build the
 generator:
@@ -56,9 +57,30 @@ which fooled every caller doing a substring check.
 
 ## Structure
 
-- `Source/qcc_backend*.cpp`, `qcc_arm64_backend*.cpp` -- IR-to-68k and
-  IR-to-ARM64 code generation
-- `SourceQCC/` -- the EBNF generator itself, ported to QCC
+The repository is organized by tool groups:
+
+```text
+Q9-QCC/
+├── Q9-QCC/                 universal driver: qcc
+├── Q9-PARSEC/              parser generator: qparsec
+├── Q9-RUN/                 Stack-IR interpreter: qrun
+├── Q9-FRONTEND-C/
+│   ├── q9-qcpp/            preprocessor: qcpp
+│   └── q9-qcir/            C frontend: qcir
+├── Q9-BACKEND-68K/
+│   ├── q9-qir68k/          IR backend: qir68k
+│   ├── q9-qo68k/           optimizer: qo68k
+│   ├── q9-qclib/           68k runtime library
+│   └── q9-devs/            68k device definitions
+├── Q9-BACKEND-x86/         x86 toolchain group
+└── Q9-BACKEND-ARM64/       ARM64 toolchain group
+```
+
+Each tool project uses `src/`, `include/`, `data/`, `tests/`, `tools/`,
+`docs/`, and `build/` only where needed. `build/` contains local artifacts.
+
+- `Q9-BACKEND-68K/q9-qir68k/src/` -- IR-to-68k backend sources
+- `Q9-FRONTEND-C/q9-qcir/src/bootstrap/` -- QCC bootstrap sources
   (selfhosting proof: demonstrates that this compiler can translate a
   real, larger program)
 - `runtime/arm64_darwin/` -- runtime support for the ARM64 test backend
@@ -82,8 +104,8 @@ fixed ownership applies:
 | File | maintained in |
 |---|---|
 | `Data/qcc.ebnf`, `Data/qcc.lextab` | **Q9-QCC** |
-| `Source/qcc_backend_c.cpp`, `Source/qcc_arm64_backend_c.cpp` | **Q9-QCC** |
-| `SourceQCC/ebnf.tc`, `SourceQCC/codegen.tc` | **Q9-Parsec** (generator twins) |
+| `Q9-BACKEND-68K/q9-qir68k/src/` | **Q9-BACKEND-68K** |
+| `Q9-FRONTEND-C/q9-qcir/src/bootstrap/` | **Q9-FRONTEND-C** (Bootstrap-Zwillinge) |
 | `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` | **Q9-Parsec** (the suite runs there) |
 | `runtime/arm64_darwin/start.s`, `LICENSE` | either, keep in step |
 

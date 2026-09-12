@@ -1,0 +1,21 @@
+GLOBALDECL shared_counter i
+FUNCDECL step 1
+FUNC run 1 0
+LOADL 0
+STOREG shared_counter
+LOADG shared_counter
+CALL step 1
+RET
+PUSH 0
+RET
+ENDFUNC
+FUNC main 0 0
+PUSH 41
+CALL run 1
+PRINT
+PUSH 0
+RET
+PUSH 0
+RET
+ENDFUNC
+OK

@@ -40,7 +40,7 @@ source /Volumes/SSD1TB/projects/MWOS/tools/macos/env/os9-toolchain.sh
 
 STAGE="$(mktemp -d /tmp/qcc-xcc-build.XXXXXX)"
 trap 'rm -rf "$STAGE"' EXIT
-cp Data/qcc_p.c "$STAGE/"
+cp Q9-FRONTEND-C/q9-qcir/data/qcc_p.c "$STAGE/"
 STAGE_WIN="Z:$(printf '%s' "$STAGE" | sed 's#/#\\#g')"
 
 wine_xcc() {
@@ -71,7 +71,7 @@ python3 tools/bootstrap_prepare.py build/qcc_p.xcc.i build/qcc_p.bootstrap.c
 # ---------------------------------------------------------------------------
 # Selbsttest: QCC muss die eben erzeugte Bootstrap-Quelle fehlerfrei
 # uebersetzen. Ohne diesen Schritt faellt hier nichts auf -- die Suite in
-# Q9-Parsec uebersetzt immer Data/qcc_p.c direkt, nie die xcc-vorverarbeitete
+# Q9-Parsec uebersetzt immer Q9-FRONTEND-C/q9-qcir/data/qcc_p.c direkt, nie die xcc-vorverarbeitete
 # Fassung. Genau daran ist am 2026-09-01 eine fehlende realloc-Deklaration
 # unbemerkt durchgegangen: sie stand im Kopf des erzeugten Parsers und damit
 # VOR dem Marker, an dem bootstrap_prepare.py den Header-Vorspann abschneidet.

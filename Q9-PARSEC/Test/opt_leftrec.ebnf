@@ -1,0 +1,2 @@
+# Linksrekursion durch ueberspringbare Option hindurch
+s = [ "-" ] s "x" | "y" .

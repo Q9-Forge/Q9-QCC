@@ -22,7 +22,7 @@
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FLUX="${FLUX:-$REPO/../Q9-Flux-68k}"
+FLUX="${FLUX:-$REPO/../Q9-Flux/Q9-Flux-68k}"
 SRCIMG="${SRCIMG:-$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
 WORK="${WORK:-/tmp/qcc-selfhost}"
 STACK_KB="${STACK_KB:-1024}"
@@ -31,8 +31,9 @@ KEEP=0
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -x "$REPO/build/qcir" ]     || die "build/qcir fehlt"
-[ -x "$REPO/build/qir_68k" ]  || die "build/qir_68k fehlt"
+[ -x "$REPO/build/qir68k" ]  || die "build/qir68k fehlt"
 [ -f "$REPO/build/qcc_p.bootstrap.c" ] || die "build/qcc_p.bootstrap.c fehlt (tools/build_xcc_bootstrap.sh)"
+[ -f "$REPO/test/bootstrap_probe.c" ] || die "test/bootstrap_probe.c fehlt"
 [ -f "$SRCIMG" ]                 || die "Image nicht gefunden: $SRCIMG"
 [ -d "$FLUX" ]                   || die "Q9-Flux nicht gefunden: $FLUX"
 
@@ -69,15 +70,15 @@ echo "  ok ($(wc -l < stage1.ir | tr -d ' ') IR-Zeilen, $(wc -c < stage1.ir | tr
 # -largedata ist Pflicht: der Parser hat weit mehr als 32 KB globalen Zustand,
 # ohne die Indirektionstabelle meldet r68 "value out of range".
 echo "== 2/6 Backend (-os9 -largedata -remotedata) =="
-"$REPO/build/qir_68k" stage1.ir stage2.s68 -os9 -largedata -remotedata >/dev/null \
-	|| die "qir_68k"
-echo "  ok ($(wc -l < stage2.s68 | tr -d ' ') Assemblerzeilen)"
+"$REPO/build/qir68k" stage1.ir stage2.s68k -os9 -largedata -remotedata >/dev/null \
+	|| die "qir68k"
+echo "  ok ($(wc -l < stage2.s68k | tr -d ' ') Assemblerzeilen)"
 
 echo "== 3/6 r68 + l68 =="
 w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
 [ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
-w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe stage2.s68 -o=stage2.r'
-[ -f stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68"; }
+w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe stage2.s68k -o=stage2.r'
+[ -f stage2.r ] && [ -s stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68k"; }
 # -M=1024K: der Parser steigt rekursiv ab.  Mit dem Standard-Stack (3072 Byte)
 # bricht schon die Rauchprobe mit "**** Stack Overflow ****" ab.
 w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcc-selfhost\\q9_cstart.r Z:\\tmp\\qcc-selfhost\\stage2.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcc-selfhost\\q9_qcc_stage2"
@@ -100,6 +101,8 @@ cp -c "$SRCIMG" "$IMG" 2>/dev/null || cp "$SRCIMG" "$IMG" || die "Image-Kopie"
 # Modul nicht starten (Fehler 214).  Kostet sonst eine Runde Ratlosigkeit.
 "$TS" attr -e -w -r -pe -pr "$IMG,/CMDS/q9_qcc_stage2" >/dev/null 2>&1 \
 	|| die "attr -e"
+"$TS" copy -l -r "$REPO/test/bootstrap_probe.c" "$IMG,/bootstrap_probe.c" >/dev/null 2>&1 \
+	|| die "ToolShed-copy der Rauchprobe"
 echo "  ok"
 
 echo "== 5/6 im Emulator: Rauchprobe, dann der eigene Parser =="

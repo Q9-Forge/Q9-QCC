@@ -1,0 +1,6 @@
+* Dritter psect GANZ OHNE Daten -- pruefen, ob l68 einen leeren Block
+* trotzdem auf die -b=-Grenze schiebt.
+         psect   oc,0,0,0,0,0
+sub2:    moveq   #3,d0
+         rts
+         ends

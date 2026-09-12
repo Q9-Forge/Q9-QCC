@@ -1,0 +1,27 @@
+* q9-qclib memory ABI adapter: realloc.
+* Edition history: 2026-09-11  Introduced the English source-header format.
+*
+* Der Adapter fuer realloc.
+*
+* Derselbe Handgriff wie in file.a, printf.a und str.a, dort begruendet:
+* d1 wandert auf den Platz der Ruecksprungadresse, d0 darueber, danach
+* liegen die Argumente lueckenlos hintereinander und der C-Rumpf ist ein
+* gewoehnliches "char *qm_realloc(int *a)".
+
+         psect   qmem,0,0,0,0,0
+
+* Function: realloc -- allocates or grows an arena-backed memory block.
+realloc:
+         move.l  (a7),a1                 * Ruecksprungadresse merken
+         move.l  d1,(a7)                 * Argument 2 an ihren Platz
+         move.l  d0,-(a7)                * Argument 1 darueber
+         move.l  a1,-(a7)                * Ruecksprungadresse sichern
+         pea     4(a7)                   * &args
+         bsr     tc_qm_realloc
+         addq.l  #4,a7                   * &args weg
+         move.l  (a7)+,a1                * Ruecksprungadresse zurueck
+         addq.l  #8,a7                   * Argument 1 und 2 weg
+         move.l  a1,-(a7)
+         rts
+
+         ends
