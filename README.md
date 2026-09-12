@@ -1,7 +1,8 @@
 # Q9-QCC
-<center>
-<img width="600" height="600" alt="image" src="https://github.com/user-attachments/assets/0f469c58-eebb-429b-91bd-9fc9ef6df503" />
-</center>
+
+<img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/0f469c58-eebb-429b-91bd-9fc9ef6df503" />
+
+ 
 *German version: [README_de.md](README_de.md)*
 
 The shared cross-project context and the binding names live in
