@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+# Run the qr68 module built by QCC on a real 68030.
+# Called by tools/test_68k.sh (Q9FLUX, QR68_IMAGE, MWOS, ROMIMG).
+#
+# Use a generous timeout: the module is over 1 MB (QCC's backend places zeroed
+# fields in initialized data; see the source comments), and the emulator does
+# not load that from the CF image within one second.
+set timeout 900
+set send_slow {1 .003}
+
+# Anchor on the REAL prompt and allow any number of trailing spaces:
+# the OS-9 prompt contains several spaces, and a pattern with exactly one
+# never matches, leaving the run stuck until the timeout.
+set prompt {ROOT# *$}
+
+set flux  $env(Q9FLUX)
+set image $env(QR68_IMAGE)
+set mwos  $env(MWOS)
+set rom   $env(ROMIMG)
+
+cd $flux
+spawn ./build/macos/q9.exe --rom $rom --cf $image
+expect {
+    "devices online" {}
+    timeout { send_user "\n<<< BOOT TIMEOUT >>>\n"; exit 1 }
+}
+send "\r"
+
+set logged_in 0
+for {set i 0} {$i < 10 && !$logged_in} {incr i} {
+    expect {
+        "User name?:" { send "super\r"; exp_continue }
+        -re {Password[^\r\n]*:} { send "Al35uUbC\r"; exp_continue }
+        -re $prompt { set logged_in 1 }
+        timeout { send "\r" }
+    }
+}
+if {!$logged_in} { send_user "\n<<< LOGIN FEHLGESCHLAGEN >>>\n"; exit 1 }
+
+# Do NOT wait for the prompt: after login it is still buffered and would match
+# immediately; the emulator would exit before the module was loaded.
+# Wait for the WRITE message from "-v", which appears only after fclose();
+# the read message appears first and proves only that loading happened.
+send -s "/dd/CMDS/q9_qr68 -v /dd/insn.a /dd/insn.r\r"
+expect {
+    -re {geschrieben: ([0-9]+) Byte Code} {
+        send_user "\n<<< QR68 LIEF AUF 68K DURCH, $expect_out(1,string) Byte Code >>>\n"
+    }
+    # Anchor on the DIAGNOSTIC FORM (qr68: <file>:<line>: <text>), not just
+    # "qr68: ": expect uses the first matching pattern in the stream, which
+    # would match in the middle of the -v line.
+    -re {qr68: [^ \r\n]+:[0-9]+:} {
+        send_user "\n<<< QR68 MELDET EINEN FEHLER >>>\n"
+        exit 1
+    }
+    -re {Error #([0-9]+)} { send_user "\n<<< OS-9-FEHLER $expect_out(1,string) >>>\n"; exit 1 }
+    timeout { send_user "\n<<< TIMEOUT beim Laden/Laufen >>>\n"; exit 1 }
+}
+send "\x1d"
+expect eof
+exit 0

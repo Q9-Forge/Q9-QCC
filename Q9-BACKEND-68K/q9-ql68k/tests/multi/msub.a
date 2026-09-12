@@ -1,0 +1,10 @@
+         psect   msub,0,0,0,0,0
+sub1:    moveq   #2,d0
+         move.l  svar(a6),d1
+         rts
+         vsect
+svar     dc.l    $22222222
+sptr     dc.l    sub1
+sbuf     ds.b    8
+         ends
+         ends

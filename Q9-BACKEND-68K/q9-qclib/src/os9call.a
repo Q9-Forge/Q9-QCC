@@ -1,0 +1,252 @@
+* q9-qclib OS-9 system-call wrappers
+*
+* Purpose: provide the small, self-contained OS-9 ABI layer required by qclib.
+*
+* Edition history:
+*   2026-09-11  Introduced the English source-header format.
+*
+* _os_write und _os_exit -- die beiden Systemaufrufe, die die Kette
+* braucht. Damit faellt Microwares os_lib.l weg.
+*
+* WARUM DAS HIER STEHT: os_lib.l ist wie clib.l ein libgen-Archiv
+* (Kennung $2d00d5bc) und damit fuer ql68 unlesbar. Solange die Kette
+* daran haengt, muss mit l68 gebunden werden. Es sind aber nur zwei
+* Aufrufe -- und ein Systemaufruf ist unter OS-9/68000 nichts weiter als
+* TRAP #0 mit dem Servicewort dahinter.
+*
+* GEMESSEN, nicht geraten:
+*   - Das Trap-Muster steht in Q9-QCC/runtime/os9/q9defs.d
+*     ("Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0").
+*   - Die Servicenummern stehen ausgeschrieben in
+*     MWOS/OS9/SRC/DEFS/funcs.h: I_WRITE 0x8a, F_EXIT 0x06,
+*     F_SRQMEM 0x28, F_SRTMEM 0x29.
+*   - Die Registerbelegung ist aus laufendem Code abgelesen (PrtMsg in
+*     q9_cstart.a): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
+*
+* Die Konstanten stehen bewusst HIER und nicht in einem "use" auf die
+* MWOS-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
+
+Q9I_Create     equ     $83                      * I$Create, Datei anlegen
+Q9I_Open       equ     $84                      * I$Open, Datei oeffnen
+Q9I_Read       equ     $89                      * I$Read, Daten lesen
+Q9I_Write      equ     $8a                      * I$Write, Daten schreiben
+Q9I_Close      equ     $8f                      * I$Close, Pfad schliessen
+Q9F_Exit       equ     $06                      * F$Exit, Prozess beenden
+Q9F_SRqMem     equ     $28                      * F$SRqMem, Speicher holen
+Q9F_SRtMem     equ     $29                      * F$SRtMem, Speicher zurueck
+
+         psect   qos9,0,0,0,0,0
+
+* error_code _os_write(path_id path, const void *buffer, u_int32 *count)
+*
+* C-Seite (Microware-Konvention): d0 = path, d1 = buffer, 4(a7) = &count.
+* count ist ein IN/OUT-Zeiger: hinein die gewuenschte Anzahl, heraus die
+* tatsaechlich geschriebene.
+* OS-9 meldet einen Fehler ueber das Uebertragsbit, der Code steht in d1.
+
+* Function: _os_write
+* Writes a byte range to an open OS-9 path.
+* Parameters: d0 path, d1 buffer, stack argument points to byte count.
+* Returns: OS-9 error code in d0 (zero on success).
+_os_write:
+         movea.l d1,a0                           * Puffer nach a0
+         movea.l 4(a7),a1                        * &count
+         move.l  (a1),d1                         * gewuenschte Anzahl
+         trap    #0
+         dc.w    Q9I_Write
+         bcs.s   ow_err
+         move.l  d1,(a1)                         * tatsaechlich geschrieben
+         moveq   #0,d0                           * kein Fehler
+         rts
+ow_err
+         moveq   #0,d0
+         move.w  d1,d0                           * Fehlercode zurueckgeben
+         rts
+
+* void _os_exit(int status) -- kehrt nicht zurueck.
+* Der zweite Aufruf ist die Sicherung fuer den Fall, dass ein Debugger den
+* ersten abfaengt; genauso macht es q9_cstart.a.
+
+* Function: _os_exit
+* Terminates the current OS-9 process.
+* Parameters: d0 process status.
+* Returns: Does not return under normal OS-9 operation.
+_os_exit:
+         move.l  d0,d1                           * Status nach d1
+         trap    #0
+         dc.w    Q9F_Exit
+         trap    #0
+         dc.w    Q9F_Exit
+         rts
+
+
+* error_code _os_open(const char *name, u_int32 mode, path_id *path)
+*
+* C-Seite: d0 = name, d1 = mode, 4(a7) = &path.
+* OS-9-Seite (am Original aus os_lib.l abgelesen): d0.w = Zugriffsmodus,
+* a0 = Pfadname; zurueck kommt die Pfadnummer in d0. Microwares Fassung
+* maskiert sie auf 16 Bit -- das tut diese auch, sonst stehen im oberen
+* Wort Reste.
+
+* Function: _os_open
+* Opens an existing OS-9 file.
+* Parameters: d0 name, d1 mode, stack argument points to path output.
+* Returns: OS-9 error code in d0.
+_os_open:
+         movea.l d0,a0                           * Name nach a0
+         move.l  d1,d0                           * Modus nach d0
+         trap    #0
+         dc.w    Q9I_Open
+         bcs.s   oo_err
+         andi.l  #$0000ffff,d0                   * nur die Pfadnummer
+         movea.l 4(a7),a1                        * &path
+         move.l  d0,(a1)
+         moveq   #0,d0
+         rts
+oo_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_close(path_id path) -- d0 traegt den Pfad schon.
+
+* Function: _os_close
+* Closes an OS-9 path.
+* Parameters: d0 path number.
+* Returns: OS-9 error code in d0.
+_os_close:
+         trap    #0
+         dc.w    Q9I_Close
+         bcs.s   oc_err
+         moveq   #0,d0
+         rts
+oc_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_read(path_id, void *buffer, u_int32 *count)
+* Spiegelbild von _os_write: d0 = Pfad, d1 = Puffer, 4(a7) = &count.
+
+* Function: _os_read
+* Reads a byte range from an open OS-9 path.
+* Parameters: d0 path, d1 buffer, stack argument points to byte count.
+* Returns: OS-9 error code in d0.
+_os_read:
+         movea.l d1,a0                           * Puffer nach a0
+         movea.l 4(a7),a1                        * &count
+         move.l  (a1),d1                         * gewuenschte Anzahl
+         trap    #0
+         dc.w    Q9I_Read
+         bcs.s   or_err
+         move.l  d1,(a1)                         * tatsaechlich gelesen
+         moveq   #0,d0
+         rts
+or_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_create(const char *name, u_int32 mode, path_id *path,
+*                       u_int32 perms)
+* Wie _os_open, zusaetzlich die Dateirechte in d1.w (I$Create erwartet
+* den Zugriffsmodus in d0.b und die Attribute in d1.w).
+
+* Function: _os_create
+* Creates and opens an OS-9 file.
+* Parameters: d0 name, d1 mode, stack arguments contain path and permissions.
+* Returns: OS-9 error code in d0.
+_os_create:
+         movea.l d0,a0                           * Name nach a0
+         move.l  d1,d0                           * Modus nach d0
+         move.l  8(a7),d1                        * Rechte nach d1
+         trap    #0
+         dc.w    Q9I_Create
+         bcs.s   ocr_err
+         andi.l  #$0000ffff,d0
+         movea.l 4(a7),a1
+         move.l  d0,(a1)
+         moveq   #0,d0
+         rts
+ocr_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+
+* error_code _os_srqmem(u_int32 want, u_int32 *granted, void **addr)
+*
+* Speicher beim System holen. 0 = geholt, sonst der OS-9-Fehlercode.
+*
+* DREIFACH BELEGT, weil hier nichts abgeleitet werden durfte:
+*   1. Das technische Handbuch (68k_tech.pdf, "F$SRqMem System Memory
+*      Request"): d0.l ein = Byteanzahl, d0.l aus = gewaehrte Anzahl,
+*      (a2) = Zeiger auf den Block, Fehler ueber das Uebertragsbit mit
+*      dem Code in d1.w. Die Anzahl wird auf ein Vielfaches der
+*      Systemblockgroesse aufgerundet (derzeit 16), die Adresse ist
+*      immer gerade. Mit -1 in d0.l kommt der GROESSTE freie Block --
+*      damit laesst sich die Obergrenze der Maschine messen.
+*   2. Microwares eigener Rumpf in os_lib.l, disassembliert: derselbe
+*      Registersatz, aber TRAP $5c (F$SRqCMem, die Farbvariante) mit der
+*      Farbe als drittem Argument. Das Handbuch dazu: "F$SRqMem is
+*      equivalent to a F$SRqCMem request with a color of 0." Auch clibs
+*      eigene Speicherverwaltung nimmt $5c und $29 -- die Quelle des
+*      Speichers ist also dieselbe wie hier.
+*   3. Der eigene Kernel (Q9-OS, q9kernel_entry.a) dokumentiert fuer
+*      F$SRqMem genau diese Belegung -- und er kennt $28, nicht $5c.
+*      Deshalb steht hier $28: qclib soll auch auf dem eigenen System
+*      laufen.
+*
+* a2 wird gerettet: der Aufruf gibt darin sein Ergebnis zurueck, und ob
+* der Aufrufer a2 fuer erhalten haelt, waere eine eigene Messung. Der
+* Microware-Rumpf rettet es ebenfalls.
+*
+* ACHTUNG BEIM DRITTEN ARGUMENT: es liegt bei 4(a7), aber das a2 auf dem
+* Stack schiebt es auf 8(a7). Wer hier 4(a7) liest, bekommt die
+* Ruecksprungadresse und schreibt den Zeiger dorthin.
+
+* Function: _os_srqmem
+* Requests a block of OS-9 system memory.
+* Parameters: d0 requested size, d1 granted-size pointer, stack argument address output.
+* Returns: OS-9 error code in d0.
+_os_srqmem:
+         move.l  a2,-(a7)                        * a2 retten
+         movea.l d1,a1                           * &granted
+         trap    #0                              * d0.l = gewuenschte Anzahl
+         dc.w    Q9F_SRqMem
+         bcs.s   sq_err
+         move.l  d0,(a1)                         * gewaehrte Anzahl
+         movea.l 8(a7),a1                        * &addr (4(a7) + das a2)
+         move.l  a2,(a1)                         * der Blockanfang
+         moveq   #0,d0                           * kein Fehler
+         movea.l (a7)+,a2
+         rts
+sq_err
+         moveq   #0,d0
+         move.w  d1,d0                           * Fehlercode zurueckgeben
+         movea.l (a7)+,a2
+         rts
+
+* error_code _os_srtmem(u_int32 size, void *addr)
+* d0 = Groesse (wie geholt), d1 = Zeiger; OS-9 erwartet den Zeiger in a2.
+
+* Function: _os_srtmem
+* Returns a previously requested memory block to OS-9.
+* Parameters: d0 block size, d1 block address.
+* Returns: OS-9 error code in d0.
+_os_srtmem:
+         move.l  a2,-(a7)
+         movea.l d1,a2                           * Blockadresse
+         trap    #0                              * d0.l = Groesse
+         dc.w    Q9F_SRtMem
+         bcs.s   st_err
+         moveq   #0,d0
+         movea.l (a7)+,a2
+         rts
+st_err
+         moveq   #0,d0
+         move.w  d1,d0                           * Fehlercode zurueckgeben
+         movea.l (a7)+,a2
+         rts
+
+         ends

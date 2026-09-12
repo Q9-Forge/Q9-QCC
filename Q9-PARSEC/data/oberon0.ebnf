@@ -1,0 +1,39 @@
+#---------------------------------------------------------------------------------------------------------------------------------------------------
+# Oberon/0 Grammer in EBNF
+# 28.04.2020 Andreas Foellmer
+#---------------------------------------------------------------------------------------------------------------------------------------------------
+Module				=	"MODULE" ident ";" Declarations ["BEGIN" StatementSequence] "END" ident.
+Declarations		=	["CONST" {ident "=" expression ";"}] ["TYPE" {ident "=" type ";"}] ["VAR" {IdentList ":" type ";"}]	{ProcedureDeclaration}.
+ProcedureDeclaration=	ProcedureHeading ";" ProcedureBody ident.  // dgjkhsdjklghdjklfgh dflkgh djklfgh sdjklfgh
+ProcedureBody		=	Declarations ["BEGIN" StatementSequence] "END".
+ProcedureHeading	=	"PROCEDURE" ident [FormalParameters].
+FormalParameters	=	"(" [FPSection {";" FPSection}] ")".
+FPSection			=	["VAR"] IdentList ":" type.
+type				=	ident | ArrayType | RecordType.
+RecordType			=	"RECORD" FieldList {";" FieldList} "END".
+FieldList			=	[IdentList ":" type].
+ArrayType			=	"ARRAY" expression "OF" type.
+IdentList			=	ident {"," ident}.
+StatementSequence	=	statement {";" statement}.
+statement			=	[assignment | ProcedureCall | ifStatement | WhileStatement | RepeatStatement].
+RepeatStatement		=	"REPEAT" StatementSequence "UNTIL" expression.
+WhileStatement		=	"WHILE" expression "DO" StatementSequence "END".
+ifStatement			=	"IF" expression "THEN" StatementSequence {"ELSIF" expression "THEN" StatementSequence} ["ELSE" StatementSequence] "END".
+ProcedureCall		=	ident ActualParameters. 
+ActualParameters	=	"(" [expression] {"," expression} ")".
+assignment			=	ident selector ":=" expression.
+# Relationen: laengere Literale ("<=", ">=") VOR den kuerzeren ("<", ">") -- bei
+# geordneter Auswahl (Codegen/Backtracking) wuerde sonst "<" gewinnen und das "=" haengen lassen
+expression			=	SimpleExpression [("=" | "#" | "<=" | "<" | ">=" | ">") SimpleExpression].
+SimpleExpression	=	["+" | "-"] term {("+" | "-" | "OR") term }.
+term				=	Factor {("*" | "DIV" | "MOD" | "&") Factor}.
+Factor				=	ident selector | integer | "(" expression ")" | "~" Factor.
+selector			=	{"." ident | "[" expression "]" }.
+integer				=	digit {digit}.
+ident				=	identLetter {identLetter | digit}.
+identLetter			=	lowerLetter | upperLetter | "_".
+letter				=	lowerLetter | upperLetter.
+digit				=	"0"~"9".
+hexDigit			=   digit | "A"~"F".
+lowerLetter 		= 	"a"~"z".
+upperLetter 		= 	"A"~"Z".
