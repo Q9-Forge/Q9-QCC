@@ -27,7 +27,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
-: "${Q9FLUX:=/Volumes/SSD1TB/projects/Q9-Forge/Q9-Flux-68k}"
+: "${Q9FLUX:=/Volumes/SSD1TB/projects/Q9-Forge/Q9-Flux/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.hda}"
 
 IMAGE_NAME=OS9SYS.qcpp-test.hda

@@ -1,0 +1,3 @@
+# Der Rumpf der Wiederholung kann leer erfolgreich sein. Ein einfacher greedy
+# rekursiver Abstieg duerfte daraus keine Endlosschleife erzeugen.
+s = { [ "a" ] } .

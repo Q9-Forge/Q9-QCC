@@ -1,0 +1,1928 @@
+/* codegen.tc -- QCC-Port von Source/codegen.cpp (AST-Aufbau + Codegenerierung).
+   Siehe docs/SELFHOSTING_LUECKENLISTE.md / docs/FORTSCHRITT.md fuer den Kontext.
+
+   WICHTIGE GRAMMATIK-EINSCHRAENKUNG (2026-07-25 entdeckt): QCC erlaubt laut
+   Grammatik ("program = { globalDecl|structDecl|typedefDecl|enumDecl|externDecl }
+   { funcdef } .") KEINE Verschachtelung von Deklarationen und Funktionen -- ALLE
+   globalen Deklarationen (structs/globals/enums/externs) muessen VOR ALLEN
+   Funktionsdefinitionen stehen, in genau dieser Reihenfolge, sonst FAIL beim
+   Parsen (kein hilfreicher Fehlertext, nur "FAIL" -- war bisher nie aufgefallen,
+   da jeder bestehende Test dieser Reihenfolge zufaellig schon folgte). Diese Datei
+   haelt sich deshalb STRIKT an "erst alle Deklarationen, dann alle Funktionen",
+   anders als das C++-Original (das Globals/Helfer thematisch gruppiert).
+
+   Original-Konstanten (siehe Source/codegen.cpp) -- QCC hat keinen Praeprozessor,
+   deshalb ueberall als LITERALE Zahl eingesetzt (Array-Groessen brauchen ein
+   Zahlenliteral, sizeof() nur auf einer nackten Variable, keine allgemeinen
+   Ausdruecke wie "sizeof(nodes[id].text)"):
+     AST_MAX_NODES  = 8192   AST_MAX_RULES = 256   AST_TEXT_LEN = 40 (Puffer 41)
+     AST_STACK_MAX  = 256    GEN_NAME_LEN  = 64
+*/
+
+/* ===========================================================================
+   TEIL 1: Deklarationen (extern/enum/struct/global) -- MUSS komplett vor
+   TEIL 2 (Funktionen) stehen, siehe Kommentar oben.
+=========================================================================== */
+
+extern void* malloc(int size);
+extern void* realloc(void* p, int size);
+extern void free(void* p);
+extern int strcmp(char* a, char* b);
+extern int strncmp(char* a, char* b, int n);
+extern int strlen(char* s);
+extern char* strchr(char* s, int c);
+extern char* strrchr(char* s, int c);
+extern char* strstr(char* hay, char* needle);
+extern void* memcpy(void* dst, void* src, int n);
+extern int isalpha(int c);
+extern int isalnum(int c);
+extern int isprint(int c);
+extern int printf(char* fmt, ...);
+/* C-Backend (genNodeC/genParserC) braucht echte Dateiausgabe. FILE* wird als
+   "void*" gefuehrt -- QCC hat keinen FILE-Struct-Typ, aber der ABI-Aufruf
+   braucht nur einen opaken Zeiger, den clib.l selbst interpretiert. clib.l
+   hat KEIN snprintf (nur sprintf, aeltere Microware-Bibliothek, per `strings`
+   bestaetigt) -- deshalb sprintf ohne Laengenlimit (unschaedlich hier: alle
+   Aufrufe schreiben nur kurze, feste Formate in ausreichend grosse Puffer). */
+extern void* fopen(char* path, char* mode);
+extern int fclose(void* fp);
+extern int fprintf(void* fp, char* fmt, ...);
+extern int fputc(int c, void* fp);
+extern int sprintf(char* buf, char* fmt, ...);
+extern char* strcat(char* dst, char* src);	/* 68k-Backend: psectName-Aufbau in genParser68kTo */
+
+enum AstKind { AST_SEQ, AST_ALT, AST_OPT, AST_REP, AST_TS, AST_RNG, AST_NTS };
+
+struct AstNode {
+	int kind;
+	char text[41];		/* AST_TEXT_LEN + 1 */
+	char lo;
+	char hi;
+	int firstChild;
+	int nextSib;
+};
+
+struct AstRule {
+	char name[41];		/* AST_TEXT_LEN + 1 */
+	int root;
+};
+
+struct ActionRoutine {
+	char name[64];		/* GEN_NAME_LEN */
+	char* text;			/* malloc'd, exakt strlen(text)+1 gross */
+};
+
+/* AST_MAX_NODES auf die ORIGINALE Kapazitaet 8192 zurueckgesetzt (2026-07-25):
+   war zwischenzeitlich wegen einer echten 68000-PC-relative-Adressierungsgrenze
+   (siehe emitLeaGlobal()-Kommentar in Source/qcc_backend_c.cpp) auf 64
+   verkleinert -- jetzt durch den neuen "-largedata"-Compiler-Schalter geloest
+   (Indirektionstabelle mit absoluten, vom Linker aufgeloesten Adressen statt
+   direkter PC-relativer Adressierung). Diese Datei MUSS deshalb mit
+   "qcc_backend -os9 -largedata" (statt ohne -largedata) uebersetzt werden,
+   sobald sie 68k-Code erzeugen soll -- siehe docs/FORTSCHRITT.md. */
+struct AstNode nodes[8192];		/* AST_MAX_NODES */
+int nodeCnt;
+struct AstRule rules[256];		/* AST_MAX_RULES */
+int ruleCnt;
+int astStack[256];			/* AST_STACK_MAX */
+int astDepth;
+int astOverflow;
+
+int labelCnt;
+
+/* LEXER-Konfiguration (scannerless, siehe Source/codegen.cpp Vorbild) --
+   Original-Konstanten als Literale: LEX_MAX_ROOTS=32 LEX_WS_MAX=32
+   LEX_LC_MAX=8 LEX_MARKERS_MAX=4.
+
+   DREI QCC-bedingte Abweichungen vom C++-Original (alle rein mechanisch,
+   keine Verhaltensaenderung):
+   1. QCC hat KEINE Zeichenliterale ("'x'") -- ueberall numerische ASCII-
+      Codes: 34='"' 92='\' 116='t' 114='r' 110='n' 35='#' 32=' ' 9='\t' 61='='
+      10='\n' 13='\r'.
+   2. QCC lehnt PARTIELLE Indizierung eines mehrdimensionalen Arrays ab
+      (nur EIN von zwei Indizes waere sonst noetig, um z.B. "lexRoots[i]" als
+      char* zu nutzen) -- deshalb hier FLACHE 1D-Arrays (lexRootsFlat[32*41]
+      statt lexRoots[32][41]) mit manueller Offset-Berechnung "&flat[i*41]"
+      ueber addressRef statt einer zweiten Dimension.
+   3. lexUnquoteAt hatte im Original einen "const char** nextOut"-
+      Ausgabeparameter -- vereinfacht zu einem globalen lexUnquoteNext
+      (gleiches Vereinfachungsmuster wie beim ActionRoutine-Piloten, siehe
+      SELFHOSTING_LUECKENLISTE.md: Mehrfach-Rueckgabe ueber Zeiger-auf-Zeiger
+      vermeiden).
+   4. NEU ENTDECKTER GRENZFALL (2026-07-25): QCC-String-Literale
+      unterstuetzen KEIN escaptes Anfuehrungszeichen ("\"..." bricht das
+      Parsen -- die "character"-Regel in Data/qcc.ebnf schliesst das
+      Anfuehrungszeichen selbst grundsaetzlich aus, auch direkt nach einem
+      Backslash; tcDecodeStringLit haette die Escape-DEKODIERUNG zwar schon
+      generisch, die GRAMMATIK kommt aber nie so weit). Diagnosetexte deshalb
+      bewusst OHNE Anfuehrungszeichen umformuliert, statt die Grammatik dafuer
+      zu erweitern (waere ein eigener, riskanterer Sprachfeature-Schritt). */
+char lexWs[33];                  /* LEX_WS_MAX + 1 */
+int lexWsLen;
+int lexActive;
+char lexLineCommentFlat[36];     /* LEX_MARKERS_MAX * (LEX_LC_MAX + 1) */
+int lexLineCommentLen[4];
+int lexLineCommentCnt;
+char lexBlockOnFlat[36];
+int lexBlockOnLen[4];
+char lexBlockOffFlat[36];
+int lexBlockOffLen[4];
+int lexBlockNested[4];
+int lexBlockCnt;
+char lexRootsFlat[1312];         /* LEX_MAX_ROOTS * (AST_TEXT_LEN + 1) */
+int lexRootCnt;
+int ruleIsLexical[256];          /* AST_MAX_RULES */
+char* lexUnquoteNext;
+
+/* CODEGEN-Konfiguration ([CODEGEN]-Block der Arbeitsdatei). */
+int cgenOS9;
+char cgenPsect[64];               /* GEN_NAME_LEN */
+char cgenStart[64];               /* GEN_NAME_LEN */
+
+/* ACTIONS-Konfiguration ([NUTZER-CODE]-Block, siehe ARCHITEKTUR.md Paragraph 9).
+   ACTION_ROUTINE_INITIAL_CAP = 8 (Original-Konstante, als Literal in
+   pushRoutineC/pushRoutine68k). ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN]
+   ist im Original ein 2D-Array -- hier wieder FLACH (siehe Kommentar bei
+   TEIL 1 oben, gleicher Grund wie bei lexLineComment/lexBlockOn/lexRoots). */
+char ruleActionCallFlat[16384];   /* AST_MAX_RULES * GEN_NAME_LEN = 256 * 64 */
+struct ActionRoutine* routinesC;
+int routinesCCnt;
+int routinesCCap;
+struct ActionRoutine* routines68k;
+int routines68kCnt;
+int routines68kCap;
+/* lineBuf/collectBuf: wachsende Puffer, ueber den Aufruf hinaus statisch
+   (Kapazitaet bleibt erhalten, wird beim naechsten Aufruf wiederverwendet). */
+char* lineBuf;
+int lineBufCap;
+char* collectBuf;
+int collectBufCap;
+
+/* AST-Validierung: ruleNullable[AST_MAX_RULES] war im Original ein LOKALES
+   Array mit Nullinitialisierer ("= { 0 }") in validateAstForCodegen selbst --
+   hier als GLOBAL angelegt und per Schleife genullt (gleiches Muster wie bei
+   ruleIsLexical/computeLexicalSet), um die Initialisierer-Frage bei lokalen
+   int-Arrays gar nicht erst zu stellen. */
+int ruleNullableArr[256];         /* AST_MAX_RULES */
+
+/* ===========================================================================
+   TEIL 2: Funktionen
+=========================================================================== */
+
+void astReset() {
+	nodeCnt = 0;
+	ruleCnt = 0;
+	astDepth = 0;
+	astOverflow = 0;
+}
+
+int astMark() {
+	return astDepth;
+}
+
+/* strncpy_s(dst, dstSize, src, maxlen) im Original: kopiert bis zu maxlen Zeichen
+   aus src, NULL-terminiert IMMER (anders als rohes strncpy). Nachgebaut als
+   Bytekopierschleife -- QCC hat kein strncpy_s und sizeof() geht nur auf
+   nackten Variablen, nicht auf einem Strukturfeld wie "nodes[id].text". */
+void tcCopyBounded(char* dst, char* src, int maxlen) {
+	int i;
+	i = 0;
+	while (i < maxlen && src[i] != 0) { dst[i] = src[i]; i = i + 1; }
+	dst[i] = 0;
+}
+
+int newNode(int kind) {
+	int id;
+	char* txt;
+	if (nodeCnt >= 8192) {			/* AST_MAX_NODES (Original: 8192) */
+		astOverflow = 1;
+		return 8191;				/* letzter Knoten wird Muellhalde; Codegen bricht ab */
+	}
+	id = nodeCnt;
+	nodes[id].kind = kind;
+	txt = nodes[id].text;		/* arr[i].feld[j] direkt ist nicht unterstuetzt, siehe FORTSCHRITT.md */
+	txt[0] = 0;
+	nodes[id].lo = 0;
+	nodes[id].hi = 0;
+	nodes[id].firstChild = -1;
+	nodes[id].nextSib = -1;
+	nodeCnt = nodeCnt + 1;
+	return id;
+}
+
+void pushNode(int id) {
+	if (astDepth < 256) {			/* AST_STACK_MAX */
+		astStack[astDepth] = id;
+		astDepth = astDepth + 1;
+	} else {
+		astOverflow = 1;
+	}
+}
+
+void astPushTS(char* text) {
+	int id;
+	char* dst;
+	id = newNode(AST_TS);
+	dst = nodes[id].text;
+	tcCopyBounded(dst, text, 40);	/* AST_TEXT_LEN */
+	pushNode(id);
+}
+
+void astPushRNG(char lo, char hi) {
+	int id;
+	id = newNode(AST_RNG);
+	nodes[id].lo = lo;
+	nodes[id].hi = hi;
+	pushNode(id);
+}
+
+void astPushNTS(char* name) {
+	int id;
+	char* dst;
+	id = newNode(AST_NTS);
+	dst = nodes[id].text;
+	tcCopyBounded(dst, name, 40);	/* AST_TEXT_LEN */
+	pushNode(id);
+}
+
+/* Stack[mark..] zu einem Knoten der Art 'kind' zusammenfassen. */
+void groupAs(int kind, int mark) {
+	int id;
+	int i;
+	int prev;
+
+	if (mark < 0) { return; }
+	if (mark > astDepth) { return; }
+	if (astDepth - mark == 1) { return; }
+	if (astDepth - mark == 0) { kind = AST_SEQ; }
+	id = newNode(kind);
+	prev = -1;
+	i = mark;
+	while (i < astDepth) {
+		if (prev < 0) {
+			nodes[id].firstChild = astStack[i];
+		} else {
+			nodes[prev].nextSib = astStack[i];
+		}
+		prev = astStack[i];
+		i = i + 1;
+	}
+	astDepth = mark;
+	pushNode(id);
+}
+
+void astGroupSeq(int mark) {
+	groupAs(AST_SEQ, mark);
+}
+
+void astGroupAlt(int mark) {
+	groupAs(AST_ALT, mark);
+}
+
+void wrapAs(int kind) {
+	int id;
+	if (astDepth < 1) { return; }
+	id = newNode(kind);
+	nodes[id].firstChild = astStack[astDepth - 1];
+	astStack[astDepth - 1] = id;
+}
+
+void astWrapOpt() {
+	wrapAs(AST_OPT);
+}
+
+void astWrapRep() {
+	wrapAs(AST_REP);
+}
+
+void astFinishRule(char* name) {
+	char* dst;
+	if (ruleCnt >= 256) {			/* AST_MAX_RULES */
+		astOverflow = 1;
+		return;
+	}
+	dst = rules[ruleCnt].name;
+	tcCopyBounded(dst, name, 40);	/* AST_TEXT_LEN */
+	if (astDepth >= 1) {
+		astDepth = astDepth - 1;
+		rules[ruleCnt].root = astStack[astDepth];
+	} else {
+		rules[ruleCnt].root = newNode(AST_SEQ);	/* leere Regel (Epsilon) */
+	}
+	ruleCnt = ruleCnt + 1;
+	astDepth = 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Gemeinsame Helfer beider Backends
+--------------------------------------------------------------------------- */
+void sanitizeName(char* in, char* out) {
+	int i;
+	i = 0;
+	while (in[i] != 0 && i < 63) {			/* GEN_NAME_LEN - 1 */
+		if (in[i] == 36) { out[i] = 95; } else { out[i] = in[i]; }	/* '$' -> '_' */
+		i = i + 1;
+	}
+	out[i] = 0;
+}
+
+int newLabel() {
+	int l;
+	l = labelCnt;
+	labelCnt = labelCnt + 1;
+	return l;
+}
+
+int ruleIndexByName(char* name) {
+	int r;
+	for (r = 0; r < ruleCnt; r += 1) {
+		if (strcmp(rules[r].name, name) == 0) { return r; }
+	}
+	return -1;
+}
+
+int lexAnyBlockNested() {
+	int j;
+	for (j = 0; j < lexBlockCnt; j += 1) {
+		if (lexBlockNested[j] != 0) { return 1; }
+	}
+	return 0;
+}
+
+/* Ein "..."-String ab der ersten '"' in start entnehmen (Escapes \t \r \n \\ \"
+   aufloesen). Liefert Laenge oder -1; die Position hinter der schliessenden
+   '"' steht danach in lexUnquoteNext (siehe Kommentar bei TEIL 1). */
+int lexUnquoteAt(char* start, char* out, int outMax) {
+	char* q1;
+	char* q2;
+	int n;
+	q1 = strchr(start, 34);
+	if (q1 == 0) { return -1; }
+	q2 = q1 + 1;
+	while (*q2 != 0 && !(*q2 == 34 && q2[-1] != 92)) { q2 = q2 + 1; }
+	if (*q2 != 34) { return -1; }
+	lexUnquoteNext = q2 + 1;
+	q1 = q1 + 1;
+	n = 0;
+	while (q1 < q2 && n < outMax - 1) {
+		if (*q1 == 92 && q1 + 1 < q2) {
+			q1 = q1 + 1;
+			if (*q1 == 116) { out[n] = 9; }
+			else if (*q1 == 114) { out[n] = 13; }
+			else if (*q1 == 110) { out[n] = 10; }
+			else { out[n] = *q1; }
+			n = n + 1;
+		} else {
+			out[n] = *q1;
+			n = n + 1;
+		}
+		q1 = q1 + 1;
+	}
+	out[n] = 0;
+	return n;
+}
+
+/* Inhalt zwischen erstem und letztem '"' einer Konfigurationszeile entnehmen
+   und dieselben Escapes aufloesen. */
+int lexUnquote(char* line, char* out, int outMax) {
+	char* q1;
+	char* q2;
+	int n;
+	q1 = strchr(line, 34);
+	q2 = strrchr(line, 34);
+	if (q1 == 0 || q2 == 0 || q2 <= q1) { return -1; }
+	q1 = q1 + 1;
+	n = 0;
+	while (q1 < q2 && n < outMax - 1) {
+		if (*q1 == 92 && q1 + 1 < q2) {
+			q1 = q1 + 1;
+			if (*q1 == 116) { out[n] = 9; }
+			else if (*q1 == 114) { out[n] = 13; }
+			else if (*q1 == 110) { out[n] = 10; }
+			else { out[n] = *q1; }
+			n = n + 1;
+		} else {
+			out[n] = *q1;
+			n = n + 1;
+		}
+		q1 = q1 + 1;
+	}
+	out[n] = 0;
+	return n;
+}
+
+int lexParseConfig(char* buf) {
+	char line[256];
+	int li;
+	int ok;
+	ok = 1;
+
+	lexActive = 0;
+	lexWsLen = 0;
+	lexWs[0] = 0;
+	lexLineCommentCnt = 0;
+	lexBlockCnt = 0;
+	lexRootCnt = 0;
+
+	if (buf == 0 || buf[0] == 0) {
+		return 1;			/* kein Lexer konfiguriert -- zeichenbasierter Codegen wie bisher */
+	}
+	while (*buf != 0) {
+		li = 0;
+		while (*buf != 0 && *buf != 10 && li < 255) {
+			line[li] = *buf;
+			li = li + 1;
+			buf = buf + 1;
+		}
+		line[li] = 0;
+		if (*buf == 10) { buf = buf + 1; }
+
+		if (line[0] == 35 || line[0] == 0) {
+			continue;
+		} else if (strncmp(line, "WHITESPACE", 10) == 0) {
+			lexWsLen = lexUnquote(line, lexWs, 33);
+			if (lexWsLen < 0) {
+				printf("LEXER: WHITESPACE-Zeile ohne Anfuehrungszeichen-String -- ignoriert.\n");
+				lexWsLen = 0;
+			}
+			lexActive = 1;
+		} else if (strncmp(line, "COMMENT LINE", 12) == 0) {
+			/* mehrere COMMENT LINE-Zeilen sind erlaubt (z.B. "#" UND "//" gleichzeitig) */
+			if (lexLineCommentCnt >= 4) {
+				printf("LEXER: zu viele COMMENT LINE-Marker (max 4) -- ignoriert: %s\n", line);
+			} else {
+				int n;
+				n = lexUnquote(line, &lexLineCommentFlat[lexLineCommentCnt * 9], 9);
+				if (n < 0) {
+					printf("LEXER: COMMENT LINE-Zeile ohne Anfuehrungszeichen-String -- ignoriert.\n");
+				} else {
+					lexLineCommentLen[lexLineCommentCnt] = n;
+					lexLineCommentCnt = lexLineCommentCnt + 1;
+					lexActive = 1;
+				}
+			}
+		} else if (strncmp(line, "COMMENT BLOCK", 13) == 0) {
+			/* zwei Strings: Anfang und Ende, z.B. COMMENT BLOCK = "(*" "*)"
+			   optional: COMMENT BLOCK NESTED = ... -> Kommentare schachteln
+			   mehrere COMMENT BLOCK-Zeilen sind erlaubt */
+			if (lexBlockCnt >= 4) {
+				printf("LEXER: zu viele COMMENT BLOCK-Marker (max 4) -- ignoriert: %s\n", line);
+			} else {
+				char* nst;
+				char* q0;
+				char* rest;
+				int onLen;
+				int offLen;
+				int nested;
+				nst = strstr(line, "NESTED");
+				q0 = strchr(line, 34);
+				onLen = lexUnquoteAt(line, &lexBlockOnFlat[lexBlockCnt * 9], 9);
+				rest = lexUnquoteNext;
+				offLen = -1;
+				if (onLen > 0) {
+					offLen = lexUnquoteAt(rest, &lexBlockOffFlat[lexBlockCnt * 9], 9);
+				}
+				if (onLen <= 0 || offLen <= 0) {
+					printf("LEXER: COMMENT BLOCK braucht ZWEI Anfuehrungszeichen-Strings (Anfang Ende) -- ignoriert.\n");
+				} else {
+					nested = 0;
+					if (nst != 0 && q0 != 0 && nst < q0) { nested = 1; }
+					lexBlockOnLen[lexBlockCnt] = onLen;
+					lexBlockOffLen[lexBlockCnt] = offLen;
+					lexBlockNested[lexBlockCnt] = nested;
+					lexBlockCnt = lexBlockCnt + 1;
+					lexActive = 1;
+				}
+			}
+		} else if (strncmp(line, "TOKEN", 5) == 0) {
+			/* akzeptiert "TOKEN <regel>" und "TOKEN <TYP> = <regel>" -- massgeblich
+			   ist das LETZTE Wort der Zeile (der Regelname) */
+			char* pWord;
+			char* endw;
+			int n;
+			pWord = line + strlen(line);
+			while (pWord > line && (pWord[-1] == 32 || pWord[-1] == 9)) { pWord = pWord - 1; }
+			endw = pWord;
+			while (pWord > line && pWord[-1] != 32 && pWord[-1] != 9 && pWord[-1] != 61) { pWord = pWord - 1; }
+			if (endw > pWord && lexRootCnt < 32) {
+				n = endw - pWord;
+				if (n > 40) { n = 40; }			/* AST_TEXT_LEN */
+				memcpy(&lexRootsFlat[lexRootCnt * 41], pWord, n);
+				lexRootsFlat[lexRootCnt * 41 + n] = 0;
+				lexRootCnt = lexRootCnt + 1;
+				lexActive = 1;
+			}
+		} else {
+			printf("LEXER: unbekannte Konfigurationszeile ignoriert: %s\n", line);
+		}
+	}
+
+	/* Standard-Whitespace, falls TOKEN/COMMENT konfiguriert wurden, aber WHITESPACE fehlt */
+	if (lexActive != 0 && lexWsLen == 0) {
+		lexWs[0] = 32; lexWs[1] = 9; lexWs[2] = 13; lexWs[3] = 10; lexWs[4] = 0;
+		lexWsLen = 4;
+	}
+	return ok;
+}
+
+/* Lexikalische Regeln = transitiver Abschluss der TOKEN-Wurzeln ueber
+   NTS-Referenzen im AST. Nimmt (anders als das C++-Original) eine Knoten-ID
+   statt eines "AstNode*"-Zeigers entgegen -- ein unindizierter Pointer auf
+   ein struct-Array-Element mit anschliessendem Feldzugriff (n->kind) ist in
+   dieser QCC-Version nicht unterstuetzt, siehe FORTSCHRITT.md. */
+void markLexicalNode(int id) {
+	int idx;
+	int child;
+	char* txt;
+	if (nodes[id].kind == AST_NTS) {
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		if (idx >= 0 && ruleIsLexical[idx] == 0) {
+			ruleIsLexical[idx] = 1;
+			markLexicalNode(rules[idx].root);
+		}
+	}
+	child = nodes[id].firstChild;
+	while (child >= 0) {
+		markLexicalNode(child);
+		child = nodes[child].nextSib;
+	}
+}
+
+int computeLexicalSet() {
+	int r;
+	int idx;
+	int ok;
+	ok = 1;
+	r = 0;
+	while (r < ruleCnt) { ruleIsLexical[r] = 0; r = r + 1; }
+	if (lexActive == 0) { return 1; }
+	r = 0;
+	while (r < lexRootCnt) {
+		idx = ruleIndexByName(&lexRootsFlat[r * 41]);
+		if (idx < 0) {
+			printf("LEXER: TOKEN-Regel '%s' existiert nicht in der Grammatik.\n", &lexRootsFlat[r * 41]);
+			ok = 0;
+		} else if (ruleIsLexical[idx] == 0) {
+			ruleIsLexical[idx] = 1;
+			markLexicalNode(rules[idx].root);
+		}
+		r = r + 1;
+	}
+	return ok;
+}
+
+int cgenWantOS9() {
+	return cgenOS9;
+}
+
+char* cgenStartRule() {
+	return cgenStart;
+}
+
+int cgenParseConfig(char* buf) {
+	char line[256];
+	int li;
+
+	cgenOS9 = 0;
+	cgenPsect[0] = 0;
+	cgenStart[0] = 0;
+
+	if (buf == 0 || buf[0] == 0) {
+		return 1;
+	}
+	while (*buf != 0) {
+		li = 0;
+		while (*buf != 0 && *buf != 10 && li < 255) {
+			line[li] = *buf;
+			li = li + 1;
+			buf = buf + 1;
+		}
+		line[li] = 0;
+		if (*buf == 10) { buf = buf + 1; }
+
+		if (line[0] == 35 || line[0] == 0) {
+			continue;
+		} else if (strncmp(line, "M68K PSECT", 10) == 0) {
+			/* letztes Wort der Zeile = psect-Name */
+			char* pEnd;
+			char* pStart;
+			int n;
+			pEnd = line + strlen(line);
+			while (pEnd > line && (pEnd[-1] == 32 || pEnd[-1] == 9)) { pEnd = pEnd - 1; }
+			pStart = pEnd;
+			while (pStart > line && pStart[-1] != 32 && pStart[-1] != 9 && pStart[-1] != 61) { pStart = pStart - 1; }
+			if (pEnd > pStart) {
+				n = pEnd - pStart;
+				if (n > 63) { n = 63; }			/* GEN_NAME_LEN - 1 */
+				memcpy(cgenPsect, pStart, n);
+				cgenPsect[n] = 0;
+			}
+		} else if (strncmp(line, "M68K OS9", 8) == 0) {
+			cgenOS9 = 1;
+		} else if (strncmp(line, "START", 5) == 0) {
+			/* letztes Wort der Zeile = Name der Startregel */
+			char* pEnd;
+			char* pStart;
+			int n;
+			pEnd = line + strlen(line);
+			while (pEnd > line && (pEnd[-1] == 32 || pEnd[-1] == 9)) { pEnd = pEnd - 1; }
+			pStart = pEnd;
+			while (pStart > line && pStart[-1] != 32 && pStart[-1] != 9 && pStart[-1] != 61) { pStart = pStart - 1; }
+			if (pEnd > pStart) {
+				n = pEnd - pStart;
+				if (n > 63) { n = 63; }			/* GEN_NAME_LEN - 1 */
+				memcpy(cgenStart, pStart, n);
+				cgenStart[n] = 0;
+			}
+		} else {
+			printf("CODEGEN: unbekannte Konfigurationszeile ignoriert: %s\n", line);
+		}
+	}
+	return 1;
+}
+
+void freeRoutines(struct ActionRoutine* arr, int cnt) {
+	int i;
+	for (i = 0; i < cnt; i = i + 1) { free(arr[i].text); }
+}
+
+/* pushRoutineC/pushRoutine68k: haengt (name, text[0..textLen)) als neue Routine
+   an routinesC/routines68k an, verdoppelt bei Bedarf. ZWEI fast identische
+   Funktionen statt EINER generischen (wie im C++-Original, das ein
+   "ActionRoutine** arr, int* cnt, int* cap"-Tripel entgegennimmt) -- QCC
+   hat keine Generik/Funktionszeiger, und routinesC/routines68k sind hier
+   (wie im echten codegen.cpp) file-scope-Globale, kein lokal weitergereichtes
+   Tripel; direktes Mutieren der jeweiligen globalen Trias ist daher einfacher
+   und sicherer als ein "struct ActionRoutine**"-Ausgabeparameter (gleiches
+   Vereinfachungsmuster wie beim ActionRoutine-Piloten, Milestone B). */
+void pushRoutineC(char* name, char* text, int textLen) {
+	int newCap;
+	char* dst;
+	if (routinesCCnt >= routinesCCap) {
+		if (routinesCCap > 0) { newCap = routinesCCap * 2; } else { newCap = 8; }	/* ACTION_ROUTINE_INITIAL_CAP */
+		routinesC = realloc(routinesC, newCap * sizeof(struct ActionRoutine));
+		routinesCCap = newCap;
+	}
+	dst = routinesC[routinesCCnt].name;
+	tcCopyBounded(dst, name, 63);
+	routinesC[routinesCCnt].text = malloc(textLen + 1);
+	dst = routinesC[routinesCCnt].text;
+	memcpy(dst, text, textLen);
+	dst[textLen] = 0;
+	routinesCCnt = routinesCCnt + 1;
+}
+
+void pushRoutine68k(char* name, char* text, int textLen) {
+	int newCap;
+	char* dst;
+	if (routines68kCnt >= routines68kCap) {
+		if (routines68kCap > 0) { newCap = routines68kCap * 2; } else { newCap = 8; }
+		routines68k = realloc(routines68k, newCap * sizeof(struct ActionRoutine));
+		routines68kCap = newCap;
+	}
+	dst = routines68k[routines68kCnt].name;
+	tcCopyBounded(dst, name, 63);
+	routines68k[routines68kCnt].text = malloc(textLen + 1);
+	dst = routines68k[routines68kCnt].text;
+	memcpy(dst, text, textLen);
+	dst[textLen] = 0;
+	routines68kCnt = routines68kCnt + 1;
+}
+
+char* routineTextC(char* name) {
+	int i;
+	for (i = 0; i < routinesCCnt; i = i + 1) {
+		if (strcmp(routinesC[i].name, name) == 0) { return routinesC[i].text; }
+	}
+	return 0;
+}
+
+char* routineText68k(char* name) {
+	int i;
+	for (i = 0; i < routines68kCnt; i = i + 1) {
+		if (strcmp(routines68k[i].name, name) == 0) { return routines68k[i].text; }
+	}
+	return 0;
+}
+
+/* letztes Wort einer Zeile (durch Leerraum getrennt) in out kopieren, max
+   outMax-1 Zeichen. */
+void lastWord(char* line, char* out, int outMax) {
+	char* pEnd;
+	char* pStart;
+	int n;
+	pEnd = line + strlen(line);
+	while (pEnd > line && (pEnd[-1] == 32 || pEnd[-1] == 9)) { pEnd = pEnd - 1; }
+	pStart = pEnd;
+	while (pStart > line && pStart[-1] != 32 && pStart[-1] != 9) { pStart = pStart - 1; }
+	n = pEnd - pStart;
+	if (n > outMax - 1) { n = outMax - 1; }
+	memcpy(out, pStart, n);
+	out[n] = 0;
+}
+
+void growLineBuf(int needed) {
+	int newCap;
+	if (needed <= lineBufCap) { return; }
+	if (lineBufCap > 0) { newCap = lineBufCap; } else { newCap = 256; }
+	while (newCap < needed) { newCap = newCap * 2; }
+	lineBuf = realloc(lineBuf, newCap);
+	lineBufCap = newCap;
+}
+
+void growCollectBuf(int needed) {
+	int newCap;
+	if (needed <= collectBufCap) { return; }
+	if (collectBufCap > 0) { newCap = collectBufCap; } else { newCap = 256; }
+	while (newCap < needed) { newCap = newCap * 2; }
+	collectBuf = realloc(collectBuf, newCap);
+	collectBufCap = newCap;
+}
+
+int actionsParseConfig(char* buf) {
+	int r;
+	int collecting;			/* 0=nichts, 1=ROUTINE C, 2=ROUTINE M68K */
+	char collectName[64];		/* GEN_NAME_LEN */
+	int collectLen;
+	char* nl;
+	int lineLen;
+
+	collecting = 0;
+	collectLen = 0;
+	r = 0;
+	while (r < 256) { ruleActionCallFlat[r * 64] = 0; r = r + 1; }	/* AST_MAX_RULES */
+	freeRoutines(routinesC, routinesCCnt);
+	routinesCCnt = 0;
+	freeRoutines(routines68k, routines68kCnt);
+	routines68kCnt = 0;
+
+	if (buf == 0 || buf[0] == 0) {
+		return 1;
+	}
+	while (*buf != 0) {
+		nl = strchr(buf, 10);
+		if (nl != 0) { lineLen = nl - buf; } else { lineLen = strlen(buf); }
+		growLineBuf(lineLen + 1);
+		memcpy(lineBuf, buf, lineLen);
+		lineBuf[lineLen] = 0;
+		buf = buf + lineLen;
+		if (*buf == 10) { buf = buf + 1; }
+
+		if (collecting != 0) {
+			if (strcmp(lineBuf, "END") == 0) {
+				if (collecting == 1) { pushRoutineC(collectName, collectBuf, collectLen); }
+				else if (collecting == 2) { pushRoutine68k(collectName, collectBuf, collectLen); }
+				collecting = 0;
+				continue;
+			}
+			{
+				int ln;
+				ln = strlen(lineBuf);
+				growCollectBuf(collectLen + ln + 2);
+				memcpy(&collectBuf[collectLen], lineBuf, ln);
+				collectLen = collectLen + ln;
+				collectBuf[collectLen] = 10;
+				collectLen = collectLen + 1;
+			}
+			continue;
+		}
+
+		if (lineBuf[0] == 35 || lineBuf[0] == 0) {
+			continue;
+		} else if (strncmp(lineBuf, "ACTION AFTER", 12) == 0) {
+			char ruleName[41];		/* AST_TEXT_LEN + 1 */
+			char callName[64];		/* GEN_NAME_LEN */
+			char* callPos;
+			char* p;
+			int n;
+			int idx;
+			callPos = strstr(lineBuf, "CALL");
+			if (callPos == 0) {
+				printf("ACTIONS: 'ACTION AFTER ... CALL <name>' erwartet, ignoriert: %s\n", lineBuf);
+				continue;
+			}
+			p = lineBuf + 12;
+			while (*p == 32 || *p == 9) { p = p + 1; }
+			n = 0;
+			while (p + n < callPos && p[n] != 32 && p[n] != 9 && n < 40) { n = n + 1; }
+			memcpy(ruleName, p, n);
+			ruleName[n] = 0;
+			lastWord(lineBuf, callName, 64);
+			idx = ruleIndexByName(ruleName);
+			if (idx < 0) {
+				printf("ACTIONS: unbekannte Regel '%s' -- ACTION ignoriert.\n", ruleName);
+				continue;
+			}
+			tcCopyBounded(&ruleActionCallFlat[idx * 64], callName, 63);
+		} else if (strncmp(lineBuf, "ROUTINE C", 9) == 0) {
+			lastWord(lineBuf, collectName, 64);
+			collecting = 1;
+			collectLen = 0;
+		} else if (strncmp(lineBuf, "ROUTINE M68K", 12) == 0) {
+			lastWord(lineBuf, collectName, 64);
+			collecting = 2;
+			collectLen = 0;
+		} else {
+			printf("ACTIONS: unbekannte Konfigurationszeile ignoriert: %s\n", lineBuf);
+		}
+	}
+	/* jede ACTION braucht mindestens EINE der beiden ROUTINEn, sonst verpufft sie
+	   vollstaendig -- das ist erlaubt (z.B. waehrend nur ein Backend entwickelt
+	   wird), aber eine klare Warnung ist besser als stilles Weglassen. */
+	r = 0;
+	while (r < 256) {
+		if (ruleActionCallFlat[r * 64] != 0) {
+			if (routineTextC(&ruleActionCallFlat[r * 64]) == 0 && routineText68k(&ruleActionCallFlat[r * 64]) == 0) {
+				printf("ACTIONS: Aktion '%s' hat weder ROUTINE C noch ROUTINE M68K -- wird nirgends aufgerufen.\n", &ruleActionCallFlat[r * 64]);
+			}
+		}
+		r = r + 1;
+	}
+	return 1;
+}
+
+/* wortartiges Literal: beginnt wie ein Bezeichner und besteht nur aus
+   Bezeichner-Zeichen -> bekommt im syntaktischen Kontext einen
+   Wortgrenzen-Check. */
+int isWordLiteral(char* s) {
+	int i;
+	if (!(isalpha(s[0]) != 0 || s[0] == 95 || s[0] == 36)) { return 0; }		/* '_'=95 '$'=36 */
+	i = 0;
+	while (s[i] != 0) {
+		if (!(isalnum(s[i]) != 0 || s[i] == 95 || s[i] == 36)) { return 0; }
+		i = i + 1;
+	}
+	return 1;
+}
+
+/* Ein rekursiver Abstieg darf eine Wiederholung nur dann als einfache greedy-
+   Schleife erzeugen, wenn ihr Rumpf mindestens ein Zeichen konsumiert --
+   sonst waere die erfolgreiche Iteration ohne Fortschritt eine Endlosschleife.
+   "nullable" = kann der Knoten erfolgreich sein, ohne Eingabe zu verbrauchen?
+   NTS gelten konservativ als nicht-nullable (eine nullable NTS in einer
+   Wiederholung wird per Regel-Fixpunktanalyse in validateAstForCodegen
+   erkannt). Nimmt (wie schon markLexicalNode) eine Knoten-ID statt eines
+   "AstNode*"-Zeigers entgegen (kein unindizierter Pointer-Feldzugriff in
+   dieser QCC-Version, siehe FORTSCHRITT.md). */
+int nodeNullable(int id, int* ruleNullable) {
+	int child;
+	int r;
+	char* txt;
+	switch (nodes[id].kind) {
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			if (nodeNullable(child, ruleNullable) == 0) { return 0; }
+			child = nodes[child].nextSib;
+		}
+		return 1;
+	case AST_ALT:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			if (nodeNullable(child, ruleNullable) != 0) { return 1; }
+			child = nodes[child].nextSib;
+		}
+		return 0;
+	case AST_OPT:
+		return 1;
+	case AST_REP:
+		return 1;
+	case AST_TS:
+		txt = nodes[id].text;
+		if (txt[0] == 0) { return 1; } else { return 0; }
+	case AST_RNG:
+		return 0;
+	case AST_NTS:
+		txt = nodes[id].text;
+		r = 0;
+		while (r < ruleCnt) {
+			if (strcmp(rules[r].name, txt) == 0) { return ruleNullable[r]; }
+			r = r + 1;
+		}
+		return 0;			/* undefinierte Regeln werden bereits von parsec.cpp gemeldet */
+	}
+	return 0;
+}
+
+int validateRepeatProgress(int id, int* ruleNullable) {
+	int child;
+	if (nodes[id].kind == AST_REP && nodeNullable(nodes[id].firstChild, ruleNullable) != 0) {
+		printf("CODEGEN: Wiederholung hat einen leeren Rumpf -- Endlosschleife verhindert.\n");
+		return 0;
+	}
+	child = nodes[id].firstChild;
+	while (child >= 0) {
+		if (validateRepeatProgress(child, ruleNullable) == 0) { return 0; }
+		child = nodes[child].nextSib;
+	}
+	return 1;
+}
+
+int validateAstForCodegen() {
+	int changed;
+	int r;
+	int s;
+	char a[64];			/* GEN_NAME_LEN */
+	char b[64];
+
+	if (ruleCnt == 0 || astOverflow != 0) {
+		printf("CODEGEN: kein AST vorhanden (leer oder Ueberlauf).\n");
+		return 0;
+	}
+
+	r = 0;
+	while (r < ruleCnt) { ruleNullableArr[r] = 0; r = r + 1; }
+
+	/* Die Nullbarkeit gegenseitig rekursiver Regeln braucht einen kleinen Fixpunkt. */
+	do {
+		changed = 0;
+		r = 0;
+		while (r < ruleCnt) {
+			if (ruleNullableArr[r] == 0 && nodeNullable(rules[r].root, ruleNullableArr) != 0) {
+				ruleNullableArr[r] = 1;
+				changed = 1;
+			}
+			r = r + 1;
+		}
+	} while (changed != 0);
+
+	r = 0;
+	while (r < ruleCnt) {
+		if (validateRepeatProgress(rules[r].root, ruleNullableArr) == 0) {
+			printf("         betroffen: Regel '%s'.\n", rules[r].name);
+			return 0;
+		}
+		r = r + 1;
+	}
+
+	/* '$' wird fuer beide Backends zu '_' normalisiert. Eine Kollision wuerde
+	   sonst doppelte C-Funktionen bzw. 68k-Labels erzeugen und ist daher ein
+	   klarer Fehler. */
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, a);
+		s = r + 1;
+		while (s < ruleCnt) {
+			sanitizeName(rules[s].name, b);
+			if (strcmp(a, b) == 0) {
+				printf("CODEGEN: Regeln '%s' und '%s' kollidieren als '%s'.\n", rules[r].name, rules[s].name, a);
+				return 0;
+			}
+			s = s + 1;
+		}
+		r = r + 1;
+	}
+	return 1;
+}
+
+/* Erzeugte Struktur (C-Backend): "static const char* p;" pro Regel eine
+   Funktion p_<name>() -> 1/0, bei Misserfolg ist p unveraendert (Ruecksetzung
+   an Regel-/Auswahl-/Options-/Wiederholungs-Grenzen ueber lokalen save-Stack
+   sv[]). Quotet einen C-String-Literal-Text nach fp (Escapes \\ \" und nicht-
+   druckbare Bytes als \xHH). */
+void emitCString(void* fp, char* s) {
+	int i;
+	fputc(34, fp);				/* '"' */
+	i = 0;
+	while (s[i] != 0) {
+		if (s[i] == 92 || s[i] == 34) {		/* '\\' '"' */
+			fputc(92, fp);
+			fputc(s[i], fp);
+		} else if (isprint(s[i]) != 0) {
+			fputc(s[i], fp);
+		} else {
+			fprintf(fp, "\\x%02x", s[i]);
+		}
+		i = i + 1;
+	}
+	fputc(34, fp);
+}
+
+/* Syntaktische Operator-Literale folgen bei aktivem Lexer der ueblichen
+   Longest-Match-Regel. Ohne diese Regel waere z.B. "a && &b" scannerlos auch
+   als "a & &b" lesbar, sobald die Sprache den Adressoperator unterstuetzt. */
+void emitLongerLiteralRejectC(void* fp, char* text, int failLabel) {
+	int i;
+	int j;
+	int len;
+	char* longer;
+	len = strlen(text);
+	if (lexActive == 0 || isWordLiteral(text) != 0) { return; }
+	i = 0;
+	while (i < nodeCnt) {
+		if (nodes[i].kind == AST_TS) {
+			longer = nodes[i].text;
+			if (strlen(longer) > len && strncmp(longer, text, len) == 0) {
+				j = 0;
+				while (j < i && !(nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0)) {
+					j = j + 1;
+				}
+				if (j >= i) {
+					fprintf(fp, "\tif (strncmp(p, ");
+					emitCString(fp, longer);
+					fprintf(fp, ", %d) == 0) goto L%d;\t/* Longest-Match */\n", strlen(longer), failLabel);
+				}
+			}
+		}
+		i = i + 1;
+	}
+}
+
+/* NEU ENTDECKTER QCC-PARSER-BUG (2026-07-25): ein QCC-String-Literal,
+   das die Zeichenfolge "&&" oder "||" als reinen TEXT enthaelt (z.B. weil
+   generierter C-Code selbst && / || braucht, wie in genParserC's ws()/
+   idch()-Emission), loest eine falsche "qcc: logical-frame mismatch"-
+   Diagnose aus (tcLogicDepth-Tracking wird offenbar auch INNERHALB von
+   String-Literalen faelschlich angestossen). NICHT die Grammatik gefixt
+   (Risiko/Aufwand vs. Nutzen), sondern jede betroffene Stelle so umgeschrieben,
+   dass "&&"/"||" nie als zusammenhaengende Zeichenfolge in EINEM QCC-
+   String-Literal auftaucht -- stattdessen per fputc() Zeichen fuer Zeichen
+   geschrieben (identischer Ausgabeninhalt, nur anders emittiert). */
+void emitAndAnd(void* fp) {
+	fputc(38, fp);
+	fputc(38, fp);
+}
+
+/* Gibt den Nachlauf hinter einem erfolgreichen Parse aus: Replay der
+   ACTION-Routinen, danach die Pruefung des Fehlerzaehlers. Als eigene
+   Funktion, weil der Text Anfuehrungszeichen enthaelt und deshalb nicht als
+   einfacher Formatstring uebergeben werden kann (vgl. emitAndAnd). */
+void emitAfterParse(void* fp) {
+	if (routinesCCnt > 0) {
+		fprintf(fp, " actionLogReplay(); if (actionErrors != 0) { printf(");
+		fputc(34, fp);
+		fprintf(fp, "SEMERR\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 1; }");
+	}
+}
+
+void emitOrOr(void* fp) {
+	fputc(124, fp);
+	fputc(124, fp);
+}
+
+void genNodeC(void* fp, int id, int failLabel, int lexical) {
+	int child;
+	int l1;
+	int l2;
+	int lok;
+	int len;
+	char* txt;
+	char cName[64];			/* GEN_NAME_LEN */
+	int idx;
+
+	switch (nodes[id].kind) {
+	case AST_TS:
+		txt = nodes[id].text;
+		len = strlen(txt);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif (strncmp(p, ");
+		emitCString(fp, txt);
+		fprintf(fp, ", %d) != 0) goto L%d;\n", len, failLabel);
+		if (lexActive != 0 && lexical == 0) { emitLongerLiteralRejectC(fp, txt, failLabel); }
+		if (lexActive != 0 && lexical == 0 && isWordLiteral(txt) != 0) {
+			/* Wortgrenze: "MODULEX" darf nicht als "MODULE" + Rest gelten */
+			fprintf(fp, "\tif (idch((unsigned char)p[%d])) goto L%d;\n", len, failLabel);
+		}
+		fprintf(fp, "\tp += %d;\n", len);
+		break;
+	case AST_RNG:
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif ((unsigned char)*p < 0x%02X || (unsigned char)*p > 0x%02X) goto L%d;\n",
+			nodes[id].lo, nodes[id].hi, failLabel);
+		fprintf(fp, "\tp++;\n");
+		break;
+	case AST_NTS:
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		sanitizeName(txt, cName);
+		/* vor dem Einstieg in ein TOKEN (lexikalische Regel) aus syntaktischem
+		   Kontext Whitespace ueberlesen; syntaktische Unterregeln erledigen
+		   das selbst. */
+		if (lexActive != 0 && lexical == 0 && idx >= 0 && ruleIsLexical[idx] != 0) {
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tif (!p_%s()) goto L%d;\n", cName, failLabel);
+		break;
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			genNodeC(fp, child, failLabel, lexical);
+			child = nodes[child].nextSib;
+		}
+		break;
+	case AST_ALT:
+		lok = newLabel();
+		fprintf(fp, "\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n");
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			l1 = newLabel();
+			genNodeC(fp, child, l1, lexical);
+			fprintf(fp, "\tgoto L%d;\n", lok);
+			if (nodes[child].nextSib >= 0) {
+				/* naechste Alternative versuchen: Position UND Aktions-Log auf
+				   den Stand vor dieser (verworfenen) Alternative zuruecksetzen
+				   -- sonst bleiben Aktionen einer abgebrochenen Alternative im
+				   Log haengen (siehe ARCHITEKTUR.md Paragraph 9.4). */
+				fprintf(fp, "L%d:\tp = sv[sp-1]; actionLogLen = svLog[sp-1];\n", l1);
+			} else {
+				/* letzte Alternative gescheitert -> Auswahl gescheitert */
+				fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L%d;\n", l1, failLabel);
+			}
+			child = nodes[child].nextSib;
+		}
+		fprintf(fp, "L%d:\tsp--;\n", lok);
+		break;
+	case AST_OPT:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n");
+		genNodeC(fp, nodes[id].firstChild, l1, lexical);
+		fprintf(fp, "\tsp--; goto L%d;\n", l2);
+		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l1);
+		fprintf(fp, "L%d:\t;\n", l2);
+		break;
+	case AST_REP:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "L%d:\tsv[sp] = p; svLog[sp] = actionLogLen; sp++;\n", l1);
+		genNodeC(fp, nodes[id].firstChild, l2, lexical);
+		fprintf(fp, "\tsp--; goto L%d;\n", l1);
+		fprintf(fp, "L%d:\tsp--; p = sv[sp]; actionLogLen = svLog[sp];\n", l2);
+		break;
+	}
+}
+
+/* genParserC: erzeugt den C-Zwilling (Datei <path>). SECHS Stellen im
+   C++-Original betten ein Anfuehrungszeichen DIREKT in einen fprintf-
+   Formatstring ein (z.B. "...fprintf(stderr, \"usage: ...\");...") -- das
+   geht in QCC nicht (siehe Quirk 2 in qcc-vollport-status.md), deshalb
+   an genau diesen Stellen per fputc(34, fp) aufgeteilt: Text-vor-dem-Quote /
+   fputc(34,fp) / Text-in-den-Quotes / fputc(34,fp) / Text-nach-dem-Quote.
+   ZUSAETZLICH enthalten ZWEI dieser Stellen ein "%%"-Selbstescape im
+   Original (ein literales "%" OHNE eigenes Substitutions-Argument fuer DEN
+   AEUSSEREN fprintf-Aufruf) -- da QCC/clib.l's fprintf ein "%" IMMER als
+   Formatzeichen interpretiert, wird der betroffene Text stattdessen als
+   "%s"-ARGUMENT uebergeben (dessen Inhalt NICHT re-interpretiert wird),
+   statt es direkt in den Formatstring zu schreiben. */
+int genParserC(char* path) {
+	void* fp;
+	int r;
+	int fail;
+	char cName[64];			/* GEN_NAME_LEN */
+	char* lexComment;
+
+	if (validateAstForCodegen() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	if (computeLexicalSet() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	fp = fopen(path, "w");
+	if (fp == 0) {
+		printf("CODEGEN: kann '%s' nicht schreiben\n", path);
+		return 0;
+	}
+	labelCnt = 0;
+
+	fprintf(fp, "/* Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n");
+	fprintf(fp, " * Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl).\n");
+	fprintf(fp, " * Aufruf: %s ", "parser");
+	fputc(34, fp);
+	fprintf(fp, "<eingabe>");
+	fputc(34, fp);
+	fprintf(fp, "  -> druckt OK/SEMERR/FAIL, exit 0/1/1.\n");
+	if (lexActive != 0) {
+		fprintf(fp, " * LEXER aktiv: Whitespace/Kommentare werden zwischen Symbolen ueberlesen,\n");
+		fprintf(fp, " * lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n");
+	}
+	fprintf(fp, " * Startregel: %s\n */\n", rules[0].name);
+	fprintf(fp, "#include <stdio.h>\n#include <string.h>\n\n");
+	fprintf(fp, "static const char* p;\n");
+	/* Anker fuer Positionsangaben im Nutzercode (2026-09-01): der Zeiger p
+	   wandert waehrend des Parsens, der Anfang der Eingabe bleibt stehen. Aus
+	   beidem kann eine Aktion Zeile und Spalte zaehlen -- ohne diesen Anker
+	   kann eine Diagnose keinen Ort nennen. */
+	fprintf(fp, "static const char* parserInputStart;\n");
+	/* Spanne der gerade abgespielten Aktion. Hilfsfunktionen ohne eigene
+	   Spanne koennen daran den Ort einer Meldung festmachen -- der Zeiger p
+	   steht beim Abspielen laengst am Eingabeende und taugt dafuer nicht. */
+	fprintf(fp, "static const char* parserActionAt;\n");
+	fprintf(fp, "static int actionLogLen = 0;\t/* siehe ACTION-Routinen weiter unten */\n");
+	/* 2026-08-11: Fehlerzaehler fuer die ACTION-Routinen. Ohne ihn meldete ein
+	   erzeugter Parser semantische Fehler zwar auf stderr, endete aber mit
+	   Rueckgabewert 0 und schrieb "OK" -- eine aufrufende Build-Kette
+	   ("parser x.c > x.ir && backend x.ir") erzeugte dann klaglos falschen
+	   Code. Bewusst hier oben deklariert, damit der [NUTZER-CODE]-Block ihn
+	   sieht; bewusst nur bei vorhandenen Aktionen, damit aktionsfreie
+	   Grammatiken bitgleich bleiben. */
+	if (routinesCCnt > 0) {
+		fprintf(fp, "static int actionErrors = 0;\t/* ACTION-Routinen zaehlen hoch; != 0 => Rueckgabewert 1 */\n");
+	}
+	fprintf(fp, "\n");
+	if (lexActive != 0) {
+		fprintf(fp, "static int idch(int c) {\n");
+		fprintf(fp, "\treturn (c >= '0' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= '9') ");
+		emitOrOr(fp);
+		fprintf(fp, " (c >= 'A' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= 'Z')\n");
+		fprintf(fp, "\t    ");
+		emitOrOr(fp);
+		fprintf(fp, " (c >= 'a' ");
+		emitAndAnd(fp);
+		fprintf(fp, " c <= 'z') ");
+		emitOrOr(fp);
+		fprintf(fp, " c == '_' ");
+		emitOrOr(fp);
+		fprintf(fp, " c == '$';\n}\n\n");
+		fprintf(fp, "static const char wsSet[] = ");
+		emitCString(fp, lexWs);
+		fprintf(fp, ";\n");
+		fprintf(fp, "static void ws(void) {\n\tfor (;;) {\n");
+		fprintf(fp, "\t\tif (*p ");
+		emitAndAnd(fp);
+		fprintf(fp, " strchr(wsSet, *p)) { p++; continue; }\n");
+		r = 0;
+		while (r < lexLineCommentCnt) {
+			fprintf(fp, "\t\tif (strncmp(p, ");
+			emitCString(fp, &lexLineCommentFlat[r * 9]);
+			fprintf(fp, ", %d) == 0) { while (*p ", lexLineCommentLen[r]);
+			emitAndAnd(fp);
+			fprintf(fp, " *p != '\\n') p++; continue; }\n");
+			r = r + 1;
+		}
+		r = 0;
+		while (r < lexBlockCnt) {
+			if (lexBlockNested[r] != 0) {
+				/* geschachtelt (Oberon/Modula-2): Tiefenzaehler; Ende-Sequenz
+				   VOR Start-Sequenz pruefen (wichtig bei ueberlappenden
+				   Zeichen wie "(*" / "*)"). Ein unterminierter Kommentar
+				   laeuft bis zum Eingabeende. */
+				fprintf(fp, "\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) {\n", lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\tint tiefe = 1; p += %d;\n", lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\twhile (*p ");
+				emitAndAnd(fp);
+				fprintf(fp, " tiefe > 0) {\n");
+				fprintf(fp, "\t\t\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOffFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { tiefe--; p += %d; }\n", lexBlockOffLen[r], lexBlockOffLen[r]);
+				fprintf(fp, "\t\t\t\telse if (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { tiefe++; p += %d; }\n", lexBlockOnLen[r], lexBlockOnLen[r]);
+				fprintf(fp, "\t\t\t\telse p++;\n");
+				fprintf(fp, "\t\t\t}\n\t\t\tcontinue;\n\t\t}\n");
+			} else {
+				/* nicht geschachtelt; ein unterminierter Kommentar laeuft
+				   bis zum Eingabeende */
+				fprintf(fp, "\t\tif (strncmp(p, ");
+				emitCString(fp, &lexBlockOnFlat[r * 9]);
+				fprintf(fp, ", %d) == 0) { p += %d; while (*p ", lexBlockOnLen[r], lexBlockOnLen[r]);
+				emitAndAnd(fp);
+				fprintf(fp, " strncmp(p, ");
+				emitCString(fp, &lexBlockOffFlat[r * 9]);
+				fprintf(fp, ", %d) != 0) p++; if (*p) p += %d; continue; }\n", lexBlockOffLen[r], lexBlockOffLen[r]);
+			}
+			r = r + 1;
+		}
+		fprintf(fp, "\t\treturn;\n\t}\n}\n\n");
+	}
+	if (routinesCCnt > 0) {
+		/* Aktionen feuern NICHT sofort beim Regelerfolg, sondern werden nur
+		   PROTOKOLLIERT (actionLogPush) und erst am Ende bei ENDGUELTIGEM
+		   Gesamterfolg abgespielt (actionLogReplay) -- siehe ARCHITEKTUR.md
+		   Paragraph 9.4. */
+		fprintf(fp, "extern void exit(int);\n");
+		fprintf(fp, "extern char* realloc(char*, int);\n");
+		fprintf(fp, "typedef void (*ActionFn)(const char*, const char*);\n");
+		fprintf(fp, "typedef struct { ActionFn fn; const char* start; const char* end; } ActionLogEntry;\n");
+		fprintf(fp, "static ActionLogEntry* actionLog;\nstatic int actionLogCap;\n");
+		fprintf(fp, "static void actionLogPush(ActionFn fn, const char* start, const char* end) {\n");
+		fprintf(fp, "\tif (actionLogLen == actionLogCap) { int n = actionLogCap ? actionLogCap * 2 : 1024; ActionLogEntry* q = (ActionLogEntry*)realloc((char*)actionLog, n * sizeof(ActionLogEntry)); if (!q) { fprintf(stderr, ");
+		fputc(34, fp);
+		fprintf(fp, "%s", "qcc: kein Speicher fuer Aktions-Log\\n");
+		fputc(34, fp);
+		fprintf(fp, "); exit(1); } actionLog = q; actionLogCap = n; }\n");
+		fprintf(fp, "\tactionLog[actionLogLen].fn = fn;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].start = start;\n");
+		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
+		fprintf(fp, "\tactionLogLen++;\n}\n");
+		fprintf(fp, "static void actionLogReplay(void) {\n");
+		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) { parserActionAt = actionLog[i].start; actionLog[i].fn(actionLog[i].start, actionLog[i].end); }\n}\n\n");
+		fprintf(fp, "/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */\n");
+		r = 0;
+		while (r < routinesCCnt) {
+			fprintf(fp, "%s\n", routinesC[r].text);
+			r = r + 1;
+		}
+	}
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, cName);
+		fprintf(fp, "static int p_%s(void);\n", cName);
+		r = r + 1;
+	}
+	fprintf(fp, "\n");
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, cName);
+		fail = newLabel();
+		if (ruleIsLexical[r] != 0) { lexComment = " (lexikalisch)"; } else { lexComment = ""; }
+		fprintf(fp, "/* %s%s */\n", rules[r].name, lexComment);
+		fprintf(fp, "static int p_%s(void) {\n", cName);
+		fprintf(fp, "\tconst char* sv[64]; int svLog[64]; int sp;\n");
+		fprintf(fp, "\tconst char* entry; int entryLog;\n");
+		if (lexActive != 0 && ruleIsLexical[r] == 0) {
+			/* entry MUSS erst NACH einem eventuellen fuehrenden ws() erfasst
+			   werden -- sonst landet Whitespace/Kommentar vor dem
+			   eigentlichen Regelinhalt im start/end-Bereich, den eine ACTION
+			   dieser Regel bekommt. */
+			fprintf(fp, "\tws();\n");
+		}
+		fprintf(fp, "\tsp = 0; entry = p; entryLog = actionLogLen;\n");
+		fprintf(fp, "\t(void)sv; (void)svLog; (void)sp; (void)entryLog;\n");
+		genNodeC(fp, rules[r].root, fail, ruleIsLexical[r]);
+		if (ruleActionCallFlat[r * 64] != 0 && routineTextC(&ruleActionCallFlat[r * 64]) != 0) {
+			fprintf(fp, "\tactionLogPush(%s, entry, p);\t/* ACTION AFTER %s */\n", &ruleActionCallFlat[r * 64], rules[r].name);
+		}
+		fprintf(fp, "\treturn 1;\n");
+		fprintf(fp, "L%d:\tp = entry; actionLogLen = entryLog;\n", fail);
+		fprintf(fp, "\treturn 0;\n}\n\n");
+		r = r + 1;
+	}
+	sanitizeName(rules[0].name, cName);
+	fprintf(fp, "#define INPUT_FILE_MAX 262144\n");
+	fprintf(fp, "static char inputFileBuf[INPUT_FILE_MAX];\n\n");
+	fprintf(fp, "int main(int argc, char* argv[]) {\n");
+	fprintf(fp, "\tFILE* inputFile; size_t inputLen;\n");
+	fprintf(fp, "\tif (argc < 2) { fprintf(stderr, ");
+	fputc(34, fp);
+	fprintf(fp, "%s", "usage: %s <eingabe>\\n");
+	fputc(34, fp);
+	fprintf(fp, ", argv[0]); return 2; }\n");
+	fprintf(fp, "\tif (argv[1][0] == '@') {\n");
+	fprintf(fp, "\t\tinputFile = fopen(argv[1] + 1, ");
+	fputc(34, fp);
+	fprintf(fp, "r");
+	fputc(34, fp);
+	fprintf(fp, ");\n");
+	fprintf(fp, "\t\tif (!inputFile) { fprintf(stderr, ");
+	fputc(34, fp);
+	fprintf(fp, "can't open %%s\\n");
+	fputc(34, fp);
+	fprintf(fp, ", argv[1] + 1); return 2; }\n");
+	fprintf(fp, "\t\tinputLen = fread(inputFileBuf, 1, INPUT_FILE_MAX - 1, inputFile);\n");
+	fprintf(fp, "\t\tfclose(inputFile); inputFileBuf[inputLen] = '\\0'; p = inputFileBuf;\n");
+	fprintf(fp, "\t} else p = argv[1];\n");
+	/* Beide Zweige oben setzen p; eine Zuweisung dahinter deckt deshalb den
+	   Datei- UND den Kommandozeilenfall ab. */
+	fprintf(fp, "\tparserInputStart = p;\n");
+	/* actionLogReplay() erst NACH bestaetigtem Gesamterfolg (voller Input
+	   erkannt) -- nur dann steht fest, dass keine der protokollierten
+	   Aktionen zu einem inzwischen verworfenen Backtracking-Pfad gehoert. */
+	/* Nach dem Replay: hat eine ACTION-Routine einen Fehler gemeldet, ist der
+	   Lauf GESCHEITERT -- auch wenn die Grammatik die Eingabe vollstaendig
+	   erkannt hat. Die bereits ausgegebene Nutzlast bleibt auf stdout stehen
+	   (sie entsteht waehrend des Replays, der Zaehlerstand ist erst danach
+	   bekannt); das Schlusswort lautet dann aber "FAIL" statt "OK", und der
+	   Rueckgabewert ist 1. */
+	if (lexActive != 0) {
+		fprintf(fp, "\tif (p_%s()) { ws(); if (*p == '\\0') {", cName);
+		emitAfterParse(fp);
+		fprintf(fp, " printf(");
+		fputc(34, fp);
+		fprintf(fp, "OK\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 0; } }\n");
+	} else {
+		fprintf(fp, "\tif (p_%s() ", cName);
+		emitAndAnd(fp);
+		fprintf(fp, " *p == '\\0') {");
+		emitAfterParse(fp);
+		fprintf(fp, " printf(");
+		fputc(34, fp);
+		fprintf(fp, "OK\\n");
+		fputc(34, fp);
+		fprintf(fp, "); return 0; }\n");
+	}
+	fprintf(fp, "\tprintf(");
+	fputc(34, fp);
+	fprintf(fp, "FAIL\\n");
+	fputc(34, fp);
+	fprintf(fp, ");\n\treturn 1;\n}\n");
+	fclose(fp);
+	return 1;
+}
+
+/* ---------------------------------------------------------------------------
+   68k-Backend (Motorola-Syntax, vasm-kompatibel; keine Assembler-Direktiven
+   noetig). Registerkonvention (siehe ARCHITEKTUR.md Paragraph 4/5): a0 =
+   Eingabezeiger, d0.b = 1 Erfolg/0 Misserfolg, d1 = Scratch. WICHTIG: dieser
+   Abschnitt erzeugt reinen 68k-ASSEMBLERTEXT (keine C-Operatoren wie && /||
+   im generierten Code selbst) -- der "logical-frame mismatch"-Workaround
+   (emitAndAnd/emitOrOr) aus genParserC wird hier NICHT gebraucht. Ebenso
+   KEINE eingebetteten Anfuehrungszeichen im generierten Text (68k-Assembler
+   braucht keine C-String-Literale) -- der fputc(34,fp)-Workaround aus
+   genParserC entfaellt hier ebenfalls.
+--------------------------------------------------------------------------- */
+void charComment(char c, char* out, int outMax) {
+	if (isprint(c) != 0) {
+		sprintf(out, "'%c'", c);
+	} else {
+		sprintf(out, "0x%02X", c);
+	}
+}
+
+/* Wie emitAndAnd/emitOrOr (siehe genParserC-Kommentar): ein QCC-String-
+   Literal mit "?" als reinem TEXT loeste ebenfalls einen falschen
+   Semantikfehler aus ("qcc: conditional-frame mismatch", tcTernaryDepth-
+   Tracking fuer den Ternary-Operator "? :" wird offenbar auch INNERHALB von
+   String-Literalen faelschlich angestossen -- gleiche Bugklasse, andere
+   interne Zaehlvariable). */
+void emitQMark(void* fp) {
+	fputc(63, fp);
+}
+
+void emitConsume68k(void* fp, int len) {
+	if (len == 0) {
+		return;			/* leeres Literal "" matcht immer, konsumiert nichts */
+	}
+	if (len <= 8) {
+		fprintf(fp, "\taddq.l\t#%d,a0\n", len);
+	} else {
+		fprintf(fp, "\tlea\t%d(a0),a0\n", len);
+	}
+}
+
+void emitLongerLiteralReject68k(void* fp, char* text, int failLabel) {
+	int i;
+	int j;
+	int k;
+	int len;
+	char* longer;
+	char cc[16];
+	int skip;
+	len = strlen(text);
+	if (lexActive == 0 || isWordLiteral(text) != 0) { return; }
+	i = 0;
+	while (i < nodeCnt) {
+		if (nodes[i].kind == AST_TS) {
+			longer = nodes[i].text;
+			if (strlen(longer) > len && strncmp(longer, text, len) == 0) {
+				j = 0;
+				while (j < i && !(nodes[j].kind == AST_TS && strcmp(nodes[j].text, longer) == 0)) {
+					j = j + 1;
+				}
+				if (j >= i) {
+					skip = newLabel();
+					k = len;
+					while (longer[k] != 0) {
+						charComment(longer[k], cc, 16);
+						fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; Longest-Match %s\n", longer[k], k, cc);
+						fprintf(fp, "\tbne\tL%d\n", skip);
+						k = k + 1;
+					}
+					fprintf(fp, "\tbra\tL%d\t; kuerzeres Operator-Token ablehnen\nL%d:\n", failLabel, skip);
+				}
+			}
+		}
+		i = i + 1;
+	}
+}
+
+void genNode68k(void* fp, int id, int failLabel, int lexical) {
+	int child;
+	int l1;
+	int l2;
+	int lok;
+	int i;
+	char cc[16];
+	char cc2[16];
+	char aName[64];		/* GEN_NAME_LEN */
+	int idx;
+	int len;
+	char* txt;
+
+	switch (nodes[id].kind) {
+	case AST_TS:
+		txt = nodes[id].text;
+		len = strlen(txt);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		i = 0;
+		while (i < len) {
+			charComment(txt[i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", txt[i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", txt[i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failLabel);
+			i = i + 1;
+		}
+		if (lexActive != 0 && lexical == 0) { emitLongerLiteralReject68k(fp, txt, failLabel); }
+		if (lexActive != 0 && lexical == 0 && isWordLiteral(txt) != 0) {
+			/* Wortgrenze: Folgezeichen darf kein Identifikator-Zeichen sein */
+			fprintf(fp, "\tmove.b\t%d(a0),d1\n", len);
+			fprintf(fp, "\tbsr\tidch\n");
+			fprintf(fp, "\ttst.b\td0\n");
+			fprintf(fp, "\tbne\tL%d\t; Wortgrenze verletzt\n", failLabel);
+		}
+		emitConsume68k(fp, len);
+		break;
+	case AST_RNG:
+		charComment(nodes[id].lo, cc, 16);
+		charComment(nodes[id].hi, cc2, 16);
+		if (lexActive != 0 && lexical == 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		fprintf(fp, "\tmove.b\t(a0),d1\n");
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", nodes[id].lo, cc);
+		fprintf(fp, "\tblo\tL%d\n", failLabel);
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", nodes[id].hi, cc2);
+		fprintf(fp, "\tbhi\tL%d\n", failLabel);
+		fprintf(fp, "\taddq.l\t#1,a0\n");
+		break;
+	case AST_NTS:
+		txt = nodes[id].text;
+		idx = ruleIndexByName(txt);
+		sanitizeName(txt, aName);
+		if (lexActive != 0 && lexical == 0 && idx >= 0 && ruleIsLexical[idx] != 0) {
+			fprintf(fp, "\tbsr\tws\n");
+		}
+		fprintf(fp, "\tbsr\tp_%s\n", aName);
+		fprintf(fp, "\ttst.b\td0\n");
+		fprintf(fp, "\tbeq\tL%d\n", failLabel);
+		break;
+	case AST_SEQ:
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			genNode68k(fp, child, failLabel, lexical);
+			child = nodes[child].nextSib;
+		}
+		break;
+	case AST_ALT:
+		lok = newLabel();
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Auswahl\n");
+		child = nodes[id].firstChild;
+		while (child >= 0) {
+			l1 = newLabel();
+			genNode68k(fp, child, l1, lexical);
+			fprintf(fp, "\tbra\tL%d\n", lok);
+			if (nodes[child].nextSib >= 0) {
+				fprintf(fp, "L%d:\tmove.l\t(a7),a0\t; naechste Alternative\n", l1);
+			} else {
+				fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Auswahl gescheitert\n", l1);
+				fprintf(fp, "\tbra\tL%d\n", failLabel);
+			}
+			child = nodes[child].nextSib;
+		}
+		fprintf(fp, "L%d:\taddq.l\t#4,a7\n", lok);
+		break;
+	case AST_OPT:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Option\n");
+		genNode68k(fp, nodes[id].firstChild, l1, lexical);
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tbra\tL%d\n", l2);
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Option uebersprungen\n", l1);
+		fprintf(fp, "L%d:\n", l2);
+		break;
+	case AST_REP:
+		l1 = newLabel();
+		l2 = newLabel();
+		fprintf(fp, "L%d:\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Wiederholung\n", l1);
+		genNode68k(fp, nodes[id].firstChild, l2, lexical);
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tbra\tL%d\n", l1);
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Wiederholung beendet\n", l2);
+		break;
+	}
+}
+
+/* Laufzeit-Helfer fuer den LEXER-Modus: ws (ueberliest WHITESPACE-Zeichen
+   und, falls konfiguriert, Kommentare; zerstoert d1) und idch (prueft d1:
+   Identifikator-Zeichen? d0.b = 1 ja / 0 nein). lexLineComment/lexBlockOn/
+   lexBlockOff sind hier FLACHE 1D-Arrays (lexLineCommentFlat[j*9+i] statt
+   lexLineComment[j][i], siehe Kommentar bei TEIL 1 -- QCC erlaubt keine
+   partielle Indizierung eines 2D-Arrays). */
+void emitLexHelpers68k(void* fp, char* cs) {
+	int lTop;
+	int lSkip;
+	int lRet;
+	int lCmtShared;
+	int lLCentry[4];	/* LEX_MARKERS_MAX */
+	int lBCentry[4];
+	int lYes;
+	int lNo1;
+	int lNo2;
+	int lNo3;
+	int i;
+	int j;
+	char cc[16];
+	int failTo;
+	char* d1d2;
+	int lBk;
+	int lBk1;
+	int lBkOpen;
+
+	lTop = newLabel();
+	lSkip = newLabel();
+	lRet = newLabel();
+	lCmtShared = newLabel();
+	lYes = newLabel();
+	lNo1 = newLabel();
+	lNo2 = newLabel();
+	lNo3 = newLabel();
+
+	j = 0;
+	while (j < lexLineCommentCnt) { lLCentry[j] = newLabel(); j = j + 1; }
+	j = 0;
+	while (j < lexBlockCnt) { lBCentry[j] = newLabel(); j = j + 1; }
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	if (lexAnyBlockNested() != 0) { d1d2 = "/d2"; } else { d1d2 = ""; }
+	fprintf(fp, "%s ws -- Whitespace/Kommentare ueberlesen (zerstoert d1%s)\n", cs, d1d2);
+	fprintf(fp, "ws:\n");
+	fprintf(fp, "L%d:\tmove.b\t(a0),d1\n", lTop);
+	fprintf(fp, "\tbeq\tL%d\t; Eingabeende\n", lRet);
+	i = 0;
+	while (i < lexWsLen) {
+		charComment(lexWs[i], cc, 16);
+		fprintf(fp, "\tcmpi.b\t#$%02X,d1\t; %s\n", lexWs[i], cc);
+		fprintf(fp, "\tbeq\tL%d\n", lSkip);
+		i = i + 1;
+	}
+	/* Zeilenkommentar-Marker der Reihe nach probieren: Mismatch faellt zum
+	   naechsten Marker durch (letzter Marker faellt zum ersten Blockkommentar-
+	   Marker bzw. lRet). Voller Match springt IMMER explizit zu lCmtShared. */
+	j = 0;
+	while (j < lexLineCommentCnt) {
+		if (j + 1 < lexLineCommentCnt) {
+			failTo = lLCentry[j + 1];
+		} else if (lexBlockCnt > 0) {
+			failTo = lBCentry[0];
+		} else {
+			failTo = lRet;
+		}
+		fprintf(fp, "L%d:\n", lLCentry[j]);
+		i = 0;
+		while (i < lexLineCommentLen[j]) {
+			charComment(lexLineCommentFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexLineCommentFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexLineCommentFlat[j * 9 + i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failTo);
+			i = i + 1;
+		}
+		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
+		j = j + 1;
+	}
+	if (lexLineCommentCnt > 0) {
+		fprintf(fp, "L%d:\tmove.b\t(a0),d1\t; Kommentar bis Zeilenende\n", lCmtShared);
+		fprintf(fp, "\tbeq\tL%d\n", lRet);
+		fprintf(fp, "\tcmpi.b\t#$0A,d1\t; LF\n");
+		fprintf(fp, "\tbeq\tL%d\n", lTop);
+		fprintf(fp, "\taddq.l\t#1,a0\n");
+		fprintf(fp, "\tbra\tL%d\n", lCmtShared);
+	}
+	/* Blockkommentar-Marker der Reihe nach probieren (analog); jeder Marker
+	   hat seine eigene Ende-Sequenz und damit seine eigene innere Schleife --
+	   kann NICHT wie bei den Zeilenkommentaren einen gemeinsamen Rumpf teilen. */
+	j = 0;
+	while (j < lexBlockCnt) {
+		if (j + 1 < lexBlockCnt) { failTo = lBCentry[j + 1]; } else { failTo = lRet; }
+		lBk = newLabel();
+		lBk1 = newLabel();
+		if (lexBlockNested[j] != 0) { lBkOpen = newLabel(); } else { lBkOpen = -1; }
+
+		fprintf(fp, "L%d:\n", lBCentry[j]);
+		i = 0;
+		while (i < lexBlockOnLen[j]) {
+			charComment(lexBlockOnFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], i, cc);
+			}
+			fprintf(fp, "\tbne\tL%d\n", failTo);
+			i = i + 1;
+		}
+		emitConsume68k(fp, lexBlockOnLen[j]);
+		if (lexBlockNested[j] != 0) {
+			fprintf(fp, "\tmoveq\t#1,d2\t; Schachtelungs-Tiefe\n");
+		}
+		fprintf(fp, "L%d:\tmove.b\t(a0),d1\t; im Blockkommentar\n", lBk);
+		fprintf(fp, "\tbeq\tL%d\t; unterminiert: Eingabeende\n", lRet);
+		i = 0;
+		while (i < lexBlockOffLen[j]) {
+			charComment(lexBlockOffFlat[j * 9 + i], cc, 16);
+			if (i == 0) {
+				fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOffFlat[j * 9 + i], cc);
+			} else {
+				fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOffFlat[j * 9 + i], i, cc);
+			}
+			if (lexBlockNested[j] != 0) {
+				fprintf(fp, "\tbne\tL%d\n", lBkOpen);
+			} else {
+				fprintf(fp, "\tbne\tL%d\n", lBk1);
+			}
+			i = i + 1;
+		}
+		emitConsume68k(fp, lexBlockOffLen[j]);
+		if (lexBlockNested[j] != 0) {
+			fprintf(fp, "\tsubq.l\t#1,d2\n");
+			fprintf(fp, "\tbeq\tL%d\t; Tiefe 0: Kommentar zu Ende, weiter ueberlesen\n", lTop);
+			fprintf(fp, "\tbra\tL%d\n", lBk);
+			fprintf(fp, "L%d:\n", lBkOpen);
+			i = 0;
+			while (i < lexBlockOnLen[j]) {
+				charComment(lexBlockOnFlat[j * 9 + i], cc, 16);
+				if (i == 0) {
+					fprintf(fp, "\tcmpi.b\t#$%02X,(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], cc);
+				} else {
+					fprintf(fp, "\tcmpi.b\t#$%02X,%d(a0)\t; %s\n", lexBlockOnFlat[j * 9 + i], i, cc);
+				}
+				fprintf(fp, "\tbne\tL%d\n", lBk1);
+				i = i + 1;
+			}
+			emitConsume68k(fp, lexBlockOnLen[j]);
+			fprintf(fp, "\taddq.l\t#1,d2\t; tiefer geschachtelt\n");
+			fprintf(fp, "\tbra\tL%d\n", lBk);
+		} else {
+			fprintf(fp, "\tbra\tL%d\t; Kommentar zu Ende, weiter ueberlesen\n", lTop);
+		}
+		fprintf(fp, "L%d:\taddq.l\t#1,a0\n", lBk1);
+		fprintf(fp, "\tbra\tL%d\n", lBk);
+		j = j + 1;
+	}
+	if (lexLineCommentCnt == 0 && lexBlockCnt == 0) {
+		fprintf(fp, "\tbra\tL%d\n", lRet);
+	}
+	fprintf(fp, "L%d:\taddq.l\t#1,a0\n", lSkip);
+	fprintf(fp, "\tbra\tL%d\n", lTop);
+	fprintf(fp, "L%d:\trts\n\n", lRet);
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	fprintf(fp, "%s idch -- d1 Identifikator-Zeichen", cs);
+	emitQMark(fp);
+	fprintf(fp, " d0.b = 1/0\n");
+	fprintf(fp, "idch:\n");
+	fprintf(fp, "\tcmpi.b\t#$30,d1\t; '0'\n");
+	fprintf(fp, "\tblo\tL%d\n", lNo1);
+	fprintf(fp, "\tcmpi.b\t#$39,d1\t; '9'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$41,d1\t; 'A'\n", lNo1);
+	fprintf(fp, "\tblo\tL%d\n", lNo2);
+	fprintf(fp, "\tcmpi.b\t#$5A,d1\t; 'Z'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$61,d1\t; 'a'\n", lNo2);
+	fprintf(fp, "\tblo\tL%d\n", lNo3);
+	fprintf(fp, "\tcmpi.b\t#$7A,d1\t; 'z'\n");
+	fprintf(fp, "\tbls\tL%d\n", lYes);
+	fprintf(fp, "L%d:\tcmpi.b\t#$5F,d1\t; '_'\n", lNo3);
+	fprintf(fp, "\tbeq\tL%d\n", lYes);
+	fprintf(fp, "\tcmpi.b\t#$24,d1\t; '$'\n");
+	fprintf(fp, "\tbeq\tL%d\n", lYes);
+	fprintf(fp, "\tmoveq\t#0,d0\n");
+	fprintf(fp, "\trts\n");
+	fprintf(fp, "L%d:\tmoveq\t#1,d0\n", lYes);
+	fprintf(fp, "\trts\n\n");
+}
+
+/* Gemeinsamer Kern beider 68k-Ausgabeformate. os9=0: "nacktes" Motorola-Format
+   (vasm-kompatibel, nur Labels). os9=1: Microware-r68-Format -- gleicher
+   Code-Body, aber '*' fuer VOLLE Kommentarzeilen plus nam/psect/ends-Rahmen. */
+int genParser68kTo(char* path, int os9, char* baseName) {
+	void* fp;
+	int r;
+	int fail;
+	char aName[64];		/* GEN_NAME_LEN */
+	char psectName[68];	/* GEN_NAME_LEN + 4 */
+	char* cs;
+	char* bn;
+	char* lexComment;
+	int lDone;
+
+	if (os9 != 0) { cs = "*"; } else { cs = ";"; }
+
+	if (validateAstForCodegen() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	if (computeLexicalSet() == 0) {
+		printf("         %s wird nicht erzeugt.\n", path);
+		return 0;
+	}
+	fp = fopen(path, "w");
+	if (fp == 0) {
+		printf("CODEGEN: kann '%s' nicht schreiben\n", path);
+		return 0;
+	}
+	labelCnt = 0;
+
+	if (os9 != 0) {
+		if (cgenPsect[0] != 0) {
+			tcCopyBounded(psectName, cgenPsect, 63);
+		} else {
+			if (baseName != 0) { bn = baseName; } else { bn = "parser"; }
+			sanitizeName(bn, psectName);
+			strcat(psectName, "_p");
+		}
+	}
+
+	fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+	fprintf(fp, "%s Automatisch erzeugt von parsec -- NICHT von Hand aendern.\n", cs);
+	fprintf(fp, "%s Backtracking-Parser (rekursiver Abstieg, geordnete Auswahl), 68k/Motorola.\n", cs);
+	fprintf(fp, "%s\n", cs);
+	fprintf(fp, "%s Aufruf:  a0 = Eingabezeiger (NUL-terminiert)\n", cs);
+	fprintf(fp, "%s          bsr parse\n", cs);
+	fprintf(fp, "%s Rueckgabe: d0.b = 1 Erfolg (a0 hinter dem Erkannten), 0 Misserfolg\n", cs);
+	if (lexAnyBlockNested() != 0) { lexComment = "/d2"; } else { lexComment = ""; }
+	fprintf(fp, "%s            (bei Misserfolg ist a0 unveraendert). d1%s wird zerstoert.\n", cs, lexComment);
+	fprintf(fp, "%s Vollstaendige Erkennung: nach Erfolg pruefen, ob (a0) = 0 (Eingabeende).\n", cs);
+	if (lexActive != 0) {
+		fprintf(fp, "%s LEXER aktiv: parse ueberliest nach Erfolg auch Whitespace am Ende;\n", cs);
+		fprintf(fp, "%s lexikalische Regeln (TOKEN-Abschluss) matchen adjazente Zeichen.\n", cs);
+	}
+	fprintf(fp, "%s Startregel: %s\n", cs, rules[0].name);
+	fprintf(fp, "%s---------------------------------------------------------------------------\n\n", cs);
+
+	if (os9 != 0) {
+		fprintf(fp, "\tnam\t%s\n", psectName);
+		fprintf(fp, "\tpsect\t%s,0,0,1,0,0\n\n", psectName);
+	}
+
+	sanitizeName(rules[0].name, aName);
+	if (lexActive != 0) {
+		lDone = newLabel();
+		fprintf(fp, "parse:\tbsr\tp_%s\n", aName);
+		fprintf(fp, "\ttst.b\td0\n");
+		fprintf(fp, "\tbeq\tL%d\n", lDone);
+		fprintf(fp, "\tbsr\tws\t; Whitespace am Eingabeende gehoert mit dazu\n");
+		fprintf(fp, "L%d:\trts\n\n", lDone);
+		emitLexHelpers68k(fp, cs);
+	} else {
+		fprintf(fp, "parse:\tbsr\tp_%s\n\trts\n\n", aName);
+	}
+
+	r = 0;
+	while (r < ruleCnt) {
+		sanitizeName(rules[r].name, aName);
+		fail = newLabel();
+		fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+		if (ruleIsLexical[r] != 0) { lexComment = " (lexikalisch)"; } else { lexComment = ""; }
+		fprintf(fp, "%s Regel: %s%s\n", cs, rules[r].name, lexComment);
+		fprintf(fp, "p_%s:\n", aName);
+		fprintf(fp, "\tmove.l\ta0,-(a7)\t; Ruecksetzpunkt Regel\n");
+		genNode68k(fp, rules[r].root, fail, ruleIsLexical[r]);
+		if (ruleActionCallFlat[r * 64] != 0 && routineText68k(&ruleActionCallFlat[r * 64]) != 0) {
+			fprintf(fp, "\tbsr\t%s\t%s ACTION AFTER %s (a0=Ende, muss erhalten bleiben)\n", &ruleActionCallFlat[r * 64], cs, rules[r].name);
+		}
+		fprintf(fp, "\taddq.l\t#4,a7\n");
+		fprintf(fp, "\tmoveq\t#1,d0\n");
+		fprintf(fp, "\trts\n");
+		fprintf(fp, "L%d:\tmove.l\t(a7)+,a0\t; Regel gescheitert, Position zurueck\n", fail);
+		fprintf(fp, "\tmoveq\t#0,d0\n");
+		fprintf(fp, "\trts\n\n");
+		r = r + 1;
+	}
+	if (routines68kCnt > 0) {
+		fprintf(fp, "%s---------------------------------------------------------------------------\n", cs);
+		fprintf(fp, "%s ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen)\n", cs);
+		r = 0;
+		while (r < routines68kCnt) {
+			fprintf(fp, "%s\n", routines68k[r].text);
+			r = r + 1;
+		}
+	}
+	if (os9 != 0) {
+		fprintf(fp, "\tends\n");
+	}
+	fclose(fp);
+	return 1;
+}
+
+int genParser68k(char* path) {
+	return genParser68kTo(path, 0, 0);
+}
+
+int genParser68kOS9(char* path, char* baseName) {
+	return genParser68kTo(path, 1, baseName);
+}

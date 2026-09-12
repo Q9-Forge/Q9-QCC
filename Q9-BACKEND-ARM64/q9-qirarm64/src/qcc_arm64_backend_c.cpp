@@ -721,3 +721,12 @@ int main(int argc, char* argv[]) {
 	fclose(out);
 	return 0;
 }
+/*
+ * qcc_arm64_backend_c.cpp -- C-compatible ARM64 backend implementation
+ *
+ * Purpose:
+ *   Provide the C-compatible backend implementation used by the ARM64 build.
+ *
+ * Edition history:
+ *   2026-09-12  Added the English source header.
+ */

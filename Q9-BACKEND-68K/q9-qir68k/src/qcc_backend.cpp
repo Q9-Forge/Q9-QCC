@@ -439,3 +439,12 @@ int main(int argc, char* argv[]) {
 	}
 	return 0;
 }
+/*
+ * qcc_backend.cpp -- legacy Q9 68k backend implementation
+ *
+ * Purpose:
+ *   Compatibility implementation retained for historical backend tests.
+ *
+ * Edition history:
+ *   2026-09-12  Added the English source header.
+ */

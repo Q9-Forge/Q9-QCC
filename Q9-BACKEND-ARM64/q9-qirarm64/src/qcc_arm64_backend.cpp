@@ -276,3 +276,12 @@ int main(int argc, char* argv[]) {
 	} catch (const std::exception& e) { std::cerr << "qcc_arm64_backend: " << e.what() << "\n"; return 1; }
 	return 0;
 }
+/*
+ * qcc_arm64_backend.cpp -- Q9 Stack-IR to ARM64 assembly
+ *
+ * Purpose:
+ *   Translate Q9 Stack-IR into ARM64 assembly for the native backend.
+ *
+ * Edition history:
+ *   2026-09-12  Added the English source header.
+ */
