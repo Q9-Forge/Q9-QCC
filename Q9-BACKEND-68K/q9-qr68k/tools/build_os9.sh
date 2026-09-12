@@ -28,9 +28,9 @@ WORK="${1:-/tmp/qr68-os9}"
 die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -x "$REPO/build/qr68k" ]       || die "build/qr68k fehlt (make)"
-[ -x "$QCC/q9-cpp/build/qcpp" ]  || die "$QCC/q9-cpp/build/qcpp fehlt"
-[ -x "$QCC/build/qcir" ]        || die "$QCC/build/qcir fehlt"
-[ -x "$QCC/build/qir_68k" ]  || die "$QCC/build/qir_68k fehlt"
+[ -x "$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp" ]  || die "qcpp fehlt"
+[ -x "$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" ]   || die "qcir fehlt"
+[ -x "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" ] || die "qir68k fehlt"
 
 MWOS_UNIX="$MWOS"
 rm -rf "$WORK"; mkdir -p "$WORK"
@@ -47,12 +47,13 @@ w() { arch -x86_64 "$WINE_BIN" cmd /c "$1" >>"$WORK/wine.log" 2>&1; }
 WWORK="$(printf '%s' "$WORK" | sed 's#/#\\#g')"
 
 echo "== 1/6 qcpp =="
-"$QCC/q9-cpp/build/qcpp" -D_Q9OS -I"$QCC/q9-cpp/include" "$REPO/src/qr68.c" \
+
+"$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp" -D_Q9OS -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" "$REPO/src/qr68.c" \
 	"$WORK/qr68.i" || die "qcpp"
 echo "  $(wc -c < "$WORK/qr68.i" | tr -d ' ') Byte"
 
 echo "== 2/6 QCC =="
-"$QCC/build/qcir" "@$WORK/qr68.i" > "$WORK/qr68.ir" 2> "$WORK/qr68.err"
+"$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" "@$WORK/qr68.i" > "$WORK/qr68.ir" 2> "$WORK/qr68.err"
 last="$(tail -1 "$WORK/qr68.ir")"
 msgs="$(wc -l < "$WORK/qr68.err" | tr -d ' ')"
 echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $msgs Meldungen"
@@ -62,7 +63,7 @@ echo "  $(wc -l < "$WORK/qr68.ir" | tr -d ' ') IR-Zeilen, Schlusswort $last, $ms
 echo "== 3/6 Backend (-os9 -largedata -remotedata) =="
 # -largedata is required: qr68 holds far more than 32 KB of global state;
 # without the indirection table, the assembler reports "value out of range".
-"$QCC/build/qir_68k" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
+"$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/qr68.ir" "$WORK/qr68.s68" -os9 -largedata -remotedata \
 	>/dev/null || die "qir_68k"
 echo "  $(wc -c < "$WORK/qr68.s68" | tr -d ' ') Byte Assembler"
 

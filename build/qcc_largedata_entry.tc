@@ -1,9 +1,0 @@
-int helper(void) {
-    putint(42);
-    return 0;
-}
-
-int main(void) {
-    helper();
-    return 0;
-}

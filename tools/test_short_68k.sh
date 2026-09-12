@@ -19,7 +19,7 @@
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FLUX="${FLUX:-$REPO/../Q9-Flux-68k}"
+FLUX="${FLUX:-$REPO/../Q9-Flux/Q9-Flux-68k}"
 IMG="${IMG:-$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
 WORK="${WORK:-/tmp/qcc-short68k}"
 KEEP=0

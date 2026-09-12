@@ -8,10 +8,12 @@
 #include <stdio.h>
 #include <string.h>
 #include "../../q9-qcpp/include/stdlib.h"
+static FILE* qccOutputFile;
+#define QCC_BUFFERED_OUTPUT
 #ifdef QCC_BUFFERED_OUTPUT
 #include <stdarg.h>
 static char qccOutputBuffer[8192]; static int qccOutputUsed = 0;
-static void qccOutputFlush(void) { if (qccOutputUsed) { fwrite(qccOutputBuffer, 1, qccOutputUsed, stdout); qccOutputUsed = 0; } }
+static void qccOutputFlush(void) { if (qccOutputUsed) { fwrite(qccOutputBuffer, 1, qccOutputUsed, qccOutputFile ? qccOutputFile : stdout); qccOutputUsed = 0; } }
 static void qccOutputChar(int c) { if (qccOutputUsed == 8192) qccOutputFlush(); qccOutputBuffer[qccOutputUsed++] = (char)c; }
 static void qccOutputString(const char* s) { while (*s) qccOutputChar(*s++); }
 static void qccOutputLong(long v) { unsigned long u; char digits[16]; int n = 0; if (v < 0) { qccOutputChar('-'); u = (unsigned long)(-(v + 1)); u++; } else u = (unsigned long)v; do { digits[n++] = (char)('0' + (u % 10)); u /= 10; } while (u); while (n) qccOutputChar(digits[--n]); }
@@ -9987,7 +9989,18 @@ static char* inputFileBuf;
 
 int main(int argc, char** argv) {
 	FILE* inputFile; size_t inputLen;
+	const char* outputFile;
+	int argi;
+	outputFile = 0;
+	for (argi = 1; argi + 1 < argc; argi++) {
+		if (strcmp(argv[argi], "-o") == 0) outputFile = argv[argi + 1];
+	}
 	if (argc < 2) { fprintf(stderr, "usage: %s <eingabe>\n", argv[0]); return 2; }
+	qccOutputFile = 0;
+	if (outputFile != 0) {
+		qccOutputFile = fopen(outputFile, "w");
+		if (!qccOutputFile) { fprintf(stderr, "can't open %s\n", outputFile); return 2; }
+	}
 	if (*argv[1] == '@') {
 		inputFile = fopen(argv[1] + 1, "r");
 		if (!inputFile) { fprintf(stderr, "can't open %s\n", argv[1] + 1); return 2; }
@@ -9997,7 +10010,7 @@ int main(int argc, char** argv) {
 		fclose(inputFile); inputFileBuf[inputLen] = '\0'; p = inputFileBuf;
 	} else p = argv[1];
 	parserInputStart = p;
-	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); QCC_OUTPUT_FLUSH(); return 1; } printf("OK\n"); QCC_OUTPUT_FLUSH(); return 0; } }
-	printf("FAIL\n"); QCC_OUTPUT_FLUSH();
+	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); QCC_OUTPUT_FLUSH(); if (qccOutputFile) fclose(qccOutputFile); return 1; } printf("OK\n"); QCC_OUTPUT_FLUSH(); if (qccOutputFile) fclose(qccOutputFile); return 0; } }
+	printf("FAIL\n"); QCC_OUTPUT_FLUSH(); if (qccOutputFile) fclose(qccOutputFile);
 	return 1;
 }

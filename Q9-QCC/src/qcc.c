@@ -61,6 +61,52 @@ static int q9_system(const char *command)
 {
 	return system(command);
 }
+#if defined(_Q9OS) || defined(_OSK)
+#include <process.h>
+#include <modes.h>
+extern int os9exec();
+extern int os9forkc();
+extern int wait();
+extern char **_environ;
+
+/* Execute one OS-9 module with an explicit argument vector. */
+static int q9_exec_argv(const char *module, char **argv)
+{
+	int pid;
+	unsigned int child_status;
+	int status;
+	child_status = 0;
+	pid = os9exec(os9forkc, module, argv, _environ, 0, 0, 3);
+	if (pid < 0) return -1;
+	status = wait(&child_status);
+	if (status < 0) return status;
+	/* OS-9 reports a normal child exit as 0x0100 | exit-code. */
+	if ((child_status & 0xFF00U) == 0x0100U)
+		return (int)(child_status & 0x00FFU);
+	return (int)child_status;
+}
+
+/* Run a child with its standard output connected to an OS-9 file. */
+static int q9_exec_stdout(const char *module, char **argv, const char *path)
+{
+	int saved;
+	int out;
+	int result;
+	saved = dup(1);
+	if (saved < 0) return -1;
+	creat(path, S_IREAD | S_IWRITE | S_IOREAD | S_IOWRITE);
+	out = creat(path, S_IREAD | S_IWRITE | S_IOREAD | S_IOWRITE);
+	if (out < 0) { close(saved); return -1; }
+	close(1);
+	if (dup(out) != 1) { close(out); close(saved); return -1; }
+	close(out);
+	result = q9_exec_argv(module, argv);
+	close(1);
+	dup(saved);
+	close(saved);
+	return result;
+}
+#endif
 static int keep_files;
 static char tmpdir[TEXT] = "build/qcc-tmp";
 static char output[TEXT] = "";
@@ -199,24 +245,33 @@ int main(int argc, char **argv)
 	}
 	{
 		char command[512];
-		char os9_input[TEXT];
 		const char *input = argv[argc - 1];
-		#if defined(_Q9OS) || defined(_OSK)
-		if (strncmp(input, "/dd/", 4) == 0) {
-			sprintf(os9_input, "../%s", input + 4);
-			input = os9_input;
-		}
-		#endif
 		if (strcmp(tmpdir, "/dd") != 0 && strcmp(tmpdir, "/dd/CMDS") != 0 && strcmp(tmpdir, ".") != 0) {
 			sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
 			if (q9_system(command) != 0) return 4;
 		}
 		#if defined(_Q9OS) || defined(_OSK)
-		sprintf(command, "%s %s %s/input.i", qcpp, input, tmpdir);
+		{
+			char *qcpp_argv[5];
+			char qcpp_output[TEXT];
+			const char *qcpp_module = qcpp;
+			sprintf(qcpp_output, "%s/input.i", tmpdir);
+			qcpp_argv[0] = (char *)qcpp_module;
+			qcpp_argv[1] = "-v";
+			qcpp_argv[2] = (char *)input;
+			qcpp_argv[3] = qcpp_output;
+			qcpp_argv[4] = NULL;
+			if (q9_exec_argv(qcpp_module, qcpp_argv) != 0) {
+				fprintf(stderr, "qcc: qcpp fehlgeschlagen\n");
+				return 4;
+			}
+		}
 		#else
 		sprintf(command, "%s -I../Q9-FRONTEND-C/q9-qcpp/include %s %s/input.i", qcpp, input, tmpdir);
 		#endif
+		#if !defined(_Q9OS) && !defined(_OSK)
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
+		#endif
 		if (preprocess_only) {
 			if (output[0] != '\0') {
 				sprintf(command, "%s %s/input.i %s", QCC_COPY, tmpdir, output);
@@ -226,27 +281,93 @@ int main(int argc, char **argv)
 			if (!keep_files) { sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command); }
 			return 0;
 		}
+		#if defined(_Q9OS) || defined(_OSK)
+		{
+			char *qcir_argv[5];
+			char qcir_input[TEXT];
+			char qcir_response[TEXT];
+			char qcir_output_arg[TEXT];
+			char qcir_output[TEXT];
+			sprintf(qcir_input, "%s/input.i", tmpdir);
+			sprintf(qcir_response, "@%s", qcir_input);
+			if (output[0] != '\0') sprintf(qcir_output, "%s", output);
+			else sprintf(qcir_output, "%s/output.ir", tmpdir);
+			sprintf(qcir_output_arg, "%s", qcir_output);
+			qcir_argv[0] = "/dd/CMDS/qcir";
+			qcir_argv[1] = qcir_response;
+			qcir_argv[2] = "-o";
+			qcir_argv[3] = qcir_output_arg;
+			qcir_argv[4] = NULL;
+			if (q9_exec_argv("/dd/CMDS/qcir", qcir_argv) != 0) {
+				fprintf(stderr, "qcc: qcir fehlgeschlagen\n");
+				return 4;
+			}
+		}
+		#else
 		sprintf(command, "%s @%s/input.i > %s/output.ir", qcir, tmpdir, tmpdir);
+		#endif
+		#if !defined(_Q9OS) && !defined(_OSK)
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcir fehlgeschlagen\n"); return 4; }
+		#endif
 		if (emit_ir) {
 			if (output[0] != '\0') {
+				#if defined(_Q9OS) || defined(_OSK)
+				printf("%s\n", output);
+				#else
 				sprintf(command, "%s %s/output.ir %s", QCC_COPY, tmpdir, output);
 				if (q9_system(command) != 0) return 4;
 				printf("%s\n", output);
+				#endif
 			} else printf("%s/output.ir\n", tmpdir);
 			if (!keep_files) { sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command); }
 			return 0;
 		}
 		if (assembly_only || object_only) {
+			#if defined(_Q9OS) || defined(_OSK)
+			{
+				char *stage_argv[5];
+				char stage_in[TEXT]; char stage_out[TEXT];
+				sprintf(stage_in, "%s/output.ir", tmpdir);
+				sprintf(stage_out, "%s/output.s68k", tmpdir);
+				stage_argv[0] = "/dd/CMDS/qir68k"; stage_argv[1] = stage_in;
+				stage_argv[2] = stage_out; stage_argv[3] = "-os9"; stage_argv[4] = NULL;
+				if (q9_exec_argv("/dd/CMDS/qir68k", stage_argv) != 0) return 4;
+			}
+			#else
 			sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
 			if (q9_system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+			#endif
 			if (optimizer[0] != '\0') {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char *stage_argv[4];
+					char stage_in[TEXT]; char stage_out[TEXT];
+					sprintf(stage_in, "%s/output.s68k", tmpdir);
+					sprintf(stage_out, "%s/output.opt.s68k", tmpdir);
+					stage_argv[0] = "/dd/CMDS/qo68k"; stage_argv[1] = stage_in;
+					stage_argv[2] = stage_out; stage_argv[3] = NULL;
+					if (q9_exec_argv("/dd/CMDS/qo68k", stage_argv) != 0) return 4;
+				}
+				#else
 				sprintf(command, "../Q9-BACKEND-68K/q9-qo68k/build/qo68k %s/output.s68k %s/output.opt.s68k", tmpdir, tmpdir);
 				if (q9_system(command) != 0) { fprintf(stderr, "qcc: qo68k fehlgeschlagen\n"); return 4; }
+				#endif
 			}
 			if (object_only) {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char *stage_argv[4];
+					char stage_in[TEXT]; char stage_out[TEXT];
+					sprintf(stage_in, "%s/%s", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k");
+					sprintf(stage_out, "%s/output.r", tmpdir);
+					stage_argv[0] = "/dd/CMDS/qr68k"; stage_argv[1] = stage_in;
+					stage_argv[2] = stage_out; stage_argv[3] = NULL;
+					if (q9_exec_argv("/dd/CMDS/qr68k", stage_argv) != 0) return 4;
+				}
+				#else
 				sprintf(command, "../Q9-BACKEND-68K/q9-qr68k/build/qr68k %s/%s %s/output.r", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);
 				if (q9_system(command) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
+				#endif
 			}
 			if (output[0] != '\0') {
 				sprintf(command, "%s %s/%s %s", QCC_COPY, tmpdir, object_only ? "output.r" : (optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"), output);
@@ -256,16 +377,55 @@ int main(int argc, char **argv)
 			return 0;
 		}
 		/* Complete default pipeline: backend, optimizer, assembler, linker. */
+		#if defined(_Q9OS) || defined(_OSK)
+		{
+			char *stage_argv[5]; char stage_in[TEXT]; char stage_out[TEXT];
+			sprintf(stage_in, "%s/output.ir", tmpdir); sprintf(stage_out, "%s/output.s68k", tmpdir);
+			stage_argv[0] = "/dd/CMDS/qir68k"; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = "-os9"; stage_argv[4] = NULL;
+			if (q9_exec_argv("/dd/CMDS/qir68k", stage_argv) != 0) return 4;
+		}
+		#else
 		sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+		#endif
 		if (optimizer[0] != '\0') {
+			#if defined(_Q9OS) || defined(_OSK)
+			{
+				char *stage_argv[4]; char stage_in[TEXT]; char stage_out[TEXT];
+				sprintf(stage_in, "%s/output.s68k", tmpdir); sprintf(stage_out, "%s/output.opt.s68k", tmpdir);
+				stage_argv[0] = "/dd/CMDS/qo68k"; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = NULL;
+				if (q9_exec_argv("/dd/CMDS/qo68k", stage_argv) != 0) return 4;
+			}
+			#else
 			sprintf(command, "../Q9-BACKEND-68K/q9-qo68k/build/qo68k %s/output.s68k %s/output.opt.s68k", tmpdir, tmpdir);
 			if (q9_system(command) != 0) { fprintf(stderr, "qcc: qo68k fehlgeschlagen\n"); return 4; }
+			#endif
 		}
+		#if defined(_Q9OS) || defined(_OSK)
+		{
+			char *stage_argv[4]; char stage_in[TEXT]; char stage_out[TEXT];
+			sprintf(stage_in, "%s/%s", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"); sprintf(stage_out, "%s/output.r", tmpdir);
+			stage_argv[0] = "/dd/CMDS/qr68k"; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = NULL;
+			if (q9_exec_argv("/dd/CMDS/qr68k", stage_argv) != 0) return 4;
+		}
+		#else
 		sprintf(command, "../Q9-BACKEND-68K/q9-qr68k/build/qr68k %s/%s %s/output.r", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
+		#endif
+		#if defined(_Q9OS) || defined(_OSK)
+		{
+			char *stage_argv[7]; char stage_in[TEXT]; char stage_out[TEXT];
+			sprintf(stage_in, "%s/output.r", tmpdir);
+			sprintf(stage_out, "-O=%s", output[0] != '\0' ? output : "/dd/CMDS/output.mod");
+			stage_argv[0] = "/dd/CMDS/ql68k"; stage_argv[1] = "/dd/CMDS/q9_cstart.r";
+			stage_argv[2] = stage_in; stage_argv[3] = "-l=/dd/CMDS/qclib.l";
+			stage_argv[4] = stage_out; stage_argv[5] = NULL; stage_argv[6] = NULL;
+			if (q9_exec_argv("/dd/CMDS/ql68k", stage_argv) != 0) return 4;
+		}
+		#else
 		sprintf(command, "../Q9-BACKEND-68K/q9-ql68k/build/ql68k ../Q9-BACKEND-68K/q9-qclib/build/q9_cstart.r %s/output.r -l=../Q9-BACKEND-68K/q9-qclib/build/qclib.l -O=%s", tmpdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
+		#endif
 		if (!keep_files) {
 			sprintf(command, "%s %s/input.i %s/output.ir %s/output.s68k %s/output.opt.s68k %s/output.r", QCC_REMOVE, tmpdir, tmpdir, tmpdir, tmpdir, tmpdir);
 			q9_system(command);

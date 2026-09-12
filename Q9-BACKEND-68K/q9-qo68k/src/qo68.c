@@ -476,3 +476,12 @@ static void peepholeRun(const char* srcPath, const char* dstPath) {
 	fprintf(stderr, "qcc_backend: peephole: %d Optimierungen in %d Durchlaeufen (%d von %d Zeilen, davon %d MOVEQ)\n",
 		total, rounds, kept, phLineCount, moveqCount);
 }
+/*
+ * qo68.c -- Q9 68k peephole optimizer implementation
+ *
+ * Purpose:
+ *   Optimize the assembler stream emitted for the Motorola 68000 family.
+ *
+ * Edition history:
+ *   2026-09-12  Added the English source header.
+ */
