@@ -18,6 +18,10 @@ test: $(TARGET)
 	@grep -q '^FUNC main' $(BUILD)/smoke.ir
 	@$(TARGET) 'int main(){ long x=42UL; return x; }' > $(BUILD)/integer-suffix.ir
 	@grep -q '^PUSH 42$$' $(BUILD)/integer-suffix.ir
+	@$(TARGET) 'typedef int Count; int main(){ Count x=3; return x; }' > $(BUILD)/typedef.ir
+	@grep -q '^FUNC main' $(BUILD)/typedef.ir
+	@$(TARGET) 'typedef struct { int x; } Point; int main(){ Point p; p.x=1; return p.x; }' > $(BUILD)/typedef-struct.ir
+	@grep -q '^FUNC main' $(BUILD)/typedef-struct.ir
 	@echo 'qcir smoke test: OK'
 
 clean:

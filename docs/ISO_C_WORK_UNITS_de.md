@@ -33,7 +33,7 @@ Bei der Umsetzung wird die genaue Normstelle jeweils ergänzt.
 | T2 | `void` und `void *` | C90 | Pointermodell | offen |
 | T3 | `short`, `long`, `long long` und Rangregeln | C90/C99 | Integerkonversionen | offen |
 | T4 | `float`, `double`, Literale und Grundkonversionen | C90 | T3, Backend | offen |
-| T5 | `typedef` und Namensauflösung | C90 | Deklaratoren | offen / P0 |
+| T5 | `typedef` und Namensauflösung | C90 | Deklaratoren | weitgehend abgeschlossen — skalare und Pointer-Aliase sowie `typedef struct` verifiziert; vollständige Kompatibilitätsdiagnosen bleiben offen |
 | T6 | `enum` und Enumerationskonstanten | C90 | T5 | offen / P0 |
 | T7 | `struct`-Deklaration und Mitgliedzugriff `.` | C90 | T5, Layout | offen / P0 |
 | T8 | Pointer auf `struct` und `->` | C90 | T7, Pointer | offen / P0 |
