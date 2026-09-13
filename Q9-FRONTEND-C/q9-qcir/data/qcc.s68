@@ -6363,29 +6363,45 @@ p_integerSuffix:
 	cmpi.b	#$75,(a0)	; 'u'
 	bne	L673
 	addq.l	#1,a0
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L674
+	bne	L673
 	addq.l	#1,a0
-	addq.l	#4,a7
-	bra	L675
-L674:	move.l	(a7)+,a0	; Option uebersprungen
-L675:
 	bra	L672
 L673:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$55,(a0)	; 'U'
+	bne	L674
+	addq.l	#1,a0
+	cmpi.b	#$4C,(a0)	; 'L'
+	bne	L674
+	addq.l	#1,a0
+	bra	L672
+L674:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$6C,(a0)	; 'l'
+	bne	L675
+	addq.l	#1,a0
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L675
+	addq.l	#1,a0
+	bra	L672
+L675:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$4C,(a0)	; 'L'
 	bne	L676
 	addq.l	#1,a0
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	cmpi.b	#$4C,(a0)	; 'L'
-	bne	L677
+	cmpi.b	#$55,(a0)	; 'U'
+	bne	L676
 	addq.l	#1,a0
-	addq.l	#4,a7
-	bra	L678
-L677:	move.l	(a7)+,a0	; Option uebersprungen
-L678:
 	bra	L672
 L676:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L677
+	addq.l	#1,a0
+	bra	L672
+L677:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$55,(a0)	; 'U'
+	bne	L678
+	addq.l	#1,a0
+	bra	L672
+L678:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$6C,(a0)	; 'l'
 	bne	L679
 	addq.l	#1,a0
