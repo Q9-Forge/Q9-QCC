@@ -18,6 +18,7 @@ Testfall, eine Korrektur und einen Test auf Host und 68000 erhalten.
 | `switch`-Gültigkeitsbereich | Eine Deklaration direkt in einem `case`-Rumpf wird nicht auf den `switch`-Block begrenzt. | bekannte Frontend-Lücke |
 | `switch`-Fallthrough | Fallthrough mit Code zwischen zwei `case`-Rümpfen wird nicht unterstützt. | bekannte Frontend-Lücke |
 | `goto` | `goto` und Labels sind noch nicht implementiert. | bekannte Frontend-Lücke |
+| Anonyme Enums | `typedef enum { A, B } Flags;` wird noch nicht akzeptiert; benannte `enum`-Typen und Konstanten funktionieren. | bekannte Frontend-Lücke |
 
 ## Abgrenzung
 
