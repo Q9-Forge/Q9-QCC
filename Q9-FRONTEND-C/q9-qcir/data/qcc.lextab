@@ -8,18 +8,18 @@
 #================================================================================
 
 [EBNF-QUELLTEXT]
- <program>                        = { <globalDecl> 
-                                  | <structDecl> 
-                                  | <typedefDecl> 
-                                  | <enumDecl> 
-                                  | <externDecl> 
+ <program>                        = { <globalDecl>
+                                  | <structDecl>
+                                  | <typedefDecl>
+                                  | <enumDecl>
+                                  | <externDecl>
                                   | <funcdef> } .
 
  <externDecl>                     = "extern" <type> <pointerDecl> <externName> <externParams> ";" .
 
  <externName>                     = <ident> .
 
- <externParams>                   = <voidParams> 
+ <externParams>                   = <voidParams>
                                   | <externRealParams> .
 
  <externRealParams>               = "(" <externParamList> ")" .
@@ -44,21 +44,21 @@
 
  <fieldName>                      = <ident> .
 
- <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";" 
+ <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";"
                                   | <fnPtrTypedef> .
 
  <typedefDeclarator>              = <pointerDecl> <typedefTargetName> .
 
  <fnPtrTypedef>                   = "typedef" <type> <pointerDecl> <fnPtrOpen> "*" <fnPtrName> ")" <fnPtrParams> ";" .
 
- <fnPtrParams>                    = <voidParams> 
+ <fnPtrParams>                    = <voidParams>
                                   | <externRealParams> .
 
  <fnPtrOpen>                      = "(" .
 
  <fnPtrName>                      = <ident> .
 
- <typedefType>                    = <anonStructType> 
+ <typedefType>                    = <anonStructType>
                                   | <type> .
 
  <anonStructType>                 = "struct" [ <structTagName> ] <anonStructOpen> <structField> { <structField> } "}" .
@@ -69,7 +69,7 @@
 
  <typedefTargetName>              = <ident> .
 
- <globalDecl>                     = <externGlobalDecl> 
+ <globalDecl>                     = <externGlobalDecl>
                                   | <plainGlobalDecl> .
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
@@ -82,8 +82,8 @@
 
  <staticKw>                       = "static" .
 
- <globalInit>                     = <globalValue> 
-                                  | <initList> 
+ <globalInit>                     = <globalValue>
+                                  | <initList>
                                   | <globalStringInit> .
 
  <globalStringInit>               = "\042" { <character> } "\042" .
@@ -94,22 +94,22 @@
 
  <constSize>                      = <globalNumber> { <constSizeOp> <globalNumber> } .
 
- <constSizeOp>                    = "+" 
-                                  | "-" 
+ <constSizeOp>                    = "+"
+                                  | "-"
                                   | "*" .
 
- <globalValue>                    = <globalNumber> 
-                                  | <globalNeg> 
+ <globalValue>                    = <globalNumber>
+                                  | <globalNeg>
                                   | <globalBool> .
 
- <globalBool>                     = "true" 
+ <globalBool>                     = "true"
                                   | "false" .
 
  <globalNeg>                      = "-" <globalNumber> .
 
  <globalNumber>                   = <digit> { <digit> } .
 
- <funcdef>                        = <funcHead> ( <funcBody> 
+ <funcdef>                        = <funcHead> ( <funcBody>
                                   | <protoEnd> ) .
 
  <funcBody>                       = <funcBodyOpen> { <statement> } "}" .
@@ -122,7 +122,7 @@
 
  <retConstKw>                     = "const" .
 
- <funcParams>                     = <voidParams> 
+ <funcParams>                     = <voidParams>
                                   | <normalParams> .
 
  <voidParams>                     = "(" "void" ")" .
@@ -141,32 +141,32 @@
 
  <blockOpen>                      = "{" .
 
- <statement>                      = <labelStmt> 
+ <statement>                      = <labelStmt>
                                   | <unlabeledStmt> .
 
- <unlabeledStmt>                  = <ifStmt> 
-                                  | <whileStmt> 
-                                  | <forStmt> 
-                                  | <doStmt> 
-                                  | <switchStmt> 
-                                  | <breakStmt> 
-                                  | <continueStmt> 
-                                  | <gotoStmt> 
-                                  | <returnStmt> 
-                                  | <block> 
-                                  | <emptyStmt> 
-                                  | <voidCastStmt> 
-                                  | <callStmt> 
-                                  | <incDecStmt> 
-                                  | <assignStmt> 
-                                  | <staticVarDecl> 
+ <unlabeledStmt>                  = <ifStmt>
+                                  | <whileStmt>
+                                  | <forStmt>
+                                  | <doStmt>
+                                  | <switchStmt>
+                                  | <breakStmt>
+                                  | <continueStmt>
+                                  | <gotoStmt>
+                                  | <returnStmt>
+                                  | <block>
+                                  | <emptyStmt>
+                                  | <voidCastStmt>
+                                  | <callStmt>
+                                  | <incDecStmt>
+                                  | <assignStmt>
+                                  | <staticVarDecl>
                                   | <varDecl> .
 
  <staticVarDecl>                  = <staticKw> [ <constKw> ] <type> <pointerDecl> <staticLocalName> [ "=" <staticInit> ] ";" .
 
  <staticLocalName>                = <ident> .
 
- <staticInit>                     = <globalValue> 
+ <staticInit>                     = <globalValue>
                                   | <staticRuntimeInit> .
 
  <staticRuntimeInit>              = <expr> .
@@ -185,8 +185,8 @@
 
  <caseLabel>                      = "case" <caseValue> ":" .
 
- <caseValue>                      = <ident> 
-                                  | <caseNeg> 
+ <caseValue>                      = <ident>
+                                  | <caseNeg>
                                   | <caseNumber> .
 
  <caseNeg>                        = "-" <caseNumber> .
@@ -205,43 +205,43 @@
 
  <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
- <varInit>                        = <arrayStringInit> 
-                                  | <expr> 
+ <varInit>                        = <arrayStringInit>
+                                  | <expr>
                                   | <initList> .
 
  <arrayStringInit>                = <stringLit> .
 
  <initList>                       = "{" [ <initValue> { "," <initValue> } ] "}" .
 
- <initValue>                      = <initNumber> 
-                                  | <initNeg> 
+ <initValue>                      = <initNumber>
+                                  | <initNeg>
                                   | <initBool> .
 
- <initBool>                       = "true" 
+ <initBool>                       = "true"
                                   | "false" .
 
  <initNeg>                        = "-" <initNumber> .
 
  <initNumber>                     = <digit> { <digit> } .
 
- <assignStmt>                     = <chainAssign> 
+ <assignStmt>                     = <chainAssign>
                                   | <target> <assignop> <expr> ";" .
 
  <chainAssign>                    = <target> <assignop> <target> <assignop> <expr> ";" .
 
- <assignop>                       = "=" 
-                                  | "+=" 
-                                  | "-=" 
-                                  | "*=" 
-                                  | "/=" 
-                                  | "%=" 
-                                  | "<<=" 
-                                  | ">>=" 
-                                  | "&=" 
-                                  | "^=" 
+ <assignop>                       = "="
+                                  | "+="
+                                  | "-="
+                                  | "*="
+                                  | "/="
+                                  | "%="
+                                  | "<<="
+                                  | ">>="
+                                  | "&="
+                                  | "^="
                                   | "|=" .
 
- <callStmt>                       = <call> ";" 
+ <callStmt>                       = <call> ";"
                                   | <indirectCall> ";" .
 
  <emptyStmt>                      = ";" .
@@ -288,8 +288,8 @@
 
  <forCond>                        = <expr> .
 
- <forStep>                        = <target> <assignop> <expr> 
-                                  | <postIncDec> 
+ <forStep>                        = <target> <assignop> <expr>
+                                  | <postIncDec>
                                   | <preIncDec> .
 
  <forBody>                        = <statement> .
@@ -326,7 +326,7 @@
 
  <commaTok>                       = "," .
 
- <commaItem>                      = <commaAssign> 
+ <commaItem>                      = <commaAssign>
                                   | <commaValue> .
 
  <commaAssign>                    = <target> <assignop> <expr> .
@@ -367,41 +367,41 @@
 
  <shiftRhs>                       = <addExpr> .
 
- <shiftop>                        = "<<" 
+ <shiftop>                        = "<<"
                                   | ">>" .
 
- <relop>                          = "<=" 
-                                  | ">=" 
-                                  | "==" 
-                                  | "!=" 
-                                  | "<" 
+ <relop>                          = "<="
+                                  | ">="
+                                  | "=="
+                                  | "!="
+                                  | "<"
                                   | ">" .
 
  <addExpr>                        = <term> { <addop> <term> } .
 
- <addop>                          = "+" 
+ <addop>                          = "+"
                                   | "-" .
 
  <term>                           = <factor> { <mulop> <factor> } .
 
- <mulop>                          = "*" 
-                                  | "/" 
+ <mulop>                          = "*"
+                                  | "/"
                                   | "%" .
 
- <factor>                         = <sizeofExpr> 
-                                  | <castExpr> 
-                                  | <preIncDec> 
-                                  | <postIncDec> 
-                                  | <parenOpen> <commaExpr> <parenClose> 
-                                  | <call> [ <postfixIndex> ] [ <callMember> ] 
-                                  | <indirectCall> 
-                                  | <boolLit> 
-                                  | <addressRef> 
-                                  | <derefRef> 
-                                  | <varRef> 
-                                  | <charLit> 
-                                  | <number> 
-                                  | <stringLit> [ <postfixIndex> ] 
+ <factor>                         = <sizeofExpr>
+                                  | <castExpr>
+                                  | <preIncDec>
+                                  | <postIncDec>
+                                  | <parenOpen> <commaExpr> <parenClose>
+                                  | <call> [ <postfixIndex> ] [ <callMember> ]
+                                  | <indirectCall>
+                                  | <boolLit>
+                                  | <addressRef>
+                                  | <derefRef>
+                                  | <varRef>
+                                  | <charLit>
+                                  | <number>
+                                  | <stringLit> [ <postfixIndex> ]
                                   | <negFactor> .
 
  <postfixIndex>                   = <index> .
@@ -410,50 +410,50 @@
 
  <charLit>                        = "\047" <charLitBody> "\047" .
 
- <charLitBody>                    = <charLitEscape> 
+ <charLitBody>                    = <charLitEscape>
                                   | <charLitPlain> .
 
  <charLitEscape>                  = "\134" <charLitEscChar> .
 
- <charLitEscChar>                 = "n" 
-                                  | "t" 
-                                  | "r" 
-                                  | "0" 
+ <charLitEscChar>                 = "n"
+                                  | "t"
+                                  | "r"
+                                  | "0"
                                   | "\134" .
 
- <charLitPlain>                   = " "~"&" 
-                                  | "("~"[" 
+ <charLitPlain>                   = " "~"&"
+                                  | "("~"["
                                   | "]"~"~" .
 
- <character>                      = <strEscape> 
-                                  | " "~"!" 
+ <character>                      = <strEscape>
+                                  | " "~"!"
                                   | "#"~"~" .
 
  <strEscape>                      = "\134" <strEscChar> .
 
  <strEscChar>                     = " "~"~" .
 
- <negFactor>                      = ( "-" 
-                                  | "!" 
+ <negFactor>                      = ( "-"
+                                  | "!"
                                   | "~" ) <factor> .
 
  <addressRef>                     = "&" <ident> [ <index> ] .
 
  <sizeofExpr>                     = "sizeof" "(" <sizeofArg> ")" .
 
- <sizeofArg>                      = <sizeofType> 
+ <sizeofArg>                      = <sizeofType>
                                   | <sizeofVarName> .
 
  <sizeofType>                     = <sizeofBaseType> <pointerDecl> .
 
- <sizeofBaseType>                 = "unsigned" <unsignedInt> 
-                                  | "int" 
-                                  | "long" 
-                                  | "char" 
-                                  | "short" 
-                                  | "bool" 
-                                  | "struct" <structTypeRef> 
-                                  | "enum" <enumTypeRef> 
+ <sizeofBaseType>                 = "unsigned" <unsignedInt>
+                                  | "int"
+                                  | "long"
+                                  | "char"
+                                  | "short"
+                                  | "bool"
+                                  | "struct" <structTypeRef>
+                                  | "enum" <enumTypeRef>
                                   | "void" .
 
  <sizeofVarName>                  = <ident> .
@@ -464,14 +464,14 @@
 
  <castOperand>                    = <factor> .
 
- <preIncDec>                      = <incdecOp> <derefIncTarget> 
-                                  | <incdecOp> <memberIncTarget> 
-                                  | <incdecOp> <indexIncTarget> 
+ <preIncDec>                      = <incdecOp> <derefIncTarget>
+                                  | <incdecOp> <memberIncTarget>
+                                  | <incdecOp> <indexIncTarget>
                                   | <incdecOp> <ident> .
 
- <postIncDec>                     = <derefIncTarget> <incdecOp> 
-                                  | <memberIncTarget> <incdecOp> 
-                                  | <indexIncTarget> <incdecOp> 
+ <postIncDec>                     = <derefIncTarget> <incdecOp>
+                                  | <memberIncTarget> <incdecOp>
+                                  | <indexIncTarget> <incdecOp>
                                   | <ident> <incdecOp> .
 
  <memberIncTarget>                = <ident> <member> [ <index> ] .
@@ -480,10 +480,10 @@
 
  <derefIncTarget>                 = "(" "*" <ident> ")" .
 
- <incdecOp>                       = "++" 
+ <incdecOp>                       = "++"
                                   | "--" .
 
- <incDecStmt>                     = <preIncDec> ";" 
+ <incDecStmt>                     = <preIncDec> ";"
                                   | <postIncDec> ";" .
 
  <derefRef>                       = "*" <factor> .
@@ -500,7 +500,7 @@
 
  <arg>                            = <expr> .
 
- <target>                         = <directTarget> 
+ <target>                         = <directTarget>
                                   | <indirectTarget> .
 
  <directTarget>                   = <ident> [ <index> { <index> } ] [ <member> [ <index> { <index> } ] ] .
@@ -513,7 +513,7 @@
 
  <indexOpen>                      = "[" .
 
- <member>                         = "." <fieldName> 
+ <member>                         = "." <fieldName>
                                   | "->" <fieldName> .
 
  <defName>                        = <ident> .
@@ -526,15 +526,15 @@
 
  <funcName>                       = <ident> .
 
- <type>                           = "unsigned" <unsignedInt> 
-                                  | "int" 
-                                  | "long" 
-                                  | "short" 
-                                  | "char" 
-                                  | "bool" 
-                                  | "struct" <structTypeRef> 
-                                  | "enum" <enumTypeRef> 
-                                  | "void" 
+ <type>                           = "unsigned" <unsignedInt>
+                                  | "int"
+                                  | "long"
+                                  | "short"
+                                  | "char"
+                                  | "bool"
+                                  | "struct" <structTypeRef>
+                                  | "enum" <enumTypeRef>
+                                  | "void"
                                   | <typedefRef> .
 
  <structTypeRef>                  = <ident> .
@@ -547,33 +547,38 @@
 
  <pointerStar>                    = "*" .
 
- <unsignedInt>                    = "int" 
-                                  | "char" 
-                                  | "long" 
+ <unsignedInt>                    = "int"
+                                  | "char"
+                                  | "long"
                                   | "short" .
 
- <boolLit>                        = "true" 
+ <boolLit>                        = "true"
                                   | "false" .
 
- <ident>                          = <letter> { <letter> 
+ <ident>                          = <letter> { <letter>
                                   | <digit> } .
 
- <number>                         = <hexNumber> 
-                                  | <decNumber> .
+ <number>                         = ( <hexNumber>
+                                  | <decNumber> ) [ <integerSuffix> ] .
+
+ <integerSuffix>                  = "u" [ "l" ]
+                                  | "U" [ "L" ]
+                                  | "l"
+                                  | "L" .
 
  <hexNumber>                      = "0" <hexMark> <hexDigit> { <hexDigit> } .
 
- <hexMark>                        = "x" 
+ <hexMark>                        = "x"
                                   | "X" .
 
- <hexDigit>                       = <digit> 
-                                  | "a"~"f" 
+ <hexDigit>                       = <digit>
+                                  | "a"~"f"
                                   | "A"~"F" .
 
  <decNumber>                      = <digit> { <digit> } .
 
- <letter>                         = "a"~"z" 
-                                  | "A"~"Z" 
+ <letter>                         = "a"~"z"
+                                  | "A"~"Z"
                                   | "_" .
 
  <digit>                          = "0"~"9" .
@@ -669,14 +674,18 @@
 84   TS   "--"
 85   TS   "."
 86   TS   "->"
-87   TS   "x"
-88   TS   "X"
-89   RNG  "a"~"f"
-90   RNG  "A"~"F"
-91   RNG  "a"~"z"
-92   RNG  "A"~"Z"
-93   TS   "_"
-94   RNG  "0"~"9"
+87   TS   "u"
+88   TS   "l"
+89   TS   "U"
+90   TS   "L"
+91   TS   "x"
+92   TS   "X"
+93   RNG  "a"~"f"
+94   RNG  "A"~"F"
+95   RNG  "a"~"z"
+96   RNG  "A"~"Z"
+97   TS   "_"
+98   RNG  "0"~"9"
 [ENDE]
 
 [NTS-SYMBOLTABELLE]
@@ -894,12 +903,13 @@
 210  616         boolLit
 211  618         ident
 212  621         number
-213  623         hexNumber
-214  627         hexMark
-215  629         hexDigit
-216  632         decNumber
-217  634         letter
-218  637         digit
+213  624         integerSuffix
+214  630         hexNumber
+215  634         hexMark
+216  636         hexDigit
+217  639         decNumber
+218  641         letter
+219  644         digit
 [ENDE]
 
 [PARSER-TABELLE]
@@ -1041,8 +1051,8 @@
 133   -1    -2    -1    0     0     -                TS   "false"
 134   135   -2    -1    0     0     globalNeg        TS   "-"
 135   -1    -3    136   0     0     -                NTS  globalNumber
-136   137   -2    637   0     0     globalNumber     NTS  digit
-137   137   -1    637   0     0     -                NTS  digit
+136   137   -2    644   0     0     globalNumber     NTS  digit
+137   137   -1    644   0     0     -                NTS  digit
 138   139   -2    146   0     0     funcdef          NTS  funcHead
 139   -1    140   141   0     0     -                NTS  funcBody
 140   -1    -3    145   0     0     -                NTS  protoEnd
@@ -1135,8 +1145,8 @@
 227   -1    -2    230   0     0     -                NTS  caseNumber
 228   229   -2    -1    0     0     caseNeg          TS   "-"
 229   -1    -3    230   0     0     -                NTS  caseNumber
-230   231   -2    637   0     0     caseNumber       NTS  digit
-231   231   -1    637   0     0     -                NTS  digit
+230   231   -2    644   0     0     caseNumber       NTS  digit
+231   231   -1    644   0     0     -                NTS  digit
 232   232   -1    178   0     0     caseBody         NTS  unlabeledStmt
 233   234   -2    235   0     0     defaultGroup     NTS  defaultLabel
 234   -1    -3    232   0     0     -                NTS  caseBody
@@ -1171,8 +1181,8 @@
 263   -1    -2    -1    0     0     -                TS   "false"
 264   265   -2    -1    0     0     initNeg          TS   "-"
 265   -1    -3    266   0     0     -                NTS  initNumber
-266   267   -2    637   0     0     initNumber       NTS  digit
-267   267   -1    637   0     0     -                NTS  digit
+266   267   -2    644   0     0     initNumber       NTS  digit
+267   267   -1    644   0     0     -                NTS  digit
 268   -1    269   273   0     0     assignStmt       NTS  chainAssign
 269   270   -2    565   0     0     -                NTS  target
 270   271   -3    279   0     0     -                NTS  assignop
@@ -1523,26 +1533,33 @@
 615   -1    -2    -1    0     0     -                TS   "short"
 616   -1    617   -1    0     0     boolLit          TS   "true"
 617   -1    -2    -1    0     0     -                TS   "false"
-618   619   -2    634   0     0     ident            NTS  letter
-619   619   620   634   0     0     -                NTS  letter
-620   619   -1    637   0     0     -                NTS  digit
-621   -1    622   623   0     0     number           NTS  hexNumber
-622   -1    -2    632   0     0     -                NTS  decNumber
-623   624   -2    -1    0     0     hexNumber        TS   "0"
-624   625   -3    627   0     0     -                NTS  hexMark
-625   626   -3    629   0     0     -                NTS  hexDigit
-626   626   -1    629   0     0     -                NTS  hexDigit
-627   -1    628   -1    0     0     hexMark          TS   "x"
-628   -1    -2    -1    0     0     -                TS   "X"
-629   -1    630   637   0     0     hexDigit         NTS  digit
-630   -1    631   -1    97    102   -                RNG  "a"~"f"
-631   -1    -2    -1    65    70    -                RNG  "A"~"F"
-632   633   -2    637   0     0     decNumber        NTS  digit
-633   633   -1    637   0     0     -                NTS  digit
-634   -1    635   -1    97    122   letter           RNG  "a"~"z"
-635   -1    636   -1    65    90    -                RNG  "A"~"Z"
-636   -1    -2    -1    0     0     -                TS   "_"
-637   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+618   619   -2    641   0     0     ident            NTS  letter
+619   619   620   641   0     0     -                NTS  letter
+620   619   -1    644   0     0     -                NTS  digit
+621   623   622   630   0     0     number           NTS  hexNumber
+622   623   -2    639   0     0     -                NTS  decNumber
+623   -1    -1    624   0     0     -                NTS  integerSuffix
+624   625   626   -1    0     0     integerSuffix    TS   "u"
+625   -1    626   -1    0     0     -                TS   "l"
+626   627   628   -1    0     0     -                TS   "U"
+627   -1    628   -1    0     0     -                TS   "L"
+628   -1    629   -1    0     0     -                TS   "l"
+629   -1    -2    -1    0     0     -                TS   "L"
+630   631   -2    -1    0     0     hexNumber        TS   "0"
+631   632   -3    634   0     0     -                NTS  hexMark
+632   633   -3    636   0     0     -                NTS  hexDigit
+633   633   -1    636   0     0     -                NTS  hexDigit
+634   -1    635   -1    0     0     hexMark          TS   "x"
+635   -1    -2    -1    0     0     -                TS   "X"
+636   -1    637   644   0     0     hexDigit         NTS  digit
+637   -1    638   -1    97    102   -                RNG  "a"~"f"
+638   -1    -2    -1    65    70    -                RNG  "A"~"F"
+639   640   -2    644   0     0     decNumber        NTS  digit
+640   640   -1    644   0     0     -                NTS  digit
+641   -1    642   -1    97    122   letter           RNG  "a"~"z"
+642   -1    643   -1    65    90    -                RNG  "A"~"Z"
+643   -1    -2    -1    0     0     -                TS   "_"
+644   -1    -2    -1    48    57    digit            RNG  "0"~"9"
 [ENDE]
 
 [TESTS]
@@ -2897,10 +2914,12 @@ static int tcConstArrayLen(const char** pp, const char* end) {
 	return v;
 }
 static long tcNum(const char* s, const char* e) {
-	long v = 0; const char* q;
+	long v = 0; const char* q; const char* limit = e;
+	/* Integer suffixes affect the C type, not the numeric value. */
+	while (limit > s && (limit[-1] == 'u' || limit[-1] == 'U' || limit[-1] == 'l' || limit[-1] == 'L')) limit--;
 	/* Hexform "0x.."/"0X.." (siehe hexNumber in der Grammatik). */
-	if (e - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-		for (q = s + 2; q < e; q++) {
+	if (limit - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		for (q = s + 2; q < limit; q++) {
 			int d;
 			if (*q >= '0' && *q <= '9') d = *q - '0';
 			else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
@@ -2910,7 +2929,7 @@ static long tcNum(const char* s, const char* e) {
 		}
 		return v;
 	}
-	for (q = s; q < e; q++) v = v * 10 + (*q - '0');
+	for (q = s; q < limit; q++) v = v * 10 + (*q - '0');
 	return v;
 }
 static const char* tcNameEnd(const char* s, const char* e) {

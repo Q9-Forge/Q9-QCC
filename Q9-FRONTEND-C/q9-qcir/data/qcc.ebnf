@@ -665,7 +665,10 @@ ident     = letter { letter | digit } .
    Alternative die fuehrende "0" allein schlucken und das "x" haengen lassen.
    number ist ein LEXER-TOKEN, die Regel bestimmt also auch, wie weit der
    Lexer liest. */
-number    = hexNumber | decNumber .
+/* Integer suffixes are part of the C token, not a separate identifier.  Keep
+   them in the number rule so forms such as 42UL and 0x10L are accepted. */
+number    = ( hexNumber | decNumber ) [ integerSuffix ] .
+integerSuffix = "u" [ "l" ] | "U" [ "L" ] | "l" [ "u" ] | "L" [ "U" ] .
 hexNumber = "0" hexMark hexDigit { hexDigit } .
 hexMark   = "x" | "X" .
 hexDigit  = digit | "a"~"f" | "A"~"F" .
