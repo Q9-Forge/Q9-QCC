@@ -1,15 +1,15 @@
- <program>                        = { <globalDecl> 
-                                  | <structDecl> 
-                                  | <typedefDecl> 
-                                  | <enumDecl> 
-                                  | <externDecl> 
+ <program>                        = { <globalDecl>
+                                  | <structDecl>
+                                  | <typedefDecl>
+                                  | <enumDecl>
+                                  | <externDecl>
                                   | <funcdef> } .
 
  <externDecl>                     = "extern" <type> <pointerDecl> <externName> <externParams> ";" .
 
  <externName>                     = <ident> .
 
- <externParams>                   = <voidParams> 
+ <externParams>                   = <voidParams>
                                   | <externRealParams> .
 
  <externRealParams>               = "(" <externParamList> ")" .
@@ -34,21 +34,21 @@
 
  <fieldName>                      = <ident> .
 
- <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";" 
+ <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";"
                                   | <fnPtrTypedef> .
 
  <typedefDeclarator>              = <pointerDecl> <typedefTargetName> .
 
  <fnPtrTypedef>                   = "typedef" <type> <pointerDecl> <fnPtrOpen> "*" <fnPtrName> ")" <fnPtrParams> ";" .
 
- <fnPtrParams>                    = <voidParams> 
+ <fnPtrParams>                    = <voidParams>
                                   | <externRealParams> .
 
  <fnPtrOpen>                      = "(" .
 
  <fnPtrName>                      = <ident> .
 
- <typedefType>                    = <anonStructType> 
+ <typedefType>                    = <anonStructType>
                                   | <type> .
 
  <anonStructType>                 = "struct" [ <structTagName> ] <anonStructOpen> <structField> { <structField> } "}" .
@@ -59,7 +59,7 @@
 
  <typedefTargetName>              = <ident> .
 
- <globalDecl>                     = <externGlobalDecl> 
+ <globalDecl>                     = <externGlobalDecl>
                                   | <plainGlobalDecl> .
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
@@ -72,8 +72,8 @@
 
  <staticKw>                       = "static" .
 
- <globalInit>                     = <globalValue> 
-                                  | <initList> 
+ <globalInit>                     = <globalValue>
+                                  | <initList>
                                   | <globalStringInit> .
 
  <globalStringInit>               = "\042" { <character> } "\042" .
@@ -84,22 +84,22 @@
 
  <constSize>                      = <globalNumber> { <constSizeOp> <globalNumber> } .
 
- <constSizeOp>                    = "+" 
-                                  | "-" 
+ <constSizeOp>                    = "+"
+                                  | "-"
                                   | "*" .
 
- <globalValue>                    = <globalNumber> 
-                                  | <globalNeg> 
+ <globalValue>                    = <globalNumber>
+                                  | <globalNeg>
                                   | <globalBool> .
 
- <globalBool>                     = "true" 
+ <globalBool>                     = "true"
                                   | "false" .
 
  <globalNeg>                      = "-" <globalNumber> .
 
  <globalNumber>                   = <digit> { <digit> } .
 
- <funcdef>                        = <funcHead> ( <funcBody> 
+ <funcdef>                        = <funcHead> ( <funcBody>
                                   | <protoEnd> ) .
 
  <funcBody>                       = <funcBodyOpen> { <statement> } "}" .
@@ -112,7 +112,7 @@
 
  <retConstKw>                     = "const" .
 
- <funcParams>                     = <voidParams> 
+ <funcParams>                     = <voidParams>
                                   | <normalParams> .
 
  <voidParams>                     = "(" "void" ")" .
@@ -131,32 +131,32 @@
 
  <blockOpen>                      = "{" .
 
- <statement>                      = <labelStmt> 
+ <statement>                      = <labelStmt>
                                   | <unlabeledStmt> .
 
- <unlabeledStmt>                  = <ifStmt> 
-                                  | <whileStmt> 
-                                  | <forStmt> 
-                                  | <doStmt> 
-                                  | <switchStmt> 
-                                  | <breakStmt> 
-                                  | <continueStmt> 
-                                  | <gotoStmt> 
-                                  | <returnStmt> 
-                                  | <block> 
-                                  | <emptyStmt> 
-                                  | <voidCastStmt> 
-                                  | <callStmt> 
-                                  | <incDecStmt> 
-                                  | <assignStmt> 
-                                  | <staticVarDecl> 
+ <unlabeledStmt>                  = <ifStmt>
+                                  | <whileStmt>
+                                  | <forStmt>
+                                  | <doStmt>
+                                  | <switchStmt>
+                                  | <breakStmt>
+                                  | <continueStmt>
+                                  | <gotoStmt>
+                                  | <returnStmt>
+                                  | <block>
+                                  | <emptyStmt>
+                                  | <voidCastStmt>
+                                  | <callStmt>
+                                  | <incDecStmt>
+                                  | <assignStmt>
+                                  | <staticVarDecl>
                                   | <varDecl> .
 
  <staticVarDecl>                  = <staticKw> [ <constKw> ] <type> <pointerDecl> <staticLocalName> [ "=" <staticInit> ] ";" .
 
  <staticLocalName>                = <ident> .
 
- <staticInit>                     = <globalValue> 
+ <staticInit>                     = <globalValue>
                                   | <staticRuntimeInit> .
 
  <staticRuntimeInit>              = <expr> .
@@ -175,8 +175,8 @@
 
  <caseLabel>                      = "case" <caseValue> ":" .
 
- <caseValue>                      = <ident> 
-                                  | <caseNeg> 
+ <caseValue>                      = <ident>
+                                  | <caseNeg>
                                   | <caseNumber> .
 
  <caseNeg>                        = "-" <caseNumber> .
@@ -195,43 +195,43 @@
 
  <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
- <varInit>                        = <arrayStringInit> 
-                                  | <expr> 
+ <varInit>                        = <arrayStringInit>
+                                  | <expr>
                                   | <initList> .
 
  <arrayStringInit>                = <stringLit> .
 
  <initList>                       = "{" [ <initValue> { "," <initValue> } ] "}" .
 
- <initValue>                      = <initNumber> 
-                                  | <initNeg> 
+ <initValue>                      = <initNumber>
+                                  | <initNeg>
                                   | <initBool> .
 
- <initBool>                       = "true" 
+ <initBool>                       = "true"
                                   | "false" .
 
  <initNeg>                        = "-" <initNumber> .
 
  <initNumber>                     = <digit> { <digit> } .
 
- <assignStmt>                     = <chainAssign> 
+ <assignStmt>                     = <chainAssign>
                                   | <target> <assignop> <expr> ";" .
 
  <chainAssign>                    = <target> <assignop> <target> <assignop> <expr> ";" .
 
- <assignop>                       = "=" 
-                                  | "+=" 
-                                  | "-=" 
-                                  | "*=" 
-                                  | "/=" 
-                                  | "%=" 
-                                  | "<<=" 
-                                  | ">>=" 
-                                  | "&=" 
-                                  | "^=" 
+ <assignop>                       = "="
+                                  | "+="
+                                  | "-="
+                                  | "*="
+                                  | "/="
+                                  | "%="
+                                  | "<<="
+                                  | ">>="
+                                  | "&="
+                                  | "^="
                                   | "|=" .
 
- <callStmt>                       = <call> ";" 
+ <callStmt>                       = <call> ";"
                                   | <indirectCall> ";" .
 
  <emptyStmt>                      = ";" .
@@ -278,8 +278,8 @@
 
  <forCond>                        = <expr> .
 
- <forStep>                        = <target> <assignop> <expr> 
-                                  | <postIncDec> 
+ <forStep>                        = <target> <assignop> <expr>
+                                  | <postIncDec>
                                   | <preIncDec> .
 
  <forBody>                        = <statement> .
@@ -316,7 +316,7 @@
 
  <commaTok>                       = "," .
 
- <commaItem>                      = <commaAssign> 
+ <commaItem>                      = <commaAssign>
                                   | <commaValue> .
 
  <commaAssign>                    = <target> <assignop> <expr> .
@@ -357,41 +357,41 @@
 
  <shiftRhs>                       = <addExpr> .
 
- <shiftop>                        = "<<" 
+ <shiftop>                        = "<<"
                                   | ">>" .
 
- <relop>                          = "<=" 
-                                  | ">=" 
-                                  | "==" 
-                                  | "!=" 
-                                  | "<" 
+ <relop>                          = "<="
+                                  | ">="
+                                  | "=="
+                                  | "!="
+                                  | "<"
                                   | ">" .
 
  <addExpr>                        = <term> { <addop> <term> } .
 
- <addop>                          = "+" 
+ <addop>                          = "+"
                                   | "-" .
 
  <term>                           = <factor> { <mulop> <factor> } .
 
- <mulop>                          = "*" 
-                                  | "/" 
+ <mulop>                          = "*"
+                                  | "/"
                                   | "%" .
 
- <factor>                         = <sizeofExpr> 
-                                  | <castExpr> 
-                                  | <preIncDec> 
-                                  | <postIncDec> 
-                                  | <parenOpen> <commaExpr> <parenClose> 
-                                  | <call> [ <postfixIndex> ] [ <callMember> ] 
-                                  | <indirectCall> 
-                                  | <boolLit> 
-                                  | <addressRef> 
-                                  | <derefRef> 
-                                  | <varRef> 
-                                  | <charLit> 
-                                  | <number> 
-                                  | <stringLit> [ <postfixIndex> ] 
+ <factor>                         = <sizeofExpr>
+                                  | <castExpr>
+                                  | <preIncDec>
+                                  | <postIncDec>
+                                  | <parenOpen> <commaExpr> <parenClose>
+                                  | <call> [ <postfixIndex> ] [ <callMember> ]
+                                  | <indirectCall>
+                                  | <boolLit>
+                                  | <addressRef>
+                                  | <derefRef>
+                                  | <varRef>
+                                  | <charLit>
+                                  | <number>
+                                  | <stringLit> [ <postfixIndex> ]
                                   | <negFactor> .
 
  <postfixIndex>                   = <index> .
@@ -400,50 +400,50 @@
 
  <charLit>                        = "\047" <charLitBody> "\047" .
 
- <charLitBody>                    = <charLitEscape> 
+ <charLitBody>                    = <charLitEscape>
                                   | <charLitPlain> .
 
  <charLitEscape>                  = "\134" <charLitEscChar> .
 
- <charLitEscChar>                 = "n" 
-                                  | "t" 
-                                  | "r" 
-                                  | "0" 
+ <charLitEscChar>                 = "n"
+                                  | "t"
+                                  | "r"
+                                  | "0"
                                   | "\134" .
 
- <charLitPlain>                   = " "~"&" 
-                                  | "("~"[" 
+ <charLitPlain>                   = " "~"&"
+                                  | "("~"["
                                   | "]"~"~" .
 
- <character>                      = <strEscape> 
-                                  | " "~"!" 
+ <character>                      = <strEscape>
+                                  | " "~"!"
                                   | "#"~"~" .
 
  <strEscape>                      = "\134" <strEscChar> .
 
  <strEscChar>                     = " "~"~" .
 
- <negFactor>                      = ( "-" 
-                                  | "!" 
+ <negFactor>                      = ( "-"
+                                  | "!"
                                   | "~" ) <factor> .
 
  <addressRef>                     = "&" <ident> [ <index> ] .
 
  <sizeofExpr>                     = "sizeof" "(" <sizeofArg> ")" .
 
- <sizeofArg>                      = <sizeofType> 
+ <sizeofArg>                      = <sizeofType>
                                   | <sizeofVarName> .
 
  <sizeofType>                     = <sizeofBaseType> <pointerDecl> .
 
- <sizeofBaseType>                 = "unsigned" <unsignedInt> 
-                                  | "int" 
-                                  | "long" 
-                                  | "char" 
-                                  | "short" 
-                                  | "bool" 
-                                  | "struct" <structTypeRef> 
-                                  | "enum" <enumTypeRef> 
+ <sizeofBaseType>                 = "unsigned" <unsignedInt>
+                                  | "int"
+                                  | "long"
+                                  | "char"
+                                  | "short"
+                                  | "bool"
+                                  | "struct" <structTypeRef>
+                                  | "enum" <enumTypeRef>
                                   | "void" .
 
  <sizeofVarName>                  = <ident> .
@@ -454,14 +454,14 @@
 
  <castOperand>                    = <factor> .
 
- <preIncDec>                      = <incdecOp> <derefIncTarget> 
-                                  | <incdecOp> <memberIncTarget> 
-                                  | <incdecOp> <indexIncTarget> 
+ <preIncDec>                      = <incdecOp> <derefIncTarget>
+                                  | <incdecOp> <memberIncTarget>
+                                  | <incdecOp> <indexIncTarget>
                                   | <incdecOp> <ident> .
 
- <postIncDec>                     = <derefIncTarget> <incdecOp> 
-                                  | <memberIncTarget> <incdecOp> 
-                                  | <indexIncTarget> <incdecOp> 
+ <postIncDec>                     = <derefIncTarget> <incdecOp>
+                                  | <memberIncTarget> <incdecOp>
+                                  | <indexIncTarget> <incdecOp>
                                   | <ident> <incdecOp> .
 
  <memberIncTarget>                = <ident> <member> [ <index> ] .
@@ -470,10 +470,10 @@
 
  <derefIncTarget>                 = "(" "*" <ident> ")" .
 
- <incdecOp>                       = "++" 
+ <incdecOp>                       = "++"
                                   | "--" .
 
- <incDecStmt>                     = <preIncDec> ";" 
+ <incDecStmt>                     = <preIncDec> ";"
                                   | <postIncDec> ";" .
 
  <derefRef>                       = "*" <factor> .
@@ -490,7 +490,7 @@
 
  <arg>                            = <expr> .
 
- <target>                         = <directTarget> 
+ <target>                         = <directTarget>
                                   | <indirectTarget> .
 
  <directTarget>                   = <ident> [ <index> { <index> } ] [ <member> [ <index> { <index> } ] ] .
@@ -503,7 +503,7 @@
 
  <indexOpen>                      = "[" .
 
- <member>                         = "." <fieldName> 
+ <member>                         = "." <fieldName>
                                   | "->" <fieldName> .
 
  <defName>                        = <ident> .
@@ -516,15 +516,15 @@
 
  <funcName>                       = <ident> .
 
- <type>                           = "unsigned" <unsignedInt> 
-                                  | "int" 
-                                  | "long" 
-                                  | "short" 
-                                  | "char" 
-                                  | "bool" 
-                                  | "struct" <structTypeRef> 
-                                  | "enum" <enumTypeRef> 
-                                  | "void" 
+ <type>                           = "unsigned" <unsignedInt>
+                                  | "int"
+                                  | "long"
+                                  | "short"
+                                  | "char"
+                                  | "bool"
+                                  | "struct" <structTypeRef>
+                                  | "enum" <enumTypeRef>
+                                  | "void"
                                   | <typedefRef> .
 
  <structTypeRef>                  = <ident> .
@@ -537,33 +537,38 @@
 
  <pointerStar>                    = "*" .
 
- <unsignedInt>                    = "int" 
-                                  | "char" 
-                                  | "long" 
+ <unsignedInt>                    = "int"
+                                  | "char"
+                                  | "long"
                                   | "short" .
 
- <boolLit>                        = "true" 
+ <boolLit>                        = "true"
                                   | "false" .
 
- <ident>                          = <letter> { <letter> 
+ <ident>                          = <letter> { <letter>
                                   | <digit> } .
 
- <number>                         = <hexNumber> 
-                                  | <decNumber> .
+ <number>                         = ( <hexNumber>
+                                  | <decNumber> ) [ <integerSuffix> ] .
+
+ <integerSuffix>                  = "u" [ "l" ]
+                                  | "U" [ "L" ]
+                                  | "l"
+                                  | "L" .
 
  <hexNumber>                      = "0" <hexMark> <hexDigit> { <hexDigit> } .
 
- <hexMark>                        = "x" 
+ <hexMark>                        = "x"
                                   | "X" .
 
- <hexDigit>                       = <digit> 
-                                  | "a"~"f" 
+ <hexDigit>                       = <digit>
+                                  | "a"~"f"
                                   | "A"~"F" .
 
  <decNumber>                      = <digit> { <digit> } .
 
- <letter>                         = "a"~"z" 
-                                  | "A"~"Z" 
+ <letter>                         = "a"~"z"
+                                  | "A"~"Z"
                                   | "_" .
 
  <digit>                          = "0"~"9" .
@@ -748,8 +753,8 @@
 | 134 | <globalNeg>                     | TS  | "-"                             | -    | 135| F  |
 | 135 |                                 | NTS | <globalNumber>                  | 136  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 136 | <globalNumber>                  | NTS | <digit>                         | 637  | 137| F  |
-| 137 |                                 | NTS | <digit>                         | 637  | 137| T  |
+| 136 | <globalNumber>                  | NTS | <digit>                         | 644  | 137| F  |
+| 137 |                                 | NTS | <digit>                         | 644  | 137| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 138 | <funcdef>                       | NTS | <funcHead>                      | 146  | 139| F  |
 | 139 |                                 | NTS | <funcBody>                      | 141  | T  | 140|
@@ -873,8 +878,8 @@
 | 228 | <caseNeg>                       | TS  | "-"                             | -    | 229| F  |
 | 229 |                                 | NTS | <caseNumber>                    | 230  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 230 | <caseNumber>                    | NTS | <digit>                         | 637  | 231| F  |
-| 231 |                                 | NTS | <digit>                         | 637  | 231| T  |
+| 230 | <caseNumber>                    | NTS | <digit>                         | 644  | 231| F  |
+| 231 |                                 | NTS | <digit>                         | 644  | 231| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 232 | <caseBody>                      | NTS | <unlabeledStmt>                 | 178  | 232| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -922,8 +927,8 @@
 | 264 | <initNeg>                       | TS  | "-"                             | -    | 265| F  |
 | 265 |                                 | NTS | <initNumber>                    | 266  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 266 | <initNumber>                    | NTS | <digit>                         | 637  | 267| F  |
-| 267 |                                 | NTS | <digit>                         | 637  | 267| T  |
+| 266 | <initNumber>                    | NTS | <digit>                         | 644  | 267| F  |
+| 267 |                                 | NTS | <digit>                         | 644  | 267| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 268 | <assignStmt>                    | NTS | <chainAssign>                   | 273  | T  | 269|
 | 269 |                                 | NTS | <target>                        | 565  | 270| F  |
@@ -1400,31 +1405,39 @@
 | 616 | <boolLit>                       | TS  | "true"                          | -    | T  | 617|
 | 617 |                                 | TS  | "false"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 618 | <ident>                         | NTS | <letter>                        | 634  | 619| F  |
-| 619 |                                 | NTS | <letter>                        | 634  | 619| 620|
-| 620 |                                 | NTS | <digit>                         | 637  | 619| T  |
+| 618 | <ident>                         | NTS | <letter>                        | 641  | 619| F  |
+| 619 |                                 | NTS | <letter>                        | 641  | 619| 620|
+| 620 |                                 | NTS | <digit>                         | 644  | 619| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 621 | <number>                        | NTS | <hexNumber>                     | 623  | T  | 622|
-| 622 |                                 | NTS | <decNumber>                     | 632  | T  | F  |
+| 621 | <number>                        | NTS | <hexNumber>                     | 630  | 623| 622|
+| 622 |                                 | NTS | <decNumber>                     | 639  | 623| F  |
+| 623 |                                 | NTS | <integerSuffix>                 | 624  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 623 | <hexNumber>                     | TS  | "0"                             | -    | 624| F  |
-| 624 |                                 | NTS | <hexMark>                       | 627  | 625| E  |
-| 625 |                                 | NTS | <hexDigit>                      | 629  | 626| E  |
-| 626 |                                 | NTS | <hexDigit>                      | 629  | 626| T  |
+| 624 | <integerSuffix>                 | TS  | "u"                             | -    | 625| 626|
+| 625 |                                 | TS  | "l"                             | -    | T  | 626|
+| 626 |                                 | TS  | "U"                             | -    | 627| 628|
+| 627 |                                 | TS  | "L"                             | -    | T  | 628|
+| 628 |                                 | TS  | "l"                             | -    | T  | 629|
+| 629 |                                 | TS  | "L"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 627 | <hexMark>                       | TS  | "x"                             | -    | T  | 628|
-| 628 |                                 | TS  | "X"                             | -    | T  | F  |
+| 630 | <hexNumber>                     | TS  | "0"                             | -    | 631| F  |
+| 631 |                                 | NTS | <hexMark>                       | 634  | 632| E  |
+| 632 |                                 | NTS | <hexDigit>                      | 636  | 633| E  |
+| 633 |                                 | NTS | <hexDigit>                      | 636  | 633| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 629 | <hexDigit>                      | NTS | <digit>                         | 637  | T  | 630|
-| 630 |                                 | RNG | "a"~"f"                         | -    | T  | 631|
-| 631 |                                 | RNG | "A"~"F"                         | -    | T  | F  |
+| 634 | <hexMark>                       | TS  | "x"                             | -    | T  | 635|
+| 635 |                                 | TS  | "X"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 632 | <decNumber>                     | NTS | <digit>                         | 637  | 633| F  |
-| 633 |                                 | NTS | <digit>                         | 637  | 633| T  |
+| 636 | <hexDigit>                      | NTS | <digit>                         | 644  | T  | 637|
+| 637 |                                 | RNG | "a"~"f"                         | -    | T  | 638|
+| 638 |                                 | RNG | "A"~"F"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 634 | <letter>                        | RNG | "a"~"z"                         | -    | T  | 635|
-| 635 |                                 | RNG | "A"~"Z"                         | -    | T  | 636|
-| 636 |                                 | TS  | "_"                             | -    | T  | F  |
+| 639 | <decNumber>                     | NTS | <digit>                         | 644  | 640| F  |
+| 640 |                                 | NTS | <digit>                         | 644  | 640| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 637 | <digit>                         | RNG | "0"~"9"                         | -    | T  | F  |
+| 641 | <letter>                        | RNG | "a"~"z"                         | -    | T  | 642|
+| 642 |                                 | RNG | "A"~"Z"                         | -    | T  | 643|
+| 643 |                                 | TS  | "_"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 644 | <digit>                         | RNG | "0"~"9"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+

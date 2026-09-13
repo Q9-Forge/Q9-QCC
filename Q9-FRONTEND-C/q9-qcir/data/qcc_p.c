@@ -7,13 +7,11 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include "../../q9-qcpp/include/stdlib.h"
-static FILE* qccOutputFile;
-#define QCC_BUFFERED_OUTPUT
+extern char* realloc(char*, int);
 #ifdef QCC_BUFFERED_OUTPUT
 #include <stdarg.h>
 static char qccOutputBuffer[8192]; static int qccOutputUsed = 0;
-static void qccOutputFlush(void) { if (qccOutputUsed) { fwrite(qccOutputBuffer, 1, qccOutputUsed, qccOutputFile ? qccOutputFile : stdout); qccOutputUsed = 0; } }
+static void qccOutputFlush(void) { if (qccOutputUsed) { fwrite(qccOutputBuffer, 1, qccOutputUsed, stdout); qccOutputUsed = 0; } }
 static void qccOutputChar(int c) { if (qccOutputUsed == 8192) qccOutputFlush(); qccOutputBuffer[qccOutputUsed++] = (char)c; }
 static void qccOutputString(const char* s) { while (*s) qccOutputChar(*s++); }
 static void qccOutputLong(long v) { unsigned long u; char digits[16]; int n = 0; if (v < 0) { qccOutputChar('-'); u = (unsigned long)(-(v + 1)); u++; } else u = (unsigned long)v; do { digits[n++] = (char)('0' + (u % 10)); u /= 10; } while (u); while (n) qccOutputChar(digits[--n]); }
@@ -45,6 +43,7 @@ static void ws(void) {
 	}
 }
 
+extern void exit(int);
 typedef struct { int id; const char* start; const char* end; } ActionLogEntry;
 static ActionLogEntry* actionLog;
 static int actionLogCap;
@@ -61,7 +60,7 @@ static void actionLogReplay(void) {
 	for (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);
 }
 
-/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */
+/* ACTION routines from [USER-CODE] (copied verbatim) */
 /* ---- QCC Frontend: globaler Zustand + Helfer (ARCHITEKTUR.md Kap.10) ---- */
 typedef struct TCType {
 	char base;                    /* i=int32, u=uint32, c=char, b=bool, z=Nullkonstante, s=struct */
@@ -1261,10 +1260,12 @@ static int tcConstArrayLen(const char** pp, const char* end) {
 	return v;
 }
 static long tcNum(const char* s, const char* e) {
-	long v = 0; const char* q;
+	long v = 0; const char* q; const char* limit = e;
+	/* Integer suffixes affect the C type, not the numeric value. */
+	while (limit > s && (limit[-1] == 'u' || limit[-1] == 'U' || limit[-1] == 'l' || limit[-1] == 'L')) limit--;
 	/* Hexform "0x.."/"0X.." (siehe hexNumber in der Grammatik). */
-	if (e - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-		for (q = s + 2; q < e; q++) {
+	if (limit - s > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		for (q = s + 2; q < limit; q++) {
 			int d;
 			if (*q >= '0' && *q <= '9') d = *q - '0';
 			else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
@@ -1274,7 +1275,7 @@ static long tcNum(const char* s, const char* e) {
 		}
 		return v;
 	}
-	for (q = s; q < e; q++) v = v * 10 + (*q - '0');
+	for (q = s; q < limit; q++) v = v * 10 + (*q - '0');
 	return v;
 }
 static const char* tcNameEnd(const char* s, const char* e) {
@@ -1971,18 +1972,10 @@ void tc_globalend(const char* start, const char* end) {
 	}
 	/* Gibt es ueberhaupt ein Komma auf oberster Ebene? */
 	depth = 0; seg = 0;
-	{
-		int inString = 0, escaped = 0;
 	for (p = declStart; p < end; p++) {
-		if (inString) {
-			if (escaped) escaped = 0;
-			else if (*p == '\\') escaped = 1;
-			else if (*p == '"') inString = 0;
-		} else if (*p == '"') inString = 1;
-		else if (*p == '[' || *p == '{') depth++;
+		if (*p == '[' || *p == '{') depth++;
 		else if (*p == ']' || *p == '}') depth--;
 		else if (*p == ',' && depth == 0) { seg = p; break; }
-	}
 	}
 	if (!seg) { tcGlobalOne(start, end); return; }
 	/* erster Deklarator: Originaltext bis zum Komma, mit ";" abgeschlossen */
@@ -1996,15 +1989,9 @@ void tc_globalend(const char* start, const char* end) {
 	for (;;) {
 		const char* stop = 0;
 		int pre = (int)(declStart - start);
-		int inString = 0, escaped = 0;
 		depth = 0;
 		for (seg = p; seg < end; seg++) {
-			if (inString) {
-				if (escaped) escaped = 0;
-				else if (*seg == '\\') escaped = 1;
-				else if (*seg == '"') inString = 0;
-			} else if (*seg == '"') inString = 1;
-			else if (*seg == '[' || *seg == '{') depth++;
+			if (*seg == '[' || *seg == '{') depth++;
 			else if (*seg == ']' || *seg == '}') depth--;
 			else if ((*seg == ',' || *seg == ';') && depth == 0) { stop = seg; break; }
 		}
@@ -5243,6 +5230,7 @@ static int p_unsignedInt(void);
 static int p_boolLit(void);
 static int p_ident(void);
 static int p_number(void);
+static int p_integerSuffix(void);
 static int p_hexNumber(void);
 static int p_hexMark(void);
 static int p_hexDigit(void);
@@ -9860,9 +9848,55 @@ L602:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	goto L601;
 L603:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L600;
 L601:	sp--;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_integerSuffix()) goto L604;
+	sp--; goto L605;
+L604:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L605:	;
 	actionLogPush(212, entry, p);	/* ACTION AFTER number */
 	return 1;
 L600:	p = entry; actionLogLen = entryLog;
+	return 0;
+}
+
+/* integerSuffix (lexikalisch) */
+static int p_integerSuffix(void) {
+	const char* sv[64]; int svLog[64]; int sp;
+	const char* entry; int entryLog;
+	sp = 0; entry = p; entryLog = actionLogLen;
+	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (strncmp(p, "u", 1) != 0) goto L608;
+	p += 1;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (strncmp(p, "l", 1) != 0) goto L609;
+	p += 1;
+	sp--; goto L610;
+L609:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L610:	;
+	goto L607;
+L608:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "U", 1) != 0) goto L611;
+	p += 1;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (strncmp(p, "L", 1) != 0) goto L612;
+	p += 1;
+	sp--; goto L613;
+L612:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L613:	;
+	goto L607;
+L611:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "l", 1) != 0) goto L614;
+	p += 1;
+	goto L607;
+L614:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "L", 1) != 0) goto L615;
+	p += 1;
+	goto L607;
+L615:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L606;
+L607:	sp--;
+	return 1;
+L606:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9872,16 +9906,16 @@ static int p_hexNumber(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (strncmp(p, "0", 1) != 0) goto L604;
+	if (strncmp(p, "0", 1) != 0) goto L616;
 	p += 1;
-	if (!p_hexMark()) goto L604;
-	if (!p_hexDigit()) goto L604;
-L605:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_hexDigit()) goto L606;
-	sp--; goto L605;
-L606:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_hexMark()) goto L616;
+	if (!p_hexDigit()) goto L616;
+L617:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_hexDigit()) goto L618;
+	sp--; goto L617;
+L618:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	return 1;
-L604:	p = entry; actionLogLen = entryLog;
+L616:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9892,17 +9926,17 @@ static int p_hexMark(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "x", 1) != 0) goto L609;
+	if (strncmp(p, "x", 1) != 0) goto L621;
 	p += 1;
-	goto L608;
-L609:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "X", 1) != 0) goto L610;
+	goto L620;
+L621:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "X", 1) != 0) goto L622;
 	p += 1;
-	goto L608;
-L610:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L607;
-L608:	sp--;
+	goto L620;
+L622:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L619;
+L620:	sp--;
 	return 1;
-L607:	p = entry; actionLogLen = entryLog;
+L619:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9913,20 +9947,20 @@ static int p_hexDigit(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L613;
-	goto L612;
-L613:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x66) goto L614;
+	if (!p_digit()) goto L625;
+	goto L624;
+L625:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x66) goto L626;
 	p++;
-	goto L612;
-L614:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x46) goto L615;
+	goto L624;
+L626:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x46) goto L627;
 	p++;
-	goto L612;
-L615:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L611;
-L612:	sp--;
+	goto L624;
+L627:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L623;
+L624:	sp--;
 	return 1;
-L611:	p = entry; actionLogLen = entryLog;
+L623:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9936,13 +9970,13 @@ static int p_decNumber(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_digit()) goto L616;
-L617:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L618;
-	sp--; goto L617;
-L618:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_digit()) goto L628;
+L629:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L630;
+	sp--; goto L629;
+L630:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	return 1;
-L616:	p = entry; actionLogLen = entryLog;
+L628:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9953,21 +9987,21 @@ static int p_letter(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x7A) goto L621;
+	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x7A) goto L633;
 	p++;
-	goto L620;
-L621:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x5A) goto L622;
+	goto L632;
+L633:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x5A) goto L634;
 	p++;
-	goto L620;
-L622:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "_", 1) != 0) goto L623;
+	goto L632;
+L634:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "_", 1) != 0) goto L635;
 	p += 1;
-	goto L620;
-L623:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L619;
-L620:	sp--;
+	goto L632;
+L635:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L631;
+L632:	sp--;
 	return 1;
-L619:	p = entry; actionLogLen = entryLog;
+L631:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9977,10 +10011,10 @@ static int p_digit(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if ((unsigned char)*p < 0x30 || (unsigned char)*p > 0x39) goto L624;
+	if ((unsigned char)*p < 0x30 || (unsigned char)*p > 0x39) goto L636;
 	p++;
 	return 1;
-L624:	p = entry; actionLogLen = entryLog;
+L636:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -9989,18 +10023,7 @@ static char* inputFileBuf;
 
 int main(int argc, char** argv) {
 	FILE* inputFile; size_t inputLen;
-	const char* outputFile;
-	int argi;
-	outputFile = 0;
-	for (argi = 1; argi + 1 < argc; argi++) {
-		if (strcmp(argv[argi], "-o") == 0) outputFile = argv[argi + 1];
-	}
 	if (argc < 2) { fprintf(stderr, "usage: %s <eingabe>\n", argv[0]); return 2; }
-	qccOutputFile = 0;
-	if (outputFile != 0) {
-		qccOutputFile = fopen(outputFile, "w");
-		if (!qccOutputFile) { fprintf(stderr, "can't open %s\n", outputFile); return 2; }
-	}
 	if (*argv[1] == '@') {
 		inputFile = fopen(argv[1] + 1, "r");
 		if (!inputFile) { fprintf(stderr, "can't open %s\n", argv[1] + 1); return 2; }
@@ -10010,7 +10033,7 @@ int main(int argc, char** argv) {
 		fclose(inputFile); inputFileBuf[inputLen] = '\0'; p = inputFileBuf;
 	} else p = argv[1];
 	parserInputStart = p;
-	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); QCC_OUTPUT_FLUSH(); if (qccOutputFile) fclose(qccOutputFile); return 1; } printf("OK\n"); QCC_OUTPUT_FLUSH(); if (qccOutputFile) fclose(qccOutputFile); return 0; } }
-	printf("FAIL\n"); QCC_OUTPUT_FLUSH(); if (qccOutputFile) fclose(qccOutputFile);
+	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); QCC_OUTPUT_FLUSH(); return 1; } printf("OK\n"); QCC_OUTPUT_FLUSH(); return 0; } }
+	printf("FAIL\n"); QCC_OUTPUT_FLUSH();
 	return 1;
 }

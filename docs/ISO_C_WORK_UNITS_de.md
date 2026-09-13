@@ -24,7 +24,7 @@ Bei der Umsetzung wird die genaue Normstelle jeweils ergänzt.
 | ID | Kleine Einheit | ISO | Abhängigkeiten | Status |
 |---|---|---|---|---|
 | L1 | Zeichen- und Stringliterale, Escape-Sequenzen | C90 | Lexer, globale Daten | offen / P0 |
-| L2 | Integer-Suffixe und vollständige Zahlenbasen | C90/C99 | Typmodell | teilweise / P0 |
+| L2 | Integer-Suffixe und vollständige Zahlenbasen | C90/C99 | Typmodell | teilweise / P0 — Suffixe `U`, `L`, `UL`, `LU` im Frontend ergänzt; Typwirkung und vollständige Basen noch offen |
 | L3 | Präprozessor: `#define` ohne Parameter | C90 | Übersetzungseinheit | offen |
 | L4 | Präprozessor: `#include` und Include-Suche | C90 | L3 | offen |
 | L5 | Präprozessor: bedingte Übersetzung | C90 | L3 | offen |
