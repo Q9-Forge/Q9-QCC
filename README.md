@@ -1,5 +1,9 @@
 # Q9-QCC
 
+<p align="center">
+  <img width="300" height="300" alt="Q9-QCC" src="https://github.com/user-attachments/assets/0f469c58-eebb-429b-91bd-9fc9ef6df503" />
+</p>
+
 Q9-QCC is the modular compiler toolchain for Q9. It combines a C frontend,
 an intermediate representation (IR), architecture-specific backends and an
 IR interpreter.
