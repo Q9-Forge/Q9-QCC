@@ -668,7 +668,7 @@ ident     = letter { letter | digit } .
 /* Integer suffixes are part of the C token, not a separate identifier.  Keep
    them in the number rule so forms such as 42UL and 0x10L are accepted. */
 number    = ( hexNumber | decNumber ) [ integerSuffix ] .
-integerSuffix = "u" [ "l" ] | "U" [ "L" ] | "l" [ "u" ] | "L" [ "U" ] .
+integerSuffix = "u" "l" | "U" "L" | "l" "u" | "L" "U" | "u" | "U" | "l" | "L" .
 hexNumber = "0" hexMark hexDigit { hexDigit } .
 hexMark   = "x" | "X" .
 hexDigit  = digit | "a"~"f" | "A"~"F" .

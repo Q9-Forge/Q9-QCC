@@ -2294,9 +2294,13 @@ void tc_varinit(const char* start, const char* end) {
 }
 
 void tc_number(const char* start, const char* end) {
+	char base = 'i';
+	const char* p = end;
+	while (p > start && (*p == 'u' || *p == 'U' || *p == 'l' || *p == 'L')) p--;
+	if (p < end && (*p == 'u' || *p == 'U')) base = 'u';
 	if (end - start == 4 && start[0] == 't') { printf("PUSH 1\n"); tcTypePush4('b', 0, 0, 0); }
 	else if (end - start == 5 && start[0] == 'f') { printf("PUSH 0\n"); tcTypePush4('b', 0, 0, 0); }
-	else { long value = tcNum(start, end); printf("PUSH %ld\n", value); tcTypePush4(value == 0 ? 'z' : 'i', 0, 0, 0); }
+	else { long value = tcNum(start, end); printf("PUSH %ld\n", value); tcTypePush4(value == 0 ? 'z' : base, 0, 0, 0); }
 }
 
 /* Escapes eines String-Literals (start zeigt auf das oeffnende, end hinter das
@@ -9868,24 +9872,36 @@ static int p_integerSuffix(void) {
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (strncmp(p, "u", 1) != 0) goto L608;
 	p += 1;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "l", 1) != 0) goto L609;
+	if (strncmp(p, "l", 1) != 0) goto L608;
 	p += 1;
-	sp--; goto L610;
-L609:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L610:	;
 	goto L607;
 L608:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "U", 1) != 0) goto L609;
+	p += 1;
+	if (strncmp(p, "L", 1) != 0) goto L609;
+	p += 1;
+	goto L607;
+L609:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "l", 1) != 0) goto L610;
+	p += 1;
+	if (strncmp(p, "u", 1) != 0) goto L610;
+	p += 1;
+	goto L607;
+L610:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "L", 1) != 0) goto L611;
+	p += 1;
 	if (strncmp(p, "U", 1) != 0) goto L611;
 	p += 1;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "L", 1) != 0) goto L612;
-	p += 1;
-	sp--; goto L613;
-L612:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L613:	;
 	goto L607;
 L611:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "u", 1) != 0) goto L612;
+	p += 1;
+	goto L607;
+L612:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "U", 1) != 0) goto L613;
+	p += 1;
+	goto L607;
+L613:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	if (strncmp(p, "l", 1) != 0) goto L614;
 	p += 1;
 	goto L607;

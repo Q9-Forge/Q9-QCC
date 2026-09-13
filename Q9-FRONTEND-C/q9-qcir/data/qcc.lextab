@@ -561,8 +561,12 @@
  <number>                         = ( <hexNumber>
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <integerSuffix>                  = "u" [ "l" ]
-                                  | "U" [ "L" ]
+ <integerSuffix>                  = "u" "l"
+                                  | "U" "L"
+                                  | "l" "u"
+                                  | "L" "U"
+                                  | "u"
+                                  | "U"
                                   | "l"
                                   | "L" .
 
@@ -904,12 +908,12 @@
 211  618         ident
 212  621         number
 213  624         integerSuffix
-214  630         hexNumber
-215  634         hexMark
-216  636         hexDigit
-217  639         decNumber
-218  641         letter
-219  644         digit
+214  636         hexNumber
+215  640         hexMark
+216  642         hexDigit
+217  645         decNumber
+218  647         letter
+219  650         digit
 [ENDE]
 
 [PARSER-TABELLE]
@@ -1051,8 +1055,8 @@
 133   -1    -2    -1    0     0     -                TS   "false"
 134   135   -2    -1    0     0     globalNeg        TS   "-"
 135   -1    -3    136   0     0     -                NTS  globalNumber
-136   137   -2    644   0     0     globalNumber     NTS  digit
-137   137   -1    644   0     0     -                NTS  digit
+136   137   -2    650   0     0     globalNumber     NTS  digit
+137   137   -1    650   0     0     -                NTS  digit
 138   139   -2    146   0     0     funcdef          NTS  funcHead
 139   -1    140   141   0     0     -                NTS  funcBody
 140   -1    -3    145   0     0     -                NTS  protoEnd
@@ -1145,8 +1149,8 @@
 227   -1    -2    230   0     0     -                NTS  caseNumber
 228   229   -2    -1    0     0     caseNeg          TS   "-"
 229   -1    -3    230   0     0     -                NTS  caseNumber
-230   231   -2    644   0     0     caseNumber       NTS  digit
-231   231   -1    644   0     0     -                NTS  digit
+230   231   -2    650   0     0     caseNumber       NTS  digit
+231   231   -1    650   0     0     -                NTS  digit
 232   232   -1    178   0     0     caseBody         NTS  unlabeledStmt
 233   234   -2    235   0     0     defaultGroup     NTS  defaultLabel
 234   -1    -3    232   0     0     -                NTS  caseBody
@@ -1181,8 +1185,8 @@
 263   -1    -2    -1    0     0     -                TS   "false"
 264   265   -2    -1    0     0     initNeg          TS   "-"
 265   -1    -3    266   0     0     -                NTS  initNumber
-266   267   -2    644   0     0     initNumber       NTS  digit
-267   267   -1    644   0     0     -                NTS  digit
+266   267   -2    650   0     0     initNumber       NTS  digit
+267   267   -1    650   0     0     -                NTS  digit
 268   -1    269   273   0     0     assignStmt       NTS  chainAssign
 269   270   -2    565   0     0     -                NTS  target
 270   271   -3    279   0     0     -                NTS  assignop
@@ -1533,33 +1537,39 @@
 615   -1    -2    -1    0     0     -                TS   "short"
 616   -1    617   -1    0     0     boolLit          TS   "true"
 617   -1    -2    -1    0     0     -                TS   "false"
-618   619   -2    641   0     0     ident            NTS  letter
-619   619   620   641   0     0     -                NTS  letter
-620   619   -1    644   0     0     -                NTS  digit
-621   623   622   630   0     0     number           NTS  hexNumber
-622   623   -2    639   0     0     -                NTS  decNumber
+618   619   -2    647   0     0     ident            NTS  letter
+619   619   620   647   0     0     -                NTS  letter
+620   619   -1    650   0     0     -                NTS  digit
+621   623   622   636   0     0     number           NTS  hexNumber
+622   623   -2    645   0     0     -                NTS  decNumber
 623   -1    -1    624   0     0     -                NTS  integerSuffix
 624   625   626   -1    0     0     integerSuffix    TS   "u"
-625   -1    626   -1    0     0     -                TS   "l"
+625   -1    -3    -1    0     0     -                TS   "l"
 626   627   628   -1    0     0     -                TS   "U"
-627   -1    628   -1    0     0     -                TS   "L"
-628   -1    629   -1    0     0     -                TS   "l"
-629   -1    -2    -1    0     0     -                TS   "L"
-630   631   -2    -1    0     0     hexNumber        TS   "0"
-631   632   -3    634   0     0     -                NTS  hexMark
-632   633   -3    636   0     0     -                NTS  hexDigit
-633   633   -1    636   0     0     -                NTS  hexDigit
-634   -1    635   -1    0     0     hexMark          TS   "x"
-635   -1    -2    -1    0     0     -                TS   "X"
-636   -1    637   644   0     0     hexDigit         NTS  digit
-637   -1    638   -1    97    102   -                RNG  "a"~"f"
-638   -1    -2    -1    65    70    -                RNG  "A"~"F"
-639   640   -2    644   0     0     decNumber        NTS  digit
-640   640   -1    644   0     0     -                NTS  digit
-641   -1    642   -1    97    122   letter           RNG  "a"~"z"
-642   -1    643   -1    65    90    -                RNG  "A"~"Z"
-643   -1    -2    -1    0     0     -                TS   "_"
-644   -1    -2    -1    48    57    digit            RNG  "0"~"9"
+627   -1    -3    -1    0     0     -                TS   "L"
+628   629   630   -1    0     0     -                TS   "l"
+629   -1    -3    -1    0     0     -                TS   "u"
+630   631   632   -1    0     0     -                TS   "L"
+631   -1    -3    -1    0     0     -                TS   "U"
+632   -1    633   -1    0     0     -                TS   "u"
+633   -1    634   -1    0     0     -                TS   "U"
+634   -1    635   -1    0     0     -                TS   "l"
+635   -1    -2    -1    0     0     -                TS   "L"
+636   637   -2    -1    0     0     hexNumber        TS   "0"
+637   638   -3    640   0     0     -                NTS  hexMark
+638   639   -3    642   0     0     -                NTS  hexDigit
+639   639   -1    642   0     0     -                NTS  hexDigit
+640   -1    641   -1    0     0     hexMark          TS   "x"
+641   -1    -2    -1    0     0     -                TS   "X"
+642   -1    643   650   0     0     hexDigit         NTS  digit
+643   -1    644   -1    97    102   -                RNG  "a"~"f"
+644   -1    -2    -1    65    70    -                RNG  "A"~"F"
+645   646   -2    650   0     0     decNumber        NTS  digit
+646   646   -1    650   0     0     -                NTS  digit
+647   -1    648   -1    97    122   letter           RNG  "a"~"z"
+648   -1    649   -1    65    90    -                RNG  "A"~"Z"
+649   -1    -2    -1    0     0     -                TS   "_"
+650   -1    -2    -1    48    57    digit            RNG  "0"~"9"
 [ENDE]
 
 [TESTS]
@@ -3973,9 +3983,13 @@ void tc_varinit(const char* start, const char* end) {
 END
 ROUTINE C tc_number
 void tc_number(const char* start, const char* end) {
+	char base = 'i';
+	const char* p = end;
+	while (p > start && (*p == 'u' || *p == 'U' || *p == 'l' || *p == 'L')) p--;
+	if (p < end && (*p == 'u' || *p == 'U')) base = 'u';
 	if (end - start == 4 && start[0] == 't') { printf("PUSH 1\n"); tcTypePush4('b', 0, 0, 0); }
 	else if (end - start == 5 && start[0] == 'f') { printf("PUSH 0\n"); tcTypePush4('b', 0, 0, 0); }
-	else { long value = tcNum(start, end); printf("PUSH %ld\n", value); tcTypePush4(value == 0 ? 'z' : 'i', 0, 0, 0); }
+	else { long value = tcNum(start, end); printf("PUSH %ld\n", value); tcTypePush4(value == 0 ? 'z' : base, 0, 0, 0); }
 }
 END
 ROUTINE C tc_string
