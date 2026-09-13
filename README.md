@@ -1,156 +1,55 @@
 # Q9-QCC
 
-<img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/0f469c58-eebb-429b-91bd-9fc9ef6df503" />
+Q9-QCC is the modular compiler toolchain for Q9. It combines a C frontend,
+an intermediate representation (IR), architecture-specific backends and an
+IR interpreter.
 
- 
-*German version: [README_de.md](README_de.md)*
+German version: [README_de.md](README_de.md)
 
-The shared cross-project context and the binding names live in
-[Q9Forge/AI_CONTEXT.md](../Q9Forge/AI_CONTEXT.md).
-
-QCC toolchain for Q9 (C language core, IR, 68000/ARM64 backends).
-Extracted from the former `ebnf` repo (2026-07-31, full history
-preserved), which now lives on as [Q9-Parsec](https://github.com/Q9-Forge/Q9-Parsec).
-
-## Dependency on Q9-Parsec
-
-The C frontend parser `Q9-FRONTEND-C/q9-qcir/data/qcc_p.c` is produced by the EBNF generator from
-Q9-Parsec. It **is checked in here** (in Q9-Parsec the same file is only an
-unversioned build artifact), so that this repo stays buildable without the
-generator:
-
-```
-Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf + qcc.lextab  --[qparsec]-->  qcc_p.c
-```
-
-**Watch out:** without the `.lextab` you get a parser with no lexer and no
-actions -- the `.ebnf` alone does not carry them. With both files the
-generation is reproducible bit for bit; regenerate `qcc_p.c` after every
-grammar change and commit it along.
-
-The QCC language definition `Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf`/
-`qcc.lextab` is maintained
-**here**; Q9-Parsec keeps a copy of it because its regression suite tests QCC
-as well (see "Known gap" below). Also check out Q9-Parsec to build the
-generator:
-
-```sh
-git clone git@github.com:Q9-Forge/Q9-Parsec.git ../Q9-Parsec
-(cd ../Q9-Parsec && clang++ -std=c++17 -o build/parsec Source/parsec.cpp Source/codegen.cpp)
-../Q9-Parsec/build/parsec Data/qcc
-```
-
-## The three closing words of a generated parser
-
-`OK` / `SEMERR` / `FAIL`, exit code `0` / `1` / `1`.
-
-- `FAIL` -- the grammar did not accept the input. **Prefix-stable.**
-- `SEMERR` -- accepted, but semantically rejected. Inside a *prefix* of a file
-  this is entirely normal (forward references), so it is no finding there.
-- `OK` -- translated without complaint.
-
-Keeping these apart matters. `tools/bootstrap_survey.py` feeds *prefixes* of a
-file through the parser and measures grammar coverage; reporting both failure
-kinds under one word made that measurement worthless (346 reported gaps
-instead of 5). Compare the closing word line-wise, never as a substring: the
-semantic marker was first called `SEMFAIL` and thereby *contained* `FAIL`,
-which fooled every caller doing a substring check.
-
-## Structure
-
-The repository is organized by tool groups:
+## Toolchain components
 
 ```text
 Q9-QCC/
 ├── Q9-QCC/                 universal driver: qcc
 ├── Q9-PARSEC/              parser generator: qparsec
-├── Q9-RUN/                 Stack-IR interpreter: qrun
+├── Q9-RUN/                 IR interpreter: qrun
 ├── Q9-FRONTEND-C/
-│   ├── q9-qcpp/            preprocessor: qcpp
-│   └── q9-qcir/            C frontend: qcir
-├── Q9-BACKEND-68K/
-│   ├── q9-qir68k/          IR backend: qir68k
-│   ├── q9-qo68k/           optimizer: qo68k
-│   ├── q9-qclib/           68k runtime library
-│   └── q9-devs/            68k device definitions
-├── Q9-BACKEND-x86/         x86 toolchain group
-└── Q9-BACKEND-ARM64/       ARM64 toolchain group
+│   ├── q9-qcpp/            C preprocessor: qcpp
+│   └── q9-qcir/            C frontend and IR generator: qcir
+├── Q9-BACKEND-68K/         68k compiler toolchain
+├── Q9-BACKEND-x86/         x86 toolchain area
+└── Q9-BACKEND-ARM64/       ARM64 toolchain area
 ```
 
-Each tool project uses `src/`, `include/`, `data/`, `tests/`, `tools/`,
-`docs/`, and `build/` only where needed. `build/` contains local artifacts.
+The 68k path is currently the most complete. The x86 and ARM64 areas are
+under development.
 
-- `Q9-BACKEND-68K/q9-qir68k/src/` -- IR-to-68k backend sources
-- `Q9-FRONTEND-C/q9-qcir/src/bootstrap/` -- QCC bootstrap sources
-  (selfhosting proof: demonstrates that this compiler can translate a
-  real, larger program)
-- `runtime/arm64_darwin/` -- runtime support for the ARM64 test backend
-- `examples/qcc-project/` -- example project
-- `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` --
-  test oracles/simulators + vendored 68k assembler
-- `tools/bootstrap_survey.py` -- two-stage gap survey against a bootstrap
-  target (stage 1 grammar, stage 2 semantics)
-- `docs/` -- status, progress, IR opcodes, ISO C gap lists,
-  OS-9 bootstrap, selfhosting gap list, subproject roadmap
+## Parser generation
 
-## Known gap: files shared with Q9-Parsec (as of 2026-08-11)
+The C frontend keeps its generated parser source in the repository so that
+the compiler can be built without regenerating it. The grammar and lexer
+table are maintained beside it:
 
-The full regression suite (`runtests.sh`, formerly in the shared `ebnf` repo,
-tests the EBNF generator and QCC together in a mixed 3200-line script) has
-**not yet been cleanly split apart** -- for now it stays only in Q9-Parsec.
-Because it tests QCC as well, twelve files exist in both repos. They were
-merged on 2026-08-11 and are **identical in content**; to keep it that way, a
-fixed ownership applies:
-
-| File | maintained in |
-|---|---|
-| `Data/qcc.ebnf`, `Data/qcc.lextab` | **Q9-QCC** |
-| `Q9-BACKEND-68K/q9-qir68k/src/` | **Q9-BACKEND-68K** |
-| `Q9-FRONTEND-C/q9-qcir/src/bootstrap/` | **Q9-FRONTEND-C** (Bootstrap-Zwillinge) |
-| `tools/qcc68sim.py`, `qccvm.py`, `qcc_merge.py`, `vasmm68k_mot` | **Q9-Parsec** (the suite runs there) |
-| `runtime/arm64_darwin/start.s`, `LICENSE` | either, keep in step |
-
-A change to one of these must be carried over into the other repo.
-`runtests.sh` in Q9-Parsec enforces this automatically: it compares the
-complete intersection of both repos (`git ls-files`) against `../Q9-QCC` and
-fails on any divergence. `README.md`/`README_de.md` are the deliberate
-exception -- each repo has its own text.
-
-Manual check with a sibling checkout:
-
-```sh
-for f in $(git ls-files); do
-  [ "$f" = "README.md" ] || [ "$f" = "README_de.md" ] && continue
-  [ -f "../Q9-QCC/$f" ] && { cmp -s "$f" "../Q9-QCC/$f" || echo "DIVERGENT: $f"; }
-done
+```text
+qcc.ebnf + qcc.lextab  --[qparsec]-->  qcc_p.c
 ```
 
-**Why this is tedious:** the dependency is mutual -- Q9-Parsec generates QCC's
-parser, and QCC compiles Q9-Parsec's selfhosting twins. Until the suite is
-split (or a submodule is set up), the table above is no substitute for
-automation. For the record: until 2026-08-11 these files had drifted apart
-**unnoticed in five cases**, among them two competing fixes for the same
-big-endian bug.
+When the grammar changes, regenerate `qcc_p.c` with the in-tree `qparsec`
+tool and commit the resulting source together with the grammar change.
 
-## Der Selbsthost-Test läuft jetzt auf zwei Wegen
+## Building
 
-**2026-09-07.** Der Emulatorlauf des Selbsthost-Tests steht als eigene
-Datei `test/expect/selfhost_68k.exp` und nimmt alles über die Umgebung
-(`QCC_MODULE`, `QCC_SRC`, `QCC_OUT`, `QCC_IMAGE`, `QCC_LOG`, `Q9FLUX`,
-`MWOS`). Zwei Prüfstände fahren **denselben** Lauf:
+Each component documents its own build and test commands. Local build output
+belongs in `build/` and should not be committed. The top-level driver and the
+individual tools can be developed and tested independently.
 
-| Prüfstand | Kette |
-|---|---|
-| `tools/test_selfhost_68k.sh` | `r68` + `l68` über Wine, gegen `clib.l`, `os_lib.l`, `sys.l` |
-| `Q9-qclib/test/qcc_68k.sh` | `qr68` + `ql68`, gegen `qclib.l` — kein fremdes Teil |
+## Status
 
-Nur so kann ein Unterschied zwischen den beiden Ergebnissen an Bibliothek
-und Binder liegen und nicht daran, dass zwei Kopien des Laufs
-auseinandergelaufen sind. Beide erreichen denselben Fixpunkt: 89 769
-IR-Zeilen, 1 123 692 Byte, byteidentisch zum Hostlauf.
+Q9-QCC is an active development project. The 68k compiler route and the IR
+interpreter are working development components; other targets remain
+experimental.
 
-Beim Auslagern kam ein `eof`-Zweig dazu. Stirbt der **Emulator** (nicht das
-Programm), lief das Skript vorher in einen Tcl-Fehler beim Escape
-(`spawn id exp6 not open`) und meldete **gar nichts** — der Prüfstand sah
-nur eine fehlende Marke und konnte „Programm hängt" nicht von „Emulator
-weg" unterscheiden. Genau das ist einmal passiert.
+## License and contributions
+
+See the repository files for licensing details. Issues and pull requests are
+welcome, especially for portable C improvements, backend work and test cases.
