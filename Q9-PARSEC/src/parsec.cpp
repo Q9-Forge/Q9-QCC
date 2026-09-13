@@ -146,6 +146,7 @@ void exitProgram(int exitCode);
 int execFrom(int startRow, int* pos);
 void loadPreservedTests(const char* path);
 void writeWorkfile(FILE* fp);
+static void loadRawEbnf(const char* path);
 int loadWorkfileAsGrammar(const char* path);
 void rebuildFirstEdgesFromTable();
 int runTests();
@@ -214,6 +215,9 @@ int main(int argc, char* argv[]) {
 				inputFileName, outputFileName);
 			exitProgram(-2);
 		}
+	}
+	else {
+		loadRawEbnf(inputFileName);
 	}
 
 	fileRet = fopen_s(&fpLst, listFileName, "w");
@@ -341,6 +345,8 @@ void exitProgram(int exitCode){
 #define QUELLTEXT_BUF_SIZE 65536
 char quelltextBuf[QUELLTEXT_BUF_SIZE];
 int quelltextLen = 0;
+char rawEbnfBuf[QUELLTEXT_BUF_SIZE];
+int rawEbnfLen = 0;
 
 void appendQuelltext(const char* text) {
 	size_t len = strlen(text);
@@ -349,6 +355,17 @@ void appendQuelltext(const char* text) {
 		quelltextLen += (int)len;
 		quelltextBuf[quelltextLen] = EOS;
 	}
+}
+
+static void loadRawEbnf(const char* path) {
+	FILE* raw;
+	size_t n;
+	rawEbnfLen = 0;
+	if (fopen_s(&raw, path, "rb") != 0) return;
+	n = fread(rawEbnfBuf, 1, sizeof(rawEbnfBuf) - 1, raw);
+	fclose(raw);
+	rawEbnfLen = (int)n;
+	rawEbnfBuf[rawEbnfLen] = EOS;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1009,6 +1026,9 @@ void writeWorkfile(FILE* fp) {
 		fprintf(fp, "\n");
 	}
 	fprintf(fp, "[ENDE]\n\n");
+	fprintf(fp, "[EBNF-ROHQUELLTEXT]\n");
+	if (rawEbnfLen > 0) fprintf(fp, "%s", rawEbnfBuf);
+	fprintf(fp, "\n[ENDE]\n\n");
 
 	// Block 2: TS-SYMBOLTABELLE (distinct terminals, first-occurrence order)
 	for (i = 0; i < aktTabIndex; i++) {
@@ -1144,7 +1164,7 @@ void rebuildFirstEdgesFromTable() {
 int loadWorkfileAsGrammar(const char* path) {
 	FILE* fp;
 	char line[WORKFILE_LINE];
-	enum { BLK_NONE, BLK_QUELLTEXT, BLK_PARSERTAB, BLK_SONST } blk = BLK_NONE;
+	enum { BLK_NONE, BLK_QUELLTEXT, BLK_ROHQUELLTEXT, BLK_PARSERTAB, BLK_SONST } blk = BLK_NONE;
 	int rowsLoaded = 0;
 
 	if (fopen_s(&fp, path, "r") != 0) {
@@ -1153,11 +1173,14 @@ int loadWorkfileAsGrammar(const char* path) {
 	aktTabIndex = 0;
 	quelltextLen = 0;
 	quelltextBuf[0] = EOS;
+	rawEbnfLen = 0;
+	rawEbnfBuf[0] = EOS;
 
 	while (fgets(line, WORKFILE_LINE, fp) != NULL) {
 		chompLine(line);
 		if (line[0] == '[') {
 			if (strncmp(line, "[EBNF-QUELLTEXT]", 16) == 0)      blk = BLK_QUELLTEXT;
+			else if (strncmp(line, "[EBNF-ROHQUELLTEXT]", 20) == 0) blk = BLK_ROHQUELLTEXT;
 			else if (strncmp(line, "[PARSER-TABELLE]", 16) == 0) blk = BLK_PARSERTAB;
 			else                                                 blk = BLK_SONST;
 			continue;
@@ -1165,6 +1188,14 @@ int loadWorkfileAsGrammar(const char* path) {
 		if (blk == BLK_QUELLTEXT) {
 			appendQuelltext(line);
 			appendQuelltext("\n");
+		}
+		else if (blk == BLK_ROHQUELLTEXT) {
+			if (rawEbnfLen + (int)strlen(line) + 1 < QUELLTEXT_BUF_SIZE - 1) {
+				strcpy_s(rawEbnfBuf + rawEbnfLen, sizeof(rawEbnfBuf) - (size_t)rawEbnfLen, line);
+				rawEbnfLen += (int)strlen(line);
+				rawEbnfBuf[rawEbnfLen++] = '\n';
+				rawEbnfBuf[rawEbnfLen] = EOS;
+			}
 		}
 		else if (blk == BLK_PARSERTAB) {
 			int nr, tA, fA, addr, lo, hi, consumed = -1;
