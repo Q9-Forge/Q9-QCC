@@ -5,6 +5,14 @@
 #================================================================================
 cd "$(dirname "$0")" || exit 1
 mkdir -p build
+# Die Backends gehoeren den Backend-Teilprojekten, nicht dieser Suite. Bis zum
+# 2026-09-14 lag hier je eine EIGENE Kopie -- und die 68k-Kopie war die einzige
+# mit dem -peephole-Nachlauf, waehrend die ausgelieferte Fassung ihn nicht
+# hatte. Seither wird direkt die Produktionsquelle uebersetzt; damit kann diese
+# Klasse von Abweichung nicht wieder entstehen.
+QIR68K_SRC="${QIR68K_SRC:-../Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp}"
+QIRARM64_SRC="${QIRARM64_SRC:-../Q9-BACKEND-ARM64/q9-qirarm64/src/qcc_arm64_backend_c.cpp}"
+
 clang++ -std=c++17 -Wall -Wno-format-security -o build/parsec src/parsec.cpp src/codegen.cpp || exit 1
 
 fail=0
@@ -1444,7 +1452,7 @@ fi
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (qcc_backend.cpp)
 #     bleibt als Referenz liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ -x tools/vasmm68k_mot ]; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend src/qcc_backend_c.cpp 2>/dev/null && \
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend "$QIR68K_SRC" 2>/dev/null && \
 		build/qcc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/qcc_m4.ir && \
 		build/qcc_backend build/qcc_m4.ir build/qcc_m4.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_m4.bin build/qcc_m4.s68 2>/dev/null && \
@@ -2770,7 +2778,7 @@ fi
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original bleibt als Referenz
 #     liegen -- Ruecksetzen = hier wieder die .cpp bauen.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend src/qcc_arm64_backend_c.cpp 2>/dev/null && \
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend "$QIRARM64_SRC" 2>/dev/null && \
 		build/qcc_p 'int limit = 5; int debt = -20; unsigned int high = -1; char mark = 335; int counter; char next(char c){ return c + 1; } int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); counter = fact(limit); putint(counter); putint(debt / 3); putint(high > 1); putint(high / 2); putuint(high); }' > build/qcc_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_arm64.ir build/qcc_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_arm64 build/qcc_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
@@ -3652,48 +3660,81 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Abgleich mit Q9-QCC (2026-08-11)
+# -peephole (2026-09-14 erstmals automatisiert)
 #
-# Zwoelf Dateien existieren in BEIDEN Repos, weil diese Suite QCC mittestet,
-# die QCC-Sprachdefinition und das Backend aber in Q9-QCC gepflegt werden
-# (siehe README beider Repos). Bis zum 2026-08-11 waren sie unbemerkt in fuenf
-# Faellen auseinandergelaufen -- unter anderem mit ZWEI konkurrierenden
-# Behebungen desselben char-Parameter-/Big-Endian-Fehlers, von denen die hier
-# vormals verwendete den Fall "&c" nicht abdeckte. Genau das soll dieser Test
-# kuenftig sofort sichtbar machen.
-#
-# Geprueft wird die VOLLSTAENDIGE Schnittmenge beider Repos (git ls-files),
-# nicht nur die zuletzt divergenten Dateien -- der erste Anlauf dieses Tests
-# listete sieben Pfade von Hand und liess dabei tools/qccvm.py aus, das
-# unmittelbar danach geaendert werden musste. Einzige bewusste Ausnahme:
-# README.md, der je Repo einen eigenen Text hat und haben soll.
-#
-# Der Test ist bewusst nur ein "warn", wenn das Nachbar-Auscheckverzeichnis
-# fehlt (normal in CI oder bei einem Einzelklon), aber ein echter FAIL, wenn es
-# da ist und abweicht.
+# Der Nachlaufoptimierer war seit dem 2026-09-08 gebaut und dokumentiert, aber
+# von KEINEM Test beruehrt -- er lag sogar nur in der Backend-Kopie dieser
+# Suite und fehlte in der ausgelieferten Fassung. Geprueft wird beides, was ein
+# Optimierer schuldig ist: er muss etwas WEGNEHMEN und darf das Ergebnis NICHT
+# aendern. Die Byte-Gleichheit auf echter Hardware bleibt Sache des 68030-Laufs;
+# hier laeuft der Simulator.
 # ---------------------------------------------------------------------------
-QCC_SIBLING=${QCC_SIBLING:-../Q9-QCC}
-if [ -d "$QCC_SIBLING/Data" ]; then
-	divergent=""; shared=0
-	for f in $(git ls-files | sort); do
-		[ "$f" = "README.md" ] && continue
-		git -C "$QCC_SIBLING" ls-files --error-unmatch "$f" >/dev/null 2>&1 || continue
-		shared=$((shared + 1))
-		if [ ! -f "$QCC_SIBLING/$f" ]; then
-			divergent="$divergent $f(fehlt-dort)"
-		elif ! cmp -s "$f" "$QCC_SIBLING/$f"; then
-			divergent="$divergent $f"
-		fi
-	done
-	if [ "$shared" -eq 0 ]; then
-		echo "FAIL  Abgleich Q9-QCC: keine gemeinsamen Dateien gefunden -- Pruefung greift nicht"; fail=1
-	elif [ -z "$divergent" ]; then
-		echo "ok    Abgleich Q9-QCC: alle $shared geteilten Dateien inhaltsgleich"
+ppfail=0
+ppprog='int add(int a, int b){ return a + b; } int main(){ int i; int s; int t[8]; s = 0; i = 0; while (i < 8) { t[i] = i * 3; i = i + 1; } i = 0; while (i < 8) { s = add(s, t[i]); i = i + 1; } putint(s); }'
+if [ -x build/qcc_p ] && [ -x build/qcc_backend ] &&
+   build/qcc_p "$ppprog" > build/qcc_pp.ir 2>/dev/null &&
+   build/qcc_backend build/qcc_pp.ir build/qcc_pp_off.s68 -runtime >/dev/null 2>&1 &&
+   build/qcc_backend build/qcc_pp.ir build/qcc_pp_on.s68 -runtime -peephole >/dev/null 2>&1; then
+	ppoff=$(wc -l < build/qcc_pp_off.s68 | tr -d ' ')
+	ppon=$(wc -l < build/qcc_pp_on.s68 | tr -d ' ')
+	ppvoff=$(python3 tools/qcc68sim.py build/qcc_pp_off.s68 2>&1)
+	ppvon=$(python3 tools/qcc68sim.py build/qcc_pp_on.s68 2>&1)
+	[ "$ppvoff" = "84" ] || { echo "FAIL  peephole: Vergleichslauf ohne -peephole liefert '$ppvoff' statt 84"; ppfail=1; }
+	[ "$ppvon" = "84" ]  || { echo "FAIL  peephole: Lauf mit -peephole liefert '$ppvon' statt 84"; ppfail=1; }
+	[ "$ppon" -lt "$ppoff" ] || { echo "FAIL  peephole: keine Zeile eingespart ($ppoff -> $ppon)"; ppfail=1; }
+	if [ $ppfail -eq 0 ]; then
+		echo "ok    peephole: $ppoff -> $ppon Zeilen, Ergebnis unveraendert (84)"
 	else
-		echo "FAIL  Abgleich Q9-QCC: geteilte Datei(en) abweichend:$divergent"; fail=1
+		fail=1
 	fi
 else
-	echo "warn  Abgleich Q9-QCC: $QCC_SIBLING nicht ausgecheckt -- uebersprungen"
+	echo "FAIL  peephole: Testprogramm nicht uebersetzbar"; fail=1
+fi
+
+# ---------------------------------------------------------------------------
+# Doppelte Dateien im Repo (2026-09-14, loest den alten "Abgleich Q9-QCC" ab)
+#
+# Bis zum Umbau am 2026-09-12 waren Q9-Parsec und Q9-QCC ZWEI Repos, und dieser
+# Test verglich die Schnittmenge ihrer Dateien. Seither liegt alles in EINEM
+# Repo, das Nachbarverzeichnis ../Q9-QCC gibt es nicht mehr -- der Test meldete
+# nur noch "warn" und hat damit nichts mehr bewacht. Was in der Zwischenzeit
+# unbemerkt auseinanderlief: die Integer-Suffix-Arbeit landete nur in EINER der
+# beiden qcc.lextab, und der -peephole-Nachlauf existierte nur in der
+# Backend-Kopie DIESER Suite, nicht in der ausgelieferten.
+#
+# Die Backend-Kopien sind deshalb ersatzlos entfallen (die Suite uebersetzt
+# jetzt QIR68K_SRC/QIRARM64_SRC direkt, siehe oben). Was sich nicht ebenso
+# aufloesen liess, steht hier und muss byteweise gleich bleiben.
+#
+# NICHT in der Liste: Source/ gegen src/ in diesem Projekt. Das Paar ist
+# ABSICHTLICH verschieden -- gleicher Code, Kommentare deutsch bzw. englisch.
+# ---------------------------------------------------------------------------
+dupfail=0
+dupcount=0
+check_dup() {
+	dupcount=$((dupcount + 1))
+	if [ ! -f "$1" ] || [ ! -f "$2" ]; then
+		echo "FAIL  Doppeldateien: $1 oder $2 fehlt"; dupfail=1; return
+	fi
+	cmp -s "$1" "$2" || { echo "FAIL  Doppeldateien abweichend: $1 != $2"; dupfail=1; }
+}
+# Die Sprachdefinition gehoert dem Frontend; diese Suite testet sie mit.
+check_dup ../Q9-FRONTEND-C/q9-qcir/data/qcc.ebnf   data/qcc.ebnf
+check_dup ../Q9-FRONTEND-C/q9-qcir/data/qcc.lextab data/qcc.lextab
+# Der QCC-Port von parsec.cpp/codegen.cpp liegt zweimal im Projekt.
+check_dup src-qcc/ebnf.tc    SourceQCC/ebnf.tc
+check_dup src-qcc/codegen.tc SourceQCC/codegen.tc
+# VM und Merge-Werkzeug werden von drei Stellen benutzt.
+check_dup tools/qccvm.py      ../tools/qccvm.py
+check_dup tools/qccvm.py      ../Q9-RUN/tools/qccvm.py
+check_dup tools/qcc_merge.py  ../tools/qcc_merge.py
+check_dup tools/qcc_merge.py  ../Q9-RUN/tools/qcc_merge.py
+check_dup tools/qcc68sim.py   ../tools/qcc68sim.py
+check_dup tools/vasmm68k_mot  ../tools/vasmm68k_mot
+if [ $dupfail -eq 0 ]; then
+	echo "ok    Doppeldateien: alle $dupcount Paare inhaltsgleich"
+else
+	fail=1
 fi
 
 [ $fail -eq 0 ] && echo "=== ALLE TESTS OK ===" || echo "=== FEHLER IN DER SUITE ==="

@@ -244,6 +244,10 @@ static int remoteDataMode = 0;
 /* Experimental long-call path; without -trampolines the tested table path
    remains unchanged. */
 static int trampolineMode = 0;
+/* -peephole (2026-09-08): post-process the generated assembly text; see
+   qcc_backend_peephole.c. Independent of -os9/-largedata/-remotedata, it
+   operates purely on the output file. */
+static int peepholeMode = 0;
 static char psectName[NAME_LEN] = "tc_prog";
 /* -unit=<name> groups artificially split IR parts that originated from one
    translation unit.  It deliberately affects only static-symbol mangling:
@@ -367,6 +371,8 @@ static void fatal(const char* msg) {
 	fprintf(stderr, "qcc_backend: %s\n", msg);
 	exit(1);
 }
+#include "qcc_backend_peephole.c"
+
 static int findFunction(const char* name) {
 	int i;
 	for (i = 0; i < funcCount; i++) if (strcmp(funcs[i].name, name) == 0) return i;
@@ -1868,6 +1874,7 @@ static void emitIR(FILE* out) {
 int main(int argc, char* argv[]) {
 	FILE* out;
 	char msg[300];
+	char tmpPath[300];
 	int i;
 	if (argc < 3) {
 		fprintf(stderr, "usage: %s <input.ir> <output.s68> [-os9] [-part] [-runtime] [-largedata] [-trampolines] [-unit=name]\n", argv[0]);
@@ -1889,6 +1896,9 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "              psect. OS-9 nullt den Datenbereich selbst, das Modul wird dadurch\n");
 		fprintf(stderr, "              erheblich kleiner; der Zugriff ist a6-relativ mit 32 Bit und kennt\n");
 		fprintf(stderr, "              damit weder die 32-KB- noch die 64-KB-Grenze. Nur mit -os9.\n");
+		fprintf(stderr, "  -peephole:  Nachlauf ueber die Assemblerausgabe, entfernt ueberfluessige\n");
+		fprintf(stderr, "              Speicherumwege (push, sofort gefolgt vom eigenen pop). Wirkt\n");
+		fprintf(stderr, "              unabhaengig von -os9/-largedata/-remotedata.\n");
 		fprintf(stderr, "  -trampolines: optionaler relokierbarer Fernaufrufpfad; nur mit -largedata.\n");
 		fprintf(stderr, "  -unit=name: gemeinsamer static-Namensraum fuer kuenstlich gesplittete Teile.\n");
 		fprintf(stderr, "                Zusammen mit r68 -j und l68 -a verwenden; erzeugt eine\n");
@@ -1901,6 +1911,7 @@ int main(int argc, char* argv[]) {
 		else if (strcmp(argv[i], "-runtime") == 0) runtimeMode = 1;
 		else if (strcmp(argv[i], "-largedata") == 0) largeDataMode = 1;
 		else if (strcmp(argv[i], "-remotedata") == 0) remoteDataMode = 1;
+		else if (strcmp(argv[i], "-peephole") == 0) peepholeMode = 1;
 		else if (strcmp(argv[i], "-trampolines") == 0) trampolineMode = 1;
 		else if (strncmp(argv[i], "-unit=", 6) == 0 && argv[i][6] != '\0') {
 			strncpy(staticUnit, argv[i] + 6, NAME_LEN - 1);
@@ -1964,10 +1975,23 @@ int main(int argc, char* argv[]) {
 		psectName[n] = '\0';
 		strcat(psectName, "_p");
 	}
-	out = fopen(argv[2], "w");
-	if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
+	/* -peephole writes to a temporary file FIRST: peepholeRun() may create the
+	   REAL output file only once. On OS-9, mode "w" uses I$Create (qf_open in
+	   qclib), which creates a new file and fails if it already exists, unlike
+	   host fopen(...,"w"). Without the temporary file, peepholeRun() would try
+	   to create argv[2] a second time; on 68030 this produced "cannot rewrite
+	   output file". */
+	if (peepholeMode) {
+		sprintf(tmpPath, "%s.tmp", argv[2]);
+		out = fopen(tmpPath, "w");
+		if (!out) { sprintf(msg, "kann Zwischendatei nicht schreiben: %s", tmpPath); fatal(msg); }
+	} else {
+		out = fopen(argv[2], "w");
+		if (!out) { sprintf(msg, "kann Ausgabe nicht schreiben: %s", argv[2]); fatal(msg); }
+	}
 	emitIR(out);
 	if (ferror(out)) fatal("Schreibfehler in Assembler-Ausgabe");
 	fclose(out);
+	if (peepholeMode) peepholeRun(tmpPath, argv[2]);
 	return 0;
 }
