@@ -2,7 +2,7 @@
 * Abschnittsgroessen. Orakel ist r68 (test/insndiff.sh).
          opt     l
 
-* ---- org und do: der Strukturbeschreiber des SDK ------------------------
+* ---- org und do: der Strukturbeschreiber des Referenz-Toolchain ------------------------
 * Gemessen: do.w und do.l richten auf GERADE aus (nicht auf ihre Breite),
 * do.b nicht; "." ist der org-Zaehler, und "org" bewegt den Ort im
 * Abschnitt nicht.
@@ -73,7 +73,7 @@ nachorg  nop
 * beim ersten Lesen von "SETA set SETB" war SETB noch unbekannt. Wer bis
 * zur Ruhe misst (wie qr68 fuer die Laengen), bekaeme zweimal $0005 --
 * deshalb stellt qr68 vor dem Ausgeben den Stand nach dem ersten Durchlauf
-* wieder her. Genau daran haengen die Descriptor-Quellen des SDK.
+* wieder her. Genau daran haengen die Descriptor-Quellen des Referenz-Toolchain.
          dc.w    SETA
          dc.w    SETB
 SETA     set     SETB

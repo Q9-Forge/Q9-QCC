@@ -26,7 +26,7 @@ diese Lücke.
 | Prüfung | Ergebnis |
 |---|---|
 | `make test` — 64 Regressionsfälle | **64 ok / 0 FAIL** |
-| `make difftest` — 61 MWOS-SDK-Header gegen `cc -E` | **0 echte Abweichungen** (6× nur andere Abstände) |
+| `make difftest` — 61 Referenz-Toolchain-Header gegen `cc -E` | **0 echte Abweichungen** (6× nur andere Abstände) |
 | `Data/qcc_p.c` (282 KB Ausgabe) gegen `cc -E` | gleicher Tokenstrom, nur andere Abstände |
 | QCC übersetzt die qcpp-Ausgabe | 89.763 IR-Zeilen, Schlusswort `OK`, **0 Meldungen** |
 | IR-Vergleich qcpp-Weg gegen xcc-Weg | **byteidentisch** (1.123.656 Byte) |
@@ -65,7 +65,7 @@ Vollständig ISO C89 (ANSI X3.159-1989) Abschnitt 3.8:
 Dazu:
 
 - **`#asm` / `#endasm`** — die Microware-Erweiterung, von Anfang an dabei.
-- **`//`-Zeilenkommentare** — in C89 nicht vorgesehen, aber 22 SDK-Dateien
+- **`//`-Zeilenkommentare** — in C89 nicht vorgesehen, aber 22 Referenz-Toolchain-Dateien
   nutzen sie. Getestet ist dabei auch, was leicht schiefgeht: der Kommentar
   endet an der Zeile und verschluckt keine Direktive der Folgezeile, in einer
   Zeichenkette ist `//` kein Kommentar, und im Makrorumpf gehört er nicht zum
@@ -79,7 +79,7 @@ Dazu:
   und `# <zahl> "datei"` — die Zeilenmarken anderer Präprozessoren, damit sich
   Werkzeuge verketten lassen.
 - **Alle drei Zeilenendeformen**: LF (Host), CR+LF (DOS, so liegen Teile der
-  SDK-Quellen), **CR (OS-9 — so liegt dort jede Textdatei)**. Vereinheitlicht
+  Referenz-Toolchain-Quellen), **CR (OS-9 — so liegt dort jede Textdatei)**. Vereinheitlicht
   wird zentral im Zeichenleser, der restliche Lexer kennt nur LF.
 
 ## Optionen
@@ -120,7 +120,7 @@ Dokumentation ergaben:
    normgerecht.
 
 Zu Punkt 3 gehört eine Folgerung, die beim Bauen wichtig wird: **153
-SDK-Header schalten an `__STDC__` zwischen K&R- und Prototyp-Deklarationen
+Referenz-Toolchain-Header schalten an `__STDC__` zwischen K&R- und Prototyp-Deklarationen
 um.** Ohne `-ansi` bekommt man den K&R-Zweig, den QCC nicht lesen kann — für
 Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
 
@@ -176,7 +176,7 @@ Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
 - **Der Prescan eines Arguments endet an der Argumentgrenze.** Ein
   Makroaufruf, dessen `(` erst hinter dieser Grenze stünde, ist in C89
   undefiniert; qcpp bricht ab statt zu raten.
-- **Trigraphen** (`??=` → `#`) fehlen. Im SDK kommt keiner vor.
+- **Trigraphen** (`??=` → `#`) fehlen. Im Referenz-Toolchain kommt keiner vor.
 - **Tiefe Schachtelung bricht mit Meldung ab, nicht mit Absturz.** Bei
   `F(F(F(…)))` füllt zuerst der Argumentspeicher (das rohe Argument wird auf
   jeder Ebene erneut abgelegt, also quadratisch); für Formen mit winzigen
@@ -190,7 +190,7 @@ Läufe, deren Ausgabe an QCC geht, ist `-ansi` also die richtige Wahl.
 
 ```
 make test        # 64 Fälle, Eingabe und Sollwert stehen direkt untereinander
-make difftest    # Differenztest gegen cc -E über die MWOS-SDK-Header
+make difftest    # Differenztest gegen cc -E über die Referenz-Toolchain-Header
 make check       # beides
 ```
 
@@ -210,7 +210,7 @@ einer Prüfung, die ihn nicht sehen konnte.
 Einzelne Datei prüfen:
 
 ```
-./test/difftest.sh ../Data/qcc_p.c -I/Volumes/SSD1TB/projects/MWOS/SRC/DEFS
+./test/difftest.sh ../Data/qcc_p.c -I/Volumes/SSD1TB/projects/REF/SRC/DEFS
 ```
 
 ## Selbsthost
@@ -377,7 +377,7 @@ herumliegt. Ergebnis: gleich, 1.123.692 Byte.
 
 | Aufgabe von `bootstrap_prepare.py` | Warum sie wegfällt |
 |---|---|
-| expandierten SDK-Header-Vorspann wegschneiden | eigene Header in `include/` |
+| expandierten Referenz-Toolchain-Header-Vorspann wegschneiden | eigene Header in `include/` |
 | `stderr` von `(&_niob[2])` bzw. `__stderrp` auf ein normales Symbol bringen | eigenes `stdio.h` deklariert es |
 | Apples `__builtin___sprintf_chk` zurückbauen | ohne Apple-Header kommt es nicht vor |
 | Leerzeichen um `.` entfernen (xcc setzt sie bei Makroexpansion, 128 Stellen) | qcpp setzt dort keine |

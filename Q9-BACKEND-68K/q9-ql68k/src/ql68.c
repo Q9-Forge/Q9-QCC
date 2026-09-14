@@ -678,7 +678,7 @@ static void irefAdd(int *offs, int *n, int value)
    modulo 256: (a-b+c) mod 256 kommt richtig heraus, gleich an welcher
    Stelle gekappt wird -- und l68 rechnet genauso, ohne etwas zu melden.
    Ein Waechter auf den ZWISCHENwert schlaegt hier falsch an. Der Versuch
-   hat acht zuvor byteidentische SDK-Module zerlegt (sc68990, sc147,
+   hat acht zuvor byteidentische Referenz-Toolchain-Module zerlegt (sc68990, sc147,
    sc162, sc167, sc172, sc177, sc68360, ram): PD_PAR allein ist $1005c,
    erst der Abzug von PD_OPT macht daraus ein kleines Displacement.
    Der Endwert eines Feldes steht erst fest, wenn ALLE Referenzen darauf
@@ -688,7 +688,7 @@ static void irefAdd(int *offs, int *n, int value)
    an (gemessen: aus "bsr sub1" wird "jsr d16(a6)", und in den
    initialisierten Daten steht ein 6 Byte langer Eintrag "jmp $xxxxxxxx",
    dessen Adresse in der Code-Zeigerliste mitgefuehrt wird). Das bleibt
-   bewusst nicht nachgebaut: im ganzen SDK-Korpus kommt der Fall nicht
+   bewusst nicht nachgebaut: im ganzen Referenz-Toolchain-Korpus kommt der Fall nicht
    vor, alle 227 Aufrufe sind ohne Sprungtabelle byteidentisch. */
 static void applyLocalRefs(int k)
 {
@@ -1002,7 +1002,7 @@ static void emit(void)
 	   Routinentabelle, die die ersten 14 Codebytes sind; _mdata = $114
 	   sind die 276 Byte ds; der Name liegt auf $664 = $3c + 1576. */
 	/* Header extension size depends on the LANGUAGE, not the type. This was
-	   measured from linked SDK modules by deriving code start from M$Name and
+	   measured from linked Referenz-Toolchain modules by deriving code start from M$Name and
 	   code size:
 
 	     Language 0  no extension, code at $30, name after code
@@ -1194,8 +1194,8 @@ static void emit(void)
 	if (isDesc || isDrvr) {
 		if (totalInit != 0)
 			fatal("initialisierte Daten gibt es bei diesem Modultyp nicht -- l68 braucht dafuer -i", "");
-		/* Multiple psects are allowed here too; SDK clock modules
-		   des SDK werden aus tickgeneric.r und dem portspezifischen
+		/* Multiple psects are allowed here too; Referenz-Toolchain clock modules
+		   des Referenz-Toolchain werden aus tickgeneric.r und dem portspezifischen
 		   Teil gebunden. Der Code folgt der Reihenfolge der
 		   Kommandozeile, wie bei mod_exec. */
 		for (k = 0; k < rofN; k++) {
@@ -1353,7 +1353,7 @@ static void usage(void)
 
 static int argStarts(const char *a, const char *p);
 
-/* Options that do NOT change the module. Accept and ignore them so SDK
+/* Options that do NOT change the module. Accept and ignore them so Referenz-Toolchain
    makefile invocations continue to work unchanged. Each was compared with
    a run without the option (test/optstest.sh):
      -m[=]  Modulkarte, wahlweise in eine Datei
@@ -1746,7 +1746,7 @@ int main(int argc, char **argv)
 
 	/* Find the root psect: it is the only one with a non-zero type/language
 	   Wert ungleich null. Er steht NICHT zwangslaeufig vorn -- die
-	   SDK-Makefiles schreiben etwa
+	   Referenz-Toolchain-Makefiles schreiben etwa
 	     l68 ... ..\..\68000\LIB\scfstat.l RELS\sc172.r -O=...
 	   und reichen damit erst eine reine Symboldatei ein. */
 	rofRoot = -1;

@@ -1,6 +1,6 @@
 #ifndef QRUN_OS9_H
 #define QRUN_OS9_H
-/* QCC/OS-9 ABI declarations. Do not include host SDK headers here. */
+/* QCC/OS-9 ABI declarations. Do not include host Referenz-Toolchain headers here. */
 typedef int int32_t;
 typedef unsigned int uint32_t;
 typedef unsigned int size_t;
