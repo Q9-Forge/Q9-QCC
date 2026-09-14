@@ -389,6 +389,15 @@ def run(instructions, labels, global_initials=None):
         if match:
             write_operand(match.group(2), read_operand(match.group(1)))
             continue
+        # -peephole ersetzt ein Push/Pop-Paar durch einen direkten Speicher-
+        # transport und erzeugt dabei Formen wie "move.l #0,-8(a6)" oder
+        # "move.l -4(a6),-8(a6)", die der Simulator vorher nicht kannte
+        # (2026-09-14). read_operand/write_operand beherrschen d(aN) laengst,
+        # es fehlte nur das Befehlsmuster.
+        match = re.match(r"move\.l (.+),(-?\d+\(a[0-9]\))$", ins)
+        if match:
+            write_operand(match.group(2), read_operand(match.group(1)))
+            continue
         match = re.match(r"movea?\.l (.+),a([0-9])$", ins)
         if match and int(match.group(2)) in areg:
             areg[int(match.group(2))] = read_operand(match.group(1))
