@@ -162,11 +162,13 @@ if cc -w -o "$cmtdir/ebnfport" "$cmtdir/ebnf_native.c" "$cmtdir/codegen_native.c
 	if [ ! -f "$cmtdir/qcc.lextab" ] || grep -q "Grammatik fehlerhaft" "$cmtdir/port.out"; then
 		echo "FAIL  parsec Kommentarfilter (QCC-Port): Grammatik mit Blockkommentaren nicht uebersetzt"; cmtfail=1
 	else
-		# Zwei bekannte, zulaessige Unterschiede werden herausgefiltert: der
-		# Erzeugername in Zeile 2 und der [EBNF-ROHQUELLTEXT]-Block, den der Port
-		# noch nicht kennt (offene Portluecke, siehe Commit da8b182).
+		# Einziger zulaessiger Unterschied ist der Erzeugername in Zeile 2.
+		# Bis zum 2026-09-14 musste hier zusaetzlich der
+		# [EBNF-ROHQUELLTEXT]-Block herausgefiltert werden, weil der Port ihn
+		# nicht kannte -- diese Portluecke ist geschlossen, der Vergleich ist
+		# seither vollstaendig.
 		for f in "$cmtdir/cmt.lextab" "$cmtdir/qcc.lextab"; do
-			sed -e '/^\[EBNF-ROHQUELLTEXT\]/,/^\[ENDE\]/d' -e 's/erzeugt von .*/erzeugt von X/' -e '/^$/d' "$f" > "$f.norm"
+			sed -e 's/erzeugt von .*/erzeugt von X/' "$f" > "$f.norm"
 		done
 		if ! cmp -s "$cmtdir/cmt.lextab.norm" "$cmtdir/qcc.lextab.norm"; then
 			echo "FAIL  parsec Kommentarfilter: Host und QCC-Port liefern verschiedene Arbeitsdateien"; cmtfail=1
