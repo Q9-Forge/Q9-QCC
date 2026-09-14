@@ -20,7 +20,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
@@ -34,14 +34,14 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -f "$REPO/build/qclib.l" ]      || die "build/qclib.l fehlt -- vorher make"
 [ -f "$REPO/build/q9_cstart.r" ]  || die "build/q9_cstart.r fehlt -- vorher make"
-[ -x "$QCC/build/qcir" ]         || die "qcir fehlt"
-[ -x "$QCC/build/qir_68k" ]   || die "qir_68k fehlt"
+[ -x "$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" ]         || die "qcir fehlt"
+[ -x "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" ]   || die "qir_68k fehlt"
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
 	die "qcc_p.bootstrap.c fehlt (Q9-QCC/tools/build_xcc_bootstrap.sh)"
 [ -f "$QCC/test/expect/selfhost_68k.exp" ] || die "der gemeinsame Emulatorlauf fehlt"
 [ -f "$IMG_SRC" ]                 || die "Abbild fehlt: $IMG_SRC"
-QR68="${QR68:-$FORGE/Q9-qr68/build/qr68}"
-QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+QR68="${QR68:-$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k}"
+QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QR68" ] || die "qr68 fehlt: $QR68"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 
@@ -56,7 +56,7 @@ MWOS="$MWOS_UNIX"
 OS9="$MWOS_TOOLSHED_OS9"
 
 echo "== 1/6 Host: QCC uebersetzt seinen eigenen Parser =="
-"$QCC/build/qcir" "@$QCC/build/qcc_p.bootstrap.c" \
+"$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" "@$QCC/build/qcc_p.bootstrap.c" \
 	> "$WORK/stage1.ir" 2> "$WORK/stage1.err"
 [ "$(tail -1 "$WORK/stage1.ir")" = OK ] || {
 	head -5 "$WORK/stage1.err"; die "schon am Host nicht uebersetzbar"; }
@@ -66,7 +66,7 @@ echo "  ok ($(wc -l < "$WORK/stage1.ir" | tr -d " ") IR-Zeilen, $(wc -c < "$WORK
 # Zustand, ohne die Indirektionstabelle reicht die PC-relative
 # Adressierung des 68000 nicht.
 echo "== 2/6 die eigene Kette: Backend, qr68, ql68 =="
-"$QCC/build/qir_68k" "$WORK/stage1.ir" "$WORK/stage2.s68" -os9 -largedata -remotedata \
+"$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/stage1.ir" "$WORK/stage2.s68" -os9 -largedata -remotedata \
 	>/dev/null || die "qir_68k"
 "$QR68" "$WORK/stage2.s68" "-o=$WORK/stage2.r" >"$WORK/asm.log" 2>&1 || {
 	head -10 "$WORK/asm.log"; die "qr68"; }

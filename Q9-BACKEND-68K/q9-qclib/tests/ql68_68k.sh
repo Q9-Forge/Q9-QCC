@@ -11,7 +11,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [[ "$MWOS" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
@@ -38,7 +38,7 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 	die "OS-9-Toolchain nicht ladbar"
 MWOS="$MWOS_UNIX"
 OS9="$MWOS_TOOLSHED_OS9"
-QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 (Host) fehlt"
 
 echo "== 1/5 ql68 selbst binden (mit sich selbst, gegen qclib) =="
