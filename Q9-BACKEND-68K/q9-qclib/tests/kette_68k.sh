@@ -131,6 +131,14 @@ done
 # Die Eingaben ROH kopieren: "copy -l" setzt OS-9-Zeilenenden ($0d), und
 # qclibs fgets trennt an $0a (test/lineend68k.sh, src/file.c).
 "$OS9" copy -r tests/hello.c "$WORK/img.hda,/HOME/ROOT/hello.c" >/dev/null 2>&1 || die "copy hello.c"
+# Die Header muessen MIT ins Abbild: qcpp loest <stdio.h> & Co ueber -I auf, und
+# der Vergleich am Ende ist byteweise -- beide Seiten muessen deshalb DIESELBEN
+# Header sehen. Roh kopieren wie hello.c ($0a-Zeilenenden, s. o.).
+"$OS9" makdir "$WORK/img.hda,/HOME/ROOT/include" >/dev/null 2>&1
+for h in "$QCC/Q9-FRONTEND-C/q9-qcpp/include"/*.h; do
+	"$OS9" copy -r "$h" "$WORK/img.hda,/HOME/ROOT/include/$(basename "$h")" >/dev/null 2>&1 ||
+		die "copy $(basename "$h")"
+done
 "$OS9" copy -r "$REPO/build/q9_cstart.r" "$WORK/img.hda,/HOME/ROOT/q9_cstart.r" >/dev/null 2>&1 || die "copy cstart"
 "$OS9" copy -r "$REPO/build/qclib.l" "$WORK/img.hda,/HOME/ROOT/qclib.l" >/dev/null 2>&1 || die "copy qclib"
 echo "  ok"
@@ -173,7 +181,7 @@ proc stufe {nr cmd} {
     }
 }
 
-stufe 1 "/dd/CMDS/q9_qcpp hello.c hello.i"
+stufe 1 "/dd/CMDS/q9_qcpp -I/dd/HOME/ROOT/include hello.c hello.i"
 stufe 2 "/dd/CMDS/q9_qcc @hello.i >hello.ir"
 stufe 3 "/dd/CMDS/q9_qccb hello.ir hello.s68 -os9 -largedata -remotedata"
 stufe 4 "/dd/CMDS/q9_qr68 hello.s68 -o=hello.r"
