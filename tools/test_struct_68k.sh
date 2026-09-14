@@ -22,8 +22,8 @@ KEEP=0
 [ "${1:-}" = "-k" ] && KEEP=1
 
 # id -> erwarteter Wert. Reihenfolge = Reihenfolge im Testprogramm.
-EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35)
-EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 60 55 56 81 82 83 84 85 86 87)
+EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38)
+EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 60 55 56 81 82 83 84 85 86 87 91 92 93)
 EXPECT_WHAT=(
 	"Zuweisung lokal -> lokal"
 	"Initialisierung aus Variable"
@@ -60,11 +60,19 @@ EXPECT_WHAT=(
 	"s.zeigerfeld[j] lesen, lokal"
 	"s.zeigerfeld[j] schreiben, lokal"
 	"v = p[i] -- ganze Struct ueber einen Zeiger"
+	"f(*p) -- ganze Struct per Wert aus *p"
+	"f(gp[i]) -- ganze Struct per Wert, globaler Zeiger"
+	"f(g()[i]) -- ganze Struct per Wert aus Aufrufindex"
 )
 
+# Nach dem Umbau vom 2026-09-12 liegen die Werkzeuge in eigenen
+# Teilprojekten, nicht mehr unter Q9-QCC/build.
+QCIR="${QCIR:-$REPO/Q9-FRONTEND-C/q9-qcir/build/qcir}"
+QIR68K="${QIR68K:-$REPO/Q9-BACKEND-68K/q9-qir68k/build/qir68k}"
+
 die() { echo "FEHLER: $*" >&2; exit 2; }
-[ -x "$REPO/build/qcir" ]    || die "build/qcir fehlt -- erst bauen"
-[ -x "$REPO/build/qir68k" ] || die "build/qir68k fehlt"
+[ -x "$QCIR" ]  || die "$QCIR fehlt -- erst bauen"
+[ -x "$QIR68K" ] || die "$QIR68K fehlt"
 [ -f "$IMG" ]                    || die "Image nicht gefunden: $IMG"
 [ -d "$FLUX" ]                   || die "Q9-Flux nicht gefunden: $FLUX"
 
@@ -82,7 +90,7 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 w() { arch -x86_64 "$WINE_BIN" cmd /c "$1" >/dev/null 2>&1; }
 
 echo "== 1/5 uebersetzen =="
-"$REPO/build/qcir" "@$REPO/tools/test_struct_68k.c" > t.ir 2> t.err
+"$QCIR" "@$REPO/tools/test_struct_68k.c" > t.ir 2> t.err
 rc=$?
 last="$(tail -1 t.ir)"
 if [ $rc -ne 0 ] || [ "$last" != "OK" ]; then
@@ -93,7 +101,7 @@ fi
 echo "  ok ($(wc -l < t.ir | tr -d ' ') IR-Zeilen)"
 
 echo "== 2/5 Backend + Assembler + Linker =="
-"$REPO/build/qir68k" t.ir t.s68k -os9 >/dev/null || die "qir68k"
+"$QIR68K" t.ir t.s68k -os9 >/dev/null || die "qir68k"
 w 'Z: && cd \tmp\qcc-struct68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
 [ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
 w 'Z: && cd \tmp\qcc-struct68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe t.s68k -o=t.r'

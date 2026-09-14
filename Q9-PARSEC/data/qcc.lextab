@@ -2902,6 +2902,16 @@ static TCType tcBadType(void) { return tcMakeType('?', 0); }
    Funktionszeiger sind nur bei GLEICHER Signatur derselbe Typ. */
 static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers && ((a.base != 's' && a.base != 'F') || a.structId == b.structId); }
 static int tcIsPointer(TCType t) { return t.pointers != 0; }
+/* EINE STRUCT IST KEIN REGISTERWERT. Jede Stelle, die aus einer Adresse einen
+   Wert laedt, muss fuer eine GANZE Struct die Adresse stehen lassen --
+   tcTypeTag('s') liefert 'i', ein LOADIND laese sonst vier Byte der Struct als
+   Zahl und gaebe sie als Adresse weiter (auf dem 68k landet damit ein
+   Datenwert in A0). Als eigene Funktion, weil dieselbe Regel an mehreren
+   Emissionsstellen gilt: tcEmitPtrIndexChain und tcEmitPtrFieldIndex
+   (2026-09-07), tc_derefref und der globale Zeigerindex (2026-09-14).
+   Argument als Zeiger, damit der Helfer nicht selbst wieder eine Struct per
+   Wert nimmt. */
+static int tcIsWholeStruct(const TCType* t) { return t->base == 's' && !t->pointers; }
 static int tcIsFnPtr(TCType t) { return t.base == 'F' && t.pointers == 1; }
 static TCType tcMakeFnPtr(int sigId) {
 	TCType t = tcMakeType('F', 1);
@@ -5180,7 +5190,14 @@ void tc_varref(const char* start, const char* end) {
 			char valueTag;
 			valueType.pointers = valueType.pointers - 1;
 			valueTag = tcTypeTag(valueType);
-			printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, valueTag, valueTag);
+			/* Dieselbe Regel wie in tcEmitPtrIndexChain: bei einer ganzen
+			   Struct traegt IPADDN die echte Byte-Groesse und laesst die
+			   Adresse stehen. PTRINDEX/LOADIND wuerden mit vier Byte
+			   schreiten und den Inhalt als Adresse weitergeben. */
+			if (tcIsWholeStruct(&valueType))
+				printf("LOADGP %s\nIPADDN %d\n", name, tcStructByteSize[valueType.structId - 1]);
+			else
+				printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, valueTag, valueTag);
 			if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = valueType; else actionErrors++;
 		} else if (indexed) { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; }
 		else if (globalValueType.base == 's' && !globalValueType.pointers) {
@@ -5259,6 +5276,11 @@ void tc_derefref(const char* start, const char* end) {
 		tcErrAt(start); fprintf(stderr, "cannot dereference void*\n"); actionErrors++;
 		tcTypePush(tcMakeType('i', 0)); return;
 	}
+	/* "*p" auf eine ganze Struct liefert deren ADRESSE, kein LOADIND
+	   (s. tcIsWholeStruct). Genau hier lief der selbstuebersetzte Compiler
+	   am 2026-09-14 in einen PMMU-Fault: die vier Bytes einer TCType
+	   ('i',0,0,0) landeten als Adresse $69000000 in A0. */
+	if (tcIsWholeStruct(&valueType)) { tcTypePush(valueType); return; }
 	printf("LOADIND %c\n", tcTypeTag(valueType)); tcTypePush(valueType);
 }
 END
@@ -5278,6 +5300,14 @@ void tc_postfixindex(const char* start, const char* end) {
 	if (!tcIsPointer(valueType) && valueType.base == 'v') {
 		tcErrAt(start); fprintf(stderr, "cannot index void*\n"); actionErrors++;
 		tcTypePush(tcMakeType('i', 0)); return;
+	}
+	/* Dritte Stelle derselben Regel (s. tcIsWholeStruct): eine ganze Struct
+	   bleibt eine Adresse. PADD erwartet den Pointer ZUERST, IPADDN zuletzt --
+	   deshalb SWAP davor. */
+	if (tcIsWholeStruct(&valueType)) {
+		printf("SWAP\nIPADDN %d\n", tcStructByteSize[valueType.structId - 1]);
+		tcTypePush(valueType);
+		return;
 	}
 	printf("PADD %c\nLOADIND %c\n", tcTypeTag(valueType), tcTypeTag(valueType)); tcTypePush(valueType);
 }
