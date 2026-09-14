@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Faehrt test/memprobe.c auf echtem 68030 und druckt, was die Maschine an
+# Faehrt tests/memprobe.c auf echtem 68030 und druckt, was die Maschine an
 # Speicher hergibt. Kein Soll-Ist-Vergleich -- eine MESSUNG.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
@@ -27,15 +27,15 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 MWOS="$MWOS_UNIX"
 
 echo "== 1/3 Sonde bauen und binden =="
-"$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" test/memprobe.c "$WORK/mp.i" ||
+"$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" tests/memprobe.c "$WORK/mp.i" ||
 	die "qcpp"
-"$QCC/build/qcir" "@$WORK/mp.i" > "$WORK/mp.ir" 2> "$WORK/mp.err"
+"$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" "@$WORK/mp.i" > "$WORK/mp.ir" 2> "$WORK/mp.err"
 [ "$(tail -1 "$WORK/mp.ir")" = OK ] || { head -5 "$WORK/mp.err"; die "qcir"; }
-"$QCC/build/qir_68k" "$WORK/mp.ir" "$WORK/mp.s68" -os9 -largedata >/dev/null ||
+"$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/mp.ir" "$WORK/mp.s68" -os9 -largedata >/dev/null ||
 	die "Backend"
-"$FORGE/Q9-qr68/build/qr68" "$WORK/mp.s68" "-o=$WORK/mp.r" || die "qr68"
+"$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/mp.s68" "-o=$WORK/mp.r" || die "qr68"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$FORGE/Q9-ql68/build/ql68" -a "$WORK/q9_cstart.r" "$WORK/mp.r" \
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/mp.r" \
 	-l="$WORK/qclib.l" -M=64K "-O=$WORK/q9_memprobe" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_memprobe" ] || { head -6 "$WORK/link.log"; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_memprobe" | tr -d " ") Byte)"

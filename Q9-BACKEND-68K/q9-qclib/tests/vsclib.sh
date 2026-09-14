@@ -41,7 +41,7 @@ TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
 
 echo "== 1/4 zwei Module binden =="
 # a) gegen qclib -- mit dem eigenen Binder.
-QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 "$QL68" -a "$WORK/q9_cstart.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
 	-M=8K "-O=$WORK/q9_hq" >"$WORK/link_q.log" 2>&1

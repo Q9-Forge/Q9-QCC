@@ -32,6 +32,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
+mkdir -p build
 
 : "${STACK_KB:=1024}"
 MODULE="${1:-q9_qcc_p_xcc_bootstrap}"
@@ -76,7 +77,7 @@ python3 tools/bootstrap_prepare.py build/qcc_p.xcc.i build/qcc_p.bootstrap.c
 # unbemerkt durchgegangen: sie stand im Kopf des erzeugten Parsers und damit
 # VOR dem Marker, an dem bootstrap_prepare.py den Header-Vorspann abschneidet.
 echo "== Selbsttest: QCC uebersetzt die Bootstrap-Quelle =="
-if ! ./build/qcir "@build/qcc_p.bootstrap.c" > build/qcc_p.bootstrap.ir 2> build/qcc_p.bootstrap.err; then
+if ! ./Q9-FRONTEND-C/q9-qcir/build/qcir "@build/qcc_p.bootstrap.c" > build/qcc_p.bootstrap.ir 2> build/qcc_p.bootstrap.err; then
 	echo "FEHLGESCHLAGEN -- Meldungen:" >&2
 	cat build/qcc_p.bootstrap.err >&2
 	exit 1

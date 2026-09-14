@@ -22,7 +22,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
@@ -51,15 +51,15 @@ echo "== 1/5 das Backend mit der eigenen Kette zum 68k-Modul =="
 
 "$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" "$QCC/Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp" \
 	"$WORK/b.i" || die "qcpp"
-"$QCC/build/qcir" "@$WORK/b.i" > "$WORK/b.ir" 2> "$WORK/b.err"
+"$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" "@$WORK/b.i" > "$WORK/b.ir" 2> "$WORK/b.err"
 [ "$(tail -1 "$WORK/b.ir")" = OK ] || { head -5 "$WORK/b.err"; die "qcir auf das Backend"; }
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/b.ir" "$WORK/qccb.s68" -os9 -largedata -remotedata >/dev/null ||
 	die "Backend uebersetzt sich selbst nicht"
-"$FORGE/q9-qr68k/build/qr68k" "$WORK/qccb.s68" "-o=$WORK/qccb.r" || die "qr68k"
+"$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/qccb.s68" "-o=$WORK/qccb.r" || die "qr68k"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
 # Der MODULNAME kommt aus -O= und muss q9_qccb lauten -- der Emulatorlauf
 # ruft /dd/CMDS/q9_qccb.
-"$FORGE/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/qccb.r" -l="$WORK/qclib.l" \
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/qccb.r" -l="$WORK/qclib.l" \
 	-M=64K "-O=$WORK/q9_qccb" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_qccb" ] || { head -8 "$WORK/link.log"; die "ql68"; }
 echo "  ok ($(wc -l < "$WORK/qccb.s68" | tr -d ' ') Assemblerzeilen -> $(wc -c < "$WORK/qccb.r" | tr -d ' ') Byte ROF -> $(wc -c < "$WORK/q9_qccb" | tr -d ' ') Byte Modul)"

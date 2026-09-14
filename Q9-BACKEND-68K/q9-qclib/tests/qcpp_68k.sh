@@ -12,8 +12,8 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
-: "${QCPP:=$FORGE/Q9-QCC/q9-cpp}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
+: "${QCPP:=$FORGE/Q9-QCC/Q9-FRONTEND-C/q9-qcpp}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [[ "$MWOS" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
@@ -26,9 +26,9 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$REPO/build/qclib.l" ] || die "build/qclib.l fehlt -- vorher 'make'"
 [ -f "$QCPP_ROF" ] || die "qcpp.r fehlt: $QCPP_ROF (mit der eigenen Kette bauen)"
 [ -f "$BASE" ]     || die "Ausgangsabbild fehlt: $BASE"
-[ -f "$QCPP/test/run_68k.exp" ] || die "run_68k.exp fehlt"
+[ -f "$QCPP/tests/run_68k.exp" ] || die "run_68k.exp fehlt"
 [ -x "$QCPP/build/qcpp" ]       || die "qcpp (Host) fehlt"
-[ -f "$QCPP/test/qcpptest.c" ]  || die "Pruefquelle fehlt"
+[ -f "$QCPP/tests/qcpptest.c" ]  || die "Pruefquelle fehlt"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$QCPP_ROF" "$WORK/qcpp.r"
@@ -44,7 +44,7 @@ OS9="$MWOS_TOOLSHED_OS9"
 echo "== 1/5 qcpp gegen qclib binden =="
 # Der MODULNAME kommt aus -O= und muss "qcpp" lauten -- das Testskript
 # ruft /dd/CMDS/qcpp.
-QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 "$QL68" -a "$WORK/q9_cstart.r" "$WORK/qcpp.r" -l="$WORK/qclib.l" \
 	-M=512K "-O=$WORK/qcpp" >"$WORK/link.log" 2>&1
@@ -59,17 +59,17 @@ cp -c "$BASE" "$IMAGE" 2>/dev/null || cp "$BASE" "$IMAGE" || die "Abbild kopiere
 "$OS9" copy -r "$WORK/qcpp" "$IMAGE,/CMDS/qcpp" >/dev/null || die "copy Modul"
 "$OS9" attr -e -w -r -pe -pr "$IMAGE,/CMDS/qcpp" >/dev/null || die "attr"
 # Die Quelle mit "copy -l" (Zeilenenden), das Modul mit "copy -r" (roh).
-"$OS9" copy -l -r "$QCPP/test/qcpptest.c" "$IMAGE,/qcpptest.c" >/dev/null ||
+"$OS9" copy -l -r "$QCPP/tests/qcpptest.c" "$IMAGE,/qcpptest.c" >/dev/null ||
 	die "copy Quelle"
 echo "  ok"
 
 echo "== 3/5 Hostlauf zum Vergleich =="
-"$QCPP/build/qcpp" "$QCPP/test/qcpptest.c" "$WORK/host.i" || die "Hostlauf"
+"$QCPP/build/qcpp" "$QCPP/tests/qcpptest.c" "$WORK/host.i" || die "Hostlauf"
 echo "  $(wc -c < "$WORK/host.i" | tr -d ' ') Byte"
 
 echo "== 4/5 Emulator =="
 Q9FLUX="$Q9FLUX" QCPP_IMAGE="local_images/$IMAGE_NAME" MWOS="$MWOS_UNIX" \
-	expect -f "$QCPP/test/run_68k.exp" > "$WORK/run.log" 2>&1 || {
+	expect -f "$QCPP/tests/run_68k.exp" > "$WORK/run.log" 2>&1 || {
 		echo "  FEHLGESCHLAGEN -- letzte Zeilen:"
 		tail -20 "$WORK/run.log" | sed 's/^/    /'
 		exit 1

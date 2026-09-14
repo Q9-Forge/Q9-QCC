@@ -45,7 +45,7 @@ cp "$REPO/build/hello.r" "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/
 # Gebunden wird mit dem EIGENEN Binder. Seit ql68 die Bibliothekssuche
 # beherrscht, braucht es dafuer kein l68 mehr -- und damit steckt in der
 # Kette vom Praeprozessor bis zum Modul kein fremdes Werkzeug mehr.
-QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 "$QL68" -a "$WORK/q9_cstart.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
 	-M=8K "-O=$WORK/q9_hello" >"$WORK/link.log" 2>&1

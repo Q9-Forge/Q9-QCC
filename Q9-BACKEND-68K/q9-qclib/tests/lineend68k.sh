@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MESSUNG: wie trennt Microwares clib Zeilen? (siehe test/lineend.c)
+# MESSUNG: wie trennt Microwares clib Zeilen? (siehe tests/lineend.c)
 #
 # Kein Soll-Ist-Vergleich -- das Ergebnis ist die VORGABE fuer qclibs fgets.
 # Gebunden wird gegen clib (mit l68 ueber Wine), weil qclib noch kein fgets
@@ -8,7 +8,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
@@ -32,13 +32,13 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TW="Z:$(printf '%s' "$WORK" | sed 's#/#\\#g')"
 
 echo "== 1/3 uebersetzen (eigene Kette) und gegen clib binden =="
-"$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" test/lineend.c "$WORK/le.i" || die "qcpp"
-"$QCC/build/qcir" "@$WORK/le.i" > "$WORK/le.ir" 2> "$WORK/le.err"
+"$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" tests/lineend.c "$WORK/le.i" || die "qcpp"
+"$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" "@$WORK/le.i" > "$WORK/le.ir" 2> "$WORK/le.err"
 [ "$(tail -1 "$WORK/le.ir")" = OK ] || { head -5 "$WORK/le.err"; die "qcir"; }
-"$QCC/build/qir_68k" "$WORK/le.ir" "$WORK/le.s68" -os9 -largedata >/dev/null || die "Backend"
-"$FORGE/Q9-qr68/build/qr68" "$WORK/le.s68" "-o=$WORK/le.r" || die "qr68"
+"$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/le.ir" "$WORK/le.s68" -os9 -largedata >/dev/null || die "Backend"
+"$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/le.s68" "-o=$WORK/le.r" || die "qr68"
 cp "$QCC/runtime/os9/q9_cstart.a" "$QCC/runtime/os9/q9defs.d" "$WORK/"
-( cd "$WORK" && "$FORGE/Q9-qr68/build/qr68" q9_cstart.a -o=q9_cstart.r ) || die "qr68 cstart"
+( cd "$WORK" && "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" q9_cstart.a -o=q9_cstart.r ) || die "qr68 cstart"
 arch -x86_64 "$WINE_BIN" cmd /c \
 	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\le.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_lineend" \
 	> "$WORK/link.log" 2>&1

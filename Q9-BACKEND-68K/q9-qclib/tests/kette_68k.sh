@@ -26,7 +26,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
@@ -40,11 +40,11 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
 	die "build/qcc_p.bootstrap.c fehlt (Q9-QCC/tools/build_xcc_bootstrap.sh)"
 
-QCPP_H="$QCC/q9-cpp/build/qcpp"
-QCCP="$QCC/build/qcir"
-QCCB="$QCC/build/qir_68k"
-QR68="$FORGE/Q9-qr68/build/qr68"
-QL68="$FORGE/Q9-ql68/build/ql68"
+QCPP_H="$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp"
+QCCP="$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir"
+QCCB="$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k"
+QR68="$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k"
+QL68="$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k"
 for t in "$QCPP_H" "$QCCP" "$QCCB" "$QR68" "$QL68"; do
 	[ -x "$t" ] || die "Werkzeug fehlt: $t"
 done
@@ -67,7 +67,7 @@ baue_modul() {
 	local name="$1" quelle="$2" stack="$3"; shift 3
 	local d="$WORK/mod/$name"
 	mkdir -p "$d"
-	"$QCPP_H" "$@" -I"$QCC/q9-cpp/include" "$quelle" "$d/x.i" ||
+	"$QCPP_H" "$@" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" "$quelle" "$d/x.i" ||
 		die "$name: qcpp"
 	"$QCCP" "@$d/x.i" > "$d/x.ir" 2> "$d/x.err"
 	[ "$(tail -1 "$d/x.ir")" = OK ] || { head -6 "$d/x.err"; die "$name: qcc"; }
@@ -98,20 +98,20 @@ echo "== 1/6 die fuenf Werkzeuge als 68k-Module (eigene Kette) =="
 # Der Modulname kommt aus -O= und muss der sein, den der Emulatorlauf ruft.
 # qr68 und ql68 mit -D_Q9OS: das setzt ihre Feldgroessen auf Zielmass, sonst
 # waere jedes genullte Feld ein Kilobyte Modul.
-baue_modul q9_qcpp "$QCC/q9-cpp/src/qcpp.c"          512 -D_Q9OS
+baue_modul q9_qcpp "$QCC/Q9-FRONTEND-C/q9-qcpp/src/qcpp.c"          512 -D_Q9OS
 baue_modul q9_qcc  "$QCC/build/qcc_p.bootstrap.c"   1024
-baue_modul q9_qccb "$QCC/Source/qcc_backend_c.cpp"    64
-baue_modul q9_qr68 "$FORGE/Q9-qr68/src/qr68.c"       512 -D_Q9OS
-baue_modul q9_ql68 "$FORGE/Q9-ql68/src/ql68.c"       512 -D_Q9OS
+baue_modul q9_qccb "$QCC/Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp"    64
+baue_modul q9_qr68 "$QCC/Q9-BACKEND-68K/q9-qr68k/src/qr68.c"       512 -D_Q9OS
+baue_modul q9_ql68 "$QCC/Q9-BACKEND-68K/q9-ql68k/src/ql68.c"       512 -D_Q9OS
 mkdir -p "$CACHE" && cp "$WORK"/mod/*.mod "$CACHE"/
 fi
 
 echo "== 2/6 dieselbe Aufgabe am Host, als Vergleich =="
 # GLEICHE NAMEN wie auf dem Ziel: hello.i, hello.ir, hello.s68, hello.r, q9_hk.
-cp test/hello.c "$WORK/host/hello.c"
+cp tests/hello.c "$WORK/host/hello.c"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/host/"
 ( cd "$WORK/host" &&
-  "$QCPP_H" hello.c hello.i &&
+  "$QCPP_H" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" hello.c hello.i &&
   "$QCCP" "@hello.i" > hello.ir 2> hello.err &&
   [ "$(tail -1 hello.ir)" = OK ] &&
   "$QCCB" hello.ir hello.s68 -os9 -largedata -remotedata >/dev/null &&
@@ -130,7 +130,7 @@ for m in q9_qcpp q9_qcc q9_qccb q9_qr68 q9_ql68; do
 done
 # Die Eingaben ROH kopieren: "copy -l" setzt OS-9-Zeilenenden ($0d), und
 # qclibs fgets trennt an $0a (test/lineend68k.sh, src/file.c).
-"$OS9" copy -r test/hello.c "$WORK/img.hda,/HOME/ROOT/hello.c" >/dev/null 2>&1 || die "copy hello.c"
+"$OS9" copy -r tests/hello.c "$WORK/img.hda,/HOME/ROOT/hello.c" >/dev/null 2>&1 || die "copy hello.c"
 "$OS9" copy -r "$REPO/build/q9_cstart.r" "$WORK/img.hda,/HOME/ROOT/q9_cstart.r" >/dev/null 2>&1 || die "copy cstart"
 "$OS9" copy -r "$REPO/build/qclib.l" "$WORK/img.hda,/HOME/ROOT/qclib.l" >/dev/null 2>&1 || die "copy qclib"
 echo "  ok"

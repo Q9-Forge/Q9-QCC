@@ -13,14 +13,14 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
-: "${QR68:=$FORGE/Q9-qr68}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
+: "${QR68:=$FORGE/Q9-QCC/Q9-BACKEND-68K/q9-qr68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [[ "$MWOS" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.stock-stargate.hda}"
 : "${ROMIMG:=$MWOS/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN}"
-: "${QUELLE:=$QR68/test/insn.a}"
+: "${QUELLE:=$QR68/tests/insn.a}"
 : "${QR68_ROF:=/tmp/clib-probe/qr68.r}"
 
 WORK=/tmp/qclib-qr68
@@ -30,7 +30,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$QR68_ROF" ]  || die "qr68.r fehlt: $QR68_ROF (Q9-qr68/tools/build_os9.sh)"
 [ -f "$BASE" ]      || die "Ausgangsabbild fehlt: $BASE"
 [ -x "$Q9FLUX/build/macos/q9.exe" ] || die "q9.exe fehlt"
-[ -f "$QR68/test/run_68k.exp" ]     || die "run_68k.exp fehlt"
+[ -f "$QR68/tests/run_68k.exp" ]     || die "run_68k.exp fehlt"
 [ -x "$QR68/build/qr68" ]           || die "qr68 (Host) fehlt"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
@@ -52,7 +52,7 @@ echo "== 1/5 qr68 gegen qclib binden =="
 # das nur mit l68: der Bezug auf QCCs Laufzeitanker (tc_extcall_tmp) ist
 # in einem 1,19-MB-Modul zu weit fuer ein Wort, und es ist ein
 # Datenbezug, kein Sprung.
-QL68="${QL68:-$FORGE/Q9-ql68/build/ql68}"
+QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 "$QL68" -a "$WORK/q9_cstart.r" "$WORK/qr68.r" -l="$WORK/qclib.l" \
 	-M=512K "-O=$WORK/q9_qr68" >"$WORK/link.log" 2>&1
@@ -76,7 +76,7 @@ echo "  $(wc -c < "$WORK/host.r" | tr -d ' ') Byte"
 
 echo "== 4/5 Emulator =="
 Q9FLUX="$Q9FLUX" QR68_IMAGE="local_images/$IMAGE_NAME" MWOS="$MWOS_UNIX" \
-	ROMIMG="$ROMIMG" expect -f "$QR68/test/run_68k.exp" > "$WORK/run.log" 2>&1 || {
+	ROMIMG="$ROMIMG" expect -f "$QR68/tests/run_68k.exp" > "$WORK/run.log" 2>&1 || {
 		echo "  FEHLGESCHLAGEN -- letzte Zeilen:"
 		tail -20 "$WORK/run.log" | sed 's/^/    /'
 		exit 1
