@@ -18,13 +18,13 @@
 *   - Das Trap-Muster steht in Q9-QCC/runtime/os9/q9defs.d
 *     ("Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0").
 *   - Die Servicenummern stehen ausgeschrieben in
-*     MWOS/OS9/SRC/DEFS/funcs.h: I_WRITE 0x8a, F_EXIT 0x06,
+*     REF/OS9/SRC/DEFS/funcs.h: I_WRITE 0x8a, F_EXIT 0x06,
 *     F_SRQMEM 0x28, F_SRTMEM 0x29.
 *   - Die Registerbelegung ist aus laufendem Code abgelesen (PrtMsg in
 *     q9_cstart.a): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
 *
 * Die Konstanten stehen bewusst HIER und nicht in einem "use" auf die
-* MWOS-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
+* REF-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
 
 Q9I_Create     equ     $83                      * I$Create, Datei anlegen
 Q9I_Delete     equ     $87                      * I$Delete, Datei loeschen

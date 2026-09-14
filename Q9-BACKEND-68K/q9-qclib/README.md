@@ -12,7 +12,7 @@ Wie bei den Schwesterprojekten: **gemessen, nicht abgeleitet.** Der
 Unterschied zu qr68 und ql68 ist allerdings grundsätzlich und bestimmt
 alles Weitere:
 
-> **Für `clib` gibt es keine Quellen.** Im SDK liegen nur die
+> **Für `clib` gibt es keine Quellen.** Im Referenz-Toolchain liegen nur die
 > Binärbibliotheken (`OS9/{68000,68020,68040,CPU32}/LIB/clib.l`), die
 > Header unter `SRC/DEFS` und das Handbuch. `SRC.zip` enthält
 > ausschließlich `MACROS/` und `ROM/`.
@@ -179,11 +179,11 @@ Servicewort dahinter. Alles daran ist gemessen, nichts geraten:
 | | Quelle |
 |---|---|
 | Trap-Muster | `Q9-QCC/runtime/os9/q9defs.d`: „Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0" |
-| `I$Write` = `$8a`, `F$Exit` = `$06` | `MWOS/OS9/SRC/DEFS/funcs.h` (dort ausgeschrieben; in `funcs.a` sind es `do.b`-Zähler) |
+| `I$Write` = `$8a`, `F$Exit` = `$06` | `REF/OS9/SRC/DEFS/funcs.h` (dort ausgeschrieben; in `funcs.a` sind es `do.b`-Zähler) |
 | `d0` = Pfad, `d1` = Anzahl, `a0` = Puffer | aus laufendem Code abgelesen: `PrtMsg` in `q9_cstart.a` |
 
 Die Servicenummern stehen bewusst **in der Datei** und nicht in einem `use`
-auf die MWOS-Definitionen: qclib soll ohne fremden Baum übersetzbar sein.
+auf die REF-Definitionen: qclib soll ohne fremden Baum übersetzbar sein.
 
 **Damit bindet das Testprogramm gegen genau drei Dinge** — sich selbst, den
 eigenen Startcode und `qclib.l`. `sys.l` wird nicht einmal mehr berührt,
@@ -455,7 +455,7 @@ das:
 QM: 6291464 Byte angefragt, rc=237
 ```
 
-`237` = `$ed` = **`E$NoRAM`** (`MWOS/SRC/DEFS/errno.h`).
+`237` = `$ed` = **`E$NoRAM`** (`REF/SRC/DEFS/errno.h`).
 
 Der Weg zur Ursache lief über **`test/mem68k.sh` und `test/memprobe.c`**,
 eine Messsonde, die in *einem* Emulatorlauf vier Dinge feststellt: den

@@ -13,7 +13,7 @@
  * ---------------------------------------------------------------------------
  * ROF FORMAT, MEASURED AGAINST THE ORIGINAL (2026-09-03)
  *
- * The only format description is MWOS/APPS/src/osk-disasm (rof.c/rof.h, a
+ * The only format description is REF/APPS/src/osk-disasm (rof.c/rof.h, a
  * disassembler). It differs from r68 in one important detail: the counts
  * (globals, externals, references) are read there as 16-bit words with
  * fread_w, while r68 writes them as 32-bit long words. This was measured
@@ -67,7 +67,7 @@
  * First stage: framework, symbols, expressions, psect/vsect/ends, dc/ds/align,
  * equ/set, and rts/nop/jsr -- enough to compare the ROF writer with r68. The
  * instruction table is expanded from the corpus (644 handwritten files,
- * 207,847 lines in MWOS + Q9-OS). Unsupported input fails with a diagnostic.
+ * 207,847 lines in REF + Q9-OS). Unsupported input fails with a diagnostic.
  *
  * Written in the QCC subset used by qcpp (no unions, no "->", no float,
  * literal array sizes, fixed tables instead of malloc), so qr68 can later
@@ -86,7 +86,7 @@ extern void exit(int code);
 /* Target builds use smaller tables because QCC places zero-initialized
    fields in the module's initialized data area. Non-remote vsect data is
    limited to 64 KiB through d16(a6). These sizes cover hand-written OS-9
-   sources; the Q9-OS kernel uses 232 symbols and the largest SDK driver 1428. */
+   sources; the Q9-OS kernel uses 232 symbols and the largest Referenz-Toolchain driver 1428. */
 #ifdef _Q9OS
 #define QR_POOL     65536
 #define QR_POOLHASH  1024
@@ -161,7 +161,7 @@ static int SYMHASH_MAX = QR_SYMHASH;
 static int symHead[QR_SYMHASH];
 static int symNext[QR_SYM];
 /* Pool index of the external name bound to this symbol, or -1. "IRQCtrl equ
-   u_icr" (MWOS/.../sc68070.a:64) binds a name to an external symbol; every
+   u_icr" (REF/.../sc68070.a:64) binds a name to an external symbol; every
    use of IRQCtrl must then create a reference to u_icr. Otherwise the ROF
    silently lacks references and the linker never installs the address. */
 static int symExt[QR_SYM];
@@ -172,7 +172,7 @@ static int symExt[QR_SYM];
    hat (0, denn dort war B noch unbekannt). qr68 misst dagegen so lange, bis
    die LAENGEN stehen, und haette sonst 5. Deshalb wird der Stand nach dem
    ersten Durchlauf festgehalten und vor dem Ausgeben wiederhergestellt.
-   Genau daran haengen die Descriptor-Quellen des SDK: "WrtPrecomp set
+   Genau daran haengen die Descriptor-Quellen des Referenz-Toolchain: "WrtPrecomp set
    Cylnders" steht dort VOR der Makroausdehnung, die Cylnders setzt. */
 static int symIsSet[QR_SYM];
 static int symSnapVal[QR_SYM];
@@ -270,7 +270,7 @@ static int symMoved;           /* 1 = a value changed during this pass. */
 
 /* The org counter is NOT the location within a section: "org" sets it,
    "do.b/.w/.l" legt darauf Namen ab, "." liest ihn. So beschreiben die
-   Definitionsdateien des SDK ihre Strukturen (1593 "do" in 127 Dateien).
+   Definitionsdateien des Referenz-Toolchain ihre Strukturen (1593 "do" in 127 Dateien).
    An r68 gemessen: "org 4 / A do.b 1 / B do.w 1 / C do.l 2" ergibt
    A=4, B=6, C=8 -- do.w und do.l richten vorher auf GERADE aus (nicht auf
    ihre eigene Breite), do.b nicht. Und "org" bewegt den Ort im Abschnitt
@@ -1041,7 +1041,7 @@ static int exprTop(void)
 		}
 		if (exP[0] == '!' || exP[0] == '|') {
 			/* In Microware syntax "!" is bitwise OR; "|" also works. Both
-			   forms are accepted because SDK sources use each spelling. */
+			   forms are accepted because Referenz-Toolchain sources use each spelling. */
 			exNeedAbsSince(mark, "ODER-Verknuepfung");
 			exP = exP + 1;
 			mark = termN[2];
@@ -1362,7 +1362,7 @@ static int splitLine(void)
 	/* The mnemonic ends at whitespace, or directly before an operand when
 	   der mit einem Zeichen anfaengt, das in keinem Mnemonic vorkommt.
 	   Gemessen, welche das sind:
-	     "ifeq(CPUType-SYS360)"  ja   (so steht es im SDK)
+	     "ifeq(CPUType-SYS360)"  ja   (so steht es im Referenz-Toolchain)
 	     "move.l(a0),d0"         ja   -> $2010
 	     "andi.l#^$ff,d7"        ja   (ROM_CBOOT/sysinit.a:726, MVME172)
 	     "moveq#7,d3"            ja
@@ -2346,7 +2346,7 @@ static void emitEa(int k, int size)
                                               Nachbarn nicht),
      use <datei.a>                         -> die mit -u= angegebenen
                                               Verzeichnisse.
-   r68 nimmt bei <> zusaetzlich ein festes <MWOS>/OS9/SRC/DEFS. Das haengt an
+   r68 nimmt bei <> zusaetzlich ein festes <REF>/OS9/SRC/DEFS. Das haengt an
    einer Umgebungsvariablen, die qr68 nicht liest -- dieses Verzeichnis muss
    it must therefore be supplied with -u=. */
 static int USEDIR_MAX = 16;
@@ -2408,7 +2408,7 @@ static void doUse(void)
 	quoted = 0;
 	from = 0;
 	/* Remove the closing character only when it is present:
-	   im SDK steht "use <memc040.d)" (Tippfehler in systype.d), und r68
+	   im Referenz-Toolchain steht "use <memc040.d)" (Tippfehler in systype.d), und r68
 	   uebersetzt die Datei damit anstandslos. */
 	if (lnArg[0] == '<') {
 		angled = 1;
@@ -2431,7 +2431,7 @@ static void doUse(void)
 		   findet den Nachbarn auch dann, wenn das Arbeitsverzeichnis
 		   woanders liegt, waehrend das nackte "use nachbar.a" es
 		   nicht tut. Genau darauf bauen die Descriptor-Quellen des
-		   SDK ("use \"scfdesc.a\"" in SRC/IO/SCF/DESC/p1.a).
+		   Referenz-Toolchain ("use \"scfdesc.a\"" in SRC/IO/SCF/DESC/p1.a).
 		   Findet sich dort nichts, wird das Arbeitsverzeichnis
 		   versucht -- r68 nennt in seiner Fehlermeldung ".\name". */
 		int cut;
@@ -2484,14 +2484,14 @@ static void doUse(void)
 /* Measured against r68 (option -x shows expansion in the listing):
      NAME macro / ... / endm     -- der Name steht im LABELfeld,
      \1 .. \9   die Argumente, TEXTUELL ersetzt, auch innerhalb von
-                Anfuehrungszeichen ("dc.b \"\\5\",0" im SDK),
+                Anfuehrungszeichen ("dc.b \"\\5\",0" im Referenz-Toolchain),
      \#         die Zahl der Argumente, ZWEISTELLIG dezimal ("03"),
      \@         eine laufende Nummer, FUENFSTELLIG ("lok00001"), die mit der
                 ersten Ausdehnung bei 1 beginnt,
      \0         liefert nichts (r68 kennt keinen Groessenbuchstaben an einem
                 Makroaufruf -- "SIZ.b" ist dort "bad mnemonic").
    Ein fehlendes Argument wird zu NICHTS -- es darf nicht abbrechen, denn
-   die SDK-Makros pruefen "\#" und benutzen hoehere Argumente nur in einem
+   die Referenz-Toolchain-Makros pruefen "\#" und benutzen hoehere Argumente nur in einem
    Zweig, den die bedingte Assemblierung dann ohnehin ueberspringt.
    Makronamen sind schreibungsabhaengig ("mactest" findet "MacTest" nicht),
 	   therefore lnOpRaw is used instead of lnOp. */
@@ -2562,7 +2562,7 @@ static void macSubstitute(int from, int to, char *argp[], int argN,
 		i--;
 		/* "\Ln" -- the LENGTH of argument n, as two decimal digits
 		   (gemessen: "a0" ergibt "02", ein leeres Argument "00"). Die
-		   SDK-Makros pruefen damit die Art eines Arguments:
+		   Referenz-Toolchain-Makros pruefen damit die Art eines Arguments:
 		   "ifne \L1-2 / fail ... must be a An register". Von hinten
 		   gelesen stehen hier drei Zeichen. */
 		if (i > from + 1 && macText[i - 2] == '\\' &&
@@ -2812,7 +2812,7 @@ static void doCond(const char *base)
 	if (baseIs(base, "endc")) {
 		if (condN <= 0)
 			/* r68 silently ignores an extra "endc" --
-			   in MWOS/OS9/SRC/IO/SCF/DRVR/sc68990.a steht genau
+			   in REF/OS9/SRC/IO/SCF/DRVR/sc68990.a steht genau
 			   eines (acht "if", neun "endc"), und die Datei
 			   uebersetzt dort. */
 			return;
@@ -3027,7 +3027,7 @@ static int specialReg(const char *s)
 	if (n == 3 && a == 'c' && b == 'c' && c == 'r')
 		return 1;
 	/* r68 also accepts "cc" for the condition-code register (but not
-	   "c" oder "ccrx"). In MWOS/OS9/SRC/IO/RBF/DRVR/rbvme10.a:1074 steht
+	   "c" oder "ccrx"). In REF/OS9/SRC/IO/RBF/DRVR/rbvme10.a:1074 steht
 	   genau das -- offenbar ein Tippfehler, den r68 klaglos uebersetzt. */
 	if (n == 2 && a == 'c' && b == 'c')
 		return 1;
@@ -3042,7 +3042,7 @@ static int specialReg(const char *s)
    OPERAND auftreten: Kontrollregister (movec), MMU-Register (pmove),
    Cachekennungen. r68 nimmt die in jeder Schreibung -- gemessen:
    "movec d0,DFC" ergibt $4E7B $0001, "pmove (A0),TC" ergibt $f010 $4000,
-   "cinva BC" ergibt $f4d8, alles wie in Kleinschreibung. Im SDK steht
+   "cinva BC" ergibt $f4d8, alles wie in Kleinschreibung. Im Referenz-Toolchain steht
    beides; "movec d0,DFC" in ROM_CBOOT/sysinit.a zweier Ports.
    Registernamen (regNum) und ccr/sr/usp (specialReg) waren das schon,
    diese drei Tabellen nicht -- daher die Funktion.
@@ -3791,7 +3791,7 @@ static void doInstruction(void)
 		needNoSize(size);
 		needOps(1);
 		/* The call code may be an external name; names
-		   stehen im SDK in einer Bibliothek, nicht in einer
+		   stehen im Referenz-Toolchain in einer Bibliothek, nicht in einer
 		   Definitionsdatei. r68 legt dann eine Wortreferenz an
 		   ($0030, measured with "os9 F$IRQ"). */
 		subStr(opTxt0, 0, strLen(opTxt0));
@@ -5477,7 +5477,7 @@ static void runPass(void)
 				   das Symbol ihn: "IRQCtrl equ u_icr" (so in
 				   sc68070.a) muss bei jeder Benutzung wieder
 				   eine Referenz auf u_icr erzeugen.
-				   Bei mehreren -- im SDK kommt
+				   Bei mehreren -- im Referenz-Toolchain kommt
 				   "ILVLR4_default equ ILVLR4a+ILVLR4b+..."
 				   mit lauter unbekannten Namen vor -- bleibt
 				   nur der Zahlwert; r68 legt dafuer ebenfalls
@@ -5934,7 +5934,7 @@ static void usage(void)
 	printf("Aufruf: qr68 [Optionen] <eingabe.a> <ausgabe.r>\n");
 	printf("    oder qr68 [Optionen] -o=<ausgabe.r> <eingabe.a>\n");
 	printf("  -o=<datei>, -O=<datei> Ausgabedatei (wie r68 -- so rufen die\n");
-	printf("                        SDK-Makefiles den Assembler auf)\n");
+	printf("                        Referenz-Toolchain-Makefiles den Assembler auf)\n");
 	printf("  -v                    gelesene/geschriebene Byteanzahl melden\n");
 	printf("  -u=<verz>             Suchverzeichnis fuer \"use <datei>\"\n");
 	printf("  -a<sym>[=<wert>]      Symbol setzen (ohne Wert: 1)\n");
@@ -6056,14 +6056,14 @@ int main(int argc, char **argv)
 		    argEq(a, "-s") || argEq(a, "-n") || argEq(a, "-x") ||
 		    argEq(a, "-c") || argEq(a, "-f") || argEq(a, "-r")) {
 			/* r68 listing and diagnostic switches: accepted
-			   und uebergangen, damit die Aufrufe der SDK-Makefiles
+			   und uebergangen, damit die Aufrufe der Referenz-Toolchain-Makefiles
 			   run unchanged. */
 			continue;
 		}
 		if (a[0] == '-' && a[1] == 'q') {
 			/* r68 suppresses warnings with this; qr68 already
 			   nur Fehler aus. Angenommen, damit die Aufrufe der
-			   SDK-Makefiles unveraendert laufen -- und zwar auch
+			   Referenz-Toolchain-Makefiles unveraendert laufen -- und zwar auch
 			   MIT angehaengtem Text: das Makefile von
 			   CPU32/PORTS/QUADS/ROM_CBOOT schreibt "-qQUADS360"
 			   (offenbar ein vertipptes "-a"), und r68 verwirft den
@@ -6109,7 +6109,7 @@ int main(int argc, char **argv)
 		if (k == 0)
 			k = argStarts(a, "-O=");
 		if (k > 0 && a[k] != 0) {
-			/* This is how the SDK makefiles name the output -- and
+			/* This is how the Referenz-Toolchain makefiles name the output -- and
 			   ausnahmslos: von den 300 Makefiles, die r68 aufrufen,
 			   benutzt keines die Stellung. Beide Schreibungen kommen
 			   vor ("-o=$(RDIR)/$@" und "-O=$@"), und die Stellung

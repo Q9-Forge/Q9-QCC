@@ -5,7 +5,7 @@
 * Eigene Q9-Kopie der bisher verwendeten Microware-Definitionen.
 *
 * Originalquelle : Q9-Forge/Q9-Tools/System/echo/asm/q9defs.d
-*                 sowie MWOS/OS9/SRC/DEFS/oskdefs.d, module.a, funcs.a
+*                 sowie REF/OS9/SRC/DEFS/oskdefs.d, module.a, funcs.a
 * Pflegehinweis  : Aendert sich die Originaldatei, muss diese Q9-Kopie
 *                  geprueft und gegebenenfalls ebenfalls angepasst werden.
 * Stand           : 2026-08-13
@@ -65,7 +65,7 @@ GhostBit       equ     Q9GhostBit
 SupStBit       equ     Q9SupStBit
 
 * Modulheader-Offsets --------------------------------------------------------
-* Werte aus MWOS/OS9/SRC/DEFS/module.a, 68000-Format, ab Offset 0.
+* Werte aus REF/OS9/SRC/DEFS/module.a, 68000-Format, ab Offset 0.
 
 Q9_M_ID        equ     0                       * Modulkennung, Wort
 Q9_M_SysRev    equ     2                       * Systemrevision, Wort

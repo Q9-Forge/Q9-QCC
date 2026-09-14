@@ -15,11 +15,11 @@ Modulformat und den Linkeralgorithmus.
 
 | Quelle | Inhalt |
 |---|---|
-| `MWOS/DOC/PDF/ultrac_use.pdf` | **Die Hauptquelle.** Kap. 6 „Assembler and Object Code Linker Overview" mit dem **ROF-Format** (S. 236–260), Kap. 9 „Object Code Linker" (S. 341–370) mit Algorithmus, **Bibliotheksformat** und Modulkopf-Überschreibungen, Kap. 10 die Werkzeuge |
-| `MWOS/DOC/PDF/68k_tech.pdf` | **Modulformat**: „Module Header Definitions", CRC, Kopfparität |
-| `MWOS/DOC/PDF/utils.pdf` | Werkzeugreferenz; zu `l68` nur der Debug-Bezug (`-g`, STB-Modul) |
-| `MWOS/OS9/SRC/DEFS/module.h`, `module.a` | Modulkopf als Quelltext: `MODSYNC 0x4afc`, `CRCCON 0x800fe3` |
-| `MWOS/DOC/{Books,Microware,RadiSys}` | weitere Handbücher, nicht durchgesehen |
+| `REF/DOC/PDF/ultrac_use.pdf` | **Die Hauptquelle.** Kap. 6 „Assembler and Object Code Linker Overview" mit dem **ROF-Format** (S. 236–260), Kap. 9 „Object Code Linker" (S. 341–370) mit Algorithmus, **Bibliotheksformat** und Modulkopf-Überschreibungen, Kap. 10 die Werkzeuge |
+| `REF/DOC/PDF/68k_tech.pdf` | **Modulformat**: „Module Header Definitions", CRC, Kopfparität |
+| `REF/DOC/PDF/utils.pdf` | Werkzeugreferenz; zu `l68` nur der Debug-Bezug (`-g`, STB-Modul) |
+| `REF/OS9/SRC/DEFS/module.h`, `module.a` | Modulkopf als Quelltext: `MODSYNC 0x4afc`, `CRCCON 0x800fe3` |
+| `REF/DOC/{Books,Microware,RadiSys}` | weitere Handbücher, nicht durchgesehen |
 
 Text herausziehen mit `/opt/homebrew/bin/pdftotext -layout` (liegt nicht im
 nicht-interaktiven PATH).
@@ -56,7 +56,7 @@ benennt statt Bytes zu zeigen. Und der fehlende siebte psect-Parameter
 erscheint dort als `Excpt entry: ffffffff`, also genau das gemessene
 `utrap = -1`.
 
-**Damit ist die alte Unstimmigkeit erklärt.** `MWOS/APPS/src/osk-disasm/rof.c`
+**Damit ist die alte Unstimmigkeit erklärt.** `REF/APPS/src/osk-disasm/rof.c`
 liest die Zähler mit `fread_w`, also 16-bittig — dieser Leser implementiert
 **Edition 9.0**, nicht 9.1. Es war kein Fehler in rof.c, sondern eine
 andere Formatversion. (Gemessen hatten wir das ohnehin richtig; jetzt ist
@@ -222,7 +222,7 @@ Bedeutung von `etext` auf den Anfang der initialisierten Daten, und
 ## Der Prüfstand steht bereits
 
 `Q9-qr68k/tests/sdkdiff.sh` holt die `r68`-Kommandozeilen per
-`MWMAKEOPTS=-u os9make -nn -u` aus den SDK-Makefiles. **Derselbe
+`MWMAKEOPTS=-u os9make -nn -u` aus den Referenz-Toolchain-Makefiles. **Derselbe
 Trockenlauf druckt die `l68`-Aufrufe mit:**
 
 ```

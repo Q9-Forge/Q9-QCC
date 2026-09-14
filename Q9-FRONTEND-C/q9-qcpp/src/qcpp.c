@@ -398,7 +398,7 @@ static void warn(const char *msg, const char *detail)
 
 /* ================================================================ Files === */
 /* Directory part of a path without a trailing separator, or "" when absent.
-   Supports both "/" (OS-9/POSIX) and "\" (SDK paths under Wine). */
+   Supports both "/" (OS-9/POSIX) and "\" (Referenz-Toolchain paths under Wine). */
 /*
  * Function: dirOfPath
  *
@@ -520,7 +520,7 @@ static int onceSeen(const char *path)
  * All three newline forms are also normalized to LF so the rest of the lexer
  * only has to handle 10:
  *   LF       Unix / host
- *   CR+LF    DOS -- used by parts of the SDK sources
+ *   CR+LF    DOS -- used by parts of the Referenz-Toolchain sources
  *   CR       OS-9 -- used by every target text file
  * The CR-only case was found in the emulator on 2026-09-02: qcpp read the
  * complete input (590 bytes) but produced no output. Without LF the whole
@@ -682,7 +682,7 @@ static void lexNext(void)
 				continue;
 			}
 			if (c2 == '/') {
-				/* Line comments are not part of C89, but 22 SDK files use them;
+				/* Line comments are not part of C89, but 22 Referenz-Toolchain files use them;
 				   accept them as a documented extension. */
 				rdTake();
 				while (1) {
@@ -2909,7 +2909,7 @@ static void doPragma(void)
 	collectLine();
 
 	/* Honor "#pragma once" and do not pass it through, matching cc -E.
-	   Without this, a protected header such as MWOS SDK SRC/DEFS/stdcomp.h
+	   Without this, a protected header such as Referenz-Toolchain SRC/DEFS/stdcomp.h
 	   would be emitted twice when included through two paths. */
 	if (lineN == 1 && agKind[lineAt] == TK_ID && poolEq(agText[lineAt], "once")) {
 		flOnce[lxFile] = 1;
@@ -3397,7 +3397,7 @@ static void usage(void)
 	printf("  -D<name>[=<wert>]  Makro vorbelegen\n");
 	printf("  -U<name>           Makro loeschen\n");
 	printf("  -I<verzeichnis>    Suchpfad fuer #include\n");
-	printf("  -ansi              __STDC__ auf 1 setzen (SDK-Header liefern\n");
+	printf("  -ansi              __STDC__ auf 1 setzen (Referenz-Toolchain-Header liefern\n");
 	printf("                     dann Prototypen statt K&R-Deklarationen)\n");
 	printf("  -nopredef          _OSK/_UCC/_Q9/_Q9OS NICHT vorbelegen\n");
 	printf("  -lines             #line-Marken ausgeben\n");

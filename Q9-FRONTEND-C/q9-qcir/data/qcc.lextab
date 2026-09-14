@@ -685,7 +685,7 @@ fieldName   = ident .
 
 /* NACHTRAG 2026-09-09 -- derselbe Mehrfachdeklaratoren-Fix wie bei
    varDecl/structField/plainGlobalDecl (s. oben): "typedef struct modhcom
-   mh_com, *Mh_com;" (Microwares echter SDK-Header module.h) scheiterte
+   mh_com, *Mh_com;" (Microwares echter Referenz-Toolchain-Header module.h) scheiterte
    still, weil typedefTargetName nur EINEN Namen erlaubte. pointerDecl
    wandert dafuer aus typedefType HERAUS in die neue typedefDeclarator --
    pro Deklarator sein EIGENER Zeigergrad, wie ueberall sonst. */
@@ -1232,7 +1232,7 @@ funcName  = ident .
 /* "long" ist auf dem 68k-Ziel wortgleich mit "int" (beide 32 Bit) und wird
    in tc_type auch so abgebildet -- eigener Typ waere ohne 64-Bit-Arithmetik
    bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt.
-   NACHTRAG 2026-09-09 -- "short" ECHTER 16-Bit-Basistyp (Q9-Tools/MWOS-
+   NACHTRAG 2026-09-09 -- "short" ECHTER 16-Bit-Basistyp (Q9-Tools/REF-
    Header brauchen ihn: module.h definiert u_int16 selbst als "unsigned
    short" und hat etliche blanke "short"-Structfelder). Anders als long/int
    NICHT auf einen bestehenden Typ abgebildet -- der 68k-Codegen legt short

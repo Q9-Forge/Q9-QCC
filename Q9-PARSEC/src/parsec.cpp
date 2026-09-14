@@ -44,7 +44,7 @@
 //         │      │ the START OF A LINE (previously a whole rule containing "#" disappeared)│
 // 26-07-19│ 2.30 │ [CODEGEN] block preserved raw: M68K OS9 additionally produces           │ CF
 //         │      │ <base>_os9.a in Microware r68 format (nam/psect/ends), verified with    │
-//         │      │ real r68 through Wine/MWOS in the suite                               │
+//         │      │ real r68 through Wine/REF in the suite                               │
 // 26-07-19│ 2.11 │ Workfile now also preserves [USER-CODE] raw for semantic actions;       │ CF
 //         │      │ corrected invalid control-character validation                       │
 //─────────┴──────┴─────────────────────────────────────────────────────────────────────────┴──────

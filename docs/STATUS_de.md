@@ -76,7 +76,7 @@ Parserausgabe. Siehe "Selfhosting-Kreis geschlossen" weiter unten.
 ## Bootstrap-Vorbereitung (2026-08-11/12)
 
 Ziel: ein Compiler, der **im Emulator** läuft. Präprozessor, Assembler und
-Linker dürfen vom OS-9-System oder aus dem SDK kommen, was den Umfang
+Linker dürfen vom OS-9-System oder aus dem Referenz-Toolchain kommen, was den Umfang
 erheblich verkleinert.
 
 **Der Blocker war der Speicher, nicht die Sprache.** Beide Bootstrap-Ziele
@@ -433,7 +433,7 @@ Alle derzeitigen Regressionstests sind erfolgreich.
 - 68000-Backend: optionaler `-os9`-Ausgabemodus fuer den ECHTEN Microware-
   Assembler `r68` (`nam`/`psect`/`ends`-Rahmung, `*`-Vollkommentare,
   `align 4`/`dc.l` statt `even`/`ds.l` -- Microwares r68 kennt letztere nicht,
-  empirisch via Wine/MWOS ermittelt); Default-Modus (vasm) bleibt
+  empirisch via Wine/REF ermittelt); Default-Modus (vasm) bleibt
   unverändert/byte-identisch, siehe docs/FORTSCHRITT.md
 - **Echtes Linken gegen `clib.l` (Microware-Linker `l68`) UND echte Ausführung
   auf dem echten Q9-Emulator: erledigt (2026-07-24).** `putint`/`putuint`/

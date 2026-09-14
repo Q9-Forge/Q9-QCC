@@ -73,7 +73,7 @@ produces parser output that is BIT-IDENTICAL to the reference built with
 ## Bootstrap preparation (2026-08-11/12)
 
 Goal: a compiler that runs **inside the emulator**. Preprocessor, assembler
-and linker may come from the OS-9 system or the SDK, which cuts the scope
+and linker may come from the OS-9 system or the Referenz-Toolchain, which cuts the scope
 considerably.
 
 **Memory was the blocker, not the language.** Both bootstrap targets were
@@ -451,7 +451,7 @@ All current regression tests pass.
 - 68000 backend: optional `-os9` output mode for the REAL Microware
   assembler `r68` (`nam`/`psect`/`ends` framing, `*` full-line comments,
   `align 4`/`dc.l` instead of `even`/`ds.l` -- Microware's r68 doesn't
-  know the latter, determined empirically via Wine/MWOS); default mode
+  know the latter, determined empirically via Wine/REF); default mode
   (vasm) remains unchanged/byte-identical, see docs/FORTSCHRITT.md
 - **Real linking against `clib.l` (Microware linker `l68`) AND real
   execution on the real Q9 emulator: done (2026-07-24).** `putint`/

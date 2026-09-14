@@ -123,7 +123,7 @@ lesen -- beide heute grundlegend erweitert/umgesetzt. ./runtests.sh: ALLE TESTS 
    - Zwischencode fuer Aktionen: Stack-Maschine (PL/0-Stil) vs. direkter AST-Register-
      Code abgewogen, ENTSCHEIDUNG VERTAGT zugunsten der kleineren ersten Stufe oben;
      AST-Register-Code gilt als vermutlich effizienterer Favorit fuers naechste Mal.
-   - Laufzeit-ABI: OS-9/MWOS bevorzugt (nicht freistehender 68000-Code) -- wirkt sich
+   - Laufzeit-ABI: OS-9/REF bevorzugt (nicht freistehender 68000-Code) -- wirkt sich
      erst aus, sobald ROUTINE M68K echte Traps/I/O braucht.
    - Templates fuer wiederkehrende Muster (Operator-Praezedenz-Schleifen, Kontrollfluss,
      Variablen/Typen ueber Symboltabelle) als sinnvoll erkannt, aber BEWUSST vertagt:
@@ -647,7 +647,7 @@ Status: ERSTE AUSBAUSTUFE FERTIG und komplett per Suite abgesichert (./runtests.
   Label-Doppelpunkte und ';'-Endkommentare akzeptiert r68 unveraendert, empirisch
   verifiziert); "M68K PSECT = name" setzt den psect-Namen (Default <basisname>_p).
   runtests.sh Abschnitt 11 assembliert Data/oberon0_os9.a mit dem ECHTEN r68 via
-  Wine/MWOS (nur die bekannten harmlosen short-branch-Warnungen). Damit sind alle
+  Wine/REF (nur die bekannten harmlosen short-branch-Warnungen). Damit sind alle
   drei Assembler-Pfade abgedeckt: vasm (Syntax), s68sim (Semantik), r68 (OS-9).
 - Nachtrag 4: COMMENT BLOCK NESTED = "(*" "*)" (geschachtelte Blockkommentare,
   Oberon/Modula-2-Semantik) in beiden Backends; 68k fuehrt die Tiefe in d2 (d2 wird

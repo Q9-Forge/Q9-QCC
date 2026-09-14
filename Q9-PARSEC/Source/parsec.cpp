@@ -46,7 +46,7 @@
 //         │      │ z.B. die ganze Regelzeile expression = ... ("#") ... mitsamt Regel)     │
 // 26-07-19│ 2.30 │ [CODEGEN]-Block (roh erhalten): M68K OS9 erzeugt zusaetzlich            │ CF
 //         │      │ <basis>_os9.a im Microware-r68-Format (nam/psect/ends) -- mit echtem    │
-//         │      │ r68 via Wine/MWOS in der Suite verifiziert                              │
+//         │      │ r68 via Wine/REF in der Suite verifiziert                              │
 // 26-07-19│ 2.11 │ Arbeitsdatei bewahrt jetzt auch [NUTZER-CODE] roh als Vorbereitung fuer │ CF
 //         │      │ semantische Aktionen; fehlerhafte Steuerzeichenpruefung korrigiert      │
 //─────────┴──────┴─────────────────────────────────────────────────────────────────────────┴──────

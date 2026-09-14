@@ -2,13 +2,13 @@
  *
  * These headers are not replacements for Microware headers; they are the
  * subset needed by the bootstrap, and everything here must be readable by QCC.
- * The SDK headers cannot satisfy that requirement: 153 of them
+ * The Referenz-Toolchain headers cannot satisfy that requirement: 153 of them
  * switch on __STDC__ between prototypes and K&R declarations, carry compiler
  * attributes, and define stderr as a macro for an internal
  * stdio-Objekt (&_niob[2]).
  *
  * This is why tools/bootstrap_prepare.py existed: it removed the
- * expanded SDK preamble and added a custom preamble. With these headers the
+ * expanded Referenz-Toolchain preamble and added a custom preamble. With these headers the
  * same preamble is produced normally through #include.
  */
 #ifndef Q9_STDDEF_H

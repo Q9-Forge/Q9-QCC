@@ -55,7 +55,7 @@ marke2   MARKE   $66
 * KEIN rept hier: r68 V2.9.1 spult fuer jede Wiederholung um eine feste
 * Byteanzahl zurueck und landet dabei MITTEN in einer vorangehenden Zeile --
 * schon "delay35 / rept (35-5-9)/2 / nop / endr" (so steht es in
-* MWOS/OS9/SRC/IO/SCF/DRVR/sc8x30.a) ergibt neun "bad label"-Fehler. Die
+* REF/OS9/SRC/IO/SCF/DRVR/sc8x30.a) ergibt neun "bad label"-Fehler. Die
 * erzeugten Bytes stimmen dabei zwar, aber als Orakel taugt das nicht.
 * qr68 wiederholt genau den Rumpf zwischen rept und endr.
 
@@ -109,7 +109,7 @@ marke2   MARKE   $66
          align   2
 
 * ---- Mnemonic ohne Leerzeichen vor der Klammer --------------------------
-* Im SDK steht " ifeq(CPUType-SYS360)" ohne Trennzeichen; r68 beendet das
+* Im Referenz-Toolchain steht " ifeq(CPUType-SYS360)" ohne Trennzeichen; r68 beendet das
 * Mnemonic auch an der Klammer (auch "move.l(a0),d0" -> $2010).
          ifeq(0)
          dc.b    $11

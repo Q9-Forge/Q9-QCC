@@ -178,11 +178,11 @@ Lok:addq.l  #4,a7                   ;   Position sichern, Body, bei Fail restaur
    (Motorola-Syntax, -m68000). Zusaetzlich fuehrt tools/s68sim.py (Mini-Simulator der
    emittierten Instruktions-Teilmenge, typisierter a7-Stack) den .s68-Text end-to-end
    gegen die TESTS aus. Noch offen: Lauf auf echter Hardware bzw. im Q9-/OS-9-Umfeld
-   (r68 via MWOS/Wine, psect-Rahmen, siehe Punkt 4).
+   (r68 via REF/Wine, psect-Rahmen, siehe Punkt 4).
 4. ~~psect-Rahmen~~ **ERLEDIGT**: [CODEGEN]-Block mit `M68K OS9` (+ optional
    `M68K PSECT = name`) erzeugt zusaetzlich `<basis>_os9.a` im Microware-r68-Format
    (nam/psect/ends, '*'-Kommentarzeilen); runtests.sh assembliert es mit dem echten
-   r68 via Wine/MWOS. Noch offen daran: l68-Link + Lauf als OS-9-Modul.
+   r68 via Wine/REF. Noch offen daran: l68-Link + Lauf als OS-9-Modul.
 5. Spaeter: C-Programm-Skeleton mit main()/Testtreiber aus TESTS-Block, Web-Oberflaeche
    (bewusst zurueckgestellt).
 
@@ -246,7 +246,7 @@ alle in der Nacht-Session vom 2026-07-20 getroffen:
    zunaechst zurueckgestellt zugunsten eines kleineren ersten Schritts (9.2/9.3).
    Der AST-zu-Register-Ansatz gilt als vermutlich effizienter und wahrscheinlicher
    Favorit, sobald eine echte IR-Schicht ansteht.
-3. **Laufzeit-ABI**: OS-9/MWOS bevorzugt (nicht freistehender 68000-Code) --
+3. **Laufzeit-ABI**: OS-9/REF bevorzugt (nicht freistehender 68000-Code) --
    passt zum bereits vorhandenen r68/psect-Pfad (Abschnitt 7 Punkt 4). Wirkt sich
    erst aus, sobald ROUTINE M68K-Koerper echte I/O oder Speicheranforderung
    brauchen (Trap-Aufrufe wie `I$Write`, `F$SRQMEM` statt freistehendem Code).

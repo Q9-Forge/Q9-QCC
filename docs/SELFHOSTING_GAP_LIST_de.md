@@ -38,7 +38,7 @@ für sehr große Projekte auf dem Host jemals richtig dimensioniert werden kann,
 weil Anzahl und Länge der Routinen pro Grammatik unbekannt sind. Gelöst über
 `malloc`/`realloc`-Verdopplung (klein anfangen, bei Bedarf wachsen, siehe
 `pushRoutine`/`growBuf` in `codegen.cpp`) statt fester Arrays. Bestätigt: die
-Microware-`clib`/`stdlib.h` (`/Volumes/SSD1TB/projects/MWOS/SRC/DEFS/stdlib.h`)
+Microware-`clib`/`stdlib.h` (`/Volumes/SSD1TB/projects/REF/SRC/DEFS/stdlib.h`)
 stellt `malloc`/`realloc`/`free` bereit, betrifft also nur QCC selbst als
 Sprache (siehe neue Zeile in der Tabelle unten), nicht die OS-9-Zielplattform.
 Alle übrigen Tabellen in L2 bleiben feste globale Arrays -- die Hürde für
@@ -108,7 +108,7 @@ erledigt (2026-07-24): ein `-os9`-Ausgabemodus im 68k-Backend erzeugt
 (statt `even`/`ds.l`, die der echte `r68` als "bad mnemonic" ablehnt)
 versehenen Code -- ein Testfall mit DATA/BSS-Globalen UND einem
 `extern`-Aufruf (CALLEXT) wurde erfolgreich durch den ECHTEN `r68.exe` (via
-Wine/MWOS) zu einer relokierbaren `.r`-Datei assembliert.
+Wine/REF) zu einer relokierbaren `.r`-Datei assembliert.
 
 **Echtes Linken + echte Ausfuehrung: ebenfalls erledigt (2026-07-24).**
 `putint`/`putuint`/`putchar` rufen im `-os9`-Modus den echten, ungepufferten

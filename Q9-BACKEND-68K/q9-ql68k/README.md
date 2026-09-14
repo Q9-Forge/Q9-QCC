@@ -37,7 +37,7 @@ Der Vergleich braucht deshalb kein Gegenstück zu `qr68 -fdate=`.
 
 ### Der Modulkopf
 
-Aufbau nach `MWOS/OS9/SRC/DEFS/module.h` (`struct modhcom` + `mod_exec`),
+Aufbau nach `REF/OS9/SRC/DEFS/module.h` (`struct modhcom` + `mod_exec`),
 Byte für Byte an einem gebundenen Modul nachgeprüft:
 
 | Offset | Feld | im Beispiel |
@@ -155,7 +155,7 @@ Init-Module (`0c00`) mit derselben Regel.
 
 > **Eine Fehlverallgemeinerung, die der Prüfstand aufgedeckt hat.** Nach
 > den ersten Messungen stand hier eine Typliste: „Typ 2, 12 und 14 haben
-> 12 Byte, Typ 15 keine." Der Lauf über den SDK-Korpus zeigte, dass
+> 12 Byte, Typ 15 keine." Der Lauf über den Referenz-Toolchain-Korpus zeigte, dass
 > **Typ 12 in beiden Formen vorkommt** — `snoop162` ist `0c01` und liegt
 > auf `$3c`, `init` ist `0c00` und liegt auf `$30`. Erst die Sprache
 > erklärt beide.
@@ -197,7 +197,7 @@ Erweiterungswort auf `$52` ergibt `$0008`.
 
 `-l=sys.l` liest **eine Folge von ROF-Dateien**, hintereinander in einer
 Datei — kein libgen-Format. Nachgemessen an
-`MWOS/OS9/68000/LIB/sys.l`: sieben ROFs, 1747 Globale, **alle vom Typ
+`REF/OS9/68000/LIB/sys.l`: sieben ROFs, 1747 Globale, **alle vom Typ
 `$0006` (equ)**, und die Längenrechnung landet exakt auf dem Dateiende.
 Genau das meint die Dokumentation mit „the `sys.l` library module …
 contains only `equ` symbol definitions".
@@ -242,18 +242,18 @@ gebunden — auch aus mehreren ROFs.**
 | `test/ref.a` | vier Zeiger: zweimal Code, einmal Daten, einer ohne Bezug | **byteidentisch** (130 Byte) |
 
 | `test/multi*.a` | zwei psects, Aufruf über psect-Grenze, Daten beider | **byteidentisch** (142 Byte) |
-| **7 SCF-Descriptoren des SDK** (`term`, `t1`–`t3`, `p1`–`p3`) | mit `sys.l`, `-gu=0.0`, `-p=577`, je ~24 externe Referenzen | **byteidentisch** |
+| **7 SCF-Descriptoren des Referenz-Toolchain** (`term`, `t1`–`t3`, `p1`–`p3`) | mit `sys.l`, `-gu=0.0`, `-p=577`, je ~24 externe Referenzen | **byteidentisch** |
 | **Der SCF-Treiber `sc172`** (aus `sc8x30.a`) | 1576 Byte Code, 276 Byte Daten, abziehende Referenzen | **byteidentisch** (1646 Byte) |
 
 `./test/difftest.sh` fährt die eigenen Proben, `./test/descs.sh` die
-Descriptoren des SDK mit den Aufrufen aus dessen Makefile. Beide
+Descriptoren des Referenz-Toolchain mit den Aufrufen aus dessen Makefile. Beide
 vergleichen byteweise;
 `tools/modcmp.py` benennt bei einer Abweichung das betroffene Kopffeld,
 statt nur einen Offset zu zeigen.
 
-## Der SDK-Korpus
+## Der Referenz-Toolchain-Korpus
 
-`./test/sdkdiff.sh` holt die `l68`-Kommandozeilen aus den SDK-Makefiles
+`./test/sdkdiff.sh` holt die `l68`-Kommandozeilen aus den Referenz-Toolchain-Makefiles
 selbst — derselbe Hebel wie bei `Q9-qr68`:
 
 ```
@@ -263,7 +263,7 @@ MWMAKEOPTS=-u  os9make -nn -u
 Anders als beim Assembler braucht der Binder aber seine **Eingaben**: die
 `.r`-Dateien entstehen erst durch die `r68`-Zeilen desselben Trockenlaufs.
 Das Skript fährt deshalb beide Sorten Zeilen der Reihe nach und biegt alle
-Ausgaben in ein Temporärverzeichnis um — in den SDK-Baum wird nichts
+Ausgaben in ein Temporärverzeichnis um — in den Referenz-Toolchain-Baum wird nichts
 geschrieben.
 
 ```
@@ -303,7 +303,7 @@ Nur der vierte Befund — Sprache statt Typ — lag am Binder.
 ## Die rohe Binärausgabe (`-r=<basis>`)
 
 Kein Modulkopf, kein Name, kein CRC — der Code liegt ab Dateianfang,
-dahinter IData und IRefs wie sonst. Für den ROM-Code des SDK (40 Aufrufe).
+dahinter IData und IRefs wie sonst. Für den ROM-Code des Referenz-Toolchain (40 Aufrufe).
 
 **Die Basis wirkt nur auf Codebezüge im Code.** Ein Label auf Codeoffset 6
 wird im Code zu `$1006`; ein Zeiger darauf *in den Daten* bleibt `$0006` —
@@ -372,7 +372,7 @@ jeder der beiden Blöcke einzeln auf 16 aufgerundet wird.
 
 `-m`, `-s`, `-w`, `-j`, `-g`, `-v`, `-c`, `-i`, `-q`, `-f=`, `-mt<x>`
 ändern das Modul nicht; `ql68` nimmt sie an und übergeht sie, damit die
-Aufrufe der SDK-Makefiles unverändert durchlaufen. **`l68` nimmt die
+Aufrufe der Referenz-Toolchain-Makefiles unverändert durchlaufen. **`l68` nimmt die
 Einzelbuchstaben auch als Bündel**: das `-swam` der ROM-Makefiles ist
 `-s -w -a -m`.
 
@@ -384,7 +384,7 @@ falsche Format zu schreiben.
 
 Ein Zwischenstand hatte einen Wächter, der abbricht, wenn ein Bezug nicht
 in sein Feld passt — mit der Begründung, `l68` brauche dafür `-a`. Er hat
-im SDK-Korpus **acht zuvor byteidentische Module zerlegt** (`sc68990`,
+im Referenz-Toolchain-Korpus **acht zuvor byteidentische Module zerlegt** (`sc68990`,
 `sc147`, `sc162`, `sc167`, `sc172`, `sc177`, `sc68360`, `ram`).
 
 Der Grund steht wörtlich in den SCF-Treibern:
@@ -408,7 +408,7 @@ Für einen wirklich zu weiten Bezug legt `l68` mit `-a` eine Sprungtabelle
 an — gemessen: aus `bsr sub1` wird `jsr d16(a6)`, und in den
 initialisierten Daten steht ein 6 Byte langer Eintrag `jmp $xxxxxxxx`,
 dessen Adresse in der Code-Zeigerliste mitgeführt wird. Das ist bewusst
-nicht nachgebaut: im ganzen SDK-Korpus kommt der Fall nirgends vor, alle
+nicht nachgebaut: im ganzen Referenz-Toolchain-Korpus kommt der Fall nirgends vor, alle
 227 Aufrufe sind ohne Sprungtabelle byteidentisch.
 
 ### Welche Schalter der Korpus überhaupt benutzt
@@ -426,7 +426,7 @@ aber nichts, sondern **zählt die Schalter**. Über alle 467 `l68`-Aufrufe:
 | `-p=` | 84 | | | |
 
 Mehr ist es nicht. `-x=`, `-S`, `-R=`, `-e=`, `-t=`, `-c`, `-i`, `-f=`,
-`-mt<x>`, `-z` kommen im ganzen SDK **nicht vor** — sie sind trotzdem
+`-mt<x>`, `-z` kommen im ganzen Referenz-Toolchain **nicht vor** — sie sind trotzdem
 gebaut und gemessen, denn „kommt im Korpus nicht vor" heißt nicht „gibt es
 nicht".
 
@@ -477,7 +477,7 @@ error - operand size error.
 The value of symbol _os_write ($1256e8) is too large for a word operand.
 ```
 
-**Im SDK-Korpus tritt dieser Fall nie ein** — er ist Assembler und bleibt
+**Im Referenz-Toolchain-Korpus tritt dieser Fall nie ein** — er ist Assembler und bleibt
 unter 64K. **Die eigene Kette kommt ohne ihn nicht aus**: `qr68` als
 OS-9-Modul ist über 1 MB groß, und ihr Bindeschritt benutzt `-a`.
 
@@ -532,7 +532,7 @@ die Distanzen nicht. Einer zählt, einer schreibt.
 ### Wo der Wächter hingehört
 
 Ein früherer Zwischenstand prüfte die Feldbreite beim **Verrechnen jeder
-einzelnen Referenz** und zerlegte damit acht byteidentische SDK-Module
+einzelnen Referenz** und zerlegte damit acht byteidentische Referenz-Toolchain-Module
 (siehe oben). Die Sorge war berechtigt, die Stelle falsch: geprüft werden
 darf erst der **fertig aufaddierte** Wert. Genau dort steht die Prüfung
 jetzt — ohne `-a` bricht `ql68` mit derselben Diagnose ab wie `l68`, statt
@@ -688,7 +688,7 @@ ist **gemessen, nicht geschätzt**:
 
 Gegen `QL_SYM 8192` und `QL_POOL 262144`. Dass es so viele sind, liegt an
 QCC: **es macht aus jeder Sprungmarke ein Globalsymbol** (`tc_L…`,
-`tc_cmp_done_…`). Für das SDK — Assembler, Module unter 64 K — haben die
+`tc_cmp_done_…`). Für das Referenz-Toolchain — Assembler, Module unter 64 K — haben die
 alten Maße gereicht.
 
 Neu am Host **32 768 / 1 048 576**, am Ziel **unverändert 8 192 / 262 144**:

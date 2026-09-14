@@ -41,7 +41,7 @@ system or very large projects on the host, since the number and length
 of routines per grammar are unknown. Solved via `malloc`/`realloc`
 doubling (start small, grow on demand, see `pushRoutine`/`growBuf` in
 `codegen.cpp`) instead of fixed arrays. Confirmed: the Microware
-`clib`/`stdlib.h` (`/Volumes/SSD1TB/projects/MWOS/SRC/DEFS/stdlib.h`)
+`clib`/`stdlib.h` (`/Volumes/SSD1TB/projects/REF/SRC/DEFS/stdlib.h`)
 provides `malloc`/`realloc`/`free`, so this only affects QCC itself as a
 language (see the new row in the table below), not the OS-9 target
 platform. All other tables in L2 remain fixed global arrays -- the
@@ -112,7 +112,7 @@ likewise since been completed (2026-07-24): an `-os9` output mode in the
 full-line comments and `align 4`/`dc.l` (instead of `even`/`ds.l`, which
 the real `r68` rejects as "bad mnemonic") -- a test case with DATA/BSS
 globals AND an `extern` call (CALLEXT) was successfully assembled into a
-relocatable `.r` file by the REAL `r68.exe` (via Wine/MWOS).
+relocatable `.r` file by the REAL `r68.exe` (via Wine/REF).
 
 **Real linking + real execution: also done (2026-07-24).** `putint`/
 `putuint`/`putchar` call the real, unbuffered `_os_write` syscall from

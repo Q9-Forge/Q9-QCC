@@ -13,7 +13,7 @@ Fremdteile der Kette.
 ## Stand (2026-09-04) — `qr68` ersetzt `r68`
 
 **Der Befehls- und Direktivenvorrat ist vollständig, der Korpus
-byteidentisch, und `qr68` lässt sich in den SDK-Makefiles an die Stelle von
+byteidentisch, und `qr68` lässt sich in den Referenz-Toolchain-Makefiles an die Stelle von
 `r68` setzen.**
 
 | Prüfung | Ergebnis |
@@ -22,7 +22,7 @@ byteidentisch, und `qr68` lässt sich in den SDK-Makefiles an die Stelle von
 | `tests/insn.a`, `tests/dir.a`, `tests/mac.a`, `tests/bopt.a` — jede kodierbare Form | **byteidentisch**, Zeile für Zeile |
 | 10 Module aus QCCs Backend, bis 146.848 Zeilen / 1,07 MB ROF | **byteidentisch** |
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
-| **Der MWOS-Korpus** — 290 Aufrufe über 101 Quellen, mit den Schaltern aus den SDK-Makefiles selbst | **byteidentisch**, eine einzige bewusste Verweigerung |
+| **Der REF-Korpus** — 290 Aufrufe über 101 Quellen, mit den Schaltern aus den Referenz-Toolchain-Makefiles selbst | **byteidentisch**, eine einzige bewusste Verweigerung |
 | **qr68 auf echtem 68030**, gebaut mit der eigenen Kette | **byteidentisch zum Hostlauf** |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
@@ -75,7 +75,7 @@ kommt in den 207.000 Zeilen nirgends vor und bleibt draußen.
 
 **Schlüsselwörter als Operand sind schreibungsUNabhängig** — Register-,
 Kontrollregister-, MMU- und Cachenamen. `movec d0,DFC` ist dasselbe wie
-`movec d0,dfc` (an r68 gemessen), und im SDK steht beides. **Symbolnamen
+`movec d0,dfc` (an r68 gemessen), und im Referenz-Toolchain steht beides. **Symbolnamen
 sind es nicht**, die bleiben schreibungsabhängig.
 
 **Adressierungsarten:** alle zwölf des 68000 —  `Dn`, `An`, `(An)`, `(An)+`,
@@ -83,7 +83,7 @@ sind es nicht**, die bleiben schreibungsabhängig.
 `#imm`.
 
 Dazu die Direktiven `use` (Include, mit `-u=`-Suchliste), `org`/`do` (der
-Strukturbeschreiber des SDK) und `.` als org-Zähler, die bedingte
+Strukturbeschreiber des Referenz-Toolchain) und `.` als org-Zähler, die bedingte
 Assemblierung (`ifeq`/`ifne`/`ifgt`/`ifge`/`iflt`/`ifle`/`ifdef`/`ifndef`/
 `else`/`endc`), **Makros** (`\1`…`\9`, `\#`, `\@`) mit `rept`/`endr`, und
 der Systemaufruf `os9`.
@@ -92,11 +92,11 @@ Von r68s Schaltern: **`-o=<datei>`/`-O=<datei>`** (Ausgabedatei), `-b`
 (Sprungweiten selbst wählen), `-a<sym>[=<wert>]`, `-u=<verz>`. Angenommen
 und übergangen werden die Listing- und Meldungsschalter
 (`-q -l -g -e -s -n -x -c -f -r -m<n> -d<n>`), damit die
-Aufrufe der SDK-Makefiles unverändert laufen; `-y`, `-bt`, `-j` und `-p<n>`
+Aufrufe der Referenz-Toolchain-Makefiles unverändert laufen; `-y`, `-bt`, `-j` und `-p<n>`
 ändern die Ausgabe und werden **abgelehnt**, statt sie stillschweigend zu
 übergehen.
 
-`-o=` ist nicht Kosmetik: **von den 300 Makefiles des SDK, die `r68`
+`-o=` ist nicht Kosmetik: **von den 300 Makefiles des Referenz-Toolchain, die `r68`
 aufrufen, benennt keines die Ausgabe über die Stellung** — alle schreiben
 `-o=$(RDIR)/$@` oder `-O=$@`. Ohne den Schalter erzeugt `qr68` zwar
 dieselben Bytes, lässt sich in den Makefiles aber nicht einsetzen. Beide
@@ -137,7 +137,7 @@ Der Grund liegt tiefer — ein nicht-remoter `vsect` wird über `d16(a6)`
 angesprochen und passt damit nur in 64 KB; `r68` meldet für alles darüber
 „value out of range". Solange QCCs Datenmodell so ist, hält `-D_Q9OS` die
 Felder auf Zielmaß (64 KB Namen, 256 KB Quelle, 4096 Symbole — der
-Q9-OS-Kernel braucht 249, der größte SDK-Treiber 1428).
+Q9-OS-Kernel braucht 249, der größte Referenz-Toolchain-Treiber 1428).
 
 ## Der Prüfstein
 
@@ -151,7 +151,7 @@ ROF-Kopf. Also:
 make test                          # Proben, Befehlstabelle, use, -b
 make backend                       # QCC-Backend-Quellen + Q9-OS-Kernel
 make check                         # beides
-./tests/mwos.sh                    # die SCF-Treiber des SDK
+./tests/mwos.sh                    # die SCF-Treiber des Referenz-Toolchain
 
 ./tests/difftest.sh                # die eingebauten Proben
 ./tests/difftest.sh datei.a        # eine echte Quelle, ganze ROF-Datei
@@ -167,11 +167,11 @@ abarbeiten statt Fehler für Fehler.
 
 Das ist ein echtes Orakel: kein selbstgeschriebener Sollwert, der erst selbst
 richtig sein müsste. Der Zielkorpus sind **644 handgeschriebene `.a`-Dateien
-mit 207.847 Zeilen** (MWOS-SDK + Q9-OS-Kernel).
+mit 207.847 Zeilen** (Referenz-Toolchain + Q9-OS-Kernel).
 
 ## Das ROF-Format, am Original gemessen
 
-Es gibt genau **eine** Beschreibung des Formats: `MWOS/APPS/src/osk-disasm`
+Es gibt genau **eine** Beschreibung des Formats: `REF/APPS/src/osk-disasm`
 (`rof.c`/`rof.h`), ein Disassembler. Sie stimmt in einem wesentlichen Punkt
 **nicht** mit dem überein, was `r68` schreibt — und in einem weiteren ist sie
 gar nicht ausgeführt. Deshalb hier das gemessene Layout.
@@ -391,7 +391,7 @@ beginnt, das in keinem Mnemonic vorkommt:
 
 | Quelle | |
 |---|---|
-| `ifeq(CPUType-SYS360)` | ja (so steht es im SDK) |
+| `ifeq(CPUType-SYS360)` | ja (so steht es im Referenz-Toolchain) |
 | `move.l(a0),d0` | ja → `$2010` |
 | `andi.l#^$ff,d7` | ja (`ROM_CBOOT/sysinit.a:726`, MVME172) |
 | `bra.s*+2` | ja |
@@ -426,7 +426,7 @@ Zwei Regeln, beide gemessen:
 ### Was sonst noch nur durchs Messen kam
 
 - **Das Mnemonic endet auch an einer Klammer**, nicht nur am Leerzeichen: im
-  SDK steht ` ifeq(CPUType-SYS360)` ohne Trennzeichen (auch
+  Referenz-Toolchain steht ` ifeq(CPUType-SYS360)` ohne Trennzeichen (auch
   `move.l(a0),d0` → `$2010`).
 - **`|` ist ein zweites Zeichen für das bitweise ODER** neben `!`.
 - **Auch die Grundform darf nach `ccr`/`sr`**: `and.w #$fe,ccr` wird
@@ -437,10 +437,10 @@ Zwei Regeln, beide gemessen:
 
 - **`use "datei"`** sucht im Verzeichnis der **einschließenden Datei** — das
   nackte `use datei` tut das nicht (dieselbe Datei nebenan wird dort nicht
-  gefunden). Die Descriptor-Quellen des SDK leben davon
+  gefunden). Die Descriptor-Quellen des Referenz-Toolchain leben davon
   (`use "scfdesc.a"` in `SRC/IO/SCF/DESC/p1.a`).
 - **`\Ln`** ist die **Länge** des Arguments n, zweistellig (`a0` → `02`,
-  leer → `00`). Die SDK-Makros prüfen damit die Art eines Arguments:
+  leer → `00`). Die Referenz-Toolchain-Makros prüfen damit die Art eines Arguments:
   `ifne \L1-2 / fail … must be a An register`.
 - **`movea` ohne Größenbuchstaben ist ein LANGWORT**, `move` dagegen ein
   Wort (`movea PD_BUF(a1),a0` → `$2069`, `move d0,d1` → `$3200`).
@@ -553,20 +553,20 @@ Alles an r68 gemessen, weil es sich anders liest, als man vermutet:
 - **`use datei`** und **`use "datei"`** öffnen genau diesen Pfad, also
   relativ zum **Arbeitsverzeichnis** — *nicht* zum Verzeichnis der
   einschließenden Datei. **`use <datei>`** sucht in den `-u=`-Verzeichnissen
-  (r68 nimmt dort zusätzlich ein festes `<MWOS>/OS9/SRC/DEFS`; qr68 liest
+  (r68 nimmt dort zusätzlich ein festes `<REF>/OS9/SRC/DEFS`; qr68 liest
   keine Umgebungsvariablen, das Verzeichnis muss man ihm mit `-u=` nennen).
-  Ein fehlendes `>` stört nicht: im SDK steht `use <memc040.d)` — Tippfehler
+  Ein fehlendes `>` stört nicht: im Referenz-Toolchain steht `use <memc040.d)` — Tippfehler
   in `systype.d` — und r68 übersetzt das anstandslos.
 - **`org`** bewegt den Ort im Abschnitt **nicht**. Es setzt einen eigenen
   Zähler, auf den **`do.b/.w/.l`** Namen legt und den **`.`** liest — so
-  beschreiben die SDK-Definitionsdateien ihre Strukturen (1593 `do` in 127
+  beschreiben die Referenz-Toolchain-Definitionsdateien ihre Strukturen (1593 `do` in 127
   Dateien). `do.w` und `do.l` richten dabei auf **gerade** aus, nicht auf
   ihre eigene Breite: `org 4 / A do.b 1 / B do.w 1` ergibt A=4, B=6.
 - **Makros**: `\1`…`\9` sind die Argumente und werden **textuell** ersetzt,
-  auch innerhalb von Anführungszeichen (`dc.b "\5",0` steht so im SDK);
+  auch innerhalb von Anführungszeichen (`dc.b "\5",0` steht so im Referenz-Toolchain);
   `\#` ist die Zahl der Argumente **zweistellig**, `\@` eine laufende
   Nummer **fünfstellig** (`lok00001`, beginnt bei 1). Ein fehlendes Argument
-  wird zu nichts — es darf nicht abbrechen, denn die SDK-Makros prüfen `\#`
+  wird zu nichts — es darf nicht abbrechen, denn die Referenz-Toolchain-Makros prüfen `\#`
   und benutzen höhere Argumente nur in einem Zweig, den die bedingte
   Assemblierung dann überspringt.
 - **Symbol- und Makronamen sind schreibungsabhängig** (`mactest` findet
@@ -580,7 +580,7 @@ Alles an r68 gemessen, weil es sich anders liest, als man vermutet:
 Ohne `-b` kodiert r68 **immer** die Wortform und warnt höchstens. Mit `-b`
 wählt es selbst — und **übergeht den angegebenen Buchstaben ganz**: `bra.w`
 auf ein nahes Ziel wird kurz, `beq.s` auf ein fernes wird zur Wortform. Ein
-Ziel außerhalb des Moduls bleibt Wortform. Die SDK-Makefiles bauen alle
+Ziel außerhalb des Moduls bleibt Wortform. Die Referenz-Toolchain-Makefiles bauen alle
 Treiber mit `-qb`, deshalb kann `qr68` das auch.
 
 Bei **Abstand 0** — das Ziel ist die nächste Anweisung — lässt r68 den
@@ -716,14 +716,14 @@ Die **lange Sprungform** (`bra.l`, `bsr.l`, `bcc.l`, 68020) ist kaputt: `r68`
 gibt `6000 00000000` aus — ohne das nötige `$FF` im unteren Byte des
 Befehlsworts und ohne den Abstand einzusetzen. Der erzeugte Sprung geht ins
 Leere. Im ganzen handgeschriebenen Korpus kommt die Form zweimal vor
-(`MWOS/OS9/SRC/IO/SCF/DRVR/sc68562.a:252`), beide Male trifft sie diesen
+(`REF/OS9/SRC/IO/SCF/DRVR/sc68562.a:252`), beide Male trifft sie diesen
 Defekt. `qr68` **bricht dafür ab** statt entweder den Defekt nachzubauen oder
 still davon abzuweichen.
 
 Und **`rept` spult falsch zurück**: für jede Wiederholung liest r68 die
 Quellzeilen erneut, landet dabei aber mitten in einer vorangehenden Zeile.
 Schon `delay35 / rept (35-5-9)/2 / nop / endr` — so steht es in
-`MWOS/OS9/SRC/IO/SCF/DRVR/sc8x30.a` — ergibt neun `bad label`-Fehler. Die
+`REF/OS9/SRC/IO/SCF/DRVR/sc8x30.a` — ergibt neun `bad label`-Fehler. Die
 erzeugten Bytes stimmen dabei zwar, als Orakel taugt es aber nicht; `qr68`
 wiederholt genau den Rumpf zwischen `rept` und `endr`.
 
@@ -817,7 +817,7 @@ die `r68` annimmt, ein anderes Ergebnis zu liefern.
   ganze Datei eine Zeile war.
 - **An Modellgrenzen wird abgebrochen**, nicht geraten.
 
-## Der Korpus, mit den Aufrufen des SDK selbst
+## Der Korpus, mit den Aufrufen des Referenz-Toolchain selbst
 
 **`./tests/sdkdiff.sh` ist der Prüfstand, auf den es ankommt: 290 Aufrufe
 byteidentisch über 101 Quelldateien, eine einzige Abweichung — und die ist
@@ -857,7 +857,7 @@ PORTDIR=…/PORTS/MVME172/RBF DRVDIR=…/SRC/IO/RBF/DRVR ./tests/mwos.sh
 
 `./tests/sdkdiff.sh` fährt denselben Vergleich, aber **ohne dass die
 Portkonfiguration von Hand gesetzt werden muss**. Der Hebel ist ein
-Trockenlauf des SDK-eigenen Make:
+Trockenlauf des Referenz-Toolchain-eigenen Make:
 
 ```
 MWMAKEOPTS=-u  os9make -nn -u
@@ -875,7 +875,7 @@ r68 -qb -u=. -u=..\..\..\..\SRC\DEFS -u=..\..\..\..\SRC\MACROS -aNODATAPORT \
         ..\..\..\..\SRC\IO\SCF\DRVR\sc8x30.a -o=RELS\sc172.r
 ```
 
-In den SDK-Baum wird dabei **nichts** geschrieben: `os9make` führt nichts
+In den Referenz-Toolchain-Baum wird dabei **nichts** geschrieben: `os9make` führt nichts
 aus, und die `-o=`-Angabe biegt das Skript auf ein Temporärverzeichnis um.
 Damit fällt das Raten weg, das `tests/mwos.sh` nötig macht — und mit ihm der
 Verdacht, ein „übersprungen" sei eine Portfrage und kein Befund.
@@ -1050,13 +1050,13 @@ genau zwei Verzeichnisse (`SRC/SYSMODS/GCLOCK` und
 ## Was `qr68` als Ersatz für `r68` noch fehlt
 
 Der Assembler selbst ist fertig: Befehle und Direktiven vollständig, der
-Korpus byteidentisch, in den SDK-Makefiles einsetzbar, läuft selbstgebaut
+Korpus byteidentisch, in den Referenz-Toolchain-Makefiles einsetzbar, läuft selbstgebaut
 auf dem 68030. Was offen bleibt, ist **bewusst** offen:
 
 | Offen | Warum es liegen bleibt |
 |---|---|
-| **Kein Listing** (`-l`/`-s`/`-g` werden übergangen) | Von den 300 Makefiles des SDK, die `r68` aufrufen, braucht es **keines**. Nur ein einziger Aufruf benutzt `-g`, und das ändert die Ausgabe nicht. |
-| **`-z=<datei>`** (Argumentdatei) | Kommt im SDK nur bei `merge` vor (`MRGOPTS`), nicht bei `r68`. |
+| **Kein Listing** (`-l`/`-s`/`-g` werden übergangen) | Von den 300 Makefiles des Referenz-Toolchain, die `r68` aufrufen, braucht es **keines**. Nur ein einziger Aufruf benutzt `-g`, und das ändert die Ausgabe nicht. |
+| **`-z=<datei>`** (Argumentdatei) | Kommt im Referenz-Toolchain nur bei `merge` vor (`MRGOPTS`), nicht bei `r68`. |
 | **Arena statt strömendem Leser** (Host 4 MB, Ziel 256 KB) | Die 18-MB-Quellen des Backends bräuchten das. Erledigt sich weitgehend mit QCCs Datenmodell — dann schrumpft die eigene Modulquelle von 2,9 MB auf ~44 KB. |
 | **Vier bewusste Verweigerungen** | `bra.l`, Sprung auf die Folgezeile mit `-b`, unbekannter Name in einer Bedingung, `ptest` mit Erweiterungswörtern. Alle vier sind Defekte in `r68 V2.9.1`; ihnen zu folgen hiesse, falschen Code zu erzeugen. |
 
@@ -1070,7 +1070,7 @@ auf dem 68030. Was offen bleibt, ist **bewusst** offen:
    assemblieren. Der strömende Leser erledigt sich damit gleich mit.
 2. **`l68`** — der Binder, das letzte große Fremdteil neben Microwares
    `clib`. Für ihn gilt dieselbe Methode: Format messen statt herleiten,
-   und den Prüfstand aus den SDK-Makefiles speisen. **Was Microware selbst
+   und den Prüfstand aus den Referenz-Toolchain-Makefiles speisen. **Was Microware selbst
    dazu dokumentiert — ROF-Format, Modulformat, Linkeralgorithmus,
    Bibliotheksformat — ist in `docs/ROF_UND_LINKER_QUELLEN.md`
    zusammengetragen**, samt Abgleich gegen unsere Messungen.
