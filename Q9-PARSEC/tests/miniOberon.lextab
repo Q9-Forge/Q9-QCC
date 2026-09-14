@@ -49,6 +49,27 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+module = "VAR" {declItem} "BEGIN" stmts "END".
+declItem = declName ";".
+declName = ident.
+stmts = stmt {";" stmt}.
+stmt = target ":=" expr.
+target = ident.
+expr = simpleExpr.
+simpleExpr = term {addop term}.
+term = factor {mulop factor}.
+factor = varRef | number.
+varRef = ident.
+number = digit {digit}.
+addop = "+" | "-".
+mulop = "*" | "/".
+ident = identLetter {identLetter | digit}.
+identLetter = "a"~"z" | "A"~"Z".
+digit = "0"~"9".
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "VAR"

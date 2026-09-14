@@ -13,6 +13,11 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+s = [ "-" ] "a" | "b" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "-"

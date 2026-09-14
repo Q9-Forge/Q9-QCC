@@ -16,6 +16,12 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+expr2 = "(" expr2 ")" "A" | "(" expr2 ")" "B" | leaf.
+leaf = "x".
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "("

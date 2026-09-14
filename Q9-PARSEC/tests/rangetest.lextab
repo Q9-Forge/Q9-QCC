@@ -18,6 +18,13 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+ident = <letter> { letter | digit } .
+letter = "a"~"z" | "A"~"Z" .
+digit = "0"~"9" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    RNG  "a"~"z"

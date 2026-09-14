@@ -14,6 +14,12 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+number = digit {digit}.
+digit = "0"~"9".
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    RNG  "0"~"9"

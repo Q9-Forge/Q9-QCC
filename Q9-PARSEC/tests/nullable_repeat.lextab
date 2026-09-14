@@ -12,6 +12,13 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+# Der Rumpf der Wiederholung kann leer erfolgreich sein. Ein einfacher greedy
+# rekursiver Abstieg duerfte daraus keine Endlosschleife erzeugen.
+s = { [ "a" ] } .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "a"
