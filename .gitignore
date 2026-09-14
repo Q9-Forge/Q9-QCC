@@ -31,3 +31,7 @@ __pycache__/
 
 # Claude Code: lokale Tool-Settings, nie versioniert.
 .claude/
+
+# KI-Arbeitsanweisungen bleiben lokal, nicht oeffentlich im Git.
+AGENTS.md
+PROJECT.md
