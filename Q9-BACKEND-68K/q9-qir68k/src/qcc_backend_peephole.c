@@ -81,54 +81,81 @@
  * New patterns should be added as additional phFold* functions, not as special
  * cases in an existing one.
  *
- * MEMORY SIZES ARE MEASURED, NOT GUESSED: qr68's own assembler output with
- * -remotedata (the largest target-side case outside self-hosting so far) has
- * 75,273 lines / 1,588,771 bytes. The limits below provide
- * ample headroom; QCC's own self-hosting build (222,832 lines /
- * 4.59 MB) deliberately exceeds them; -peephole is not yet wired into that
- * path, which requires a separate future memory-budget decision. Exceeding a
- * limit calls fatal(), like every other backend capacity limit, with no silent
- * truncation.
+ * THE BUFFERS ARE ALLOCATED FROM THE INPUT, NOT FIXED (2026-09-14). They used
+ * to be static arrays sized for qr68's output (75,273 lines / 1.59 MB), which
+ * had two consequences: QCC's own assembler output (235,248 lines / 4.74 MB)
+ * simply did not fit, and every module that includes this file carried the
+ * 4.8 MB of tables in its data area even when -peephole was never passed --
+ * measurably so once the shipped backend picked the file up (its data area
+ * went from 9.7 MB to 14.5 MB). Everything is sized from the file that is
+ * actually being processed now, so nothing is reserved for an unused switch
+ * and the only ceiling left is the memory the machine can hand out.
+ *
+ * The synthesis buffer must NOT move once lines point into it, so it is
+ * allocated ONCE at the input size: a replacement line is never longer than
+ * the two original lines together, so the sum of all replacements fits within
+ * the original text budget.
  *================================================================================*/
 
-#define PH_MAX_LINES  100000
-#define PH_TEXT_BYTES 2097152   /* 2 MB, about 35% headroom over qr68 (1.59 MB) */
-#define PH_SYNTH_BYTES PH_TEXT_BYTES /* A replacement line is never longer than
-                                        the two original lines combined, so the
-                                        sum of all replacements fits within the
-                                        original text budget. */
+#define PH_CHUNK 65536          /* read granularity while the text buffer grows */
 
-static char phText[PH_TEXT_BYTES];
-static const char* phLines[PH_MAX_LINES];
-static int phRemoved[PH_MAX_LINES];
+static char* phText = 0;
+/* OHNE const: QCC uebersetzt einen Cast auf "const char**" nicht (der Cast auf
+   "char**" dagegen schon). Die Fold-Funktionen nehmen ihre Zeile weiterhin als
+   "const char*" entgegen, das passt ohne Cast. */
+static char** phLines = 0;
+static int* phRemoved = 0;
 static int phLineCount = 0;
+/* Die Schrittweite eines Zeigers OHNE sizeof: QCC lehnt "sizeof(char*)" mit
+   einer Meldung ab. Gemessen wird die Schrittweite, mit der der jeweilige
+   Compiler ein Zeigerarray indiziert -- Allokation und Zugriff koennen damit
+   nicht auseinanderlaufen, egal ob 4 oder 8 Byte. */
+static char* phStride[2];
 
-static char phSynth[PH_SYNTH_BYTES];
+static char* phSynth = 0;
+static int phSynthCap = 0;
 static int phSynthUsed = 0;
 
 static void phLoad(const char* path) {
 	FILE* fp;
-	int size, got, i;
+	int size, cap, got, i, lines, ptrStride;
+	char* grown;
 	fp = fopen(path, "r");
 	if (!fp) fatal("peephole: kann Assemblerdatei nicht lesen");
 	size = 0;
+	cap = 0;
 	for (;;) {
-		got = fread(phText + size, 1, PH_TEXT_BYTES - 1 - size, fp);
+		if (size + PH_CHUNK + 1 > cap) {
+			cap = cap == 0 ? PH_CHUNK * 4 : cap * 2;
+			grown = (char*) realloc(phText, cap);
+			if (!grown) fatal("peephole: kein Speicher fuer die Assemblerausgabe");
+			phText = grown;
+		}
+		got = fread(phText + size, 1, PH_CHUNK, fp);
 		if (got <= 0) break;
 		size += got;
-		if (size >= PH_TEXT_BYTES - 1) fatal("peephole: Assemblerausgabe zu gross fuer PH_TEXT_BYTES");
 	}
 	fclose(fp);
 	phText[size] = 0;
+	/* Zeilen zaehlen, BEVOR die Trenner durch NUL ersetzt werden -- danach
+	   stehen Tabellengroesse und Synthesepuffer fest und wachsen nicht mehr. */
+	lines = 1;
+	for (i = 0; i < size; i++)
+		if (phText[i] == '\n' && i + 1 < size) lines++;
+	ptrStride = (int) ((char*) &phStride[1] - (char*) &phStride[0]);
+	phLines = (char**) realloc(0, lines * ptrStride);
+	phRemoved = (int*) realloc(0, lines * 4);
+	phSynthCap = size + 1;
+	phSynth = (char*) realloc(0, phSynthCap);
+	if (!phLines || !phRemoved || !phSynth)
+		fatal("peephole: kein Speicher fuer die Zeilentabellen");
+	phSynthUsed = 0;
 	phLineCount = 0;
 	phLines[phLineCount++] = phText;
 	for (i = 0; i < size; i++) {
 		if (phText[i] != '\n') continue;
 		phText[i] = 0;
-		if (i + 1 < size) {
-			if (phLineCount >= PH_MAX_LINES) fatal("peephole: zu viele Zeilen fuer PH_MAX_LINES");
-			phLines[phLineCount++] = &phText[i + 1];
-		}
+		if (i + 1 < size) phLines[phLineCount++] = &phText[i + 1];
 	}
 	for (i = 0; i < phLineCount; i++) phRemoved[i] = 0;
 }
@@ -183,8 +210,8 @@ static int phSameText(const char* a, int aLen, const char* b) {
 	return (int)strlen(b) == aLen && strncmp(a, b, aLen) == 0;
 }
 
-static const char* phEmitFused(const char* labelStart, int labelLen,
-                                const char* srcStart, int srcLen, const char* dst) {
+static char* phEmitFused(const char* labelStart, int labelLen,
+                          const char* srcStart, int srcLen, const char* dst) {
 	char* p = phSynth + phSynthUsed;
 	int n;
 	if (labelLen > 0)
@@ -192,7 +219,7 @@ static const char* phEmitFused(const char* labelStart, int labelLen,
 	else
 		n = sprintf(p, "\tmove.l\t%.*s,%s", srcLen, srcStart, dst);
 	phSynthUsed += n + 1;
-	if (phSynthUsed >= PH_SYNTH_BYTES) fatal("peephole: Synthesepuffer zu klein");
+	if (phSynthUsed >= phSynthCap) fatal("peephole: Synthesepuffer zu klein");
 	return p;
 }
 
@@ -446,7 +473,7 @@ static int phFoldMoveq(void) {
 		else
 			n = sprintf(p, "\tmoveq\t#%d,d%c", value, reg);
 		phSynthUsed += n + 1;
-		if (phSynthUsed >= PH_SYNTH_BYTES) fatal("peephole: Synthesepuffer zu klein");
+		if (phSynthUsed >= phSynthCap) fatal("peephole: Synthesepuffer zu klein");
 		phLines[i] = p;
 		folded++;
 	}
