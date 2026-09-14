@@ -28,3 +28,6 @@ __pycache__/
 .vscode/
 *.swp
 *~
+
+# Claude Code: lokale Tool-Settings, nie versioniert.
+.claude/
