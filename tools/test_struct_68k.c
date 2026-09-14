@@ -16,6 +16,7 @@ struct I { int a; int b; };
 struct P { char base; unsigned char pointers; unsigned char structId; unsigned char pad; };
 
 struct I tab[4];
+struct I *gtab;            /* fuer den globalen Zeigerindex, Fall 37 */
 static struct P grid[4][4];   /* fuer die 2D-Faelle */
 static int gi, gj;
 struct I g;
@@ -52,6 +53,8 @@ static struct Z gz;
 static int zfeld[8];
 static char ztxt[8];
 static char txt[8];
+
+static struct I *giveTab(void) { return tab; }
 
 static void mark(int id) { putint(id); putchar(58); }
 static void val(int v)   { putint(v); putchar(10); }
@@ -208,6 +211,25 @@ int main(void)
 	mark(35); { struct I *ip2; struct I cv; int k; k = 3;
 	            tab[3].a = 87; tab[3].b = 0;
 	            ip2 = &tab[0]; cv = ip2[k]; val(cv.a); }
+
+	/* 36-38 DIESELBE REGEL, DREI UEBERSEHENE GESCHWISTERSTELLEN (2026-09-14).
+	      Fall 35 hatte "v = p[i]" repariert, "*p", "gp[i]" und "f()[i]"
+	      blieben stehen: alle drei emittierten LOADIND auf eine GANZE Struct,
+	      lasen also vier Byte ihres Inhalts als Zahl und gaben sie als
+	      Adresse weiter. Im selbstuebersetzten Compiler wurde daraus ein
+	      PMMU-Fault auf $69000000 -- das ist eine TCType {'i',0,0,0}.
+	      Sichtbar wurde es erst, als tcCompatible4 auf tcIsInteger(*wanted)
+	      umgestellt wurde. Jeder Fall indiziert ungleich null, sonst faellt
+	      eine falsche Schrittweite nicht auf. */
+	/* 36 ganze Struct per WERT aus einer Dereferenzierung: f(*p) */
+	mark(36); { struct I *ip3; int k; k = 2;
+	            tab[2].a = 91; ip3 = &tab[k]; val(use(*ip3)); }
+	/* 37 ganze Struct per WERT aus einem GLOBALEN Zeigerindex: f(gp[i]) */
+	mark(37); { int k; k = 1; tab[1].a = 92; gtab = tab;
+	            val(use(gtab[k])); }
+	/* 38 ganze Struct per WERT aus einem indizierten AUFRUFERGEBNIS: f(g()[i]) */
+	mark(38); { int k; k = 3; tab[3].a = 93;
+	            val(use(giveTab()[k])); }
 
 	return 0;
 }
