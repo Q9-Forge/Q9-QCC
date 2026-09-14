@@ -15,6 +15,13 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+# indirekte Linksrekursion ueber 2 Regeln: a -> b -> a
+a = b "x" .
+b = a "y" | "z" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "x"

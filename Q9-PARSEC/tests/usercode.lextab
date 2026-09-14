@@ -12,6 +12,11 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+s = "a" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "a"

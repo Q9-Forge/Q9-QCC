@@ -15,6 +15,12 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+stmt = tag "1" | tag "2".
+tag = "T".
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "1"

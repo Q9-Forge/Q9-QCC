@@ -580,6 +580,684 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+/* Beliebige Reihenfolge von Deklarationen und Funktionen (C-Regel). Vorher
+   waren es ZWEI getrennte Wiederholungen -- erst alle Deklarationen, dann
+   alle Funktionen -- wodurch eine Vorwaertsdeklaration ZWISCHEN globalen
+   Variablen ("static void fatal(const char* msg);" mitten im
+   Deklarationsblock, so in Source/qcc_backend_c.cpp) unparsbar war.
+   funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
+   plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
+   faellt korrekt hierher zurueck. */
+program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl | funcdef } .
+
+/* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
+   OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
+   Signatur. Parameter brauchen keinen Namen (nur Typen fuer die Aufrufpruefung).
+   "..." markiert eine variadische Funktion (wie printf) -- siehe tc_call/
+   CALLEXT in docs/FORTSCHRITT.md fuer die Aufrufkonvention (Microware-ABI:
+   1./2. Argument in d0/d1, Rest auf dem Stack; bei variadisch ALLES auf dem
+   Stack). Erfordert mindestens einen benannten Parameter vor "...", wie in
+   echtem ISO C. */
+externDecl      = "extern" type pointerDecl externName externParams ";" .
+externName      = ident .
+/* "(void)" braucht dieselbe Zwei-Alternativen-Form wie funcParams
+   (siehe dort) -- eine Alternation, deren zweiter Zweig mit einer
+   optionalen Gruppe beginnt, backtrackt nicht: stuende hier nur
+   "void" gegen externParamList, wuerde die erste Alternative bei
+   "extern int f(void* p);" das "void" schlucken. voidParams wird
+   bewusst WIEDERVERWENDET (dieselbe NTS wie bei funcParams), ihre
+   Aktion ist ohnehin leer -- keine Parameter heisst schlicht: die
+   Aktion von externParam feuert nie. */
+externParams    = voidParams | externRealParams .
+externRealParams = "(" externParamList ")" .
+externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
+/* optionaler Parametername wird NUR geparst und verworfen (rein dokumentarisch,
+   wie in echten C-Prototypen "int strcmp(const char *a, const char *b);") --
+   fuer die Aufrufpruefung zaehlen nur die Typen. "const" ebenso rein
+   dokumentarisch: eine extern-Deklaration hat keinen QCC-Rumpf, in dem eine
+   Schreibpruefung greifen koennte. */
+externParam     = [ constKw ] type pointerDecl [ ident ] .
+ellipsisTok     = "..." .
+
+enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
+
+structDecl  = "struct" structName "{" structField { structField } "}" ";" .
+structName  = ident .
+/* Pointer-Felder in struct (2026-07-25, Selfhosting L2): Skalar-Pointer
+   (z.B. "char* text;" oder "struct Node* next;"). Ein struct-WERT als Feld
+   bleibt ausgeschlossen; ein Pointer darauf ist jedoch ein normaler Pointer
+   und benoetigt weder das Layout noch eine rekursive Einbettung. Layout siehe
+   tcRegisterStruct: Pointer-Felder werden
+   IMMER mit 8 Byte Groesse/Ausrichtung reserviert (nicht 4 wie beim 68k-
+   Backend selbst), damit dasselbe frontend-berechnete Byte-Layout fuer
+   BEIDE Architekturen gueltig bleibt (68k-Pointer sind 4 Byte, ARM64-Pointer
+   8 Byte -- ein einzelnes IR-Offset muesste sonst je nach Ziel-Architektur
+   unterschiedlich sein). Der 68k-Backend nutzt von diesem 8-Byte-Slot nur
+   die ersten 4 Byte (identisch zum Layout einer lokalen Pointer-Variable). */
+/* Mehrere Felder gleichen Typs in einer Zeile ("int nargs, first, last;").
+   Die Aktion haengt an structDeclarator, NICHT an structField: sie muss
+   einmal PRO Feld feuern, nicht einmal pro Zeile. tc_structfield sucht den
+   Namen rueckwaerts in seiner Spanne und nimmt den Typ aus tcCurrentType --
+   beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
+   umfasst statt der ganzen Zeile. */
+/* fieldConstKw war bis 2026-09-07 eine AKTIONSLOSE Kopie von constKw (wie
+   retConstKw bei funcHead): ein "const" am Feldtyp wurde geparst und
+   VERWORFEN. Der Grund war richtig -- ein Verweis auf constKw selbst wuerde
+   tc_const ausloesen, dessen tcPendingConst erst beim naechsten Parameter
+   oder Lokalen konsumiert wird und dort faelschlich Konstantheit erzwaenge.
+   Die FOLGE war es nicht: "struct P { const char *cp; }" mit
+   "p.cp[0] = ..." lief STILL durch, und "const int n" mit "s.n = 1" auch,
+   waehrend beides bei einer VARIABLEN korrekt gemeldet wird.
+   Jetzt hat fieldConstKw eine EIGENE Aktion mit einer EIGENEN Flagge, die
+   nur Felder betrifft: tc_fieldconst setzt sie, die Deklaratoren der Zeile
+   verbrauchen sie ("const int a, b;" trifft beide), und tc_fieldconstend
+   loescht sie nach der ganzen structField-Zeile. tcPendingConst bleibt
+   davon unberuehrt. */
+structField = [ fieldConstKw ] type structDeclarator { "," structDeclarator } ";" .
+fieldConstKw = "const" .
+/* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
+   dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
+   siehe tcStructFieldRowLen. Echte 2D-Zugriffe "x.args[i][j]" sind bewusst
+   NICHT umgesetzt (kommen im Bootstrap-Ziel nicht vor) und werden
+   diagnostiziert statt still falsch gerechnet. */
+/* NACHTRAG 2026-09-09 -- Zeiger-Bugfix: pointerDecl stand bis eben VOR der
+   ganzen Deklaratorliste (einmal fuer die gesamte Zeile), nicht pro
+   Deklarator. "char *a, *b;" scheiterte damit still ("*" nach dem Komma
+   passte auf keine Regel), und ein gemischtes "char* a, b;" haette (waere
+   es ueberhaupt geparst worden) faelschlich BEIDE zu Zeigern gemacht --
+   in echtem C ist bei mehreren Deklaratoren pro Zeile jeder Stern SEIN
+   EIGENER, nicht ein gemeinsames Typ-Merkmal. Jetzt bei jedem Deklarator
+   einzeln, siehe tc_pointerdecl (Data/qcc.lextab) fuer die dazugehoerige
+   Aktionsaenderung (Zeigergrad wird pro Aufruf neu gesetzt, nicht
+   aufaddiert). */
+structDeclarator = pointerDecl fieldName [ arraySize [ arraySizeN ] ] .
+fieldName   = ident .
+
+/* NACHTRAG 2026-09-09 -- derselbe Mehrfachdeklaratoren-Fix wie bei
+   varDecl/structField/plainGlobalDecl (s. oben): "typedef struct modhcom
+   mh_com, *Mh_com;" (Microwares echter SDK-Header module.h) scheiterte
+   still, weil typedefTargetName nur EINEN Namen erlaubte. pointerDecl
+   wandert dafuer aus typedefType HERAUS in die neue typedefDeclarator --
+   pro Deklarator sein EIGENER Zeigergrad, wie ueberall sonst. */
+typedefDecl = "typedef" typedefType typedefDeclarator { "," typedefDeclarator } ";"
+            | fnPtrTypedef .
+typedefDeclarator = pointerDecl typedefTargetName .
+
+/* Funktionszeiger-typedef: "typedef void (*ActionFn)(const char*, const char*);"
+   Steht als ZWEITE Alternative, damit der bisherige Fall unveraendert der
+   schnelle Weg bleibt -- bei einem Funktionszeiger scheitert er an
+   typedefTargetName (dort steht "(" statt eines Bezeichners) und die
+   geordnete Auswahl faellt hierher zurueck.
+   externParamList wird bewusst WIEDERVERWENDET statt nachgebaut: die Regel
+   parst bereits genau das Gebrauchte (Typen mit optionalem "const" und
+   optionalem Parameternamen), und ihre Aktion tc_externparam sammelt die
+   Typen im gemeinsamen Puffer, den tc_fnptrbegin vorher zuruecksetzt
+   (Deklarationen schachteln nicht). */
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" fnPtrParams ";" .
+/* Dieselbe (void)-Falle wie bei externDecl -- und dieselbe Loesung:
+   voidParams/externRealParams sind bereits genau das Gebrauchte. */
+fnPtrParams  = voidParams | externRealParams .
+fnPtrOpen    = "(" .
+fnPtrName    = ident .
+/* pointerDecl steht NICHT mehr hier (s. NACHTRAG oben bei typedefDecl),
+   sondern in typedefDeclarator -- sonst wuerde ein Zeigergrad hier UND
+   dort gleichzeitig gezaehlt. */
+typedefType = anonStructType | type .
+/* Optionaler Struct-Tag im typedef ("typedef struct TCType { ... } TCType;").
+   structTagName ist AKTIONSLOS: der Tag wird geparst und verworfen, als
+   interner Tag dient wie bisher der ERSTE typedef-Zielname (siehe
+   tc_anonstructbegin/tc_typedeftarget). Damit ist "struct TCType" NICHT als
+   eigenstaendiger Typname nutzbar -- im Bootstrap-Ziel wird ohnehin
+   ausschliesslich der typedef-Name verwendet. */
+anonStructType = "struct" [ structTagName ] anonStructOpen structField { structField } "}" .
+structTagName = ident .
+anonStructOpen = "{" .
+typedefTargetName = ident .
+
+/* beliebig viele weitere Dimensionen (2026-07-24) NUR bei globalDecl/localDecl
+   (nicht bei structField/paramArray -- siehe Kommentar bei localDecl weiter
+   unten fuer den Umfang dieser Version). arraySizeN wiederholt sich beliebig
+   oft (TC_MAXDIMS in qcc.lextab begrenzt die tatsaechlich unterstuetzte
+   Anzahl zur Uebersetzungszeit, kein Grammatik-Limit). */
+/* Mehrdatei-Uebersetzung (2026-07-25): externGlobalDecl deklariert eine
+   globale Variable OHNE Speicherallokation ("definiert in einer anderen
+   QCC-Datei") -- kein Konflikt mit dem bestehenden extern bei FUNKTIONEN
+   (das bleibt Microware-ABI/clib.l-spezifisch, siehe externDecl oben): bei
+   globalen Variablen gab es bisher UEBERHAUPT keine extern-Bedeutung. Kein
+   Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
+globalDecl       = externGlobalDecl | plainGlobalDecl .
+externGlobalDecl = "extern" type pointerDecl globalName ";" .
+/* Mehrere Deklaratoren pro Zeile ("static TCType a[512], b[512][64];").
+   Die Aufteilung macht tc_globalend selbst am Rohtext -- siehe dort. */
+/* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei varDeclarator/
+   structDeclarator: pointerDecl gehoert VOR jeden einzelnen Deklarator.
+   Anders als dort haengt hier KEINE eigene Aktion an globalDeclarator --
+   tc_globalend (an plainGlobalDecl) liest die ganze Zeile ohnehin aus dem
+   Rohtext neu (s. dort, tcGlobalOne); die Aktion an pointerDecl feuert bei
+   jedem Vorkommen trotzdem mit (tcCurrentType.pointers wird dabei
+   mitgepflegt, aber fuer Globale nirgends gelesen -- unschaedlich). Ohne
+   diese Grammatikaenderung waere "char *a, *b;" schon hier ein Parse-Fehler
+   gewesen, BEVOR tc_globalend je zum Zug kaeme. */
+plainGlobalDecl  = [ staticKw ] [ constKw ] type globalDeclarator { "," globalDeclarator } ";" .
+globalDeclarator = pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
+constKw   = "const" .
+staticKw  = "static" .
+/* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
+   (char msg[6] = "hallo";). Duplizierte, AKTIONSLOSE Kopie von stringLit
+   OHNE eigene ACTION -- ein direkter Verweis auf stringLit wuerde dessen
+   ACTION (tc_string: anonyme GARRAY-Konstante + Typ-Stack-Push) unwiderruflich
+   mitausloesen, was fuer den globalen Kontext (tc_globalend liest die GANZE
+   Deklaration ohnehin als Rohtext, wie bei Zahlen/Bools) nur unbenutzten Muell
+   erzeugen wuerde. tc_globalend erkennt/dekodiert das Literal selbst per
+   Rohtext-Scan (siehe dort), genau wie bei globalNumber/globalBool. */
+globalInit = globalValue | initList | globalStringInit .
+globalStringInit = "\042" { character } "\042" .
+/* Arraygroesse als konstanter Ausdruck ("char buf[64 + 40];") -- in C
+   ueblich und im Bootstrap-Ziel 16-mal verwendet. Ausgewertet wird der
+   Ausdruck von tcConstArrayLen aus dem Rohtext (die Deklarations-Aktionen
+   lesen die Groesse ohnehin dort ab, nicht ueber den Wertestapel). */
+/* Groessenangabe optional: "char wsSet[] = \"...\";" leitet die Laenge aus
+   dem Initialisierer ab (Stringlaenge + Nullbyte). */
+arraySize  = "[" [ constSize ] "]" .
+arraySizeN = "[" constSize "]" .
+constSize  = globalNumber { constSizeOp globalNumber } .
+constSizeOp = "+" | "-" | "*" .
+globalValue = globalNumber | globalNeg | globalBool .
+globalBool  = "true" | "false" .
+globalNeg   = "-" globalNumber .
+globalNumber = digit { digit } .
+
+/* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
+   IMMER vorhandenen Rumpfs entweder einen echten Rumpf (funcBody) ODER eine
+   reine Prototyp-Deklaration ohne Rumpf (protoEnd) = "definiert in einer
+   anderen QCC-Datei", normale interne bsr/bl-Aufrufkonvention. Bewusst
+   NICHT das bestehende extern-Schluesselwort dafuer verwendet -- das ist fest
+   mit der Microware-ABI/CALLEXT-Semantik verdrahtet (siehe externDecl oben).
+   Kein Backtracking noetig: nach funcHead folgt entweder disjunkt "{" oder
+   ";" -- klassische LL(1)-Alternation. */
+funcdef       = funcHead ( funcBody | protoEnd ) .
+funcBody      = funcBodyOpen { statement } "}" .
+funcBodyOpen  = "{" .
+protoEnd      = ";" .
+/* "f(void)" ist in C die ausdrueckliche LEERE Parameterliste. Die Klammern
+   gehoeren bewusst IN die beiden Alternativen: stuende dort nur "void" gegen
+   die Parameterliste, wuerde die erste Alternative bei "f(void* p)" das
+   "void" schlucken und der Parser kaeme nicht mehr zurueck -- die optionale
+   Gruppe im zweiten Zweig verhindert das Backtracking an dieser Stelle. So
+   ist es dagegen dasselbe Muster wie call/varRef in factor: zwei echte
+   NTS-Alternativen, von denen die erste als GANZES scheitert (an ")") und
+   sauber verworfen wird. Keine Aktion noetig -- keine Parameter heisst
+   schlicht: tc_param feuert nie. */
+/* retConstKw ist eine AKTIONSLOSE Kopie von constKw: ein "const" am
+   Rueckgabetyp ("static const char* f(...)") wird geparst und verworfen.
+   Ein Verweis auf constKw selbst wuerde dessen Aktion tc_const ausloesen,
+   die tcPendingConst setzt -- das Flag wird erst beim naechsten Parameter
+   oder Lokalen konsumiert und wuerde dort faelschlich Konstantheit
+   erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
+funcHead  = [ staticKw ] [ retConstKw ] type pointerDecl defName funcParams .
+retConstKw = "const" .
+funcParams = voidParams | normalParams .
+voidParams = "(" "void" ")" .
+normalParams = "(" paramList ")" .
+paramList = [ param { "," param } ] .
+param     = [ constKw ] type pointerDecl paramDecl .
+paramDecl = paramName [ paramArray ] .
+paramArray = "[" "]" .
+
+/* blockOpen (2026-08-20): eigene Regel fuer die oeffnende Klammer, damit eine
+   ACTION beim BETRETEN des Blocks feuern kann -- dasselbe Muster wie
+   funcBodyOpen (ein Literal "{" traegt keine ACTION). Gebraucht fuer echte
+   Blockgueltigkeitsbereiche lokaler Variablen: ohne Einstiegs-Hook konnte
+   tcLookupLocal eine in einem FRUEHEREN, schon geschlossenen Block
+   deklarierte Variable gleichen Namens nicht von der aktuellen unterscheiden
+   (siehe tc_blockopen/tc_blockend). */
+block     = blockOpen { statement } "}" .
+blockOpen = "{" .
+
+statement = labelStmt
+          | unlabeledStmt .
+
+/* Alles AUSSER labelStmt. Grund: caseBody ist "{ unlabeledStmt }", darf also
+   keine Sprungmarke erkennen -- sonst wuerde die Wiederholung das "default:"
+   des switch als Marke verschlucken ("labelStmt = ident ':'" passt darauf)
+   und defaultGroup kaeme nie zum Zug. Der EBNF-Dialekt hat keinen Except-/
+   Negationsoperator (ISO 14977's "-" ist bewusst nicht implementiert, siehe
+   Kopfkommentar in Q9-Parsec/Source/parsec.cpp), "ident ausser Schluesselwort"
+   ist also nicht direkt ausdrueckbar -- deshalb diese Aufteilung.
+   BEWUSSTE, DOKUMENTIERTE GRENZE: eine Sprungmarke direkt auf der Ebene eines
+   case-/default-Rumpfes ist damit nicht moeglich. In einem geschachtelten
+   Block innerhalb des Rumpfes schon ("{ weiter: ... }"), denn block benutzt
+   wieder statement. Im Bootstrap-Ziel Data/qcc_p.c kommt der Fall nicht vor
+   (nachgezaehlt: 0 Marken innerhalb von switch-Ruempfen). */
+unlabeledStmt = ifStmt
+          | whileStmt
+          | forStmt
+          | doStmt
+          | switchStmt
+          | breakStmt
+          | continueStmt
+          | gotoStmt
+          | returnStmt
+          | block
+          | emptyStmt
+          | voidCastStmt
+          | callStmt
+          | incDecStmt
+          | assignStmt
+          | staticVarDecl
+          | varDecl .
+
+/* "static" lokale Variablen: konstanter Initialisierer (globalValue, dieselbe
+   seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch die
+   normale expr-Grammatik, also auch keine Laufzeit-Emission dafuer, siehe
+   tc_staticlocal) ODER seit 2026-07-24 ein beliebiger Laufzeitausdruck
+   (staticRuntimeInit = expr). staticInit ist eine GEORDNETE Alternation: "static
+   int x = 5;" matched globalValue vollstaendig (Fastpath, unveraendert seit
+   jeher) UND wird von der Grammatik direkt als Ganzes akzeptiert (danach folgt
+   ";"); erst wenn dieser Versuch scheitert (z.B. "static int x = 5+3;" -- 5
+   allein passt, aber danach kommt "+" statt ";"), backtracked der Generator auf
+   staticRuntimeInit (dasselbe Backtracking-Prinzip wie "call vor varRef" in
+   factor). Der Laufzeitausdruck wird bei JEDEM Funktionsaufruf neu ausgewertet
+   (bewusste Vereinfachung -- bei einem Initialisierer mit Seiteneffekten, z.B.
+   einem Funktionsaufruf, weicht das von echtem ISO C ab, das den Ausdruck nur
+   EINMAL auswertet), aber nur beim ERSTEN Aufruf tatsaechlich in die
+   static-Variable geschrieben (Runs-once-Guard mit einem versteckten
+   bool-Flag-Global, siehe tc_staticruntimeinit/tc_staticlocal) -- dadurch bleibt
+   der einmal gesetzte Wert ueber alle nachfolgenden Aufrufe hinweg erhalten,
+   entspricht also dem BEOBACHTBAREN Verhalten (Persistenz), solange der
+   Ausdruck selbst keine Seiteneffekte hat. */
+staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName [ "=" staticInit ] ";" .
+staticLocalName = ident .
+staticInit      = globalValue | staticRuntimeInit .
+staticRuntimeInit = expr .
+
+switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
+switchKw     = "switch" .
+switchCond   = expr .
+switchClose  = "}" .
+caseGroup    = caseLabelRun caseBody .
+caseLabelRun = caseLabel { caseLabel } .
+caseLabel    = "case" caseValue ":" .
+caseValue    = ident | caseNeg | caseNumber .
+caseNeg      = "-" caseNumber .
+caseNumber   = digit { digit } .
+caseBody     = { unlabeledStmt } .
+defaultGroup = defaultLabel caseBody .
+defaultLabel = "default" ":" .
+
+/* Mehrere Deklaratoren in einer Anweisung ("int i, k;"). Ein etwaiger
+   Initialisierer gehoert wie in C zum LETZTEN Deklarator ("int slot,
+   global = -1;") -- genau das ergibt sich hier automatisch, weil varInit
+   dem zuletzt angelegten lokalen Slot zugewiesen wird. */
+/* Jeder Deklarator darf einen EIGENEN Initialisierer haben ("int round = 0,
+   square = 0;") -- das ist die C-Regel; die vorherige Fassung erlaubte ihn
+   nur beim letzten. varDeclarator buendelt Name und Initialisierer, damit
+   die Wiederholung beide zusammen erfasst. */
+/* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei structDeclarator
+   oben: pointerDecl gehoert VOR jeden einzelnen Deklarator, nicht einmal
+   vor die ganze Liste ("char *a, *b;" war ein stiller Parse-Fehler). */
+varDecl   = [ constKw ] type varDeclarator { "," varDeclarator } ";" .
+varDeclarator = pointerDecl localDecl [ "=" varInit ] .
+/* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
+   2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
+   struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
+   mehrdimensionales struct-Feld ist damit ein sauberer Parse-Fehler statt eines
+   still falsch geschnittenen Feldes, siehe tc_structfield) und NICHT bei Parametern
+   (paramArray bleibt "[" "]"). Layout: Groesse = dim1*dim2*...*dimN (zeilenweise/
+   "row-major" wie in echtem C), dim2..dimN werden fuers Indizieren gebraucht
+   (siehe tc_localdecl/tc_globalend/tc_varref/tc_target, TC_MAXDIMS begrenzt N
+   zur Uebersetzungszeit) -- KEIN Initialisierer mit verschachtelten Klammern in
+   dieser Version (flache Initialisierer `{1,2,3,4,5,6}` funktionieren weiterhin
+   mit, siehe docs/FORTSCHRITT.md). */
+localDecl = localName [ arraySize { arraySizeN } ] .
+/* arrayStringInit (2026-07-24, String-Literale als Array-Initialisierer,
+   char msg[6] = "hallo";): MUSS vor expr probiert werden, sonst wuerde expr
+   (via factor/stringLit) das Literal zuerst konsumieren. Referenziert
+   stringLit bewusst DIREKT (anders als globalStringInit) -- dessen ACTION
+   tc_string (anonyme GARRAY-Konstante + char*-Adresse auf den Stack) wird
+   fuer den SKALAREN Fall (char* p = "..";) ohnehin gebraucht; tc_arrayinitstring
+   verwirft die Adresse per DROP nur, wenn das Ziel tatsaechlich ein Array ist. */
+varInit   = arrayStringInit | expr | initList .
+arrayStringInit = stringLit .
+initList  = "{" [ initValue { "," initValue } ] "}" .
+initValue = initNumber | initNeg | initBool .
+initBool  = "true" | "false" .
+initNeg   = "-" initNumber .
+initNumber = digit { digit } .
+/* Kettenzuweisung "a = b = 0;". Steht als ERSTE Alternative; bei einer
+   einfachen Zuweisung scheitert sie am zweiten target und die geordnete
+   Auswahl faellt zurueck. Das ist gefahrlos, weil Aktionen nicht sofort
+   ausgefuehrt, sondern protokolliert und beim Zurueckrollen verworfen
+   werden (actionLog, siehe Data/qcc_p.c). */
+assignStmt = chainAssign | target assignop expr ";" .
+chainAssign = target assignop target assignop expr ";" .
+assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+           | "<<=" | ">>=" | "&=" | "^=" | "|=" .
+callStmt  = call ";" | indirectCall ";" .
+
+/* "(void)ausdruck;" -- wertet aus und verwirft. In C das uebliche Mittel,
+   einen absichtlich unbenutzten Parameter stillzulegen; qcc_p.c benutzt es
+   genau dafuer ("(void)start; (void)end;"). Kein anderes Statement beginnt
+   mit "(", die Einordnung in der Alternation ist also unkritisch. */
+/* Leere Anweisung. In C muss auf eine Sprungmarke eine Anweisung folgen;
+   der generierte Parser Data/qcc_p.c schreibt deshalb ueberall "L19: ;". */
+emptyStmt = ";" .
+
+voidCastStmt = voidCastOpen expr ";" .
+voidCastOpen = "(" "void" ")" .
+returnStmt = "return" [ retVal ] ";" .
+retVal    = expr .
+
+ifStmt    = ifKw "(" ifCond ")" thenPart [ elseKw elsePart ] .
+ifKw      = "if" .
+elseKw    = "else" .
+ifCond    = expr .
+thenPart  = statement .
+elsePart  = statement .
+
+whileStmt = whileKw "(" whileCond ")" whileBody .
+whileKw   = "while" .
+whileCond = expr .
+whileBody = statement .
+
+forStmt   = forKw "(" [ forInit ] forSep1 [ forCond ] forSep2 [ forStep ] forClose forBody .
+forKw     = "for" .
+forSep1   = ";" .
+forSep2   = ";" .
+forClose  = ")" .
+forInit   = target assignop expr .
+forCond   = expr .
+forStep   = target assignop expr | postIncDec | preIncDec .
+forBody   = statement .
+
+doStmt    = doKw doBody doWhileTok "(" doCond ")" doClose .
+doKw      = "do" .
+doWhileTok = "while" .
+doCond    = expr .
+doClose   = ";" .
+doBody    = statement .
+
+breakStmt    = "break" ";" .
+continueStmt = "continue" ";" .
+
+/* goto + Sprungmarken. Beide Aktionen haengen bewusst an der VOLLSTAENDIGEN
+   Regel, nicht an einer Unterregel fuer den blossen Namen: labelStmt beginnt
+   mit einem ident und wird deshalb bei JEDEM ident-Statement ("foo();",
+   "x = 1;") zuerst probiert und danach zurueckgerollt. Eine Aktion an einer
+   Namens-Unterregel wuerde in genau diesen Faellen spekulativ feuern; an der
+   Gesamtregel feuert sie erst, wenn das Statement vollstaendig erkannt ist.
+   Den Bezeichner holt sich die Aktion selbst aus dem erkannten Textbereich
+   (tcIdentFromSpan). Deshalb steht labelStmt in der Alternation auch VOR
+   callStmt/assignStmt -- die geordnete Auswahl probiert es zuerst, das
+   Backtracking faengt die Fehlversuche ab. */
+gotoStmt  = "goto" ident ";" .
+labelStmt = ident ":" .
+
+expr       = conditionalExpr .
+conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
+/* Eigene Regeln fuer die Klammern eines geklammerten Ausdrucks, damit die
+   VERZOEGERTEN Operatoren darum herum gerettet werden koennen (siehe
+   tc_parenbegin). Ohne das wendet der erste INNERE Faktor ein noch
+   ausstehendes "*" des UMSCHLIESSENDEN Ausdrucks an -- "x * (a + b)"
+   rechnete dadurch (x*a)+b. */
+parenOpen  = "(" .
+parenClose = ")" .
+/* KOMMA-OPERATOR (2026-08-11), bewusst NUR innerhalb eines geklammerten
+   Ausdrucks. In C unterscheidet die Grammatik "expression" (mit Komma) von
+   "assignment-expression" (ohne); Argumentlisten und Initialisierer benutzen
+   letztere. Diese Trennung hier nachzubauen haette jede Regel angefasst, die
+   expr verwendet -- und ein Komma in argList bzw. initList als Operator
+   fehlzudeuten waere ein stiller Fehler. Die geklammerte Form ist eindeutig
+   (argList/initList haben ihre eigenen Kommas in eigenen Regeln) und deckt
+   den Bedarf: "return p == e ? (*value = v, 1) : 0;".
+   commaAssign steht VOR commaValue, weil die geordnete Auswahl sonst bei
+   "*p = 1" den Teilausdruck "*p" als commaValue annimmt und die Zuweisung
+   danach nicht mehr erreichbar ist. Der fehlgeschlagene Versuch ist
+   nebenwirkungsfrei: Aktionen laufen erst beim Replay, ein verworfener
+   Parse-Pfad wird aus dem Aktionsprotokoll zurueckgerollt. */
+commaExpr   = commaItem { commaTok commaItem } .
+commaTok    = "," .
+commaItem   = commaAssign | commaValue .
+commaAssign = target assignop expr .
+commaValue  = expr .
+qmark      = "?" .
+conditionalTrue = expr .
+colon      = ":" .
+conditionalFalse = conditionalExpr .
+orExpr     = andExpr [ orop orExpr ] .
+orop       = "||" .
+andExpr    = bitOrExpr [ andop andExpr ] .
+andop      = "&&" .
+bitOrExpr  = bitXorExpr [ bitorop bitOrExpr ] .
+bitorop    = "|" .
+bitXorExpr = bitAndExpr [ bitxorop bitXorExpr ] .
+bitxorop   = "^" .
+bitAndExpr = comparison [ bitandop bitAndExpr ] .
+bitandop   = "&" .
+comparison = shiftExpr [ relop shiftExpr ] .
+shiftExpr  = addExpr { shiftop shiftRhs } .
+shiftRhs   = addExpr .
+shiftop    = "<<" | ">>" .
+relop     = "<=" | ">=" | "==" | "!=" | "<" | ">" .
+addExpr   = term { addop term } .
+addop     = "+" | "-" .
+term      = factor { mulop factor } .
+mulop     = "*" | "/" | "%" .
+factor    = sizeofExpr
+          | castExpr
+          | preIncDec
+          | postIncDec
+          | parenOpen commaExpr parenClose
+          | call [ postfixIndex ] [ callMember ]
+          | indirectCall
+          | boolLit
+          | addressRef
+          | derefRef
+          | varRef
+          | charLit
+          | number
+          | stringLit [ postfixIndex ]
+          | negFactor .
+
+/* Direkte Indizierung ohne Zwischenvariable (2026-07-24): "func()[i]" und
+   "hallo"[i]" duerfen jetzt DIREKT indiziert werden, ohne den Rueckgabewert
+   erst in eine Pointer-Variable zu schreiben. postfixIndex ist bewusst
+   NUR eine Huellregel um die bereits bestehende index-Regel (KEINE eigene
+   Klammersyntax, KEIN neues Bracket-Handling) -- dadurch feuern indexOpen/
+   tc_callname (rettet/setzt tcPendingAdd/tcPendingMul zurueck) und die
+   bestehende ACTION AFTER index CALL tc_arg (prueft den Indextyp, stellt
+   tcPendingAdd/tcPendingMul wieder her) GENAUSO wie bei "arr[i]", nur die
+   neue ACTION AFTER postfixIndex CALL tc_postfixindex kommt hinzu. Bewusst
+   NICHT Teil dieser Version: verkettete Postfix-Indizierung (mehr als ein
+   Klammernpaar direkt hintereinander, z.B. "f()[0][1]"), Indizierung als
+   Zuweisungsziel (foo()[0] = 5;), Indizierung auf "(" expr ")". */
+postfixIndex = index .
+
+/* String-Literal (2026-07-24): erzeugt zur Uebersetzungszeit einen anonymen globalen
+   char-Array-Konstant (GARRAY/GINIT, siehe tc_string) und liefert dessen Adresse als
+   Wert vom Typ char* -- exakt dieselben IR-Opcodes wie ein initialisiertes globales
+   char-Array, kein neuer Opcode und keine Backend-Aenderung noetig (analog 2D-Arrays).
+   Vorbild fuer die Grammatik: Data/oberon07.ebnf ("\042" ist der Oktal-Escape des
+   EBNF-Tools fuer ein woertliches Anfuehrungszeichen, siehe Source/parsec.cpp). character
+   deckt den druckbaren ASCII-Bereich OHNE das Anfuehrungszeichen selbst ab (0x20-0x21,
+   0x23-0x7E) -- Escapesequenzen wie \n werden ueber das ebenfalls im Bereich enthaltene
+   "\" erkannt und in tc_string dekodiert, nicht in der Grammatik. Bewusst NICHT
+   Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
+   und String-Verkettung/-Vergleich als eigene Operatoren. */
+stringLit = "\042" { character } "\042" .
+
+/* Zeichenliteral 'x'. Wie in echtem C hat es den Typ int (nicht char) --
+   dadurch funktionieren Vergleiche mit int-Variablen ohne Konvertierung,
+   genau das Muster in Data/qcc_p.c ("c >= '0' && c <= '9'" mit int c).
+   Die Zeichenklassen sind ausgeschriebene Bereiche, weil der EBNF-Dialekt
+   keinen Ausschluss-Operator hat: 0x20-0x26, 0x28-0x5B und 0x5D-0x7E lassen
+   genau das Hochkomma (0x27) und den Backslash (0x5C) aus, die beide nur
+   ueber die Escape-Form vorkommen duerfen. Unterstuetzte Escapes sind die
+   in der Praxis benutzten -- \n \t \r \0 und der Backslash selbst. */
+charLit       = "\047" charLitBody "\047" .
+charLitBody   = charLitEscape | charLitPlain .
+charLitEscape = "\134" charLitEscChar .
+charLitEscChar = "n" | "t" | "r" | "0" | "\134" .
+charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
+/* strEscape steht VORNE, damit ein Backslash mitsamt dem Folgezeichen als
+   EINHEIT konsumiert wird -- sonst beendet das "\\\"" das Literal vorzeitig.
+   Die Dekodierung selbst kann tcDecodeStringLit laengst, nur die Grammatik
+   kam bisher nie so weit. */
+character = strEscape | " "~"!" | "#"~"~" .
+strEscape = "\134" strEscChar .
+strEscChar = " "~"~" .
+negFactor = ( "-" | "!" | "~" ) factor .
+addressRef = "&" ident [ index ] .
+
+sizeofExpr = "sizeof" "(" sizeofArg ")" .
+sizeofArg  = sizeofType | sizeofVarName .
+/* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gemessen): sizeofType lief frueher
+   ueber die volle Typregel `type`, und die endet auf `typedefRef = ident`.
+   Damit matchte der TYPZWEIG JEDEN BEZEICHNER und gewann die geordnete Auswahl
+   immer -- sizeofVarName/tc_sizeofvar wurde nie erreicht. Folge: sizeof(v)
+   meldete "unknown type name 'v'" (zweimal, weil tc_sizeof tc_type selbst noch
+   einmal aufruft) und lieferte den Default 4; bei `char line[80]` also 4 statt
+   80. Deshalb steht hier jetzt nur noch sizeofBaseType -- die Typformen, die
+   mit einem Schluesselwort beginnen. Der nackte Bezeichner geht an
+   sizeofVarName, das Variable UND typedef-Namen aufloest; sizeof(ActionLogEntry)
+   bleibt also moeglich (der Bootstrap braucht genau das). */
+sizeofType = sizeofBaseType pointerDecl .
+/* NACHTRAG 2026-09-09 -- "short" dazu (s. type/unsignedInt weiter unten):
+   dieselbe Erweiterung, damit sizeof(short)/sizeof(unsigned short) nicht an
+   dieser eigenen Kopie der Typliste vorbeilaeuft. */
+sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" .
+sizeofVarName = ident .
+
+castExpr   = "(" castType ")" castOperand .
+/* Ein Cast verwendet dieselbe Typgrammatik wie eine Deklaration. Damit sind
+   typedef-Namen und beliebig viele Zeigersterne moeglich, z.B. (ActionFn*)p. */
+castType   = type pointerDecl .
+castOperand = factor .
+
+/* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
+   Operand hier kein blosser Bezeichner ist. Die Aktionen erkennen die Form
+   am fuehrenden "(" ihrer Spanne. */
+/* "a[i]++" -- Inkrement eines Arrayelements. Der Indexausdruck darf nur
+   EINMAL ausgewertet werden (Seiteneffekte!), sein Wert liegt beim Feuern
+   der Aktion bereits auf dem Stack und wird dort per DUP/SWAP
+   weiterverwendet statt neu berechnet. */
+/* "x.feld++" und "p->feld++". member deckt beide Schreibweisen ab. */
+preIncDec  = incdecOp derefIncTarget | incdecOp memberIncTarget | incdecOp indexIncTarget | incdecOp ident .
+postIncDec = derefIncTarget incdecOp | memberIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
+/* Includes both x.field and x.field[i].  The latter is needed for normal
+   C89 idioms such as vm->state[i]++ (and is not the same as x[i].field). */
+memberIncTarget = ident member [ index ] .
+indexIncTarget = ident index .
+derefIncTarget = "(" "*" ident ")" .
+incdecOp   = "++" | "--" .
+incDecStmt = preIncDec ";" | postIncDec ";" .
+derefRef  = "*" factor .
+call      = funcName "(" argList ")" .
+/* Memberzugriff auf den Wert eines direkten Aufrufs, z.B. get()->field oder
+   make().field. Der Aufruf wird zuerst durch tc_call abgeschlossen; dadurch
+   liegt sein Rueckgabetyp bereits auf dem Typstack, wenn tc_callmember den
+   Feldzugriff prueft und die Adresse berechnet. */
+callMember = member [ index ] .
+/* Aufruf ueber einen Funktionszeiger-Ausdruck, z.B. "actionLog[i].fn(a, b)".
+   varRef deckt "ident [index...] [.member]" bereits ab und legt den Zeiger als
+   Wert auf den Stack; indCallOpen uebernimmt ihn dann als Callee (siehe
+   tc_indcallbegin). Ein blosser Name faellt NICHT hierher -- den faengt die
+   vorangehende call-Regel ab. */
+indirectCall = varRef indCallOpen argList ")" .
+indCallOpen  = "(" .
+argList   = [ arg { "," arg } ] .
+arg       = expr .
+
+target    = directTarget | indirectTarget .
+/* wiederholter index-Verweis auf dieselbe Regel deckt "arr[i][j][k]..." ab
+   (beliebig viele AUFEINANDERFOLGENDE, nicht verschachtelte Klammerpaare) --
+   kein Grammatik-/Aktions-Zusatz noetig, ACTION AFTER index feuert einfach
+   einmal pro Klammerpaar (die tcIndexDepth-Buchfuehrung ist bereits
+   stapelbasiert, siehe tc_callname/tc_arg). Die eigentliche Zusammenfuehrung
+   zu einem flachen Index passiert in tc_target/tc_varref (per Rohtext-
+   Zaehlung der Top-Level-"["-Vorkommen, TC_MAXDIMS begrenzt N).
+   direkte p.field[i]-Indizierung von Array-Feldern (2026-07-24): member
+   bekommt einen eigenen optionalen index-Anschluss (KEIN zweiter, ineinander
+   verschachtelter -- Array-Felder in struct sind wie arraySize bewusst
+   einstufig, siehe structField). Die ACTION AFTER index CALL tc_arg feuert
+   fuer diesen Index GENAUSO wie bei "arr[i]" (rettet/restauriert
+   tcPendingAdd/tcPendingMul, prueft den Indextyp) -- tc_varref/tc_target
+   erkennen per Rohtext-Scan (erstes Zeichen nach dem Feldnamen == '[') ob
+   ein Index folgt und haengen dann ein zweites IPADD+LOADIND (lesend) bzw.
+   IPADD (schreibend) an das bereits vorhandene Feldadress-IPADD an -- der
+   Stack traegt an dieser Stelle bereits [Indexwert, Feldadresse] (Feldadresse
+   zuletzt gepusht, da tc_varref/tc_target erst am ENDE der ganzen Regel
+   feuern), exakt dieselbe Reihenfolge wie beim bestehenden IPADD-Aufruf fuer
+   die Feldadresse selbst -- kein neuer Opcode, kein Backend-Change. */
+/* arr[i].feld (2026-07-25, Selfhosting L2): ein ARRAY von structs, per
+   Laufzeit-Index adressiert, DANN Feldzugriff -- braucht die Index-Kette
+   UND den Member-Anschluss NACHEINANDER (nicht nur alternativ wie bisher).
+   Verkettete Indizierung NACH dem Feld (arr[i].feld[j]) bleibt bewusst
+   ausgeschlossen (wie bei p.field[i], siehe member oben) -- tc_varref/
+   tc_target diagnostizieren das explizit. Neuer IR-Opcode IPADDN (siehe
+   Backends/qccvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
+   (hier: tcStructByteSize des Element-Structs), waehrend das bestehende
+   IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
+   struct-Arrays ist aber beliebig. */
+/* member bekommt "{ index }" dazu (2026-09-07): NICHT um verkettete
+   Indizierung zu koennen, sondern um sie MELDEN zu koennen. Vorher nahm die
+   Grammatik "s.t[i][j]" gar nicht an, und ein Parse-Abbruch hat keine
+   Meldung -- bei einem 2D-Feld im struct ("char t[4][8]") war die
+   natuerlichste Zugriffsform damit ein stilles FAIL. Jetzt liest die
+   Grammatik es und tc_varref/tc_target lehnen es benannt ab. */
+directTarget = ident [ index { index } ] [ member [ index { index } ] ] .
+indirectTarget = "*" factor .
+varRef    = ident [ index { index } ] [ member [ index { index } ] ] .
+index     = indexOpen expr "]" .
+indexOpen = "[" .
+/* "->" ist in C nur Kurzschreibweise: "p->f" == "(*p).f". Die Aktionen
+   unterscheiden die beiden Formen selbst am Rohtext (tcNameEnd haelt jetzt
+   auch am "-" an), die Grammatik muss sie nur zulassen. */
+member    = "." fieldName | "->" fieldName .
+defName   = ident .
+paramName = ident .
+localName = ident .
+globalName = ident .
+funcName  = ident .
+/* "long" ist auf dem 68k-Ziel wortgleich mit "int" (beide 32 Bit) und wird
+   in tc_type auch so abgebildet -- eigener Typ waere ohne 64-Bit-Arithmetik
+   bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt.
+   NACHTRAG 2026-09-09 -- "short" ECHTER 16-Bit-Basistyp (Q9-Tools/MWOS-
+   Header brauchen ihn: module.h definiert u_int16 selbst als "unsigned
+   short" und hat etliche blanke "short"-Structfelder). Anders als long/int
+   NICHT auf einen bestehenden Typ abgebildet -- der 68k-Codegen legt short
+   echt als 2 Byte an (s. tcTypeTag/qcc_backend_c.cpp). */
+type      = "unsigned" unsignedInt | "int" | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+structTypeRef = ident .
+enumTypeRef = ident .
+typedefRef = ident .
+pointerDecl = { pointerStar } .
+pointerStar = "*" .
+/* "unsigned char" wird auf QCCs char abgebildet: der 68k-Codegen laedt ein
+   char ohnehin nullerweitert ("moveq #0,d0 / move.b"), QCCs char verhaelt
+   sich also bereits vorzeichenlos. "unsigned long" analog zu unsigned int.
+   "unsigned short" (2026-09-09) genauso: short wird ohnehin schon
+   nullerweitert geladen (dieselbe Entscheidung wie bei char), es gibt also
+   gar keinen zweiten short-Basistyp, den man hier waehlen muesste. */
+unsignedInt = "int" | "char" | "long" | "short" .
+boolLit   = "true" | "false" .
+
+ident     = letter { letter | digit } .
+/* Hexzahlen ("0x20"). Die hex-Form steht VORNE, sonst wuerde die dezimale
+   Alternative die fuehrende "0" allein schlucken und das "x" haengen lassen.
+   number ist ein LEXER-TOKEN, die Regel bestimmt also auch, wie weit der
+   Lexer liest. */
+number    = hexNumber | decNumber .
+hexNumber = "0" hexMark hexDigit { hexDigit } .
+hexMark   = "x" | "X" .
+hexDigit  = digit | "a"~"f" | "A"~"F" .
+decNumber = digit { digit } .
+letter    = "a"~"z" | "A"~"Z" | "_" .
+digit     = "0"~"9" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "extern"

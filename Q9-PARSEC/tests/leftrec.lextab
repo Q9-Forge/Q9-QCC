@@ -13,6 +13,12 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+# direkte Linksrekursion: expr = expr ...
+expr = expr "+" "a" | "a" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "+"

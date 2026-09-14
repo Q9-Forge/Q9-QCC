@@ -13,6 +13,12 @@
 
 [ENDE]
 
+[EBNF-ROHQUELLTEXT]
+# Linksrekursion durch ueberspringbare Option hindurch
+s = [ "-" ] s "x" | "y" .
+
+[ENDE]
+
 [TS-SYMBOLTABELLE]
 # nr  typ  symbol
 0    TS   "-"
