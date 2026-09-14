@@ -1824,10 +1824,13 @@ char* comment() {
 		if (flagBlockComment != 0) {
 			index = strstr(sourceBuffer, endBlockCommandString);
 			if (index != 0) {
-				/* Quelle und Ziel ueberlappen hier. Microwares strcpy ist
+				/* Alles VOR dem Endmarker gehoert noch zum Kommentar und muss
+				   verschwinden -- Ziel ist deshalb der Pufferanfang, nicht index
+				   (sonst blieb der Kommentarrest stehen und charLen war zu gross).
+				   Quelle und Ziel ueberlappen hier. Microwares strcpy ist
 				   dafuer nicht definiert; deshalb byteweise nach links schieben. */
 				moveSrc = index + strlen(endBlockCommandString);
-				moveDst = index;
+				moveDst = sourceBuffer;
 				while (*moveSrc != 0) {
 					*moveDst = *moveSrc;
 					moveSrc = moveSrc + 1;

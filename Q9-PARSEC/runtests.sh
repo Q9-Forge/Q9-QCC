@@ -118,6 +118,61 @@ else
 	echo "FAIL  lexer multicomment: C-Parser fehlt/kompiliert nicht"; fail=1
 fi
 
+# 5d) EIGENER Quelltext-Kommentarfilter von parsec (comment(), src/parsec.cpp) --
+#     NICHT der generierte Lexer aus 5b/5c, sondern die Filterung der .ebnf-Eingabe
+#     selbst. Zwei am 2026-09-14 gefundene, gegenlaeufige Fehler:
+#       Host: "strcpy_s(index, len, indexEnd)" uebergab die Laenge des END-MARKERS
+#             (2) als ZIELGROESSE -- ein Blockkommentar MITTEN in einer Zeile liess
+#             genau 1 Zeichen des Zeilenrests uebrig, der Rest der Regel verschwand.
+#       Port: der Abschluss eines MEHRZEILIGEN Kommentars schob den Zeilenrest nach
+#             "index" statt an den Pufferanfang -- der Kommentartext VOR dem
+#             Endmarker blieb stehen, charLen war entsprechend zu gross.
+#     Beide Faelle waren zusammen unsichtbar: ein Blockkommentar, dem nur noch das
+#     Zeilenende folgt, funktionierte auf beiden Seiten. Der Test prueft deshalb
+#     BEIDE Formen und vergleicht Host UND QCC-Port gegen dieselbe Grammatik.
+#     Der Port wird dafuer NATIV als C uebersetzt (er ist gueltiges C89, nur
+#     "putchar" und "true" fehlen ihm ohne Header) -- damit ist die Aequivalenz
+#     ohne Emulator pruefbar.
+cmtdir=build/cmttest
+cmtroot=$(pwd)
+rm -rf "$cmtdir"; mkdir -p "$cmtdir"
+{
+	printf 'num = digit { digit } .\n'
+	printf 'digit /* mitten in der Zeile */ = "0"~"9" .\n'
+	printf '/* Kommentar Anfang\n   zweite Zeile\n   Ende */ letter = "a"~"z" .\n'
+} > "$cmtdir/cmt.ebnf"
+cp "$cmtdir/cmt.ebnf" "$cmtdir/qcc.ebnf"
+cmtfail=0
+( cd "$cmtdir" && "$cmtroot/build/parsec" cmt ) >"$cmtdir/host.out" 2>&1
+if [ ! -f "$cmtdir/cmt.lextab" ] || grep -q "Grammatik fehlerhaft" "$cmtdir/host.out"; then
+	echo "FAIL  parsec Kommentarfilter (Host): Grammatik mit Blockkommentaren nicht uebersetzt"; cmtfail=1
+fi
+{ printf 'int putchar(int c);\n#define true 1\n'; cat src-qcc/ebnf.tc; } > "$cmtdir/ebnf_native.c"
+{ printf 'int putchar(int c);\n#define true 1\n'; cat src-qcc/codegen.tc; } > "$cmtdir/codegen_native.c"
+if cc -w -o "$cmtdir/ebnfport" "$cmtdir/ebnf_native.c" "$cmtdir/codegen_native.c" 2>/dev/null; then
+	( cd "$cmtdir" && ./ebnfport ) >"$cmtdir/port.out" 2>&1
+	if [ ! -f "$cmtdir/qcc.lextab" ] || grep -q "Grammatik fehlerhaft" "$cmtdir/port.out"; then
+		echo "FAIL  parsec Kommentarfilter (QCC-Port): Grammatik mit Blockkommentaren nicht uebersetzt"; cmtfail=1
+	else
+		# Zwei bekannte, zulaessige Unterschiede werden herausgefiltert: der
+		# Erzeugername in Zeile 2 und der [EBNF-ROHQUELLTEXT]-Block, den der Port
+		# noch nicht kennt (offene Portluecke, siehe Commit da8b182).
+		for f in "$cmtdir/cmt.lextab" "$cmtdir/qcc.lextab"; do
+			sed -e '/^\[EBNF-ROHQUELLTEXT\]/,/^\[ENDE\]/d' -e 's/erzeugt von .*/erzeugt von X/' -e '/^$/d' "$f" > "$f.norm"
+		done
+		if ! cmp -s "$cmtdir/cmt.lextab.norm" "$cmtdir/qcc.lextab.norm"; then
+			echo "FAIL  parsec Kommentarfilter: Host und QCC-Port liefern verschiedene Arbeitsdateien"; cmtfail=1
+		fi
+	fi
+else
+	echo "FAIL  parsec Kommentarfilter: QCC-Port (src-qcc/ebnf.tc+codegen.tc) nicht nativ uebersetzbar"; cmtfail=1
+fi
+if [ $cmtfail -eq 0 ]; then
+	echo "ok    parsec Kommentarfilter: Blockkommentar mitten in der Zeile und ueber mehrere Zeilen, Host und QCC-Port gleich"
+else
+	fail=1
+fi
+
 # 6) Schutz gegen eine Endlosschleife im generierten Parser: Der Rumpf einer
 # Wiederholung darf nicht ohne Eingabe erfolgreich sein. Der Generator muss die
 # Ausgabe bewusst verweigern statt einen haengenden C-/68k-Parser zu erzeugen.
