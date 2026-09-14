@@ -1152,7 +1152,9 @@ int loadWorkfileAsGrammar(char* path) {
 		} else if (blk == 4) {
 			lineLen = strlen(line);
 			if (rawEbnfLen + lineLen + 1 < 65535) {		/* QUELLTEXT_BUF_SIZE - 1 */
-				strcpy(&rawEbnfBuf[rawEbnfLen], line);
+				/* memcpy, nicht strcpy: qclib hat kein strcpy (nur strncpy),
+				   und ql68 meldet das erst beim Binden des 68k-Moduls. */
+				memcpy(&rawEbnfBuf[rawEbnfLen], line, lineLen);
 				rawEbnfLen = rawEbnfLen + lineLen;
 				rawEbnfBuf[rawEbnfLen] = 10;		/* EOL */
 				rawEbnfLen = rawEbnfLen + 1;
