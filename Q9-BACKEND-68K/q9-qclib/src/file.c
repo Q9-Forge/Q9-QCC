@@ -21,6 +21,7 @@
 
 extern int _os_open(char *name, int mode, int *path);
 extern int _os_create(char *name, int mode, int *path, int perms);
+extern int _os_delete(char *name);
 extern int _os_close(int path);
 extern int _os_read(int path, char *buf, int *count);
 extern int _os_write(int path, char *buf, int *count);
@@ -48,6 +49,7 @@ char *qf_rbuf[QF_MAX];          /* Read buffer, zero before allocation. */
 int qf_rlen[QF_MAX];            /* Number of valid bytes. */
 int qf_rpos[QF_MAX];            /* Current read position. */
 int qf_err[QF_MAX];             /* Error flag for ferror. */
+int qf_eof[QF_MAX];             /* End-of-file flag for feof. */
 
 #define QF_RBUF 1024
 
@@ -102,15 +104,18 @@ int qf_fill(int i)
 			qf_err[i] = 1;
 		qf_rlen[i] = 0;
 		qf_rpos[i] = 0;
+		qf_eof[i] = (rc == 211);
 		return 0;
 	}
 	if (n <= 0) {
 		qf_rlen[i] = 0;
 		qf_rpos[i] = 0;
+		qf_eof[i] = 1;
 		return 0;
 	}
 	qf_rlen[i] = n;
 	qf_rpos[i] = 0;
+	qf_eof[i] = 0;
 	return 1;
 }
 
@@ -127,6 +132,8 @@ char *qf_open(int *a)
 	int p;
 	int rc;
 	int m;
+	char fullName[256];
+	int j;
 
 	name = (char *) a[0];
 	mode = (char *) a[1];
@@ -143,9 +150,27 @@ char *qf_open(int *a)
 	if (m == 'r') {
 		rc = _os_open(name, QF_READ, &p);
 	} else if (m == 'w') {
-		/* Create the file with owner read/write permissions. The exact mode
-		 * still needs confirmation against Microware fopen. */
+		/* OS-9 I$Create rejects an existing file. C fopen("w") must truncate,
+		 * so remove the old directory entry before creating the new file. */
+		_os_delete(name);
 		rc = _os_create(name, QF_WRITE, &p, 0x03);
+		/* Some OS-9 file managers do not resolve relative I$Create paths even
+		 * when the process has a current data directory. Retry in /dd, the
+		 * Q9 system data device, while preserving the caller's relative name. */
+		if (rc != 0 && name[0] != '/') {
+			fullName[0] = '/';
+			fullName[1] = 'd';
+			fullName[2] = 'd';
+			fullName[3] = '/';
+			j = 0;
+			while (name[j] != 0 && j < 251) {
+				fullName[j + 4] = name[j];
+				j++;
+			}
+			fullName[j + 4] = 0;
+			_os_delete(fullName);
+			rc = _os_create(fullName, QF_WRITE, &p, 0x03);
+		}
 	} else {
 		/* Unsupported modes fail explicitly instead of opening incorrectly. */
 		return 0;
@@ -156,6 +181,7 @@ char *qf_open(int *a)
 	qf_rlen[frei] = 0;
 	qf_rpos[frei] = 0;
 	qf_err[frei] = 0;
+	qf_eof[frei] = 0;
 	/* Keep the buffer for reuse. qclib currently has no free-list allocator. */
 	return (char *) &qf_path[frei];
 }
@@ -300,6 +326,13 @@ char *qf_gets(int *a)
 		buf = qf_rbuf[i];
 		c = buf[qf_rpos[i]] & 255;
 		qf_rpos[i] = qf_rpos[i] + 1;
+		/* ToolShed text copies use OS-9 CR line endings. Normalize them to
+		   the Q9 LF convention exposed by fgets(). */
+		if (c == 13) {
+			dst[k] = 10;
+			k++;
+			break;
+		}
 		dst[k] = c;
 		k++;
 		if (c == 10)
@@ -324,6 +357,20 @@ int qf_error(int *a)
 	if (i < 0)
 		return 1;               /* An invalid stream is itself an error. */
 	return qf_err[i];
+}
+
+/* Function: qf_eof_state
+ * Returns the pending end-of-file state of a Q9 file handle.
+ * Parameters: a IR argument frame containing the handle.
+ * Returns: Non-zero after a read reached end of file. */
+int qf_eof_state(int *a)
+{
+	int i;
+
+	i = qf_index((char *) a[0]);
+	if (i < 0)
+		return 1;
+	return qf_eof[i];
 }
 
 /* Derive the OS-9 path number from a FILE handle. A null handle maps to

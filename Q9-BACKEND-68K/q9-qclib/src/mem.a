@@ -24,4 +24,42 @@ realloc:
          move.l  a1,-(a7)
          rts
 
+* Function: free -- releases an arena allocation logically.
+free:
+         move.l  (a7),a1
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qm_free
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #4,a7
+         move.l  a1,-(a7)
+         rts
+
+malloc:
+         move.l  (a7),a1
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qm_malloc
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #4,a7
+         move.l  a1,-(a7)
+         rts
+
+calloc:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qm_calloc
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
          ends

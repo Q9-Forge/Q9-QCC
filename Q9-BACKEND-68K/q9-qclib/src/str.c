@@ -436,3 +436,36 @@ int qs_lower(int *a)
 		return c + 32;
 	return c;
 }
+
+/* Function: strstr
+ * Finds the first occurrence of needle in haystack.
+ * Parameters: a IR argument frame containing haystack and needle.
+ * Returns: Pointer to the match, or null when no match exists. */
+char *strstr(int *a)
+{
+	char *hay;
+	char *needle;
+	char *p;
+	char *q;
+	char *n;
+
+	hay = (char *) a[0];
+	needle = (char *) a[1];
+	if (hay == 0 || needle == 0)
+		return 0;
+	if (*needle == 0)
+		return hay;
+	p = hay;
+	while (*p != 0) {
+		q = p;
+		n = needle;
+		while (*q == *n && *n != 0) {
+			q = q + 1;
+			n = n + 1;
+		}
+		if (*n == 0)
+			return p;
+		p = p + 1;
+	}
+	return 0;
+}
