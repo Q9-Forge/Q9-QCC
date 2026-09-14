@@ -27,6 +27,7 @@
 * MWOS-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
 
 Q9I_Create     equ     $83                      * I$Create, Datei anlegen
+Q9I_Delete     equ     $87                      * I$Delete, Datei loeschen
 Q9I_Open       equ     $84                      * I$Open, Datei oeffnen
 Q9I_Read       equ     $89                      * I$Read, Daten lesen
 Q9I_Write      equ     $8a                      * I$Write, Daten schreiben
@@ -156,6 +157,22 @@ or_err
 * Creates and opens an OS-9 file.
 * Parameters: d0 name, d1 mode, stack arguments contain path and permissions.
 * Returns: OS-9 error code in d0.
+* Function: _os_delete
+* Deletes an OS-9 directory entry by pathname.
+* Parameters: d0 pathname.
+* Returns: OS-9 error code in d0.
+_os_delete:
+         movea.l d0,a0
+         trap    #0
+         dc.w    Q9I_Delete
+         bcs.s   odel_err
+         moveq   #0,d0
+         rts
+odel_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
 _os_create:
          movea.l d0,a0                           * Name nach a0
          move.l  d1,d0                           * Modus nach d0

@@ -14,7 +14,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
-: "${FORGE:=$(cd .. && pwd)}"
+: "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
@@ -37,19 +37,19 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 MWOS="$MWOS_UNIX"
 
 echo "== 1/4 das Orakel: dieselbe Quelle am Host =="
-cp test/fgtest.c "$WORK/host/"
+cp tests/fgtest.c "$WORK/host/"
 ( cd "$WORK/host" && cc -w -O1 -o fgh fgtest.c ) || die "clang"
 ( cd "$WORK/host" && ./fgh ) > "$WORK/host.out" 2>&1 || die "Hostlauf"
 sed 's/^/    /' "$WORK/host.out"
 
 echo "== 2/4 gegen qclib binden (eigene Kette) =="
-"$QCC/q9-cpp/build/qcpp" -I"$QCC/q9-cpp/include" test/fgtest.c "$WORK/fg.i" || die "qcpp"
-"$QCC/build/qcir" "@$WORK/fg.i" > "$WORK/fg.ir" 2> "$WORK/fg.err"
+"$QCC/Q9-FRONTEND-C/q9-qcpp/build/qcpp" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" tests/fgtest.c "$WORK/fg.i" || die "qcpp"
+"$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" "@$WORK/fg.i" > "$WORK/fg.ir" 2> "$WORK/fg.err"
 [ "$(tail -1 "$WORK/fg.ir")" = OK ] || { head -5 "$WORK/fg.err"; die "qcir"; }
-"$QCC/build/qir_68k" "$WORK/fg.ir" "$WORK/fg.s68" -os9 -largedata >/dev/null || die "Backend"
-"$FORGE/Q9-qr68/build/qr68" "$WORK/fg.s68" "-o=$WORK/fg.r" || die "qr68"
+"$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/fg.ir" "$WORK/fg.s68" -os9 -largedata >/dev/null || die "Backend"
+"$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/fg.s68" "-o=$WORK/fg.r" || die "qr68"
 cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$FORGE/Q9-ql68/build/ql68" -a "$WORK/q9_cstart.r" "$WORK/fg.r" -l="$WORK/qclib.l" \
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/fg.r" -l="$WORK/qclib.l" \
 	-M=64K "-O=$WORK/q9_fgtest" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_fgtest" ] || { head -6 "$WORK/link.log"; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_fgtest" | tr -d ' ') Byte)"

@@ -165,6 +165,20 @@ ferror:
          move.l  (a7)+,a1
          addq.l  #8,a7
          move.l  a1,-(a7)
+	rts
+
+* Function: feof -- returns the stream end-of-file state.
+feof:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qf_eof_state
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
          rts
 
          ends

@@ -146,3 +146,48 @@ char *qm_realloc(int *a)
 	}
 	return neu;
 }
+
+/* Function: qm_free
+ * Releases an allocation logically. The arena is reclaimed at process exit.
+ * Parameters: a IR argument frame containing the pointer. */
+void qm_free(int *a)
+{
+	(void) a;
+}
+
+/* Function: qm_malloc
+ * Allocates one block from the qclib arena.
+ * Parameters: a IR argument frame containing the size.
+ * Returns: Block address, or null on failure. */
+char *qm_malloc(int *a)
+{
+	int args[2];
+	args[0] = 0;
+	args[1] = a[0];
+	return qm_realloc(args);
+}
+
+/* Function: qm_calloc
+ * Allocates and clears an array from the qclib arena.
+ * Parameters: a IR argument frame containing count and element size.
+ * Returns: Cleared block address, or null on failure. */
+char *qm_calloc(int *a)
+{
+	int args[2];
+	char *p;
+	int n;
+	int i;
+
+	n = a[0] * a[1];
+	args[0] = 0;
+	args[1] = n;
+	p = qm_realloc(args);
+	if (p == 0)
+		return 0;
+	i = 0;
+	while (i < n) {
+		p[i] = 0;
+		i++;
+	}
+	return p;
+}

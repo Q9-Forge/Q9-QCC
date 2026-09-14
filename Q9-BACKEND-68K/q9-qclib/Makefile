@@ -12,16 +12,17 @@
 
 FORGE ?= ../../..
 QCC   ?= $(FORGE)/Q9-QCC
-QR68  ?= $(FORGE)/Q9-qr68/build/qr68
+QR68  ?= $(FORGE)/Q9-QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k
 QCPP  ?= $(QCC)/Q9-FRONTEND-C/q9-qcpp/build/qcpp
-QCCP  ?= $(QCC)/build/qcir
-QCCB  ?= $(QCC)/build/qir68k
+QCCP  ?= $(QCC)/Q9-FRONTEND-C/q9-qcir/build/qcir
+QCCB  ?= $(QCC)/Q9-BACKEND-68K/q9-qir68k/build/qir68k
 
 # Reihenfolge = Bindereihenfolge.
 # Blaetter zuletzt: os9call.r ruft nichts mehr auf. mem_c.r braucht
 # _os_srqmem daraus, steht also davor; str_c.r braucht gar nichts.
 ROFS = build/printf.r build/printf_c.r build/file.r build/file_c.r \
-       build/str.r build/str_c.r build/mem.r build/mem_c.r \
+       build/str.r build/str_c.r build/ctype.r build/ctype_c.r \
+       build/mem.r build/mem_c.r \
        build/iob.r build/os9call.r
 
 all: build/qclib.l build/q9_cstart.r
@@ -62,6 +63,15 @@ build/hello.r: tests/hello.c | build
 	@test "$$(tail -1 build/hello.ir)" = OK || { head -5 build/hello.err; exit 1; }
 	$(QCCB) build/hello.ir build/hello.s68 -os9 -largedata
 	$(QR68) build/hello.s68 -o=$@
+
+# Dedicated fgets regression program. It is a complete module because the
+# test exercises the public qclib interface on the target emulator.
+build/fgtest.r: tests/fgtest.c | build
+	$(QCPP) -I$(QCC)/Q9-FRONTEND-C/q9-qcpp/include $< build/fgtest.i
+	$(QCCP) "@build/fgtest.i" > build/fgtest.ir 2> build/fgtest.err
+	@test "$$(tail -1 build/fgtest.ir)" = OK || { head -5 build/fgtest.err; exit 1; }
+	$(QCCB) build/fgtest.ir build/fgtest.s68 -os9 -largedata
+	$(QR68) build/fgtest.s68 -o=$@
 
 test: all build/hello.r
 	./tests/hello68k.sh
