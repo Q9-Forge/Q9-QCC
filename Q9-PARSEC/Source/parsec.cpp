@@ -2068,7 +2068,11 @@ char * comment() {
 					// copy rest of line after start block
 					len = (int)strlen(endBlockCommandString);
 					indexEnd += len;
-					strcpy_s(index, len, indexEnd);
+					// Die Zielgroesse ist der RESTPLATZ ab index, nicht die Laenge des
+					// Endmarkers -- mit "len" (=2) blieb vom Zeilenrest genau 1 Zeichen
+					// uebrig, ein Blockkommentar mitten in einer Zeile verschluckte also
+					// den Rest der Zeile.
+					strcpy_s(index, sizeof(sourceBuffer) - (size_t)(index - sourceBuffer), indexEnd);
 					charLen = (int)strlen(sourceBuffer);
 				} else {
 					// comment block aktive over more than one line						
