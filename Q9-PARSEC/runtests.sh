@@ -581,6 +581,21 @@ if command -v python3 >/dev/null 2>&1; then
 		# sonst waere "struct { char c; double d; }" 16 statt 10 gross und die
 		# MWOS-Header passten nicht mehr.
 		tc_check 'int main(){ putint(sizeof(double)); }' '8'
+		# HEX UND SUFFIXE IN GLOBALEN INITIALISIERERN (2026-09-16):
+		# initNumber las nur Dezimalziffern. "unsigned long t[] = {0x7FF00000UL};"
+		# scheiterte damit STILL -- gefunden beim Bau des Gleitkomma-Konverters,
+		# dessen Sollwerte genau so aussehen. Die Sollwerte hier sind so gewaehlt,
+		# dass sie die dezimale Lesart ausschliessen: 0x10 dezimal gelesen waere 10.
+		tc_check 'int t[] = { 0x10, 0x20 }; int main(){ putint(t[0]); }' '16'
+		tc_check 'int t[] = { 0x10, 0x20 }; int main(){ putint(t[1]); }' '32'
+		tc_check 'int t[] = { 1U, 2L, 3UL }; int main(){ putint(t[2]); }' '3'
+		tc_check 'unsigned long t[] = { 0x7FF00000UL }; int main(){ putint((int)(t[0] >> 20)); }' '2047'
+		tc_check 'int t[] = { -0x10, 5 }; int main(){ putint(t[0]); }' '-16'
+		# Kleinbuchstaben im Hexwert und gemischte Schreibweise
+		tc_check 'int t[] = { 0xabc }; int main(){ putint(t[0]); }' '2748'
+		tc_check 'int t[] = { 0XAB }; int main(){ putint(t[0]); }' '171'
+		# Dezimale Initialisierer duerfen sich nicht veraendert haben
+		tc_check 'int t[] = { 10, -20 }; int main(){ putint(t[1]); }' '-20'
 		tc_check 'struct A { double d; int i; }; int main(){ putint(sizeof(struct A)); }' '12'
 		tc_check 'struct B { int i; double d; }; int main(){ putint(sizeof(struct B)); }' '12'
 		# Die anderen Basistypen duerfen sich dadurch nicht verschieben.
