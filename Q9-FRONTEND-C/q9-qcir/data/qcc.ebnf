@@ -614,7 +614,7 @@ target    = directTarget | indirectTarget .
    ausgeschlossen (wie bei p.field[i], siehe member oben) -- tc_varref/
    tc_target diagnostizieren das explizit. Neuer IR-Opcode IPADDN (siehe
    Backends/qccvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
-   (hier: tcStructByteSize des Element-Structs), waehrend das bestehende
+   (hier: tcStructByteSizeK des Element-Structs), waehrend das bestehende
    IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
    struct-Arrays ist aber beliebig. */
 /* member bekommt "{ index }" dazu (2026-09-07): NICHT um verkettete

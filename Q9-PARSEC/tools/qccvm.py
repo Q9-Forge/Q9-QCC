@@ -2,6 +2,7 @@
 # QCC Stack-IR Interpreter + Test-Orakel (siehe docs/ARCHITEKTUR.md Kapitel 10).
 # Liest IR-Text (stdin oder Dateiargument), fuehrt ihn auf einer Operanden-Stack-
 # Maschine mit Aufruf-Stack aus, startet bei Funktion 'main'. Ausgabe: PRINT-Werte.
+import re
 import sys
 
 
@@ -11,6 +12,29 @@ class SemanticReject(Exception):
     Kennzeichen ist das Schlusswort SEMERR auf stdout. Die vorangehende IR ist
     dann nicht vertrauenswuerdig (siehe parse_ir).
     """
+
+
+# ZEIGERGROESSE DIESES ORAKELS.
+# Groessen und Offsets, die einen Zeigeranteil haben, gibt das Frontend als
+# "k+nP" aus (tcEmitNum in qcc.lextab): k ist der zeigerfreie Anteil in Byte,
+# n die Zahl der Zeigergroessen darin. Jeder Konsument setzt sein eigenes P
+# ein -- qir68k 4, qirarm64 8 -- damit dieselbe IR fuer beide Ziele gilt.
+PTR_SIZE = 8
+
+_PTR_TOKEN = re.compile(r"^(-?\d+)\+(\d+)P$")
+
+
+def resolve_ptr_expr(tok):
+    """'k+nP' zu seiner Zahl aufloesen; jedes andere Token unveraendert lassen.
+
+    Die Aufloesung sitzt bewusst HIER, beim Einlesen, und nicht an den
+    Verwendungsstellen: sonst muesste jedes int(args[i]) im Interpreter davon
+    wissen, und eine vergessene Stelle waere ein stiller Rechenfehler.
+    """
+    m = _PTR_TOKEN.match(tok)
+    if not m:
+        return tok
+    return str(int(m.group(1)) + PTR_SIZE * int(m.group(2)))
 
 
 def parse_ir(text):
@@ -29,7 +53,7 @@ def parse_ir(text):
             raise SemanticReject()
         if line in ("OK", "FAIL"):
             continue
-        parts = line.split()
+        parts = [resolve_ptr_expr(t) for t in line.split()]
         prog.append((parts[0], parts[1:]))
     return prog
 
