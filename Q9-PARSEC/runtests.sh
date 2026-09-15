@@ -685,6 +685,22 @@ if command -v python3 >/dev/null 2>&1; then
 			echo "FAIL  qcc: zu lange Zeile scheitert still"; tcfail=1; fail=1
 		fi
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
+		# EXPLIZITE ENUM-WERTE (C89 3.5.2.2), 2026-09-15. Vorher stiller Abbruch.
+		# Der Wert setzt den Zaehler NEU, die folgenden zaehlen von dort weiter --
+		# genau das pruefen die gemischten Faelle, nicht nur der einzelne Wert.
+		tc_check 'enum E { A = 5 }; int main(){ putint(A); }' '5'
+		tc_check 'enum E { A = 5, B }; int main(){ putint(B); }' '6'
+		tc_check 'enum E { A, B = 7, C }; int main(){ putint(C); }' '8'
+		tc_check 'enum E { A = 1, B = 4 }; int main(){ putint(B); }' '4'
+		tc_check 'enum E { A = -3 }; int main(){ putint(A); }' '-3'
+		# typedef enum, anonym und mit Tag (der Tag wird wie beim struct
+		# geparst und verworfen; als Name dient der typedef-Zielname).
+		tc_check 'typedef enum { A, B } F; int main(){ F g; g=B; putint(g); }' '1'
+		tc_check 'typedef enum E { A, B } F; int main(){ F g; g=B; putint(g); }' '1'
+		tc_check 'typedef enum { A = 9, B } F; int main(){ F g; g=B; putint(g); }' '10'
+		# Ohne Werte unveraendert, und typedef struct daneben auch.
+		tc_check 'enum E { A, B }; int main(){ putint(B); }' '1'
+		tc_check 'typedef struct { int a; } P; int main(){ P p; p.a=7; putint(p.a); }' '7'
 		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
 		# SIZEOF AUF ZEIGER: bis 2026-09-15 ABGELEHNT, jetzt unterstuetzt.
 		# Die drei Faelle hier hielten vorher die Ablehnung als SOLLverhalten

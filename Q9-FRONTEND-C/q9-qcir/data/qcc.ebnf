@@ -37,7 +37,12 @@ externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
 externParam     = [ constKw ] [ volatileKw ] type pointerDecl [ ident ] .
 ellipsisTok     = "..." .
 
-enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
+/* EXPLIZITE WERTE (C89 3.5.2.2): "enum E { A = 5, B };" -- B ist dann 6.
+   Die Konstanten selbst werden wie bisher als ROHTEXT ausgewertet
+   (tc_enumdecl), die Grammatik muss die Form nur lesen koennen. */
+enumDecl  = "enum" ident "{" enumItem { "," enumItem } "}" ";" .
+enumItem  = ident [ "=" enumValue ] .
+enumValue = globalNeg | globalNumber .
 
 structDecl  = "struct" structName "{" structField { structField } "}" ";" .
 /* UNION (2026-09-15). Dieselbe Feldsyntax wie eine struct -- der
@@ -128,7 +133,14 @@ fnPtrName    = ident .
 /* pointerDecl steht NICHT mehr hier (s. NACHTRAG oben bei typedefDecl),
    sondern in typedefDeclarator -- sonst wuerde ein Zeigergrad hier UND
    dort gleichzeitig gezaehlt. */
-typedefType = anonStructType | type .
+typedefType = anonStructType | anonEnumType | type .
+/* "typedef enum { A, B } Flags;" -- und mit Tag, der wie beim struct
+   GEPARST UND VERWORFEN wird (enumTagName ist aktionslos): als interner
+   Name dient der typedef-Zielname. Ein enum ist in QCC ein int, die
+   Aktion setzt den Typ entsprechend und traegt die Konstanten ein. */
+anonEnumType = "enum" [ enumTagName ] anonEnumOpen enumItem { "," enumItem } "}" .
+enumTagName  = ident .
+anonEnumOpen = "{" .
 /* Optionaler Struct-Tag im typedef ("typedef struct TCType { ... } TCType;").
    structTagName ist AKTIONSLOS: der Tag wird geparst und verworfen, als
    interner Tag dient wie bisher der ERSTE typedef-Zielname (siehe
