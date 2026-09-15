@@ -397,9 +397,21 @@ forKw     = "for" .
 forSep1   = ";" .
 forSep2   = ";" .
 forClose  = ")" .
-forInit   = target assignop expr .
+/* KOMMA IM for-KOPF (2026-09-15): "for (i = 0, j = n; ...; i++, j--)".
+   Anders als im allgemeinen Ausdruck ist das Komma HIER eindeutig der
+   Operator -- zwischen "(" und ";" bzw. ";" und ")" gibt es keine
+   Argument- oder Initialisiererliste, die ihr eigenes Komma mitbraechte
+   (s. den Kommentar bei commaExpr, der genau deshalb auf die geklammerte
+   Form beschraenkt ist). Die Aktion haengt an den ITEMS, nicht an der
+   Liste: sonst liefe tc_assign/tc_forstep einmal fuer beide Ausdruecke.
+   Die Reihenfolge stimmt von selbst -- der Schritt wird an Ort und Stelle
+   emittiert und per Sprung an die richtige Stelle gezogen (tc_forsep2). */
+forInit   = forInitItem { forComma forInitItem } .
+forInitItem = target assignop expr .
+forComma  = "," .
 forCond   = expr .
-forStep   = target assignop expr | postIncDec | preIncDec .
+forStep   = forStepItem { forComma forStepItem } .
+forStepItem = target assignop expr | postIncDec | preIncDec .
 forBody   = statement .
 
 doStmt    = doKw doBody doWhileTok "(" doCond ")" doClose .

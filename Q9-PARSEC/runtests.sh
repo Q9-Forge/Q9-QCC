@@ -506,6 +506,29 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x=-1; switch(x){ case -1: putint(99); break; case 0: putint(0); } }' '99'
 		tc_check 'int main(){ int i=0; int n=0; while(i<3){ switch(i){ case 1: break; default: n+=1; } i+=1; } putint(n); }' '2'
 		tc_check 'int main(){ int i=0; int sum=0; while(i<5){ i+=1; switch(i){ case 3: continue; } sum+=i; } putint(sum); }' '12'
+		# KOMMA-OPERATOR im for-Kopf und in der Anweisung (2026-09-15). Er ging
+		# schon im geklammerten Ausdruck; es fehlten genau diese zwei Stellen,
+		# und dort war es ein STILLER Parse-Abbruch.
+		# Der erste Fall laeuft genau dreimal (0/5 -> 1/4 -> 2/3 -> Ende) und
+		# faellt damit nur richtig aus, wenn BEIDE Schrittausdruecke wirken.
+		tc_check 'int main(){ int i; int j; int n; n=0; for(i=0,j=5;i<j;i++,j--){ n=n+1; } putint(n); }' '3'
+		tc_check 'int main(){ int i; int j; j=0; for(i=0,j=5;i<1;i++){ ; } putint(j); }' '5'
+		tc_check 'int main(){ int i; int j; j=0; for(i=0;i<3;i++,j++){ ; } putint(j); }' '3'
+		# IN DER ANWEISUNG ("i = 1, j = 2;") BLEIBT ER OFFEN, und zwar bewusst:
+		# die Grammatikaenderung dafuer (Aktion an einem assignItem statt an
+		# assignStmt) war gebaut und liess Suite und Host-Lauf gruen, brach aber
+		# den SELBSTHOST auf dem 68030 -- der dort gebaute Compiler erzeugte
+		# "JZ L2080374908", also einen Mulldwert als Labelnummer, und liess ein
+		# STOREP fallen. Auf dem Host faellt das nicht auf, weil frischer
+		# Speicher dort zufaellig null ist. Der for-Kopf unten traegt den
+		# Nutzen (125 von 4109 Microware-Quellen), die Anweisungsform kaum --
+		# deshalb zurueckgenommen statt einen schwer auffindbaren Fehler
+		# einzubauen. Siehe docs/KNOWN_BUGS_C89_de.md.
+		# Was vorher ging, muss weiter gehen: klassisches for, Kettenzuweisung
+		# und ein Komma in einer ARGUMENTLISTE (das ist kein Operator).
+		tc_check 'int main(){ int i; int n; n=0; for(i=0;i<10;i++){ n=n+1; } putint(n); }' '10'
+		tc_check 'int main(){ int i; int j; i=j=5; putint(i); }' '5'
+		tc_check 'int f(int a,int b){ return a+b; } int main(){ putint(f(2,3)); }' '5'
 		# DURCHFALL (C89 3.6.4.2), behoben 2026-09-15. Vorher lief er STILL
 		# falsch: der Rumpf sprang unbedingt ans switch-Ende, das Ergebnis war
 		# einfach zu klein -- Schlusswort OK, keine Meldung.
