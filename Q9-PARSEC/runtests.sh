@@ -596,6 +596,32 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int t[] = { 0XAB }; int main(){ putint(t[0]); }' '171'
 		# Dezimale Initialisierer duerfen sich nicht veraendert haben
 		tc_check 'int t[] = { 10, -20 }; int main(){ putint(t[1]); }' '-20'
+		# ARRAY ALS STATIC-LOKALE (2026-09-16): "static int a[4];" in einer
+		# Funktion passte auf keine Grammatikregel und scheiterte STILL. Skalare
+		# static-Lokale gab es seit 2026-09-14, Arrays nicht. Intern ist so ein
+		# Feld dasselbe wie ein unsichtbares globales: Block-Speicher per GARRAY.
+		tc_check 'int f(void){ static int a[4]; a[0]=7; return a[0]; } int main(){ putint(f()); }' '7'
+		# Der eigentliche Zweck von static: der Inhalt ueberlebt den Aufruf.
+		tc_check 'int f(void){ static int a[2]; a[0]=a[0]+1; return a[0]; } int main(){ f(); f(); putint(f()); }' '3'
+		tc_check 'int f(void){ static int a[3]; return a[2]; } int main(){ putint(f()); }' '0'
+		tc_check 'int f(void){ static char b[8]; b[3]=65; return b[3]; } int main(){ putint(f()); }' '65'
+		tc_check 'int f(int i){ static int a[4]; a[i]=i*10; return a[i]; } int main(){ putint(f(3)); }' '30'
+		# Zwei Felder duerfen sich nicht ueberlappen.
+		tc_check 'int f(void){ static int a[2]; static int b[2]; a[0]=1; b[0]=2; return a[0]+b[0]; } int main(){ putint(f()); }' '3'
+		tc_check 'int f(void){ static int a[0x10]; a[15]=9; return a[15]; } int main(){ putint(f()); }' '9'
+		tc_check 'int f(void){ static int a[4]; return (int)sizeof(a); } int main(){ putint(f()); }' '16'
+		# Ein Initialisierer daran wird GEMELDET, nicht als Skalarwert verschluckt.
+		if build/qcc_p 'int f(void){ static int a[3] = 0; return a[0]; } int main(){ putint(f()); }' 2>&1 | grep -qF 'static local array initializers are not supported'; then
+			echo "ok    qcc: Initialisierer am static-lokalen Array wird gemeldet"
+		else
+			echo "FAIL  qcc: Initialisierer am static-lokalen Array scheitert still"; tcfail=1; fail=1
+		fi
+		# static struct lokal ist weiterhin nicht umgesetzt -- aber GEMELDET.
+		if build/qcc_p 'struct S { int n; }; int f(void){ static struct S s; return s.n; } int main(){ putint(f()); }' 2>&1 | grep -qF 'static struct locals not yet supported'; then
+			echo "ok    qcc: static struct lokal wird gemeldet"
+		else
+			echo "FAIL  qcc: static struct lokal scheitert still"; tcfail=1; fail=1
+		fi
 		tc_check 'struct A { double d; int i; }; int main(){ putint(sizeof(struct A)); }' '12'
 		tc_check 'struct B { int i; double d; }; int main(){ putint(sizeof(struct B)); }' '12'
 		# Die anderen Basistypen duerfen sich dadurch nicht verschieben.

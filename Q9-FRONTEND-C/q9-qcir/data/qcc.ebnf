@@ -348,8 +348,15 @@ fnPtrVarName = ident .
    der einmal gesetzte Wert ueber alle nachfolgenden Aufrufe hinweg erhalten,
    entspricht also dem BEOBACHTBAREN Verhalten (Persistenz), solange der
    Ausdruck selbst keine Seiteneffekte hat. */
-staticVarDecl   = staticKw [ constKw ] [ volatileKw ] type pointerDecl staticLocalName [ "=" staticInit ] ";" .
+/* ARRAY ALS STATIC-LOKALE (2026-09-16): "static int a[4];" in einer
+   Funktion passte auf gar keine Regel und scheiterte damit STILL --
+   gefunden, weil der Gleitkomma-Konverter genau so einen Puffer
+   brauchte. Die Laengenangabe verweist auf initNumber, das schon die
+   aktionslose Zahl ist; eine eigene Regel waere eine dritte Zahlregel
+   im Sprachkern und damit die naechste Quelle stiller Abweichungen. */
+staticVarDecl   = staticKw [ constKw ] [ volatileKw ] type pointerDecl staticLocalName [ staticArrayDim ] [ "=" staticInit ] ";" .
 staticLocalName = ident .
+staticArrayDim  = "[" initNumber "]" .
 staticInit      = globalValue | staticRuntimeInit .
 staticRuntimeInit = expr .
 

@@ -76,11 +76,25 @@ mit acht Testfällen, deren Sollwerte die dezimale Lesart ausschließen —
 Das traf nicht nur Gleitkomma: Hexkonstanten in Tabellen sind in jedem
 Systemcode üblich, Masken und Bitmuster stehen praktisch nie dezimal da.
 
-### offen: `static` an lokalen Variablen mit struct- oder Array-Typ
+### behoben: `static` an lokalen Arrays
 
-`static struct S s;` **in einer Funktion** scheitert still. Skalare
-static-Locals gibt es seit 2026-09-14 (`tc_staticlocal`), struct und Array
-fehlen dort ausdrücklich. Im Konverter war das umgehbar, indem die großen
-Zwischenwerte auf Dateiebene liegen — wo sie ohnehin hingehören, denn jeder
-ist gut ein Kilobyte groß und der Stack eines OS-9-Moduls ist knapp.
-Umgehbar heißt aber nicht harmlos: das Scheitern ist stumm.
+`static int a[4];` **in einer Funktion** passte auf keine Grammatikregel und
+scheiterte still. Skalare static-Locals gibt es seit 2026-09-14
+(`tc_staticlocal`), Arrays fehlten. Intern ist so ein Feld dasselbe wie ein
+unsichtbares globales, also Block-Speicher per `GARRAY` — die Registrierung
+lief ohnehin schon über die Globalliste. Acht Testfälle, darunter der
+eigentliche Zweck von `static`: der Inhalt überlebt den Aufruf.
+
+Ein Initialisierer daran (`static int a[3] = {1,2,3};`) wird **gemeldet**
+und nicht etwa als Skalarwert verschluckt; umgesetzt ist er noch nicht.
+
+### offen, aber gemeldet: `static struct` als lokale Variable
+
+`static struct S s;` sagt „static struct locals not yet supported“. Das ist
+eine Lücke, aber keine stille — bei der ersten Messung hatte ich sie
+fälschlich als still eingestuft, weil meine Probe nur den Rückgabewert und
+nicht die Meldung ansah. Nachgemessen: die Diagnose kommt.
+
+Im Konverter war beides ohnehin umgehbar, indem die großen Zwischenwerte auf
+Dateiebene liegen — wo sie hingehören, denn jeder ist gut ein Kilobyte groß
+und der Stack eines OS-9-Moduls ist knapp.
