@@ -419,7 +419,13 @@ initValue = initNumber | initNeg | initBool | initString | initList .
 initString = "\042" { character } "\042" .
 initBool  = "true" | "false" .
 initNeg   = "-" initNumber .
-initNumber = digit { digit } .
+/* HEX UND SUFFIXE IN INITIALISIERERN (2026-09-16): initNumber las nur
+   Dezimalziffern -- "unsigned long t[] = { 0x7FF00000UL };" scheiterte
+   damit STILL, obwohl dieselbe Zahl in jedem Ausdruck gelesen wird.
+   Die Regel verweist jetzt auf dieselben aktionslosen Bausteine wie
+   number; ausgewertet wird die Liste weiterhin als Rohtext in
+   tcInitList, das die beiden Formen ebenfalls kennen muss. */
+initNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
 /* Kettenzuweisung "a = b = 0;". Steht als ERSTE Alternative; bei einer
    einfachen Zuweisung scheitert sie am zweiten target und die geordnete
    Auswahl faellt zurueck. Das ist gefahrlos, weil Aktionen nicht sofort

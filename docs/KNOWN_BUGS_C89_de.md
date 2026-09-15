@@ -56,3 +56,31 @@ QCC-Frontend -> IR -> qccvm.py/native VM -> 68k-Backend -> Q9-Flux
    erledigt (`memberIncTarget` + Index).
 4. Nur bei neuer IR-Semantik das Backend erweitern.
 5. Q9-Run als dauerhaften Regressionstest aufnehmen.
+
+## Nachtrag 2026-09-16 — zwei stille Abbrüche, beim Gleitkomma-Konverter gefunden
+
+Beide kamen nicht aus einer Durchsicht, sondern daraus, dass echter Code
+übersetzt werden sollte: der Dezimal-nach-IEEE-754-Konverter
+(`tools/dec2ieee.c`). Das ist das verlässlichere Verfahren — eine Lücke,
+über die niemand stolpert, findet man durch Lesen nicht.
+
+### behoben: Hex und Suffixe in globalen Initialisierern
+
+`unsigned long t[] = { 0x7FF00000UL };` scheiterte **still**. Die Grammatik
+hatte mit `initNumber = digit { digit }` eine eigene, ärmere Zahlregel als
+der Ausdruck, und der Rohtext-Auswerter `tcInitList` las ebenfalls nur
+Dezimalziffern. Beides ist jetzt an `number` angeglichen (Hex, `U`/`L`/`UL`),
+mit acht Testfällen, deren Sollwerte die dezimale Lesart ausschließen —
+`0x10` muss 16 ergeben, nicht 10.
+
+Das traf nicht nur Gleitkomma: Hexkonstanten in Tabellen sind in jedem
+Systemcode üblich, Masken und Bitmuster stehen praktisch nie dezimal da.
+
+### offen: `static` an lokalen Variablen mit struct- oder Array-Typ
+
+`static struct S s;` **in einer Funktion** scheitert still. Skalare
+static-Locals gibt es seit 2026-09-14 (`tc_staticlocal`), struct und Array
+fehlen dort ausdrücklich. Im Konverter war das umgehbar, indem die großen
+Zwischenwerte auf Dateiebene liegen — wo sie ohnehin hingehören, denn jeder
+ist gut ein Kilobyte groß und der Stack eines OS-9-Moduls ist knapp.
+Umgehbar heißt aber nicht harmlos: das Scheitern ist stumm.

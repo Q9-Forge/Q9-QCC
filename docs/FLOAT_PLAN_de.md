@@ -105,10 +105,45 @@ Was heute tatsächlich gebaut und geprüft wurde:
 Konversion, kein Backend-Code. Ein `double` lässt sich deklarieren und seine
 Größe abfragen — mehr nicht. Wer damit rechnen will, bekommt eine Meldung.
 
-### Die nächste Hürde hat einen Namen: Dezimal → IEEE-754
+### Die Henne-Ei-Frage ist beantwortet: Dezimal → IEEE-754 steht
 
 Bevor ein einziges Literal gerechnet werden kann, muss der Compiler aus der
 Ziffernfolge `3.14` das Bitmuster `0x40091EB851EB851F` erzeugen — **mit
-Ganzzahlarithmetik**, denn QCC soll sich selbst übersetzen und hat dabei kein
-Gleitkomma zur Verfügung. Das ist kein Nebenschauplatz, sondern die
-Henne-Ei-Frage dieses Vorhabens und der erste echte Brocken von Schritt 2.
+Ganzzahlarithmetik**, denn QCC übersetzt sich selbst und hat dabei kein
+Gleitkomma zur Verfügung. Dieser Baustein ist fertig:
+`tools/dec2ieee.c`, C89, rund 300 Zeilen.
+
+**Wie er rechnet.** Die Mantisse wird als Big-Integer aus 16-Bit-Gliedern
+geführt; 16 Bit deshalb, weil ein Produkt zweier Glieder samt Übertrag
+gerade noch in 32 Bit passt — auf dem 68030 ist `unsigned long` genau so
+breit. Bei positivem Zehnerexponenten wird durchmultipliziert, bei negativem
+der Zähler so weit hochgeschoben, dass der Quotient über 60 Bit hat, und der
+Divisionsrest wird zum Sticky-Bit. Gerundet wird einmal, zur nächsten Zahl,
+bei genau der Hälfte zur geraden — und für Denormale rutscht die
+Rundungsstelle auf die feste kleinste Stufe 2^-1074 statt auf 53 Bit.
+
+**Wie er geprüft ist.** Gegen ein Orakel, in drei Stufen:
+
+| Stufe | Umfang | Ergebnis |
+|---|---|---|
+| Host gegen `struct.pack` | 894 Werte quer durch alle Größenordnungen | 0 Abweichungen |
+| Host, Grenzfälle | 510 exakt ausgeschriebene Mittelpunkte zwischen zwei benachbarten `double` (bis 1976 Ziffern), normal wie denormal | 0 Abweichungen |
+| von QCC übersetzt, VM-Orakel | 25 Fälle samt `5e-324`, `1e308`, `1e309`, 30-stelliger Ganzzahl | 0 Abweichungen |
+| von QCC übersetzt, echter 68030 | dieselben 25 Fälle, `tests/dec2ieee68k.sh` | **alle 25 stimmen** |
+
+Die exakten Mittelpunkte sind der eigentliche Prüfstein: dort entscheidet
+sich Ties-to-even, und ein Konverter, der nur „ungefähr richtig“ rundet,
+fällt genau da auf. Der Lauf auf echter Hardware ist der zweite: auf dem Mac
+ist `long` 64 Bit breit, ein Überlauf in der Gliederarithmetik fiele dort
+gar nicht auf.
+
+Nebenbei hat der Konverter zwei stille Abbrüche im Compiler aufgedeckt, von
+denen einer behoben ist (Hex in Initialisierern) — s. `KNOWN_BUGS_C89_de.md`.
+
+### Was als Nächstes ansteht
+
+Der Konverter liegt bewusst als eigenständige Datei vor und nicht schon in
+`qcc.lextab`: er wird dort erst gebraucht, wenn feststeht, wie ein
+`double`-Wert im IR aussieht. Das ist der nächste Schritt — und der größere,
+denn er berührt Ablage (8 Byte statt 4), Aufrufkonvention und Typprüfung,
+nicht nur ein neues Opcode-Paar.
