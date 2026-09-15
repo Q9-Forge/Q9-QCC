@@ -568,6 +568,13 @@ if command -v python3 >/dev/null 2>&1; then
 		# Der ALTE Pfad muss unveraendert bleiben: ein char-Array mit Literal
 		# fuellt Zahlen, keine Adressen (daran ist der erste Anlauf gescheitert).
 		tc_check 'char m[6]="hallo"; int main(){ putchar(m[0]); putint(m[5]); }' 'h0'
+		# EIN EINZELNER globaler Zeiger auf ein Literal -- derselbe Mechanismus,
+		# anderer Pfad. Der Initialisierer wurde vorher STILL verworfen, heraus
+		# kam ein Nullzeiger; lokal ging es laengst (Laufzeit-Store).
+		tc_check 'char *s="ab"; int main(){ char *p; p=s; putint(p[0]); }' '97'
+		tc_check 'static char *s="xy"; int main(){ char *p; p=s; putint(p[0]); }' '120'
+		# Der Nullzeiger darf dadurch nicht zur Adresse werden.
+		tc_check 'char *s=0; int main(){ putint(s==0); }' '1'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
 		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
 		# SIZEOF AUF ZEIGER: bis 2026-09-15 ABGELEHNT, jetzt unterstuetzt.

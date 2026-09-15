@@ -27,6 +27,8 @@ MWOS="$MWOS_UNIX"
 cat > "$WORK/ptrtab.c" <<'EOF'
 extern int printf(char*, ...);
 char *namen[3] = {"eins", "zwei", "drei"};
+char *kurz[] = {"a", "bb"};
+char *einzel = "solo";
 int zahlen[3] = {10, 20, 30};
 int main()
 {
@@ -38,6 +40,10 @@ int main()
 		printf("n %d %s %d\n", i, p, zahlen[i]);
 		i = i + 1;
 	}
+	p = kurz[1];
+	printf("k %s\n", p);
+	p = einzel;
+	printf("e %s\n", p);
 	printf("ptrtab fertig\n");
 	return 0;
 }
@@ -109,7 +115,7 @@ sed -i.bak -e "s|LOGFILE|$WORK/run.log|" -e "s|IMAGE|$WORK/img.hda|" -e "s|MWOSD
 ( cd "$FLUX" && expect -f "$WORK/run.exp" >/dev/null 2>&1 )
 [ -f "$WORK/run.log" ] || die "kein Emulator-Log"
 fail=0
-for soll in "n 0 eins 10" "n 1 zwei 20" "n 2 drei 30"; do
+for soll in "n 0 eins 10" "n 1 zwei 20" "n 2 drei 30" "k bb" "e solo"; do
 	if grep -qF "$soll" "$WORK/run.log"; then echo "  ok    $soll"
 	else echo "  FEHLT $soll"; fail=1; fi
 done
