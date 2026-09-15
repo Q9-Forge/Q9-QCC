@@ -247,7 +247,7 @@ static int  tcStructArgSeq; /* laufende Nummer: je AUFRUFSTELLE ein eigener Argu
 static int  tcLocalStructByAddr[MAX_LOCALS];
 /* Vorwaertsdeklaration: der Generator gibt tc_varinit vor tcAssignStore
    aus, wo die Kopierhilfe definiert ist. */
-static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size);
+static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size, int sizeN);
 static int  tcStringCounter = 0;    /* naechster freier __strN-Name fuer String-Literale */
 static int  tcPendingConst = 0;      /* gesetzt durch constKw, konsumiert von tc_local/tc_param/tc_globalend */
 static int  tcPendingStatic = 0;     /* gesetzt durch staticKw; konsumiert von tc_local/tc_param/tc_staticlocal/
@@ -663,12 +663,6 @@ static void tcEmitNum(int k, int n) {
 /* Structgroesse bzw. Feldoffset als IR-Operand -- immer ueber diese beiden,
    nie die Tabellen direkt in ein printf: der Zeigeranteil wuerde sonst
    stillschweigend fehlen. */
-/* Volle Groesse fuer eine konkrete Zeigergroesse. NUR wo eine echte Zahl
-   noetig ist -- Speicherreservierung, entrollte Kopie --, nie fuer einen
-   IR-Operanden: der geht symbolisch ueber tcEmitNum. */
-static int tcStructSizeFor(int sid, int psize) {
-	return tcStructByteSizeK[sid] + psize * tcStructByteSizeN[sid];
-}
 static void tcEmitStructSize(int sid) {
 	tcEmitNum(tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
 }
@@ -1848,10 +1842,11 @@ void tc_localdecl(const char* start, const char* end) {
 	const char* p = start; int slot = tcLocalCount - 1;
 	int dims[TC_MAXDIMS]; int ndims = 0; int total; int k;
 	int isStruct = tcLocalTypes[slot].base == 's';
-	int structSize = isStruct ? tcStructSizeFor(tcLocalTypes[slot].structId - 1, TC_PTR_LARGE) : 0;
+	int structSizeK = isStruct ? tcStructByteSizeK[tcLocalTypes[slot].structId - 1] : 0;
+	int structSizeN = isStruct ? tcStructByteSizeN[tcLocalTypes[slot].structId - 1] : 0;
 	while (p < end && *p != '[') p++;
 	if (p == end) {
-		if (isStruct) printf("LARRAY %d c %d\n", slot, structSize);
+		if (isStruct) { printf("LARRAY %d c ", slot); tcEmitNum(structSizeK, structSizeN); printf("\n"); }
 		return;
 	}
 	while (p < end && *p == '[') {
@@ -1868,7 +1863,7 @@ void tc_localdecl(const char* start, const char* end) {
 	for (k = 1; k < ndims; k++) { total *= dims[k]; tcLocalArrayDims[slot][k - 1] = dims[k]; }
 	tcLocalArrayNDims[slot] = ndims;
 	tcLocalArrayLen[slot] = total;
-	if (isStruct) printf("LARRAY %d c %d\n", slot, total * structSize);
+	if (isStruct) { printf("LARRAY %d c ", slot); tcEmitNum(total * structSizeK, total * structSizeN); printf("\n"); }
 	else printf("LARRAY %d %c %d\n", slot, tcTypeTag(tcLocalTypes[slot]), total);
 }
 
@@ -2229,9 +2224,11 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	   unten -- ADDRG braucht ohnehin IMMER einen Block, siehe qccvm.py: globals_ ist bei
 	   GLOBAL wie bei GARRAY einheitlich eine Liste, ADDRG unterscheidet nicht). */
 	if (!type.pointers && type.base == 's') {
-		int structSize = tcStructSizeFor(type.structId - 1, TC_PTR_LARGE);
-		int total = (arrayLen > 0 ? arrayLen : 1) * structSize;
-		printf("GARRAY %s c %d %d\n", name, total, isStatic);
+		int count = arrayLen > 0 ? arrayLen : 1;
+		printf("GARRAY %s c ", name);
+		tcEmitNum(count * tcStructByteSizeK[type.structId - 1],
+		          count * tcStructByteSizeN[type.structId - 1]);
+		printf(" %d\n", isStatic);
 		return;
 	}
 	if (arrayLen) {
@@ -2327,7 +2324,7 @@ void tc_varinit(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "struct initializer without a slot\n");
 				actionErrors++;
 			} else {
-				tcEmitStructCopy(slot, 0, tcStructSizeFor(sid, TC_PTR_LARGE));
+				tcEmitStructCopy(slot, 0, tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
 			}
 			return;
 		}
@@ -3788,33 +3785,49 @@ static void tcDeclStructCopyScratch(void) {
 	if (!tcStructCopyScratchDeclared) {
 		printf("GLOBAL __structCopySrc 0 i 1\n");
 		printf("GLOBAL __structCopyDst 0 i 1\n");
+		printf("GLOBAL __structCopyIdx 0 i 1\n");
 		tcStructCopyScratchDeclared = 1;
 	}
 }
+/* DIE BLOCKKOPIE WAR BIS 2026-09-15 ENTROLLT -- acht IR-Zeilen je Byte, fuer
+   eine 28-Byte-Struct 237 Zeilen fuer EINE Zuweisung. Das ging nur, solange
+   die Groesse zur Uebersetzungszeit eine Zahl war. Mit der zielabhaengigen
+   Zeigergroesse (k+nP, s. tcEmitNum) ist sie das nicht mehr: erst das Backend
+   kennt P, also muss die Zahl zur LAUFZEIT wirken.
+   Die Schleife kommt ohne neuen IR-Opcode aus -- alles, was sie braucht,
+   koennen LABEL/CMPLT/JZ/JMP schon --, und macht die IR nebenbei um zwei
+   Groessenordnungen kleiner. */
+static void tcEmitStructCopyLoop(int size, int sizeN) {
+	int top;
+	int done;
+	top = tcNextLabel++;
+	done = tcNextLabel++;
+	printf("PUSH 0\nSTOREG __structCopyIdx\n");
+	printf("LABEL L%d\n", top);
+	printf("LOADG __structCopyIdx\nPUSH ");
+	tcEmitNum(size, sizeN);
+	printf("\nCMPLT\nJZ L%d\n", done);
+	/* Zieladresse + Index, dann Quellbyte -- dieselbe Stapelordnung wie die
+	   entrollte Fassung: erst der Offset, dann die Basis, dann IPADD. */
+	printf("LOADG __structCopyIdx\nLOADGP __structCopyDst\nIPADD c\n");
+	printf("LOADG __structCopyIdx\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n");
+	printf("STOREIND c\n");
+	printf("LOADG __structCopyIdx\nPUSH 1\nADD\nSTOREG __structCopyIdx\n");
+	printf("JMP L%d\nLABEL L%d\n", top, done);
+}
 /* Kopie, wenn BEIDE Adressen bereits in den Scratch-Globals stehen --
    fuer `arr[i] = s`, wo das Ziel erst zur Laufzeit feststeht. */
-static void tcEmitStructCopyDyn(int size) {
-	int off;
-	for (off = 0; off < size; off++) {
-		printf("PUSH %d\nLOADGP __structCopyDst\nIPADD c\n", off);
-		printf("PUSH %d\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n", off);
-		printf("STOREIND c\n");
-	}
-}
-static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size) {
-	int off;
+static void tcEmitStructCopyDyn(int size, int sizeN) {
 	tcDeclStructCopyScratch();
-	{
+	tcEmitStructCopyLoop(size, sizeN);
+}
+static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size, int sizeN) {
+	tcDeclStructCopyScratch();
 	printf("STOREGP __structCopySrc\n");
-	for (off = 0; off < size; off++) {
-		printf("PUSH %d\n", off);
-		if (dstGlobal) printf("ADDRG %s\n", dstGlobal);
-		else printf("PUSHADDR L %d\n", dstSlot);
-		printf("IPADD c\n");
-		printf("PUSH %d\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n", off);
-		printf("STOREIND c\n");
-	}
-	}
+	if (dstGlobal) printf("ADDRG %s\n", dstGlobal);
+	else printf("PUSHADDR L %d\n", dstSlot);
+	printf("STOREGP __structCopyDst\n");
+	tcEmitStructCopyLoop(size, sizeN);
 }
 static void tcAssignStore(int leaveValue) {
 	TCType got; char tag;
@@ -3849,10 +3862,10 @@ static void tcAssignStore(int leaveValue) {
 			}
 			{ printf("IPADDN "); tcEmitStructSize(sid); printf("\n"); }
 			printf("STOREGP __structCopyDst\n");
-			tcEmitStructCopyDyn(tcStructSizeFor(sid, TC_PTR_LARGE));
+			tcEmitStructCopyDyn(tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
 		}
-		else if (tcTargetIsGlobal) tcEmitStructCopy(-1, tcTargetGlobal, tcStructSizeFor(sid, TC_PTR_LARGE));
-		else if (tcTargetSlot >= 0) tcEmitStructCopy(tcTargetSlot, 0, tcStructSizeFor(sid, TC_PTR_LARGE));
+		else if (tcTargetIsGlobal) tcEmitStructCopy(-1, tcTargetGlobal, tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
+		else if (tcTargetSlot >= 0) tcEmitStructCopy(tcTargetSlot, 0, tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
 		else {
 			tcErrAt(parserActionAt); fprintf(stderr, "struct assignment without a target\n");
 			actionErrors++;
@@ -3977,8 +3990,8 @@ void tc_arg(const char* start, const char* end) {
 	  		   Position benutzt -- siehe tcCompatible/tcIsPointer. */
 	  		char argName[40];
 	  		sprintf(argName, "__structArg_%d_%d", sid, tcStructArgSeq++);
-	  		printf("GARRAY %s c %d 1\n", argName, tcStructSizeFor(sid, TC_PTR_LARGE));
-	  		tcEmitStructCopy(-1, argName, tcStructSizeFor(sid, TC_PTR_LARGE));
+	  		{ printf("GARRAY %s c ", argName); tcEmitNum(tcStructByteSizeK[sid], tcStructByteSizeN[sid]); printf(" 1\n"); }
+	  		tcEmitStructCopy(-1, argName, tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
 	  		printf("ADDRG %s\n", argName);
 	  	}
 	  } }
@@ -4076,10 +4089,10 @@ void tc_return(const char* start, const char* end) {
 			char retName[32];
 			sprintf(retName, "__structRet_%d", sid);
 			if (!tcStructRetDeclared[sid]) {
-				printf("GARRAY %s c %d 1\n", retName, tcStructSizeFor(sid, TC_PTR_LARGE));
+				{ printf("GARRAY %s c ", retName); tcEmitNum(tcStructByteSizeK[sid], tcStructByteSizeN[sid]); printf(" 1\n"); }
 				tcStructRetDeclared[sid] = 1;
 			}
-			tcEmitStructCopy(-1, retName, tcStructSizeFor(sid, TC_PTR_LARGE));
+			tcEmitStructCopy(-1, retName, tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
 			printf("ADDRG %s\n", retName);
 		}
 	}
