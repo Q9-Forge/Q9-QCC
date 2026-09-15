@@ -49,6 +49,8 @@ static struct A ga;
 /* Cases 29-35: a scalar POINTER field (not a pointer array) and a struct
    indexed through a pointer. */
 struct Z { int *ip; char *cp; int n; };
+union U2 { int a; int b; };
+union U3 { int i; char c[4]; };
 static struct Z gz;
 static int zfeld[8];
 static char ztxt[8];
@@ -230,6 +232,19 @@ int main(void)
 	/* 38 ganze Struct per WERT aus einem indizierten AUFRUFERGEBNIS: f(g()[i]) */
 	mark(38); { int k; k = 3; tab[3].a = 93;
 	            val(use(giveTab()[k])); }
+	/* 39-42 UNION (2026-09-15). Intern eine struct, deren Felder alle auf
+	   Offset 0 liegen. Fall 42 prueft die BYTE-REIHENFOLGE und kann genau
+	   deshalb nur HIER stehen und nicht in runtests.sh: der 68k ist
+	   big-endian, das VM-Orakel rechnet little-endian. u.i = 5 legt die 5
+	   also ins LETZTE Byte, c[3], und c[0] bleibt 0. */
+	/* 39 zwei gleich grosse Felder teilen den Speicher */
+	mark(39); { union U2 u; u.a = 94; val(u.b); }
+	/* 40 Groesse ist das groesste Feld, nicht die Summe */
+	mark(40); { val(sizeof(union U3)); }
+	/* 41 ueber einen Zeiger, mit -> */
+	mark(41); { union U2 u; union U2 *up; up = &u; up->a = 95; val(up->b); }
+	/* 42 big-endian: das niederwertigste Byte liegt HINTEN */
+	mark(42); { union U3 u; u.i = 5; val(u.c[3] * 10 + u.c[0]); }
 
 	return 0;
 }
