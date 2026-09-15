@@ -51,6 +51,44 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | `void` und `void *` | offen | hoch |
 | `struct`, `union`, `enum` | teilweise (struct mit gemischten skalaren Feldtypen erledigt 2026-07-24, `enum` erledigt; `union`, Array-/Pointer-Felder und verschachtelte structs offen) | sehr hoch |
 
+**Nachtrag 2026-09-15 -- die Zeigergroesse ist nicht mehr festverdrahtet.**
+Bis dahin belegte ein Zeiger im Struct-Layout IMMER acht Byte (`TC_PTR_SLOT`),
+damit EIN frontend-berechnetes Offset fuer 68k (4 Byte) und ARM64 (8 Byte)
+zugleich gilt -- auf dem 68k war damit die Haelfte jedes Zeigerfelds
+verschenkt, und `sizeof` auf einen Zeigertyp musste abgelehnt werden, weil das
+Frontend nur EINE Zahl schreiben konnte.
+
+Das Frontend rechnet jedes Layout jetzt ZWEIMAL, einmal je Zeigergroesse, und
+gibt Offsets und Groessen als **`k+nP`** aus: `k` ist der zeigerfreie Anteil in
+Byte, `n` die Zahl der Zeigergroessen darin. Jeder Konsument setzt sein eigenes
+`P` ein -- `qir68k` 4, `qirarm64` 8, `qccvm.py` 8. Die IR bleibt damit fuer
+beide Ziele dieselbe; das Frontend ist NICHT zielabhaengig geworden.
+
+Aufgeloest wird beim **Einlesen** der IR-Zeile (`argIntern` in den Backends,
+`parse_ir` in `qccvm.py`), nicht an den Verwendungsstellen: sonst muesste jedes
+`number(args[i])` davon wissen, und eine vergessene Stelle waere ein stiller
+Rechenfehler statt eines Abbruchs.
+
+**Die Linearitaet wird nicht angenommen, sondern nachgerechnet.** Die
+Ausrichtung rundet auf, und eine Rundung ist keine lineare Funktion von `P`;
+fuer die erlaubten Feldtypen geht es auf, aber `tcPtrLinear()` prueft es je
+Feld und meldet eine Verletzung, statt still ein falsches Offset zu liefern.
+
+**Folge fuer die Blockkopie:** sie war byteweise entrollt (acht IR-Zeilen je
+Byte) und braucht dafuer eine Zahl. Wo die Groesse einen Zeigeranteil hat,
+erzeugt das Frontend jetzt eine Laufzeitschleife aus vorhandenen Opcodes; wo
+sie zeigerfrei ist, bleibt es beim Entrollen -- die Schleife kostet zwei Labels
+je Kopie, und QCCs eigener Parser kopiert 1340 zeigerfreie structs, womit
+`qr68` ueber `SYM_MAX` lief (Zielbuild: 4096 Symbole).
+
+**Gemessen:** `ActionLogEntry {int id; const char* start; const char* end;}`
+faellt auf dem 68k von 24 auf 12 Byte, das Aktionslog des Parsers damit von
+6.291.456 auf 3.145.728 Byte -- genau der Preis, der am 2026-09-07 gemessen
+und bewusst hingenommen wurde. Verifiziert: Suite 207 ok / 0 FAIL,
+`tools/test_struct_68k.sh` 38/38 auf echtem 68030, Selbsthost-Fixpunkt mit
+byteidentischer IR, und die vollstaendig eigene Kette (qcpp, qcc, qr68, ql68,
+qclib) gruen.
+
 **Nachtrag 2026-09-08 — mehrere Zeiger-Deklaratoren in EINER Anweisung
 sind ein STILLER Abbruch.** `char *a, *b;` (mit oder ohne `const`, dritter
 oder mehr Deklaratoren, immer dasselbe Bild) gibt `FAIL` ohne jede

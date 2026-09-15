@@ -53,6 +53,43 @@ QCC currently covers only a small, executable core of area 1.
 | `void` and `void *` | open | high |
 | `struct`, `union`, `enum` | partial (struct with mixed scalar field types done 2026-07-24, `enum` done; `union`, array/pointer fields, and nested structs open) | very high |
 
+**Addendum 2026-09-15 - the pointer size is no longer hard-wired.**
+Until then a pointer always occupied eight bytes in struct layout
+(`TC_PTR_SLOT`) so that ONE frontend-computed offset stayed valid for both 68k
+(4 bytes) and ARM64 (8) - on 68k that wasted half of every pointer field, and
+`sizeof` on a pointer type had to be rejected because the frontend could only
+write ONE number.
+
+The frontend now computes each layout TWICE, once per pointer size, and emits
+offsets and sizes as **`k+nP`**: `k` is the pointer-free part in bytes, `n` the
+number of pointer sizes in it. Each consumer substitutes its own `P` - `qir68k`
+4, `qirarm64` 8, `qccvm.py` 8 - so the IR stays the same for both targets and
+the frontend did NOT become target dependent.
+
+Resolution happens when the IR line is READ (`argIntern` in the backends,
+`parse_ir` in `qccvm.py`), not at the use sites: otherwise every
+`number(args[i])` would have to know about it, and one forgotten site would be
+a silent miscalculation instead of an abort.
+
+**Linearity is verified, not assumed.** Alignment rounds up and rounding is not
+a linear function of `P`; it works out for the permitted field types, but
+`tcPtrLinear()` checks it per field and reports a violation rather than
+silently producing a wrong offset.
+
+**Consequence for the block copy:** it was unrolled byte by byte (eight IR
+lines per byte) and needs a number for that. Where the size has a pointer part
+the frontend now emits a runtime loop built from existing opcodes; where it is
+pointer-free the unrolled form stays - the loop costs two labels per copy, and
+QCCs own parser copies 1340 pointer-free structs, which pushed `qr68` past
+`SYM_MAX` (target build: 4096 symbols).
+
+**Measured:** `ActionLogEntry {int id; const char* start; const char* end;}`
+drops from 24 to 12 bytes on 68k, so the parser action log needs 3,145,728
+instead of 6,291,456 bytes - exactly the cost measured on 2026-09-07 and
+accepted then. Verified: suite 207 ok / 0 FAIL, `tools/test_struct_68k.sh`
+38/38 on the real 68030, self-hosting fixpoint with byte-identical IR, and the
+fully own chain (qcpp, qcc, qr68, ql68, qclib) green.
+
 **Addendum 2026-09-08 — multiple pointer declarators in ONE statement are
 a SILENT abort.** `char *a, *b;` (with or without `const`, three or more
 declarators, always the same picture) gives `FAIL` with no message at
