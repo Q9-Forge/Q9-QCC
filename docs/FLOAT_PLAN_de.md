@@ -186,3 +186,12 @@ Damit sind alle 68k-Fragen beantwortet, und der nächste Schritt ist wieder
 der aus dem Plan: die IR. Dort ist die offene Frage nicht die
 Befehlskodierung, sondern die Ablage — ein `double` braucht 8 Byte, und
 die Slots der IR sind bisher einheitlich schmal.
+
+## Der IR-Entwurf steht: `docs/FLOAT_IR_ENTWURF_de.md`
+
+Die offene Frage aus Schritt 2 -- wie ein `double` in der IR aussieht -- ist
+beantwortet und aufgeschrieben. Kurz: Die Slots sind schon heute nicht
+einheitlich breit (68k 4 Byte, ARM64 16), deshalb wird ein `double` nicht
+in Slots gelegt, sondern als **Block** wie eine lokale struct-Variable. Der
+Mechanismus dafuer existiert bereits (`LARRAY`/`GARRAY`, `arrayOffset()`),
+und die Offsetrechnung beider Backends bleibt unveraendert.
