@@ -3800,6 +3800,22 @@ static void tcDeclStructCopyScratch(void) {
 static void tcEmitStructCopyLoop(int size, int sizeN) {
 	int top;
 	int done;
+	int off;
+	/* OHNE ZEIGERANTEIL IST DIE GROESSE EINE ZAHL -- dann wird weiter
+	   entrollt, wie vor dem 15.09.2026. Das ist nicht nur schneller: die
+	   Schleife braucht ZWEI LABELS je Kopie, und QCCs eigener Parser kopiert
+	   1340 structs (alle zeigerfrei, TCType sind vier char-Felder). Mit
+	   Schleife lief qr68s Symboltabelle ueber (SYM_MAX). Die Schleife ist
+	   also nur fuer den Fall da, fuer den sie noetig ist: eine Groesse, die
+	   erst das Backend kennt. */
+	if (sizeN == 0) {
+		for (off = 0; off < size; off++) {
+			printf("PUSH %d\nLOADGP __structCopyDst\nIPADD c\n", off);
+			printf("PUSH %d\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n", off);
+			printf("STOREIND c\n");
+		}
+		return;
+	}
 	top = tcNextLabel++;
 	done = tcNextLabel++;
 	printf("PUSH 0\nSTOREG __structCopyIdx\n");
@@ -3822,8 +3838,26 @@ static void tcEmitStructCopyDyn(int size, int sizeN) {
 	tcEmitStructCopyLoop(size, sizeN);
 }
 static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size, int sizeN) {
+	int off;
 	tcDeclStructCopyScratch();
 	printf("STOREGP __structCopySrc\n");
+	/* Zeigerfrei: die ALTE, entrollte Fassung, Ziel direkt statt ueber das
+	   Scratch-Global -- Zeile fuer Zeile wie vor dem 15.09.2026. Der Umweg
+	   ueber __structCopyDst kostete zwei Zeilen je Kopie, und bei den 1340
+	   Kopien in QCCs eigenem Parser lief damit MAX_IR_LINES im Backend
+	   ueber. Nur wo die Groesse erst das Backend kennt, ist die Schleife
+	   noetig -- und dort ist sie ein Gewinn, nicht ein Aufschlag. */
+	if (sizeN == 0) {
+		for (off = 0; off < size; off++) {
+			printf("PUSH %d\n", off);
+			if (dstGlobal) printf("ADDRG %s\n", dstGlobal);
+			else printf("PUSHADDR L %d\n", dstSlot);
+			printf("IPADD c\n");
+			printf("PUSH %d\nLOADGP __structCopySrc\nIPADD c\nLOADIND c\n", off);
+			printf("STOREIND c\n");
+		}
+		return;
+	}
 	if (dstGlobal) printf("ADDRG %s\n", dstGlobal);
 	else printf("PUSHADDR L %d\n", dstSlot);
 	printf("STOREGP __structCopyDst\n");
