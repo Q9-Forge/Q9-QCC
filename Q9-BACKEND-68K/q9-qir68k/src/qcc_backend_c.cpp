@@ -526,7 +526,7 @@ static int number(const char* text, int line) {
    Die Aufloesung sitzt beim EINLESEN und nicht an den Verwendungsstellen:
    sonst muesste jedes number(args[i]) davon wissen, und eine vergessene
    Stelle waere ein stiller Rechenfehler statt eines Abbruchs. */
-#define QIR_PTR_SIZE 8
+#define QIR_PTR_SIZE 4
 
 /* "k+nP" zu seiner Zahl aufloesen; jedes andere Wort unveraendert lassen.
    Bewusst von Hand geparst statt mit sscanf: diese Quelle muss in der
