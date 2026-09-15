@@ -16,10 +16,16 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${QCC:=$REPO/../Q9-QCC}"
+# PFADE (2026-09-16): seit dem Monorepo-Umbau vom 12.09. liegt qr68 unter
+# Q9-QCC/Q9-BACKEND-68K/q9-qr68k -- die alten Vorgaben zeigten noch auf
+# $REPO/../Q9-QCC und auf ein Abbild, das es nicht mehr gibt. Das Skript
+# war damit ohne drei gesetzte Umgebungsvariablen nicht lauffaehig.
+: "${FORGE:=$(cd "$REPO/../../.." && pwd)}"
+: "${QCC:=$FORGE/Q9-QCC}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
-: "${Q9FLUX:=/Volumes/SSD1TB/work-stargate/Q9-Flux-68k}"
-: "${BASE:=$Q9FLUX/local_images/OS9SYS.stock-stargate.hda}"
+: "${Q9FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
+: "${BASE:=$Q9FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
+[[ "${MWOS:-}" == Z:* ]] && MWOS=/Volumes/SSD1TB/projects/MWOS
 : "${ROMIMG:=$MWOS/OS9/68030/PORTS/Q9/CMDS/BOOTOBJS/ROMBUG/romimage.dev.running.BIN}"
 : "${QUELLE:=$REPO/tests/insn.a}"
 WORK=/tmp/qr68-os9

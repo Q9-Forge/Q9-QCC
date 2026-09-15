@@ -3728,6 +3728,324 @@ static void doOneEa(int op, int size)
 	emitEa(0, sizeBytes(size));
 }
 
+/* ---------------------------------------------------------------------
+ * Gleitkomma (68881/68882). JEDE Kodierung hier ist an r68 gemessen --
+ * tests/fpu.a ist die Probe, tests/insndiff.sh stellt beide Ausgaben
+ * Zeile fuer Zeile gegenueber. Ungemessene Formen werden GEMELDET und
+ * nicht geraten; das ist der Grund, warum unten mehrere fatal() stehen,
+ * wo eine Kodierung denkbar waere.
+ *
+ * Aufbau: erstes Wort $F200 | <ea>, dann ein zweites Wort
+ *
+ *   15-13  Modus: 000 Register->Register, 010 Speicher->FPn,
+ *          011 FPn->Speicher, 110 FMOVEM zu Registern,
+ *          111 FMOVEM in den Speicher
+ *   12-10  bei Modus 000 das QUELLREGISTER, sonst das Format
+ *          (0=L 1=S 2=X 3=P 4=W 5=D 6=B; 7 heisst FMOVECR)
+ *    9-7   Zielregister
+ *    6-0   Opmode ($00 fmove, $22 fadd, $28 fsub, $23 fmul, $20 fdiv,
+ *          $38 fcmp, $3A ftst, $03 fintrz, $01 fint, $04 fsqrt,
+ *          $18 fabs, $1A fneg)
+ *
+ * danach die ea-Erweiterungswoerter wie bei jedem anderen Befehl.
+ * ------------------------------------------------------------------ */
+
+/* "fp3" -> 3, sonst -1. Fuehrende und folgende Leerzeichen sind erlaubt,
+   alles andere macht es zu keinem Register. */
+static int fpRegOf(const char *s)
+{
+	int i;
+
+	i = 0;
+	while (s[i] == ' ' || s[i] == 9)
+		i++;
+	if (lowerCh(s[i] & 255) != 'f')
+		return -1;
+	if (lowerCh(s[i + 1] & 255) != 'p')
+		return -1;
+	if (s[i + 2] < '0' || s[i + 2] > '7')
+		return -1;
+	i = i + 3;
+	while (s[i] == ' ' || s[i] == 9)
+		i++;
+	if (s[i] != 0)
+		return -1;
+	return s[i - 1] - '0';
+}
+
+static int fpFmtOf(int size)
+{
+	if (size == 'l')
+		return 0;
+	if (size == 's')
+		return 1;
+	if (size == 'x')
+		return 2;
+	if (size == 'p')
+		return 3;
+	if (size == 'w')
+		return 4;
+	if (size == 'd')
+		return 5;
+	if (size == 'b')
+		return 6;
+	return -1;
+}
+
+static int fpOpmodeOf(const char *base)
+{
+	if (baseIs(base, "fmove"))
+		return 0x00;
+	if (baseIs(base, "fint"))
+		return 0x01;
+	if (baseIs(base, "fintrz"))
+		return 0x03;
+	if (baseIs(base, "fsqrt"))
+		return 0x04;
+	if (baseIs(base, "fabs"))
+		return 0x18;
+	if (baseIs(base, "fneg"))
+		return 0x1a;
+	if (baseIs(base, "fdiv"))
+		return 0x20;
+	if (baseIs(base, "fadd"))
+		return 0x22;
+	if (baseIs(base, "fmul"))
+		return 0x23;
+	if (baseIs(base, "fsub"))
+		return 0x28;
+	if (baseIs(base, "fcmp"))
+		return 0x38;
+	if (baseIs(base, "ftst"))
+		return 0x3a;
+	return -1;
+}
+
+/* Bedingung hinter "fb". Die zwoelf hier sind die gemessenen; die FPU
+   kennt mehr, aber ungemessen bleibt ungeschrieben. */
+static int fpCondOf(const char *s)
+{
+	if (baseIs(s, "eq"))
+		return 0x01;
+	if (baseIs(s, "ogt"))
+		return 0x02;
+	if (baseIs(s, "oge"))
+		return 0x03;
+	if (baseIs(s, "olt"))
+		return 0x04;
+	if (baseIs(s, "ole"))
+		return 0x05;
+	if (baseIs(s, "or"))
+		return 0x07;
+	if (baseIs(s, "un"))
+		return 0x08;
+	if (baseIs(s, "ne"))
+		return 0x0e;
+	if (baseIs(s, "gt"))
+		return 0x12;
+	if (baseIs(s, "ge"))
+		return 0x13;
+	if (baseIs(s, "lt"))
+		return 0x14;
+	if (baseIs(s, "le"))
+		return 0x15;
+	return -1;
+}
+
+/* "fp1/fp0" oder "fp0-fp3" zu einer Maske. Die Zaehlrichtung haengt am
+   Adressierungsmodus: bei -(sp) ist Bit0 = fp0, bei (sp)+ ist Bit7 = fp0
+   (beides gemessen). */
+static int fpListMask(const char *s, int reverse)
+{
+	int mask;
+	int i;
+	int a;
+	int b;
+	int n;
+
+	mask = 0;
+	i = 0;
+	for (;;) {
+		while (s[i] == ' ' || s[i] == 9)
+			i++;
+		if (lowerCh(s[i] & 255) != 'f' || lowerCh(s[i + 1] & 255) != 'p')
+			return -1;
+		if (s[i + 2] < '0' || s[i + 2] > '7')
+			return -1;
+		a = s[i + 2] - '0';
+		b = a;
+		i = i + 3;
+		if (s[i] == '-') {
+			i++;
+			if (lowerCh(s[i] & 255) != 'f' || lowerCh(s[i + 1] & 255) != 'p')
+				return -1;
+			if (s[i + 2] < '0' || s[i + 2] > '7')
+				return -1;
+			b = s[i + 2] - '0';
+			i = i + 3;
+		}
+		if (b < a)
+			return -1;
+		n = a;
+		while (n <= b) {
+			if (reverse)
+				mask = mask | (1 << (7 - n));
+			else
+				mask = mask | (1 << n);
+			n++;
+		}
+		while (s[i] == ' ' || s[i] == 9)
+			i++;
+		if (s[i] == 0)
+			return mask;
+		if (s[i] != '/')
+			return -1;
+		i++;
+	}
+}
+
+static void doFpu(const char *base, int size)
+{
+	int fmt;
+	int opmode;
+	int src;
+	int dst;
+	int cond;
+	int mask;
+	int v;
+	int d;
+
+	/* --- bedingte Spruenge --- */
+	if (base[1] == 'b') {
+		cond = fpCondOf(&base[2]);
+		if (cond < 0)
+			fatal("unbekannte Gleitkomma-Bedingung: ", lnOp);
+		if (size != 0 && size != 'w')
+			fatal("FBcc nur als Wortform -- die lange Form ist ungemessen: ", lnOp);
+		needOps(1);
+		subStr(opTxt0, 0, strLen(opTxt0));
+		v = evalExpr(exBuf);
+		if (!exOpen && exExtern >= 0)
+			fatal("FBcc auf einen externen Namen ist ungemessen: ", lnArg);
+		if (!exOpen && exSect != SECT_CODE && exSect != SECT_ABS)
+			fatal("Sprungziel liegt nicht im Code: ", lnArg);
+		d = 0;
+		if (!exOpen)
+			d = v - (curPC + 2);
+		emitWord(0xF280 | cond);
+		emitWord(d & 0xFFFF);
+		return;
+	}
+
+	/* --- Registerrettung --- */
+	if (baseIs(base, "fmovem")) {
+		if (size != 'x')
+			fatal("fmovem kennt nur .x: ", lnOp);
+		needOps(2);
+		mask = fpListMask(opTxt0, 0);
+		if (mask >= 0) {
+			parseOperand(opTxt1, 1);
+			if (oMode[1] != AM_PRE)
+				fatal("fmovem in den Speicher ist nur mit -(an) gemessen: ", lnArg);
+			emitWord(0xF200 | eaBits(1));
+			emitWord(0xE000 | mask);
+			emitEa(1, 4);
+			return;
+		}
+		mask = fpListMask(opTxt1, 1);
+		if (mask < 0)
+			fatal("fmovem braucht eine FP-Registerliste: ", lnArg);
+		parseOperand(opTxt0, 0);
+		if (oMode[0] != AM_POST)
+			fatal("fmovem aus dem Speicher ist nur mit (an)+ gemessen: ", lnArg);
+		emitWord(0xF200 | eaBits(0));
+		emitWord(0xD000 | mask);
+		emitEa(0, 4);
+		return;
+	}
+
+	/* --- eingebaute Konstanten der FPU --- */
+	if (baseIs(base, "fmovecr")) {
+		if (size != 'x')
+			fatal("fmovecr kennt nur .x: ", lnOp);
+		needOps(2);
+		parseOperand(opTxt0, 0);
+		if (oMode[0] != AM_IMM)
+			fatal("fmovecr braucht einen Sofortwert: ", lnArg);
+		dst = fpRegOf(opTxt1);
+		if (dst < 0)
+			fatal("fmovecr schreibt in ein FP-Register: ", lnArg);
+		emitWord(0xF200);
+		emitWord(0x5C00 | (dst << 7) | (oVal[0] & 0x7F));
+		return;
+	}
+
+	opmode = fpOpmodeOf(base);
+	if (opmode < 0)
+		fatal("Gleitkommabefehl noch nicht kodierbar: ", lnOp);
+	fmt = fpFmtOf(size);
+	if (fmt < 0)
+		fatal("Groessenbuchstabe passt zu keinem Gleitkommaformat: ", lnOp);
+
+	/* --- ftst: nur eine Quelle, kein Ziel ---
+	   r68 schreibt dabei das Quellfeld ZUSAETZLICH ins Zielfeld (gemessen
+	   an "ftst.x fp3" -> $0dba und "ftst.d 8(a5)" -> $56ba). Die FPU
+	   ignoriert das Feld; byteidentisch wird es nur so. */
+	if (opmode == 0x3a) {
+		needOps(1);
+		src = fpRegOf(opTxt0);
+		if (src >= 0) {
+			if (size != 'x')
+				fatal("ftst auf ein Register geht nur mit .x: ", lnOp);
+			emitWord(0xF200);
+			emitWord((src << 10) | (src << 7) | opmode);
+			return;
+		}
+		parseOperand(opTxt0, 0);
+		if (oMode[0] == AM_IMM)
+			fatal("Gleitkomma-Sofortwerte sind ungemessen: ", lnArg);
+		emitWord(0xF200 | eaBits(0));
+		emitWord(0x4000 | (fmt << 10) | (fmt << 7) | opmode);
+		emitEa(0, 4);
+		return;
+	}
+
+	needOps(2);
+	dst = fpRegOf(opTxt1);
+	if (dst >= 0) {
+		src = fpRegOf(opTxt0);
+		if (src >= 0) {
+			/* Register gegen Register: im Quellfeld steht die
+			   Registernummer, nicht das Format. */
+			if (size != 'x')
+				fatal("zwischen FP-Registern nur .x: ", lnOp);
+			emitWord(0xF200);
+			emitWord((src << 10) | (dst << 7) | opmode);
+			return;
+		}
+		parseOperand(opTxt0, 0);
+		if (oMode[0] == AM_IMM)
+			fatal("Gleitkomma-Sofortwerte sind ungemessen -- die Konstante gehoert in den Datenbereich: ", lnArg);
+		emitWord(0xF200 | eaBits(0));
+		emitWord(0x4000 | (fmt << 10) | (dst << 7) | opmode);
+		emitEa(0, 4);
+		return;
+	}
+
+	/* --- FPn in den Speicher --- */
+	src = fpRegOf(opTxt0);
+	if (src < 0)
+		fatal("Gleitkommabefehl ohne FP-Register: ", lnArg);
+	if (opmode != 0x00)
+		fatal("nur fmove schreibt in den Speicher: ", lnOp);
+	parseOperand(opTxt1, 1);
+	if (oMode[1] == AM_IMM)
+		fatal("ein Sofortwert ist kein Ziel: ", lnArg);
+	emitWord(0xF200 | eaBits(1));
+	emitWord(0x6000 | (fmt << 10) | (src << 7));
+	emitEa(1, 4);
+}
+
 static void doInstruction(void)
 {
 	char base[64];
@@ -5217,6 +5535,13 @@ static void doInstruction(void)
 			emitEa(0, 4);
 			return;
 		}
+	}
+
+	/* --- Gleitkomma --- Alles mit f am Anfang gehoert der FPU; ein
+	   68k-Grundbefehl faengt mit keinem f an. */
+	if (base[0] == 'f') {
+		doFpu(base, size);
+		return;
 	}
 
 	fatal("Befehl noch nicht kodierbar: ", lnOp);

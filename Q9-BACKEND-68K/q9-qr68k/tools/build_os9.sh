@@ -20,7 +20,12 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${QCC:=$REPO/../Q9-QCC}"
+# PFADE (2026-09-16): seit dem Monorepo-Umbau vom 12.09. liegt qr68 unter
+# Q9-QCC/Q9-BACKEND-68K/q9-qr68k -- die alten Vorgaben zeigten noch auf
+# $REPO/../Q9-QCC und auf ein Abbild, das es nicht mehr gibt. Das Skript
+# war damit ohne drei gesetzte Umgebungsvariablen nicht lauffaehig.
+: "${FORGE:=$(cd "$REPO/../../.." && pwd)}"
+: "${QCC:=$FORGE/Q9-QCC}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 : "${STACK_KB:=512}"
 WORK="${1:-/tmp/qr68-os9}"
