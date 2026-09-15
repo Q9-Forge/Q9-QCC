@@ -69,3 +69,46 @@ sonst scheitert ein Lauf mit einer Ausnahme statt mit einer Meldung.
 - **Die Zeigergröße hat gezeigt**, wie man Zielunterschiede sauber trägt
   (`k+nP`, aufgelöst im Backend). Für Gleitkomma stellt sich die gleiche
   Frage bei `sizeof(double)` — auf beiden Zielen 8, hier also unkritisch.
+
+## Stand 2026-09-16 — Schritt 1 angefangen, nicht abgeschlossen
+
+Vom Schritt 1 („Typ und Literale“) ist der **Typ** da, die **Literale** nicht.
+Was heute tatsächlich gebaut und geprüft wurde:
+
+- `double` ist ein Basistyp im Frontend (interne Kennung `'d'`), `sizeof(double)`
+  liefert 8, Variablen und Struct-Felder lassen sich deklarieren.
+- **Die Ausrichtung ist gemessen, nicht angenommen.** xcc richtet `double`
+  auf **2** Byte aus, nicht auf 8 — das ist die 68k-Wortausrichtung, und sie
+  gilt hier für den 8-Byte-Typ genauso wie für `int`. Gegengerechnet:
+
+  | Struct | QCC | xcc |
+  |---|---|---|
+  | `{ double d; int i; }` | 12 | 12 |
+  | `{ int i; double d; }` | 12 | 12 |
+  | `{ char a; short s; }` | 4 | 4 |
+  | `{ char c; double d; }` | 12 | **10** |
+
+  Der letzte Fall weicht ab, aber **nicht wegen `double`**: QCC rundet jede
+  Structgröße auf ein Vielfaches von 4 auf. Dieselbe Abweichung zeigt schon
+  `struct { char a; }` (QCC 4, xcc 1). Das ist eine ältere ABI-Abweichung mit
+  eigenem Faden, kein Gleitkomma-Thema.
+- Gleitkomma-**Literale** werden **gemeldet** (`floating point literals are not
+  supported yet`) statt still zu einem falschen Ergebnis zu führen. Das war die
+  eigentliche Gefahr: ein durchrutschendes `1.5` hätte schweigend `1` gerechnet.
+  Die Grammatikregel `floatLit` steht vor `number`, ohne den Member-Zugriff
+  `s.a` zu beschädigen — dafür gibt es einen eigenen Testfall.
+- Neun Tests in `Q9-PARSEC/runtests.sh`; Suite 220 grün. Bootstrap über xcc
+  EXIT=0, `test_struct_68k.sh` 42/42, Selbsthost auf dem 68030 wieder am
+  Fixpunkt (IR byteidentisch, 104351 Zeilen).
+
+**Ausdrücklich noch nicht da:** keine IR-Opcodes, keine Arithmetik, keine
+Konversion, kein Backend-Code. Ein `double` lässt sich deklarieren und seine
+Größe abfragen — mehr nicht. Wer damit rechnen will, bekommt eine Meldung.
+
+### Die nächste Hürde hat einen Namen: Dezimal → IEEE-754
+
+Bevor ein einziges Literal gerechnet werden kann, muss der Compiler aus der
+Ziffernfolge `3.14` das Bitmuster `0x40091EB851EB851F` erzeugen — **mit
+Ganzzahlarithmetik**, denn QCC soll sich selbst übersetzen und hat dabei kein
+Gleitkomma zur Verfügung. Das ist kein Nebenschauplatz, sondern die
+Henne-Ei-Frage dieses Vorhabens und der erste echte Brocken von Schritt 2.

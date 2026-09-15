@@ -563,6 +563,7 @@ factor    = sizeofExpr
           | derefRef
           | varRef
           | charLit
+          | floatLit
           | number
           | stringLit [ postfixIndex ]
           | negFactor .
@@ -646,7 +647,7 @@ sizeofType = sizeofBaseType pointerDecl .
 /* NACHTRAG 2026-09-09 -- "short" dazu (s. type/unsignedInt weiter unten):
    dieselbe Erweiterung, damit sizeof(short)/sizeof(unsigned short) nicht an
    dieser eigenen Kopie der Typliste vorbeilaeuft. */
-sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
+sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "double" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
@@ -754,7 +755,7 @@ funcName  = ident .
    koennen; umgesetzt ist sie nicht: 64-Bit-Arithmetik auf dem 68k
    braucht Hilfsroutinen fuer Multiplikation und Division und ist ein
    eigenes Vorhaben, kein Randfall. */
-type      = "unsigned" unsignedInt | "int" | longLongType | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+type      = "unsigned" unsignedInt | "int" | longLongType | "long" | "short" | "char" | "bool" | "double" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
 longLongType = "long" "long" .
 unionTypeRef = ident .
 structTypeRef = ident .
@@ -784,5 +785,15 @@ hexNumber = "0" hexMark hexDigit { hexDigit } .
 hexMark   = "x" | "X" .
 hexDigit  = digit | "a"~"f" | "A"~"F" .
 decNumber = digit { digit } .
+/* GLEITKOMMA-LITERAL (2026-09-16): wird GELESEN, um es melden zu
+   koennen, und steht VOR number -- sonst endet die Zahl am Punkt und
+   der Rest passt auf keine Regel, also ein stiller Abbruch.
+   Umgesetzt ist es noch nicht: die Umrechnung Dezimal -> IEEE-754 muss
+   irgendwo in der Kette stattfinden (xcc legt fertige Hexwortpaare ab,
+   "dc.l 0x3ff80000,0x0" fuer 1.5), aber qcpp, qcc, das Backend und
+   qr68 sind alle im QCC-Subset ohne Gleitkomma geschrieben. Sie
+   braucht also Ganzzahlarithmetik und ist ein eigener Baustein --
+   s. docs/FLOAT_PLAN_de.md. */
+floatLit  = digit { digit } "." { digit } .
 letter    = "a"~"z" | "A"~"Z" | "_" .
 digit     = "0"~"9" .

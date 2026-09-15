@@ -574,6 +574,28 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# double ALS TYP (2026-09-16, erster Schritt des Gleitkomma-Vorhabens):
+		# Deklaration, sizeof und Struct-Layout. Gerechnet wird damit noch nicht.
+		# Die Struct-Groessen sind gegen xcc GEMESSEN, nicht angenommen: ein
+		# double wird auf 2 Byte ausgerichtet (68k-Wortausrichtung), nicht auf 8 --
+		# sonst waere "struct { char c; double d; }" 16 statt 10 gross und die
+		# MWOS-Header passten nicht mehr.
+		tc_check 'int main(){ putint(sizeof(double)); }' '8'
+		tc_check 'struct A { double d; int i; }; int main(){ putint(sizeof(struct A)); }' '12'
+		tc_check 'struct B { int i; double d; }; int main(){ putint(sizeof(struct B)); }' '12'
+		# Die anderen Basistypen duerfen sich dadurch nicht verschieben.
+		tc_check 'int main(){ putint(sizeof(int)); }' '4'
+		tc_check 'int main(){ putint(sizeof(short)); }' '2'
+		tc_check 'struct R { char a; short s; }; int main(){ putint(sizeof(struct R)); }' '4'
+		# Gleitkomma-LITERALE werden gemeldet, nicht still verschluckt -- und der
+		# Punkt im Member-Zugriff darf davon nicht betroffen sein.
+		if build/qcc_p 'int main(){ double x; x = 1.5; return 0; }' 2>&1 | grep -qF 'floating point literals are not supported'; then
+			echo "ok    qcc: Gleitkomma-Literal wird gemeldet"
+		else
+			echo "FAIL  qcc: Gleitkomma-Literal scheitert still"; tcfail=1; fail=1
+		fi
+		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
+		tc_check 'int main(){ int x; x = 0x10; putint(x); }' '16'
 		# BITFELDER und "long long" (2026-09-15): beide brachen vorher STILL im
 		# Parser ab -- FAIL, keine Meldung, keine Zeile. Beide sind bewusst NICHT
 		# umgesetzt (Bitfelder braeuchten Bitpacking plus maskierten Zugriff an
