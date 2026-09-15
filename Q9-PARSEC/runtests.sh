@@ -506,6 +506,23 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int x=-1; switch(x){ case -1: putint(99); break; case 0: putint(0); } }' '99'
 		tc_check 'int main(){ int i=0; int n=0; while(i<3){ switch(i){ case 1: break; default: n+=1; } i+=1; } putint(n); }' '2'
 		tc_check 'int main(){ int i=0; int sum=0; while(i<5){ i+=1; switch(i){ case 3: continue; } sum+=i; } putint(sum); }' '12'
+		# DURCHFALL (C89 3.6.4.2), behoben 2026-09-15. Vorher lief er STILL
+		# falsch: der Rumpf sprang unbedingt ans switch-Ende, das Ergebnis war
+		# einfach zu klein -- Schlusswort OK, keine Meldung.
+		# Die Sollwerte diskriminieren, statt nur "irgendwas" zu pruefen: 7 ist
+		# 1+2+4, faellt also nur bei Durchfall UEBER DREI Stufen heraus, und 6
+		# ist 2+4, also Einstieg mitten in die Kette.
+		tc_check 'int main(){ int r=0; switch(1){ case 1: r=1; case 2: r=r+2; break; default: r=9; } putint(r); }' '3'
+		tc_check 'int main(){ int r=0; switch(1){ case 1: r=r+1; case 2: r=r+2; case 3: r=r+4; break; } putint(r); }' '7'
+		tc_check 'int main(){ int r=0; switch(2){ case 1: r=r+1; case 2: r=r+2; case 3: r=r+4; break; } putint(r); }' '6'
+		# break muss den Durchfall weiterhin verhindern -- sonst waere der Fix
+		# nur eine andere Sorte Fehler.
+		tc_check 'int main(){ int r=0; switch(1){ case 1: r=1; break; case 2: r=r+2; break; } putint(r); }' '1'
+		tc_check 'int main(){ int r=0; switch(1){ case 1: r=5; break; default: r=99; } putint(r); }' '5'
+		# Durchfall in den default-Rumpf, und der letzte case ohne break.
+		tc_check 'int main(){ int r=0; switch(1){ case 1: r=1; default: r=r+8; } putint(r); }' '9'
+		tc_check 'int main(){ int r=0; switch(2){ case 1: r=1; case 2: r=3; } putint(r); }' '3'
+		tc_check 'int main(){ int r=0; switch(7){ case 1: r=1; default: r=9; } putint(r); }' '9'
 		tc_check 'int main(){ int x=321; putint((char)x); }' '65'
 		tc_check 'int main(){ char c=65; putint((int)c); }' '65'
 		tc_check 'int main(){ int x=5; int y=0; putint((bool)x); putint((bool)y); }' '1\n0'

@@ -402,6 +402,11 @@ static int  tcCtrlDepth = 0;
 #define MAX_SWITCH 16
 static int tcSwitchBodyLabel[MAX_SWITCH];
 static int tcSwitchNextLabel[MAX_SWITCH];
+/* Sprungziel fuer den DURCHFALL aus dem vorigen case-Rumpf in den
+   naechsten, oder -1. Es wird am Ende einer case-Gruppe reserviert und
+   vom naechsten Rumpf (bzw. vom switch-Ende) eingeloest -- siehe
+   tc_casegroup_end. */
+static int tcSwitchFallLabel[MAX_SWITCH];
 static int tcSwitchEndLabel[MAX_SWITCH];
 static int tcSwitchGroupOpen[MAX_SWITCH];
 static int tcSwitchHadDefault[MAX_SWITCH];
@@ -4834,6 +4839,7 @@ void tc_switchbegin(const char* start, const char* end) {
 	endLabel = tcNextLabel++;
 	tcSwitchBodyLabel[tcSwitchDepth] = -1;
 	tcSwitchNextLabel[tcSwitchDepth] = -1;
+	tcSwitchFallLabel[tcSwitchDepth] = -1;
 	tcSwitchEndLabel[tcSwitchDepth] = endLabel;
 	tcSwitchGroupOpen[tcSwitchDepth] = 0;
 	tcSwitchHadDefault[tcSwitchDepth] = 0;
@@ -4875,12 +4881,27 @@ void tc_caselabelrun_end(const char* start, const char* end) {
 	int d = tcSwitchDepth - 1; (void)start; (void)end;
 	if (d < 0) return;
 	printf("JMP L%d\nLABEL L%d\nDROP\n", tcSwitchNextLabel[d], tcSwitchBodyLabel[d]);
+	/* Durchfall aus dem vorigen Rumpf landet HINTER dem DROP. */
+	if (tcSwitchFallLabel[d] >= 0) {
+		printf("LABEL L%d\n", tcSwitchFallLabel[d]);
+		tcSwitchFallLabel[d] = -1;
+	}
 }
 
 void tc_casegroup_end(const char* start, const char* end) {
 	int d = tcSwitchDepth - 1; (void)start; (void)end;
 	if (d < 0) return;
-	printf("JMP L%d\nLABEL L%d\n", tcSwitchEndLabel[d], tcSwitchNextLabel[d]);
+	/* DURCHFALL (C89 3.6.4.2): ohne break laeuft die Ausfuehrung in den
+	   naechsten case-Rumpf weiter. Bis 2026-09-15 stand hier ein
+	   unbedingtes "JMP <switch-Ende>" -- der Durchfall wurde also still
+	   uebersprungen, ohne Meldung und mit falschem Ergebnis.
+	   Das Ziel ist der naechste RUMPF, nicht der naechste TEST: der Wert
+	   darf nicht erneut verglichen werden. Weil dessen Label hier noch
+	   nicht vergeben ist, wird es reserviert und vom naechsten Rumpf
+	   eingeloest -- und zwar HINTER dessen DROP, denn auf diesem Weg ist
+	   der switch-Wert bereits vom Stapel (sonst liefe der Stapel leer). */
+	tcSwitchFallLabel[d] = tcNextLabel++;
+	printf("JMP L%d\nLABEL L%d\n", tcSwitchFallLabel[d], tcSwitchNextLabel[d]);
 	tcSwitchGroupOpen[d] = 0;
 }
 
@@ -4889,6 +4910,11 @@ void tc_defaultlabel(const char* start, const char* end) {
 	if (d < 0) return;
 	tcSwitchHadDefault[d] = 1;
 	printf("DROP\n");
+	/* Durchfall aus dem letzten case in den default-Rumpf, s. oben. */
+	if (tcSwitchFallLabel[d] >= 0) {
+		printf("LABEL L%d\n", tcSwitchFallLabel[d]);
+		tcSwitchFallLabel[d] = -1;
+	}
 }
 
 void tc_switchend(const char* start, const char* end) {
@@ -4896,6 +4922,12 @@ void tc_switchend(const char* start, const char* end) {
 	if (!tcNeedCtrl('s')) return;
 	d = tcSwitchDepth - 1;
 	if (!tcSwitchHadDefault[d]) printf("DROP\n");
+	/* Faellt der LETZTE Rumpf durch, folgt kein weiterer -- das reservierte
+	   Label wird hier eingeloest, hinter dem DROP des Test-Pfads. */
+	if (tcSwitchFallLabel[d] >= 0) {
+		printf("LABEL L%d\n", tcSwitchFallLabel[d]);
+		tcSwitchFallLabel[d] = -1;
+	}
 	printf("LABEL L%d\n", tcSwitchEndLabel[d]);
 	tcSwitchDepth--;
 	tcCtrlDepth--;
