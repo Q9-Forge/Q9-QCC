@@ -21,8 +21,21 @@
 /* 2026-07-25: increased from 8192; the -largedata function-call mode
    (a4/a2 indirection table instead of bsr) made this cap too small for
    realistic programs (150 generated functions already produced over 36,000
-   IR lines). It was already guarded by fatal(), but the limit was too low. */
-#define MAX_IR_LINES    98304
+   IR lines). It was already guarded by fatal(), but the limit was too low.
+
+   2026-09-15: increased from 98304. Self-hosting needed 97,822 lines, or
+   99.5% of the cap; it had already been at 98.6% before the symbolic
+   pointer size work, so this was tight independently of it. The cap grows
+   with the frontend source itself, because QCC compiles its own parser.
+   The cost is target RAM, not module size: ir[] is a static table of
+   MAX_IR_LINES * 56 bytes on 68k (Instr = 24 + 6*4 + 8), so this step adds
+   1.75 MB, taking the table from 5.25 to 7.0 MB against the 16 MB of the
+   Q9. Verified on the real 68030 afterwards (qccb_68k.sh, qcc_68k.sh).
+   If it gets tight again, the honest fix is a grown table rather than a
+   larger literal: the 101 read sites use ir[i] and would not change if
+   ir became a pointer grown with realloc, exactly as the parser already
+   does for its action log. */
+#define MAX_IR_LINES    131072
 /* 2026-08-10 increased from 256 to 1024: Data/qcc_p.c alone has 354
    functions, so self-hosting reached this limit. */
 #define MAX_FUNCS       1024
