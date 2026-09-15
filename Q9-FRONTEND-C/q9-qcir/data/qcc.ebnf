@@ -346,7 +346,12 @@ initList  = "{" [ initValue { "," initValue } ] "}" .
    ein ADDRG auf den STAPEL legen -- in einer Datendefinition gibt es aber
    keinen Stapel; die Adresse gehoert als GINITADDR in die Daten. Die
    Grammatik muss die Form hier also nur LESEN koennen. */
-initValue = initNumber | initNeg | initBool | initString .
+/* initList als initValue: "{{1,2},{3,4}}". Das ist indirekte Rekursion ueber
+   das Terminal "{" -- keine Linksrekursion, der rekursive Abstieg kommt
+   damit zurecht. Ausgewertet wird die Liste ohnehin als ROHTEXT
+   (tcInitList), die Grammatik muss die Form nur lesen koennen; dort wird
+   auch die Zeilenlaenge beachtet und eine zu tiefe Schachtelung gemeldet. */
+initValue = initNumber | initNeg | initBool | initString | initList .
 initString = "\042" { character } "\042" .
 initBool  = "true" | "false" .
 initNeg   = "-" initNumber .

@@ -575,6 +575,35 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'static char *s="xy"; int main(){ char *p; p=s; putint(p[0]); }' '120'
 		# Der Nullzeiger darf dadurch nicht zur Adresse werden.
 		tc_check 'char *s=0; int main(){ putint(s==0); }' '1'
+		# VERSCHACHTELTE INITIALISIERERLISTEN (2026-09-15). Vorher ein STILLER
+		# Parse-Abbruch. Das Array ist intern flach, die Klammern gliedern es
+		# nur -- ABER naives Abflachen waere falsch, sobald eine Zeile kuerzer
+		# ist als die Zeilenlaenge. Genau das pruefen die beiden {{1},{2}}-
+		# Faelle: der zweite Wert gehoert in die ZWEITE Zeile, und die Luecke
+		# dahinter muss 0 sein. Mit naivem Abflachen kaeme dort die 2 heraus.
+		tc_check 'int m[2][2]={{1,2},{3,4}}; int main(){ putint(m[1][1]); }' '4'
+		tc_check 'int m[2][2]={{1,2},{3,4}}; int main(){ putint(m[0][1]); }' '2'
+		tc_check 'int m[2][3]={{1},{2}}; int main(){ putint(m[1][0]); }' '2'
+		tc_check 'int m[2][3]={{1},{2}}; int main(){ putint(m[0][1]); }' '0'
+		tc_check 'char c[2][2]={{65,66},{67,68}}; int main(){ putint(c[1][1]); }' '68'
+		# Zeigertabelle zweidimensional -- beide Ergaenzungen greifen zusammen.
+		tc_check 'char *t[2][2]={{"ab","cd"},{"ce","df"}}; int main(){ char *p; p=t[1][0]; putint(p[0]); }' '99'
+		# Die FLACHE Schreibweise fuer ein 2D-Array muss weiter gehen.
+		tc_check 'int m[2][2]={1,2,3,4}; int main(){ putint(m[1][1]); }' '4'
+		# Was nicht getragen wird, muss GEMELDET werden, nicht still scheitern.
+		for q in 'int m[2][2][2]={{{1,2},{3,4}},{{5,6},{7,8}}}; int main(){ putint(m[0][0][0]); }' \
+		         'int a[4]={{1,2},{3,4}}; int main(){ putint(a[0]); }'; do
+			if build/qcc_p "$q" 2>&1 | grep -q 'nested initializer list is not supported'; then
+				echo "ok    qcc: nicht getragene Schachtelung wird gemeldet"
+			else
+				echo "FAIL  qcc: Schachtelung scheitert still: [$q]"; tcfail=1; fail=1
+			fi
+		done
+		if build/qcc_p 'int m[2][2]={{1,2,3},{4}}; int main(){ putint(m[0][0]); }' 2>&1 | grep -q 'bad or oversized'; then
+			echo "ok    qcc: zu lange Zeile in einer Schachtelung wird gemeldet"
+		else
+			echo "FAIL  qcc: zu lange Zeile scheitert still"; tcfail=1; fail=1
+		fi
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
 		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
 		# SIZEOF AUF ZEIGER: bis 2026-09-15 ABGELEHNT, jetzt unterstuetzt.
