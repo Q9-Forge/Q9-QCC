@@ -585,6 +585,16 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int g(int a,int b){return a+b;} int main(){ int (*fp)(int,int); fp=g; putint(fp(2,3)); }' '5'
 		# Der typedef-Weg und gewoehnliche Deklarationen bleiben unberuehrt.
 		tc_check 'typedef int (*FP)(int); int g(int x){return x;} int main(){ FP p; p=g; putint(p(5)); }' '5'
+		# ... und ALS PARAMETER (2026-09-15). Die beiden Parameterlisten
+		# schachteln hier ineinander; das geht, weil die aeussere ueber
+		# tc_param in tcLocalTypes sammelt und die innere ueber
+		# tc_externparam in tcExternBuildParamTypes -- zwei getrennte Puffer.
+		# Der gemischte Fall prueft genau das: waeren sie geteilt, verloere
+		# der zweite (normale) Parameter seinen Typ.
+		tc_check 'int f(int (*fp)(int)){ return fp(5); } int g(int x){return x;} int main(){ putint(f(g)); }' '5'
+		tc_check 'int f(int (*fp)(int), int n){ return fp(n)+4; } int g(int x){return x;} int main(){ putint(f(g,5)); }' '9'
+		tc_check 'typedef int (*FP)(int); int f(FP p){ return p(5); } int g(int x){return x;} int main(){ putint(f(g)); }' '5'
+		tc_check 'int f(int a,int b){return a+b;} int main(){ putint(f(3,4)); }' '7'
 		tc_check 'int main(){ int x; x=3; putint(x); }' '3'
 		# STRINGVERKETTUNG (C89 3.1.4), 2026-09-15. Vorher ein STILLER
 		# Parse-Abbruch -- "FAIL, 0 Meldungen", ohne Zeile und ohne Grund; die
