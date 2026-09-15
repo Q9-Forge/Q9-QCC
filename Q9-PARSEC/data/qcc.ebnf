@@ -256,7 +256,16 @@ funcParams = voidParams | normalParams .
 voidParams = "(" "void" ")" .
 normalParams = "(" paramList ")" .
 paramList = [ param { "," param } ] .
-param     = [ constKw ] [ volatileKw ] type pointerDecl paramDecl .
+/* Funktionszeiger ALS PARAMETER: "int f(int (*fp)(int))". Steht als ERSTE
+   Alternative -- der gewoehnliche Zweig scheitert sonst an der
+   Zeigerklammer, ohne etwas Brauchbares zu melden.
+   Die beiden Parameterlisten schachteln hier ineinander, das geht aber
+   gut: die AEUSSERE sammelt ueber tc_param in tcLocalTypes (daraus baut
+   tc_funcend die Aufrufsignatur), die INNERE ueber tc_externparam in
+   tcExternBuildParamTypes. Zwei getrennte Puffer, keine Ueberschneidung. */
+param     = fnPtrParam | [ constKw ] [ volatileKw ] type pointerDecl paramDecl .
+fnPtrParam = type pointerDecl fnPtrOpen "*" fnPtrParamName ")" fnPtrParams .
+fnPtrParamName = ident .
 paramDecl = paramName [ paramArray ] .
 paramArray = "[" "]" .
 
