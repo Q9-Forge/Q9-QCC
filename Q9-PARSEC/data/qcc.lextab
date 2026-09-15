@@ -5047,11 +5047,23 @@ void tc_varinit(const char* start, const char* end) {
 		   NICHT nochmal ueber tcInitList (das faelschlich "kein '{'" meldete). */
 		{ const char* q = start; while (q < end && (*q == ' ' || *q == '\t')) q++; if (q < end && *q == '"') return; }
 		count = tcInitList(start, end, values, 0, 256, 0);
-		if (count < 0 || count > tcLocalArrayLen[slot]) { actionErrors++; tcErrAt(start); fprintf(stderr, "bad or oversized array initializer\n"); return; }
+		/* Die Rueckgabewerte auseinanderhalten, statt alles als "bad or
+		   oversized" zu melden: -3 heisst String-Literal in der Liste, -4 eine
+		   Verschachtelung, und "zu viele Werte" ist nochmal etwas anderes. Bis
+		   2026-09-15 bekam man fuer alle drei denselben Satz, der bei keinem
+		   die Ursache traf. */
+		if (count == -3) { actionErrors++; tcErrAt(start); fprintf(stderr, "string literal in an initializer list is only supported for a global in this version\n"); return; }
+		if (count == -4) { actionErrors++; tcErrAt(start); fprintf(stderr, "nested initializer list is only supported for a global in this version\n"); return; }
+		if (count < 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "malformed array initializer\n"); return; }
+		if (count > tcLocalArrayLen[slot]) { actionErrors++; tcErrAt(start); fprintf(stderr, "too many values in array initializer (array holds %d)\n", tcLocalArrayLen[slot]); return; }
 		for (i = 0; i < count; i++) printf("PUSH %d\nPUSH %ld\nSTOREIDX L %d %c\n", i, tcTruncInit(tcLocalTypes[slot], values[i]), slot, tcTypeTag(tcLocalTypes[slot]));
 		return;
 	}
-	if (tcInitList(start, end, values, 0, 256, 0) >= 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer\n"); return; }
+	/* Hierher kommt auch "int a[] = {1,2,3};" -- ein ARRAY ohne angegebene
+	   Groesse, das oben mangels tcLocalArrayLen nicht als Array erkannt wurde.
+	   "scalar cannot use array initializer" allein schickte in die falsche
+	   Richtung; der Zusatz nennt den Fall, der praktisch gemeint ist. */
+	if (tcInitList(start, end, values, 0, 256, 0) >= 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer -- a local array needs a declared size here, as in \"int a[3] = {1,2,3};\"\n"); return; }
 	{ TCType got = tcTypePop(), wanted = tcLocalType(slot); if (!tcCompatible(wanted, got)) tcTypeError("initializer", wanted, got); }
 	{
 		/* Struct-Initialisierung: kopieren statt skalar speichern.  Ohne

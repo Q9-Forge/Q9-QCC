@@ -574,6 +574,23 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# MELDUNGSTEXTE (2026-09-15): Der lokale Initialisiererpfad warf drei
+		# verschiedene Ursachen in denselben Satz ("bad or oversized array
+		# initializer"), der bei keiner die Ursache traf. Jetzt benennt jede
+		# ihren eigenen Fall. Geprueft wird der TEXT, nicht nur dass gemeldet
+		# wird -- eine Meldung, die in die falsche Richtung schickt, kostet mehr
+		# als gar keine.
+		for q in 'int main(){ char *t[2]={"ab","cd"}; return 0; }|string literal in an initializer list' \
+		         'int main(){ int m[4]={{1,2},{3,4}}; return 0; }|nested initializer list' \
+		         'int main(){ int a[2]={1,2,3}; return 0; }|too many values in array initializer' \
+		         'int main(){ int x={1,2}; return 0; }|a local array needs a declared size'; do
+			src="${q%%|*}"; want="${q#*|}"
+			if build/qcc_p "$src" 2>&1 | grep -qF "$want"; then
+				echo "ok    qcc: Meldung trifft die Ursache ($want)"
+			else
+				echo "FAIL  qcc: Meldung verfehlt die Ursache, erwartet: $want"; tcfail=1; fail=1
+			fi
+		done
 		# FUNKTIONSZEIGER ALS LOKALE VARIABLE (2026-09-15): "int (*fp)(int);"
 		# ohne den Umweg ueber ein typedef. Vorher stiller Parse-Abbruch.
 		# Die Signatur wird wie beim typedef registriert, die Variable selbst
