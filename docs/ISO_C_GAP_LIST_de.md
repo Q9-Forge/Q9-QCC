@@ -31,7 +31,7 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | Kommentare und Whitespace | erledigt | — |
 | Integer-, Zeichen- und Bool-Literale | teilweise | hoch |
 | String-Literale und Escape-Sequenzen | offen | hoch |
-| Floating-Literale und Fließkommatypen | offen | hoch |
+| Floating-Literale und Fließkommatypen | Literale offen, werden aber seit 2026-09-16 gemeldet statt still verschluckt (s. `FLOAT_PLAN_de.md`) | hoch |
 | vollständige Tokenregeln/Zeichensätze | teilweise | hoch |
 | `#include`, Makros, bedingte Übersetzung | offen | sehr hoch |
 | `#define` mit Parametern und `##`/`#` | offen | hoch |
@@ -44,7 +44,7 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | `char`, signed/unsigned Integer | teilweise | hoch |
 | `short`, `long`, `long long` | offen | hoch |
 | `_Bool` und Qualifizierer | teilweise/offen | hoch |
-| `float`, `double`, `long double` | offen | hoch |
+| `float`, `double`, `long double` | `double` seit 2026-09-16 als Typ deklarierbar (`sizeof` = 8, Struct-Layout gegen xcc gemessen); gerechnet wird damit noch nicht. `float`/`long double` offen | hoch |
 | Pointer und Pointerarithmetik | erledigt (Ausnahme aus Nachtrag 2026-09-08 seit 2026-09-09 behoben, s. dort) | — |
 | Arrays und Array-Decay | teilweise | sehr hoch |
 | Funktionspointer | offen | hoch |
