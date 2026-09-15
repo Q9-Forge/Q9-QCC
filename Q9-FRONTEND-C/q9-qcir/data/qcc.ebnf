@@ -6,7 +6,7 @@
    funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
    plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
    faellt korrekt hierher zurueck. */
-program   = { globalDecl | structDecl | typedefDecl | enumDecl | externDecl | funcdef } .
+program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef } .
 
 /* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
@@ -40,6 +40,14 @@ ellipsisTok     = "..." .
 enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
 
 structDecl  = "struct" structName "{" structField { structField } "}" ";" .
+/* UNION (2026-09-15). Dieselbe Feldsyntax wie eine struct -- der
+   Unterschied steckt allein im LAYOUT (alle Felder auf Offset 0, Groesse
+   gleich dem groessten Feld), und das entscheidet tcRegisterStruct.
+   Deshalb wird eine union auch als struct REGISTRIERT: damit erbt sie
+   die gesamte vorhandene Maschinerie -- Feldzugriff, "->", Ganzkopie,
+   Parameter, Rueckgabe, Arrays -- statt sie ein zweites Mal zu bauen. */
+unionDecl   = "union" unionName "{" structField { structField } "}" ";" .
+unionName   = ident .
 structName  = ident .
 /* Pointer-Felder in struct (2026-07-25, Selfhosting L2): Skalar-Pointer
    (z.B. "char* text;" oder "struct Node* next;"). Ein struct-WERT als Feld
@@ -569,7 +577,7 @@ sizeofType = sizeofBaseType pointerDecl .
 /* NACHTRAG 2026-09-09 -- "short" dazu (s. type/unsignedInt weiter unten):
    dieselbe Erweiterung, damit sizeof(short)/sizeof(unsigned short) nicht an
    dieser eigenen Kopie der Typliste vorbeilaeuft. */
-sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" .
+sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
@@ -671,7 +679,8 @@ funcName  = ident .
    short" und hat etliche blanke "short"-Structfelder). Anders als long/int
    NICHT auf einen bestehenden Typ abgebildet -- der 68k-Codegen legt short
    echt als 2 Byte an (s. tcTypeTag/qcc_backend_c.cpp). */
-type      = "unsigned" unsignedInt | "int" | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+type      = "unsigned" unsignedInt | "int" | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+unionTypeRef = ident .
 structTypeRef = ident .
 enumTypeRef = ident .
 typedefRef = ident .

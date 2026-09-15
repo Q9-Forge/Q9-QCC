@@ -574,6 +574,31 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# UNION (2026-09-15). Intern eine struct, deren Felder alle auf Offset 0
+		# liegen -- damit erbt sie Feldzugriff, "->", Ganzkopie, Parameter und
+		# Rueckgabe, ohne dass davon etwas neu gebaut werden musste.
+		# ACHTUNG, WAS HIER NICHT STEHEN DARF: kein Fall, der die BYTE-REIHENFOLGE
+		# voraussetzt. Dieses Orakel rechnet little-endian, der 68k ist
+		# big-endian -- "u.i=5; u.c[0]" gibt hier 5 und auf dem Ziel 0. Das ist
+		# in C implementation-defined; geprueft wird deshalb nur, was die Norm
+		# zusichert: dass die Felder denselben Speicher TEILEN.
+		tc_check 'union U { int a; int b; }; int main(){ union U u; u.a=5; putint(u.b); }' '5'
+		tc_check 'union U { int a; int b; }; int main(){ union U u; u.b=9; putint(u.a); }' '9'
+		tc_check 'union U { int i; char c; }; int main(){ union U u; u.c=65; putint(u.c); }' '65'
+		# Groesse = groesstes Feld, nicht Summe (eine struct waere hier 12).
+		tc_check 'union U { int i; char c[8]; }; int main(){ putint(sizeof(union U)); }' '8'
+		tc_check 'union U { int i; char c; }; int main(){ putint(sizeof(union U)); }' '4'
+		# Zeiger, Parameter per Wert, und eine struct daneben bleibt getrennt.
+		tc_check 'union U { int a; int b; }; int main(){ union U u; union U *p; p=&u; p->a=7; putint(p->b); }' '7'
+		tc_check 'union U { int a; int b; }; int f(union U v){ return v.b; } int main(){ union U u; u.a=3; putint(f(u)); }' '3'
+		tc_check 'union U { int i; }; struct S { int a; int b; }; int main(){ struct S s; s.b=0; s.a=5; putint(s.b); }' '0'
+		# Eine struct NACH einer union darf deren Layout nicht erben.
+		tc_check 'union U { int a; int b; }; struct S { int a; int b; }; int main(){ struct S s; s.a=1; s.b=2; putint(s.a+s.b); }' '3'
+		if build/qcc_p 'int main(){ union Nope u; }' 2>&1 | grep -q 'unknown struct or union'; then
+			echo "ok    qcc: unbekannte union wird diagnostiziert"
+		else
+			echo "FAIL  qcc: union-Diagnose fehlt"; tcfail=1; fail=1
+		fi
 		# ZEIGERTABELLE MIT STRING-LITERALEN (2026-09-15). Vorher ein STILLER
 		# Parse-Abbruch: "FAIL, 0 Meldungen", ohne Zeile und ohne Grund. Das
 		# Idiom traegt Namens-, Opcode- und Meldungstabellen und musste in den
