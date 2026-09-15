@@ -518,7 +518,40 @@ static int number(const char* text, int line) {
 	return (int)v;
 }
 
+/* ZEIGERGROESSE DIESES BACKENDS.
+   Groessen und Offsets mit Zeigeranteil kommen als "k+nP" aus dem Frontend
+   (tcEmitNum in Data/qcc.lextab): k ist der zeigerfreie Anteil in Byte, n die
+   Zahl der Zeigergroessen darin. Hier wird das eigene P eingesetzt -- deshalb
+   gilt dieselbe IR fuer 68k und ARM64, ohne dass das Frontend das Ziel kennt.
+   Die Aufloesung sitzt beim EINLESEN und nicht an den Verwendungsstellen:
+   sonst muesste jedes number(args[i]) davon wissen, und eine vergessene
+   Stelle waere ein stiller Rechenfehler statt eines Abbruchs. */
+#define QIR_PTR_SIZE 8
+
+/* "k+nP" zu seiner Zahl aufloesen; jedes andere Wort unveraendert lassen.
+   Bewusst von Hand geparst statt mit sscanf: diese Quelle muss in der
+   Teilmenge bleiben, die QCC selbst lesen kann. */
+static const char* resolvePtrExpr(const char* tok, char* buf)
+{
+	int i;
+	int k;
+	int n;
+	int digits;
+	i = 0; k = 0; n = 0; digits = 0;
+	if (tok[0] < '0' || tok[0] > '9') return tok;
+	while (tok[i] >= '0' && tok[i] <= '9') { k = k * 10 + (tok[i] - '0'); i++; }
+	if (tok[i] != '+') return tok;
+	i++;
+	while (tok[i] >= '0' && tok[i] <= '9') { n = n * 10 + (tok[i] - '0'); i++; digits++; }
+	if (digits == 0) return tok;
+	if (tok[i] != 'P') return tok;
+	if (tok[i + 1] != 0) return tok;
+	sprintf(buf, "%d", k + QIR_PTR_SIZE * n);
+	return buf;
+}
+
 static void readIR(const char* path) {
+	char ptrBuf[32];
 	FILE* fp;
 	char raw[LINE_LEN];
 	int line = 0;
@@ -545,7 +578,7 @@ static void readIR(const char* path) {
 		for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
 		while ((tok = strtok(NULL, " \t\r\n")) != NULL) {
 			if (insP->argc < MAX_ARGS) {
-				insP->args[insP->argc] = argIntern(tok, line);
+				insP->args[insP->argc] = argIntern(resolvePtrExpr(tok, ptrBuf), line);
 			}
 			insP->argc++;
 		}

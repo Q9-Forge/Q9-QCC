@@ -536,28 +536,27 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
 		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
-		if build/qcc_p 'int main(){ int x; int *p=&x; putint(sizeof(p)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
-			echo "ok    qcc: sizeof auf Pointer wird diagnostiziert"
-		else
-			echo "FAIL  qcc: sizeof-Pointer-Diagnose fehlt"; tcfail=1; fail=1
-		fi
-		# DIE TYPFORM war ungetestet -- und genau dort schwieg QCC
-		# (2026-09-07): sizeof(char *) lieferte PUSH 1, also die Groesse von
-		# char, mit Schlusswort OK und ohne jede Meldung. Ursache: tc_sizeof
-		# ruft tc_type fuer dieselbe Spanne noch einmal auf, und
-		# TC_SET_CURRENT setzt pointers dabei auf 0 zurueck, obwohl die
-		# Aktion an pointerDecl vorher schon gezaehlt hatte. Der Test oben
-		# lief ueber tc_sizeofvar und war deshalb immer gruen.
-		if build/qcc_p 'int main(){ putint(sizeof(char *)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
-			echo "ok    qcc: sizeof auf einen Pointer-TYP wird diagnostiziert"
-		else
-			echo "FAIL  qcc: sizeof(char *) schweigt (liefert still 1)"; tcfail=1; fail=1
-		fi
-		if build/qcc_p 'struct S { int a; }; int main(){ putint(sizeof(struct S *)); }' 2>&1 | grep -q 'sizeof of pointer types'; then
-			echo "ok    qcc: sizeof auf einen struct-Pointer-Typ wird diagnostiziert"
-		else
-			echo "FAIL  qcc: sizeof(struct S *) schweigt"; tcfail=1; fail=1
-		fi
+		# SIZEOF AUF ZEIGER: bis 2026-09-15 ABGELEHNT, jetzt unterstuetzt.
+		# Die drei Faelle hier hielten vorher die Ablehnung als SOLLverhalten
+		# fest (dasselbe Muster wie bei den Index-Ketten, s. 298d401) und sind
+		# mit der Freischaltung umgedreht worden.
+		# Die Groesse eines Zeigers haengt vom Ziel ab -- 68k 4, ARM64 8 --,
+		# deshalb gibt das Frontend sie als "0+1P" aus und jeder Konsument
+		# setzt sein P ein. Dieses Orakel (qccvm.py) rechnet mit PTR_SIZE = 8,
+		# die Sollwerte hier sind also die der VM, nicht die des 68k.
+		tc_check 'int main(){ int x; int *p=&x; putint(sizeof(p)); }' '8'
+		tc_check 'int main(){ putint(sizeof(char *)); }' '8'
+		tc_check 'struct S { int a; }; int main(){ putint(sizeof(struct S *)); }' '8'
+		# Ein Zeiger-ARRAY zaehlt seine Elemente mit.
+		tc_check 'int main(){ char *t[4]; putint(sizeof(t)); }' '32'
+		# DIE SCHRITTWEITE IM STRUCT ist der eigentliche Pruefstein: das
+		# Offset von b ist 0+3P (drei Zeigergroessen davor), nicht eine feste
+		# Zahl. Mit der alten 8-Byte-Annahme UND mit der neuen Rechnung kommt
+		# bei P=8 dasselbe heraus -- der Wert diskriminiert also nicht die
+		# Zeigergroesse, wohl aber, dass die symbolische Form ueberhaupt
+		# korrekt aufgeloest wird (ein unaufgeloestes "0+3P" gibt 0).
+		tc_check 'struct S { int a; char *p; char *q; int b; }; int main(){ struct S s; s.b = 77; putint(s.b); }' '77'
+		tc_check 'struct S { char c; char *p; int n; }; int main(){ struct S s; s.c = 3; s.n = 9; putint(s.c + s.n); }' '12'
 		if build/qcc_p 'int main(){ enum Nope x; }' 2>&1 | grep -q 'unknown enum'; then
 			echo "ok    qcc: unbekannter enum-Typ wird diagnostiziert"
 		else

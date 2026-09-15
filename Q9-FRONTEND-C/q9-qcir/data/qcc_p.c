@@ -76,8 +76,8 @@ typedef struct TCType {
 } TCType;
 #define TC_SCALAR(ch) tcMakeType((ch), 0)
 /* Structs mit GEMISCHTEN skalaren Feldtypen (2026-07-24, siehe SELFHOSTING_LUECKENLISTE.md):
-   ein struct-Wert ist ein Byte-Blob fester Groesse (tcStructByteSize[id]), jedes Feld hat
-   einen eigenen Typ (tcStructFieldTypes) und einen eigenen Byte-Offset (tcStructFieldOffset)
+   ein struct-Wert ist ein Byte-Blob fester Groesse (tcStructByteSizeK[id]), jedes Feld hat
+   einen eigenen Typ (tcStructFieldTypes) und einen eigenen Byte-Offset (tcStructFieldOffsetK)
    nach natuerlichem Alignment (4-Byte-Typen auf 4er-Grenze, char/bool ohne Padding).
    .feld-Zugriffe emittieren PUSHADDR/PUSH <offset>/IPADD c/LOADIND|STOREIND <feldTag> --
    bereits vorhandene, architekturneutrale Pointer-Arithmetik-Opcodes (siehe tc_varref/
@@ -91,16 +91,22 @@ static char tcStructNames[MAX_STRUCTS][32];
 static int  tcStructFieldCount[MAX_STRUCTS];
 static char tcStructFieldNames[MAX_STRUCTS][MAX_STRUCT_FIELDS][32];
 static TCType tcStructFieldTypes[MAX_STRUCTS][MAX_STRUCT_FIELDS];
-static int  tcStructFieldOffset[MAX_STRUCTS][MAX_STRUCT_FIELDS];
-/* EIN Zeiger belegt in einer Struct IMMER acht Byte -- unabhaengig vom
-   Ziel-Backend (68k 4, ARM64 8), damit ein einzelnes frontend-berechnetes
-   Offset fuer beide gueltig bleibt; die ausfuehrliche Begruendung steht im
-   Layout-Kommentar bei tc_structend. Die Zahl steht HIER, weil sie an zwei
-   voneinander abhaengigen Stellen gebraucht wird: beim Layout und bei der
-   Indexschrittweite (tcEmitFieldIndexStep). Als zwei getrennte Literale
-   waere das eine Invariante an zwei Orten -- genau die Sorte Fehler, die
-   sich hier schon einmal eingeschlichen hat. */
-#define TC_PTR_SLOT 8
+static int  tcStructFieldOffsetK[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+/* Zeigeranteil DESSELBEN Offsets: der Wert ist tcStructFieldOffsetK + n*P,
+   wobei P die Zeigergroesse des Ziels ist (qir68k 4, qirarm64 8). Siehe
+   den Layout-Kommentar in tcRegisterStruct. */
+static int  tcStructFieldOffsetN[MAX_STRUCTS][MAX_STRUCT_FIELDS];
+/* BIS 2026-09-15 stand hier TC_PTR_SLOT 8: ein Zeiger belegte in einer Struct
+   IMMER acht Byte, unabhaengig vom Ziel, damit ein einzelnes
+   frontend-berechnetes Offset fuer 68k UND ARM64 gilt. Auf dem 68k war damit
+   die Haelfte jedes Zeigerfelds verschenkt. Seither rechnet das Frontend jedes
+   Offset fuer BEIDE Zeigergroessen und gibt es als k+n*P weiter; das Backend
+   setzt sein P ein. Die Invariante wohnt jetzt in tcRegisterStruct, die
+   Ausgabe in tcEmitNum/tcEmitStructSize/tcEmitFieldOffset. */
+/* Die beiden Zeigergroessen, fuer die das Layout gerechnet wird. Aus den
+   zwei Ergebnissen leitet tcRegisterStruct die Form k+n*P ab. */
+#define TC_PTR_SMALL 4
+#define TC_PTR_LARGE 8
 
 static int  tcStructFieldArrayLen[MAX_STRUCTS][MAX_STRUCT_FIELDS]; /* 0=Skalar, sonst Elementzahl (bei 2D: GESAMT) */
 /* Nur bei zweidimensionalen Feldern != 0: Laenge EINER Zeile. "x.feld[i]"
@@ -123,7 +129,8 @@ static int  tcStructFieldRowLen[MAX_STRUCTS][MAX_STRUCT_FIELDS];
  * (pointeeConst im Feldtyp), bei allem anderen das FELD selbst. */
 static char tcStructFieldConst[MAX_STRUCTS][MAX_STRUCT_FIELDS];
 static int  tcFieldConst = 0;
-static int  tcStructByteSize[MAX_STRUCTS];
+static int  tcStructByteSizeK[MAX_STRUCTS];
+static int  tcStructByteSizeN[MAX_STRUCTS];  /* Zeigeranteil der Structgroesse */
 static int  tcStructCount = 0;
 static char tcStructBuildName[32];
 static int  tcStructBuildFieldCount = 0;
@@ -643,6 +650,31 @@ static const char* tcWordSuffixL(char tag) { return tag == 'i' ? "L" : tag == 'h
    dieser Wert geht hier als reine Zahl in eine echte Laufzeitmultiplikation
    (IPADDN), keine lsl.l-Kurzform. */
 static int tcElemByteSize(TCType t) { char g = tcTypeTag(t); return g == 'c' ? 1 : g == 'h' ? 2 : 4; }
+/* Eine Groesse oder ein Offset als IR-Text. Entweder eine schlichte Zahl
+   oder die Form k+nP: k ist der zeigerfreie Anteil in Byte, n die Zahl der
+   Zeigergroessen darin. Das Backend setzt sein P ein (qir68k 4, qirarm64 8),
+   damit dieselbe IR fuer beide Ziele gilt. Ohne Zeigeranteil bleibt die
+   alte Schreibweise stehen -- so aendern sich nur die IR-Zeilen, die es
+   wirklich betrifft. */
+static void tcEmitNum(int k, int n) {
+	if (n == 0) printf("%d", k);
+	else printf("%d+%dP", k, n);
+}
+/* Structgroesse bzw. Feldoffset als IR-Operand -- immer ueber diese beiden,
+   nie die Tabellen direkt in ein printf: der Zeigeranteil wuerde sonst
+   stillschweigend fehlen. */
+/* Volle Groesse fuer eine konkrete Zeigergroesse. NUR wo eine echte Zahl
+   noetig ist -- Speicherreservierung, entrollte Kopie --, nie fuer einen
+   IR-Operanden: der geht symbolisch ueber tcEmitNum. */
+static int tcStructSizeFor(int sid, int psize) {
+	return tcStructByteSizeK[sid] + psize * tcStructByteSizeN[sid];
+}
+static void tcEmitStructSize(int sid) {
+	tcEmitNum(tcStructByteSizeK[sid], tcStructByteSizeN[sid]);
+}
+static void tcEmitFieldOffset(int sid, int fi) {
+	tcEmitNum(tcStructFieldOffsetK[sid][fi], tcStructFieldOffsetN[sid][fi]);
+}
 /* Array-Initialisiererwert auf die Speicherbreite kuerzen (GINIT/STOREIDX-
    Init, 2026-09-09 mit short dazugekommen) -- dieselbe Kuerzung, die
    tc_staticlocal fuer eine EINZELNE static-lokale Variable schon macht. */
@@ -655,7 +687,7 @@ static long tcTruncInit(TCType t, long v) {
 /* Der Indexschritt fuer ein ARRAY-FELD einer Struct.
  *
  * IPADD skaliert den Index mit der Groesse des TYPTAGS -- fuer 'p' sind das
- * auf dem 68k vier Byte. Im Struct belegt ein Zeiger aber TC_PTR_SLOT (acht),
+ * auf dem 68k vier Byte. Im Struct belegt ein Zeiger n*P Byte (s. tcEmitNum),
  * damit dasselbe Offset auch fuer ARM64 stimmt. Fuer Zeigerarrays muss die
  * Schrittweite deshalb in BYTE angegeben werden: IPADDN, dasselbe Mittel, das
  * die 2D-Zeilen schon nutzen.
@@ -679,7 +711,7 @@ static long tcTruncInit(TCType t, long v) {
  * wie bei den 2D-Zeilen und den Zeigerarray-Feldern. */
 static void tcEmitElemIndexStep(TCType t) {
 	if (t.base == 's' && !t.pointers)
-		printf("IPADDN %d\n", tcStructByteSize[t.structId - 1]);
+		{ printf("IPADDN "); tcEmitStructSize(t.structId - 1); printf("\n"); }
 	else
 		printf("PTRINDEX %c\n", tcTypeTag(t));
 }
@@ -734,7 +766,7 @@ static TCType tcEmitPtrFieldIndex(int sid, int fi, int laden) {
 	}
 	printf("LOADIND p\n");
 	if (el.base == 's' && !el.pointers) {
-		printf("IPADDN %d\n", tcStructByteSize[el.structId - 1]);
+		{ printf("IPADDN "); tcEmitStructSize(el.structId - 1); printf("\n"); }
 		return el;
 	}
 	printf("IPADD %c\n", tcTypeTag(el));
@@ -744,7 +776,7 @@ static TCType tcEmitPtrFieldIndex(int sid, int fi, int laden) {
 }
 
 static void tcEmitFieldIndexStep(int sid, int fi) {
-	if (tcIsPointer(tcStructFieldTypes[sid][fi])) printf("IPADDN %d\n", TC_PTR_SLOT);
+	if (tcIsPointer(tcStructFieldTypes[sid][fi])) { printf("IPADDN "); tcEmitNum(0, 1); printf("\n"); }
 	else printf("IPADD %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
 }
 /* feld[i][j] (2D-Array-FELD) und arr[i].feld[j]/ptr[i].feld[j] (1D-Array-FELD
@@ -983,7 +1015,7 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 		}
 	}
 	tag = tcTypeTag(ft);
-	printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+	{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\n"); }
 	if (viaPtr) { if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]); }
 	else        { if (slot >= 0) {
 			/* Struct-Parameter: im Slot steht die Adresse (s. tc_arg/tc_param),
@@ -1453,7 +1485,7 @@ static TCType tcEmitPointerIndexChain(int slot, const char* globalName, char bas
 			   Eine Struct kann nur die LETZTE Ebene sein -- struct-in-
 			   struct ist abgelehnt --, der naechste Durchlauf faellt
 			   deshalb in "too many pointer indexes". */
-			printf("IPADDN %d\n", tcStructByteSize[value.structId - 1]);
+			{ printf("IPADDN "); tcEmitStructSize(value.structId - 1); printf("\n"); }
 		} else {
 			printf("PTRINDEX %c\nLOADIND %c\n", tcTypeTag(value), tcTypeTag(value));
 		}
@@ -1816,7 +1848,7 @@ void tc_localdecl(const char* start, const char* end) {
 	const char* p = start; int slot = tcLocalCount - 1;
 	int dims[TC_MAXDIMS]; int ndims = 0; int total; int k;
 	int isStruct = tcLocalTypes[slot].base == 's';
-	int structSize = isStruct ? tcStructByteSize[tcLocalTypes[slot].structId - 1] : 0;
+	int structSize = isStruct ? tcStructSizeFor(tcLocalTypes[slot].structId - 1, TC_PTR_LARGE) : 0;
 	while (p < end && *p != '[') p++;
 	if (p == end) {
 		if (isStruct) printf("LARRAY %d c %d\n", slot, structSize);
@@ -2190,14 +2222,14 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	for (i = 0; i < arrayNDims - 1; i++) tcGlobalArrayDims[tcGlobalCount][i] = arrayDims[i];
 	tcGlobalArrayLen[tcGlobalCount++] = arrayLen;
 	/* globale structs (2026-07-25): wie bei lokalen struct-Variablen (tc_localdecl)
-	   braucht ein struct IMMER Block-Speicher (GARRAY, byte-genau ueber tcStructByteSize),
+	   braucht ein struct IMMER Block-Speicher (GARRAY, byte-genau ueber tcStructByteSizeK),
 	   NIE die einzellige GLOBAL-Form -- unabhaengig davon, ob ein "[N]"-Suffix dabeisteht
 	   (arrayLen==0 fuer eine skalare struct-Variable heisst hier "ein Element", NICHT
 	   "kein Block", anders als bei tcLocalArrayLen/tcGlobalArrayLen als Index-Laenge weiter
 	   unten -- ADDRG braucht ohnehin IMMER einen Block, siehe qccvm.py: globals_ ist bei
 	   GLOBAL wie bei GARRAY einheitlich eine Liste, ADDRG unterscheidet nicht). */
 	if (!type.pointers && type.base == 's') {
-		int structSize = tcStructByteSize[type.structId - 1];
+		int structSize = tcStructSizeFor(type.structId - 1, TC_PTR_LARGE);
 		int total = (arrayLen > 0 ? arrayLen : 1) * structSize;
 		printf("GARRAY %s c %d %d\n", name, total, isStatic);
 		return;
@@ -2295,7 +2327,7 @@ void tc_varinit(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "struct initializer without a slot\n");
 				actionErrors++;
 			} else {
-				tcEmitStructCopy(slot, 0, tcStructByteSize[sid]);
+				tcEmitStructCopy(slot, 0, tcStructSizeFor(sid, TC_PTR_LARGE));
 			}
 			return;
 		}
@@ -2466,7 +2498,6 @@ void tc_varref(const char* start, const char* end) {
 			int sid = tcLocalTypes[slot].structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
 			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 &&
@@ -2476,7 +2507,7 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			if (chain) tcStashChainedIndex();
-			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("LOADP %d\nIPADDN ", slot); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
 				if (tcIsPointer(tcStructFieldTypes[sid][fi])) { tcUnstashChainedIndex(); tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); }
 				else tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1));
@@ -2498,7 +2529,6 @@ void tc_varref(const char* start, const char* end) {
 			int sid = tcLocalTypes[slot].structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
 			chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 1 &&
@@ -2517,7 +2547,7 @@ void tc_varref(const char* start, const char* end) {
 			   Byte-Groesse eines Elements (structSize, beliebig -- anders als IPADD, das nur
 			   feste Typtag-Groessen kennt); danach PUSH+PADD c addiert den (konstanten,
 			   byte-genauen) Feldoffset, exakt wie beim bestehenden Skalar-Feldzugriff oben. */
-			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", slot, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("PUSHADDR L %d\nIPADDN ", slot); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
 				if (tcIsPointer(tcStructFieldTypes[sid][fi])) { tcUnstashChainedIndex(); tcTypePush(tcEmitPtrFieldIndex(sid, fi, 1)); }
 				else tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1));
@@ -2551,7 +2581,7 @@ void tc_varref(const char* start, const char* end) {
 		{
 			int chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
 			if (chain) tcStashChainedIndex();
-			printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+			{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\n"); }
 			if (slot >= 0) printf("LOADP %d\n", slot); else printf("LOADGP %s\n", tcGlobalNames[global]);
 			printf("IPADD c\n");
 			if (chain) { tcTypePush(tcEmitFieldRowColIndex(sid, fi, 1)); return; }
@@ -2618,9 +2648,9 @@ void tc_varref(const char* start, const char* end) {
 			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
 			if (chain) tcStashChainedIndex();
 			if (tcLocalStructByAddr[slot])
-				printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+				{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nLOADP %d\nIPADD c\n", slot); }
 			else
-				printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], slot);
+				{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nPUSHADDR L %d\nIPADD c\n", slot); }
 			if (chain) { tcTypePush(tcEmitFieldRowColIndex(sid, fi, 1)); return; }
 		}
 		if (hasIndex) {
@@ -2681,7 +2711,6 @@ void tc_varref(const char* start, const char* end) {
 			char gname[32]; int sid = globalPointee.structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
@@ -2692,7 +2721,7 @@ void tc_varref(const char* start, const char* end) {
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
 			if (chain) tcStashChainedIndex();
-			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("LOADGP %s\nIPADDN ", gname); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
 			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -2705,7 +2734,6 @@ void tc_varref(const char* start, const char* end) {
 			char gname[32]; int sid = tcGlobalTypes[global].structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; tcTypePush(tcBadType()); return; }
@@ -2720,7 +2748,7 @@ void tc_varref(const char* start, const char* end) {
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
 			if (chain) tcStashChainedIndex();
-			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("PUSHADDR G %s\nIPADDN ", gname); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
 			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
@@ -2737,7 +2765,7 @@ void tc_varref(const char* start, const char* end) {
 		{
 			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
 			if (chain) tcStashChainedIndex();
-			printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+			{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nPUSHADDR G %s\nIPADD c\n", gname); }
 			if (chain) { tcTypePush(tcEmitFieldRowColIndex(sid, fi, 1)); return; }
 		}
 		if (hasIndex) {
@@ -2796,8 +2824,8 @@ void tc_varref(const char* start, const char* end) {
 				/* Ganze Struct aus einem Array: die ADRESSE des Elements, nicht
 				   sein erstes Wort (siehe Patch 6). Der Index liegt bereits auf
 				   dem Stapel, IPADDN skaliert ihn mit der Structgroesse. */
-				printf("PUSHADDR L %d\nIPADDN %d\n", slot,
-				       tcStructByteSize[localValueType.structId - 1]);
+				printf("PUSHADDR L %d\nIPADDN ", slot);
+				tcEmitStructSize(localValueType.structId - 1); printf("\n");
 				TC_TYPE_PUSH(localValueType.base, localValueType.pointers,
 				             localValueType.structId, localValueType.pointeeConst);
 			} else {
@@ -2838,8 +2866,8 @@ void tc_varref(const char* start, const char* end) {
 			tcCheckConstIndex(start, end, tcGlobalArrayLen[global]);
 			if (globalValueType.base == 's' && !globalValueType.pointers) {
 				/* siehe lokalen Zweig */
-				printf("PUSHADDR G %s\nIPADDN %d\n", name,
-				       tcStructByteSize[globalValueType.structId - 1]);
+				printf("PUSHADDR G %s\nIPADDN ", name);
+				tcEmitStructSize(globalValueType.structId - 1); printf("\n");
 				TC_TYPE_PUSH(globalValueType.base, globalValueType.pointers,
 				             globalValueType.structId, globalValueType.pointeeConst);
 			} else {
@@ -2857,7 +2885,7 @@ void tc_varref(const char* start, const char* end) {
 			   Adresse stehen. PTRINDEX/LOADIND wuerden mit vier Byte
 			   schreiten und den Inhalt als Adresse weitergeben. */
 			if (tcIsWholeStruct(&valueType))
-				printf("LOADGP %s\nIPADDN %d\n", name, tcStructByteSize[valueType.structId - 1]);
+				{ printf("LOADGP %s\nIPADDN ", name); tcEmitStructSize(valueType.structId - 1); printf("\n"); }
 			else
 				printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, valueTag, valueTag);
 			if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = valueType; else actionErrors++;
@@ -2964,7 +2992,7 @@ void tc_postfixindex(const char* start, const char* end) {
 	   bleibt eine Adresse. PADD erwartet den Pointer ZUERST, IPADDN zuletzt --
 	   deshalb SWAP davor. */
 	if (tcIsWholeStruct(&valueType)) {
-		printf("SWAP\nIPADDN %d\n", tcStructByteSize[valueType.structId - 1]);
+		{ printf("SWAP\nIPADDN "); tcEmitStructSize(valueType.structId - 1); printf("\n"); }
 		tcTypePush(valueType);
 		return;
 	}
@@ -3014,11 +3042,11 @@ void tc_callmember(const char* start, const char* end) {
 		/* Der Indexwert liegt bereits ueber dem Rueckgabe-Pointer. Erst
 		   SWAP/PADD den Feldoffset auf den Pointer anwenden, dann den Index
 		   wieder nach oben holen und das Arrayelement adressieren. */
-		printf("SWAP\nPUSH %d\nPADD c\nSWAP\n", tcStructFieldOffset[sid][fi]);
+		{ printf("SWAP\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\nSWAP\n"); }
 		printf("PADD %c\nLOADIND %c\n", tcTypeTag(ft), tcTypeTag(ft));
 		tcTypePush(ft); return;
 	}
-	printf("PUSH %d\nPADD c\n", tcStructFieldOffset[sid][fi]);
+	{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 	if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(ft)); return; }
 	printf("LOADIND %c\n", tcTypeTag(ft));
 	tcTypePush(ft);
@@ -3290,7 +3318,7 @@ void tc_target(const char* start, const char* end) {
 		{
 			int chain = fieldEnd < end && *fieldEnd == '[' && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
 			if (chain) tcStashChainedIndex();
-			printf("PUSH %d\n", tcStructFieldOffset[sid][fi]);
+			{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\n"); }
 			if (tcTargetSlot >= 0) printf("LOADP %d\n", tcTargetSlot); else printf("LOADGP %s\n", tcGlobalNames[gslot]);
 			printf("IPADD c\n");
 			if (chain) { tcTargetType = tcEmitFieldRowColIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
@@ -3336,7 +3364,6 @@ void tc_target(const char* start, const char* end) {
 			int sid = tcTargetType.structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
@@ -3357,7 +3384,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
 			if (chain) tcStashChainedIndex();
-			printf("LOADP %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("LOADP %d\nIPADDN ", tcTargetSlot); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
 				if (tcIsPointer(tcStructFieldTypes[sid][fi])) { tcUnstashChainedIndex(); tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0); }
 				else tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0);
@@ -3377,7 +3404,6 @@ void tc_target(const char* start, const char* end) {
 			int sid = tcTargetType.structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
@@ -3402,7 +3428,7 @@ void tc_target(const char* start, const char* end) {
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcLocalArrayLen[tcTargetSlot]);
 			if (chain) tcStashChainedIndex();
-			printf("PUSHADDR L %d\nIPADDN %d\nPUSH %d\nPADD c\n", tcTargetSlot, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("PUSHADDR L %d\nIPADDN ", tcTargetSlot); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
 				if (tcIsPointer(tcStructFieldTypes[sid][fi])) { tcUnstashChainedIndex(); tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0); }
 				else tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0);
@@ -3438,9 +3464,9 @@ void tc_target(const char* start, const char* end) {
 			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
 			if (chain) tcStashChainedIndex();
 			if (tcLocalStructByAddr[tcTargetSlot])
-				printf("PUSH %d\nLOADP %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+				{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nLOADP %d\nIPADD c\n", tcTargetSlot); }
 			else
-				printf("PUSH %d\nPUSHADDR L %d\nIPADD c\n", tcStructFieldOffset[sid][fi], tcTargetSlot);
+				{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nPUSHADDR L %d\nIPADD c\n", tcTargetSlot); }
 			if (chain) { tcTargetType = tcEmitFieldRowColIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
 		}
 		if (hasIndex) {
@@ -3496,7 +3522,6 @@ void tc_target(const char* start, const char* end) {
 			char gname[32]; int sid = globalPointee.structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
@@ -3518,7 +3543,7 @@ void tc_target(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n"); actionErrors++; return;
 			}
 			if (chain) tcStashChainedIndex();
-			printf("LOADGP %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("LOADGP %s\nIPADDN ", gname); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
 				if (tcIsPointer(tcStructFieldTypes[sid][fi])) tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
 				else tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0);
@@ -3537,7 +3562,6 @@ void tc_target(const char* start, const char* end) {
 			char gname[32]; int sid = tcGlobalType(global).structId - 1;
 			const char* fieldStart = tcSkipWs(afterIdx + 1, end); const char* fieldEnd = tcWordEnd(fieldStart, end);
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
-			int structSize = tcStructByteSize[sid];
 			int chain;
 			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
@@ -3563,7 +3587,7 @@ void tc_target(const char* start, const char* end) {
 			}
 			tcCheckConstIndex(nameEnd, afterIdx, tcGlobalArrayLen[global]);
 			if (chain) tcStashChainedIndex();
-			printf("PUSHADDR G %s\nIPADDN %d\nPUSH %d\nPADD c\n", gname, structSize, tcStructFieldOffset[sid][fi]);
+			{ printf("PUSHADDR G %s\nIPADDN ", gname); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
 				if (tcIsPointer(tcStructFieldTypes[sid][fi])) tcTargetType = tcEmitPtrFieldIndex(sid, fi, 0);
 				else tcTargetType = tcEmitStashedFieldIndex(sid, fi, 0);
@@ -3597,7 +3621,7 @@ void tc_target(const char* start, const char* end) {
 		{
 			int chain = hasIndex && tcCountTopIndexes(fieldEnd, end) == 2 && tcStructFieldRowLen[sid][fi] > 0;
 			if (chain) tcStashChainedIndex();
-			printf("PUSH %d\nPUSHADDR G %s\nIPADD c\n", tcStructFieldOffset[sid][fi], gname);
+			{ printf("PUSH "); tcEmitFieldOffset(sid, fi); printf("\nPUSHADDR G %s\nIPADD c\n", gname); }
 			if (chain) { tcTargetType = tcEmitFieldRowColIndex(sid, fi, 0); tcTargetIndirect = 1; return; }
 		}
 		if (hasIndex) {
@@ -3823,12 +3847,12 @@ static void tcAssignStore(int leaveValue) {
 				tcErrAt(parserActionAt); fprintf(stderr, "indexed struct assignment without a target\n");
 				actionErrors++; return;
 			}
-			printf("IPADDN %d\n", tcStructByteSize[sid]);
+			{ printf("IPADDN "); tcEmitStructSize(sid); printf("\n"); }
 			printf("STOREGP __structCopyDst\n");
-			tcEmitStructCopyDyn(tcStructByteSize[sid]);
+			tcEmitStructCopyDyn(tcStructSizeFor(sid, TC_PTR_LARGE));
 		}
-		else if (tcTargetIsGlobal) tcEmitStructCopy(-1, tcTargetGlobal, tcStructByteSize[sid]);
-		else if (tcTargetSlot >= 0) tcEmitStructCopy(tcTargetSlot, 0, tcStructByteSize[sid]);
+		else if (tcTargetIsGlobal) tcEmitStructCopy(-1, tcTargetGlobal, tcStructSizeFor(sid, TC_PTR_LARGE));
+		else if (tcTargetSlot >= 0) tcEmitStructCopy(tcTargetSlot, 0, tcStructSizeFor(sid, TC_PTR_LARGE));
 		else {
 			tcErrAt(parserActionAt); fprintf(stderr, "struct assignment without a target\n");
 			actionErrors++;
@@ -3953,8 +3977,8 @@ void tc_arg(const char* start, const char* end) {
 	  		   Position benutzt -- siehe tcCompatible/tcIsPointer. */
 	  		char argName[40];
 	  		sprintf(argName, "__structArg_%d_%d", sid, tcStructArgSeq++);
-	  		printf("GARRAY %s c %d 1\n", argName, tcStructByteSize[sid]);
-	  		tcEmitStructCopy(-1, argName, tcStructByteSize[sid]);
+	  		printf("GARRAY %s c %d 1\n", argName, tcStructSizeFor(sid, TC_PTR_LARGE));
+	  		tcEmitStructCopy(-1, argName, tcStructSizeFor(sid, TC_PTR_LARGE));
 	  		printf("ADDRG %s\n", argName);
 	  	}
 	  } }
@@ -4052,10 +4076,10 @@ void tc_return(const char* start, const char* end) {
 			char retName[32];
 			sprintf(retName, "__structRet_%d", sid);
 			if (!tcStructRetDeclared[sid]) {
-				printf("GARRAY %s c %d 1\n", retName, tcStructByteSize[sid]);
+				printf("GARRAY %s c %d 1\n", retName, tcStructSizeFor(sid, TC_PTR_LARGE));
 				tcStructRetDeclared[sid] = 1;
 			}
-			tcEmitStructCopy(-1, retName, tcStructByteSize[sid]);
+			tcEmitStructCopy(-1, retName, tcStructSizeFor(sid, TC_PTR_LARGE));
 			printf("ADDRG %s\n", retName);
 		}
 	}
@@ -4415,8 +4439,23 @@ void tc_structfield(const char* start, const char* end) {
    erst NACH dem Feld-Body, daher als eigenstaendige Funktion mit Name als
    Parameter statt fest an tcStructBuildName gebunden. Gibt die neue sid oder
    -1 bei Fehler zurueck. */
+/* Aus den beiden Layoutergebnissen (P=4 und P=8) die Zahl der Zeigergroessen
+   in einem Offset. */
+static int tcPtrN(int v4, int v8) {
+	return (v8 - v4) / (TC_PTR_LARGE - TC_PTR_SMALL);
+}
+/* Prueft, ob ein Wertepaar wirklich die Form k+n*P hat. Die Ausrichtung
+   rundet auf, und eine Rundung ist keine lineare Funktion von P -- fuer die
+   hier erlaubten Feldtypen geht es auf, aber darauf wird sich nicht
+   VERLASSEN, sondern es wird nachgerechnet. */
+static int tcPtrLinear(int v4, int v8) {
+	if (v8 < v4) return 0;
+	if (((v8 - v4) % (TC_PTR_LARGE - TC_PTR_SMALL)) != 0) return 0;
+	if (v4 - TC_PTR_SMALL * tcPtrN(v4, v8) < 0) return 0;
+	return 1;
+}
 static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
-	int i; int offset = 0; int sid = tcStructCount;
+	int i; int offset = 0; int sid = tcStructCount; int pass;
 	if (tcStructCount >= MAX_STRUCTS) { tcErrAt(parserActionAt); fprintf(stderr, "too many structs\n"); actionErrors++; return -1; }
 	if (tcLookupStruct(nameStart, nameEnd) >= 0) { tcErrAt(parserActionAt); fprintf(stderr, "duplicate struct\n"); actionErrors++; return -1; }
 	if (tcStructBuildFieldCount == 0) { tcErrAt(parserActionAt); fprintf(stderr, "struct needs at least one field\n"); actionErrors++; return -1; }
@@ -4433,8 +4472,10 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	   Pointer-Variable -- kein Backend-Code-Aenderung noetig, LOADIND/
 	   STOREIND/IPADD kennen den Typtag 'p' bereits generisch. Nur EIN
 	   Pointer-Level unterstuetzt (kein T**-Feld), keine Pointer-Arrays. */
+	/* VALIDIERUNG der Feldtypen. Seit 2026-09-15 vom Layout GETRENNT, weil
+	   das Layout zweimal laeuft -- sonst kaeme jede Meldung doppelt. */
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
-		TCType ft = tcStructBuildFieldTypes[i]; int elemSize, align, size;
+		TCType ft = tcStructBuildFieldTypes[i];
 		/* Ein struct-WERT waere eine rekursive/verschachtelte Einbettung und
 		   bleibt absichtlich offen. Ein Pointer auf struct ist dagegen ein
 		   normaler Pointer-Slot (z.B. ein Linked-List-next oder Q9-Run's
@@ -4447,23 +4488,62 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		/* ZEIGERARRAYS ALS FELD gehen seit 2026-09-07 (vorher abgelehnt).
 		   Gebraucht hat sie qcc_backend_c.cpp: "char* args[6]" in seiner
 		   Instr-Struktur -- daran ist das Backend bis dahin gescheitert und
-		   konnte deshalb nie auf dem 68030 laufen. Ein Element belegt
-		   TC_PTR_SLOT Byte wie ein einzelnes Zeigerfeld; die Schrittweite
-		   beim Indizieren kommt aus tcEmitFieldIndexStep.
+		   konnte deshalb nie auf dem 68030 laufen. Die Schrittweite beim
+		   Indizieren kommt aus tcEmitFieldIndexStep.
 		   ZWEIDIMENSIONAL bleibt abgelehnt: der 2D-Zweig der Zugriffe rechnet
 		   die Zeilengroesse mit 1 oder 4 Byte je Element aus, und lieber eine
 		   Meldung als still eine falsche Schrittweite. */
 		if (tcIsPointer(ft) && tcStructBuildFieldRowLen[i] > 0) {
 			tcErrAt(parserActionAt); fprintf(stderr, "two-dimensional pointer arrays as struct field not supported in this version\n"); actionErrors++; return -1;
 		}
-		elemSize = tcIsPointer(ft) ? TC_PTR_SLOT : (ft.base == 'c' || ft.base == 'b') ? 1 : ft.base == 'h' ? 2 : 4;
-		align = elemSize;
-		size = tcStructBuildFieldArrayLen[i] > 0 ? elemSize * tcStructBuildFieldArrayLen[i] : elemSize;
-		offset = (offset + align - 1) & ~(align - 1);
-		tcStructFieldOffset[sid][i] = offset;
-		offset += size;
 	}
-	tcStructByteSize[sid] = (offset + 3) & ~3;
+	/* LAYOUT ZWEIMAL RECHNEN (2026-09-15). Ein Zeigerfeld belegt auf dem 68k
+	   vier, auf ARM64 acht Byte. Frueher stand hier fest die Acht, damit EIN
+	   frontend-berechnetes Offset fuer beide Ziele gilt -- auf dem 68k war
+	   damit die Haelfte jedes Zeigerfelds verschenkt. Jetzt wird jedes Offset
+	   fuer BEIDE Zeigergroessen gerechnet und als Paar k+n*P weitergegeben;
+	   das Backend setzt sein P ein. Die IR bleibt fuer beide dieselbe. */
+	for (pass = 0; pass < 2; pass++) {
+		int psize;
+		psize = pass == 0 ? TC_PTR_SMALL : TC_PTR_LARGE;
+		offset = 0;
+		for (i = 0; i < tcStructBuildFieldCount; i++) {
+			TCType ft = tcStructBuildFieldTypes[i]; int elemSize, align, size;
+			elemSize = tcIsPointer(ft) ? psize : (ft.base == 'c' || ft.base == 'b') ? 1 : ft.base == 'h' ? 2 : 4;
+			align = elemSize;
+			size = tcStructBuildFieldArrayLen[i] > 0 ? elemSize * tcStructBuildFieldArrayLen[i] : elemSize;
+			offset = (offset + align - 1) & ~(align - 1);
+			if (pass == 0) tcStructFieldOffsetK[sid][i] = offset;
+			else tcStructFieldOffsetN[sid][i] = offset;
+			offset += size;
+		}
+		if (pass == 0) tcStructByteSizeK[sid] = (offset + 3) & ~3;
+		else tcStructByteSizeN[sid] = (offset + 3) & ~3;
+	}
+	/* Aus den beiden Ergebnissen k und n ableiten -- und NACHRECHNEN, statt
+	   die Linearitaet anzunehmen (s. tcPtrLinear). */
+	for (i = 0; i < tcStructBuildFieldCount; i++) {
+		int v4; int v8; int n;
+		v4 = tcStructFieldOffsetK[sid][i];
+		v8 = tcStructFieldOffsetN[sid][i];
+		if (!tcPtrLinear(v4, v8)) {
+			tcErrAt(parserActionAt); fprintf(stderr, "struct field offset is not linear in the pointer size\n"); actionErrors++; return -1;
+		}
+		n = tcPtrN(v4, v8);
+		tcStructFieldOffsetK[sid][i] = v4 - TC_PTR_SMALL * n;
+		tcStructFieldOffsetN[sid][i] = n;
+	}
+	{
+		int v4; int v8; int n;
+		v4 = tcStructByteSizeK[sid];
+		v8 = tcStructByteSizeN[sid];
+		if (!tcPtrLinear(v4, v8)) {
+			tcErrAt(parserActionAt); fprintf(stderr, "struct size is not linear in the pointer size\n"); actionErrors++; return -1;
+		}
+		n = tcPtrN(v4, v8);
+		tcStructByteSizeK[sid] = v4 - TC_PTR_SMALL * n;
+		tcStructByteSizeN[sid] = n;
+	}
 	tcCopy(tcStructNames[tcStructCount], nameStart, nameEnd);
 	tcStructFieldCount[tcStructCount] = tcStructBuildFieldCount;
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
@@ -4552,6 +4632,7 @@ void tc_enumdecl(const char* start, const char* end) {
 
 void tc_sizeof(const char* start, const char* end) {
 	int size;
+	int sizeN = 0;   /* Zeigeranteil der Groesse, s. tcEmitNum */
 	const char* q;
 	int ptrs;
 	tc_type(start, end);
@@ -4575,19 +4656,26 @@ void tc_sizeof(const char* start, const char* end) {
 		ptrs--;
 	}
 	if (tcCurrentType.pointers) {
-		tcErrAt(start); fprintf(stderr, "sizeof of pointer types not supported in this version\n");
-		actionErrors++; size = 4;
+		/* SEIT 2026-09-15 UNTERSTUETZT. Vorher abgelehnt, weil die Groesse
+		   eines Zeigers vom Ziel abhaengt (68k 4, ARM64 8) und das Frontend
+		   nur EINE Zahl schreiben konnte -- eine falsche Zahl waere ein
+		   malloc(n * sizeof(char*)) mit einem Viertel des Noetigen gewesen.
+		   Jetzt geht die Groesse symbolisch als 0+1P hinaus und das Backend
+		   setzt sein P ein. */
+		size = 0; sizeN = 1;
 	} else if (tcCurrentType.base == 's') {
-		size = tcStructByteSize[tcCurrentType.structId - 1];
+		size = tcStructByteSizeK[tcCurrentType.structId - 1];
+		sizeN = tcStructByteSizeN[tcCurrentType.structId - 1];
 	} else if (tcCurrentType.base == 'c' || tcCurrentType.base == 'b') size = 1;
 	else if (tcCurrentType.base == 'h') size = 2;
 	else size = 4;
-	printf("PUSH %d\n", size);
+	{ printf("PUSH "); tcEmitNum(size, sizeN); printf("\n"); }
 	tcTypePush(tcMakeType('i', 0));
 }
 
 void tc_sizeofvar(const char* start, const char* end) {
 	int slot = tcLookupLocal(start, end), global = -1; TCType t; int size; int count;
+	int sizeN = 0;   /* Zeigeranteil, s. tcEmitNum */
 	if (slot < 0) global = tcLookupGlobal(start, end);
 	if (slot < 0 && global < 0) {
 		/* Zweiter legitimer Fall dieses Zweigs seit der Grammatikkorrektur
@@ -4596,34 +4684,34 @@ void tc_sizeofvar(const char* start, const char* end) {
 		   Bewusst ohne TCType-Zwischenvariable, nur ueber die drei Felder --
 		   das haelt die Routine frei von Struct-Kopien auf dem 68k-Weg. */
 		int td = tcLookupTypedef(start, end);
-		int tdBase; int tdPtrs; int tdSid; int tdSize;
+		int tdBase; int tdPtrs; int tdSid; int tdSize; int tdSizeN = 0;
 		if (td < 0) { tcErrAt(start); fprintf(stderr, "unknown variable in sizeof: '%.*s'\n", (int)(end - start), start); actionErrors++; tcTypePush(tcBadType()); return; }
 		tdBase = tcTypedefTypes[td].base;
 		tdPtrs = tcTypedefTypes[td].pointers;
 		tdSid = tcTypedefTypes[td].structId;
 		if (tdPtrs) {
-			tcErrAt(start); fprintf(stderr, "sizeof of pointer types not supported in this version\n");
-			actionErrors++; tdSize = 4;
-		} else if (tdBase == 's') tdSize = tcStructByteSize[tdSid - 1];
+			tdSize = 0; tdSizeN = 1;   /* s. tc_sizeof */
+		} else if (tdBase == 's') { tdSize = tcStructByteSizeK[tdSid - 1]; tdSizeN = tcStructByteSizeN[tdSid - 1]; }
 		else if (tdBase == 'c' || tdBase == 'b') tdSize = 1;
 		else if (tdBase == 'h') tdSize = 2;
 		else tdSize = 4;
-		printf("PUSH %d\n", tdSize);
+		{ printf("PUSH "); tcEmitNum(tdSize, tdSizeN); printf("\n"); }
 		tcTypePush(tcMakeType('i', 0));
 		return;
 	}
 	t = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
 	count = slot >= 0 ? tcLocalArrayLen[slot] : tcGlobalArrayLen[global];
 	if (tcIsPointer(t)) {
-		tcErrAt(start); fprintf(stderr, "sizeof of pointer types not supported in this version\n");
-		actionErrors++; size = 4;
+		/* Ein Zeiger-ARRAY zaehlt seine Elemente mit, s. tc_sizeof. */
+		size = 0; sizeN = count > 0 ? count : 1;
 	} else if (t.base == 's') {
-		size = (count > 0 ? count : 1) * tcStructByteSize[t.structId - 1];
+		size = (count > 0 ? count : 1) * tcStructByteSizeK[t.structId - 1];
+		sizeN = (count > 0 ? count : 1) * tcStructByteSizeN[t.structId - 1];
 	} else {
 		int elemSize = (t.base == 'c' || t.base == 'b') ? 1 : t.base == 'h' ? 2 : 4;
 		size = count > 0 ? count * elemSize : elemSize;
 	}
-	printf("PUSH %d\n", size);
+	{ printf("PUSH "); tcEmitNum(size, sizeN); printf("\n"); }
 	tcTypePush(tcMakeType('i', 0));
 }
 
