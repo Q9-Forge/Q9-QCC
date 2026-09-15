@@ -574,6 +574,18 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# FUNKTIONSZEIGER ALS LOKALE VARIABLE (2026-09-15): "int (*fp)(int);"
+		# ohne den Umweg ueber ein typedef. Vorher stiller Parse-Abbruch.
+		# Die Signatur wird wie beim typedef registriert, die Variable selbst
+		# legt dieselbe Routine an wie jede andere Lokale.
+		tc_check 'int g(int x){return x;} int main(){ int (*fp)(int); fp=g; putint(fp(5)); }' '5'
+		tc_check 'int g(int x){return x;} int h(int x){return x+2;} int main(){ int (*fp)(int); fp=h; putint(fp(5)); }' '7'
+		# void-Rueckgabe und mehr als ein Parameter.
+		tc_check 'void g(void){ putint(9); } int main(){ void (*fp)(void); fp=g; fp(); }' '9'
+		tc_check 'int g(int a,int b){return a+b;} int main(){ int (*fp)(int,int); fp=g; putint(fp(2,3)); }' '5'
+		# Der typedef-Weg und gewoehnliche Deklarationen bleiben unberuehrt.
+		tc_check 'typedef int (*FP)(int); int g(int x){return x;} int main(){ FP p; p=g; putint(p(5)); }' '5'
+		tc_check 'int main(){ int x; x=3; putint(x); }' '3'
 		# STRINGVERKETTUNG (C89 3.1.4), 2026-09-15. Vorher ein STILLER
 		# Parse-Abbruch -- "FAIL, 0 Meldungen", ohne Zeile und ohne Grund; die
 		# eigenen Werkzeuge mussten lange Meldungstexte deshalb einzeilig

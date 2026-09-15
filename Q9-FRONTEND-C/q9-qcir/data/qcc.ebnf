@@ -300,8 +300,18 @@ unlabeledStmt = ifStmt
           | callStmt
           | incDecStmt
           | assignStmt
+          | fnPtrVarDecl
           | staticVarDecl
           | varDecl .
+/* FUNKTIONSZEIGER ALS VARIABLE: "int (*fp)(int);" -- bis 2026-09-15 ging
+   das nur ueber den Umweg eines typedef. Dieselbe Form wie fnPtrTypedef,
+   nur ohne das "typedef" davor, und sie steht VOR varDecl: varDecl wuerde
+   an der Zeigerklammer scheitern und der Fehler kaeme ohne Zeilenangabe.
+   Die Signatur wird wie beim typedef registriert; die Variable selbst
+   legt dieselbe Routine an wie jede andere Lokale (tc_local), damit
+   Slotvergabe, const-Behandlung und Aufrufpruefung unveraendert gelten. */
+fnPtrVarDecl = type pointerDecl fnPtrOpen "*" fnPtrVarName ")" fnPtrParams ";" .
+fnPtrVarName = ident .
 
 /* "static" lokale Variablen: konstanter Initialisierer (globalValue, dieselbe
    seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch die
