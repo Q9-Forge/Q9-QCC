@@ -24,6 +24,7 @@ byteidentisch, und `qr68` lässt sich in den Referenz-Toolchain-Makefiles an die
 | Die Assemblerquellen des **Q9-OS-Kernels** (handgeschrieben, 4.000 Zeilen) | **byteidentisch** |
 | **Der REF-Korpus** — 290 Aufrufe über 101 Quellen, mit den Schaltern aus den Referenz-Toolchain-Makefiles selbst | **byteidentisch**, eine einzige bewusste Verweigerung |
 | **qr68 auf echtem 68030**, gebaut mit der eigenen Kette | **byteidentisch zum Hostlauf** |
+| `tests/fpu.a` — Gleitkomma (68881/68882), 75 Formen (2026-09-16) | **byteidentisch**, Zeile für Zeile, auch auf dem 68030 assembliert |
 
 Der Zeitstempel ist dabei nicht ausgenommen, sondern nachgebildet (`-fdate=`).
 
@@ -36,6 +37,35 @@ Zeichenketten), `ds.b/.w/.l`, `align`, `end`, die beschreibenden Direktiven
 `+ - * / & ! << >>` und unär `- + ^`, Klammern, `*` als aktueller Ort und
 `.` als org-Zähler, Symbole mit Vorwärtsreferenzen, globale Labels
 (`name:`), externe und lokale Referenzen.
+
+### Gleitkomma (2026-09-16)
+
+Der Coprozessorsatz des 68881/68882, soweit ein C-Compiler ihn braucht:
+`fmove` in allen sieben Formaten (`.b .w .l .s .d .x .p`) zwischen Speicher,
+Datenregister und FP-Register sowie zwischen FP-Registern, `fmovem.x` zur
+Registerrettung über Aufrufe (`-(an)` und `(an)+`), `fadd`/`fsub`/`fmul`/
+`fdiv`/`fcmp` gegen Register wie gegen Speicher, die einstelligen `fneg`,
+`fabs`, `fint`, `fintrz`, `fsqrt`, `ftst`, die zwölf gebräuchlichen
+`FBcc`-Bedingungen und `fmovecr` für die eingebauten Konstanten der FPU.
+
+Aufbau: erstes Wort `$F200 | <ea>`, dann ein zweites Wort, dessen oberste
+drei Bits den Modus tragen (Register gegen Register, Speicher nach FPn,
+FPn nach Speicher, FMOVEM in beide Richtungen), gefolgt von Format- oder
+Quellregisterfeld, Zielregister und Opmode.
+
+Zwei Eigenheiten, die nur durch Messen auffielen:
+
+- Bei `ftst` schreibt r68 das **Quellfeld zusätzlich ins Zielfeld**
+  (`ftst.x fp3` → `$0dba`, `ftst.d 8(a5)` → `$56ba`). Die FPU ignoriert das
+  Feld; byteidentisch wird es nur, wenn man es nachmacht.
+- Die Registermaske von `fmovem` zählt richtungsabhängig: bei `-(an)` ist
+  Bit 0 gleich `fp0`, bei `(an)+` ist es Bit 7.
+
+**Nicht kodierbar und deshalb gemeldet statt geraten:** Gleitkomma-
+Sofortwerte (`fadd.d #1.5,fp0` — xcc erzeugt so etwas; bei QCC gehört die
+Konstante in den Datenbereich), `fmovem` mit Kontrolladressierung, die
+lange `FBcc`-Form und `fsave`/`frestore`. Alles davon ist ungemessen, und
+ungemessen bleibt ungeschrieben.
 
 **Achtung bei Ausdrücken, an r68 gemessen:** `^` ist das **unäre Nicht**
 (`^$0f` = `$f0`), *kein* XOR — `$ff^$0f` lehnt r68 ab; und `~` kennt r68

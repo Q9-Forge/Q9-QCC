@@ -30,7 +30,7 @@ TMPWIN="$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 : "${RFLAGS:=}"
 
 files=("$@")
-[ ${#files[@]} -gt 0 ] || files=(tests/insn.a tests/dir.a tests/mac.a)
+[ ${#files[@]} -gt 0 ] || files=(tests/insn.a tests/dir.a tests/mac.a tests/fpu.a)
 
 fail=0
 for f in "${files[@]}"; do

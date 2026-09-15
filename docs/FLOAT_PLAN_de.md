@@ -147,3 +147,42 @@ Der Konverter liegt bewusst als eigenständige Datei vor und nicht schon in
 `double`-Wert im IR aussieht. Das ist der nächste Schritt — und der größere,
 denn er berührt Ablage (8 Byte statt 4), Aufrufkonvention und Typprüfung,
 nicht nur ein neues Opcode-Paar.
+
+## Der Engpass war der Assembler — er ist weg (2026-09-16)
+
+Vor dem 68k-Backend steht eine Frage, die der Plan oben stillschweigend
+übersprungen hatte: **kann qr68 überhaupt FPU-Befehle?** Gemessen: nein,
+keinen einzigen. Immerhin sauber gemeldet („Befehl noch nicht kodierbar“)
+statt still danebengegriffen.
+
+Das ist jetzt erledigt. Gemessen wurde zuerst, was xcc für eine Handvoll
+`double`-Funktionen erzeugt — daraus kam der Befehlssatz, den ein Compiler
+wirklich braucht, und keine erfundene Wunschliste. Danach lieferte r68 zu
+jeder Form die Sollbytes, und `tests/fpu.a` hält sie fest.
+
+Ergebnis: 75 Formen, Zeile für Zeile byteidentisch zu r68, der SDK-Korpus
+unverändert (290 gleich, eine bewusste Verweigerung), und die Probe wird
+von qr68 **auf dem echten 68030 selbst assembliert** — ebenfalls
+byteidentisch. Einzelheiten in `Q9-BACKEND-68K/q9-qr68k/README.md`.
+
+### Was xcc über die Aufrufkonvention verrät
+
+Aus demselben Assembler-Orakel, und wichtig für alles Weitere, weil QCC
+sonst kein `printf("%f")` aufrufen kann:
+
+| Frage | gemessen bei xcc |
+|---|---|
+| erstes `double`-Argument | in **d0/d1** (hi in d0) |
+| weitere Argumente | auf dem Stack, `double` 8 Byte, `int` 4 |
+| Rückgabe | **d0/d1** |
+| gerechnet wird in | **80 Bit** (`fadd.x`), gespeichert in 64 |
+| `int` → `double` | `fmove.l d0,fp0` |
+| `double` → `int` | `fintrz.x` und dann `fmove.l fp0,d0`, schneidet also Richtung null ab |
+| Vergleich | `fcmp.x` und ein `FBcc` mit umgekehrter Bedingung |
+| `fp0`/`fp1` über Aufrufe | vom Gerufenen gerettet (`fmovem.x`) |
+| Literal im Assembler | `dc.l $3ff80000,$0` — dasselbe Bitmuster, das `tools/dec2ieee.c` liefert |
+
+Damit sind alle 68k-Fragen beantwortet, und der nächste Schritt ist wieder
+der aus dem Plan: die IR. Dort ist die offene Frage nicht die
+Befehlskodierung, sondern die Ablage — ein `double` braucht 8 Byte, und
+die Slots der IR sind bisher einheitlich schmal.
