@@ -574,6 +574,25 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# BITFELDER und "long long" (2026-09-15): beide brachen vorher STILL im
+		# Parser ab -- FAIL, keine Meldung, keine Zeile. Beide sind bewusst NICHT
+		# umgesetzt (Bitfelder braeuchten Bitpacking plus maskierten Zugriff an
+		# jeder Feldzugriffsstelle fuer 5 von 4109 Korpusquellen; "long long"
+		# braucht 64-Bit-Hilfsroutinen im Backend). Die Grammatik LIEST die Form
+		# jetzt trotzdem, damit die Aktion sie ablehnen kann -- sonst gibt es
+		# keine Meldung, weil bei einem Parse-Abbruch keine Aktion laeuft.
+		for q in 'struct B { unsigned a:3; }; int main(){ return 0; }|bit fields are not supported' \
+		         'int main(){ long long x; return 0; }|long long is not supported'; do
+			src="${q%%|*}"; want="${q#*|}"
+			if build/qcc_p "$src" 2>&1 | grep -qF "$want"; then
+				echo "ok    qcc: nicht umgesetzte Form wird gemeldet ($want)"
+			else
+				echo "FAIL  qcc: still gescheitert statt gemeldet: $want"; tcfail=1; fail=1
+			fi
+		done
+		# Was daneben liegt, muss unveraendert gehen.
+		tc_check 'int main(){ long x; x=1; putint(x); }' '1'
+		tc_check 'struct S { unsigned a; int b; }; int main(){ struct S s; s.b=7; putint(s.b); }' '7'
 		# MELDUNGSTEXTE (2026-09-15): Der lokale Initialisiererpfad warf drei
 		# verschiedene Ursachen in denselben Satz ("bad or oversized array
 		# initializer"), der bei keiner die Ursache traf. Jetzt benennt jede

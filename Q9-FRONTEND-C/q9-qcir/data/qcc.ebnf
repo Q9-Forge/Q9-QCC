@@ -101,7 +101,14 @@ fieldConstKw = "const" .
    einzeln, siehe tc_pointerdecl (Data/qcc.lextab) fuer die dazugehoerige
    Aktionsaenderung (Zeigergrad wird pro Aufruf neu gesetzt, nicht
    aufaddiert). */
-structDeclarator = pointerDecl fieldName [ arraySize [ arraySizeN ] ] .
+/* Die Bitbreite wird GELESEN, damit sie abgelehnt werden kann: ohne sie in
+   der Grammatik bricht "unsigned a:3;" im Parser ab -- FAIL ohne Meldung
+   und ohne Zeilenangabe, die teuerste Sorte Grenze. Umgesetzt sind
+   Bitfelder NICHT: sie brauchen Bitpacking im Layout UND maskierten
+   Zugriff an jeder Feldzugriffsstelle, und sie kommen in 5 von 4109
+   Microware-Quellen vor -- das Verhaeltnis traegt den Umbau nicht. */
+structDeclarator = pointerDecl fieldName [ bitFieldWidth ] [ arraySize [ arraySizeN ] ] .
+bitFieldWidth = ":" globalNumber .
 fieldName   = ident .
 
 /* NACHTRAG 2026-09-09 -- derselbe Mehrfachdeklaratoren-Fix wie bei
@@ -741,7 +748,14 @@ funcName  = ident .
    short" und hat etliche blanke "short"-Structfelder). Anders als long/int
    NICHT auf einen bestehenden Typ abgebildet -- der 68k-Codegen legt short
    echt als 2 Byte an (s. tcTypeTag/qcc_backend_c.cpp). */
-type      = "unsigned" unsignedInt | "int" | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+/* longLongType steht VOR "long", sonst nimmt die geordnete Auswahl das
+   erste "long" und das zweite wird zum Variablennamen -- die Deklaration
+   bricht dann still ab. Die Form wird also nur GELESEN, um sie melden zu
+   koennen; umgesetzt ist sie nicht: 64-Bit-Arithmetik auf dem 68k
+   braucht Hilfsroutinen fuer Multiplikation und Division und ist ein
+   eigenes Vorhaben, kein Randfall. */
+type      = "unsigned" unsignedInt | "int" | longLongType | "long" | "short" | "char" | "bool" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+longLongType = "long" "long" .
 unionTypeRef = ident .
 structTypeRef = ident .
 enumTypeRef = ident .
