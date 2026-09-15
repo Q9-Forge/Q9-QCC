@@ -554,7 +554,20 @@ postfixIndex = index .
    "\" erkannt und in tc_string dekodiert, nicht in der Grammatik. Bewusst NICHT
    Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
    und String-Verkettung/-Vergleich als eigene Operatoren. */
-stringLit = "\042" { character } "\042" .
+/* MEHRERE LITERALE HINTEREINANDER sind EIN String (C89 3.1.4). Die Aktion
+   bleibt an stringLit und bekommt damit die Spanne ueber ALLE Teile;
+   tcDecodeStringLit haengt sie aneinander. stringPiece traegt bewusst
+   keine eigene Aktion -- es gibt nichts je Teil zu tun. */
+stringLit = stringPiece { stringSep stringPiece } .
+stringPiece = "\042" { character } "\042" .
+/* stringLit steht in der TOKEN-Liste, und TOKEN-Regeln ueberspringen
+   KEINEN Leerraum -- deshalb muss der Zwischenraum zwischen zwei
+   Literalen hier ausdruecklich stehen. Er darf leer sein ("ab""cd"
+   ist gueltiges C), und er umfasst auch Zeilenumbrueche: gerade der
+   Fall, um den es geht, ist ein langer Meldungstext ueber mehrere
+   Zeilen. */
+stringSep = { stringSpace } .
+stringSpace = "\040" | "\011" | "\015" | "\012" .
 
 /* Zeichenliteral 'x'. Wie in echtem C hat es den Typ int (nicht char) --
    dadurch funktionieren Vergleiche mit int-Variablen ohne Konvertierung,

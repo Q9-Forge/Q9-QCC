@@ -574,6 +574,25 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# STRINGVERKETTUNG (C89 3.1.4), 2026-09-15. Vorher ein STILLER
+		# Parse-Abbruch -- "FAIL, 0 Meldungen", ohne Zeile und ohne Grund; die
+		# eigenen Werkzeuge mussten lange Meldungstexte deshalb einzeilig
+		# schreiben. stringLit steht in der TOKEN-Liste, und TOKEN-Regeln
+		# ueberspringen KEINEN Leerraum: ohne den ausdruecklichen stringSep ging
+		# nur "ab""cd" ohne Zwischenraum, und genau der mehrzeilige Fall nicht.
+		tc_check 'int main(){ char *s = "ab" "cd"; putint(s[2]); }' '99'
+		tc_check 'int main(){ char *s = "ab""cd"; putint(s[2]); }' '99'
+		tc_check 'int main(){ char *s = "a" "b" "c"; putint(s[2]); }' '99'
+		# Ueber einen ZEILENUMBRUCH -- der eigentliche Anwendungsfall.
+		tc_check 'int main(){ char *s = "ab"
+	    "cd"; putint(s[3]); }' '100'
+		# Escapes duerfen an der Nahtstelle nicht verlorengehen.
+		tc_check 'int main(){ char *s = "a\n" "b"; putint(s[1]); }' '10'
+		# Die Gesamtlaenge muss stimmen: "ab"+"cd" fuellt b[0..3], b[4] bleibt 0.
+		tc_check 'int main(){ char b[5] = "ab" "cd"; putint(b[4]); }' '0'
+		tc_check 'int main(){ char b[5] = "ab" "cd"; putint(b[3]); }' '100'
+		# Ein einzelnes Literal bleibt unveraendert.
+		tc_check 'int main(){ char *s = "abcd"; putint(s[2]); }' '99'
 		# volatile (2026-09-15): wird an denselben Stellen wie const akzeptiert.
 		# Eine eigene WIRKUNG hat es nicht, und das ist nachgerechnet, nicht
 		# angenommen -- siehe den Test "volatile: jeder Zugriff bleibt" weiter
