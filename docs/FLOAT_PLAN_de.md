@@ -19,9 +19,21 @@ daraus ergibt. Gebaut ist noch nichts.
    (`3.5 * 2.0 + 1.0`) gibt auf dem echten 68030 im Q9-Flux korrekt `8.0`
    aus.
 
-**Konsequenz:** QCC darf FPU-Befehle erzeugen. Eine Softfloat-Bibliothek —
-der mit Abstand größte Brocken dieses Vorhabens — entfällt damit. Das war
-die offene Frage, an der die Aufwandsschätzung hing.
+**Der Mechanismus ist ein TRAPHANDLER, keine Bibliothek** — nachgesehen im
+lauffähigen Modul: die FPU-Befehle stehen unmittelbar im Programmcode
+(42 Stellen mit der Coprozessor-Kodierung `$F2xx`, z. B. `f240 2008`), und
+das Modul referenziert dafür nichts. Der 68030 ohne FPU löst auf jedem
+dieser Befehle eine F-Line-Ausnahme aus; `fpu` (ein ausführbares Modul von
+12.848 Byte in `/CMDS/BOOTOBJS`) bedient sie.
+
+**Konsequenz:** QCC erzeugt FPU-Befehle direkt und bindet dafür **gar nichts**
+— weder eine eigene Softfloat-Bibliothek noch eine fremde. Der mit Abstand
+größte Brocken dieses Vorhabens entfällt damit; das war die offene Frage, an
+der die Aufwandsschätzung hing.
+
+Was qclib betrifft, bleibt allein die **Ausgabe**: `printf("%f")` und die
+Umwandlung Zahl↔Text. Das ist Bibliotheksarbeit und von der Arithmetik
+unabhängig — rechnen kann das Programm ohne jede Ergänzung.
 
 **Preis und Abhängigkeit:** Jedes Gleitkomma-Programm braucht das
 `fpu`-Modul im Bootabbild. Das gehört in die Voraussetzungen der Testskripte,
