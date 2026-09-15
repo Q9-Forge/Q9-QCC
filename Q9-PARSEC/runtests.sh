@@ -551,6 +551,23 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# ZEIGERTABELLE MIT STRING-LITERALEN (2026-09-15). Vorher ein STILLER
+		# Parse-Abbruch: "FAIL, 0 Meldungen", ohne Zeile und ohne Grund. Das
+		# Idiom traegt Namens-, Opcode- und Meldungstabellen und musste in den
+		# eigenen Werkzeugen bis dahin umgangen werden.
+		# Der Wert einer solchen Tabelle ist eine ADRESSE und steht erst zur
+		# Ladezeit fest; auf OS-9 relokiert ihn der Lader ueber M$IRefs.
+		tc_check 'char *t[2]={"ab","cd"}; int main(){ char *p; p=t[0]; putint(p[0]); }' '97'
+		tc_check 'char *t[2]={"ab","cd"}; int main(){ char *p; p=t[1]; putint(p[0]); }' '99'
+		# Groesse aus der Liste ableiten -- mit UND ohne Zeiger.
+		tc_check 'char *t[]={"ab","cd","ef"}; int main(){ char *p; p=t[2]; putint(p[0]); }' '101'
+		tc_check 'int a[]={1,2,3}; int main(){ putint(a[1]); }' '2'
+		tc_check 'int a[]={4,5}; int main(){ putint(sizeof(a)); }' '8'
+		# Gemischt: eine Zahl neben einem Literal darf nicht zur Adresse werden.
+		tc_check 'char *t[2]={"ab",0}; int main(){ putint(t[1]==0); }' '1'
+		# Der ALTE Pfad muss unveraendert bleiben: ein char-Array mit Literal
+		# fuellt Zahlen, keine Adressen (daran ist der erste Anlauf gescheitert).
+		tc_check 'char m[6]="hallo"; int main(){ putchar(m[0]); putint(m[5]); }' 'h0'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c = GREEN; putint(c); }' '1'
 		tc_check 'enum Color { RED, GREEN, BLUE }; enum Color pick(int i){ if(i==0) return RED; else return GREEN; } int main(){ enum Color c = pick(1); putint(c); }' '1'
 		# SIZEOF AUF ZEIGER: bis 2026-09-15 ABGELEHNT, jetzt unterstuetzt.
@@ -3078,6 +3095,19 @@ if [ -x build/qcc_arm64_backend ]; then
 	fi
 else
 	echo "warn  qcc String-Array-Initialisierer ARM64: Backend fehlt -- uebersprungen"
+fi
+
+if [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'char *namen[]={"eins","zwei"}; int main(){ char *p; p=namen[1]; putchar(p[0]); p=namen[0]; putchar(p[0]); }' > build/qcc_ptrtab_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_ptrtab_arm64.ir build/qcc_ptrtab_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_ptrtab_arm64 build/qcc_ptrtab_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_ptrtab_arm64)" = "ze" ]; then
+		echo "ok    qcc Zeigertabelle ARM64: char *t[]={...} nativ korrekt"
+	else
+		echo "FAIL  qcc Zeigertabelle ARM64: fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  qcc Zeigertabelle ARM64: Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/qcc_arm64_backend ]; then

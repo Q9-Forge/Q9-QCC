@@ -148,6 +148,13 @@ def run(prog):
             globals_[args[0]] = [0] * int(args[2])
         elif op == "GINIT":
             globals_[args[0]][int(args[1])] = int(args[2])
+        elif op == "GINITADDR":
+            # Die ADRESSE eines anderen Globalen als Anfangswert -- entsteht aus
+            # einem String-Literal in einer Initialisiererliste
+            # (char *tab[] = {"a","b"}). Auf dem Ziel steht dieser Wert erst zur
+            # Ladezeit fest, OS-9 relokiert ihn ueber M$IRefs; hier ist er ein
+            # gewoehnlicher Zeiger auf den Block des Ziels.
+            globals_[args[0]][int(args[1])] = Pointer(globals_[args[2]])
         elif op == "FUNC":
             func_start[args[0]] = i + 1
         elif op == "LABEL":
@@ -330,7 +337,7 @@ def run(prog):
                 if a.block is not b.block: raise RuntimeError("qccvm: comparison of unrelated pointers")
                 result = a.offset < b.offset if op == "PCMPLT" else a.offset <= b.offset if op == "PCMPLE" else a.offset > b.offset if op == "PCMPGT" else a.offset >= b.offset
             opstack.append(1 if result else 0); ip += 1
-        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
+        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
             ip += 1
         elif op == "JMP":
             ip = label_at[args[0]]
