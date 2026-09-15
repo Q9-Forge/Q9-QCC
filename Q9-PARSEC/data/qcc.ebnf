@@ -34,7 +34,7 @@ externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
    fuer die Aufrufpruefung zaehlen nur die Typen. "const" ebenso rein
    dokumentarisch: eine extern-Deklaration hat keinen QCC-Rumpf, in dem eine
    Schreibpruefung greifen koennte. */
-externParam     = [ constKw ] type pointerDecl [ ident ] .
+externParam     = [ constKw ] [ volatileKw ] type pointerDecl [ ident ] .
 ellipsisTok     = "..." .
 
 enumDecl  = "enum" ident "{" ident { "," ident } "}" ";" .
@@ -79,7 +79,7 @@ structName  = ident .
    verbrauchen sie ("const int a, b;" trifft beide), und tc_fieldconstend
    loescht sie nach der ganzen structField-Zeile. tcPendingConst bleibt
    davon unberuehrt. */
-structField = [ fieldConstKw ] type structDeclarator { "," structDeclarator } ";" .
+structField = [ fieldConstKw ] [ volatileKw ] type structDeclarator { "," structDeclarator } ";" .
 fieldConstKw = "const" .
 /* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
    dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
@@ -164,9 +164,27 @@ externGlobalDecl = "extern" type pointerDecl globalName ";" .
    mitgepflegt, aber fuer Globale nirgends gelesen -- unschaedlich). Ohne
    diese Grammatikaenderung waere "char *a, *b;" schon hier ein Parse-Fehler
    gewesen, BEVOR tc_globalend je zum Zug kaeme. */
-plainGlobalDecl  = [ staticKw ] [ constKw ] type globalDeclarator { "," globalDeclarator } ";" .
+plainGlobalDecl  = [ staticKw ] [ constKw ] [ volatileKw ] type globalDeclarator { "," globalDeclarator } ";" .
 globalDeclarator = pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
 constKw   = "const" .
+/* volatileKw hat ABSICHTLICH KEINE Aktion -- und das ist hier, anders als
+   beim damaligen fieldConstKw (2026-09-07), kein stiller Fehler, sondern
+   nachgerechnet richtig. C verlangt von volatile, dass JEDER Zugriff
+   tatsaechlich stattfindet und keiner wegoptimiert oder zusammengefasst
+   wird. QCC erfuellt das ohnehin an zwei Stellen:
+     1. Der Codegen haelt KEINE Werte in Registern ueber Anweisungsgrenzen
+        hinweg -- jeder Lese- und Schreibzugriff geht ueber den Speicher.
+     2. Der Peephole-Optimierer faltet ausschliesslich Verkehr auf dem
+        AUSWERTUNGSSTAPEL (A7, "push X / pop X"), also compilereigene
+        Zwischenwerte. Er fasst keine Variablenzugriffe zusammen und
+        entfernt keine.
+   Es gibt also nichts zu unterdruecken. Das ist KEINE Annahme: die Suite
+   prueft am erzeugten ASSEMBLER nach, dass zwei aufeinanderfolgende
+   Zugriffe auf eine volatile Variable auch zwei Speicherzugriffe ergeben,
+   mit UND ohne -peephole. Wer den Optimierer um ein Muster erweitert, das
+   Variablenzugriffe anfasst, muss volatile dort ausnehmen -- und der Test
+   schlaegt dann an. */
+volatileKw = "volatile" .
 staticKw  = "static" .
 /* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
    (char msg[6] = "hallo";). Duplizierte, AKTIONSLOSE Kopie von stringLit
@@ -226,7 +244,7 @@ funcParams = voidParams | normalParams .
 voidParams = "(" "void" ")" .
 normalParams = "(" paramList ")" .
 paramList = [ param { "," param } ] .
-param     = [ constKw ] type pointerDecl paramDecl .
+param     = [ constKw ] [ volatileKw ] type pointerDecl paramDecl .
 paramDecl = paramName [ paramArray ] .
 paramArray = "[" "]" .
 
@@ -292,7 +310,7 @@ unlabeledStmt = ifStmt
    der einmal gesetzte Wert ueber alle nachfolgenden Aufrufe hinweg erhalten,
    entspricht also dem BEOBACHTBAREN Verhalten (Persistenz), solange der
    Ausdruck selbst keine Seiteneffekte hat. */
-staticVarDecl   = staticKw [ constKw ] type pointerDecl staticLocalName [ "=" staticInit ] ";" .
+staticVarDecl   = staticKw [ constKw ] [ volatileKw ] type pointerDecl staticLocalName [ "=" staticInit ] ";" .
 staticLocalName = ident .
 staticInit      = globalValue | staticRuntimeInit .
 staticRuntimeInit = expr .
@@ -322,7 +340,7 @@ defaultLabel = "default" ":" .
 /* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei structDeclarator
    oben: pointerDecl gehoert VOR jeden einzelnen Deklarator, nicht einmal
    vor die ganze Liste ("char *a, *b;" war ein stiller Parse-Fehler). */
-varDecl   = [ constKw ] type varDeclarator { "," varDeclarator } ";" .
+varDecl   = [ constKw ] [ volatileKw ] type varDeclarator { "," varDeclarator } ";" .
 varDeclarator = pointerDecl localDecl [ "=" varInit ] .
 /* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
    2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei

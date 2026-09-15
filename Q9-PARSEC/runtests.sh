@@ -574,6 +574,19 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ char line[80]; putint(sizeof(line)); }' '80'
 		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		tc_check 'int g[10]; int main(){ putint(sizeof(g)); }' '40'
+		# volatile (2026-09-15): wird an denselben Stellen wie const akzeptiert.
+		# Eine eigene WIRKUNG hat es nicht, und das ist nachgerechnet, nicht
+		# angenommen -- siehe den Test "volatile: jeder Zugriff bleibt" weiter
+		# unten, der am erzeugten Assembler nachzaehlt.
+		tc_check 'int main(){ volatile int x; x=5; putint(x); }' '5'
+		tc_check 'volatile int g; int main(){ g=1; putint(g); }' '1'
+		tc_check 'static volatile int g; int main(){ g=2; putint(g); }' '2'
+		tc_check 'int main(){ const volatile int x=3; putint(x); }' '3'
+		tc_check 'int f(volatile int *p){ return *p; } int main(){ int v; v=4; putint(f(&v)); }' '4'
+		tc_check 'struct S { volatile int a; }; int main(){ struct S s; s.a=9; putint(s.a); }' '9'
+		# Eine GLOBALE union -- der Rohtext-Scanner in tcGlobalOne kannte
+		# "union" als Basistyp vorher nicht.
+		tc_check 'union U { int a; int b; }; union U gu; int main(){ gu.a=8; putint(gu.b); }' '8'
 		# UNION (2026-09-15). Intern eine struct, deren Felder alle auf Offset 0
 		# liegen -- damit erbt sie Feldzugriff, "->", Ganzkopie, Parameter und
 		# Rueckgabe, ohne dass davon etwas neu gebaut werden musste.
@@ -2981,6 +2994,36 @@ if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build
 	fi
 else
 	echo "warn  qcc Mehrdatei M3: nur auf arm64-macOS getestet -- uebersprungen"
+fi
+
+# VOLATILE HAELT, WEIL DER CODEGEN NICHTS ZURUECKHAELT -- nachgezaehlt statt
+# geglaubt. Zwei aufeinanderfolgende Lesezugriffe auf dieselbe volatile
+# Variable muessen ZWEI Speicherzugriffe ergeben, auch mit -peephole. Faltet
+# jemand spaeter ein Muster ein, das Variablenzugriffe zusammenfasst, schlaegt
+# genau dieser Test an -- und dann braucht volatile eine echte Sperre.
+if [ -x build/qcc_backend ]; then
+	volsrc='volatile int g; int main(){ int a; int b; a = g; b = g; return a+b; }'
+	if build/qcc_p "$volsrc" > build/qcc_vol.ir 2>/dev/null &&
+	   build/qcc_backend build/qcc_vol.ir build/qcc_vol.s68 -os9 >/dev/null 2>&1 &&
+	   build/qcc_backend build/qcc_vol.ir build/qcc_vol_ph.s68 -os9 -peephole >/dev/null 2>&1; then
+		# Gezaehlt wird die QUELLseite, unabhaengig vom Ziel: -peephole
+		# ersetzt den Umweg ueber den Stapel ("move.l g,-(a7)" + "move.l
+		# (a7)+,-4(a5)") durch einen Direktzugriff ("move.l g,-4(a5)").
+		# Der SPEICHERZUGRIFF bleibt dabei erhalten -- genau das ist der
+		# Unterschied zwischen Stapelfaltung und dem Wegoptimieren eines
+		# Zugriffs, und nur Letzteres waere fuer volatile ein Problem.
+		n1=$(grep -c 'move\.l	tc_g_g(pc),' build/qcc_vol.s68)
+		n2=$(grep -c 'move\.l	tc_g_g(pc),' build/qcc_vol_ph.s68)
+		if [ "$n1" = "2" ] && [ "$n2" = "2" ]; then
+			echo "ok    qcc volatile: jeder Zugriff bleibt erhalten (2 Ladungen, auch mit -peephole)"
+		else
+			echo "FAIL  qcc volatile: Zugriffe wurden zusammengefasst ($n1 ohne / $n2 mit -peephole, erwartet 2/2)"; fail=1
+		fi
+	else
+		echo "FAIL  qcc volatile: Assembler nicht erzeugbar"; fail=1
+	fi
+else
+	echo "warn  qcc volatile: 68k-Backend fehlt -- uebersprungen"
 fi
 
 if [ -x build/qcc_arm64_backend ]; then
