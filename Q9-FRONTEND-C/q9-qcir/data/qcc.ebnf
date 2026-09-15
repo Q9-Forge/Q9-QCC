@@ -338,7 +338,16 @@ localDecl = localName [ arraySize { arraySizeN } ] .
 varInit   = arrayStringInit | expr | initList .
 arrayStringInit = stringLit .
 initList  = "{" [ initValue { "," initValue } ] "}" .
-initValue = initNumber | initNeg | initBool .
+/* initString ist eine ABSICHTLICH AKTIONSLOSE Kopie von stringLit -- anders
+   als bei fieldConstKw (2026-09-07) ist das hier richtig und nicht der
+   Anfang eines stillen Fehlers: eine Initialisiererliste wird NICHT ueber
+   Aktionen ausgewertet, sondern als ROHTEXT von tc_globalend/tcGlobalOne
+   (tcInitList). Ein Verweis auf stringLit wuerde tc_string ausloesen und
+   ein ADDRG auf den STAPEL legen -- in einer Datendefinition gibt es aber
+   keinen Stapel; die Adresse gehoert als GINITADDR in die Daten. Die
+   Grammatik muss die Form hier also nur LESEN koennen. */
+initValue = initNumber | initNeg | initBool | initString .
+initString = "\042" { character } "\042" .
 initBool  = "true" | "false" .
 initNeg   = "-" initNumber .
 initNumber = digit { digit } .

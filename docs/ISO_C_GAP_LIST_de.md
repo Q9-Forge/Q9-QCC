@@ -51,6 +51,42 @@ QCC deckt bisher nur einen kleinen, ausführbaren Kern von Bereich 1 ab.
 | `void` und `void *` | offen | hoch |
 | `struct`, `union`, `enum` | teilweise (struct mit gemischten skalaren Feldtypen erledigt 2026-07-24, `enum` erledigt; `union`, Array-/Pointer-Felder und verschachtelte structs offen) | sehr hoch |
 
+**Nachtrag 2026-09-15 -- Zeigertabellen mit String-Literalen
+(`char *tab[] = {"a","b"}`).** Bis dahin ein STILLER Parse-Abbruch: `FAIL`,
+0 Meldungen, keine Zeilenangabe. Das Idiom traegt Namens-, Opcode- und
+Meldungstabellen und musste in den eigenen Werkzeugen umgangen werden.
+
+Der Kern war nicht die Grammatik, sondern die DATENDARSTELLUNG: der Wert
+einer solchen Tabelle ist eine ADRESSE, und die steht erst zur Ladezeit fest.
+Laut OS-9-Handbuch ist ein `dc.l <label>` im psect KEINE relokierte Adresse;
+der einzige eingebaute Mechanismus ist `M$IRefs`/`F$Fork`, und der gilt nur
+fuer initialisierte Zeiger in einem (nicht-remoten) **vsect**.
+
+Umgesetzt als neuer IR-Opcode **`GINITADDR <name> <idx> <symbol>`**. Das
+Backend legt Globals mit so einem Initialisierer in einen initialisierten
+vsect und gibt `dc.l <symbol>` aus; der ZUGRIFF ist derselbe wie beim vsect
+remote (a6-relativ), weshalb `globalInDataArea()` darueber entscheidet und
+nicht `globalRemote()` -- zwei Gruende, derselbe Weg, aber verschiedene
+Ausgabe. Auf ARM64 genuegt ein `.quad _sym` in `__DATA`, dort relokiert der
+Linker selbst.
+
+**Vorher durch BEIDE Binder geprueft** (die Lehre der 400-KB-Probe, bei der
+ql68 allein getaeuscht hat): qr68 erzeugt fuer `dc.l <symbol>` im vsect
+byteidentisches ROF wie r68, und ql68 baut daraus dasselbe Modul wie l68 --
+`M$IData` mit den Zeigern, `M$IRefs` mit beiden Offsets angemeldet.
+
+Mitgekommen ist die **Groesse aus der Liste** (`int a[] = {1,2,3}` und
+`char *t[] = {...}`): vorher scheiterte die Deklaration an
+`initCount > arrayLen` (arrayLen war noch 0) und die Variable wurde gar nicht
+registriert -- sichtbar wurde das erst als "unknown variable" an der
+BENUTZUNGSSTELLE.
+
+Geprueft: Suite 208 ok / 0 FAIL inkl. nativem ARM64-Lauf,
+`Q9-BACKEND-68K/q9-qclib/tests/ptrtab68k.sh` auf echtem 68030 (der Test
+liest zusaetzlich M$IRefs aus dem Modul, damit ein Modul ohne Relokation
+nicht als gruen durchgeht), Selbsthost-Fixpunkt und die volle eigene Kette
+unveraendert.
+
 **Nachtrag 2026-09-15 -- die Zeigergroesse ist nicht mehr festverdrahtet.**
 Bis dahin belegte ein Zeiger im Struct-Layout IMMER acht Byte (`TC_PTR_SLOT`),
 damit EIN frontend-berechnetes Offset fuer 68k (4 Byte) und ARM64 (8 Byte)

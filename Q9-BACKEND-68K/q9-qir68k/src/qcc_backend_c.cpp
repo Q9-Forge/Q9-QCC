@@ -102,8 +102,22 @@ typedef struct {
 	int* init;
 	int initLen;
 	int hasGinit; /* 2026-07-25: at least one GINIT was seen for this array */
+	int hasInitAddr; /* 2026-09-15: at least one GINITADDR -- forces the vsect */
 	int declOnly, isStatic; /* see Function */
 } Global;
+
+/* GINITADDR carries the ADDRESS of another global as an initial value; it
+   comes from a string literal inside an initializer list
+   (char *tab[] = {"a","b"}). Such a value is only known at LOAD time: OS-9
+   relocates it through M$IRefs, and the only place that happens is an
+   initialized (NON-remote) vsect -- a "dc.l <label>" in the psect is NOT a
+   relocated address according to the OS-9 manual. Globals with such an
+   initializer therefore move into the vsect. */
+#define MAX_INITADDR    4096
+static int initAddrGidx[MAX_INITADDR];
+static int initAddrIdx[MAX_INITADDR];
+static char* initAddrSym[MAX_INITADDR];
+static int initAddrCount;
 
 static Instr ir[MAX_IR_LINES];
 
@@ -359,10 +373,20 @@ static int globalAllZero(Global* g) {
 static int globalRemote(int gidx) {
 	if (!remoteDataMode) return 0;
 	if (globals[gidx].declOnly) return 0;
+	if (globals[gidx].hasInitAddr) return 0;   /* initialized, so not "remote" */
 	return globalAllZero(&globals[gidx]);
 }
+/* Does this global live in the DATA AREA (addressed a6-relative) rather than
+   in the psect? Two reasons lead there and they must not be confused: a
+   zeroed global under -remotedata (vsect remote, "ds"), and a global with a
+   GINITADDR (initialized vsect, "dc.l <symbol>"). The ACCESS path is the same
+   for both, the OUTPUT is not -- which is why there are two predicates. */
+static int globalInDataArea(int gidx) {
+	if (globals[gidx].hasInitAddr) return 1;
+	return globalRemote(gidx);
+}
 static void emitLeaGlobal(FILE* out, int gidx, const char* reg) {
-	if (globalRemote(gidx)) {
+	if (globalInDataArea(gidx)) {
 		/* a6 = process data base (Ultra-C manual: static storage pointer). In
 		   -os9 mode a5 is the frame pointer, so a6 remains untouched. A vsect
 		   symbol value is an offset within this area, inserted by l68/ql68 at
@@ -611,6 +635,27 @@ static void collectGlobals(void) {
 	globalCount = 0;
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
+		if (strcmp(insP->op, "GINITADDR") == 0) {
+			int found = 0;
+			if (insP->argc != 3) fatal("ungueltiges GINITADDR");
+			for (gi = 0; gi < globalCount; gi++) {
+				if (strcmp(globals[gi].name, insP->args[0]) == 0) {
+					idx = number(insP->args[1], insP->line);
+					if (idx < 0 || (globals[gi].isArray && idx >= globals[gi].length))
+						fatal("GINITADDR-Index ausserhalb Array");
+					if (initAddrCount >= MAX_INITADDR) fatal("zu viele GINITADDR");
+					initAddrGidx[initAddrCount] = gi;
+					initAddrIdx[initAddrCount] = idx;
+					initAddrSym[initAddrCount] = insP->args[2];
+					initAddrCount++;
+					globals[gi].hasInitAddr = 1;
+					found = 1;
+					break;
+				}
+			}
+			if (!found) fatal("GINITADDR fuer unbekannte globale Variable");
+			continue;
+		}
 		if (strcmp(insP->op, "GINIT") == 0) {
 			int found = 0;
 			if (insP->argc != 3) fatal("ungueltiges GINIT");
@@ -720,7 +765,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0) {
+		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
 			/* Allowed before the first function (true globals), inside an open
 			   function (static locals), and between functions since 2026-08-10.
 			   C permits declarations and functions to be mixed freely; collectGlobals
@@ -1087,7 +1132,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		/* small: direct PC-relative value load (short form); large: first obtain
 		   the address from the indirection table, then dereference it (see the
 		   emitLeaGlobal() comment). */
-		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+		if (largeDataMode || globalInDataArea(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 		else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 	} else if (strcmp(op, "STOREG") == 0 && insP->argc == 1) {
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
@@ -1100,7 +1145,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+		if (largeDataMode || globalInDataArea(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.b\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
 		else fprintf(out, "\tmoveq\t#0,d0\n\tmove.b\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
 	} else if (strcmp(op, "STOREGC") == 0 && insP->argc == 1) {
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
@@ -1113,7 +1158,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
 		if (gidx < 0) { sprintf(msg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(msg); }
 		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
-		if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.w\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
+		if (largeDataMode || globalInDataArea(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmoveq\t#0,d0\n\tmove.w\t(a0),d0\n\tmove.l\td0,-(a7)\n", out); }
 		else fprintf(out, "\tmoveq\t#0,d0\n\tmove.w\t%s(pc),d0\n\tmove.l\td0,-(a7)\n", gAsmName);
 	} else if (strcmp(op, "STOREGH") == 0 && insP->argc == 1) {
 		int gidx = findGlobal(insP->args[0]); char gAsmName[NAME_LEN + 40];
@@ -1127,7 +1172,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		if (gidx < 0) fatal("unbekannte globale Variable");
 		mangledName(gAsmName, "tc_g_", insP->args[0], globals[gidx].isStatic);
 		if (strcmp(op, "LOADGP") == 0) {
-			if (largeDataMode || globalRemote(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
+			if (largeDataMode || globalInDataArea(gidx)) { emitLeaGlobal(out, gidx, "a0"); fputs("\tmove.l\t(a0),-(a7)\n", out); }
 			else fprintf(out, "\tmove.l\t%s(pc),-(a7)\n", gAsmName);
 		} else {
 			fputs("\tmove.l\t(a7)+,d0\n", out);
@@ -1302,7 +1347,7 @@ static void emitIR(FILE* out) {
 			   psect offsets; subtracting them would mix two different bases. The
 			   slot remains occupied so gidx*4 and the final tc_extcall_tmp entry
 			   (globalCount*4) remain correct. */
-			if (globalRemote(gi)) fprintf(out, "\tdc.l\t0\n");
+			if (globalInDataArea(gi)) fprintf(out, "\tdc.l\t0\n");
 			else fprintf(out, "\tdc.l\t%s-tc_gadata__%s\n", gAsmName, psectName);
 		}
 		fprintf(out, "\tdc.l\ttc_extcall_tmp-tc_gadata__%s\n", psectName);
@@ -1827,6 +1872,7 @@ static void emitIR(FILE* out) {
 
 	{
 		int hasData = 0, hasBss = 0, gi;
+		int hasIData = 0;   /* globals with GINITADDR -- initialized vsect */
 		/* An array without GINIT is fully zero-initialized by C semantics. It
 		   therefore belongs in an OS-9 vsect instead of expanding into millions of
 		   explicit "dc.b 0" bytes in the r68 input. This is especially important
@@ -1839,7 +1885,8 @@ static void emitIR(FILE* out) {
 			   genullten gehen in einen vsect remote, der diese Grenze nicht hat.
 			   Ohne -remotedata ist globalRemote() immer 0 -- die Ausgabe bleibt
 			   dann Byte fuer Byte die alte. */
-			if (globalRemote(gi)) hasBss = 1;
+			if (globals[gi].hasInitAddr) hasIData = 1;
+			else if (globalRemote(gi)) hasBss = 1;
 			else hasData = 1;
 		}
 		/* The -largedata data indirection table (tc_gadata) is NO LONGER emitted
@@ -1854,7 +1901,7 @@ static void emitIR(FILE* out) {
 			for (gi = 0; gi < globalCount; gi++) {
 				Global* g = &globals[gi];
 				if (g->declOnly) continue;
-				if (!globalRemote(gi)) {
+				if (!globalInDataArea(gi)) {
 					int e; char gAsmName[NAME_LEN + 40];
 					mangledName(gAsmName, "tc_g_", g->name, g->isStatic);
 					if (g->elemSize != 1) emitAlign(out);
@@ -1892,6 +1939,52 @@ static void emitIR(FILE* out) {
 					}
 				}
 			}
+		}
+		if (hasIData) {
+			/* INITIALISIERTER VSECT: hier stehen Globals, deren Anfangswert die
+			   ADRESSE eines anderen Globalen ist (char *tab[] = {"a","b"}).
+			   Ein "dc.l <label>" im psect waere laut OS-9-Handbuch KEINE
+			   relokierte Adresse; nur fuer initialisierte Zeiger in einem vsect
+			   traegt der Binder eine M$IRefs-Liste ein, die der Lader beim
+			   F$Fork auf die tatsaechliche Ladeadresse zieht. Geprueft: qr68
+			   erzeugt dafuer dasselbe ROF wie r68, und ql68 wie l68 dieselbe
+			   IRefs-Liste. Der ZUGRIFF ist derselbe wie beim vsect remote
+			   (a6-relativ, s. emitLeaGlobal) -- deshalb entscheidet
+			   globalInDataArea() darueber, nicht globalRemote(). */
+			fprintf(out, "\n%s VSECT: initialisierte Zeiger -- OS-9 relokiert sie ueber M$IRefs\n", fullCommentPrefix());
+			if (os9Mode) fputs("\tvsect\n", out);
+			else fputs("\tsection .data\n", out);
+			for (gi = 0; gi < globalCount; gi++) {
+				Global* g = &globals[gi];
+				char gAsmName2[NAME_LEN + 40];
+				int slot;
+				int ai;
+				if (g->declOnly) continue;
+				if (!g->hasInitAddr) continue;
+				emitAlign(out);
+				mangledName(gAsmName2, "tc_g_", g->name, g->isStatic);
+				fprintf(out, "%s:\n", gAsmName2);
+				for (slot = 0; slot < (g->isArray ? g->length : 1); slot++) {
+					const char* sym = 0;
+					for (ai = 0; ai < initAddrCount; ai++) {
+						if (initAddrGidx[ai] == gi && initAddrIdx[ai] == slot) { sym = initAddrSym[ai]; break; }
+					}
+					if (sym) {
+						/* Der IR traegt den ROHEN Namen des Ziels ("__str0");
+						   im Assembler heisst es wie jedes Global mit Praefix
+						   und ggf. Modulsuffix -- sonst zeigt der Zeiger auf
+						   ein Symbol, das es nicht gibt. */
+						int tgt = findGlobal(sym);
+						char tAsmName[NAME_LEN + 40];
+						if (tgt < 0) fatal("GINITADDR verweist auf eine unbekannte globale Variable");
+						mangledName(tAsmName, "tc_g_", globals[tgt].name, globals[tgt].isStatic);
+						fprintf(out, "\tdc.l\t%s\n", tAsmName);
+					}
+					else if (g->init && slot < g->initLen) fprintf(out, "\tdc.l\t%d\n", g->init[slot]);
+					else fputs("\tdc.l\t0\n", out);
+				}
+			}
+			if (os9Mode) fputs("\tends\n", out);
 		}
 		if (hasBss) {
 			fprintf(out, "\n%s VSECT REMOTE: zero-initialized globals -- OS-9 allocates and clears the area (measured); the module carries no zero bytes for it\n", fullCommentPrefix());
@@ -1997,7 +2090,7 @@ int main(int argc, char* argv[]) {
 		for (gi = 0; gi < globalCount; gi++) {
 			Global* g = &globals[gi];
 			if (g->declOnly) continue;
-			if (globalRemote(gi)) continue; /* in the data area, not the psect; no PC-relative distance */
+			if (globalInDataArea(gi)) continue; /* in the data area, not the psect; no PC-relative distance */
 			totalGlobalBytes += (long)g->elemSize * (g->isArray ? g->length : 1);
 		}
 		if (totalGlobalBytes > 16000) {

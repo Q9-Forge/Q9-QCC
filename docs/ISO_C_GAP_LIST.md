@@ -53,6 +53,39 @@ QCC currently covers only a small, executable core of area 1.
 | `void` and `void *` | open | high |
 | `struct`, `union`, `enum` | partial (struct with mixed scalar field types done 2026-07-24, `enum` done; `union`, array/pointer fields, and nested structs open) | very high |
 
+**Addendum 2026-09-15 - pointer tables with string literals
+(`char *tab[] = {"a","b"}`).** Until then a SILENT parse failure: `FAIL`, 0
+diagnostics, no line number. The idiom carries name, opcode and message
+tables and had to be worked around in this project's own tools.
+
+The core was not the grammar but the DATA REPRESENTATION: the value in such a
+table is an ADDRESS, and it is only known at load time. According to the OS-9
+manual a `dc.l <label>` in the psect is NOT a relocated address; the only
+built-in mechanism is `M$IRefs`/`F$Fork`, and it applies only to initialized
+pointers in a (non-remote) **vsect**.
+
+Implemented as a new IR opcode **`GINITADDR <name> <idx> <symbol>`**. The
+backend places globals carrying such an initializer into an initialized vsect
+and emits `dc.l <symbol>`; the ACCESS path is the same as for the remote
+vsect (a6-relative), which is why `globalInDataArea()` decides this rather
+than `globalRemote()` - two reasons, same path, different output. On ARM64 a
+`.quad _sym` in `__DATA` suffices, where the linker relocates it itself.
+
+**Verified through BOTH linkers first** (the lesson of the 400 KB probe, where
+ql68 alone was misleading): qr68 produces byte-identical ROF to r68 for
+`dc.l <symbol>` in a vsect, and ql68 builds the same module as l68 - `M$IData`
+holding the pointers, `M$IRefs` listing both offsets.
+
+Size from the list came with it (`int a[] = {1,2,3}` and `char *t[] = {...}`):
+the declaration used to fail on `initCount > arrayLen` (arrayLen was still 0)
+and the variable was never registered, which showed up as "unknown variable"
+at the point of USE rather than at the declaration.
+
+Verified: suite 208 ok / 0 FAIL including a native ARM64 run,
+`Q9-BACKEND-68K/q9-qclib/tests/ptrtab68k.sh` on the real 68030 (the test also
+reads M$IRefs out of the module, so a module without relocation cannot pass
+as green), self-hosting fixpoint and the full own chain unchanged.
+
 **Addendum 2026-09-15 - the pointer size is no longer hard-wired.**
 Until then a pointer always occupied eight bytes in struct layout
 (`TC_PTR_SLOT`) so that ONE frontend-computed offset stayed valid for both 68k

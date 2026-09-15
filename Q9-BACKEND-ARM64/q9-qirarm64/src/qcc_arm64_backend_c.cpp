@@ -52,6 +52,16 @@ typedef struct {
 	int declOnly, isStatic; /* see Function */
 } Global;
 
+/* GINITADDR: the ADDRESS of another global as an initial value, from a string
+   literal inside an initializer list (char *tab[] = {"a","b"}). On Darwin a
+   ".quad _sym" in __DATA is relocated by the linker, so unlike on OS-9 no
+   special section is needed here -- the value simply becomes a symbol. */
+#define MAX_INITADDR    4096
+static int initAddrGidx[MAX_INITADDR];
+static int initAddrIdx[MAX_INITADDR];
+static char* initAddrSym[MAX_INITADDR];
+static int initAddrCount;
+
 static Instr ir[MAX_IR_LINES];
 static int irCount = 0;
 
@@ -200,6 +210,27 @@ static void collectGlobals(void) {
 	globalCount = 0;
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
+		if (strcmp(x->op, "GINITADDR") == 0) {
+			int found = 0;
+			if (x->argc != 3) fatal("ungueltiges GINITADDR");
+			for (gi = 0; gi < globalCount; gi++) {
+				if (strcmp(globals[gi].name, x->args[0]) == 0) {
+					idx = number(x->args[1], x->line);
+					if (idx < 0 || (globals[gi].isArray && idx >= globals[gi].length))
+						fatal("GINITADDR-Index ausserhalb Array");
+					if (initAddrCount >= MAX_INITADDR) fatal("zu viele GINITADDR");
+					initAddrGidx[initAddrCount] = gi;
+					initAddrIdx[initAddrCount] = idx;
+					initAddrSym[initAddrCount] = x->args[2];
+					initAddrCount++;
+					globals[gi].hasGinit = 1;
+					found = 1;
+					break;
+				}
+			}
+			if (!found) fatal("GINITADDR fuer unbekannte globale Variable");
+			continue;
+		}
 		if (strcmp(x->op, "GINIT") == 0) {
 			int found = 0;
 			if (x->argc != 3) fatal("ungueltiges GINIT");
@@ -291,7 +322,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
-		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0) {
+		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITADDR") == 0) {
 			/* Allowed before the first function or inside an open function (static
 			   local variable), but not between two functions. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
@@ -675,7 +706,7 @@ static void emit(FILE* o) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putuint\n", o);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITADDR") == 0) {
 				/* Static locals were handled by collectGlobals(); this occurrence in
 				   the function body is a no-op. */
 			} else {
@@ -722,8 +753,18 @@ static void emit(FILE* o) {
 					if (!g->isArray) {
 						fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->initialValue);
 					} else {
-						for (e = 0; e < g->length; e++)
-							fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->init[e]);
+						for (e = 0; e < g->length; e++) {
+							int ai;
+							const char* sym = 0;
+							for (ai = 0; ai < initAddrCount; ai++) {
+								if (initAddrGidx[ai] == gi && initAddrIdx[ai] == e) { sym = initAddrSym[ai]; break; }
+							}
+							/* Die Adresse eines anderen Globalen -- der Linker
+							   loest sie auf, ganz ohne die IRefs-Maschinerie,
+							   die OS-9 dafuer braucht. */
+							if (sym) fprintf(o, "\t.quad\t_tc_g_%s\n", sym);
+							else fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->init[e]);
+						}
 					}
 				}
 			}
