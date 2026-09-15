@@ -15,7 +15,7 @@ host plus 68000 coverage.
 | Complex VM structures | Q9-Run combines structure pointers, array indexing, and large `switch` blocks. This combination is not yet covered by independent C89 minimal tests. | open, add minimal tests |
 | `sizeof` pointer types | **FIXED 2026-09-15.** The size depends on the target (68k 4, ARM64 8); the frontend now emits it symbolically as `0+1P` and each backend substitutes its own `P`. See the pointer-size addendum in [ISO_C_GAP_LIST.md](ISO_C_GAP_LIST.md). | done |
 | `switch` scope | A declaration directly in a `case` body is not scoped to the `switch` block. | known frontend gap |
-| `switch` fallthrough | **SILENTLY WRONG, not rejected** (measured 2026-09-15): `switch(1){ case 1: r=1; case 2: r=r+2; break; }` yields **1 instead of 3** - final word `OK`, no diagnostic. The value is simply wrong. | open, and the expensive kind: silent |
+| `switch` fallthrough | **FIXED 2026-09-15.** Previously silently wrong: the case body jumped unconditionally to the end of the switch, so `switch(1){ case 1: r=1; case 2: r=r+2; break; }` yielded 1 instead of 3, with `OK` and no diagnostic. The body now falls into the next BODY (not the next test), behind its `DROP` - on that path the switch value is already off the stack. Eight cases in `runtests.sh` with discriminating expectations (7 = 1+2+4 across three stages). | done |
 | `goto` | **FIXED** (measured 2026-09-15): backward (loop) and forward (jump to end) both produce the correct value. | done |
 
 ## Boundary
