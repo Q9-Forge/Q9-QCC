@@ -14,10 +14,10 @@ Testfall, eine Korrektur und einen Test auf Host und 68000 erhalten.
 | Integer-Suffixe | `U`, `L`, `UL` und die Schreibweise `LU` werden jetzt als Bestandteil einer Zahl erkannt; der Zahlenwert wird ohne Suffix ausgewertet. Die vollständige C-Typwirkung (unsigned/Rangregeln) und weitere Basen sind noch offen. | teilweise behoben |
 | Komplexe VM-Strukturen | Pointer auf Strukturen, Arrayzugriffe und große `switch`-Blöcke treten in Q9-Run gemeinsam auf. Die Kombination ist noch nicht als unabhängige C89-Testreihe abgesichert. | offen, Minimaltests fehlen |
 | Stufe-2-Messrezept | Erste Erhebung (2026-09-10) meldete 1566 bzw. 58 SEMERR -- **Messartefakt**: das Rezept strich ALLE `#include`-Zeilen vor dem Präprozessieren (auch `qrun_vm.h`/`qrun_ir.h`/`qrun_os9.h`), damit fehlten sämtliche Typ-/Funktionsdeklarationen (`unknown type name 'qrun_vm_t'`, `unknown function 'malloc'` usw.). Korrigiert: `cc -E -P -x c -DQRUN_OS9 -ISource` statt Zeilen zu streichen -- damit löst sich `qrun_os9.h` real auf. Ergebnis siehe Zeile darüber: beanstandungsfrei. | behoben 2026-09-10 |
-| `sizeof` auf Pointertypen | QCC meldet `sizeof of pointer types not supported in this version`. | dokumentierte Lücke |
+| `sizeof` auf Pointertypen | **BEHOBEN 2026-09-15.** Die Größe hängt vom Ziel ab (68k 4, ARM64 8); das Frontend gibt sie jetzt symbolisch als `0+1P` aus, jedes Backend setzt sein `P` ein. Siehe den Zeigergrößen-Nachtrag in [ISO_C_GAP_LIST_de.md](ISO_C_GAP_LIST_de.md). | erledigt |
 | `switch`-Gültigkeitsbereich | Eine Deklaration direkt in einem `case`-Rumpf wird nicht auf den `switch`-Block begrenzt. | bekannte Frontend-Lücke |
-| `switch`-Fallthrough | Fallthrough mit Code zwischen zwei `case`-Rümpfen wird nicht unterstützt. | bekannte Frontend-Lücke |
-| `goto` | `goto` und Labels sind noch nicht implementiert. | bekannte Frontend-Lücke |
+| `switch`-Fallthrough | **STILL FALSCH, nicht abgelehnt** (nachgemessen 2026-09-15): `switch(1){ case 1: r=1; case 2: r=r+2; break; }` liefert **1 statt 3** -- Schlusswort `OK`, keine Meldung. Der Wert ist einfach falsch. | offen, und die teuerste Sorte: still |
+| `goto` | **BEHOBEN** (nachgemessen 2026-09-15): rückwärts (Schleife) und vorwärts (Sprung ans Ende) liefern beide den richtigen Wert. | erledigt |
 | Anonyme Enums | `typedef enum { A, B } Flags;` wird noch nicht akzeptiert; benannte `enum`-Typen und Konstanten funktionieren. | bekannte Frontend-Lücke |
 
 ## Abgrenzung

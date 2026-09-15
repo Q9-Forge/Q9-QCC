@@ -13,10 +13,10 @@ host plus 68000 coverage.
 | Large functions | **Grammar `FAIL` fixed (2026-09-10).** Cause was `memberIncTarget = ident member .` in `Data/qcc.ebnf` -- covered `x.field++` but not `x.field[i]++`/`--x.field[i]`, an ordinary C89 idiom (`vm->state[i]++` in `qrun_vm_run`). Fix: `memberIncTarget = ident member [ index ] .`. Verified via `tools/bootstrap_survey.py` against preprocessed `qrun_vm.c`/`qrun_main.c`: stage 1 (grammar) now 0/56 and 0/42 rejections (previously affected: `qrun_vm_load_ir`, `qrun_push_value`, `qrun_pop_value`, `qrun_vm_run`, `qrun_load_arch_file`). Stage 2 (semantics) also clean once the measurement recipe correctly resolves `qrun_os9.h` instead of stripping all `#include` lines -- see below. Frontend + IR + 68k backend now verified clean for both files (assembly output produced, exit 0); real `r68` assembly and `l68`/Q9-Flux execution not yet verified. | frontend + backend clean, real assemble/link/run open |
 | Stage-2 measurement recipe | The original survey recipe stripped ALL `#include` lines before preprocessing, so `qrun_vm.h`/`qrun_ir.h`/`qrun_os9.h` were never resolved -- the 1566/58 semantic findings this produced were mostly `unknown type`/`unknown function` artifacts, not real gaps. Fixed by preprocessing with real header resolution (`-DQRUN_OS9 -ISource`) instead. | fixed 2026-09-10 |
 | Complex VM structures | Q9-Run combines structure pointers, array indexing, and large `switch` blocks. This combination is not yet covered by independent C89 minimal tests. | open, add minimal tests |
-| `sizeof` pointer types | QCC reports `sizeof of pointer types not supported in this version`. | known gap |
+| `sizeof` pointer types | **FIXED 2026-09-15.** The size depends on the target (68k 4, ARM64 8); the frontend now emits it symbolically as `0+1P` and each backend substitutes its own `P`. See the pointer-size addendum in [ISO_C_GAP_LIST.md](ISO_C_GAP_LIST.md). | done |
 | `switch` scope | A declaration directly in a `case` body is not scoped to the `switch` block. | known frontend gap |
-| `switch` fallthrough | Fallthrough with code between two `case` bodies is not supported. | known frontend gap |
-| `goto` | `goto` and labels are not implemented yet. | known frontend gap |
+| `switch` fallthrough | **SILENTLY WRONG, not rejected** (measured 2026-09-15): `switch(1){ case 1: r=1; case 2: r=r+2; break; }` yields **1 instead of 3** - final word `OK`, no diagnostic. The value is simply wrong. | open, and the expensive kind: silent |
+| `goto` | **FIXED** (measured 2026-09-15): backward (loop) and forward (jump to end) both produce the correct value. | done |
 
 ## Boundary
 
