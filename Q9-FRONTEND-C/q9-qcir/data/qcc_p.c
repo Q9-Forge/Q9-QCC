@@ -364,6 +364,14 @@ int qccDecToDouble(const char* start, const char* end, int neg,
    ergab 1 statt 100, ohne jede Meldung.
    Der Exponent zaehlt nur mit, wenn ihm wirklich Ziffern folgen; "1e" bleibt
    damit ein Fehler statt still zu 1 zu werden. */
+/* Initialisiererliste eines double-Arrays: die Werte gehen als BITMUSTER in
+   die Daten, eine Zahl kann sie nicht tragen -- deshalb eigene Felder statt
+   initValues[]. Auf Dateiebene, weil der Stack eines OS-9-Moduls knapp ist
+   (dieselbe Ueberlegung wie beim Umrechner in tc_floatlit). */
+#define TC_MAX_DBL_INIT 64
+static unsigned long tcDblInitHi[TC_MAX_DBL_INIT];
+static unsigned long tcDblInitLo[TC_MAX_DBL_INIT];
+static int tcDblInitCount = 0;
 static const char* tcFloatLitEnd(const char* p, const char* end) {
 	const char* q = p;
 	const char* r;
@@ -2666,12 +2674,64 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 				   Ganzzahlen und scheitert an "1.0" mit -1 -- das ergaebe
 				   "bad or oversized array initializer", eine Meldung, die in
 				   die Irre fuehrt. Deshalb VOR dem Listenparser abfangen. */
+				/* EIGENER LISTENPARSER FUER double-ARRAYS (2026-09-16).
+				   tcInitList liest Ganzzahlen und scheitert an "1.0"; die
+				   Werte muessen hier ohnehin als BITMUSTER durch, nicht als
+				   Zahl. Deshalb eine eigene, kurze Schleife -- der bestehende
+				   Listenparser bleibt unberuehrt. Verschachtelung
+				   ("{{1.0},{2.0}}") wird bewusst GEMELDET statt still
+				   verschluckt; mehrdimensionale double-Arrays sind hier nicht
+				   vorgesehen. */
 				if (!type.pointers && type.base == 'd') {
-					actionErrors++; tcErrAt(start);
-					fprintf(stderr, "initializer lists for double arrays are not supported yet\n");
-					return;
+					const char* q = p;
+					tcDblInitCount = 0;
+					while (q < end && (*q == ' ' || *q == '\t')) q++;
+					if (q >= end || *q != '{') {
+						actionErrors++; tcErrAt(start);
+						fprintf(stderr, "bad or oversized array initializer\n");
+						return;
+					}
+					q++;
+					for (;;) {
+						int dneg = 0;
+						const char* fe;
+						while (q < end && (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r')) q++;
+						if (q < end && *q == '}') { q++; break; }
+						if (q < end && *q == '{') {
+							actionErrors++; tcErrAt(start);
+							fprintf(stderr, "nested initializer list is not supported for this array in this version\n");
+							return;
+						}
+						if (q < end && *q == '-') { dneg = 1; q++; }
+						fe = tcFloatLitEnd(q, end);
+						if (fe == q) {
+							actionErrors++; tcErrAt(start);
+							fprintf(stderr, "bad or oversized array initializer\n");
+							return;
+						}
+						if (tcDblInitCount >= TC_MAX_DBL_INIT) {
+							actionErrors++; tcErrAt(start);
+							fprintf(stderr, "too many initializers for a double array\n");
+							return;
+						}
+						if (!qccDecToDouble(q, fe, dneg, &tcDblInitHi[tcDblInitCount], &tcDblInitLo[tcDblInitCount])) {
+							actionErrors++; tcErrAt(start);
+							fprintf(stderr, "malformed floating point literal\n");
+							return;
+						}
+						tcDblInitCount++;
+						q = fe;
+						while (q < end && (*q == 'f' || *q == 'F' || *q == 'l' || *q == 'L')) q++;
+						while (q < end && (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r')) q++;
+						if (q < end && *q == ',') { q++; continue; }
+						if (q < end && *q == '}') { q++; break; }
+						actionErrors++; tcErrAt(start);
+						fprintf(stderr, "bad or oversized array initializer\n");
+						return;
+					}
+					initCount = tcDblInitCount;
 				}
-				initCount = tcInitList(p, end, initValues, initSyms, 256, rowLen);
+				else initCount = tcInitList(p, end, initValues, initSyms, 256, rowLen);
 				if (initCount == -4) { actionErrors++; tcErrAt(start); fprintf(stderr, "nested initializer list is not supported for this array in this version\n"); return; }
 				if (initCount == -3) { actionErrors++; tcErrAt(start); fprintf(stderr, "string literal in initializer list requires a pointer array\n"); return; }
 				if (initCount < 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "bad or oversized array initializer\n"); return; }
@@ -2787,16 +2847,14 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	   einzellige GLOBAL-Form -- s. docs/FLOAT_IR_ENTWURF_de.md. */
 	if (!type.pointers && type.base == 'd') {
 		int dcount = arrayLen > 0 ? arrayLen : 1;
-		/* Ein Array von double mit Initialisiererliste geht noch nicht: der
-		   Listenparser (tcInitList) liest Ganzzahlen, und die Werte muessten
-		   je Element als Bitmuster durch. Der SKALARE Fall -- der haeufige --
-		   laeuft ueber GINITD. */
-		if (initCount > 0) {
-			tcErrAt(start);
-			fprintf(stderr, "initializer lists for double arrays are not supported yet\n");
-			actionErrors++;
-		}
 		printf("GARRAY %s d %d %d\n", name, dcount, isStatic);
+		/* Initialisiererliste: je Element ein GINITD. Die Werte stehen schon
+		   als Bitmuster bereit (eigener Listenparser weiter oben). */
+		if (initCount > 0) {
+			int di;
+			for (di = 0; di < initCount; di++)
+				printf("GINITD %s %d %lu %lu\n", name, di, tcDblInitHi[di], tcDblInitLo[di]);
+		}
 		/* Zwei 32-Bit-Haelften, hi zuerst -- wie PUSHD. Welche zuerst im
 		   Speicher landet, entscheidet das BACKEND: auf dem 68k big-endian
 		   hi, auf ARM64 little-endian umgekehrt. Das Frontend darf die

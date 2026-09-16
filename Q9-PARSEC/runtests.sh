@@ -689,10 +689,11 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
 		# Was NOCH NICHT geht, wird GEMELDET statt still danebenzugreifen:
 		for prog_msg in \
-			'double t[3] = {1.0,2.0,3.0}; int main(){ putint(1); }|initializer lists for double arrays' \
 			'int i = 1.5; int main(){ putint(1); }|floating point initializer requires a double' \
 			'int i = 1e2; int main(){ putint(1); }|floating point initializer requires a double' \
-			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer'
+			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer' \
+			'double t[2]={{1.0},{2.0}}; int main(){ putint(1); }|nested initializer list' \
+			'double t[2]={1.0,2.0,3.0}; int main(){ putint(1); }|bad or oversized array initializer'
 		do
 			prog="${prog_msg%%|*}"; msg="${prog_msg##*|}"
 			if build/qcc_p "$prog" 2>&1 | grep -qF "$msg"; then
@@ -853,6 +854,18 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ double a[3]; a[1]=2.5; putint((int)(a[1]*10.0)); }' '25'
 		tc_check 'int main(){ double a[3]; int i; double s; for(i=0;i<3;i++) a[i]=i*1.5; s=0.0; for(i=0;i<3;i++) s=s+a[i]; putint((int)(s*10.0)); }' '45'
 		tc_check 'double g[3]; int main(){ g[2]=4.5; putint((int)(g[2]*10.0)); }' '45'
+		# INITIALISIERERLISTEN FUER double-ARRAYS (2026-09-16). tcInitList liest
+		# Ganzzahlen und scheitert an "1.0"; die Werte muessen ohnehin als
+		# BITMUSTER in die Daten (GINITD je Element), nicht als Zahl. Deshalb
+		# ein eigener, kurzer Listenparser -- der bestehende bleibt unberuehrt.
+		tc_check 'double t[3]={1.0,2.0,3.0}; int main(){ putint((int)((t[0]+t[1]+t[2])*10.0)); }' '60'
+		tc_check 'double t[3]={1.5,-2.5,0.25}; int main(){ putint((int)((t[0]+t[1]+t[2])*100.0)); }' '-75'
+		# Groesse offen gelassen -- aus der Liste abgeleitet, wie bei int
+		tc_check 'double t[]={1.0,2.0}; int main(){ putint((int)((t[0]+t[1])*10.0)); }' '30'
+		# weniger Werte als Elemente: der Rest ist null (C89 3.5.7)
+		tc_check 'double t[4]={1.0,2.0}; int main(){ putint((int)((t[0]+t[1]+t[2]+t[3])*10.0)); }' '30'
+		tc_check 'double t[2]={1e2,2.5e1}; int main(){ putint((int)(t[0]+t[1])); }' '125'
+		tc_check 'static double t[2]={1.5,2.5}; int main(){ putint((int)((t[0]+t[1])*10.0)); }' '40'
 		# ++/-- UEBER DIE DREI ADRESSFORMEN (2026-09-16). Beim POSTFIX muss der
 		# alte Wert als Ergebnis UNTER der Adresse liegen bleiben; SWAP taugt
 		# dafuer nicht (es tauscht zwei Langworte und zerrisse die acht Byte),
