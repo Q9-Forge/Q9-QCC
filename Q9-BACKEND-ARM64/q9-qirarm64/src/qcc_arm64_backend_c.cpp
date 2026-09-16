@@ -97,7 +97,7 @@ static int findGlobal(const char* name) {
 
 static int isNumWord(const char* w) {
 	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 ||
-	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
+	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0 || strcmp(w, "d") == 0;
 }
 
 static int isByteWord(const char* w) {
@@ -114,6 +114,10 @@ static int isShortWord(const char* w) { return strcmp(w, "h") == 0; }
 static int elemBytes(const char* w) {
 	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
 	if (strcmp(w, "h") == 0) return 2;
+	/* 'd' = double, 8 Byte (2026-09-16). Auf ARM64 passt ein double in einen
+	   Slot (16 Byte breit), es liegt trotzdem als Block -- die IR soll auf
+	   beiden Zielen dieselbe sein. */
+	if (strcmp(w, "d") == 0) return 8;
 	if (strcmp(w, "p") == 0) return 8;
 	return 4;
 }

@@ -1,5 +1,9 @@
 # Gleitkomma in der IR — Entwurf (2026-09-16)
 
+> **Umgesetzt am selben Tag.** Frontend, VM-Orakel und 68k-Backend folgen
+> diesem Entwurf; ARM64 steht noch aus. Der Stand steht in
+> `FLOAT_PLAN_de.md`, die Opcodes in `IR_OPCODES_de.md`.
+
 Dieser Entwurf beantwortet die Frage, die `FLOAT_PLAN_de.md` als Schritt 2
 offenlässt: **wie sieht ein `double` in der IR aus?** Er steht auf
 Messungen, nicht auf Annahmen; jede Zahl unten ist nachgerechnet.
