@@ -20,7 +20,6 @@ kann.
 
 | Konstrukt | |
 |---|---|
-| `int f(int m[2][2])` | mehrdimensionales Array als Parameter |
 | `int (*p)[3]` | Zeiger auf Array |
 | `int (**q)(int)` | Zeiger auf Funktionszeiger |
 | `int f(int a, ...)` | eigene variadische Funktion |
@@ -36,6 +35,36 @@ kann.
 - `p[i]++` über einen **Zeiger** (trifft `int` wie `double`)
 
 ### Erledigt seit dieser Messung
+
+- **Mehrdimensionales Array als Parameter** (`int f(int m[2][3])`) —
+  2026-09-17, gemessen in **57 der 1917 MWOS-Quellen**. Vorher ein *stummer*
+  Parse-Fehler.
+
+  Ein **erster Anlauf am 16.09.2026 wurde zurückgerollt**, weil die Grammatik
+  allein die Indizes nicht kombiniert: die IR zeigte `PUSH 1 / PUSH 2 /
+  LOADP 0 / PTRINDEX i` — der erste Index blieb liegen. Jetzt wird bei einem
+  Zeiger *mit Zeilenlängen* dieselbe Kombination benutzt wie beim echten
+  Array (`tcCheckNDIndex`), danach folgt der gewöhnliche Zeigerweg mit genau
+  einem Index.
+
+  **Die Lehre steckt in der Testform, nicht im Code.** Damals lagen Lesen und
+  Schreiben auf *dieselbe* Weise daneben und stimmten deshalb miteinander
+  überein — ein Test, der eine Zelle schreibt und dieselbe zurückliest, war
+  grün. Die Fälle prüfen deshalb jetzt die **Nachbarzellen** mit und benutzen
+  Werte, bei denen jede Zelle zu einer anderen Stelle des Ergebnisses
+  beiträgt. Entsprechend musste die Zielseite (`tc_target`) eigens angefasst
+  werden: sie emittiert `LOADP/PTRINDEX` selbst und ist die Geschwisterstelle
+  zum Lesepfad.
+
+  Ab der **zweiten** Dimension ist die Größe Pflicht (sie *ist* die
+  Zeilenlänge) und wird sonst gemeldet; die erste darf leer bleiben
+  (`int m[][3]`), weil der Parameter ohnehin ein Zeiger ist. Dafür gibt es
+  eine eigene Grammatikregel `paramArrayN` — mit `arraySizeN` wäre `m[2][]`
+  ein stummer Parse-Fehler geblieben.
+
+  Verifiziert: `test_struct_68k.sh` **68/68** auf echtem 68030 (acht neue
+  Fälle, u. a. `char`-Matrix mit Schrittweite 1 und ein 3D-Parameter),
+  `runtests.sh` 240 ok / 546 Programme.
 
 - **`struct`-Feld vom Typ `struct`** (eingebetteter Wert) — 2026-09-17.
   Gemessener Anlass: **526 Stellen in 202 von 1917 MWOS-Quellen (10,5 %)**,
