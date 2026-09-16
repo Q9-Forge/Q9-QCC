@@ -1010,18 +1010,15 @@ static int tcCompatible4(const TCType* wanted, const TCType* got) {
    je EINE Funktion statt als Kopien an fuenf Emissionsstellen. */
 
 /* Die drei ADRESSFORMEN (Struct-Feld, Index-Element, Zeigerziel) laden ueber
-   LOADIND/LOADIDX und schieben den Wert mit DUP/SWAP durch die
-   Praefix/Postfix-Choreographie. Auf acht Byte ist das nicht definiert:
-   docs/IR_OPCODES_de.md fuehrt DDUP/DDROP eigens auf, "weil DUP/DROP bei
-   8 Byte mehrdeutig waeren", und ein SWAP fuer Bloecke gibt es gar nicht.
-   Solange der IR die Blockrotation fehlt, wird hier GEMELDET. */
-static int tcIncDecRejectDouble(const char* at, TCType t, const char* form) {
-	if (!tcIsDouble(t)) return 0;
-	tcErrAt(at);
-	fprintf(stderr, "++/-- on a double %s is not supported yet -- the address form needs a block rotation the IR does not have\n", form);
-	actionErrors++; tcTypePush(tcBadType());
-	return 1;
-}
+   LOADIND/LOADIDX. Fuer double fehlte lange die Rotation: beim POSTFIX muss
+   der alte Wert als Ergebnis UNTER der Adresse liegen bleiben, und SWAP
+   taugt dafuer nicht -- es tauscht zwei Langworte und zerrisse die acht Byte.
+   Seit 2026-09-16 gibt es dafuer DSWAP (tauscht das oberste double mit dem
+   4-Byte-Wert darunter, also einer Adresse oder einem Index). Der PRAEFIX-Fall
+   braucht ihn nicht; dort genuegt die vorhandene Choreographie.
+   "1.0" steht als IEEE-754-Bitmuster da (0x3FF0000000000000, hi zuerst) --
+   PUSHD nimmt zwei 32-Bit-Haelften, weil die IR keinen Gleitkommatext traegt. */
+#define TC_DBL_ONE "PUSHD 1072693248 0"
 
 /* Wird das Ergebnis eines ++/-- als ANWEISUNG verworfen ("a++;" oder der
    for-Schritt), liegt bei double ein 8-Byte-Block auf dem Stapel -- ein
@@ -1045,7 +1042,6 @@ static void tcDerefIncDec(const char* start, const char* end, int isDec, int isP
 	pt = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
 	if (!tcIsPointer(pt)) { tcErrAt(start); fprintf(stderr, "'*' requires a pointer\n"); actionErrors++; tcTypePush(tcBadType()); return; }
 	vt = tcPointee(pt);
-	if (tcIncDecRejectDouble(start, vt, "pointer target")) return;
 	if (tcIsPointer(vt) || vt.base == 's' || vt.base == 'b') {
 		tcErrAt(start); fprintf(stderr, "++/-- through a pointer is only supported for int/unsigned/char in this version\n");
 		actionErrors++; tcTypePush(tcBadType()); return;
@@ -1059,7 +1055,10 @@ static void tcDerefIncDec(const char* start, const char* end, int isDec, int isP
 	}
 	if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
 	if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
-	printf("LOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, isDec ? "SUB" : "ADD", tag);
+	/* tcDerefIncDec laedt den Zeiger mehrfach, statt ihn umzuschieben --
+	   deshalb kommt dieser Fall ohne DSWAP aus. */
+	if (tcIsDouble(vt)) printf("LOADIND d\n%s\n%s\nSTOREIND d\n", TC_DBL_ONE, isDec ? "DSUB" : "DADD");
+	else printf("LOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, isDec ? "SUB" : "ADD", tag);
 	if (isPre) {
 		if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
 		printf("LOADIND %c\n", tag);
@@ -1077,7 +1076,6 @@ static void tcIndexIncDec(const char* start, const char* end, int isDec, int isP
 	if (slot < 0) global = tcLookupGlobal(start, ne);
 	if (slot < 0 && global < 0) { tcErrAt(start); fprintf(stderr, "unknown variable '%.*s'\n", (int)(ne - start), start); actionErrors++; tcTypePush(tcBadType()); return; }
 	et = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
-	if (tcIncDecRejectDouble(start, et, "array element")) return;
 	if (tcIsPointer(et) || et.base == 's' || et.base == 'b') {
 		tcErrAt(start); fprintf(stderr, "++/-- on an indexed element is only supported for int/unsigned/char in this version\n");
 		actionErrors++; tcTypePush(tcBadType()); return;
@@ -1085,9 +1083,19 @@ static void tcIndexIncDec(const char* start, const char* end, int isDec, int isP
 	tag = tcTypeTag(et);
 	if (slot >= 0) sprintf(buf, "L %d %c", slot, tag); else sprintf(buf, "G %s %c", tcGlobalNames[global], tag);
 	if (isPre) {
+		/* DUP bleibt hier richtig: vervielfaeltigt wird der INDEX, kein
+		   Zeiger (anders als in tcMemberIncDec, wo DUPP noetig ist). */
+		if (tcIsDouble(et))
+			printf("DUP\nDUP\nLOADIDX %s\n%s\n%s\nSTOREIDX %s\nLOADIDX %s\n",
+			       buf, TC_DBL_ONE, isDec ? "DSUB" : "DADD", buf, buf);
+		else
 		printf("DUP\nDUP\nLOADIDX %s\nPUSH 1\n%s\nSTOREIDX %s\nLOADIDX %s\n",
 		       buf, isDec ? "SUB" : "ADD", buf, buf);
 	} else {
+		if (tcIsDouble(et))
+			printf("DUP\nLOADIDX %s\nDSWAP\nDUP\nLOADIDX %s\n%s\n%s\nSTOREIDX %s\n",
+			       buf, buf, TC_DBL_ONE, isDec ? "DSUB" : "DADD", buf);
+		else
 		printf("DUP\nLOADIDX %s\nSWAP\nDUP\nLOADIDX %s\nPUSH 1\n%s\nSTOREIDX %s\n",
 		       buf, buf, isDec ? "SUB" : "ADD", buf);
 	}
@@ -1121,7 +1129,6 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 	fi = tcLookupStructField(sid, fs, fe);
 	if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fe - fs), fs); actionErrors++; tcTypePush(tcBadType()); return; }
 	ft = tcStructFieldTypes[sid][fi];
-	if (tcIncDecRejectDouble(start, ft, "struct field")) return;
 	if (tcIsPointer(ft) || ft.base == 's' || ft.base == 'b') {
 		tcErrAt(start); fprintf(stderr, "++/-- on a struct field is only supported for int/unsigned/char in this version\n");
 		actionErrors++; tcTypePush(tcBadType()); return;
@@ -1153,7 +1160,11 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 	   Adresse verloren, und "s.n++" endete nativ im Segfault, waehrend das
 	   VM-Orakel gruen blieb (2026-09-16). Beim Index-Zweig darunter bleibt
 	   DUP richtig: dort wird ein INDEX vervielfaeltigt, kein Zeiger. */
-	if (isPre) printf("DUPP\nDUPP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\nLOADIND %c\n", tag, isDec ? "SUB" : "ADD", tag, tag);
+	if (tcIsDouble(ft)) {
+		if (isPre) printf("DUPP\nDUPP\nLOADIND d\n%s\n%s\nSTOREIND d\nLOADIND d\n", TC_DBL_ONE, isDec ? "DSUB" : "DADD");
+		else       printf("DUPP\nLOADIND d\nDSWAP\nDUPP\nLOADIND d\n%s\n%s\nSTOREIND d\n", TC_DBL_ONE, isDec ? "DSUB" : "DADD");
+	}
+	else if (isPre) printf("DUPP\nDUPP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\nLOADIND %c\n", tag, isDec ? "SUB" : "ADD", tag, tag);
 	else       printf("DUPP\nLOADIND %c\nSWAP\nDUPP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, tag, isDec ? "SUB" : "ADD", tag);
 	tcTypePush(ft);
 }

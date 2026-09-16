@@ -79,9 +79,9 @@ sed -i.bak -e "s|LOGFILE|$WORK/run.log|" -e "s|IMAGE|$WORK/img.hda|" -e "s|MWOSD
 ( cd "$FLUX" && expect -f "$WORK/run.exp" >/dev/null 2>&1 )
 [ -f "$WORK/run.log" ] || die "kein Emulator-Log"
 grep -E '^(ok|FALSCH) ' "$WORK/run.log" | sed 's/^/  /'
-if grep -q 'double68k fertig: 0 von 67 falsch' "$WORK/run.log"; then
+if grep -q 'double68k fertig: 0 von 78 falsch' "$WORK/run.log"; then
 	echo
-	echo "DOUBLE AUS C RECHNET AUF ECHTEM 68030 -- alle 67 Faelle stimmen"
+	echo "DOUBLE AUS C RECHNET AUF ECHTEM 68030 -- alle 78 Faelle stimmen"
 	exit 0
 fi
 echo; echo "TEST ROT -- Auszug:"; tail -20 "$WORK/run.log" | sed 's/^/    /'

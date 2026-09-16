@@ -115,6 +115,7 @@ Auf dem Operandenstapel belegt ein `double` 8 Byte.
 | `I2DUNDER` | `i d → d d` | wandelt den Wert **unter** dem obersten um. Gebraucht für `1 + a`: dort liegt die Ganzzahl beim Emittieren schon unter dem `double` |
 | `D2I` | `d → i` | `double` nach Ganzzahl, **schneidet Richtung null ab** (C-Regel, auf dem 68k `fintrz`) |
 | `DDUP` / `DDROP` | | eigene Formen, weil `DUP`/`DROP` bei 8 Byte mehrdeutig wären |
+| `DSWAP` | `x d → d x` | tauscht das oberste `double` mit dem **4-Byte-Wert darunter** (Adresse oder Index). Gebraucht beim Postfix-`++`/`--` über eine Adresse, wo der alte Wert als Ergebnis unter der Adresse bleiben muss. `SWAP` taugt dort nicht — es tauscht zwei Langworte und zerrisse die acht Byte. Auf ARM64 und in der VM belegt ein `double` genau ein Stackelement, dort ist es derselbe Tausch wie `SWAP` |
 
 Auf dem 68k werden daraus FPU-Befehle (`fadd.x`, `fcmp.x` + `FBcc`,
 `fintrz.x`), gerechnet wird intern mit 80 Bit, geladen und gespeichert mit

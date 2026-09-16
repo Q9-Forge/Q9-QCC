@@ -333,6 +333,53 @@ int main()
 		bad = bad + pruefe("sizeof struct{int,double}", (int)sizeof(struct IntDbl), 12);
 	}
 
-	printf("double68k fertig: %d von 67 falsch\n", bad);
+	/* ARRAYS VON double (2026-09-16): LOADIDX/STOREIDX kannten nur i/p/h/c/b
+	   und brachen mit "unbekannter Arraytyp" ab -- "double a[3];" war auf
+	   KEINEM echten Ziel uebersetzbar, nur im VM-Orakel. */
+	{
+		double feld[3];
+		int i;
+		double s;
+
+		feld[1] = 2.5;
+		bad = bad + pruefe("double-Array schreiben/lesen", (int)(feld[1] * 10.0), 25);
+		for (i = 0; i < 3; i = i + 1) feld[i] = i * 1.5;
+		s = 0.0;
+		for (i = 0; i < 3; i = i + 1) s = s + feld[i];
+		bad = bad + pruefe("double-Array fuellen und summen", (int)(s * 10.0), 45);
+
+		/* ++/-- ueber die drei ADRESSFORMEN. Beim Postfix muss der alte Wert
+		   als Ergebnis unter der Adresse bleiben -- dafuer der neue Opcode
+		   DSWAP, der auf dem 68k acht Byte mit einem Langwort tauscht. */
+		{
+			struct DblOnly q;
+			double x;
+			double* xp;
+			double b;
+
+			q.d = 1.5;
+			b = q.d++;
+			bad = bad + pruefe("b = s.d++ liefert alt", (int)(b * 10.0), 15);
+			bad = bad + pruefe("s.d++ hat erhoeht", (int)(q.d * 10.0), 25);
+			b = ++q.d;
+			bad = bad + pruefe("b = ++s.d liefert neu", (int)(b * 10.0), 35);
+
+			feld[0] = 1.5;
+			b = feld[0]++;
+			bad = bad + pruefe("b = a[0]++ liefert alt", (int)(b * 10.0), 15);
+			bad = bad + pruefe("a[0]++ hat erhoeht", (int)(feld[0] * 10.0), 25);
+			feld[0] = 5.5;
+			b = feld[0]--;
+			bad = bad + pruefe("b = a[0]-- liefert alt", (int)(b * 10.0), 55);
+
+			x = 1.5;
+			xp = &x;
+			b = (*xp)++;
+			bad = bad + pruefe("b = (*p)++ liefert alt", (int)(b * 10.0), 15);
+			bad = bad + pruefe("(*p)++ hat erhoeht", (int)(x * 10.0), 25);
+		}
+	}
+
+	printf("double68k fertig: %d von 78 falsch\n", bad);
 	return 0;
 }

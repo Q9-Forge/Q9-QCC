@@ -510,6 +510,9 @@ static const char* scaleSuffix(const char* typeWord) {
 	if (isByteWord(typeWord)) return "\n";
 	if (isShortWord(typeWord)) return " #1\n";
 	if (strcmp(typeWord, "p") == 0) return " #3\n";
+	/* 'd' (2026-09-16): ein double ist acht Byte, also dieselbe Skalierung
+	   wie ein Zeiger. Ohne diesen Zweig rechnete der Index mit vier. */
+	if (strcmp(typeWord, "d") == 0) return " #3\n";
 	return " #2\n";
 }
 
@@ -600,11 +603,17 @@ static void emit(FILE* o) {
 			} else if ((strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0 || strcmp(op, "STOREIDXKEEP") == 0) && x->argc == 3) {
 				/* 2026-09-10: use isByteWord/isShortWord on the original tag,
 				   with short as a third element size. */
-				int isPointer = strcmp(x->args[2], "p") == 0;
+				/* 'd' (2026-09-16): ein Array von double war hier nicht
+				   vorgesehen -- "double a[3]; a[1]=2.5;" brach mit
+				   "unbekannter Arraytyp" ab, auf BEIDEN Zielen; nur das
+				   VM-Orakel kannte den Fall. Auf ARM64 ist ein double ein
+				   64-Bit-Bitmuster, also genau so breit wie ein Zeiger --
+				   x0 statt w0, elemSuffix "" und Skalierung #3. */
+				int isWide = strcmp(x->args[2], "p") == 0 || strcmp(x->args[2], "d") == 0;
 				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
-				if (strcmp(x->args[2], "i") != 0 && !isByteWord(x->args[2]) && !isShortWord(x->args[2]) && !isPointer)
+				if (strcmp(x->args[2], "i") != 0 && !isByteWord(x->args[2]) && !isShortWord(x->args[2]) && !isWide)
 					fatal("unbekannter Arraytyp");
-				if (strcmp(op, "STOREIDX") == 0 || keepValue) { if (isPointer) pop(o, "x0"); else pop(o, "w0"); }
+				if (strcmp(op, "STOREIDX") == 0 || keepValue) { if (isWide) pop(o, "x0"); else pop(o, "w0"); }
 				pop(o, "w1");
 				if (strcmp(x->args[0], "L") == 0) {
 					int ignored;
@@ -620,13 +629,13 @@ static void emit(FILE* o) {
 				}
 				fprintf(o, "\tadd\tx9,x9,w1,sxtw%s", scaleSuffix(x->args[2]));
 				if (strcmp(op, "LOADIDX") == 0) {
-					fprintf(o, "\tldr%s\t%s,[x9]\n", elemSuffix(x->args[2]), isPointer ? "x0" : "w0");
-					if (isPointer) push(o, "x0"); else push(o, "w0");
+					fprintf(o, "\tldr%s\t%s,[x9]\n", elemSuffix(x->args[2]), isWide ? "x0" : "w0");
+					if (isWide) push(o, "x0"); else push(o, "w0");
 				} else {
-					fprintf(o, "\tstr%s\t%s,[x9]\n", elemSuffix(x->args[2]), isPointer ? "x0" : "w0");
+					fprintf(o, "\tstr%s\t%s,[x9]\n", elemSuffix(x->args[2]), isWide ? "x0" : "w0");
 					if (isByteWord(x->args[2]) && keepValue) fputs("\tuxtb\tw0,w0\n", o);
 					else if (isShortWord(x->args[2]) && keepValue) fputs("\tuxth\tw0,w0\n", o);
-					if (keepValue) { if (isPointer) push(o, "x0"); else push(o, "w0"); }
+					if (keepValue) { if (isWide) push(o, "x0"); else push(o, "w0"); }
 				}
 			} else if ((strcmp(op, "LOADG") == 0 || strcmp(op, "STOREG") == 0) && x->argc == 1) {
 				if (findGlobal(x->args[0]) < 0) fatal("unbekannte globale Variable");
@@ -792,6 +801,13 @@ static void emit(FILE* o) {
 				pop(o, "x1"); pop(o, "x0");
 				fprintf(o, "\tfmov\td0,x0\n\tfmov\td1,x1\n\tfcmp\td0,d1\n\tcset\tw0,%s\n", cc);
 				push(o, "w0");
+			} else if (strcmp(op, "DSWAP") == 0) {
+				/* Wie SWAP: auf diesem Ziel belegt auch ein double genau EIN
+				   Stackelement (64-Bit-Bitmuster in einem 16-Byte-Slot), der
+				   Tausch ist also derselbe. Auf dem 68k liegt der double als
+				   acht Byte auf dem Stapel und braucht eine eigene Form --
+				   deshalb gibt es den Opcode ueberhaupt. */
+				fputs("\tldr\tx0,[sp]\n\tldr\tx1,[sp,#16]\n\tstr\tx1,[sp]\n\tstr\tx0,[sp,#16]\n", o);
 			} else if (strcmp(op, "SWAP") == 0) {
 				/* Oberste zwei Stackwerte vertauschen.
 				   2026-09-16 KORRIGIERT: hier stand #8, aber ein Stackelement

@@ -395,6 +395,11 @@ def run(prog):
             opstack.append(opstack[-1]); ip += 1
         elif op == "DUPP":
             opstack.append(opstack[-1]); ip += 1
+        elif op == "DSWAP":
+            # Wie SWAP -- in dieser VM ist ein double EIN Stapeleintrag. Der
+            # eigene Opcode existiert fuer den 68k, wo er acht Byte belegt und
+            # ein SWAP ihn zerrisse (s. qcc_backend_c.cpp).
+            a = opstack.pop(); b = opstack.pop(); opstack.append(a); opstack.append(b); ip += 1
         elif op == "SWAP":
             b = opstack.pop(); a = opstack.pop(); opstack.append(b); opstack.append(a); ip += 1
         elif op == "CMPLT":

@@ -247,3 +247,16 @@ Nicht double-spezifisch, sondern für **jeden** Typ: `SWAP` tauschte auf ARM64
 ARM64 32 statt 64 Bit). `a[0]++` und `s.n++` endeten nativ im Segfault,
 während das VM-Orakel grün blieb. Beide behoben, ein nativer Testfall deckt
 sie jetzt ab. Einzelheiten in `FLOAT_PLAN_de.md`.
+
+## Nachtrag 2026-09-16 (10) — `double`-Arrays und `++`/`--` über Adressen
+
+**`double a[3]` war auf keinem echten Ziel übersetzbar:** `LOADIDX`/`STOREIDX`
+kannten `'d'` nicht und brachen mit „unbekannter Arraytyp" ab. Nur das
+VM-Orakel konnte den Fall. Behoben in beiden Backends.
+
+`s.d++`, `a[0]++` und `(*p)++` sind umgesetzt; der Postfix-Fall brauchte dafür
+den neuen IR-Opcode `DSWAP` (tauscht ein 8-Byte-`double` mit dem 4-Byte-Wert
+darunter). Einzelheiten in `FLOAT_PLAN_de.md`.
+
+Bei `double` bleiben damit nur noch: Initialisiererlisten für Arrays
+(`double t[3]={1.0,2.0}`, wird gemeldet), `printf("%f")` (qclib) und `float`.
