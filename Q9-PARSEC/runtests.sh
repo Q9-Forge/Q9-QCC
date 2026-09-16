@@ -3363,6 +3363,31 @@ else
 	echo "warn  qcc short ARM64: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
+# 15b2) ++/-- UEBER EINE ADRESSE, nativ auf ARM64 (2026-09-16). Zwei echte
+#     Backend-Fehler, die das VM-Orakel NICHT zeigen konnte und die JEDEN Typ
+#     betrafen, nicht nur double:
+#       * SWAP tauschte [sp] mit [sp,#8], obwohl ein Stackelement hier
+#         SECHZEHN Byte breit ist (push/pop: "str x,[sp,#-16]!") -- der Tausch
+#         griff mitten ins oberste Element. "a[0]++" endete im Segfault.
+#       * tcMemberIncDec vervielfaeltigte die ADRESSE mit DUP statt DUPP. Auf
+#         dem 68k sind beide derselbe Befehl, auf ARM64 laedt DUP nur 32 Bit --
+#         die obere Haelfte der Adresse ging verloren, "s.n++" segfaultete.
+#     Beide Konstrukte sind gewoehnlicher C-Code; sie liefen im Orakel gruen
+#     und nativ gar nicht. Deshalb hier ein eigener nativer Testfall.
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'struct S { int n; int m; }; int main(){ struct S s; int a[3]; int *p; int x; s.n=5; s.m=7; a[0]=11; x=20; p=&x; putint(s.n++); putint(s.n); putint(++s.m); putint(s.m); putint(a[0]++); putint(a[0]); putint(a[0]--); putint(a[0]); putint((*p)++); putint(x); }' > build/qcc_incdec_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_incdec_arm64.ir build/qcc_incdec_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_incdec_arm64 build/qcc_incdec_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_incdec_arm64)" = "$(printf '5\n6\n8\n8\n11\n12\n12\n11\n20\n21')" ] && \
+		[ "$(build/qcc_incdec_arm64)" = "$(python3 tools/qccvm.py build/qcc_incdec_arm64.ir)" ]; then
+		echo "ok    qcc ++/-- ARM64: struct-Feld, Array-Element und Zeigerziel nativ korrekt (SWAP/DUPP)"
+	else
+		echo "FAIL  qcc ++/-- ARM64: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  qcc ++/-- ARM64: nur auf arm64-macOS getestet -- uebersprungen"
+fi
+
 # 15c) double auf dem ARM64-Backend (2026-09-16, s. auch
 #     Q9-BACKEND-68K/q9-qclib/tests/double68k.sh fuer den 68k-Gegenpart auf
 #     echter Hardware). Dasselbe Programm, dieselben zwoelf Sollwerte -- der

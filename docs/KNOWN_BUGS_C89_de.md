@@ -238,3 +238,12 @@ ist. Auf echtem 68030 verifiziert, auch der gemischte Fall
 **Unäres Plus (`+5`) bleibt ungelöst und ist bewusst nicht eingebaut:** es
 macht `(x)+1` als Cast lesbar und bricht damit korrekten Bestandscode.
 Begründung in `FLOAT_PLAN_de.md`.
+
+## Nachtrag 2026-09-16 (9) — zwei ARM64-Fehler bei `++`/`--` über Adressen
+
+Nicht double-spezifisch, sondern für **jeden** Typ: `SWAP` tauschte auf ARM64
+`[sp]` mit `[sp,#8]` statt `[sp,#16]` (Stackelemente sind dort 16 Byte), und
+`tcMemberIncDec` vervielfältigte die Adresse mit `DUP` statt `DUPP` (auf
+ARM64 32 statt 64 Bit). `a[0]++` und `s.n++` endeten nativ im Segfault,
+während das VM-Orakel grün blieb. Beide behoben, ein nativer Testfall deckt
+sie jetzt ab. Einzelheiten in `FLOAT_PLAN_de.md`.
