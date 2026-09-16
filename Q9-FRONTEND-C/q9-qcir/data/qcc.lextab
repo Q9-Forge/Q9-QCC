@@ -5818,6 +5818,52 @@ void tc_varinit(const char* start, const char* end) {
 	   Groesse, das oben mangels tcLocalArrayLen nicht als Array erkannt wurde.
 	   "scalar cannot use array initializer" allein schickte in die falsche
 	   Richtung; der Zusatz nennt den Fall, der praktisch gemeint ist. */
+	/* STRUCT MIT INITIALISIERERLISTE (2026-09-16): "struct S s = {1,2};".
+	   Bis dahin kam hier "scalar cannot use array initializer" -- die Meldung
+	   sah den Fall gar nicht. Umgesetzt wird er als Folge von Feld-Stores,
+	   genau wie eine Kette von "s.a=1; s.b=2;": Feldoffset auf die
+	   Blockadresse addieren, Wert speichern.
+	   C89 3.5.7: weniger Werte als Felder sind erlaubt, der Rest bleibt
+	   uninitialisiert (bei einer LOKALEN Variablen ist das ohnehin der
+	   Normalfall). Mehr Werte als Felder sind ein Fehler. */
+	{
+		TCType listType = tcLocalType(slot);
+		if (!listType.pointers && listType.base == 's' && tcLocalArrayLen[slot] == 0) {
+			int lsid = listType.structId - 1;
+			int lcount = tcInitList(start, end, values, 0, 256, 0);
+			if (lcount >= 0) {
+				int li;
+				if (lsid < 0 || lsid >= tcStructCount) {
+					actionErrors++; tcErrAt(start);
+					fprintf(stderr, "initializer for an unknown struct type\n");
+					return;
+				}
+				if (lcount > tcStructFieldCount[lsid]) {
+					actionErrors++; tcErrAt(start);
+					fprintf(stderr, "too many values in struct initializer (struct has %d fields)\n", tcStructFieldCount[lsid]);
+					return;
+				}
+				for (li = 0; li < lcount; li++) {
+					TCType lft = tcStructFieldTypes[lsid][li];
+					if (lft.base == 's' && !lft.pointers) {
+						actionErrors++; tcErrAt(start);
+						fprintf(stderr, "struct field in an initializer list is not supported in this version\n");
+						return;
+					}
+					if (tcStructFieldArrayLen[lsid][li] > 0) {
+						actionErrors++; tcErrAt(start);
+						fprintf(stderr, "array field in an initializer list is not supported in this version\n");
+						return;
+					}
+					{ printf("PUSH "); tcEmitFieldOffset(lsid, li); printf("\n"); }
+					printf("PUSHADDR L %d\nIPADD c\n", slot);
+					printf("PUSH %ld\n", tcTruncInit(lft, values[li]));
+					printf("STOREIND %c\n", tcTypeTag(lft));
+				}
+				return;
+			}
+		}
+	}
 	if (tcInitList(start, end, values, 0, 256, 0) >= 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer -- a local array needs a declared size here, as in \"int a[3] = {1,2,3};\"\n"); return; }
 	{ TCType got = tcTypePop(), wanted = tcLocalType(slot); got = tcCoerceToTarget(wanted, got); if (!tcCompatible(wanted, got)) tcTypeError("initializer", wanted, got); }
 	{
