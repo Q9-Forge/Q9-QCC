@@ -797,7 +797,16 @@ target    = directTarget | indirectTarget .
    Grammatik es und tc_varref/tc_target lehnen es benannt ab. */
 directTarget = ident [ index { index } ] [ member [ index { index } ] ] .
 indirectTarget = "*" factor .
-varRef    = ident [ index { index } ] [ member [ index { index } ] ] .
+varRef    = ident [ index { index } ] [ member [ index { index } ] { member [ index { index } ] } ] .
+/* VERKETTETE MEMBER-ZUGRIFFE (2026-09-16): "p->n->v" und "a.b->c" scheiterten
+   bis dahin STUMM -- die Regel liess nur EIN member zu, der Parser brach mit
+   "FAIL" ab, ohne ein Wort. Das trifft ausgerechnet das Idiom, fuer das man
+   verkettete Listen baut.
+   Die Wiederholung hier laesst die Form LESEN; emittiert wird sie (noch)
+   nicht, tc_varref meldet sie stattdessen mit dem Hinweis auf die
+   Zwischenvariable. Das ist bewusst der kleine Schritt: tc_varref ist die
+   verzweigteste Routine des Frontends und warnt an dieser Stelle selbst
+   davor, Kombinationen ohne Codegen still durchzulassen. */
 index     = indexOpen expr "]" .
 indexOpen = "[" .
 /* "->" ist in C nur Kurzschreibweise: "p->f" == "(*p).f". Die Aktionen
