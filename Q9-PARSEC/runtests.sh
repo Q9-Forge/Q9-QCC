@@ -2132,6 +2132,30 @@ if command -v python3 >/dev/null 2>&1; then
 		# echter Feldgroesse (int VOR den beiden short-Feldern -- diese
 		# Reihenfolge ist Absicht, s. NACHTRAG gleich danach).
 		tc_check 'int main(){ short a=7, b=-1; putint(a); putint(b); putint(sizeof(short)); putint(sizeof(a)); }' '7\n65535\n2\n2'
+		# --- float (2026-09-17) ------------------------------------------------
+		# float bekommt DENSELBEN Typ wie double. C89 6.2.1.2 verlangt von
+		# float nur eine Mindestgenauigkeit und laesst ausdruecklich zu, dass
+		# sie mit der von double zusammenfaellt -- genau so wird "long double"
+		# hier schon behandelt. Gemessener Anlass: 22 der 1917 MWOS-Quellen
+		# scheiterten bis dahin an "unknown type name 'float'".
+		# BEWUSSTE FOLGE, hier festgehalten statt verschwiegen: sizeof(float)
+		# ist 8, nicht 4. Ein echter 32-Bit-Typ waere ein eigener Basistyp mit
+		# Umwandlung in beiden Backends und eigenem Rundungstest.
+		tc_check 'int main(){ float f; f=1.5; putint((int)(f*2.0)); }' '3'
+		tc_check 'float g; int main(){ g=2.5; putint((int)(g*2.0)); }' '5'
+		tc_check 'float g = 1.5; int main(){ putint((int)(g*2.0)); }' '3'
+		tc_check 'float ga[2]; int main(){ ga[1]=3.5; putint((int)(ga[1]*2.0)); }' '7'
+		tc_check 'int f(float x){ return (int)x; } int main(){ putint(f(3.5)); }' '3'
+		tc_check 'float f(void){ return 1.5; } int main(){ putint((int)(f()*4.0)); }' '6'
+		tc_check 'struct S{ float x; int n; }; int main(){ struct S s; s.x=1.5; s.n=3; putint((int)(s.x*2.0)+s.n); }' '6'
+		tc_check 'int main(){ float a[3]; a[1]=2.5; putint((int)(a[1]*2.0)); }' '5'
+		tc_check 'int main(){ float f; f=1.0; f++; putint((int)f); }' '2'
+		tc_check 'int main(){ float f; float *p; f=2.5; p=&f; putint((int)(*p*2.0)); }' '5'
+		tc_check 'typedef float real; int main(){ real r; r=1.5; putint((int)(r*2.0)); }' '3'
+		tc_check 'int main(){ putint(sizeof(float)); putint(sizeof(double)); }' '8\n8'
+		# Die Nachbarn duerfen sich nicht geaendert haben.
+		tc_check 'int main(){ double d; d=1.5; putint((int)(d*2.0)); }' '3'
+		tc_check 'int main(){ long double d; d=1.5; putint((int)(d*2.0)); }' '3'
 		tc_check 'short g=300; int main(){ g=g+1; putint(g); }' '301'
 		tc_check 'int main(){ short arr[3]; int i; for(i=0;i<3;i=i+1) arr[i]=i*10; putint(arr[0]); putint(arr[1]); putint(arr[2]); }' '0\n10\n20'
 		tc_check 'int main(){ short x=42; short *p; p=&x; putint(*p); *p=7; putint(x); }' '42\n7'
