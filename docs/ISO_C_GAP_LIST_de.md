@@ -1,6 +1,77 @@
 # ISO-C-Lückenliste und Zielplanung
 
-Stand: **2026-07-22**
+Stand der PLANUNG unten: **2026-07-22**.
+Der **gemessene** Stand steht im Abschnitt direkt darunter (2026-09-16) und
+geht im Zweifel vor — die Planungstabellen weiter unten sind älter als der
+Code.
+
+---
+
+## Gemessener Stand 2026-09-16 (68k-Pfad)
+
+Jeder Fall wurde dreifach geprüft: Meldung des Frontends, VM-Orakel **und ob
+`qir68k` übersetzen kann**. Das Orakel allein genügt nicht — mehrere Fehler
+dieses Tages waren dort grün und auf dem Ziel falsch.
+
+### Scheitert STUMM (Exit 1, „FAIL", leerer stderr)
+
+Das ist die unangenehmste Kategorie: der Compiler sagt nicht, was er nicht
+kann.
+
+| Konstrukt | |
+|---|---|
+| `int f(int m[2][2])` | mehrdimensionales Array als Parameter |
+| `int (*p)[3]` | Zeiger auf Array |
+| `int (**q)(int)` | Zeiger auf Funktionszeiger |
+| `int f(a) int a; {…}` | K&R-Definition (C89 erlaubt sie) |
+| `int f(int a, ...)` | eigene variadische Funktion |
+| `signed char`, `long double`, `register` | Schlüsselwörter |
+| `sizeof x` ohne Klammern | |
+| `+5` | unäres Plus — Ursache bekannt, s. `FLOAT_PLAN_de.md` |
+| `struct N;` | getrennte Vorwärtsdeklaration |
+
+### Fehlt, wird aber gemeldet
+
+- `struct S g = {1,2};` **global** (lokal geht seit 2026-09-16)
+- `struct`-Feld vom Typ `struct`
+- Bitfelder, `long long`, `float`
+- `p[i]++` über einen **Zeiger** (trifft `int` wie `double`)
+- verkettete Member-Zugriffe (`a.n->v`, `p->a->v`) — Umgehung: Zwischenvariable
+
+### Im 68k-Backend
+
+`extern int g;` (externe **Variable**) wird vom Frontend angenommen, aber
+nicht übersetzt. Externe **Funktionen** gehen.
+
+### Steht (auf beiden Backends geprüft)
+
+Alle Ganzzahltypen bis `long` samt `unsigned`, `double`, `enum`, `union`,
+`typedef`, `const`/`volatile`, `static` in beiden Bedeutungen, `auto`.
+2D/3D-Arrays samt verschachtelter Initialisierer, Zeiger auf Zeiger, Arrays
+von Zeigern, Funktionszeiger (68k), **selbstreferenzielle structs und damit
+verkettete Listen**, struct-Zuweisung/-Parameter/-Rückgabe, struct-Array-
+Felder, `->`. Alle Anweisungen inklusive `goto`, echtem `switch`-Fallthrough,
+`continue`, `do-while`. Rekursion und gegenseitige Rekursion. Alle Operatoren
+außer unärem Plus. **Prototypen ohne Parameternamen** (`int f(int);`).
+
+### Präprozessor
+
+`qcpp` ist vollständig: objekt- und funktionsartige Makros, `#include`,
+`#if`/`#ifdef`/`#else`/`#endif`, `#undef`, `##` und `#`.
+
+### Standardbibliothek — die größte Einzelbaustelle
+
+`qclib` hat eine **eigene Namenswelt** statt der C89-Namen: `qf_*` (Dateien),
+`qm_*` (Speicher), `qp_*`/`printf_a` (Ausgabe), `qs_*` (Strings). Die
+einzigen C89-Namen sind `isalpha`/`isalnum`/`isspace`/`isprint`.
+
+Für ISO C89 fehlen damit praktisch alle Standardheader — `<stdio.h>`,
+`<stdlib.h>`, `<string.h>`, `<math.h>`, `<time.h>`, `<setjmp.h>`,
+`<signal.h>`, `<assert.h>`, `<limits.h>`, `<float.h>`, `<stddef.h>`,
+`<stdarg.h>`, `<locale.h>`, `<errno.h>`. Die vorhandenen rund 25 Funktionen
+decken die Grundbedürfnisse ab, aber nicht die Norm.
+
+---
 
 ## Zieldefinition
 
