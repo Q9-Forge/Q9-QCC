@@ -32,11 +32,37 @@ kann.
 ### Fehlt, wird aber gemeldet
 
 - `struct S g = {1,2};` **global** (lokal geht seit 2026-09-16)
-- `struct`-Feld vom Typ `struct`
 - Bitfelder, `long long`, `float`
 - `p[i]++` über einen **Zeiger** (trifft `int` wie `double`)
 
 ### Erledigt seit dieser Messung
+
+- **`struct`-Feld vom Typ `struct`** (eingebetteter Wert) — 2026-09-17.
+  Gemessener Anlass: **526 Stellen in 202 von 1917 MWOS-Quellen (10,5 %)**,
+  überwiegend Geräte-Header (`quicc.h`, `enet360.h`). Damit war es die mit
+  Abstand breiteste verbliebene Lücke — zum Vergleich: 2D-Array als Parameter
+  57 Dateien, Bitfelder 10, **eigene variadische Definitionen nur 4**.
+
+  `o.in.a` ist **reine Offset-Addition** — anders als `p->n->v`, wo
+  zwischendurch ein Zeiger geladen wird. Ein `LOADIND` zuviel würde die ersten
+  vier Byte des Feldes als Adresse deuten. Beide Sorten und ihre *Mischung*
+  (`c.b.ap->v`, `p->a.v`) sind getestet.
+
+  Dabei fiel ein Fehler im ersten Anlauf auf, der ohne eingebettete structs
+  nie sichtbar war: `viaPtr` beschreibt den Operator, über den man **zum** Feld
+  kommt, nicht wie es weitergeht — bei `p->in.a` gehört das `->` zu `p`.
+  Jetzt wird mitgeführt, ob das aktuelle Element ein Zeiger ist, und der
+  Operator dagegen geprüft. Das diagnostiziert zusätzlich `.` auf einem Zeiger
+  und `->` auf einem Wert.
+
+  Abgelehnt bleiben (mit Meldung): ein struct, das sich **selbst per Wert**
+  enthält, und ein Feld mit **unvollständigem** struct-Typ (nach bloßer
+  Vorwärtsdeklaration) — dessen Größe ist noch unbekannt.
+
+  Verifiziert: `test_struct_68k.sh` **60/60** auf echtem 68030 (neun neue
+  Fälle, u. a. Feld hinter dem eingebetteten struct, `char` vor `int` im
+  inneren struct, zwei gleiche structs nebeneinander), `runtests.sh` 240 ok /
+  537 Programme.
 
 - **K&R-Funktionsdefinitionen** (`int f(a) int a; {…}`) — 2026-09-16.
   Anlass war eine Zählung statt eines Gefühls: **355 K&R-Definitionen in 165
@@ -83,6 +109,40 @@ kann.
 
 - **Verkettete Member-Zugriffe** (`a.n->v`, `p->a->v`) — 2026-09-16, lesend
   und schreibend, 51 Fälle auf echtem 68030.
+
+### OFFEN und neu entdeckt: QCCs struct-Layout ist NICHT ABI-gleich zu xcc
+
+Beim Layout für eingebettete structs gegen `xcc` gemessen (17.09.2026,
+`xcc -e=be` und die Bytereservierungen im erzeugten Assembler gelesen):
+
+| Struktur | xcc | QCC |
+|---|---|---|
+| `struct{char c; int i;}` | **6** (`i` bei 2) | **8** (`i` bei 4) |
+| `struct{short s; int i;}` | 6 | 8 |
+| `struct{char a,b,c;}` | 3 | 4 |
+| `struct{char c; int i; char d;}` | 8 | 12 |
+| `struct{char a; char b;}` | 2 | 4 |
+
+**Die Microware-68k-Regel ist: Ausrichtung höchstens 2** — für *jeden* Typ,
+auch `int` und `long`; die Gesamtgröße wird auf die Ausrichtung der Struktur
+gerundet (1 bei reinen `char`-Strukturen), nicht auf 4.
+
+Genau diese Erkenntnis steckt in QCC schon einmal drin — aber **nur für
+`double`** (der Kommentar am Layout nennt `struct{char c; double d;}` = 10
+Byte). Sie wurde nie verallgemeinert. Dadurch weicht **jede gemischte
+Struktur** ab, nicht erst die verschachtelte.
+
+**Tragweite:** überall dort, wo QCC-Code Strukturen mit xcc-übersetztem Code
+oder mit OS-9-Kernel-Datenstrukturen teilt. Rein QCC-interner Code ist in
+sich konsistent und daher unauffällig — das erklärt, warum es bisher nicht
+aufgefallen ist.
+
+**Bewusst NICHT in einem Aufwasch mitgeändert:** das ist eine ABI-Änderung an
+*allen* Strukturen, sie verschiebt Offsets in jedem erzeugten Modul und
+verlangt eine eigene Verifikation (Selbsthost, `qclib`, alle 68k-Tests). Beim
+eingebetteten struct wird deshalb die **bestehende** QCC-Regel fortgeschrieben
+— zwei verschiedene Regeln innerhalb einer Struktur wären schlimmer als eine
+durchgängig eigene. Eigener Arbeitsschritt.
 
 ### Im 68k-Backend
 
