@@ -278,7 +278,7 @@ paramList = [ param { "," param } ] .
    gut: die AEUSSERE sammelt ueber tc_param in tcLocalTypes (daraus baut
    tc_funcend die Aufrufsignatur), die INNERE ueber tc_externparam in
    tcExternBuildParamTypes. Zwei getrennte Puffer, keine Ueberschneidung. */
-param     = fnPtrParam | [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
+param     = fnPtrParam | [ registerKw ] [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
 /* Der Parametername ist OPTIONAL (2026-09-16). "int f(int);" ist die uebliche
    Schreibweise in Header-Dateien und scheiterte bis dahin STUMM -- Exit 1,
    "FAIL", kein Wort auf stderr. Die Aktion haengt an paramDecl, also am
@@ -401,7 +401,11 @@ defaultLabel = "default" ":" .
 /* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei structDeclarator
    oben: pointerDecl gehoert VOR jeden einzelnen Deklarator, nicht einmal
    vor die ganze Liste ("char *a, *b;" war ein stiller Parse-Fehler). */
-varDecl   = [ constKw ] [ volatileKw ] type varDeclarator { "," varDeclarator } ";" .
+varDecl   = [ registerKw ] [ constKw ] [ volatileKw ] type varDeclarator { "," varDeclarator } ";" .
+/* "register" (2026-09-16) ist in C89 nur ein HINWEIS an den Uebersetzer und
+   darf folgenlos ignoriert werden -- genau das passiert hier. Vorher
+   scheiterte die Deklaration stumm. */
+registerKw = "register" .
 varDeclarator = pointerDecl localDecl [ "=" varInit ] .
 /* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
    2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
@@ -680,7 +684,10 @@ negFactor = ( "-" | "!" | "~" ) factor .
    ein Eingriff in den Generator, nicht in diese Grammatik. */
 addressRef = "&" ident [ index ] .
 
-sizeofExpr = "sizeof" "(" sizeofArg ")" .
+sizeofExpr = "sizeof" ( "(" sizeofArg ")" | sizeofVarName ) .
+/* "sizeof x" OHNE Klammern (2026-09-16) ist in C89 gueltig und scheiterte
+   stumm. Nur die Variablenform -- "sizeof int" ohne Klammern gibt es in C
+   nicht, ein Typname braucht sie immer. */
 sizeofArg  = sizeofType | sizeofVarName .
 /* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gemessen): sizeofType lief frueher
    ueber die volle Typregel `type`, und die endet auf `typedefRef = ident`.
@@ -804,7 +811,16 @@ funcName  = ident .
    koennen; umgesetzt ist sie nicht: 64-Bit-Arithmetik auf dem 68k
    braucht Hilfsroutinen fuer Multiplikation und Division und ist ein
    eigenes Vorhaben, kein Randfall. */
-type      = "unsigned" unsignedInt | "int" | longLongType | "long" | "short" | "char" | "bool" | "double" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+type      = "unsigned" unsignedInt | "signed" unsignedInt | "int" | longLongType | longDoubleType | "long" | "short" | "char" | "bool" | "double" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+/* "signed" (2026-09-16): scheiterte STUMM. Es teilt sich unsignedInt mit
+   "unsigned" -- die Regel beschreibt die Folgewoerter (char/short/int/long),
+   nicht das Vorzeichen; nur die Aktion unterscheidet. Eine eigene Kopie
+   haette eine Regel gekostet, und parsec hat ein festes MAX_RULES, unter dem
+   diese Grammatik dicht liegt.
+   "long double" (2026-09-16): C89 laesst zu, dass long double dieselbe
+   Genauigkeit hat wie double -- genau so wird es hier behandelt. Die Regel
+   muss VOR dem blossen "long" stehen, sonst schluckt das den Typ. */
+longDoubleType = "long" "double" .
 longLongType = "long" "long" .
 unionTypeRef = ident .
 structTypeRef = ident .
