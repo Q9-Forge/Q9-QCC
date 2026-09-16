@@ -64,6 +64,20 @@ static struct A ga;
 struct Z { int *ip; char *cp; int n; };
 union U2 { int a; int b; };
 union U3 { int i; char c[4]; };
+/* VERSCHACHTELTE structs als FELDWERT (2026-09-17). Auf echter Hardware
+   zaehlt hier das BYTE-LAYOUT: "o.in.a" ist reine Offset-Addition, ein
+   LOADIND zuviel wuerde die ersten vier Byte des Feldes als Adresse deuten.
+   NE hat bewusst ein char VOR dem int, damit ein falsch gerechnetes
+   Innen-Offset einen anderen Wert liefert statt zufaellig denselben. */
+struct NI { int a; int b; };
+struct NE { char c; int a; };
+struct NO { struct NI in; int z; };
+struct NP { int z; struct NI in; };
+struct NM { struct NE in; int z; };
+struct NN { struct NI a; struct NI b; };
+struct ND { struct NI in; };
+struct NL { struct ND d; };
+static struct NO gno;
 static struct Z gz;
 static int zfeld[8];
 static char ztxt[8];
@@ -288,6 +302,27 @@ int main(void)
 	            z.v = 82; x.next = &y; y.next = &z; val(x.next->next->v); }
 	mark(51); { struct N x; struct N y; struct N *q;
 	            x.next = &y; q = &x; q->next->v = 83; val(y.v); }
+
+	/* 52-60 VERSCHACHTELTE structs als FELDWERT (2026-09-17) */
+	mark(52); { struct NO o; o.in.a = 52; o.in.b = 1; o.z = 2; val(o.in.a); }
+	mark(53); { struct NO o; o.in.a = 1; o.in.b = 53; o.z = 2; val(o.in.b); }
+	/* Das Feld HINTER dem eingebetteten struct -- sein Offset haengt an
+	   dessen Groesse; eine falsche Groesse trifft genau hier. */
+	mark(54); { struct NO o; o.in.a = 1; o.in.b = 2; o.z = 54; val(o.z); }
+	/* und davor: dann ist das Innen-Offset verschoben */
+	mark(55); { struct NP o; o.z = 1; o.in.a = 55; val(o.in.a); }
+	/* char vor int im INNEREN struct: prueft dessen eigenes Layout */
+	mark(56); { struct NM o; o.in.c = 7; o.in.a = 56; o.z = 8; val(o.in.a); }
+	mark(57); { struct NM o; o.in.c = 57; o.in.a = 1; o.z = 2; val(o.in.c); }
+	/* zwei gleiche structs nebeneinander -- das zweite darf das erste nicht
+	   ueberschreiben */
+	mark(58); { struct NN o; o.a.a = 1; o.a.b = 2; o.b.a = 58; o.b.b = 3;
+	            val(o.b.a); }
+	/* drei Ebenen und ein Zeiger auf das aeussere struct */
+	mark(59); { struct NL l; struct NL *p; l.d.in.a = 59; p = &l;
+	            val(p->d.in.a); }
+	/* globales verschachteltes struct */
+	mark(60); { gno.in.a = 60; gno.z = 1; val(gno.in.a); }
 
 	/* 47-48 globaler struct-Initialisierer, big-endian abgelegt */
 	mark(47); { val(ginit.a); }
