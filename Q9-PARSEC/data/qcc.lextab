@@ -3814,6 +3814,32 @@ static int tcCompatible(TCType wanted, TCType got) {
 	if (tcIsInteger(wanted) && tcIsBool(got)) return 1;
 	return tcIsInteger(wanted) && tcIsInteger(got);
 }
+/* IMPLIZITE KONVERSION BEI ZUWEISUNG (2026-09-16). C89 3.1.2.5: eine
+   Zuweisung wandelt den Wert in den Typ des Ziels um. Zwischen double und
+   den ganzzahligen Typen heisst das I2D oder D2I -- und zwar EMITTIERT,
+   nicht bloss im Typstapel vermerkt.
+   Bewusst NICHT ueber tcCompatible geloest: dieselbe Vertraeglichkeit gilt
+   sonst auch fuer Kettenzuweisung, Argumente und Rueckgaben, und dort
+   wuerde ohne Emission still der falsche Wert landen. Lieber hier gezielt
+   umwandeln und dort weiter melden.
+   Rueckgabe: der Typ, der jetzt auf dem Stapel liegt. */
+static TCType tcCoerceToTarget(TCType wanted, TCType got) {
+	if (tcIsDouble(wanted) && (tcIsInteger(got) || tcIsBool(got))) {
+		printf("I2D\n");
+		return wanted;
+	}
+	if ((tcIsInteger(wanted) || tcIsBool(wanted)) && tcIsDouble(got)) {
+		printf("D2I\n");
+		/* Die Zielverengung auf char/short macht der Store selbst nicht --
+		   dieselbe Regel wie beim Cast. */
+		if (wanted.base == 'c') printf("NARROWC\n");
+		else if (wanted.base == 'h') printf("NARROWH\n");
+		else if (wanted.base == 'b') printf("PUSH 0\nCMPNE\n");
+		return wanted;
+	}
+	return got;
+}
+
 static void tcPrintType(FILE* out, TCType t) {
 	int i; const char* name;
 	/* 2026-09-01: 's' (struct) und 'F' (Funktionszeiger) fehlten hier und kamen
@@ -3829,7 +3855,7 @@ static void tcPrintType(FILE* out, TCType t) {
 		fputs("function pointer", out);
 		return;
 	}
-	name = t.base == 'u' ? "unsigned int" : t.base == 'c' ? "char" : t.base == 'h' ? "short" : t.base == 'b' ? "bool" : t.base == 'z' ? "null" : t.base == 'i' ? "int" : t.base == 'v' ? "void" : t.base == 's' ? "struct" : "?";
+	name = t.base == 'u' ? "unsigned int" : t.base == 'c' ? "char" : t.base == 'h' ? "short" : t.base == 'b' ? "bool" : t.base == 'z' ? "null" : t.base == 'i' ? "int" : t.base == 'v' ? "void" : t.base == 'd' ? "double" : t.base == 's' ? "struct" : "?";
 	fputs(name, out); for (i = 0; i < t.pointers; i++) fputc('*', out);
 }
 static void tcTypeError(const char* what, TCType wanted, TCType got) {
@@ -5322,7 +5348,7 @@ void tc_varinit(const char* start, const char* end) {
 	   "scalar cannot use array initializer" allein schickte in die falsche
 	   Richtung; der Zusatz nennt den Fall, der praktisch gemeint ist. */
 	if (tcInitList(start, end, values, 0, 256, 0) >= 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer -- a local array needs a declared size here, as in \"int a[3] = {1,2,3};\"\n"); return; }
-	{ TCType got = tcTypePop(), wanted = tcLocalType(slot); if (!tcCompatible(wanted, got)) tcTypeError("initializer", wanted, got); }
+	{ TCType got = tcTypePop(), wanted = tcLocalType(slot); got = tcCoerceToTarget(wanted, got); if (!tcCompatible(wanted, got)) tcTypeError("initializer", wanted, got); }
 	{
 		/* Struct-Initialisierung: kopieren statt skalar speichern.  Ohne
 		   diesen Zweig landet die Quelladresse als 4-Byte-Wert im Slot und
@@ -6137,9 +6163,22 @@ void tc_term(const char* start, const char* end) {
 			   Fehlgriff -- s. docs/FLOAT_IR_ENTWURF_de.md. */
 			printf("%s", tcPendingAdd == '+' ? "DADD\n" : "DSUB\n");
 			tcTypePush(left);
+			/* UEBLICHE ARITHMETISCHE KONVERSIONEN (C89 3.2.1.5): ist ein
+			   Operand double, wird der andere hochgezogen. Welcher Opcode
+			   dafuer taugt, haengt an der Stapellage -- der LINKE Operand
+			   liegt beim Emittieren schon UNTER dem rechten, deshalb gibt
+			   es neben I2D auch I2DUNDER. */
+		} else if (tcIsDouble(left) && (tcIsInteger(right) || tcIsBool(right))) {
+			printf("I2D\n%s", tcPendingAdd == '+' ? "DADD\n" : "DSUB\n");
+			tcTypePush(left);
+		} else if ((tcIsInteger(left) || tcIsBool(left)) && tcIsDouble(right)) {
+			printf("I2DUNDER\n%s", tcPendingAdd == '+' ? "DADD\n" : "DSUB\n");
+			tcTypePush(right);
 		} else if (tcIsDouble(left) || tcIsDouble(right)) {
 			tcErrAt(start);
-			fprintf(stderr, "mixed double and integer arithmetic is not supported yet -- cast explicitly\n");
+			fprintf(stderr, "arithmetic between double and ");
+			tcPrintType(stderr, tcIsDouble(left) ? right : left);
+			fprintf(stderr, " is not defined\n");
 			actionErrors++;
 			tcTypePush(tcIsDouble(left) ? left : right);
 		} else if (leftVoidPtr || rightVoidPtr) {
@@ -6286,9 +6325,23 @@ void tc_factor(const char* start, const char* end) {
 			return;
 		}
 		if (tcIsDouble(left) || tcIsDouble(right)) {
-			tcErrAt(start);
-			fprintf(stderr, "mixed double and integer arithmetic is not supported yet -- cast explicitly\n");
-			actionErrors++;
+			int rightIsInt = tcIsInteger(right) || tcIsBool(right);
+			int leftIsInt = tcIsInteger(left) || tcIsBool(left);
+			if (tcPendingMul == '%') {
+				tcErrAt(start);
+				fprintf(stderr, "the remainder operator requires integer operands\n");
+				actionErrors++;
+			} else if (tcIsDouble(left) && rightIsInt) {
+				printf("I2D\n%s", tcPendingMul == '*' ? "DMUL\n" : "DDIV\n");
+			} else if (leftIsInt && tcIsDouble(right)) {
+				printf("I2DUNDER\n%s", tcPendingMul == '*' ? "DMUL\n" : "DDIV\n");
+			} else {
+				tcErrAt(start);
+				fprintf(stderr, "arithmetic between double and ");
+				tcPrintType(stderr, tcIsDouble(left) ? right : left);
+				fprintf(stderr, " is not defined\n");
+				actionErrors++;
+			}
 			tcTypePush(tcIsDouble(left) ? left : right);
 			tcPendingMul = 0;
 			return;
@@ -6318,10 +6371,12 @@ void tc_expr(const char* start, const char* end) {
 		   passen. Gemischt mit Ganzzahlen gilt dasselbe wie bei der
 		   Arithmetik: gemeldet statt geraten. */
 		if (!pointerCompare && (tcIsDouble(left) || tcIsDouble(right))) {
-			if (!tcIsDouble(left) || !tcIsDouble(right)) {
-				tcErrAt(start);
-				fprintf(stderr, "mixed double and integer comparison is not supported yet -- cast explicitly\n");
-				actionErrors++;
+			if (tcIsDouble(left) && (tcIsInteger(right) || tcIsBool(right))) printf("I2D\n");
+			else if ((tcIsInteger(left) || tcIsBool(left)) && tcIsDouble(right)) printf("I2DUNDER\n");
+			if (!tcIsDouble(left) && !(tcIsInteger(left) || tcIsBool(left))) {
+				tcTypeError("comparison", left, right);
+			} else if (!tcIsDouble(right) && !(tcIsInteger(right) || tcIsBool(right))) {
+				tcTypeError("comparison", left, right);
 			} else if (tcRel1 == '=') {
 				if (tcRel0 == '<') printf("DCMPLE\n");
 				else if (tcRel0 == '>') printf("DCMPGE\n");
@@ -6997,6 +7052,7 @@ static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size, int s
 static void tcAssignStore(int leaveValue) {
 	TCType got; char tag;
 	got = tcTypePop();
+	got = tcCoerceToTarget(tcTargetType, got);
 	if (!tcCompatible(tcTargetType, got)) tcTypeError("assignment", tcTargetType, got);
 	/* Struct als Ganzes: kein Registerwert, sondern eine Kopie.  Muss VOR
 	   den skalaren Zweigen stehen -- tcTypeTag('s') liefert 'i', wodurch

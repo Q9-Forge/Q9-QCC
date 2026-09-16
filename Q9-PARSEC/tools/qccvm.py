@@ -250,6 +250,11 @@ def run(prog):
             opstack.append(1 if r else 0); ip += 1
         elif op == "I2D":
             opstack.append(float(opstack.pop())); ip += 1
+        elif op == "I2DUNDER":
+            # Wandelt den Wert UNTER dem obersten um. Gebraucht fuer "1 + a":
+            # da liegt die Ganzzahl schon unter dem double, und ein I2D auf
+            # das oberste Element traefe den falschen Operanden.
+            opstack[-2] = float(opstack[-2]); ip += 1
         elif op == "D2I":
             # C schneidet Richtung null ab, rundet nicht -- wie fintrz.
             opstack.append(int(opstack.pop())); ip += 1

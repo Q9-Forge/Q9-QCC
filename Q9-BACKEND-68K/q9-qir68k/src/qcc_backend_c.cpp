@@ -1744,6 +1744,11 @@ static void emitIR(FILE* out) {
 				fputs("\tfmove.d\t(a7)+,fp0\n\tfneg.x\tfp0,fp0\n\tfmove.d\tfp0,-(a7)\n", out);
 			} else if (strcmp(op, "I2D") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n\tfmove.l\td0,fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			} else if (strcmp(op, "I2DUNDER") == 0) {
+				/* Die Ganzzahl liegt UNTER dem double: beides herunter,
+				   umwandeln, in derselben Reihenfolge zurueck. */
+				fputs("\tfmove.d\t(a7)+,fp0\n\tmove.l\t(a7)+,d0\n"
+				      "\tfmove.l\td0,fp1\n\tfmove.d\tfp1,-(a7)\n\tfmove.d\tfp0,-(a7)\n", out);
 			} else if (strcmp(op, "D2I") == 0) {
 				/* fintrz schneidet Richtung null ab -- genau die C-Regel. */
 				fputs("\tfmove.d\t(a7)+,fp0\n\tfintrz.x\tfp0,fp0\n\tfmove.l\tfp0,d0\n\tmove.l\td0,-(a7)\n", out);
