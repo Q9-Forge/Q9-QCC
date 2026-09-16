@@ -2718,10 +2718,6 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 		while (p < end && (*p == ' ' || *p == '\t')) p++;
 	}
 	if (p < end && *p == '=') {
-		if (!type.pointers && type.base == 's') {
-			tcErrAt(start); fprintf(stderr, "struct global cannot have an initializer in this version\n");
-			actionErrors++; return;
-		}
 		p++;
 		/* hadBrackets statt arrayLen: bei "char x[] = \"abc\";" ist die Laenge
 		   hier noch unbekannt und wird erst aus dem Literal abgeleitet. */
@@ -2834,7 +2830,18 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 			}
 		} else {
 			while (p < end && (*p == ' ' || *p == '\t')) p++;
-			if (p < end && *p == '{') { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer\n"); return; }
+			/* STRUCT MIT INITIALISIERERLISTE, GLOBAL (2026-09-16):
+			   "struct S g = {1,2};". Ein struct ist weder Skalar noch Array,
+			   deshalb landete es hier und bekam "scalar cannot use array
+			   initializer" -- eine Meldung, die den Fall nicht sah.
+			   Die Werte werden hier nur GELESEN; zugeordnet werden sie erst
+			   bei der Emission, wo Feldoffsets und Feldtypen feststehen. */
+			if (!type.pointers && type.base == 's' && p < end && *p == '{') {
+				initCount = tcInitList(p, end, initValues, initSyms, 256, 0);
+				if (initCount == -4) { actionErrors++; tcErrAt(start); fprintf(stderr, "nested initializer list is not supported for a struct in this version\n"); return; }
+				if (initCount < 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "bad struct initializer\n"); return; }
+			}
+			else if (p < end && *p == '{') { actionErrors++; tcErrAt(start); fprintf(stderr, "scalar cannot use array initializer\n"); return; }
 			/* EIN EINZELNER Zeiger auf ein String-Literal (char *s = "ab";).
 			   Bis 2026-09-15 wurde der Initialisierer hier STILL VERWORFEN --
 			   herauskam "GLOBAL s 0 p 0", also ein Nullzeiger, und der erste
@@ -2952,10 +2959,45 @@ const char* p = start; char name[32]; TCType type = tcMakeType('i', 0); int n = 
 	}
 	if (!type.pointers && type.base == 's') {
 		int count = arrayLen > 0 ? arrayLen : 1;
+		int ssid = type.structId - 1;
 		printf("GARRAY %s c ", name);
-		tcEmitNum(count * tcStructByteSizeK[type.structId - 1],
-		          count * tcStructByteSizeN[type.structId - 1]);
+		tcEmitNum(count * tcStructByteSizeK[ssid], count * tcStructByteSizeN[ssid]);
 		printf(" %d\n", isStatic);
+		/* Initialisiererliste: je Feld ein GINITAT mit BYTE-Offset, Typtag und
+		   Wert. Ein eigener Opcode ist noetig, weil der Block ein char-Array
+		   ist: ein int-Feld belegt darin vier Byte, und in welcher Reihenfolge
+		   die im Speicher liegen, weiss nur das BACKEND (68k big-endian,
+		   ARM64 little-endian). Der Feldoffset geht symbolisch durch
+		   (tcEmitNum), damit der Zeigeranteil erhalten bleibt. */
+		if (initCount > 0) {
+			int fi2;
+			if (arrayLen > 0) {
+				tcErrAt(start);
+				fprintf(stderr, "initializer for an array of structs is not supported in this version\n");
+				actionErrors++; return;
+			}
+			if (initCount > tcStructFieldCount[ssid]) {
+				tcErrAt(start);
+				fprintf(stderr, "too many values in struct initializer (struct has %d fields)\n", tcStructFieldCount[ssid]);
+				actionErrors++; return;
+			}
+			for (fi2 = 0; fi2 < initCount; fi2++) {
+				TCType gft = tcStructFieldTypes[ssid][fi2];
+				if (gft.base == 's' && !gft.pointers) {
+					tcErrAt(start);
+					fprintf(stderr, "struct field in an initializer list is not supported in this version\n");
+					actionErrors++; return;
+				}
+				if (tcStructFieldArrayLen[ssid][fi2] > 0) {
+					tcErrAt(start);
+					fprintf(stderr, "array field in an initializer list is not supported in this version\n");
+					actionErrors++; return;
+				}
+				printf("GINITAT %s ", name);
+				tcEmitFieldOffset(ssid, fi2);
+				printf(" %c %ld\n", tcTypeTag(gft), tcTruncInit(gft, initValues[fi2]));
+			}
+		}
 		return;
 	}
 	if (arrayLen) {

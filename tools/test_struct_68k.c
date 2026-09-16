@@ -20,6 +20,12 @@ struct P { char base; unsigned char pointers; unsigned char structId; unsigned c
    NACH dem Rumpf registriert wurde. Damit war keine verkettete Liste baubar. */
 struct N { int v; struct N *next; };
 
+/* GLOBALER STRUCT-INITIALISIERER (2026-09-16). Hier zaehlt die
+   BYTE-REIHENFOLGE: der Block ist ein char-Array, und ein int-Feld liegt auf
+   dem 68k big-endian darin. Das VM-Orakel kann das nicht pruefen -- es fuehrt
+   typisierte Zellen, keine Bytes. */
+struct I ginit = { 71, 72 };
+
 struct I tab[4];
 struct I *gtab;            /* fuer den globalen Zeigerindex, Fall 37 */
 static struct P grid[4][4];   /* fuer die 2D-Faelle */
@@ -272,6 +278,10 @@ int main(void)
 	            a.v = 1; b.v = 2; c.v = 3;
 	            a.next = &b; b.next = &c; c.next = 0;
 	            val(listLen(&a)); }
+
+	/* 47-48 globaler struct-Initialisierer, big-endian abgelegt */
+	mark(47); { val(ginit.a); }
+	mark(48); { val(ginit.b); }
 
 	return 0;
 }

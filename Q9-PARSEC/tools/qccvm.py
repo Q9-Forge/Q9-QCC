@@ -176,6 +176,14 @@ def run(prog):
             globals_[args[0]] = [0] * int(args[2])
         elif op == "GINIT":
             globals_[args[0]][int(args[1])] = int(args[2])
+        elif op == "GINITAT":
+            # Feldwert eines globalen structs, an einem BYTE-Offset mit Typtag.
+            # Diese VM fuehrt einen Block als Liste typisierter Zellen, rechnet
+            # den Index also als offset/groesse -- dieselbe Rechnung wie
+            # LOADIND/STOREIND, damit der Wert dort wieder gefunden wird.
+            gsize = type_size(args[2])
+            gidx = int(args[1]) // gsize
+            globals_[args[0]][gidx] = mask_for(args[2], int(args[3]))
         elif op == "GINITD":
             # Anfangswert eines globalen double, als zwei 32-Bit-Haelften
             # (hi zuerst) -- dieselbe Darstellung wie PUSHD, weil die IR von
@@ -431,7 +439,7 @@ def run(prog):
                 if a.block is not b.block: raise RuntimeError("qccvm: comparison of unrelated pointers")
                 result = a.offset < b.offset if op == "PCMPLT" else a.offset <= b.offset if op == "PCMPLE" else a.offset > b.offset if op == "PCMPGT" else a.offset >= b.offset
             opstack.append(1 if result else 0); ip += 1
-        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITD" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
+        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITD" or op == "GINITAT" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
             ip += 1
         elif op == "JMP":
             ip = label_at[args[0]]
