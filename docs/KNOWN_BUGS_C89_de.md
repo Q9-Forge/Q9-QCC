@@ -111,3 +111,50 @@ und der Stack eines OS-9-Moduls ist knapp.
 Beides ist umsetzbar, aber ein eigener Schritt: die IR braucht ein `RETD`
 mit Gegenstück beim Aufrufer, und Parameter brauchen Blockablage statt
 eines Slots. Einzelheiten in `FLOAT_PLAN_de.md`.
+
+## Nachtrag 2026-09-16 (3) — `++`/`--` auf `double` (behoben)
+
+Beim Nachmessen des `double`-Stands fiel ein **stiller Rechenfehler** auf,
+den der Testsatz nicht abdeckte: `a++` auf einer `double`-Variablen.
+
+Das Frontend wählt die Lade-/Speicheropcodes über den Typ-Tag, und der
+Zweig für `double` fehlte — `'d'` fiel in den **char-Auffangzweig**
+(`LOADC`/`STOREC`, laut `IR_OPCODES_de.md` „maskiert auf 0xff"). Die IR für
+`double a; a++;` war damit zeichengleich mit der für `char c++`. Wirkung:
+
+```c
+double a; a = 1.5; a++;   /* a blieb 1.5 — keine Meldung, kein Abbruch */
+```
+
+Der Sollwert `(int)a` hätte das **nicht** aufgedeckt (1.5 und 2.5 schneiden
+beide auf einen anderen Wert, aber 1 vs. 2 sah plausibel aus); erst
+`(int)(a*10.0)` mit 15 statt 25 macht es sichtbar. Die neuen Testfälle
+rechnen deshalb durchweg mit `*10.0`.
+
+**Der Fehler saß an fünf Emissionsstellen, nicht an einer** — das übliche
+Geschwister-Muster:
+
+| Stelle | vorher | jetzt |
+|---|---|---|
+| lokale Variable (`tcIncDecEmit`) | `LOADC`/`STOREC`, wirkungslos | `LOADD`/`STORED` + `DADD`/`DSUB` |
+| globale Variable | `LOADGC`/`STOREGC`, wirkungslos | `LOADGD`/`STOREGD` |
+| Struct-Feld | `LOADIND d` + `PUSH 1`/`ADD` — ganzzahlig auf ein FPU-Bitmuster | gemeldet |
+| Array-Element | dito über `LOADIDX` | gemeldet |
+| Zeigerziel `(*p)++` | dito | gemeldet |
+| Ergebnis als Anweisung verworfen | `DROP` (ein Slot statt acht Byte) | `DDROP` |
+
+**Der Struct-Fall war besonders heimtückisch:** im VM-Orakel rechnete er
+*richtig*, weil Python `float + int` sauber addiert — auf dem 68k wäre aus
+`PUSH 1 / ADD` ein `add.l` auf ein IEEE-Bitmuster geworden. Eine Probe
+allein gegen das Orakel hätte ihn nie gefunden.
+
+**Warum die drei Adressformen melden statt rechnen:** sie laden über
+`LOADIND`/`LOADIDX` und schieben den Wert mit `DUP`/`SWAP` durch die
+Präfix/Postfix-Choreographie. Auf acht Byte ist das nicht definiert —
+`IR_OPCODES_de.md` führt `DDUP`/`DDROP` eigens auf, „weil `DUP`/`DROP` bei
+8 Byte mehrdeutig wären", und ein `SWAP` für Blöcke gibt es gar nicht. Das
+braucht eine Blockrotation in der IR und ist ein eigener Schritt.
+
+Lokale und globale `double` sind damit voll benutzbar, Präfix wie Postfix,
+mit dem richtigen Ergebniswert des Ausdrucks. Geprüft auf echtem 68030
+(`double68k.sh`, 30 Fälle), nativ auf ARM64 und gegen das VM-Orakel.

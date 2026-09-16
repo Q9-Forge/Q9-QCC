@@ -692,7 +692,10 @@ if command -v python3 >/dev/null 2>&1; then
 		# Was NOCH NICHT geht, wird GEMELDET statt still danebenzugreifen:
 		for prog_msg in \
 			'double g = 2.5; int main(){ putint(1); }|initializers for double globals' \
-			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer'
+			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer' \
+			'struct S { double d; }; int main(){ struct S s; s.d=1.5; s.d++; putint(1); }|double struct field' \
+			'int main(){ double a[3]; a[0]=1.5; a[0]++; putint(1); }|double array element' \
+			'int main(){ double a; double *p; a=1.5; p=&a; (*p)++; putint(1); }|double pointer target'
 		do
 			prog="${prog_msg%%|*}"; msg="${prog_msg##*|}"
 			if build/qcc_p "$prog" 2>&1 | grep -qF "$msg"; then
@@ -732,6 +735,33 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int i = 2.9; putint(i); }' '2'
 		# Zielverengung nach der Konversion: char bleibt char.
 		tc_check 'int main(){ char c; c = 66.9; putint(c); }' '66'
+		# ++/-- AUF double (2026-09-16). Vorher fiel 'd' in tcIncDecEmit in den
+		# char-Auffangzweig (LOADC/STOREC) -- das Inkrement war WIRKUNGSLOS und
+		# meldete nichts. Die Sollwerte sind bewusst DISKRIMINIEREND gewaehlt:
+		# *10.0 macht die Nachkommastelle sichtbar, sonst haette (int)a auch
+		# beim falschen Ergebnis noch zufaellig gestimmt.
+		tc_check 'int main(){ double a; a=1.5; a++; putint((int)(a*10.0)); }' '25'
+		tc_check 'int main(){ double a; a=1.5; ++a; putint((int)(a*10.0)); }' '25'
+		tc_check 'int main(){ double a; a=5.5; a--; putint((int)(a*10.0)); }' '45'
+		tc_check 'int main(){ double a; a=5.5; --a; putint((int)(a*10.0)); }' '45'
+		# Praefix und Postfix unterscheiden sich NUR im Ergebniswert des
+		# Ausdrucks -- ohne diese vier Faelle ist die Choreographie ungeprueft.
+		tc_check 'int main(){ double a; double b; a=1.5; b=a++; putint((int)(b*10.0)); }' '15'
+		tc_check 'int main(){ double a; double b; a=1.5; b=++a; putint((int)(b*10.0)); }' '25'
+		tc_check 'int main(){ double a; double b; a=5.5; b=a--; putint((int)(b*10.0)); }' '55'
+		tc_check 'int main(){ double a; double b; a=5.5; b=--a; putint((int)(b*10.0)); }' '45'
+		# global (LOADGD/STOREGD statt LOADD/STORED -- eigene Emissionsstelle)
+		tc_check 'double g; int main(){ g=1.5; g++; putint((int)(g*10.0)); }' '25'
+		tc_check 'double g; int main(){ g=5.5; g--; putint((int)(g*10.0)); }' '45'
+		tc_check 'double g; int main(){ double b; g=1.5; b=g++; putint((int)(b*10.0)); }' '15'
+		# Wird das Ergebnis als ANWEISUNG verworfen, muss DDROP acht Byte
+		# abraeumen und nicht DROP einen Slot -- sonst laeuft der Stapel schief.
+		# Das faellt nur auf, wenn DANACH noch gerechnet wird.
+		tc_check 'int main(){ double a; double b; a=1.5; a++; a++; a++; b=a+4.5; putint((int)(b*10.0)); }' '90'
+		# dieselbe Verwerfstelle im for-Schritt (tc_forstep)
+		tc_check 'int main(){ double a; int i; a=1.5; for(i=0;i<3;i++){ a++; } putint((int)(a*10.0)); }' '45'
+		# ein int daneben darf davon nichts abbekommen
+		tc_check 'int main(){ double a; int i; a=1.5; i=7; a++; i++; putint(i*100+(int)(a*10.0)); }' '825'
 		# Und die Diagnose nennt den Typ beim Namen statt "?"
 		if build/qcc_p 'struct S { int a; }; int main(){ struct S s; double d; d = s; putint(1); }' 2>&1 | grep -qF 'double'; then
 			echo "ok    qcc: Diagnose nennt double beim Namen"
@@ -3216,11 +3246,11 @@ fi
 #     Die Sollwerte diskriminieren: 7.0/2.0 muss 3 ergeben und nicht 4, denn
 #     (int) schneidet Richtung null ab und rundet nicht.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
-	if build/qcc_p 'double g; int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); a=8.0; putint((int)(32/a)); putint((int)(10-a)); putint((int)(a+1)); putint((int)(1+a)); }' > build/qcc_double_arm64.ir && \
+	if build/qcc_p 'double g; int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); a=8.0; putint((int)(32/a)); putint((int)(10-a)); putint((int)(a+1)); putint((int)(1+a)); a=1.5; a++; putint((int)(a*10.0)); a=5.5; a--; putint((int)(a*10.0)); g=1.5; g++; putint((int)(g*10.0)); }' > build/qcc_double_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_double_arm64.ir build/qcc_double_arm64.s && \
 		grep -q 'fmul' build/qcc_double_arm64.s && grep -q 'fcvtzs' build/qcc_double_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_double_arm64 build/qcc_double_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3\n4\n2\n9\n9')" ] && \
+		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3\n4\n2\n9\n9\n25\n45\n25')" ] && \
 		[ "$(build/qcc_double_arm64)" = "$(python3 tools/qccvm.py build/qcc_double_arm64.ir)" ]; then
 		echo "ok    qcc double ARM64: Rechnen/Vergleiche/Konversionen inkl. gemischter Operanden nativ, gleich wie das VM-Orakel"
 	else
