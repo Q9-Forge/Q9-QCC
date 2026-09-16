@@ -757,7 +757,7 @@ sizeofType = sizeofBaseType pointerDecl .
 /* NACHTRAG 2026-09-09 -- "short" dazu (s. type/unsignedInt weiter unten):
    dieselbe Erweiterung, damit sizeof(short)/sizeof(unsigned short) nicht an
    dieser eigenen Kopie der Typliste vorbeilaeuft. */
-sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "double" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
+sizeofBaseType = "unsigned" unsignedInt | "int" | "long" | "char" | "short" | "bool" | "double" | "float" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
 sizeofVarName = ident .
 
 castExpr   = "(" castType ")" castOperand .
@@ -877,7 +877,7 @@ funcName  = ident .
    koennen; umgesetzt ist sie nicht: 64-Bit-Arithmetik auf dem 68k
    braucht Hilfsroutinen fuer Multiplikation und Division und ist ein
    eigenes Vorhaben, kein Randfall. */
-type      = "unsigned" unsignedInt | "signed" unsignedInt | "int" | longLongType | longDoubleType | "long" | "short" | "char" | "bool" | "double" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+type      = "unsigned" unsignedInt | "signed" unsignedInt | "int" | longLongType | longDoubleType | "long" | "short" | "char" | "bool" | "double" | "float" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
 /* "signed" (2026-09-16): scheiterte STUMM. Es teilt sich unsignedInt mit
    "unsigned" -- die Regel beschreibt die Folgewoerter (char/short/int/long),
    nicht das Vorzeichen; nur die Aktion unterscheidet. Eine eigene Kopie
