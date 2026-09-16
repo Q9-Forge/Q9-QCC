@@ -111,6 +111,7 @@ Auf dem Operandenstapel belegt ein `double` 8 Byte.
 | `DNEG` | `d → d` | Vorzeichenwechsel |
 | `DCMPEQ` `DCMPNE` `DCMPLT` `DCMPLE` `DCMPGT` `DCMPGE` | `d d → i` | Vergleiche, Ergebnis ganzzahlig 0/1 |
 | `I2D` | `i → d` | Ganzzahl nach `double` |
+| `I2DUNDER` | `i d → d d` | wandelt den Wert **unter** dem obersten um. Gebraucht für `1 + a`: dort liegt die Ganzzahl beim Emittieren schon unter dem `double` |
 | `D2I` | `d → i` | `double` nach Ganzzahl, **schneidet Richtung null ab** (C-Regel, auf dem 68k `fintrz`) |
 | `DDUP` / `DDROP` | | eigene Formen, weil `DUP`/`DROP` bei 8 Byte mehrdeutig wären |
 
@@ -120,9 +121,11 @@ Auf dem 68k werden daraus FPU-Befehle (`fadd.x`, `fcmp.x` + `FBcc`,
 rechnet mit Pythons 64 Bit. Für Vergleiche zwischen Orakel und Hardware
 taugen deshalb nur Werte, die in beiden exakt sind.
 
-**Noch nicht in der IR:** gemischte Arithmetik und Vergleiche von `double`
-und Ganzzahl (das Frontend meldet sie), Initialisierer an globalen
-`double`, und `float` als eigener Typ.
+Gemischte Ausdrücke (`a + 1`, `10 - a`) lösen die üblichen arithmetischen
+Konversionen aus; welcher Opcode das tut, hängt an der Stapellage.
+
+**Noch nicht in der IR:** Initialisierer an globalen `double` und `float`
+als eigener Typ.
 
 ## Vergleiche
 

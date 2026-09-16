@@ -674,8 +674,6 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
 		# Was NOCH NICHT geht, wird GEMELDET statt still danebenzugreifen:
 		for prog_msg in \
-			'int main(){ double a; a=1.5; putint((int)(a+1)); }|mixed double and integer arithmetic' \
-			'int main(){ double a; a=1.5; if (a<1) putint(1); }|mixed double and integer comparison' \
 			'double g = 2.5; int main(){ putint(1); }|initializers for double globals' \
 			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer'
 		do
@@ -693,6 +691,36 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int g = 5U; int main(){ putint(g); }' '5'
 		tc_check 'int g = -0x20; int main(){ putint(g); }' '-32'
 		tc_check 'int g = 5; int main(){ putint(g); }' '5'
+		# UEBLICHE ARITHMETISCHE KONVERSIONEN (2026-09-16, C89 3.2.1.5): ist ein
+		# Operand double, wird der andere hochgezogen. Welcher Opcode das tut,
+		# haengt an der Stapellage -- der LINKE Operand liegt beim Emittieren
+		# schon UNTER dem rechten, dafuer gibt es I2DUNDER neben I2D. Beide
+		# Stellungen werden hier geprueft, sonst faellt eine davon nicht auf.
+		tc_check 'int main(){ double a; a=1.5; putint((int)(a+1)); }' '2'
+		tc_check 'int main(){ double a; a=1.5; putint((int)(1+a)); }' '2'
+		tc_check 'int main(){ double a; a=1.5; putint((int)(a*4)); }' '6'
+		tc_check 'int main(){ double a; a=8.0; putint((int)(a/4)); }' '2'
+		# Nicht kommutativ -- hier wuerde eine vertauschte Konversion auffallen:
+		tc_check 'int main(){ double a; a=8.0; putint((int)(32/a)); }' '4'
+		tc_check 'int main(){ double a; a=8.0; putint((int)(a-10)); }' '-2'
+		tc_check 'int main(){ double a; a=8.0; putint((int)(10-a)); }' '2'
+		tc_check 'int main(){ int i; i=3; putint((int)(i*1.5)); }' '4'
+		tc_check 'int main(){ double a; a=1.5; if (a<2) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; a=1.5; if (2>a) putint(1); else putint(0); }' '1'
+		# IMPLIZITE KONVERSION BEI ZUWEISUNG (C89 3.1.2.5)
+		tc_check 'int main(){ double a; a = 5; putint((int)a); }' '5'
+		tc_check 'int main(){ int i; i = 1.5; putint(i); }' '1'
+		tc_check 'int main(){ double a; int i; i=3; a = i; putint((int)a); }' '3'
+		tc_check 'int main(){ double a = 7; putint((int)a); }' '7'
+		tc_check 'int main(){ int i = 2.9; putint(i); }' '2'
+		# Zielverengung nach der Konversion: char bleibt char.
+		tc_check 'int main(){ char c; c = 66.9; putint(c); }' '66'
+		# Und die Diagnose nennt den Typ beim Namen statt "?"
+		if build/qcc_p 'struct S { int a; }; int main(){ struct S s; double d; d = s; putint(1); }' 2>&1 | grep -qF 'double'; then
+			echo "ok    qcc: Diagnose nennt double beim Namen"
+		else
+			echo "FAIL  qcc: Diagnose schreibt '?' statt double"; tcfail=1; fail=1
+		fi
 		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
 		tc_check 'int main(){ int x; x = 0x10; putint(x); }' '16'
 		# BITFELDER und "long long" (2026-09-15): beide brachen vorher STILL im
@@ -3171,13 +3199,13 @@ fi
 #     Die Sollwerte diskriminieren: 7.0/2.0 muss 3 ergeben und nicht 4, denn
 #     (int) schneidet Richtung null ab und rundet nicht.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
-	if build/qcc_p 'double g; int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); }' > build/qcc_double_arm64.ir && \
+	if build/qcc_p 'double g; int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); a=8.0; putint((int)(32/a)); putint((int)(10-a)); putint((int)(a+1)); putint((int)(1+a)); }' > build/qcc_double_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_double_arm64.ir build/qcc_double_arm64.s && \
 		grep -q 'fmul' build/qcc_double_arm64.s && grep -q 'fcvtzs' build/qcc_double_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_double_arm64 build/qcc_double_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3')" ] && \
+		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3\n4\n2\n9\n9')" ] && \
 		[ "$(build/qcc_double_arm64)" = "$(python3 tools/qccvm.py build/qcc_double_arm64.ir)" ]; then
-		echo "ok    qcc double ARM64: Rechnen/Vergleiche/Konversionen nativ, gleich wie das VM-Orakel"
+		echo "ok    qcc double ARM64: Rechnen/Vergleiche/Konversionen inkl. gemischter Operanden nativ, gleich wie das VM-Orakel"
 	else
 		echo "FAIL  qcc double ARM64: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
 	fi

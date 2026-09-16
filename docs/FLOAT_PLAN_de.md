@@ -227,12 +227,6 @@ Was dabei aus der Kette wurde:
 
 ### Was bewusst offen blieb
 
-- **Gemischte Arithmetik** (`a + 1` mit `a` als `double`). Der linke Operand
-  liegt beim Emittieren schon unter dem rechten auf dem Stapel; eine
-  Konversion an dieser Stelle brauchte entweder `SWAP` mit zwei
-  verschiedenen Breiten oder eigene Opcodes nach dem Vorbild der
-  `fadd.l`-Form der FPU. Beides ist eine eigene Entscheidung — bis dahin
-  wird gemeldet.
 - **Initialisierer an globalen `double`** (`double g = 2.5;`). Dafür fehlt
   der `GINIT`-Pfad für Bitmuster.
 - **`float`** als eigener Typ. In C ziehen die üblichen Konversionen
@@ -254,3 +248,27 @@ Auch hier zeigte sich wieder das Geschwister-Muster: die Taglisten, die ein
 neues Typkürzel zulassen müssen, liegen an **vier** Stellen (`isNumWord` in
 beiden Backends, die `LARRAY`-Prüfung in ARM64, die Größentabelle im
 Orakel). Wer nur eine anfasst, bekommt einen Abbruch an der nächsten.
+
+## Gemischte Ausdrücke und Zuweisungen (2026-09-16, später am Tag)
+
+`double` war ohne die üblichen arithmetischen Konversionen kaum benutzbar —
+`a * 2` ist in echtem Code allgegenwärtig. Jetzt zieht C89 3.2.1.5 wie
+vorgesehen: ist ein Operand `double`, wird der andere hochgezogen.
+
+Die Schwierigkeit lag nicht in der Regel, sondern in der **Stapellage**.
+Beim Emittieren liegt der linke Operand schon unter dem rechten. Für
+`a + 1` genügt deshalb ein `I2D` auf das oberste Element, für `1 + a` nicht
+— dort muss der Wert **darunter** umgewandelt werden. Statt `SWAP` (mit
+zwei verschiedenen Breiten heikel) gibt es dafür `I2DUNDER`, das auf beiden
+Zielen genau drei Zeilen kostet.
+
+Geprüft wird beides getrennt, und mit nicht-kommutativen Fällen: `10 - a`
+und `32 / a` fielen sofort auf, wenn die Konversion den falschen Operanden
+träfe.
+
+Bei Zuweisungen konvertiert `tcCoerceToTarget` in beide Richtungen, samt
+Zielverengung (`char c = 66.9;` ergibt 66). Das läuft **bewusst nicht** über
+`tcCompatible`: dieselbe Verträglichkeit gälte sonst auch für
+Kettenzuweisung, Argumente und Rückgaben, und dort würde ohne Emission
+still der falsche Wert landen. Lieber hier gezielt umwandeln und dort
+weiter melden.

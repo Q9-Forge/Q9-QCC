@@ -715,6 +715,10 @@ static void emit(FILE* o) {
 				pop(o, "w0");
 				fputs("\tscvtf\td0,w0\n\tfmov\tx0,d0\n", o);
 				push(o, "x0");
+			} else if (strcmp(op, "I2DUNDER") == 0) {
+				/* Die Ganzzahl liegt UNTER dem double (siehe 68k-Backend).
+				   Ein Stapelplatz ist hier 16 Byte breit. */
+				fputs("\tldr\tw0,[sp,#16]\n\tscvtf\td0,w0\n\tfmov\tx0,d0\n\tstr\tx0,[sp,#16]\n", o);
 			} else if (strcmp(op, "D2I") == 0) {
 				/* fcvtzs schneidet Richtung null ab -- dieselbe C-Regel wie
 				   fintrz auf dem 68k. */

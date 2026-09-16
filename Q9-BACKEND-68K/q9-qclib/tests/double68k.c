@@ -79,6 +79,28 @@ int main()
 	a = a * 0.5;
 	bad = bad + pruefe("(double)7 * 0.5 -> 3", (int)a, 3);
 
-	printf("double68k fertig: %d von 13 falsch\n", bad);
+	/* GEMISCHT MIT GANZZAHLEN (2026-09-16). Beide Stellungen, denn der
+	   linke Operand liegt beim Emittieren schon unter dem rechten: einmal
+	   I2D, einmal I2DUNDER. Die Faelle mit "-" und "/" sind nicht
+	   kommutativ -- eine vertauschte Konversion faellt dort auf. */
+	a = 1.5;
+	bad = bad + pruefe("a+1 = 2.5 -> 2", (int)(a + 1), 2);
+	bad = bad + pruefe("1+a = 2.5 -> 2", (int)(1 + a), 2);
+	a = 8.0;
+	bad = bad + pruefe("a-10 = -2", (int)(a - 10), -2);
+	bad = bad + pruefe("10-a = 2", (int)(10 - a), 2);
+	bad = bad + pruefe("32/a = 4", (int)(32 / a), 4);
+	bad = bad + pruefe("a*4 = 32", (int)(a * 4), 32);
+	if (a > 7) bad = bad + pruefe("8.0 > 7", 1, 1);
+	else bad = bad + pruefe("8.0 > 7", 0, 1);
+
+	/* Zuweisung wandelt um, in beide Richtungen */
+	a = 5;
+	bad = bad + pruefe("double a = 5", (int)a, 5);
+	i = 0;
+	i = 2.9;
+	bad = bad + pruefe("int i = 2.9 -> 2", i, 2);
+
+	printf("double68k fertig: %d von 23 falsch\n", bad);
 	return 0;
 }
