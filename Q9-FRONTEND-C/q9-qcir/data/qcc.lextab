@@ -3627,6 +3627,38 @@ static int tcCompatible4(const TCType* wanted, const TCType* got) {
    einer Variablen, das erneute Laden ist also seiteneffektfrei).
    Postfix laesst den ALTEN Wert ganz unten liegen, Praefix laedt den neuen
    nach dem Speichern einfach neu. */
+/* ++/-- AUF EINEM double (2026-09-16). Der Fehler, der das noetig machte:
+   'd' fiel in tcIncDecEmit in den char-Auffangzweig (LOADC/STOREC) und in den
+   drei Adressformen durch den Waechter hindurch -- das Inkrement war
+   WIRKUNGSLOS bzw. rechnete ganzzahlig auf einem FPU-Bitmuster, in beiden
+   Faellen OHNE Meldung. Ein Schrittweiten-Fehler sitzt eben nie an einer
+   Stelle allein (docs/FORTSCHRITT.md), deshalb stehen beide Regeln hier als
+   je EINE Funktion statt als Kopien an fuenf Emissionsstellen. */
+
+/* Die drei ADRESSFORMEN (Struct-Feld, Index-Element, Zeigerziel) laden ueber
+   LOADIND/LOADIDX und schieben den Wert mit DUP/SWAP durch die
+   Praefix/Postfix-Choreographie. Auf acht Byte ist das nicht definiert:
+   docs/IR_OPCODES_de.md fuehrt DDUP/DDROP eigens auf, "weil DUP/DROP bei
+   8 Byte mehrdeutig waeren", und ein SWAP fuer Bloecke gibt es gar nicht.
+   Solange der IR die Blockrotation fehlt, wird hier GEMELDET. */
+static int tcIncDecRejectDouble(const char* at, TCType t, const char* form) {
+	if (!tcIsDouble(t)) return 0;
+	tcErrAt(at);
+	fprintf(stderr, "++/-- on a double %s is not supported yet -- the address form needs a block rotation the IR does not have\n", form);
+	actionErrors++; tcTypePush(tcBadType());
+	return 1;
+}
+
+/* Wird das Ergebnis eines ++/-- als ANWEISUNG verworfen ("a++;" oder der
+   for-Schritt), liegt bei double ein 8-Byte-Block auf dem Stapel -- ein
+   schlichtes DROP raeumt nur einen Slot ab und laesst den Stapel schief.
+   Beide Verwerfstellen gehen deshalb durch diese eine Funktion. */
+static void tcDropExprResult(void) {
+	TCType t = tcTypePop();
+	if (tcIsDouble(t)) printf("DDROP\n");
+	else printf("DROP\n");
+}
+
 static void tcDerefIncDec(const char* start, const char* end, int isDec, int isPre) {
 	const char* p = start;
 	const char* ns; const char* ne;
@@ -3639,6 +3671,7 @@ static void tcDerefIncDec(const char* start, const char* end, int isDec, int isP
 	pt = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
 	if (!tcIsPointer(pt)) { tcErrAt(start); fprintf(stderr, "'*' requires a pointer\n"); actionErrors++; tcTypePush(tcBadType()); return; }
 	vt = tcPointee(pt);
+	if (tcIncDecRejectDouble(start, vt, "pointer target")) return;
 	if (tcIsPointer(vt) || vt.base == 's' || vt.base == 'b') {
 		tcErrAt(start); fprintf(stderr, "++/-- through a pointer is only supported for int/unsigned/char in this version\n");
 		actionErrors++; tcTypePush(tcBadType()); return;
@@ -3670,6 +3703,7 @@ static void tcIndexIncDec(const char* start, const char* end, int isDec, int isP
 	if (slot < 0) global = tcLookupGlobal(start, ne);
 	if (slot < 0 && global < 0) { tcErrAt(start); fprintf(stderr, "unknown variable '%.*s'\n", (int)(ne - start), start); actionErrors++; tcTypePush(tcBadType()); return; }
 	et = slot >= 0 ? tcLocalType(slot) : tcGlobalType(global);
+	if (tcIncDecRejectDouble(start, et, "array element")) return;
 	if (tcIsPointer(et) || et.base == 's' || et.base == 'b') {
 		tcErrAt(start); fprintf(stderr, "++/-- on an indexed element is only supported for int/unsigned/char in this version\n");
 		actionErrors++; tcTypePush(tcBadType()); return;
@@ -3713,6 +3747,7 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 	fi = tcLookupStructField(sid, fs, fe);
 	if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fe - fs), fs); actionErrors++; tcTypePush(tcBadType()); return; }
 	ft = tcStructFieldTypes[sid][fi];
+	if (tcIncDecRejectDouble(start, ft, "struct field")) return;
 	if (tcIsPointer(ft) || ft.base == 's' || ft.base == 'b') {
 		tcErrAt(start); fprintf(stderr, "++/-- on a struct field is only supported for int/unsigned/char in this version\n");
 		actionErrors++; tcTypePush(tcBadType()); return;
@@ -3768,6 +3803,26 @@ static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {
 			if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
 			printf("IPADD %c\n", ptag);
 		}
+		if (slot >= 0) printf("%s %d\n", st, slot); else printf("%s %s\n", st, tcGlobalNames[global]);
+		tcTypePush(t);
+		return;
+	}
+	if (tcIsDouble(t)) {
+		/* Ein double liegt als BLOCK, nicht im Slot -- also LOADD/STORED
+		   bzw. LOADGD/STOREGD, DDUP statt DUP und DADD/DSUB statt ADD/SUB.
+		   Vorher fiel 'd' in den char-Auffangzweig unten (LOADC/STOREC,
+		   "maskiert auf 0xff") und das Inkrement blieb wirkungslos.
+		   Die 1.0 steht als IEEE-754-Bitmuster (0x3FF0000000000000, hi zuerst):
+		   PUSHD nimmt zwei 32-Bit-Haelften, weil die IR keinen
+		   Gleitkommatext traegt -- sie wird von Werkzeugen gelesen, die
+		   selbst kein Gleitkomma haben. */
+		ld = slot >= 0 ? "LOADD" : "LOADGD";
+		st = slot >= 0 ? "STORED" : "STOREGD";
+		if (slot >= 0) printf("%s %d\n", ld, slot); else printf("%s %s\n", ld, tcGlobalNames[global]);
+		/* Praefix liefert den NEUEN Wert, Postfix den alten -- der Unterschied
+		   ist allein, ob das DDUP vor oder nach der Addition steht. */
+		if (isPre) printf("PUSHD 1072693248 0\n%s\nDDUP\n", isDec ? "DSUB" : "DADD");
+		else       printf("DDUP\nPUSHD 1072693248 0\n%s\n", isDec ? "DSUB" : "DADD");
 		if (slot >= 0) printf("%s %d\n", st, slot); else printf("%s %s\n", st, tcGlobalNames[global]);
 		tcTypePush(t);
 		return;
@@ -8635,7 +8690,7 @@ END
 ROUTINE C tc_incdecstmt
 void tc_incdecstmt(const char* start, const char* end) {
 	(void)start; (void)end;
-	printf("DROP\n"); (void)tcTypePop();
+	tcDropExprResult();
 }
 END
 ROUTINE C tc_forstep
@@ -8644,7 +8699,7 @@ void tc_forstep(const char* start, const char* end) {
 	   genau wie tc_assign es fuer assignStmt intern schon tut. */
 	const char* p;
 	for (p = start; p < end; p++) if (*p == '=') { tc_assign(start, end); return; }
-	printf("DROP\n"); (void)tcTypePop();
+	tcDropExprResult();
 }
 END
 ROUTINE C tc_switchbegin

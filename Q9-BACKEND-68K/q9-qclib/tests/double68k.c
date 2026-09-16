@@ -101,6 +101,46 @@ int main()
 	i = 2.9;
 	bad = bad + pruefe("int i = 2.9 -> 2", i, 2);
 
-	printf("double68k fertig: %d von 23 falsch\n", bad);
+	/* ++/-- AUF double (2026-09-16). Der Fehler dahinter: 'd' fiel im
+	   Frontend in den char-Auffangzweig (LOADC/STOREC) und das Inkrement
+	   blieb WIRKUNGSLOS -- ohne jede Meldung. Die Sollwerte sind mit *10
+	   gewaehlt, damit die Nachkommastelle mitgeprueft wird: ein blosses
+	   (int)a haette auch beim falschen Ergebnis noch gestimmt.
+	   Auf dem 68030 zaehlt das doppelt, denn hier rechnet die F-Line-Trap
+	   mit 80 Bit, nicht Pythons 64 -- das VM-Orakel allein genuegt nicht. */
+	a = 1.5;
+	a++;
+	bad = bad + pruefe("a++ auf 1.5 -> 2.5", (int)(a * 10.0), 25);
+	a = 1.5;
+	++a;
+	bad = bad + pruefe("++a auf 1.5 -> 2.5", (int)(a * 10.0), 25);
+	a = 5.5;
+	a--;
+	bad = bad + pruefe("a-- auf 5.5 -> 4.5", (int)(a * 10.0), 45);
+
+	/* Postfix liefert den ALTEN, Praefix den NEUEN Wert -- ohne diese
+	   beiden Faelle ist die Choreographie ungeprueft. */
+	a = 1.5;
+	b = a++;
+	bad = bad + pruefe("b = a++ liefert alt (1.5)", (int)(b * 10.0), 15);
+	a = 1.5;
+	b = ++a;
+	bad = bad + pruefe("b = ++a liefert neu (2.5)", (int)(b * 10.0), 25);
+
+	/* global: LOADGD/STOREGD ist eine eigene Emissionsstelle */
+	g = 1.5;
+	g++;
+	bad = bad + pruefe("globales g++ -> 2.5", (int)(g * 10.0), 25);
+
+	/* Als ANWEISUNG verworfen muss DDROP acht Byte abraeumen, nicht DROP
+	   einen Slot -- schief laeuft der Stapel erst beim Weiterrechnen. */
+	a = 1.5;
+	a++;
+	a++;
+	a++;
+	b = a + 4.5;
+	bad = bad + pruefe("dreimal a++, dann +4.5 = 9.0", (int)(b * 10.0), 90);
+
+	printf("double68k fertig: %d von 30 falsch\n", bad);
 	return 0;
 }

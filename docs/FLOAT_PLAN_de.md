@@ -297,3 +297,39 @@ oder zwei Slots. Das ist ein eigener Schritt, kein Nachtrag.
 geprüft — und hier hätte es nicht einmal einen Fehler gegeben, sondern ein
 falsches Ergebnis. Der Testsatz war von den Ausdrücken her gedacht und
 hatte die Funktionsgrenze schlicht nicht überschritten.
+
+## `++`/`--` auf `double` (2026-09-16, nach dem Nachfassen)
+
+Der Testsatz war von den Ausdrücken her gedacht — und hatte, neben der
+Funktionsgrenze, auch die **Inkrement-Operatoren** nicht überschritten.
+Dort saß derselbe Fehlertyp: `'d'` fiel in den char-Auffangzweig der
+Opcode-Wahl, das Inkrement blieb wirkungslos, gemeldet wurde nichts.
+
+Umgesetzt sind jetzt die beiden Formen, die ohne neue IR auskommen:
+
+```
+  Postfix a++            Präfix ++a
+  LOADD  <slot>          LOADD  <slot>
+  DDUP                   PUSHD  1072693248 0     ; 1.0 als IEEE-754
+  PUSHD  1072693248 0    DADD
+  DADD                   DDUP
+  STORED <slot>          STORED <slot>
+  -> alter Wert bleibt   -> neuer Wert bleibt
+```
+
+Der Unterschied zwischen Präfix und Postfix ist allein, **ob das `DDUP` vor
+oder nach der Addition steht** — deshalb prüfen vier Testfälle gezielt den
+Wert des *Ausdrucks* (`b = a++` gegen `b = ++a`) und nicht nur den der
+Variablen. Global läuft dasselbe über `LOADGD`/`STOREGD`.
+
+Neue Opcodes waren nicht nötig: `DADD`, `DSUB`, `DDUP`, `DDROP`,
+`LOADD`/`STORED` und `LOADGD`/`STOREGD` gab es alle schon, in allen drei
+Konsumenten (68k-Backend, ARM64-Backend, VM-Orakel).
+
+**Was noch fehlt — die drei Adressformen** (`s.d++`, `a[0]++`, `(*p)++`):
+sie arbeiten über `LOADIND`/`LOADIDX` und brauchen für Postfix ein `SWAP`
+zwischen Adresse und Wert. Für einen 8-Byte-Block gibt es das in der IR
+nicht, und `DUP`/`DROP` sind dort ausdrücklich mehrdeutig. Bis die IR eine
+Blockrotation hat, wird gemeldet. Vorher liefen alle drei still durch und
+rechneten mit `PUSH 1 / ADD` ganzzahlig auf einem FPU-Bitmuster — im
+VM-Orakel unsichtbar, weil Python `float + int` richtig addiert.
