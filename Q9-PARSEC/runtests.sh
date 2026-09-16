@@ -473,6 +473,21 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ int a=1; putint(a); { int a=2; putint(a); { int a=3; putint(a); } putint(a); } putint(a); }' '1\n2\n3\n2\n1'
 		tc_check 'int main(){ char buf[4]; buf[0]=65; buf[1]=32; buf[2]=66; buf[3]=0; { char* q = buf; while (*q == 65) q++; } { char* q = buf + 2; putchar(*q); } }' 'B'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 3; p.y = 4; putint(p.x + p.y); }' '7'
+		# SELBSTREFERENZIELLE STRUCTS (2026-09-16). "struct N { struct N *next; }"
+		# meldete "unknown struct or union 'N'" -- der Name wurde erst NACH dem
+		# Rumpf registriert. Damit waren verkettete Listen, Baeume und Graphen
+		# ueberhaupt nicht baubar. tcStructPredeclare traegt den Namen jetzt VOR
+		# dem Rumpf ein; der Eintrag ist zunaechst unvollstaendig (null Felder),
+		# was genuegt, weil ein ZEIGER darauf nur die Zeigergroesse braucht.
+		# Ein Feld vom Typ "struct N" selbst bleibt abgelehnt, es kann also kein
+		# unendliches Layout entstehen.
+		tc_check 'struct N{int v; struct N *next;}; int main(){ struct N a; a.v=7; a.next=0; putint(a.v); }' '7'
+		# das Kernidiom, fuer das man Selbstreferenz ueberhaupt braucht
+		tc_check 'struct N{int v; struct N *n;}; int summe(struct N *p){ int s; s=0; while(p){ s=s+p->v; p=p->n; } return s; } int main(){ struct N a; struct N b; a.v=1;b.v=2; a.n=&b; b.n=0; putint(summe(&a)); }' '3'
+		# Zwischenvariable statt verketteter Zugriff: "a.n->v" geht nicht, das
+		# ist aber eine ALLGEMEINE Grenze, die auch ohne Selbstreferenz besteht
+		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=2; a.n=&b; p=a.n; putint(p->v); }' '2'
+		tc_check 'union U{int i; union U *p;}; int main(){ union U u; u.i=7; putint(u.i); }' '7'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 10; p.y = p.x * 2; putint(p.y); }' '20'
 		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
 		tc_check 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a = 1; m.b = 1000; m.c = 2; putint(m.b); putchar(m.a + 64); putchar(m.c + 64); }' '1000\nAB'

@@ -156,6 +156,17 @@ static char tcStructBuildFieldConst[MAX_STRUCT_FIELDS];
    dem Feld-Body -- die Felder werden wie gewohnt gesammelt, die Registrierung (mit dem
    typedef-Namen selbst als internem struct-Tag) passiert verzoegert in tc_typedefend. */
 static int  tcAnonStructPending = 0;
+/* Index eines struct/union, dessen NAME schon vor dem Rumpf eingetragen
+   wurde, oder -1. Ohne diesen Vorgriff kennt sich
+   "struct N { struct N *next; };" selbst nicht: registriert wurde bisher
+   erst in tcRegisterStruct, also NACH dem Rumpf, und das Feld meldete
+   "unknown struct or union". Damit waren verkettete Listen, Baeume und
+   Graphen ueberhaupt nicht baubar.
+   Der Vorabeintrag ist UNVOLLSTAENDIG (null Felder). Das genuegt: ein
+   ZEIGER auf ihn braucht nur die Zeigergroesse. Ein Feld vom Typ
+   "struct N" selbst bleibt abgelehnt (struct-in-struct geht ohnehin
+   nicht), es kann also kein unendliches Layout entstehen. */
+static int  tcStructPending = -1;
 #define MAX_TYPEDEFS 32
 static char tcTypedefNames[MAX_TYPEDEFS][32];
 static TCType tcTypedefTypes[MAX_TYPEDEFS];
@@ -641,6 +652,18 @@ static int tcLookupStructField(int sid, const char* s, const char* e) {
 	}
 	for (i = 0; i < tcStructFieldCount[sid]; i++) if (tcEq(tcStructFieldNames[sid][i], name)) return i;
 	return -1;
+}
+/* Traegt den NAMEN vor dem Rumpf ein, damit der Rumpf ihn schon sehen kann
+   ("struct N { struct N *next; };"). Ein bereits bekannter Name wird nicht
+   angetastet -- die Duplikatspruefung bleibt damit in tcRegisterStruct. */
+static void tcStructPredeclare(const char* nameStart, const char* nameEnd) {
+	tcStructPending = -1;
+	if (tcLookupStruct(nameStart, nameEnd) >= 0) return;
+	if (tcStructCount >= MAX_STRUCTS) return;
+	tcCopy(tcStructNames[tcStructCount], nameStart, nameEnd);
+	tcStructFieldCount[tcStructCount] = 0;
+	tcStructPending = tcStructCount;
+	tcStructCount++;
 }
 static int tcLookupTypedef(const char* s, const char* e) {
 	char name[32]; int i; tcCopy(name, s, e);
@@ -5347,6 +5370,7 @@ void tc_structbegin(const char* start, const char* end) {
 	tcCopy(tcStructBuildName, start, end);
 	tcStructBuildFieldCount = 0;
 	tcBuildIsUnion = 0;
+	tcStructPredeclare(start, end);
 }
 
 /* Eine union wird wie eine struct gesammelt und auch als struct registriert;
@@ -5355,6 +5379,7 @@ void tc_structbegin(const char* start, const char* end) {
    Layout erbt. */
 void tc_unionbegin(const char* start, const char* end) {
 	tcCopy(tcStructBuildName, start, end);
+	tcStructPredeclare(start, end);
 	tcStructBuildFieldCount = 0;
 	tcBuildIsUnion = 1;
 }
@@ -5383,6 +5408,7 @@ void tc_anonstructbegin(const char* start, const char* end) {
 	   der erste Deklarator einen fremden, laengst veralteten Zeigergrad
 	   erben (2026-09-09, Mehrfachdeklaratoren-Fix). */
 	(void)start; (void)end;
+	tcStructPending = -1;   /* kein Name an dieser Stelle -- nichts vorzumerken */
 	tcStructBuildFieldCount = 0;
 	tcAnonStructPending = 1;
 	tcBasePointers = 0;
@@ -5878,8 +5904,18 @@ static int tcPtrLinear(int v4, int v8) {
 }
 static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	int i; int offset = 0; int sid = tcStructCount; int pass;
-	if (tcStructCount >= MAX_STRUCTS) { tcErrAt(parserActionAt); fprintf(stderr, "too many structs\n"); actionErrors++; return -1; }
-	if (tcLookupStruct(nameStart, nameEnd) >= 0) { tcErrAt(parserActionAt); fprintf(stderr, "duplicate struct\n"); actionErrors++; return -1; }
+	int predeclared = 0;
+	/* Vorab eingetragen (tcStructPredeclare)? Dann DIESEN Eintrag fuellen --
+	   sonst gaebe es den Namen zweimal, und die Duplikatspruefung unten
+	   schluege gegen den eigenen Vorgriff an. */
+	if (tcStructPending >= 0 && tcEqSpan(nameStart, nameEnd, tcStructNames[tcStructPending])) {
+		sid = tcStructPending;
+		predeclared = 1;
+	}
+	if (!predeclared) {
+		if (tcStructCount >= MAX_STRUCTS) { tcErrAt(parserActionAt); fprintf(stderr, "too many structs\n"); actionErrors++; return -1; }
+		if (tcLookupStruct(nameStart, nameEnd) >= 0) { tcErrAt(parserActionAt); fprintf(stderr, "duplicate struct\n"); actionErrors++; return -1; }
+	}
 	if (tcStructBuildFieldCount == 0) { tcErrAt(parserActionAt); fprintf(stderr, "struct needs at least one field\n"); actionErrors++; return -1; }
 	/* Layout: natuerliches Alignment, skalare Feldtypen (inkl. Pointer, seit
 	   2026-07-25) oder Pointer-Arrays -- struct-in-struct bleibt abgelehnt.
@@ -5986,16 +6022,19 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		tcStructByteSizeK[sid] = v4 - TC_PTR_SMALL * n;
 		tcStructByteSizeN[sid] = n;
 	}
-	tcCopy(tcStructNames[tcStructCount], nameStart, nameEnd);
-	tcStructFieldCount[tcStructCount] = tcStructBuildFieldCount;
+	/* Ueber sid, nicht ueber tcStructCount: bei einem vorab eingetragenen
+	   struct sind die beiden NICHT gleich. */
+	tcCopy(tcStructNames[sid], nameStart, nameEnd);
+	tcStructFieldCount[sid] = tcStructBuildFieldCount;
 	for (i = 0; i < tcStructBuildFieldCount; i++) {
-		tcStructFieldTypes[tcStructCount][i] = tcStructBuildFieldTypes[i];
-		tcStructFieldConst[tcStructCount][i] = tcStructBuildFieldConst[i];
-		tcStructFieldArrayLen[tcStructCount][i] = tcStructBuildFieldArrayLen[i];
-		tcStructFieldRowLen[tcStructCount][i] = tcStructBuildFieldRowLen[i];
-		tcCopy(tcStructFieldNames[tcStructCount][i], tcStructBuildFieldNames[i], tcStructBuildFieldNames[i] + strlen(tcStructBuildFieldNames[i]));
+		tcStructFieldTypes[sid][i] = tcStructBuildFieldTypes[i];
+		tcStructFieldConst[sid][i] = tcStructBuildFieldConst[i];
+		tcStructFieldArrayLen[sid][i] = tcStructBuildFieldArrayLen[i];
+		tcStructFieldRowLen[sid][i] = tcStructBuildFieldRowLen[i];
+		tcCopy(tcStructFieldNames[sid][i], tcStructBuildFieldNames[i], tcStructBuildFieldNames[i] + strlen(tcStructBuildFieldNames[i]));
 	}
-	tcStructCount++;
+	if (!predeclared) tcStructCount++;
+	tcStructPending = -1;
 	return sid;
 }
 
