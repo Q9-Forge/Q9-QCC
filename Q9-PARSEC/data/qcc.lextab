@@ -4604,6 +4604,10 @@ static int tcEmitMemberChain(const char* start, const char* end, int slot, int w
 	int global = -1;
 	int sid;
 	int first = 1;
+	/* Ist das gerade erreichte Element ein ZEIGER auf struct (dann ist "->"
+	   richtig) oder ein struct-WERT (dann "."). Beschreibt immer das, was
+	   links vom naechsten Operator steht -- anfangs die Variable selbst. */
+	int curIsPtr;
 	TCType base;
 	TCType cur;
 	if (slot < 0) global = tcLookupGlobal(start, tcNameEnd(start, end));
@@ -4612,6 +4616,7 @@ static int tcEmitMemberChain(const char* start, const char* end, int slot, int w
 	/* Basis: entweder eine struct-Variable oder ein Zeiger darauf. */
 	if (base.pointers > 1) return 0;
 	cur = base;
+	curIsPtr = base.pointers > 0;
 	if (cur.pointers) cur.pointers--;
 	if (cur.base != 's') return 0;
 	sid = cur.structId - 1;
@@ -4624,6 +4629,21 @@ static int tcEmitMemberChain(const char* start, const char* end, int slot, int w
 		if (*p == '.') { viaPtr = 0; p++; }
 		else if (*p == '-' && p + 1 < end && p[1] == '>') { viaPtr = 1; p += 2; }
 		else return 0;                      /* Index o.ae. -- nicht zustaendig */
+		/* Der Operator muss zu dem passen, was LINKS von ihm steht -- nicht
+		   zum Feld dahinter. Das ist der Unterschied, der beim ersten Anlauf
+		   falsch war: bei "p->in.a" gehoert das "->" zu p, nicht zu in.
+		   Ohne eingebettete structs fiel das nie auf, weil dort jede Stufe
+		   ein Zeiger war. */
+		if (viaPtr && !curIsPtr) {
+			tcErrAt(start);
+			fprintf(stderr, "'->' used on a struct value (use '.')\n");
+			actionErrors++; tcTypePush(tcBadType()); return 1;
+		}
+		if (!viaPtr && curIsPtr) {
+			tcErrAt(start);
+			fprintf(stderr, "'.' used on a pointer to struct (use '->')\n");
+			actionErrors++; tcTypePush(tcBadType()); return 1;
+		}
 		p = tcSkipWs(p, end);
 		fs = p; fe = tcNameEnd(fs, end);
 		if (fe == fs) return 0;
@@ -4665,15 +4685,31 @@ static int tcEmitMemberChain(const char* start, const char* end, int slot, int w
 			}
 			return 1;
 		}
-		/* Zwischenstufe: das Feld muss ein Zeiger auf struct sein. */
-		if (!ft.pointers || ft.base != 's') {
+		/* Zwischenstufe: das Feld muss eine struct sein -- als ZEIGER
+		   darauf oder, seit 2026-09-17, als eingebetteter WERT. */
+		if (ft.base != 's') {
 			tcErrAt(start);
-			fprintf(stderr, "chained member access requires a pointer to struct at each step\n");
+			fprintf(stderr, "chained member access requires a struct or a pointer to struct at each step\n");
 			actionErrors++; tcTypePush(tcBadType()); return 1;
 		}
-		if (!viaPtr && base.pointers == 0 && 0) { /* Platzhalter, s. Kommentar oben */ }
-		printf("LOADIND p\n");
-		cur = ft; cur.pointers--;
+		if (ft.pointers) {
+			/* Zeigerfeld: der Zeiger muss GELESEN werden, seine Adresse ist
+			   nur der Weg dorthin. */
+			printf("LOADIND p\n");
+			cur = ft; cur.pointers--;
+			curIsPtr = 1;
+		} else {
+			/* EINGEBETTETES struct: kein LOADIND. Das Feld LIEGT an dieser
+			   Adresse, es zeigt nicht dorthin -- "o.in.a" ist reine
+			   Offset-Addition, offset(in) + offset(a). Ein LOADIND hier
+			   wuerde die ersten vier Byte des Feldes als Adresse deuten und
+			   irgendwohin greifen; genau das ist der Unterschied zwischen
+			   "." auf einem Wert und "->" auf einem Zeiger.
+			   Ein "->" auf einem eingebetteten WERT ist dagegen ein
+			   Programmfehler und wird gemeldet. */
+			cur = ft;
+			curIsPtr = 0;
+		}
 		sid = cur.structId - 1;
 		if (sid < 0 || sid >= tcStructCount) return 0;
 	}
@@ -9402,9 +9438,29 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		   normaler Pointer-Slot (z.B. ein Linked-List-next oder Q9-Run's
 		   qrun_stackval_t* stack) und muss wie jeder andere Pointer erlaubt
 		   sein. */
-		if ((ft.base == 's' && !tcIsPointer(ft)) ||
-		    (ft.base == 'v' && !tcIsPointer(ft))) {
+		if (ft.base == 'v' && !tcIsPointer(ft)) {
 			tcErrAt(parserActionAt); fprintf(stderr, "struct field type not supported in this version\n"); actionErrors++; return -1;
+		}
+		/* struct/union als FELDWERT (2026-09-17). Ein Zeiger darauf war immer
+		   erlaubt; der eingebettete WERT ist neu. Zwei Faelle muessen hier
+		   abgefangen werden, sonst rechnet das Layout unten Unsinn:
+		   1. SELBSTBEZUG. "struct O { struct O in; };" waere unendlich gross.
+		      Er ist ueberhaupt nur formulierbar, seit tcStructPredeclare den
+		      Namen VOR dem Rumpf registriert (s. selbstreferenzielle structs)
+		      -- ein Zeiger auf sich selbst ist richtig und bleibt erlaubt,
+		      der Wert ist es nie.
+		   2. UNVOLLSTAENDIGER Typ. Nach einer blossen Vorwaertsdeklaration
+		      ("struct N;") steht der Eintrag mit NULL Feldern da. Seine
+		      Groesse ist noch unbekannt, ein Zeiger darauf geht trotzdem.
+		      Ohne diese Pruefung belegte das Feld still null Byte. */
+		if (ft.base == 's' && !tcIsPointer(ft)) {
+			int fsid = ft.structId - 1;
+			if (fsid == sid) {
+				tcErrAt(parserActionAt); fprintf(stderr, "struct cannot contain itself by value (use a pointer)\n"); actionErrors++; return -1;
+			}
+			if (fsid < 0 || fsid >= tcStructCount || tcStructFieldCount[fsid] == 0) {
+				tcErrAt(parserActionAt); fprintf(stderr, "struct field has incomplete struct type\n"); actionErrors++; return -1;
+			}
 		}
 		/* ZEIGERARRAYS ALS FELD gehen seit 2026-09-07 (vorher abgelehnt).
 		   Gebraucht hat sie qcc_backend_c.cpp: "char* args[6]" in seiner
@@ -9432,6 +9488,15 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 		maxSize = 0;
 		for (i = 0; i < tcStructBuildFieldCount; i++) {
 			TCType ft = tcStructBuildFieldTypes[i]; int elemSize, align, size;
+			/* Ein eingebettetes struct belegt seine EIGENE Groesse -- und die
+			   ist selbst schon als Paar k+n*P abgelegt, weil es Zeigerfelder
+			   enthalten kann. Hier wird sie fuer die gerade laufende
+			   Zeigergroesse (psize) ausgerechnet, damit beide Durchlaeufe
+			   dasselbe Verfahren benutzen wie fuer jedes andere Feld. */
+			if (ft.base == 's' && !tcIsPointer(ft)) {
+				int fsid = ft.structId - 1;
+				elemSize = tcStructByteSizeK[fsid] + psize * tcStructByteSizeN[fsid];
+			} else
 			elemSize = tcIsPointer(ft) ? psize : (ft.base == 'c' || ft.base == 'b') ? 1 : ft.base == 'h' ? 2 : ft.base == 'd' ? 8 : 4;
 			/* Die AUSRICHTUNG ist bei double nicht die Groesse: xcc richtet ein
 			   double nur auf 2 Byte aus (68k-Wortausrichtung), nicht auf 8 --
@@ -9439,7 +9504,23 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 			   Byte belegt und nicht mit 16. Ohne diese Unterscheidung waeren
 			   QCC-Strukturen mit double nicht mehr ABI-gleich zu xcc, und
 			   genau dort sitzen die MWOS-Header. */
-			align = (ft.base == 'd' && !tcIsPointer(ft)) ? 2 : elemSize;
+			/* Ausrichtung eines eingebetteten structs: VIER, nicht seine
+			   Groesse. QCC rundet jede Strukturgroesse ohnehin auf 4 auf
+			   (s. unten), damit ist 4 die natuerliche und zugleich
+			   sicherste Ausrichtung -- die Groesse selbst waere bei einem
+			   grossen struct eine unsinnig strenge Forderung (ein 40-Byte-
+			   struct auf 40 auszurichten).
+			   ANMERKUNG zur ABI (gemessen 17.09.2026, s. ISO_C_GAP_LIST):
+			   xcc richtet in einer Struktur ALLES auf hoechstens 2 aus und
+			   rundet die Gesamtgroesse nicht auf 4. QCC weicht davon schon
+			   bei "struct{char c; int i;}" ab (QCC 8, xcc 6) -- das ist ein
+			   VORBESTEHENDER Unterschied an jeder gemischten Struktur, nicht
+			   erst am eingebetteten struct. Hier wird bewusst die BESTEHENDE
+			   QCC-Regel fortgeschrieben: zwei verschiedene Regeln in einer
+			   Struktur waeren schlimmer als eine durchgaengig eigene. Die
+			   ABI-Angleichung ist ein eigener Schritt. */
+			align = (ft.base == 'd' && !tcIsPointer(ft)) ? 2 :
+			        (ft.base == 's' && !tcIsPointer(ft)) ? 4 : elemSize;
 			size = tcStructBuildFieldArrayLen[i] > 0 ? elemSize * tcStructBuildFieldArrayLen[i] : elemSize;
 			/* UNION: alle Felder beginnen bei 0 und teilen sich denselben
 			   Speicher; die Groesse ist die des groessten Felds. Sonst wie
