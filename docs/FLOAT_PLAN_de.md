@@ -629,3 +629,40 @@ nativ lief nie jemand dagegen. **Ein eigener nativer Testfall prüft jetzt
 Die Lehre ist dieselbe wie bei `LOADIND d`: ein Backend-Unterschied, den der
 68k nicht kennt (dort sind `DUP`/`DUPP` identisch und Stackelemente vier
 Byte), wird nur sichtbar, wenn man auf dem anderen Ziel wirklich ausführt.
+
+## Arrays von `double` und `++`/`--` über Adressen (2026-09-16)
+
+### Erst ein Fund: `double a[3]` war auf keinem Ziel übersetzbar
+
+Beim Vorbereiten der Adressformen stellte sich heraus, dass
+`LOADIDX`/`STOREIDX` nur `i`/`p`/`h`/`c`/`b` kannten und für `'d'` mit
+**„unbekannter Arraytyp"** abbrachen — auf **beiden** Zielen. Nur das
+VM-Orakel konnte den Fall, deshalb war er nie aufgefallen, obwohl
+`double t[10]` Alltagscode ist.
+
+Die Skalierung stimmte schon (`tagShift` kennt 8 → 3); es fehlten die
+Typzulassung und die 8-Byte-Befehle. Auf dem 68k sind das `fmove.d`, auf
+ARM64 ist `double` so breit wie ein Zeiger (`x0` statt `w0`, Skalierung
+`#3`).
+
+### Dann der neue Opcode `DSWAP`
+
+Beim **Postfix** muss der alte Wert als Ergebnis **unter** der Adresse liegen
+bleiben. `SWAP` taugt dafür nicht: es tauscht zwei Langworte und zerrisse die
+acht Byte. `DSWAP` tauscht das oberste `double` mit dem 4-Byte-Wert darunter
+— einer Adresse (Struct-Feld, Zeigerziel) oder einem Index (Array-Element):
+
+| Ziel | Umsetzung |
+|---|---|
+| 68k | `fmove.d (a7)+,fp0` / `move.l (a7)+,d1` / beide zurück |
+| ARM64 | wie `SWAP` — dort belegt ein `double` genau ein Stackelement |
+| VM | wie `SWAP` — dort ist es ein Eintrag |
+
+Der **Präfix**-Fall braucht ihn nicht; dort genügt die vorhandene
+Choreographie. `(*p)++` kommt ebenfalls ohne aus, weil `tcDerefIncDec` den
+Zeiger mehrfach lädt, statt ihn umzuschieben.
+
+Damit gehen `s.d++`, `++s.d`, `a[0]++`, `a[0]--`, `(*p)++` und `++(*p)` — mit
+dem richtigen Wert des *Ausdrucks*, nicht nur der Variablen. Geprüft im
+Orakel, nativ auf ARM64 und auf echtem 68030 (`double68k.sh`, jetzt 78
+Fälle).

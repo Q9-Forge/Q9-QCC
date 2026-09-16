@@ -1188,10 +1188,19 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		   added as the third size. */
 		int elemSize = tagSize(insP->args[2]);
 		int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
+		/* 'd' (2026-09-16): ein Array von double war hier NICHT vorgesehen --
+		   "double a[3]; a[1]=2.5;" brach mit "unbekannter Arraytyp" ab, auf
+		   BEIDEN Zielen. Nur das VM-Orakel kannte den Fall. Die Skalierung
+		   stimmte schon (tagShift kennt 8 -> 3), es fehlten die Typzulassung
+		   und die FPU-Befehle fuer acht Byte. */
+		int isD = strcmp(insP->args[2], "d") == 0;
 		if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 &&
 		    strcmp(insP->args[2], "h") != 0 && strcmp(insP->args[2], "c") != 0 &&
-		    strcmp(insP->args[2], "b") != 0) fatal("unbekannter Arraytyp");
-		if (strcmp(op, "STOREIDX") == 0 || keepValue) fputs("\tmove.l\t(a7)+,d0\n", out);
+		    strcmp(insP->args[2], "b") != 0 && !isD) fatal("unbekannter Arraytyp");
+		if (strcmp(op, "STOREIDX") == 0 || keepValue) {
+			if (isD) fputs("\tfmove.d\t(a7)+,fp0\n", out);
+			else fputs("\tmove.l\t(a7)+,d0\n", out);
+		}
 		fputs("\tmove.l\t(a7)+,d1\n", out);
 		if (elemSize > 1) fprintf(out, "\tlsl.l\t#%d,d1\n", tagShift(insP->args[2]));
 		if (strcmp(insP->args[0], "L") == 0) {
@@ -1207,9 +1216,15 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		}
 		fputs("\tadd.l\td1,a0\n", out);
 		if (strcmp(op, "LOADIDX") == 0) {
-			if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
-			else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
-			fputs("\tmove.l\td0,-(a7)\n", out);
+			if (isD) fputs("\tfmove.d\t(a0),fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			else {
+				if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
+				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
+				fputs("\tmove.l\td0,-(a7)\n", out);
+			}
+		} else if (isD) {
+			fputs("\tfmove.d\tfp0,(a0)\n", out);
+			if (keepValue) fputs("\tfmove.d\tfp0,-(a7)\n", out);
 		} else {
 			if (elemSize == 1 && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
 			else if (elemSize == 2 && keepValue) fputs("\tand.l\t#$ffff,d0\n", out);
@@ -1759,6 +1774,13 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#255,d0\n\tmove.l\td0,(a7)\n", out);
 			} else if (strcmp(op, "NARROWH") == 0) {
 				fputs("\tmove.l\t(a7),d0\n\tandi.l\t#65535,d0\n\tmove.l\td0,(a7)\n", out);
+			} else if (strcmp(op, "DSWAP") == 0) {
+				/* Tauscht das oberste double (ACHT Byte) mit dem 4-Byte-Wert
+				   darunter -- einer Adresse oder einem Index. Gebraucht fuer
+				   "s.d++", "a[i]++" und "(*p)++": dort muss der ALTE Wert als
+				   Ergebnis unter der Adresse liegen bleiben. SWAP kann das
+				   nicht, es tauscht zwei Langworte und zerrisse den double. */
+				fputs("\tfmove.d\t(a7)+,fp0\n\tmove.l\t(a7)+,d1\n\tfmove.d\tfp0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "SWAP") == 0) {
 				/* Swap the top two stack elements. Needed wherever a result must remain
 				   UNDER an address: "(*p)++", "a[i]++", and chained assignment all

@@ -692,10 +692,7 @@ if command -v python3 >/dev/null 2>&1; then
 			'double t[3] = {1.0,2.0,3.0}; int main(){ putint(1); }|initializer lists for double arrays' \
 			'int i = 1.5; int main(){ putint(1); }|floating point initializer requires a double' \
 			'int i = 1e2; int main(){ putint(1); }|floating point initializer requires a double' \
-			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer' \
-			'struct S { double d; }; int main(){ struct S s; s.d=1.5; s.d++; putint(1); }|double struct field' \
-			'int main(){ double a[3]; a[0]=1.5; a[0]++; putint(1); }|double array element' \
-			'int main(){ double a; double *p; a=1.5; p=&a; (*p)++; putint(1); }|double pointer target'
+			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer'
 		do
 			prog="${prog_msg%%|*}"; msg="${prog_msg##*|}"
 			if build/qcc_p "$prog" 2>&1 | grep -qF "$msg"; then
@@ -848,6 +845,27 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'double g; int main(){ double *p; g=1.5; p=&g; putint((int)((*p)*10.0)); }' '15'
 		tc_check 'int main(){ double t[3]; double *p; t[1]=2.5; p=&t[1]; putint((int)((*p)*10.0)); }' '25'
 		tc_check 'int main(){ double t[3]; double *p; double s; int i; t[0]=1.0;t[1]=2.0;t[2]=3.0; p=t; s=0.0; for(i=0;i<3;i++){ s=s+(*p); p++; } putint((int)s); }' '6'
+		# ARRAYS VON double (2026-09-16): "double a[3]; a[1]=2.5;" brach auf
+		# BEIDEN Zielen mit "unbekannter Arraytyp" ab -- LOADIDX/STOREIDX
+		# kannten nur i/p/h/c/b. Nur das VM-Orakel konnte den Fall, deshalb
+		# war er unbemerkt geblieben. Die Skalierung stimmte schon
+		# (tagShift 8 -> 3), es fehlten Typzulassung und 8-Byte-Befehle.
+		tc_check 'int main(){ double a[3]; a[1]=2.5; putint((int)(a[1]*10.0)); }' '25'
+		tc_check 'int main(){ double a[3]; int i; double s; for(i=0;i<3;i++) a[i]=i*1.5; s=0.0; for(i=0;i<3;i++) s=s+a[i]; putint((int)(s*10.0)); }' '45'
+		tc_check 'double g[3]; int main(){ g[2]=4.5; putint((int)(g[2]*10.0)); }' '45'
+		# ++/-- UEBER DIE DREI ADRESSFORMEN (2026-09-16). Beim POSTFIX muss der
+		# alte Wert als Ergebnis UNTER der Adresse liegen bleiben; SWAP taugt
+		# dafuer nicht (es tauscht zwei Langworte und zerrisse die acht Byte),
+		# deshalb der neue Opcode DSWAP. Der Praefix-Fall kommt ohne ihn aus.
+		tc_check 'struct S{double d;}; int main(){ struct S s; s.d=1.5; s.d++; putint((int)(s.d*10.0)); }' '25'
+		tc_check 'struct S{double d;}; int main(){ struct S s; double b; s.d=1.5; b=s.d++; putint((int)(b*10.0)); }' '15'
+		tc_check 'struct S{double d;}; int main(){ struct S s; double b; s.d=1.5; b=++s.d; putint((int)(b*10.0)); }' '25'
+		tc_check 'int main(){ double a[3]; a[0]=1.5; a[0]++; putint((int)(a[0]*10.0)); }' '25'
+		tc_check 'int main(){ double a[3]; double b; a[0]=1.5; b=a[0]++; putint((int)(b*10.0)); }' '15'
+		tc_check 'int main(){ double a[3]; double b; a[0]=5.5; b=a[0]--; putint((int)(b*10.0)); }' '55'
+		tc_check 'int main(){ double a; double *p; a=1.5; p=&a; (*p)++; putint((int)(a*10.0)); }' '25'
+		tc_check 'int main(){ double a; double *p; double b; a=1.5; p=&a; b=(*p)++; putint((int)(b*10.0)); }' '15'
+		tc_check 'int main(){ double a; double *p; double b; a=1.5; p=&a; b=++(*p); putint((int)(b*10.0)); }' '25'
 		# double IN BEDINGUNGEN (2026-09-16). C89 3.6.4.1/3.6.5: eine Bedingung
 		# darf JEDEN skalaren Typ haben und heisst "ungleich 0". Fuer Ganzzahlen
 		# und Zeiger galt das in QCC laengst, double fehlte -- es wurde als
@@ -3375,12 +3393,12 @@ fi
 #     Beide Konstrukte sind gewoehnlicher C-Code; sie liefen im Orakel gruen
 #     und nativ gar nicht. Deshalb hier ein eigener nativer Testfall.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
-	if build/qcc_p 'struct S { int n; int m; }; int main(){ struct S s; int a[3]; int *p; int x; s.n=5; s.m=7; a[0]=11; x=20; p=&x; putint(s.n++); putint(s.n); putint(++s.m); putint(s.m); putint(a[0]++); putint(a[0]); putint(a[0]--); putint(a[0]); putint((*p)++); putint(x); }' > build/qcc_incdec_arm64.ir && \
+	if build/qcc_p 'struct S { int n; int m; }; struct D { double d; }; int main(){ struct S s; struct D q; int a[3]; double e[3]; int *p; double *dp; int x; double y; double b; s.n=5; s.m=7; a[0]=11; x=20; p=&x; q.d=1.5; e[0]=2.5; y=3.5; dp=&y; putint(s.n++); putint(s.n); putint(++s.m); putint(s.m); putint(a[0]++); putint(a[0]); putint(a[0]--); putint(a[0]); putint((*p)++); putint(x); b=q.d++; putint((int)(b*10.0)); putint((int)(q.d*10.0)); b=e[0]++; putint((int)(b*10.0)); b=(*dp)++; putint((int)(b*10.0)); putint((int)(y*10.0)); }' > build/qcc_incdec_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_incdec_arm64.ir build/qcc_incdec_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_incdec_arm64 build/qcc_incdec_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/qcc_incdec_arm64)" = "$(printf '5\n6\n8\n8\n11\n12\n12\n11\n20\n21')" ] && \
+		[ "$(build/qcc_incdec_arm64)" = "$(printf '5\n6\n8\n8\n11\n12\n12\n11\n20\n21\n15\n25\n25\n35\n45')" ] && \
 		[ "$(build/qcc_incdec_arm64)" = "$(python3 tools/qccvm.py build/qcc_incdec_arm64.ir)" ]; then
-		echo "ok    qcc ++/-- ARM64: struct-Feld, Array-Element und Zeigerziel nativ korrekt (SWAP/DUPP)"
+		echo "ok    qcc ++/-- ARM64: struct-Feld, Array-Element und Zeigerziel nativ korrekt, int wie double (SWAP/DUPP/DSWAP)"
 	else
 		echo "FAIL  qcc ++/-- ARM64: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
 	fi
