@@ -628,13 +628,71 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ putint(sizeof(int)); }' '4'
 		tc_check 'int main(){ putint(sizeof(short)); }' '2'
 		tc_check 'struct R { char a; short s; }; int main(){ putint(sizeof(struct R)); }' '4'
-		# Gleitkomma-LITERALE werden gemeldet, nicht still verschluckt -- und der
-		# Punkt im Member-Zugriff darf davon nicht betroffen sein.
-		if build/qcc_p 'int main(){ double x; x = 1.5; return 0; }' 2>&1 | grep -qF 'floating point literals are not supported'; then
-			echo "ok    qcc: Gleitkomma-Literal wird gemeldet"
+		# GLEITKOMMA (2026-09-16): Literale werden nach IEEE-754 umgerechnet --
+		# mit Ganzzahlarithmetik, weil QCC sich selbst uebersetzt und dabei kein
+		# Gleitkomma hat. Der Umrechner steht wortgleich in qcc.lextab und in
+		# tools/dec2ieee.c; die Bitmuster unten sind nachgerechnet, nicht vom
+		# Umrechner selbst erzeugt.
+		if build/qcc_p 'int main(){ double x; x = 1.5; return 0; }' 2>/dev/null | grep -qF 'PUSHD 1073217536 0'; then
+			echo "ok    qcc: 1.5 wird zum richtigen Bitmuster"
 		else
-			echo "FAIL  qcc: Gleitkomma-Literal scheitert still"; tcfail=1; fail=1
+			echo "FAIL  qcc: 1.5 ergibt nicht 0x3FF8000000000000"; tcfail=1; fail=1
 		fi
+		if build/qcc_p 'int main(){ double x; x = 0.1; return 0; }' 2>/dev/null | grep -qF 'PUSHD 1069128089 2576980378'; then
+			echo "ok    qcc: 0.1 wird zum richtigen Bitmuster (beide Haelften)"
+		else
+			echo "FAIL  qcc: 0.1 ergibt nicht 0x3FB999999999999A"; tcfail=1; fail=1
+		fi
+		# Rechnen, Variablen, Vergleiche -- geprueft ueber das VM-Orakel.
+		tc_check 'int main(){ double x; x = 1.5; putint((int)x); }' '1'
+		tc_check 'int main(){ putint((int)(1.5+2.0)); }' '3'
+		tc_check 'int main(){ putint((int)(10.0/4.0)); }' '2'
+		tc_check 'int main(){ putint((int)(1.5*2.0)); }' '3'
+		tc_check 'int main(){ putint((int)(3.0-5.0)); }' '-2'
+		# D2I schneidet Richtung null ab, rundet NICHT -- sonst kaeme -3 heraus.
+		tc_check 'int main(){ putint((int)-2.5); }' '-2'
+		tc_check 'int main(){ putint((int)3.99); }' '3'
+		# I2D und zurueck
+		tc_check 'int main(){ putint((int)(double)7); }' '7'
+		# Zwei lokale double duerfen sich nicht ueberlappen (Blockspeicher!)
+		tc_check 'int main(){ double a; double b; a=1.5; b=9.5; putint((int)(a+b)); }' '11'
+		# ... auch nicht mit einem int im selben Rahmen
+		tc_check 'int main(){ int i; double d; i=7; d=2.5; putint(i+(int)d); }' '9'
+		tc_check 'double f(void){ double t; t = 6.5; return t; } int main(){ putint((int)f()); }' '6'
+		tc_check 'double g; int main(){ g = 3.75; putint((int)g); }' '3'
+		tc_check 'int main(){ double s; int i; s=0.0; i=0; while(i<4){ s = s + 1.5; i=i+1; } putint((int)s); }' '6'
+		# Nachkommastellen ueberleben eine Rechnung: 0.1+0.2 liegt knapp UEBER 0.3
+		tc_check 'int main(){ double a; a = 0.1 + 0.2; putint((int)(a*10.0)); }' '3'
+		# Vergleiche, alle sechs Formen
+		tc_check 'int main(){ double a; double b; a=1.5; b=2.5; if (a<b) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; double b; a=3.5; b=2.5; if (a>b) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; a=2.0; if (a==2.0) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; a=2.0; if (a!=2.0) putint(1); else putint(0); }' '0'
+		tc_check 'int main(){ double a; a=2.0; if (a<=2.0) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; a=2.0; if (a>=3.0) putint(1); else putint(0); }' '0'
+		# Der Punkt im Member-Zugriff darf von floatLit nicht betroffen sein.
+		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
+		# Was NOCH NICHT geht, wird GEMELDET statt still danebenzugreifen:
+		for prog_msg in \
+			'int main(){ double a; a=1.5; putint((int)(a+1)); }|mixed double and integer arithmetic' \
+			'int main(){ double a; a=1.5; if (a<1) putint(1); }|mixed double and integer comparison' \
+			'double g = 2.5; int main(){ putint(1); }|initializers for double globals' \
+			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer'
+		do
+			prog="${prog_msg%%|*}"; msg="${prog_msg##*|}"
+			if build/qcc_p "$prog" 2>&1 | grep -qF "$msg"; then
+				echo "ok    qcc: gemeldet -- $msg"
+			else
+				echo "FAIL  qcc: nicht gemeldet -- $msg"; tcfail=1; fail=1
+			fi
+		done
+		# HEX UND SUFFIXE IM SKALAREN GLOBALEN INITIALISIERER (2026-09-16):
+		# "int g = 0x10;" scheiterte STILL -- dieselbe Wurzel wie bei den
+		# Initialisiererlisten, nur an der zweiten Stelle.
+		tc_check 'int g = 0x10; int main(){ putint(g); }' '16'
+		tc_check 'int g = 5U; int main(){ putint(g); }' '5'
+		tc_check 'int g = -0x20; int main(){ putint(g); }' '-32'
+		tc_check 'int g = 5; int main(){ putint(g); }' '5'
 		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
 		tc_check 'int main(){ int x; x = 0x10; putint(x); }' '16'
 		# BITFELDER und "long long" (2026-09-15): beide brachen vorher STILL im

@@ -225,10 +225,18 @@ arraySize  = "[" [ constSize ] "]" .
 arraySizeN = "[" constSize "]" .
 constSize  = globalNumber { constSizeOp globalNumber } .
 constSizeOp = "+" | "-" | "*" .
-globalValue = globalNumber | globalNeg | globalBool .
+/* HEX, SUFFIXE UND GLEITKOMMA IM GLOBALEN INITIALISIERER (2026-09-16):
+   globalNumber las wie initNumber nur Dezimalziffern -- "int g = 0x10;"
+   scheiterte damit STILL, obwohl dieselbe Zahl in jedem Ausdruck gelesen
+   wird. globalFloat ist eine ABSICHTLICH AKTIONSLOSE Kopie von floatLit:
+   in einer Datendefinition gibt es keinen Auswertungsstapel, auf den
+   tc_floatlit ein PUSHD legen koennte. Die Form muss hier nur GELESEN
+   werden, damit tcGlobalOne sie melden kann statt still abzubrechen. */
+globalValue = globalFloat | globalNumber | globalNeg | globalBool .
+globalFloat = digit { digit } "." { digit } .
 globalBool  = "true" | "false" .
 globalNeg   = "-" globalNumber .
-globalNumber = digit { digit } .
+globalNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
 
 /* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
    IMMER vorhandenen Rumpfs entweder einen echten Rumpf (funcBody) ODER eine

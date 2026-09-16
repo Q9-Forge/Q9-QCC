@@ -3,6 +3,7 @@
 # Liest IR-Text (stdin oder Dateiargument), fuehrt ihn auf einer Operanden-Stack-
 # Maschine mit Aufruf-Stack aus, startet bei Funktion 'main'. Ausgabe: PRINT-Werte.
 import re
+import struct
 import sys
 
 
@@ -207,6 +208,55 @@ def run(prog):
             opstack.append(globals_[args[0]][0]); ip += 1
         elif op == "STOREGP":
             globals_[args[0]][0] = opstack.pop(); ip += 1
+        # ---- Gleitkomma (2026-09-16) -------------------------------------
+        # Ein double liegt NICHT in einem Slot, sondern als Block -- die
+        # Slots sind zielabhaengig breit (68k 4 Byte, ARM64 16), ein Block
+        # ist es nicht. Siehe docs/FLOAT_IR_ENTWURF_de.md.
+        #
+        # ACHTUNG Genauigkeit: Python rechnet mit 64 Bit, die 68k-FPU
+        # intern mit 80 (fadd.x). Vergleichstests gegen echte Hardware
+        # duerfen deshalb nur Werte verwenden, die in beiden exakt sind.
+        elif op == "PUSHD":
+            hi = int(args[0]) & 0xffffffff
+            lo = int(args[1]) & 0xffffffff
+            opstack.append(struct.unpack(">d", struct.pack(">II", hi, lo))[0])
+            ip += 1
+        elif op == "LOADD":
+            opstack.append(frames[-1][2][int(args[0])][0]); ip += 1
+        elif op == "STORED":
+            frames[-1][2][int(args[0])][0] = float(opstack.pop()); ip += 1
+        elif op == "LOADGD":
+            opstack.append(globals_[args[0]][0]); ip += 1
+        elif op == "STOREGD":
+            globals_[args[0]][0] = float(opstack.pop()); ip += 1
+        elif op == "DADD":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a + b); ip += 1
+        elif op == "DSUB":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a - b); ip += 1
+        elif op == "DMUL":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a * b); ip += 1
+        elif op == "DDIV":
+            b = opstack.pop(); a = opstack.pop()
+            if b == 0.0:
+                sys.stderr.write("qccvm: Division durch null (double)\n")
+                return 2
+            opstack.append(a / b); ip += 1
+        elif op == "DNEG":
+            opstack.append(-opstack.pop()); ip += 1
+        elif op in ("DCMPEQ", "DCMPNE", "DCMPLT", "DCMPLE", "DCMPGT", "DCMPGE"):
+            b = opstack.pop(); a = opstack.pop()
+            r = {"DCMPEQ": a == b, "DCMPNE": a != b, "DCMPLT": a < b,
+                 "DCMPLE": a <= b, "DCMPGT": a > b, "DCMPGE": a >= b}[op]
+            opstack.append(1 if r else 0); ip += 1
+        elif op == "I2D":
+            opstack.append(float(opstack.pop())); ip += 1
+        elif op == "D2I":
+            # C schneidet Richtung null ab, rundet nicht -- wie fintrz.
+            opstack.append(int(opstack.pop())); ip += 1
+        elif op == "DDUP":
+            opstack.append(opstack[-1]); ip += 1
+        elif op == "DDROP":
+            opstack.pop(); ip += 1
         elif op == "LARRAY":
             frames[-1][2][int(args[0]) if args[0].isdigit() else args[0]] = [0] * int(args[2]); ip += 1
         elif op == "PUSHADDR":
