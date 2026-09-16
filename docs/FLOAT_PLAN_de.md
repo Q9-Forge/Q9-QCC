@@ -414,3 +414,54 @@ allein beweist nichts über die Ablage.
 - **`++`/`--` auf `s.d`, `a[0]`, `(*p)`** — seit `LOADIND d` stimmt, fehlt
   nur noch die Blockrotation für den Postfix-Fall (`SWAP` über acht Byte).
 - `printf("%f")` (qclib) und `float` als eigener Typ.
+
+## Initialisierer an globalen `double` (2026-09-16)
+
+`double PI = 3.14159;` geht jetzt. Der Wert steht als **Bitmuster** in den
+Daten — eine Zahl kann ihn nicht tragen, und das Global-Datenmodell der
+Backends hält einen `int` je Element.
+
+**Neuer IR-Opcode `GINITD <name> <idx> <hi> <lo>`**, zwei 32-Bit-Hälften wie
+bei `PUSHD`. **Welche zuerst im Speicher landet, entscheidet das Backend** —
+der 68k ist big-endian und schreibt zwei `dc.l`, hi zuerst; ARM64 ist
+little-endian und schreibt ein `.quad`. Das Frontend darf die Reihenfolge
+deshalb nicht festlegen, und genau dafür gibt es den eigenen Opcode statt
+zweier `GINIT`.
+
+Umgerechnet wird mit **demselben Konverter wie beim Literal im Ausdruck**
+(`qccDecToDouble` aus `tc_floatlit`, per Vorwärtsdeklaration). Sonst hätte
+`double g = 0.1;` ein anderes Bitmuster als `a = 0.1;` — ein Testfall prüft
+gezielt, dass beide gleich sind.
+
+Mitgekommen:
+
+- **`globalNeg` kennt jetzt Gleitkomma** (`globalNeg = "-" ( globalFloat |
+  globalNumber )`). Vorher scheiterte `double g = -2.5;` am Parser, stumm.
+- **`double g = 5;`** — eine ganze Zahl ist ein gültiger Initialisierer
+  (C89 3.5.7) und wird gewandelt statt in den Ganzzahlpfad zu laufen.
+- **`initFloat`** als aktionslose Regel, damit `double t[3] = {1.0, 2.0};`
+  überhaupt *gelesen* und dann **gemeldet** wird. Vorher scheiterte es am
+  Listenparser mit „bad or oversized array initializer" — einer Meldung, die
+  in die Irre führt. Umgesetzt sind Listen noch nicht.
+- **68k, `!hasGinit`-Zweig:** ein uninitialisiertes globales `double` bekam
+  dort `tagSuffix()`-gesteuert nur **vier** Byte je Element. Sichtbar wird
+  das nur ohne `-remotedata`, weil sonst der vsect greift — trotzdem ein
+  echter Fehler, jetzt zwei `dc.l`.
+
+**`MAX_GLOBALS` von 2048 auf 3072 angehoben.** Gemessen: der Selbsthost
+brauchte 2053 und riss die alte Grenze um fünf. Der Zuwachs kommt fast
+ausschließlich aus String-Literalen — **jede neue Diagnose im Frontend ist
+ein eigenes `__strN`-Global**, und der Gleitkomma-Ausbau hat viele gebracht.
+Bewusst nicht auf den gemessenen Bedarf gesetzt; Preis sind rund 110 KB im
+Backend-Modul.
+
+### Weiterhin offen
+
+- **Initialisiererlisten für `double`-Arrays** (`double t[3] = {1.0,2.0}`) —
+  `tcInitList` liest Ganzzahlen; jeder Wert müsste als Bitmuster durch.
+- **Exponentliterale** (`1e2`) — werden **stumm** abgelehnt (Exit 1, leerer
+  stderr). Nötig sind die EBNF-Regel samt `globalFloat`/`initFloat`-Kopien
+  und der Exponent im Umrechner.
+- **`++`/`--` auf `s.d`, `a[0]`, `(*p)`** — es fehlt nur noch die
+  Blockrotation für den Postfix-Fall.
+- `printf("%f")` (qclib) und `float` als eigener Typ.

@@ -149,6 +149,13 @@ def run(prog):
             globals_[args[0]] = [0] * int(args[2])
         elif op == "GINIT":
             globals_[args[0]][int(args[1])] = int(args[2])
+        elif op == "GINITD":
+            # Anfangswert eines globalen double, als zwei 32-Bit-Haelften
+            # (hi zuerst) -- dieselbe Darstellung wie PUSHD, weil die IR von
+            # Werkzeugen gelesen wird, die selbst kein Gleitkomma haben.
+            ghi = int(args[2]) & 0xffffffff
+            glo = int(args[3]) & 0xffffffff
+            globals_[args[0]][int(args[1])] = struct.unpack(">d", struct.pack(">II", ghi, glo))[0]
         elif op == "GINITADDR":
             # Die ADRESSE eines anderen Globalen als Anfangswert -- entsteht aus
             # einem String-Literal in einer Initialisiererliste
@@ -392,7 +399,7 @@ def run(prog):
                 if a.block is not b.block: raise RuntimeError("qccvm: comparison of unrelated pointers")
                 result = a.offset < b.offset if op == "PCMPLT" else a.offset <= b.offset if op == "PCMPLE" else a.offset > b.offset if op == "PCMPGT" else a.offset >= b.offset
             opstack.append(1 if result else 0); ip += 1
-        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
+        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITD" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
             ip += 1
         elif op == "JMP":
             ip = label_at[args[0]]
