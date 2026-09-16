@@ -15,6 +15,11 @@
 struct I { int a; int b; };
 struct P { char base; unsigned char pointers; unsigned char structId; unsigned char pad; };
 
+/* SELBSTREFERENZIELL (2026-09-16): erst seit tcStructPredeclare moeglich --
+   vorher meldete das Feld "unknown struct or union 'N'", weil der Name erst
+   NACH dem Rumpf registriert wurde. Damit war keine verkettete Liste baubar. */
+struct N { int v; struct N *next; };
+
 struct I tab[4];
 struct I *gtab;            /* fuer den globalen Zeigerindex, Fall 37 */
 static struct P grid[4][4];   /* fuer die 2D-Faelle */
@@ -25,6 +30,8 @@ static int depth;
 
 static struct I mk(int v)        { struct I t; t.a = v; t.b = v + 1; return t; }
 static int      use(struct I s)  { return s.a; }
+static int      listSum(struct N *p) { int s; s = 0; while (p) { s = s + p->v; p = p->next; } return s; }
+static int      listLen(struct N *p) { int n; n = 0; while (p) { n = n + 1; p = p->next; } return n; }
 static struct P bad(void)        { struct P t; t.base = 63; t.pointers = 0; t.structId = 0; t.pad = 0; return t; }
 static struct P pop(void)        { return depth > 0 ? vals[--depth] : bad(); }
 static struct P pointee(struct P t) { if (t.pointers) t.pointers--; return t; }
@@ -245,6 +252,26 @@ int main(void)
 	mark(41); { union U2 u; union U2 *up; up = &u; up->a = 95; val(up->b); }
 	/* 42 big-endian: das niederwertigste Byte liegt HINTEN */
 	mark(42); { union U3 u; u.i = 5; val(u.c[3] * 10 + u.c[0]); }
+
+	/* 43-46 SELBSTREFERENZIELLE STRUCTS (2026-09-16). Auf echter Hardware
+	   zaehlt hier, dass der Zeiger im Feld wirklich vier Byte belegt und die
+	   Kette ueber echten Speicher laeuft -- im VM-Orakel ist ein Zeiger ein
+	   Python-Objekt und sagt darueber nichts. */
+	/* 43 deklarieren und das eigene Feld lesen */
+	mark(43); { struct N a; a.v = 96; a.next = 0; val(a.v); }
+	/* 44 ueber den Zeiger auf den Nachbarn zugreifen */
+	mark(44); { struct N a; struct N b; struct N *p;
+	            a.v = 1; b.v = 97; a.next = &b; p = a.next; val(p->v); }
+	/* 45 die Kette durchlaufen und summieren -- das Kernidiom */
+	mark(45); { struct N a; struct N b; struct N c;
+	            a.v = 1; b.v = 2; c.v = 3;
+	            a.next = &b; b.next = &c; c.next = 0;
+	            val(listSum(&a)); }
+	/* 46 Laenge derselben Kette */
+	mark(46); { struct N a; struct N b; struct N c;
+	            a.v = 1; b.v = 2; c.v = 3;
+	            a.next = &b; b.next = &c; c.next = 0;
+	            val(listLen(&a)); }
 
 	return 0;
 }

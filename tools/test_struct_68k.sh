@@ -22,8 +22,8 @@ KEEP=0
 [ "${1:-}" = "-k" ] && KEEP=1
 
 # id -> erwarteter Wert. Reihenfolge = Reihenfolge im Testprogramm.
-EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42)
-EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 32 55 56 81 82 83 84 85 86 87 91 92 93 94 4 95 50)
+EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46)
+EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 32 55 56 81 82 83 84 85 86 87 91 92 93 94 4 95 50 96 97 6 3)
 EXPECT_WHAT=(
 	"Zuweisung lokal -> lokal"
 	"Initialisierung aus Variable"
@@ -67,6 +67,10 @@ EXPECT_WHAT=(
 	"union: Groesse ist das groesste Feld"
 	"union ueber einen Zeiger (->)"
 	"union big-endian: u.i=5 liegt in c[3], nicht in c[0]"
+	"selbstreferenziell: eigenes Feld lesen"
+	"selbstreferenziell: ueber next zugreifen"
+	"verkettete Liste summieren"
+	"verkettete Liste zaehlen"
 )
 
 # Nach dem Umbau vom 2026-09-12 liegen die Werkzeuge in eigenen
