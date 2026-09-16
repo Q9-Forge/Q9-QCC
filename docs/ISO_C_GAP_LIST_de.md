@@ -23,7 +23,6 @@ kann.
 | `int f(int m[2][2])` | mehrdimensionales Array als Parameter |
 | `int (*p)[3]` | Zeiger auf Array |
 | `int (**q)(int)` | Zeiger auf Funktionszeiger |
-| `int f(a) int a; {…}` | K&R-Definition (C89 erlaubt sie) |
 | `int f(int a, ...)` | eigene variadische Funktion |
 | `signed char`, `long double`, `register` | Schlüsselwörter |
 | `sizeof x` ohne Klammern | |
@@ -36,7 +35,54 @@ kann.
 - `struct`-Feld vom Typ `struct`
 - Bitfelder, `long long`, `float`
 - `p[i]++` über einen **Zeiger** (trifft `int` wie `double`)
-- verkettete Member-Zugriffe (`a.n->v`, `p->a->v`) — Umgehung: Zwischenvariable
+
+### Erledigt seit dieser Messung
+
+- **K&R-Funktionsdefinitionen** (`int f(a) int a; {…}`) — 2026-09-16.
+  Anlass war eine Zählung statt eines Gefühls: **355 K&R-Definitionen in 165
+  der 982 C-Quellen** unter `MWOS` (17 % der Dateien). Umgesetzt als dritte
+  Alternative in `funcParams` (`voidParams | krParams | normalParams`), also
+  genau dort, wo das Zurücksetzen zwischen Alternativen im Generator schon
+  vorher trug.
+
+  Zwei Entwurfsentscheidungen, die den Unterschied machen:
+
+  1. *Die Deklarationen gehören mit in `krParams`.* Damit fällt die
+     Entscheidung „K&R oder ANSI" vollständig innerhalb **einer** Alternative,
+     und der Generator muss nie über eine bereits gewählte Alternative hinaus
+     zurücksetzen — das kann er nämlich nicht.
+  2. *Mindestens eine Deklaration ist Pflicht.* Genau das entschärft die
+     Mehrdeutigkeit, an der das unäre Plus scheitert: bei `f(myint a)` sieht
+     die Klammer wie eine K&R-Namensliste aus, aber es folgt `{` statt einer
+     Deklaration, also scheitert `krParams` als Ganzes und `normalParams`
+     übernimmt. Der Preis ist K&R **mit** implizitem `int` und *ganz ohne*
+     Deklaration (`f(x) { }`) — in den 355 gemessenen Fällen kommt das nicht
+     vor.
+
+  Die Reihenfolge der Parameter richtet sich nach der **Klammer**, nicht nach
+  den Deklarationen (`f(a,b) int b; int a;` ist gültig und häufig). Eine
+  Deklaration, die keinen Klammernamen trifft, wird **gemeldet**, nicht
+  verschluckt. Ein Klammername ohne Deklaration ist implizit `int`.
+
+  Verifiziert: 20 Fälle auf echtem 68030 (`tools/test_knr_68k.sh`, alle grün,
+  inkl. `struct` per Wert, `double`, vertauschter Deklarationsreihenfolge) und
+  20 Fälle im Host-Orakel (`runtests.sh`). Bei schmalen Typen mit negativem
+  Wert prüfen die Tests bewusst die **Differenz zum ANSI-Zwilling** (Sollwert
+  0) statt eines absoluten Werts: QCC erweitert dort nicht vorzeichenrichtig,
+  das ist aber ein vorbestehender, allgemeiner Mangel — ANSI liefert exakt
+  dasselbe. Ein absoluter Sollwert hätte einen fremden Fehler als K&R-
+  Erwartung festgeschrieben.
+
+  Nebenbefund dabei: `AST_MAX_RULES` stand im Codegen noch auf **256**,
+  während `MAX_RULES` im Parser längst 512 war. Die Grammatik lief mit 254
+  Regeln also zwei Regeln vor eine Wand, und beim Überschreiten kam nur
+  „kein AST vorhanden (leer oder Ueberlauf)" ohne Angabe, welche Grenze riss.
+  Beide Zahlen stehen jetzt auf 512, und jeder der drei Überläufe meldet sich
+  einzeln mit Namen. In allen vier Kopien (`src/`, `Source/`, `src-qcc/`,
+  `SourceQCC/`).
+
+- **Verkettete Member-Zugriffe** (`a.n->v`, `p->a->v`) — 2026-09-16, lesend
+  und schreibend, 51 Fälle auf echtem 68030.
 
 ### Im 68k-Backend
 

@@ -279,7 +279,37 @@ protoEnd      = ";" .
    erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
 funcHead  = [ staticKw ] [ retConstKw ] type pointerDecl defName funcParams .
 retConstKw = "const" .
-funcParams = voidParams | normalParams .
+/* K&R-Definitionen (C89 6.7.1, "alte" Form):  int f(a, b) int a; char *b; { }
+   Dritte Alternative NEBEN voidParams/normalParams -- also genau dort, wo das
+   Zuruecksetzen zwischen Alternativen schon nachweislich traegt (s.o.).
+   Die DEKLARATIONEN gehoeren bewusst MIT in krParams: damit faellt die
+   Entscheidung "K&R oder ANSI" komplett innerhalb EINER Alternative, und der
+   Generator muss nie ueber eine bereits gewaehlte Alternative hinaus zurueck.
+   Reihenfolge: krParams MUSS vor normalParams stehen. Stuende es dahinter,
+   haette normalParams bei "f(a, b)" schon "a" als Typnamen gedeutet und
+   tc_type wuerde "unknown type name" melden, BEVOR krParams drankommt --
+   dieselbe Falle wie beim unaeren Plus (s. KNOWN_BUGS_C89).
+   Umgekehrt ist krParams-zuerst harmlos: bei "f(int a)" matcht krName zwar
+   "int", aber schon das naechste Token (") oder ,") passt nicht, krParams
+   scheitert als Ganzes und normalParams uebernimmt. Die krName-Aktion hat
+   dann zwar in den Puffer geschrieben -- das ist folgenlos, weil tc_kropen
+   den Zaehler bei JEDEM neuen Versuch nullt und nur tc_krend ihn liest.
+   Mindestens EINE Deklaration ist Pflicht (krDecl { krDecl }, nicht
+   { krDecl }). Sonst wuerde "f(x) { }" mit typedef-Typ x faelschlich als
+   K&R mit implizit-int-Parameter durchgehen. Der Preis: K&R MIT implizitem
+   int ("f(x) { }" ohne jede Deklaration) bleibt ungeparst -- in den 355
+   gemessenen MWOS-Faellen kommt das nicht vor. */
+funcParams = voidParams | krParams | normalParams .
+krParams   = krOpen krName { "," krName } ")" krDecl { krDecl } .
+krOpen     = "(" .
+krName     = ident .
+/* Aufbau Zeichen fuer Zeichen wie varDecl/varDeclarator -- dadurch setzt
+   tc_pointerdecl den Zeigergrad pro Deklarator aus tcBasePointers neu und
+   "char *a, b;" traegt b korrekt OHNE Stern ein. */
+krDecl     = [ registerKw ] [ constKw ] type krDeclarator { "," krDeclarator } ";" .
+krDeclarator = pointerDecl krDeclName [ krArray ] .
+krDeclName = ident .
+krArray    = "[" "]" .
 voidParams = "(" "void" ")" .
 normalParams = "(" paramList ")" .
 paramList = [ param { "," param } ] .
