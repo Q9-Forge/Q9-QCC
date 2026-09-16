@@ -101,7 +101,7 @@ class FnRef:
 
 def type_size(tag):
     # 2026-09-09: 'h' (short) dazu -- echte 2 Byte, wie im 68k-Backend.
-    return 1 if tag in ("c", "b") else 2 if tag == "h" else 8 if tag == "p" else 4
+    return 1 if tag in ("c", "b") else 2 if tag == "h" else 8 if tag in ("p", "d") else 4
 
 
 def mask_for(tag, value):

@@ -195,3 +195,48 @@ einheitlich breit (68k 4 Byte, ARM64 16), deshalb wird ein `double` nicht
 in Slots gelegt, sondern als **Block** wie eine lokale struct-Variable. Der
 Mechanismus dafuer existiert bereits (`LARRAY`/`GARRAY`, `arrayOffset()`),
 und die Offsetrechnung beider Backends bleibt unveraendert.
+
+## Der Durchstich steht (2026-09-16)
+
+Ein C-Programm mit `double`, übersetzt mit der eigenen Kette, **rechnet auf
+echtem 68030**. Damit ist die Reihenfolge aus dem Plan oben abgearbeitet —
+bis auf ARM64.
+
+    double a; double b;
+    a = 1.5; b = 2.5;
+    if (a < b) putint((int)(a * b));      /* 3 */
+
+`Q9-BACKEND-68K/q9-qclib/tests/double68k.sh` prüft dreizehn Fälle auf der
+Hardware: die vier Grundrechenarten, beide Konversionsrichtungen, alle
+Vergleichsformen, eine globale Variable, einen Wert über eine Schleife
+hinweg. Jeder Sollwert ist so gewählt, dass er bei falscher Rechnung nicht
+herauskommt — `7.0/2.0` muss **3** ergeben und nicht 4, denn `(int)`
+schneidet ab und rundet nicht.
+
+Was dabei aus der Kette wurde:
+
+| Stufe | Stand |
+|---|---|
+| Dezimal → IEEE-754 | im Compiler, `tools/dec2ieee.c` wortgleich in `qcc.lextab` |
+| Frontend | Typ, Literale, Variablen, Arithmetik, Vergleiche, Konversionen |
+| IR | `PUSHD`, `LOADD`/`STORED`, `DADD`…, `DCMPxx`, `I2D`/`D2I` |
+| VM-Orakel | vollständig |
+| 68k-Backend | vollständig, FPU-Befehle |
+| Assembler | qr68 kann die FPU, byteidentisch zu r68 |
+| **ARM64** | **offen** — meldet die Opcodes als unbekannt, verschluckt sie nicht |
+
+### Was bewusst offen blieb
+
+- **Gemischte Arithmetik** (`a + 1` mit `a` als `double`). Der linke Operand
+  liegt beim Emittieren schon unter dem rechten auf dem Stapel; eine
+  Konversion an dieser Stelle brauchte entweder `SWAP` mit zwei
+  verschiedenen Breiten oder eigene Opcodes nach dem Vorbild der
+  `fadd.l`-Form der FPU. Beides ist eine eigene Entscheidung — bis dahin
+  wird gemeldet.
+- **Initialisierer an globalen `double`** (`double g = 2.5;`). Dafür fehlt
+  der `GINIT`-Pfad für Bitmuster.
+- **`float`** als eigener Typ. In C ziehen die üblichen Konversionen
+  ohnehin auf `double` hoch; `float` bringt eigene Rundungsfragen mit.
+- **Aufrufe mit `double`-Argumenten** gegen die Microware-`clib`
+  (`printf("%f")`). QCC übergibt alles auf dem Stack, xcc das erste
+  Argument in `d0/d1` — das betrifft nur den `CALLEXT`-Pfad.

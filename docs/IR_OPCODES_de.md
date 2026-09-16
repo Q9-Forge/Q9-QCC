@@ -94,6 +94,36 @@ Lokal (`L`) und global (`G`), je getrennt nach int/char/pointer:
 | `SWAP` | `a, b → b, a` | oberste zwei Stackelemente vertauschen |
 | `DUPP` | `p → p, p` | wie `DUP`, für Pointer (semantisch identisch, eigener Opcode zur Klarheit im Backend) |
 
+## Gleitkomma (`double`, seit 2026-09-16)
+
+Ein `double` liegt **nie in einem Slot, sondern immer als Block** — die
+Slots sind zielabhängig breit (68k 4 Byte, ARM64 16), ein Block ist es
+nicht. Eine lokale Variable wird deshalb mit `LARRAY <i> d 1` reserviert,
+eine globale mit `GARRAY <name> d 1`, genau wie bei einer struct-Variablen.
+Auf dem Operandenstapel belegt ein `double` 8 Byte.
+
+| Opcode | Stack-Effekt | Beschreibung |
+|---|---|---|
+| `PUSHD <hi> <lo>` | `→ d` | Literal als zwei 32-Bit-Hälften, hi zuerst. Zwei Ganzzahlen statt eines Gleitkommatextes, weil die IR von Werkzeugen gelesen wird, die selbst kein Gleitkomma haben |
+| `LOADD <i>` / `STORED <i>` | `→ d` / `d →` | lokale `double`-Variable (Block) |
+| `LOADGD <n>` / `STOREGD <n>` | `→ d` / `d →` | globale `double`-Variable |
+| `DADD` `DSUB` `DMUL` `DDIV` | `d d → d` | Grundrechenarten |
+| `DNEG` | `d → d` | Vorzeichenwechsel |
+| `DCMPEQ` `DCMPNE` `DCMPLT` `DCMPLE` `DCMPGT` `DCMPGE` | `d d → i` | Vergleiche, Ergebnis ganzzahlig 0/1 |
+| `I2D` | `i → d` | Ganzzahl nach `double` |
+| `D2I` | `d → i` | `double` nach Ganzzahl, **schneidet Richtung null ab** (C-Regel, auf dem 68k `fintrz`) |
+| `DDUP` / `DDROP` | | eigene Formen, weil `DUP`/`DROP` bei 8 Byte mehrdeutig wären |
+
+Auf dem 68k werden daraus FPU-Befehle (`fadd.x`, `fcmp.x` + `FBcc`,
+`fintrz.x`), gerechnet wird intern mit 80 Bit, geladen und gespeichert mit
+64 — dieselbe Aufteilung, die xcc verwendet. **Genauigkeit:** das VM-Orakel
+rechnet mit Pythons 64 Bit. Für Vergleiche zwischen Orakel und Hardware
+taugen deshalb nur Werte, die in beiden exakt sind.
+
+**Noch nicht in der IR:** gemischte Arithmetik und Vergleiche von `double`
+und Ganzzahl (das Frontend meldet sie), Initialisierer an globalen
+`double`, und `float` als eigener Typ.
+
 ## Vergleiche
 
 Alle Vergleiche: `a, b → 0|1`.

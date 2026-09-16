@@ -527,7 +527,7 @@ static void emitCall(FILE* out, const char* asmName, int tableOffset, int* seria
 
 static int isNumWord(const char* w) {
 	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 ||
-	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0;
+	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0 || strcmp(w, "d") == 0;
 }
 
 /* Byte size of a type tag for LOAD/STORE width and pointer/index scaling
@@ -537,11 +537,14 @@ static int isNumWord(const char* w) {
 static int tagSize(const char* w) {
 	if (strcmp(w, "c") == 0 || strcmp(w, "b") == 0) return 1;
 	if (strcmp(w, "h") == 0) return 2;
+	/* 'd' = double, 8 Byte (2026-09-16). Ein double liegt immer als BLOCK,
+	   nie in einem Slot -- s. docs/FLOAT_IR_ENTWURF_de.md. */
+	if (strcmp(w, "d") == 0) return 8;
 	return 4;
 }
 /* Shift amount for lsl.l/asr.l scaling in pointer arithmetic/indexing:
    Byte 1x (no shift), word 2x, long 4x. */
-static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : 2; }
+static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s == 2 ? 1 : s == 8 ? 3 : 2; }
 /* 68k size suffix for move/dc/ds. */
 static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
 
@@ -928,6 +931,41 @@ static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 		fatal(msg);
 	}
 	sprintf(out, "%d(%s)", -4 * (slotN - fn->nargs + 1), framePtr());
+}
+
+/* ---------------------------------------------------------------------
+ * GLEITKOMMA (2026-09-16). Der Operandenstapel IST der a7-Stapel, ein
+ * double belegt dort 8 Byte. Die FPU-Register fp0/fp1 werden nur
+ * INNERHALB eines Opcodes benutzt und tragen keinen Zustand darueber
+ * hinaus -- deshalb braucht es hier kein fmovem zur Registerrettung,
+ * anders als bei xcc, das Werte ueber Anweisungsgrenzen in fp0 haelt.
+ *
+ * Gerechnet wird mit .x (80 Bit intern), geladen und gespeichert mit .d
+ * (64 Bit) -- genau wie xcc es tut, gemessen an dessen Ausgabe.
+ * ------------------------------------------------------------------ */
+static void emitFpuLoadTwo(FILE* out) {
+	/* Der RECHTE Operand liegt oben: b nach fp1, a nach fp0. */
+	fputs("\tfmove.d\t(a7)+,fp1\n\tfmove.d\t(a7)+,fp0\n", out);
+}
+
+static void emitFCompare(FILE* out, const char* branch, int* serial) {
+	int id = (*serial)++;
+	emitFpuLoadTwo(out);
+	fputs("\tfcmp.x\tfp1,fp0\n", out);
+	/* Dasselbe Muster wie bei emitCompare: das "moveq #0" steht NACH dem
+	   bedingten Sprung. Bei der FPU zerstoert ein moveq zwar nur die
+	   CPU-Flags und nicht das FPU-Statuswort, aber die Form bleibt
+	   absichtlich dieselbe -- eine zweite Schreibweise waere die naechste
+	   Stelle, an der jemand das Falsche kopiert. */
+	fprintf(out, "\t%s\ttc_fcmp_yes_%d__%s\n\tmoveq\t#0,d0\n\tbra\ttc_fcmp_done_%d__%s\n",
+	        branch, id, psectName, id, psectName);
+	fprintf(out, "tc_fcmp_yes_%d__%s:\tmoveq\t#1,d0\ntc_fcmp_done_%d__%s:\tmove.l\td0,-(a7)\n",
+	        id, psectName, id, psectName);
+}
+
+static void emitFpuArith(FILE* out, const char* insn) {
+	emitFpuLoadTwo(out);
+	fprintf(out, "\t%s.x\tfp1,fp0\n\tfmove.d\tfp0,-(a7)\n", insn);
 }
 
 static void emitCompare(FILE* out, const char* branch, int* serial) {
@@ -1668,6 +1706,57 @@ static void emitIR(FILE* out) {
 				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
 				emitCall(out, helperAsmName, helperTableOffset(helperAsmName), &serial, psectName);
 				fputs("\tmove.l\td0,-(a7)\n", out);
+			/* --- Gleitkomma (2026-09-16) --- */
+			} else if (strcmp(op, "PUSHD") == 0 && insP->argc == 2) {
+				/* Zwei 32-Bit-Haelften, hi zuerst im Speicher: also lo
+				   zuerst pushen. Als Hex, weil eine Haelfte groesser als
+				   2^31 sein kann und r68 dezimal nur bis dahin liest. */
+				unsigned long hi = strtoul(insP->args[0], 0, 10);
+				unsigned long lo = strtoul(insP->args[1], 0, 10);
+				fprintf(out, "\tmove.l\t#$%08lX,-(a7)\n\tmove.l\t#$%08lX,-(a7)\n", lo, hi);
+			} else if (strcmp(op, "LOADD") == 0 && insP->argc == 1) {
+				int ignored;
+				int off = arrayOffset(fn, number(insP->args[0], insP->line), &ignored, insP->line);
+				fprintf(out, "\tlea\t-%d(%s),a0\n\tfmove.d\t(a0),fp0\n\tfmove.d\tfp0,-(a7)\n", off, framePtr());
+			} else if (strcmp(op, "STORED") == 0 && insP->argc == 1) {
+				int ignored;
+				int off = arrayOffset(fn, number(insP->args[0], insP->line), &ignored, insP->line);
+				fprintf(out, "\tfmove.d\t(a7)+,fp0\n\tlea\t-%d(%s),a0\n\tfmove.d\tfp0,(a0)\n", off, framePtr());
+			} else if (strcmp(op, "LOADGD") == 0 && insP->argc == 1) {
+				int gidx = findGlobal(insP->args[0]);
+				char gmsg[200];
+				if (gidx < 0) { sprintf(gmsg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(gmsg); }
+				/* Immer ueber die Adresse, nie PC-relativ: die PC-relative
+				   Form der FPU-Befehle ist ungemessen (s. tests/fpu.a). */
+				emitLeaGlobal(out, gidx, "a0");
+				fputs("\tfmove.d\t(a0),fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			} else if (strcmp(op, "STOREGD") == 0 && insP->argc == 1) {
+				int gidx = findGlobal(insP->args[0]);
+				char gmsg[200];
+				if (gidx < 0) { sprintf(gmsg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(gmsg); }
+				emitLeaGlobal(out, gidx, "a0");
+				fputs("\tfmove.d\t(a7)+,fp0\n\tfmove.d\tfp0,(a0)\n", out);
+			} else if (strcmp(op, "DADD") == 0) { emitFpuArith(out, "fadd");
+			} else if (strcmp(op, "DSUB") == 0) { emitFpuArith(out, "fsub");
+			} else if (strcmp(op, "DMUL") == 0) { emitFpuArith(out, "fmul");
+			} else if (strcmp(op, "DDIV") == 0) { emitFpuArith(out, "fdiv");
+			} else if (strcmp(op, "DNEG") == 0) {
+				fputs("\tfmove.d\t(a7)+,fp0\n\tfneg.x\tfp0,fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			} else if (strcmp(op, "I2D") == 0) {
+				fputs("\tmove.l\t(a7)+,d0\n\tfmove.l\td0,fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			} else if (strcmp(op, "D2I") == 0) {
+				/* fintrz schneidet Richtung null ab -- genau die C-Regel. */
+				fputs("\tfmove.d\t(a7)+,fp0\n\tfintrz.x\tfp0,fp0\n\tfmove.l\tfp0,d0\n\tmove.l\td0,-(a7)\n", out);
+			} else if (strcmp(op, "DDUP") == 0) {
+				fputs("\tmove.l\t4(a7),d0\n\tmove.l\t(a7),d1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "DDROP") == 0) {
+				fputs("\tlea\t8(a7),a7\n", out);
+			} else if (strcmp(op, "DCMPLT") == 0) { emitFCompare(out, "fblt", &serial);
+			} else if (strcmp(op, "DCMPGT") == 0) { emitFCompare(out, "fbgt", &serial);
+			} else if (strcmp(op, "DCMPLE") == 0) { emitFCompare(out, "fble", &serial);
+			} else if (strcmp(op, "DCMPGE") == 0) { emitFCompare(out, "fbge", &serial);
+			} else if (strcmp(op, "DCMPEQ") == 0) { emitFCompare(out, "fbeq", &serial);
+			} else if (strcmp(op, "DCMPNE") == 0) { emitFCompare(out, "fbne", &serial);
 			} else if (strcmp(op, "CMPLT") == 0) { emitCompare(out, "blt", &serial);
 			} else if (strcmp(op, "CMPGT") == 0) { emitCompare(out, "bgt", &serial);
 			} else if (strcmp(op, "CMPLE") == 0) { emitCompare(out, "ble", &serial);
@@ -2000,6 +2089,11 @@ static void emitIR(FILE* out) {
 					   longword boundary or the 68000 reads an odd longword. Alignment in
 					   the vsect was verified with r68 (Q9-qr68/test/remotetest.sh). */
 					if (g->elemSize != 1) emitAlign(out);
+					/* Ein double-Feld wird als doppelt so viele Langwoerter
+					   reserviert: "ds.d" gibt es nicht (2026-09-16). */
+					if (g->elemSize == 8)
+						fprintf(out, "%s:\tds.l\t%d\n", gAsmName, 2 * (g->isArray ? g->length : 1));
+					else
 					fprintf(out, "%s:\tds.%c\t%d\n", gAsmName, tagSuffix(g->elemSize),
 					        g->isArray ? g->length : 1);
 				}
