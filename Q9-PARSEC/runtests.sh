@@ -831,6 +831,23 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ double a; a=5e-1; putint((int)(a*10.0)); }' '5'
 		tc_check 'int main(){ double a; a=5e+1; putint((int)a); }' '50'
 		tc_check 'int main(){ double a; a=2.5E-2; putint((int)(a*1000.0)); }' '25'
+		# ZEIGER AUF EIN LOKALES double (2026-09-16). "&a" emittierte ADDRL,
+		# das die SLOT-Adresse liefert -- ein double liegt aber als BLOCK
+		# (LARRAY) und wird ueber arrayOffset adressiert. Der Zeiger zeigte
+		# damit ins Leere: "*p" las Muell, "*p = x" schrieb ins Leere, beides
+		# OHNE Meldung. Derselbe Fehler war bei skalaren structs schon einmal
+		# aufgetreten; die Regel steht jetzt in tcLocalIsBlock.
+		tc_check 'int main(){ double a; double *p; a=1.5; p=&a; putint((int)((*p)*10.0)); }' '15'
+		tc_check 'int main(){ double a; double *p; p=&a; *p=2.5; putint((int)(a*10.0)); }' '25'
+		tc_check 'int f(double *p){ return (int)((*p)*10.0); } int main(){ double a; a=1.5; putint(f(&a)); }' '15'
+		# der Aufgerufene schreibt durch den Zeiger zurueck -- das Kernidiom,
+		# fuer das man einen double* ueberhaupt braucht
+		tc_check 'void f(double *p){ *p = 9.5; } int main(){ double a; a=1.0; f(&a); putint((int)(a*10.0)); }' '95'
+		tc_check 'int main(){ double a; double b; double *p; double *q; double t; a=1.0; b=2.0; p=&a; q=&b; t=*p; *p=*q; *q=t; putint((int)(a*10.0+b)); }' '21'
+		# global war schon korrekt (ADDRG ist bei Globals die Objektadresse)
+		tc_check 'double g; int main(){ double *p; g=1.5; p=&g; putint((int)((*p)*10.0)); }' '15'
+		tc_check 'int main(){ double t[3]; double *p; t[1]=2.5; p=&t[1]; putint((int)((*p)*10.0)); }' '25'
+		tc_check 'int main(){ double t[3]; double *p; double s; int i; t[0]=1.0;t[1]=2.0;t[2]=3.0; p=t; s=0.0; for(i=0;i<3;i++){ s=s+(*p); p++; } putint((int)s); }' '6'
 		# ... und im globalen Initialisierer, wo tcGlobalOne den Zahltext
 		# SELBST abgrenzt: dort war der Exponent zuerst still abgeschnitten
 		# ("double g = 1e2;" ergab 1 statt 100). Die Sollwerte sind so

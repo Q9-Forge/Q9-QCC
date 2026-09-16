@@ -510,3 +510,44 @@ Kopien hätten die Grenze gerissen. Die Konstanten stehen außerdem **doppelt**:
 in `src/parsec.cpp` und als harte Zahlen im QCC-Port `src-qcc/ebnf.tc`.
 Eine Anhebung müsste beide anfassen; eine Meldung beim Überlauf wäre der
 lohnendere erste Schritt — beides ist hier bewusst nicht gemacht.
+
+## `&a` auf ein lokales `double` (2026-09-16) — ein Geschwister, das übersehen wurde
+
+`double *p = &a;` lieferte einen Zeiger, der **ins Leere zeigte**. `*p` las
+Müll, `*p = x` schrieb ins Leere, `f(&a)` übergab die falsche Adresse — alles
+**ohne Meldung**.
+
+`tc_addressref` emittiert für eine lokale Variable `ADDRL <slot>`, und
+`ADDRL` geht im 68k-Backend über `slotAddress()` (die Slot-Adresse
+`-4*(slot-nargs+1)`). Ein `double` liegt aber als **Block** (`LARRAY <i> d 1`)
+und wird über `arrayOffset()` adressiert; richtig ist `PUSHADDR L <slot>`.
+
+**Das Bemerkenswerte: genau dieser Fehler war schon einmal da.** Im Code
+stand seit der struct-Arbeit:
+
+```c
+/* Eine skalare Struct liegt ebenfalls als Block vor (LARRAY), hat aber
+   tcLocalArrayLen 0 -- ohne die zweite Bedingung liefert &s die Adresse
+   eines leeren Skalarslots statt die des Objekts. */
+if (tcLocalArrayLen[slot] || (valueType.base == 's' && !valueType.pointers))
+```
+
+Die Bedingung wurde damals an der Fundstelle geflickt. Als `double` als
+zweiter Blocktyp dazukam, hat niemand daran gedacht. Die Regel steht deshalb
+jetzt als **Funktion** da:
+
+```c
+static int tcLocalIsBlock(int slot, TCType t) {
+	if (tcLocalArrayLen[slot]) return 1;
+	if (t.pointers) return 0;
+	return t.base == 's' || t.base == 'd';
+}
+```
+
+**Der globale Fall war korrekt** und bleibt es: bei einem Global ist `ADDRG`
+die Objektadresse, einen Slot/Block-Unterschied gibt es dort nicht.
+
+Geprüft mit acht neuen Testfällen, darunter das Kernidiom, für das man einen
+`double*` überhaupt braucht — der Aufgerufene schreibt durch den Zeiger
+zurück — und auf echtem 68030 (`double68k.sh`, jetzt 60 Fälle), wo eine
+falsche Adresse fremde Daten trifft statt einer Python-Liste.

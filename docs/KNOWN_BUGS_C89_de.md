@@ -209,3 +209,18 @@ und ein Nebenbefund zu `MAX_RULES` in `FLOAT_PLAN_de.md`.
 
 Noch offen bei `double`: Initialisiererlisten für Arrays, `++`/`--` über die
 drei Adressformen, `printf("%f")`, `float`.
+
+## Nachtrag 2026-09-16 (7) — `&a` auf ein lokales `double` (behoben)
+
+`double *p = &a;` zeigte ins Leere: `tc_addressref` emittierte `ADDRL`
+(Slot-Adresse), ein `double` liegt aber als Block und braucht `PUSHADDR L`.
+`*p` las Müll, `*p = x` schrieb ins Leere — beides still.
+
+Derselbe Fehler war bei skalaren structs schon einmal aufgetreten und damals
+an der Fundstelle geflickt worden; die Regel steht jetzt als
+`tcLocalIsBlock`. Einzelheiten in `FLOAT_PLAN_de.md`.
+
+Noch offen bei `double`: struct mit `double`-Feld an Funktionsgrenzen
+(Absturz im VM-Orakel), unäres `+2.5` (stumm abgelehnt), `if (a)`/`!a` auf
+`double` (strenger als C), `++`/`--` über die drei Adressformen,
+Initialisiererlisten für Arrays, `printf("%f")`, `float`.
