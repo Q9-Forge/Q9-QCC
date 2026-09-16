@@ -666,3 +666,32 @@ Damit gehen `s.d++`, `++s.d`, `a[0]++`, `a[0]--`, `(*p)++` und `++(*p)` — mit
 dem richtigen Wert des *Ausdrucks*, nicht nur der Variablen. Geprüft im
 Orakel, nativ auf ARM64 und auf echtem 68030 (`double68k.sh`, jetzt 78
 Fälle).
+
+## Initialisiererlisten für `double`-Arrays (2026-09-16)
+
+`double t[3] = {1.5, -2.5, 0.25};` geht jetzt — je Element ein `GINITD`.
+
+`tcInitList` bleibt dafür **unberührt**: er liest Ganzzahlen und scheitert an
+`1.0`, und die Werte müssen hier ohnehin als **Bitmuster** in die Daten, nicht
+als Zahl. Ein eigener, kurzer Listenparser in `tcGlobalOne` liest die Liste
+über `tcFloatLitEnd` + `qccDecToDouble` — dieselben Bausteine wie beim
+skalaren Initialisierer, also garantiert dasselbe Bitmuster.
+
+Abgedeckt: Vorzeichen, Brüche, Exponenten, `static`, offen gelassene Größe
+(`double t[] = {…}` leitet sie aus der Liste ab) und weniger Werte als
+Elemente (Rest null, C89 3.5.7). **Gemeldet** statt still verschluckt werden
+Verschachtelung (`{{1.0},{2.0}}` — mehrdimensionale `double`-Arrays sind
+nicht vorgesehen) und zu viele Werte.
+
+Geprüft im Orakel, auf echtem 68030 (`double68k.sh`, jetzt 80 Fälle) und im
+Selbsthost.
+
+## Stand `double` — was compilerseitig bleibt
+
+Nichts mehr. Offen sind nur noch zwei Dinge außerhalb des Compilers:
+
+- **`printf("%f")`** — Bibliotheksarbeit in qclib (Zahl↔Text). Rechnen kann
+  ein Programm längst ohne.
+- **`float`** als eigener Typ — bewusst zurückgestellt: C zieht in den
+  üblichen Konversionen auf `double` hoch, und `float` brächte eigene
+  Rundungsfragen (32 vs. 64 vs. die 80 Bit der 68k-FPU).

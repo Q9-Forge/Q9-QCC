@@ -260,3 +260,10 @@ darunter). Einzelheiten in `FLOAT_PLAN_de.md`.
 
 Bei `double` bleiben damit nur noch: Initialisiererlisten für Arrays
 (`double t[3]={1.0,2.0}`, wird gemeldet), `printf("%f")` (qclib) und `float`.
+
+## Nachtrag 2026-09-16 (11) — Initialisiererlisten für `double`-Arrays
+
+`double t[3] = {1.5, -2.5, 0.25};` ist umgesetzt (je Element ein `GINITD`,
+eigener Listenparser; `tcInitList` bleibt unberührt). Damit ist bei `double`
+**compilerseitig nichts mehr offen** — es bleiben nur `printf("%f")` (qclib)
+und `float` als eigener Typ.

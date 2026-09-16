@@ -23,6 +23,9 @@ double gint = 5;
 /* Exponentschreibweise, auch im globalen Initialisierer */
 double gexp = 1.5e3;
 double gexpneg = 2.5E-2;
+/* Initialisiererliste: je Element ein GINITD, Bitmuster in den Daten. */
+double gtab[3] = {1.5, -2.5, 0.25};
+double gtab2[4] = {1.0, 2.0};
 
 int pruefe(char* name, int ist, int soll)
 {
@@ -380,6 +383,9 @@ int main()
 		}
 	}
 
-	printf("double68k fertig: %d von 78 falsch\n", bad);
+	bad = bad + pruefe("Array-Initialisiererliste", (int)((gtab[0] + gtab[1] + gtab[2]) * 100.0), -75);
+	bad = bad + pruefe("Liste kuerzer als Array -> Rest null", (int)((gtab2[0] + gtab2[1] + gtab2[2] + gtab2[3]) * 10.0), 30);
+
+	printf("double68k fertig: %d von 80 falsch\n", bad);
 	return 0;
 }
