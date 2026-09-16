@@ -658,7 +658,24 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ double a; double b; a=1.5; b=9.5; putint((int)(a+b)); }' '11'
 		# ... auch nicht mit einem int im selben Rahmen
 		tc_check 'int main(){ int i; double d; i=7; d=2.5; putint(i+(int)d); }' '9'
-		tc_check 'double f(void){ double t; t = 6.5; return t; } int main(){ putint((int)f()); }' '6'
+		# double als RUECKGABEWERT und als PARAMETER ist noch nicht umgesetzt --
+		# und wird GEMELDET. Beides waere sonst STILL FALSCH: das Backend holt
+		# den Rueckgabewert mit einem einzigen "move.l (a7)+,d0" (bei acht Byte
+		# also die halbe Zahl), und ein Parameter liegt in einem Slot, der auf
+		# dem 68k vier Byte breit ist. Im VM-Orakel endete der Parameterfall
+		# bisher in einem KeyError, also einem Absturz statt einer Diagnose.
+		for prog_msg2 in \
+			'double f(void){ double t; t = 6.5; return t; } int main(){ putint(1); }|returning double is not supported yet' \
+			'double g(double x){ return x; } int main(){ putint(1); }|double parameters are not supported yet' \
+			'int h(double x){ return (int)x; } int main(){ putint(1); }|double parameters are not supported yet'
+		do
+			prog="${prog_msg2%%|*}"; msg="${prog_msg2##*|}"
+			if build/qcc_p "$prog" 2>&1 | grep -qF "$msg"; then
+				echo "ok    qcc: gemeldet -- $msg"
+			else
+				echo "FAIL  qcc: nicht gemeldet -- $msg"; tcfail=1; fail=1
+			fi
+		done
 		tc_check 'double g; int main(){ g = 3.75; putint((int)g); }' '3'
 		tc_check 'int main(){ double s; int i; s=0.0; i=0; while(i<4){ s = s + 1.5; i=i+1; } putint((int)s); }' '6'
 		# Nachkommastellen ueberleben eine Rechnung: 0.1+0.2 liegt knapp UEBER 0.3

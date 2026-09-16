@@ -4541,6 +4541,16 @@ void tc_param(const char* start, const char* end) {
 	tcLocalTypes[tcLocalCount].pointers = tcCurrentType.pointers + (nameEnd < end ? 1 : 0);
 	tcLocalTypes[tcLocalCount].structId = tcCurrentType.structId;
 	tcLocalTypes[tcLocalCount].pointeeConst = tcCurrentType.pointeeConst;
+	/* DOUBLE ALS PARAMETER (2026-09-16): noch nicht umgesetzt, und ohne
+	   diese Meldung waere es STILL FALSCH -- ein Parameter liegt in einem
+	   SLOT, und der ist auf dem 68k vier Byte breit. Ein double braucht
+	   acht und liegt deshalb ueberall sonst als Block; fuer Parameter gibt
+	   es diesen Weg noch nicht. Im VM-Orakel endete es bisher in einem
+	   KeyError, also einem Absturz statt einer Diagnose. */
+	if (!tcLocalTypes[tcLocalCount].pointers && tcLocalTypes[tcLocalCount].base == 'd') {
+		tcErrAt(start); fprintf(stderr, "double parameters are not supported yet\n"); actionErrors++;
+		tcLocalTypes[tcLocalCount].base = 'i';
+	}
 	if (!tcLocalTypes[tcLocalCount].pointers && tcLocalTypes[tcLocalCount].base == 'v') {
 		tcErrAt(start); fprintf(stderr, "void is not a valid parameter type\n"); actionErrors++;
 		tcLocalTypes[tcLocalCount].base = 'i';
@@ -7300,9 +7310,21 @@ void tc_retval(const char* start, const char* end) {
 END
 ROUTINE C tc_return
 void tc_return(const char* start, const char* end) {
-	(void)start; (void)end;
+	(void)end;
 	if (!tcRetHasVal) printf("PUSH 0\n");
 	if (tcRetHasVal && !tcCompatible4(&tcFuncType, &tcRetType)) tcTypeError("return", tcFuncType, tcRetType);
+	/* DOUBLE ALS RUECKGABEWERT (2026-09-16): noch nicht umgesetzt, und ohne
+	   diese Meldung waere es STILL FALSCH. Das Backend holt den Rueckgabe-
+	   wert mit einem einzigen "move.l (a7)+,d0" -- bei acht Byte ist das
+	   die obere Haelfte, die untere bliebe auf dem Stapel liegen.
+	   Fuer die Umsetzung braucht die IR ein eigenes RETD und der Aufrufer
+	   eine Entsprechung; xcc gibt double in d0/d1 zurueck (gemessen, s.
+	   docs/FLOAT_PLAN_de.md). */
+	if (tcRetHasVal && tcIsDouble(tcFuncType)) {
+		tcErrAt(start);
+		fprintf(stderr, "returning double is not supported yet -- the return value would lose half its bits\n");
+		actionErrors++;
+	}
 	/* Struct-Rueckgabe: auf dem Stapel liegt die Adresse einer lokalen
 	   Variable DIESES Rahmens (die Leseseite legt fuer Structs Adressen ab).
 	   Sie ueberlebt das RET nicht, also vorher in den Rueckgabepuffer des

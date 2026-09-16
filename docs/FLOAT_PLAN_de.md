@@ -231,6 +231,8 @@ Was dabei aus der Kette wurde:
   der `GINIT`-Pfad für Bitmuster.
 - **`float`** als eigener Typ. In C ziehen die üblichen Konversionen
   ohnehin auf `double` hoch; `float` bringt eigene Rundungsfragen mit.
+- **`double` als Parameter und als Rückgabewert** — seit heute
+  **gemeldet**, vorher still falsch (siehe unten).
 - **Aufrufe mit `double`-Argumenten** gegen die Microware-`clib`
   (`printf("%f")`). QCC übergibt alles auf dem Stack, xcc das erste
   Argument in `d0/d1` — das betrifft nur den `CALLEXT`-Pfad.
@@ -272,3 +274,26 @@ Zielverengung (`char c = 66.9;` ergibt 66). Das läuft **bewusst nicht** über
 Kettenzuweisung, Argumente und Rückgaben, und dort würde ohne Emission
 still der falsche Wert landen. Lieber hier gezielt umwandeln und dort
 weiter melden.
+
+## Zwei stille Fehler, die erst beim Nachfassen auffielen
+
+Nachdem alles lief, blieb eine Frage offen, die im Test nicht vorkam:
+**Funktionen mit `double`.** Beides war still falsch:
+
+- **Rückgabe.** Das Backend holt den Rückgabewert mit einem einzigen
+  `move.l (a7)+,d0`. Bei acht Byte ist das die **obere Hälfte** — die
+  untere blieb auf dem Stapel liegen. Ein Programm hätte gerechnet, nur
+  eben mit der halben Zahl und einem Stapelleck dazu.
+- **Parameter.** Ein Parameter liegt in einem **Slot**, und der ist auf dem
+  68k vier Byte breit. Ein `double` liegt überall sonst als Block; für
+  Parameter gibt es diesen Weg noch nicht. Im VM-Orakel endete das in
+  einem `KeyError` — ein Absturz statt einer Diagnose.
+
+Beides wird jetzt gemeldet. Für die Umsetzung braucht die IR ein eigenes
+`RETD` samt Gegenstück beim Aufrufer, und Parameter brauchen Blockablage
+oder zwei Slots. Das ist ein eigener Schritt, kein Nachtrag.
+
+**Die Lehre daraus ist die übliche:** was nicht im Test steht, ist nicht
+geprüft — und hier hätte es nicht einmal einen Fehler gegeben, sondern ein
+falsches Ergebnis. Der Testsatz war von den Ausdrücken her gedacht und
+hatte die Funktionsgrenze schlicht nicht überschritten.

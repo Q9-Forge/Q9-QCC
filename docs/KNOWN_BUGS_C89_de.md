@@ -98,3 +98,16 @@ nicht die Meldung ansah. Nachgemessen: die Diagnose kommt.
 Im Konverter war beides ohnehin umgehbar, indem die großen Zwischenwerte auf
 Dateiebene liegen — wo sie hingehören, denn jeder ist gut ein Kilobyte groß
 und der Stack eines OS-9-Moduls ist knapp.
+
+## Nachtrag 2026-09-16 (2) — `double` an Funktionsgrenzen
+
+`double` rechnet, aber **nicht über Funktionsgrenzen hinweg**:
+
+| Fall | Stand |
+|---|---|
+| `double f(void){ … return x; }` | gemeldet (war still falsch: Rückgabe verlor die untere Hälfte) |
+| `void f(double x)` | gemeldet (war ein Absturz im Orakel) |
+
+Beides ist umsetzbar, aber ein eigener Schritt: die IR braucht ein `RETD`
+mit Gegenstück beim Aufrufer, und Parameter brauchen Blockablage statt
+eines Slots. Einzelheiten in `FLOAT_PLAN_de.md`.
