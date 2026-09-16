@@ -487,6 +487,21 @@ if command -v python3 >/dev/null 2>&1; then
 		# Zwischenvariable statt verketteter Zugriff: "a.n->v" geht nicht, das
 		# ist aber eine ALLGEMEINE Grenze, die auch ohne Selbstreferenz besteht
 		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=2; a.n=&b; p=a.n; putint(p->v); }' '2'
+		# VERKETTETE MEMBER-ZUGRIFFE (2026-09-16): "p->n->v" scheiterte STUMM --
+		# die Grammatik liess nur EIN member zu und der Parser brach mit "FAIL"
+		# ab, ohne ein Wort. Die Regel liest die Kette jetzt, damit tc_varref
+		# sie ueberhaupt sehen kann; EMITTIERT wird sie noch nicht.
+		# WICHTIG: die Grammatikerweiterung ALLEIN waere ein stiller Fehler --
+		# gemessen lieferten die Zweige in tc_varref dann die ADRESSE statt des
+		# Wertes, weil sie den zweiten member ignorieren. Deshalb die Zaehlung
+		# und die Meldung mit dem Weg, der funktioniert.
+		# Die Regression darunter sichert, dass die unterstuetzten
+		# Kombinationen unberuehrt bleiben -- besonders "t[s.i]", wo der Punkt
+		# im INDEX steht und nicht zur Kette gehoert (Klammerntiefe).
+		tc_check 'struct S{int a;}; int main(){ struct S t[2]; int i; i=1; t[1].a=7; putint(t[i].a); }' '7'
+		tc_check 'struct S{int a;}; int main(){ struct S t[2]; struct S *p; t[1].a=7; p=t; putint(p[1].a); }' '7'
+		tc_check 'struct S{int t[3];}; int main(){ struct S s; struct S *p; s.t[1]=7; p=&s; putint(p->t[1]); }' '7'
+		tc_check 'struct S{int i;}; int main(){ int t[3]; struct S s; s.i=1; t[1]=7; putint(t[s.i]); }' '7'
 		tc_check 'union U{int i; union U *p;}; int main(){ union U u; u.i=7; putint(u.i); }' '7'
 		# GETRENNTE VORWAERTSDEKLARATION (2026-09-16): "struct N;" ohne Rumpf ist
 		# gueltiges C89 und scheiterte STUMM. Sie meldet nur den NAMEN an --
@@ -744,6 +759,8 @@ if command -v python3 >/dev/null 2>&1; then
 			'struct S{int a;}; int main(){ struct S s = {1,2,3}; putint(1); }|too many values in struct initializer' \
 			'struct S{int a;}; struct S{int b;}; int main(){ putint(1); }|duplicate struct' \
 			'struct S{int a;}; struct S g={1,2}; int main(){ putint(1); }|too many values in struct initializer' \
+			'struct N{int v; struct N *n;}; int main(){ struct N a; struct N *p; p=&a; putint(p->n->v); }|chained member access is not supported' \
+			'struct A{int v;}; struct B{struct A *a;}; int main(){ struct B b; putint(b.a->v); }|chained member access is not supported' \
 			'double t[2]={{1.0},{2.0}}; int main(){ putint(1); }|nested initializer list' \
 			'double t[2]={1.0,2.0,3.0}; int main(){ putint(1); }|bad or oversized array initializer'
 		do
