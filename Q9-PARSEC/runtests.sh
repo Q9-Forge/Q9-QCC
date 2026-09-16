@@ -2075,6 +2075,49 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ short arr[3]; int i; for(i=0;i<3;i=i+1) arr[i]=i*10; putint(arr[0]); putint(arr[1]); putint(arr[2]); }' '0\n10\n20'
 		tc_check 'int main(){ short x=42; short *p; p=&x; putint(*p); *p=7; putint(x); }' '42\n7'
 		tc_check 'struct M { int c; short a; short b; }; int main(){ struct M m; m.c=99999; m.a=100; m.b=200; putint(m.c); putint(m.a); putint(m.b); putint(sizeof(struct M)); }' '99999\n100\n200\n8'
+		# --- K&R-Funktionsdefinitionen (C89 6.7.1, 2026-09-16) ------------------
+		# Gemessener Anlass: 355 K&R-Definitionen in 165 der 982 MWOS-C-Quellen.
+		# Die ERSTEN beiden Faelle sind die eigentlichen Waechter und pruefen
+		# NICHT nur "laeuft durch": die Deklarationen stehen in ANDERER
+		# Reihenfolge als die Klammernamen bzw. haben verschiedene Typen. Ein
+		# Emitter, der Parameter einfach in Deklarationsreihenfolge anlegt,
+		# liefert hier ein falsches Ergebnis statt eines Fehlers -- genau die
+		# stille Sorte Fehler, die ohne diskriminierenden Sollwert durchrutscht
+		# (s. Memory feedback_schrittweiten).
+		tc_check 'int sub(a,b) int b; int a; { return a-b; } int main(){ putint(sub(30,7)); }' '23'
+		tc_check 'int f(a,b) char *b; int a; { return a + *b; } int main(){ putint(f(2,"A")); }' '67'
+		tc_check 'int add(a,b) int a; int b; { return a+b; } int main(){ putint(add(3,4)); }' '7'
+		tc_check 'int add(a,b) int a, b; { return a+b; } int main(){ putint(add(20,3)); }' '23'
+		tc_check 'int len(s) char *s; { int n; n=0; while(*s){ n=n+1; s=s+1; } return n; } int main(){ putint(len("hallo")); }' '5'
+		tc_check 'int f(b) char b[]; { return b[1]; } int main(){ putint(f("xy")); }' '121'
+		tc_check 'int f(d) double d; { return (int)(d*2.0); } int main(){ putint(f(1.5)); }' '3'
+		tc_check 'int f(s) short s; { return s+1; } int main(){ putint(f(9)); }' '10'
+		tc_check 'int f(u) unsigned int u; { return u+1; } int main(){ putint(f(100)); }' '101'
+		# Ein Klammername OHNE Deklaration ist in C89 implizit int -- gueltig.
+		tc_check 'int f(a,b) int a; { return a+b; } int main(){ putint(f(40,2)); }' '42'
+		tc_check 'int fak(n) int n; { if(n<2) return 1; return n*fak(n-1); } int main(){ putint(fak(5)); }' '120'
+		tc_check 'struct P { int x; int y; }; int f(p) struct P *p; { return p->x + p->y; } int main(){ struct P s; s.x=3; s.y=4; putint(f(&s)); }' '7'
+		tc_check 'int k(x) int x; { return x; } int an(int y){ return y*3; } int main(){ putint(k(2)+an(5)); }' '17'
+		# K&R darf ANSI NICHT verdraengen. Der typedef-Fall ist der kritische:
+		# "f(myint a)" sieht in der Klammer genau wie eine K&R-Namensliste aus.
+		# Er geht nur deshalb gut, weil krParams MINDESTENS EINE Deklaration
+		# zwischen ")" und "{" verlangt -- ohne diese Pflicht wuerde hier
+		# dasselbe passieren wie beim unaeren Plus (s. KNOWN_BUGS_C89_de.md).
+		tc_check 'typedef int myint; int f(myint a){ return a+1; } int main(){ putint(f(9)); }' '10'
+		tc_check 'typedef char* str; int f(str s){ return *s; } int main(){ putint(f("A")); }' '65'
+		# Umgekehrt: ist derselbe Name ein typedef UND steht er als K&R-Parameter
+		# da, gewinnt K&R -- der Name ist dort ein Parametername, kein Typ.
+		tc_check 'typedef int a; int f(a) int a; { return a+1; } int main(){ putint(f(7)); }' '8'
+		tc_check 'int f(int a,int b){ return a*b; } int main(){ putint(f(2,5)); }' '10'
+		tc_check 'int f(){ return 5; } int main(){ putint(f()); }' '5'
+		tc_check 'int f(void){ return 6; } int main(){ putint(f()); }' '6'
+		# Eine Deklaration, die keinen Klammernamen trifft, ist ein Tippfehler
+		# und wird GEMELDET, nicht verschluckt.
+		if build/qcc_p 'int f(a) int a; int zz; { return a; }' 2>&1 | grep -q 'names no parameter'; then
+			echo "ok    qcc K&R: Deklaration ohne passenden Parameternamen wird diagnostiziert"
+		else
+			echo "FAIL  qcc K&R: Deklaration ohne passenden Parameternamen wird NICHT gemeldet"; tcfail=1; fail=1
+		fi
 		# NACHTRAG -- echter, vorbestehender Mangel in DIESEM Orakel gefunden
 		# (nicht im Compiler: auf dem 68030 laeuft die volle Kette mit der
 		# Feldreihenfolge "short a; short b; int c;" byteidentisch richtig,

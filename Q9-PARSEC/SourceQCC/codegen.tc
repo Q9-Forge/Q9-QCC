@@ -15,7 +15,7 @@
    deshalb ueberall als LITERALE Zahl eingesetzt (Array-Groessen brauchen ein
    Zahlenliteral, sizeof() nur auf einer nackten Variable, keine allgemeinen
    Ausdruecke wie "sizeof(nodes[id].text)"):
-     AST_MAX_NODES  = 8192   AST_MAX_RULES = 256   AST_TEXT_LEN = 40 (Puffer 41)
+     AST_MAX_NODES  = 8192   AST_MAX_RULES = 512   AST_TEXT_LEN = 40 (Puffer 41)
      AST_STACK_MAX  = 256    GEN_NAME_LEN  = 64
 */
 
@@ -82,7 +82,7 @@ struct ActionRoutine {
    sobald sie 68k-Code erzeugen soll -- siehe docs/FORTSCHRITT.md. */
 struct AstNode nodes[8192];		/* AST_MAX_NODES */
 int nodeCnt;
-struct AstRule rules[256];		/* AST_MAX_RULES */
+struct AstRule rules[512];		/* AST_MAX_RULES (2026-09-16: 256 -> 512, s. codegen.cpp) */
 int ruleCnt;
 int astStack[256];			/* AST_STACK_MAX */
 int astDepth;
@@ -131,7 +131,7 @@ int lexBlockNested[4];
 int lexBlockCnt;
 char lexRootsFlat[1312];         /* LEX_MAX_ROOTS * (AST_TEXT_LEN + 1) */
 int lexRootCnt;
-int ruleIsLexical[256];          /* AST_MAX_RULES */
+int ruleIsLexical[512];          /* AST_MAX_RULES */
 char* lexUnquoteNext;
 
 /* CODEGEN-Konfiguration ([CODEGEN]-Block der Arbeitsdatei). */
@@ -144,7 +144,7 @@ char cgenStart[64];               /* GEN_NAME_LEN */
    pushRoutineC/pushRoutine68k). ruleActionCall[AST_MAX_RULES][GEN_NAME_LEN]
    ist im Original ein 2D-Array -- hier wieder FLACH (siehe Kommentar bei
    TEIL 1 oben, gleicher Grund wie bei lexLineComment/lexBlockOn/lexRoots). */
-char ruleActionCallFlat[16384];   /* AST_MAX_RULES * GEN_NAME_LEN = 256 * 64 */
+char ruleActionCallFlat[32768];   /* AST_MAX_RULES * GEN_NAME_LEN = 512 * 64 */
 struct ActionRoutine* routinesC;
 int routinesCCnt;
 int routinesCCap;
@@ -163,7 +163,7 @@ int collectBufCap;
    hier als GLOBAL angelegt und per Schleife genullt (gleiches Muster wie bei
    ruleIsLexical/computeLexicalSet), um die Initialisierer-Frage bei lokalen
    int-Arrays gar nicht erst zu stellen. */
-int ruleNullableArr[256];         /* AST_MAX_RULES */
+int ruleNullableArr[512];         /* AST_MAX_RULES */
 
 /* ===========================================================================
    TEIL 2: Funktionen
@@ -195,6 +195,7 @@ int newNode(int kind) {
 	int id;
 	char* txt;
 	if (nodeCnt >= 8192) {			/* AST_MAX_NODES (Original: 8192) */
+		if (astOverflow == 0) { printf("CODEGEN: AST_MAX_NODES (8192) erschoepft -- Grenze in codegen.tc erhoehen.\n"); }
 		astOverflow = 1;
 		return 8191;				/* letzter Knoten wird Muellhalde; Codegen bricht ab */
 	}
@@ -215,6 +216,7 @@ void pushNode(int id) {
 		astStack[astDepth] = id;
 		astDepth = astDepth + 1;
 	} else {
+		if (astOverflow == 0) { printf("CODEGEN: AST_STACK_MAX (256) erschoepft -- Grenze in codegen.tc erhoehen.\n"); }
 		astOverflow = 1;
 	}
 }
@@ -297,7 +299,8 @@ void astWrapRep() {
 
 void astFinishRule(char* name) {
 	char* dst;
-	if (ruleCnt >= 256) {			/* AST_MAX_RULES */
+	if (ruleCnt >= 512) {			/* AST_MAX_RULES */
+		if (astOverflow == 0) { printf("CODEGEN: AST_MAX_RULES (512) erschoepft bei Regel '%s' -- Grenze in codegen.tc erhoehen.\n", name); }
 		astOverflow = 1;
 		return;
 	}
@@ -751,7 +754,7 @@ int actionsParseConfig(char* buf) {
 	collecting = 0;
 	collectLen = 0;
 	r = 0;
-	while (r < 256) { ruleActionCallFlat[r * 64] = 0; r = r + 1; }	/* AST_MAX_RULES */
+	while (r < 512) { ruleActionCallFlat[r * 64] = 0; r = r + 1; }	/* AST_MAX_RULES */
 	freeRoutines(routinesC, routinesCCnt);
 	routinesCCnt = 0;
 	freeRoutines(routines68k, routines68kCnt);
@@ -831,7 +834,7 @@ int actionsParseConfig(char* buf) {
 	   vollstaendig -- das ist erlaubt (z.B. waehrend nur ein Backend entwickelt
 	   wird), aber eine klare Warnung ist besser als stilles Weglassen. */
 	r = 0;
-	while (r < 256) {
+	while (r < 512) {			/* AST_MAX_RULES */
 		if (ruleActionCallFlat[r * 64] != 0) {
 			if (routineTextC(&ruleActionCallFlat[r * 64]) == 0 && routineText68k(&ruleActionCallFlat[r * 64]) == 0) {
 				printf("ACTIONS: Aktion '%s' hat weder ROUTINE C noch ROUTINE M68K -- wird nirgends aufgerufen.\n", &ruleActionCallFlat[r * 64]);
