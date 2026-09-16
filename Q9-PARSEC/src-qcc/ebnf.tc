@@ -66,8 +66,8 @@ extern void exit(int code);
 
 /* Original-Konstanten (siehe Source/parsec.cpp) -- als Literale eingesetzt:
      IDENT_LEN=32 (Puffer 33)   FILENAME_LEN=64   IDENTLIST_MAX=1024
-     LEXTAB_LEN=1024            MAX_RULES=256      MAX_EDGES=1024
-     MAX_RULE_NAMES=256         MAX_TESTS=256      TEST_INPUT_LEN=256
+     LEXTAB_LEN=1024            MAX_RULES=512      MAX_EDGES=2048
+     MAX_RULE_NAMES=512         MAX_TESTS=256      TEST_INPUT_LEN=256
      WORKFILE_LINE=512          USER_CODE_LEN=1048576
      LEXER_CFG_LEN=4096         CGEN_CFG_LEN=4096  LINESTACK_MAX=1024
      CHARBUFFER_LEN=512         QUELLTEXT_BUF_SIZE=65536
@@ -149,7 +149,7 @@ char lst[8192];
 struct TabEntry lexTab[1024];		/* LEXTAB_LEN */
 
 /* Regel-Adressaufloesung */
-struct RuleSym ruleSymbols[256];	/* MAX_RULES */
+struct RuleSym ruleSymbols[512];	/* MAX_RULES (2026-09-16 von 256 angehoben) */
 int ruleSymbolCnt;
 
 /* Linksrekursions-Erkennung */
@@ -158,13 +158,13 @@ int firstPos;
 int lastFactorWasComplex;
 int lastFactorSkippable;
 int ambigFalseWarned;
-char ruleNameListFlat[8448];		/* MAX_RULE_NAMES * 33 = 256 * 33, flach (siehe
+char ruleNameListFlat[16896];		/* MAX_RULE_NAMES * 33 = 512 * 33, flach (siehe
 					   codegen.tc-Kommentar: keine partielle 2D-Indizierung) */
 int ruleNameListCnt;
-struct Edge firstEdges[1024];		/* MAX_EDGES */
+struct Edge firstEdges[2048];		/* MAX_EDGES (2026-09-16 von 1024 angehoben) */
 int firstEdgeCnt;
-int dfsColor[256];			/* MAX_RULE_NAMES */
-char dfsPathFlat[8448];		/* MAX_RULE_NAMES * 33, flach */
+int dfsColor[512];			/* MAX_RULE_NAMES */
+char dfsPathFlat[16896];		/* MAX_RULE_NAMES * 33, flach */
 int dfsPathLen;
 int leftRecursionFound;
 
@@ -543,7 +543,13 @@ void resolveCallAddresses() {
 	ruleSymbolCnt = 0;
 	i = 0;
 	while (i < aktTabIndex) {
-		if (strlen(lexTab[i].ident) != 0 && ruleSymbolCnt < 256) {
+		/* 2026-09-16: Ueberlauf MELDEN statt still zu ueberspringen -- vorher
+		   fielen ueberzaehlige Regeln wortlos heraus und es kam nur ein
+		   irrefuehrendes "referenziert undefinierte Regel". */
+		if (strlen(lexTab[i].ident) != 0 && ruleSymbolCnt >= 512) {
+			printf("FEHLER: zu viele Regeln (MAX_RULES=512) -- Regel faellt heraus\n");
+		}
+		if (strlen(lexTab[i].ident) != 0 && ruleSymbolCnt < 512) {
 			tcCopyBounded(ruleSymbols[ruleSymbolCnt].name, lexTab[i].ident, 32);
 			ruleSymbols[ruleSymbolCnt].addr = i;
 			ruleSymbolCnt = ruleSymbolCnt + 1;
@@ -582,14 +588,20 @@ void addRuleNameIfNew(char* name) {
 		if (strcmp(&ruleNameListFlat[i * 33], name) == 0) { return; }
 		i = i + 1;
 	}
-	if (ruleNameListCnt < 256) {		/* MAX_RULE_NAMES */
+	if (ruleNameListCnt >= 512) {		/* MAX_RULE_NAMES */
+		printf("FEHLER: zu viele Regelnamen (MAX_RULE_NAMES=512)\n");
+	}
+	if (ruleNameListCnt < 512) {		/* MAX_RULE_NAMES */
 		tcCopyBounded(&ruleNameListFlat[ruleNameListCnt * 33], name, 32);
 		ruleNameListCnt = ruleNameListCnt + 1;
 	}
 }
 
 void addFirstEdge(char* from, char* to) {
-	if (firstEdgeCnt < 1024) {		/* MAX_EDGES */
+	if (firstEdgeCnt >= 2048) {		/* MAX_EDGES */
+		printf("FEHLER: zu viele FIRST-Kanten (MAX_EDGES=2048)\n");
+	}
+	if (firstEdgeCnt < 2048) {		/* MAX_EDGES */
 		tcCopyBounded(firstEdges[firstEdgeCnt].from, from, 32);
 		tcCopyBounded(firstEdges[firstEdgeCnt].to, to, 32);
 		firstEdgeCnt = firstEdgeCnt + 1;

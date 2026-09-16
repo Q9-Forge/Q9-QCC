@@ -492,7 +492,7 @@ void printLexTab() {
 //------------------------------------------------------------------------------------------------
 // Rule address resolution (rule name -> start row)
 //------------------------------------------------------------------------------------------------
-#define MAX_RULES 256
+#define MAX_RULES 512
 typedef struct {
 	char name[IDENT_LEN + 1];
 	int addr;
@@ -506,6 +506,16 @@ void resolveCallAddresses() {
 
 	ruleSymbolCnt = 0;
 	for (i = 0; i < aktTabIndex; i++) {
+		/* 2026-09-16: Ueberlauf MELDEN statt still zu ueberspringen. Vorher
+		   fielen die ueberzaehligen Regeln wortlos heraus, und sichtbar wurde
+		   das erst als "referenziert undefinierte Regel 'digit'" -- eine
+		   Meldung, die auf eine voellig andere Faehrte fuehrt. Dieselbe
+		   Grenze wurde beim Gleitkomma-Ausbau einmal gerissen und hat eine
+		   Stunde Suche gekostet. */
+		if (strlen(lexTab[i].ident) && ruleSymbolCnt >= MAX_RULES) {
+			printf("FEHLER: zu viele Regeln (MAX_RULES=%d) -- Regel '%s' und alle weiteren fallen heraus\n",
+			       MAX_RULES, lexTab[i].ident);
+		}
 		if (strlen(lexTab[i].ident) && ruleSymbolCnt < MAX_RULES) {
 			strncpy_s(ruleSymbols[ruleSymbolCnt].name, sizeof(ruleSymbols[ruleSymbolCnt].name), lexTab[i].ident, IDENT_LEN);
 			ruleSymbols[ruleSymbolCnt].addr = i;
@@ -562,7 +572,7 @@ int lastFactorSkippable = 0;
 // (a factor after a skippable group whose failure jumps to a real row).
 int ambigFalseWarned = 0;
 
-#define MAX_RULE_NAMES 256
+#define MAX_RULE_NAMES 512
 char ruleNameList[MAX_RULE_NAMES][IDENT_LEN + 1];
 int ruleNameListCnt = 0;
 
@@ -571,13 +581,16 @@ void addRuleNameIfNew(const char* name) {
 	for (i = 0; i < ruleNameListCnt; i++) {
 		if (strcmp(ruleNameList[i], name) == 0) return;
 	}
+	if (ruleNameListCnt >= MAX_RULE_NAMES) {
+		printf("FEHLER: zu viele Regelnamen (MAX_RULE_NAMES=%d) -- '%s' faellt heraus\n", MAX_RULE_NAMES, name);
+	}
 	if (ruleNameListCnt < MAX_RULE_NAMES) {
 		strncpy_s(ruleNameList[ruleNameListCnt], sizeof(ruleNameList[ruleNameListCnt]), name, IDENT_LEN);
 		ruleNameListCnt++;
 	}
 }
 
-#define MAX_EDGES 1024
+#define MAX_EDGES 2048
 typedef struct {
 	char from[IDENT_LEN + 1];
 	char to[IDENT_LEN + 1];
@@ -587,6 +600,9 @@ Edge firstEdges[MAX_EDGES];
 int firstEdgeCnt = 0;
 
 void addFirstEdge(const char* from, const char* to) {
+	if (firstEdgeCnt >= MAX_EDGES) {
+		printf("FEHLER: zu viele FIRST-Kanten (MAX_EDGES=%d) -- '%s' -> '%s' faellt heraus\n", MAX_EDGES, from, to);
+	}
 	if (firstEdgeCnt < MAX_EDGES) {
 		strncpy_s(firstEdges[firstEdgeCnt].from, sizeof(firstEdges[firstEdgeCnt].from), from, IDENT_LEN);
 		strncpy_s(firstEdges[firstEdgeCnt].to, sizeof(firstEdges[firstEdgeCnt].to), to, IDENT_LEN);
