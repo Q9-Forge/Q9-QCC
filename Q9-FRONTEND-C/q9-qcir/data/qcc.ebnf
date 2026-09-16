@@ -44,14 +44,26 @@ enumDecl  = "enum" ident "{" enumItem { "," enumItem } "}" ";" .
 enumItem  = ident [ "=" enumValue ] .
 enumValue = globalNeg | globalNumber .
 
-structDecl  = "struct" structName "{" structField { structField } "}" ";" .
+structDecl  = "struct" structName structTail .
+/* GETRENNTE VORWAERTSDEKLARATION (2026-09-16): "struct N;" ohne Rumpf ist
+   gueltiges C89 und scheiterte STUMM. Sie meldet nur den NAMEN an -- genau
+   das tut tc_structbegin ohnehin schon (tcStructPredeclare, seit den
+   selbstreferenziellen structs). Ein Zeiger auf den unvollstaendigen Typ
+   braucht nur die Zeigergroesse, also genuegt der leere Eintrag.
+   structTail teilt sich mit unionDecl: die Rumpfsyntax ist dieselbe, nur das
+   Layout unterscheidet sich. structBodyOpen existiert, damit tc_structend
+   einen leeren RUMPF ("struct S { };", in C ungueltig) von einer
+   Vorwaertsdeklaration unterscheiden kann -- ohne die Marke saehen beide
+   gleich aus. */
+structTail  = structBodyOpen structField { structField } "}" ";" | ";" .
+structBodyOpen = "{" .
 /* UNION (2026-09-15). Dieselbe Feldsyntax wie eine struct -- der
    Unterschied steckt allein im LAYOUT (alle Felder auf Offset 0, Groesse
    gleich dem groessten Feld), und das entscheidet tcRegisterStruct.
    Deshalb wird eine union auch als struct REGISTRIERT: damit erbt sie
    die gesamte vorhandene Maschinerie -- Feldzugriff, "->", Ganzkopie,
    Parameter, Rueckgabe, Arrays -- statt sie ein zweites Mal zu bauen. */
-unionDecl   = "union" unionName "{" structField { structField } "}" ";" .
+unionDecl   = "union" unionName structTail .
 unionName   = ident .
 structName  = ident .
 /* Pointer-Felder in struct (2026-07-25, Selfhosting L2): Skalar-Pointer
