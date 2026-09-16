@@ -31,10 +31,39 @@ kann.
 ### Fehlt, wird aber gemeldet
 
 - `struct S g = {1,2};` **global** (lokal geht seit 2026-09-16)
-- Bitfelder, `long long`, `float`
+- Bitfelder, `long long`
 - `p[i]++` über einen **Zeiger** (trifft `int` wie `double`)
 
 ### Erledigt seit dieser Messung
+
+- **`float`** — 2026-09-17, gemessen in **22 der 1917 MWOS-Quellen**. Vorher
+  „unknown type name 'float'".
+
+  `float` bekommt **denselben Typ wie `double`**. C89 6.2.1.2 verlangt von
+  `float` nur eine *Mindest*genauigkeit und lässt ausdrücklich zu, dass sie
+  mit der von `double` zusammenfällt — genau so wird `long double` hier schon
+  seit dem `double`-Einbau behandelt. Da die üblichen arithmetischen
+  Konversionen in C ohnehin auf `double` hochziehen, rechnet jeder Ausdruck
+  dasselbe Ergebnis.
+
+  **Was das kostet, offen benannt:** `sizeof(float)` ist damit **8, nicht 4**,
+  und ein `float`-Feld in einer Struktur belegt acht Byte statt vier. Wo QCC
+  eine Struktur mit xcc teilt, verschiebt das die Offsets — was dort aber
+  ohnehin schon gilt (siehe den ABI-Abschnitt weiter unten). Ein echter
+  32-Bit-Typ wäre ein eigener Basistyp mit eigenem Speicher-Tag,
+  Lade-/Speicher-Umwandlung in **beiden** Backends und einem eigenen
+  Rundungs-Testaufbau; das ist ein eigener Schritt und bewusst nicht
+  mit eingebaut.
+
+  Der Typtext wird an **drei** Stellen gelesen (`tc_type` sowie zweimal im
+  globalen Pfad) — dieselbe Falle wie beim `double`-Einbau, bei dem der
+  Kommentar dort ausdrücklich davor warnt. Wer nur eine anfasst, bekommt
+  „bad global declaration" für globale Variablen, während die lokale
+  Deklaration längst geht.
+
+  Verifiziert: `double68k.sh` **88/88** auf echtem 68030 (acht neue Fälle:
+  FPU-Parameterübergabe, Rückgabe, struct-Feld, globaler Initialisierer,
+  Array, Zeiger), `runtests.sh` 240 ok / 560 Programme.
 
 - **Mehrdimensionales Array als Parameter** (`int f(int m[2][3])`) —
   2026-09-17, gemessen in **57 der 1917 MWOS-Quellen**. Vorher ein *stummer*

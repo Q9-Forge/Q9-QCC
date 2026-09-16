@@ -112,6 +112,17 @@ void d_setze(double* p)
 	*p = 9.5;
 }
 
+struct FS { float x; int n; };
+float gfloat;
+float gfinit = 2.5;
+
+static float ffLokal(void)  { float f; f = 1.5; return f; }
+static float ffParam(float x) { return x * 2.0; }
+static float ffRueck(void)  { return 3.5; }
+static float ffStruct(void) { struct FS s; s.x = 6.5; s.n = 1; return s.x; }
+static float ffArray(void)  { float a[3]; a[1] = 7.5; return a[1]; }
+static float ffZeiger(void) { float f; float *p; f = 8.5; p = &f; return *p; }
+
 int main()
 {
 	double a;
@@ -383,9 +394,26 @@ int main()
 		}
 	}
 
+	/* --- float (2026-09-17) ---------------------------------------------
+	   float bekommt denselben Typ wie double (C89 6.2.1.2 laesst das zu).
+	   Auf echter Hardware zaehlt hier, dass die FPU-Uebergabe von Parametern
+	   und Rueckgaben, das struct-Feld und der globale Initialisierer
+	   (GINITD) mit dem Schluesselwort "float" GENAUSO laufen wie mit
+	   "double" -- ein Frontend, das den Typ nur halb durchreicht, faellt
+	   genau an diesen Stellen auf, nicht bei einer lokalen Rechnung. */
+	gfloat = 4.5;
+	bad = bad + pruefe("float lokal", (int)(ffLokal() * 10.0), 15);
+	bad = bad + pruefe("float als Parameter", (int)(ffParam(2.5) * 10.0), 50);
+	bad = bad + pruefe("float als Rueckgabe", (int)(ffRueck() * 10.0), 35);
+	bad = bad + pruefe("float global", (int)(gfloat * 10.0), 45);
+	bad = bad + pruefe("float global mit Initialisierer", (int)(gfinit * 10.0), 25);
+	bad = bad + pruefe("float im struct", (int)(ffStruct() * 10.0), 65);
+	bad = bad + pruefe("float-Array lokal", (int)(ffArray() * 10.0), 75);
+	bad = bad + pruefe("float ueber Zeiger", (int)(ffZeiger() * 10.0), 85);
+
 	bad = bad + pruefe("Array-Initialisiererliste", (int)((gtab[0] + gtab[1] + gtab[2]) * 100.0), -75);
 	bad = bad + pruefe("Liste kuerzer als Array -> Rest null", (int)((gtab2[0] + gtab2[1] + gtab2[2] + gtab2[3]) * 10.0), 30);
 
-	printf("double68k fertig: %d von 80 falsch\n", bad);
+	printf("double68k fertig: %d von 88 falsch\n", bad);
 	return 0;
 }
