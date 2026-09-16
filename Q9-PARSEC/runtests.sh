@@ -488,6 +488,20 @@ if command -v python3 >/dev/null 2>&1; then
 		# ist aber eine ALLGEMEINE Grenze, die auch ohne Selbstreferenz besteht
 		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=2; a.n=&b; p=a.n; putint(p->v); }' '2'
 		tc_check 'union U{int i; union U *p;}; int main(){ union U u; u.i=7; putint(u.i); }' '7'
+		# GETRENNTE VORWAERTSDEKLARATION (2026-09-16): "struct N;" ohne Rumpf ist
+		# gueltiges C89 und scheiterte STUMM. Sie meldet nur den NAMEN an --
+		# genau das tut tc_structbegin ohnehin (tcStructPredeclare). Ein
+		# Eintrag mit NULL Feldern gilt seither als unvollstaendig und darf
+		# von der spaeteren Definition VERVOLLSTAENDIGT werden; erst ein
+		# Eintrag MIT Feldern ist eine zweite Definition und ein Fehler.
+		tc_check 'struct N; int main(){ putint(1); }' '1'
+		tc_check 'struct N; int main(){ struct N *p; p=0; putint(1); }' '1'
+		tc_check 'struct N; struct N{int v;}; int main(){ struct N a; a.v=7; putint(a.v); }' '7'
+		# wechselseitige Referenz -- das Idiom, fuer das man die getrennte
+		# Vorwaertsdeklaration ueberhaupt braucht
+		tc_check 'struct A; struct B{int n; struct A *a;}; struct A{int v;}; int main(){ struct B b; b.n=7; putint(b.n); }' '7'
+		tc_check 'struct A; struct B{struct A *a;}; struct A{int v;}; int main(){ struct A x; struct B b; struct A *p; x.v=9; b.a=&x; p=b.a; putint(p->v); }' '9'
+		tc_check 'union U; union U{int i;}; int main(){ union U u; u.i=7; putint(u.i); }' '7'
 		# STRUCT MIT INITIALISIERERLISTE (2026-09-16): "struct S s = {1,2};".
 		# Bis dahin kam "scalar cannot use array initializer" -- die Meldung sah
 		# den Fall gar nicht. Umgesetzt als Folge von Feld-Stores, also genau
@@ -718,6 +732,7 @@ if command -v python3 >/dev/null 2>&1; then
 			'int i = 1e2; int main(){ putint(1); }|floating point initializer requires a double' \
 			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer' \
 			'struct S{int a;}; int main(){ struct S s = {1,2,3}; putint(1); }|too many values in struct initializer' \
+			'struct S{int a;}; struct S{int b;}; int main(){ putint(1); }|duplicate struct' \
 			'double t[2]={{1.0},{2.0}}; int main(){ putint(1); }|nested initializer list' \
 			'double t[2]={1.0,2.0,3.0}; int main(){ putint(1); }|bad or oversized array initializer'
 		do
