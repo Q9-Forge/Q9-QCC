@@ -1574,10 +1574,36 @@ if command -v python3 >/dev/null 2>&1; then
 		# Scratch, s. tcEmitFieldRowColIndex) -- der "eigene Folgeschritt", auf
 		# den die Notiz oben verweist, ist damit erledigt.
 		tc_check 'struct R{ int m[2][3]; }; int main(){ struct R r; r.m[0][0]=7; putint(r.m[0][0]); }' '7'
-		if build/qcc_p 'int f(int m[][3]){ return 0; } int main(){ putint(1); }' >/dev/null 2>&1; then
-			echo "FAIL  qcc: 2D-Array-Parameter wird faelschlich akzeptiert"; tcfail=1; fail=1
+		# MEHRDIMENSIONALES ARRAY ALS PARAMETER (2026-09-17). Bis dahin ein
+		# STUMMER Parse-Fehler; der Test hier hat genau das festgehalten.
+		# Gemessen: 57 der 1917 MWOS-Quellen.
+		#
+		# Ein erster Anlauf am 16.09.2026 wurde ZURUECKGEROLLT, weil die
+		# Grammatik allein die Indizes nicht kombiniert und der Zugriff still
+		# falsch rechnete. Die Faelle hier sind deshalb bewusst
+		# DISKRIMINIEREND gebaut: "alle Zellen unterscheidbar" liefert bei
+		# vertauschter oder fehlender Zeilenrechnung eine andere Zahl, und
+		# "schreiben trifft nur die Zelle" prueft zusaetzlich die NACHBARN.
+		# Ein Test, der nur eine Zelle schreibt und dieselbe liest, haette
+		# den alten Fehler NICHT gefunden -- Lesen und Schreiben lagen auf
+		# dieselbe Weise daneben und stimmten miteinander ueberein.
+		tc_check 'int f(int m[2][3]){ return m[1][2]; } int main(){ int a[2][3]; a[1][2]=7; putint(f(a)); }' '7'
+		tc_check 'int f(int m[2][3]){ return m[0][0]*100+m[0][2]*10+m[1][0]; } int main(){ int a[2][3]; a[0][0]=1;a[0][1]=9;a[0][2]=2;a[1][0]=3;a[1][1]=9;a[1][2]=9; putint(f(a)); }' '123'
+		tc_check 'void g(int m[2][3]){ m[1][1]=42; } int main(){ int a[2][3]; int i; int j; for(i=0;i<2;i=i+1)for(j=0;j<3;j=j+1)a[i][j]=0; g(a); putint(a[1][1]); putint(a[1][0]); putint(a[0][1]); }' '42\n0\n0'
+		tc_check 'int f(int m[][3]){ return m[1][0]; } int main(){ int a[2][3]; a[1][0]=5; putint(f(a)); }' '5'
+		tc_check 'int s(int m[2][3]){ int i; int j; int t; t=0; for(i=0;i<2;i=i+1) for(j=0;j<3;j=j+1) t=t+m[i][j]; return t; } int main(){ int a[2][3]; int i; int j; for(i=0;i<2;i=i+1) for(j=0;j<3;j=j+1) a[i][j]=i*3+j; putint(s(a)); }' '15'
+		tc_check 'int f(int m[2][3][4]){ return m[1][2][3]; } int main(){ int a[2][3][4]; a[1][2][3]=8; putint(f(a)); }' '8'
+		tc_check 'int f(char m[2][3]){ return m[1][2]; } int main(){ char a[2][3]; a[1][2]=65; putint(f(a)); }' '65'
+		# Die beiden Nachbarformen duerfen sich NICHT geaendert haben: ein
+		# eindimensionaler Array-Parameter und ein echter Doppelzeiger.
+		tc_check 'int f(int m[]){ return m[2]; } int main(){ int a[3]; a[2]=6; putint(f(a)); }' '6'
+		tc_check 'int main(){ int v; int *r; int **p; v=9; r=&v; p=&r; putint(p[0][0]); }' '9'
+		# Ab der ZWEITEN Dimension ist die Groesse Pflicht -- ohne sie gibt es
+		# keine Zeilenlaenge und damit keine Indexrechnung.
+		if build/qcc_p 'int f(int m[2][]){ return 0; } int main(){ putint(1); }' 2>&1 | grep -q "needs a size"; then
+			echo "ok    qcc: fehlende Groesse ab der 2. Array-Dimension wird diagnostiziert"
 		else
-			echo "ok    qcc: 2D-Array als Parameter bleibt Parse-Fehler (eigener Folgeschritt)"
+			echo "FAIL  qcc: fehlende Groesse ab der 2. Array-Dimension wird NICHT gemeldet"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige
