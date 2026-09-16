@@ -20,6 +20,9 @@ double gi = 4.5;
 double gneg = -2.5;
 double gpi = 3.14159;
 double gint = 5;
+/* Exponentschreibweise, auch im globalen Initialisierer */
+double gexp = 1.5e3;
+double gexpneg = 2.5E-2;
 
 int pruefe(char* name, int ist, int soll)
 {
@@ -238,6 +241,21 @@ int main()
 	gi = gi + 1.0;
 	bad = bad + pruefe("Initialisierter global ist schreibbar", (int)(gi * 10.0), 55);
 
-	printf("double68k fertig: %d von 49 falsch\n", bad);
+	/* EXPONENTSCHREIBWEISE (2026-09-16). Gescheitert war sie am Lexer, nicht
+	   am Umrechner -- "TOKEN floatLit" fehlte, und "1e2" zerfiel in ein
+	   number- und ein ident-Token. Die Form MIT Vorzeichen ("1e-2") ging
+	   deshalb schon vorher; beide gehoeren in den Test. */
+	a = 1e2;
+	bad = bad + pruefe("1e2 = 100", (int)a, 100);
+	a = 1.5e3;
+	bad = bad + pruefe("1.5e3 = 1500", (int)a, 1500);
+	a = 5e-1;
+	bad = bad + pruefe("5e-1 = 0.5", (int)(a * 10.0), 5);
+	a = 2.5E-2;
+	bad = bad + pruefe("2.5E-2 = 0.025", (int)(a * 1000.0), 25);
+	bad = bad + pruefe("globaler Init 1.5e3", (int)gexp, 1500);
+	bad = bad + pruefe("globaler Init 2.5E-2", (int)(gexpneg * 1000.0), 25);
+
+	printf("double68k fertig: %d von 55 falsch\n", bad);
 	return 0;
 }
