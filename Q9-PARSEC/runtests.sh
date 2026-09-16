@@ -691,6 +691,7 @@ if command -v python3 >/dev/null 2>&1; then
 		for prog_msg in \
 			'double t[3] = {1.0,2.0,3.0}; int main(){ putint(1); }|initializer lists for double arrays' \
 			'int i = 1.5; int main(){ putint(1); }|floating point initializer requires a double' \
+			'int i = 1e2; int main(){ putint(1); }|floating point initializer requires a double' \
 			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer' \
 			'struct S { double d; }; int main(){ struct S s; s.d=1.5; s.d++; putint(1); }|double struct field' \
 			'int main(){ double a[3]; a[0]=1.5; a[0]++; putint(1); }|double array element' \
@@ -818,6 +819,29 @@ if command -v python3 >/dev/null 2>&1; then
 		# "double g = 0.1;" ein anderes Bitmuster als "a = 0.1;", und genau
 		# das faellt bei 0.1 auf, weil es binaer nicht exakt ist.
 		tc_check 'double g = 0.1; int main(){ double a; a = 0.1; if (g == a) putint(1); else putint(0); }' '1'
+		# EXPONENTSCHREIBWEISE (2026-09-16). Der Umrechner konnte sie laengst;
+		# gescheitert ist sie am LEXER: ohne "TOKEN floatLit" wurde aus "1e2"
+		# ein number-Token "1" und ein ident-Token "e2", in das der Parser
+		# nicht hineinschauen kann. "1e-2" ging deshalb schon immer -- das
+		# Minus trennt die Tokens. Beide Formen gehoeren deshalb in den Test.
+		tc_check 'int main(){ double a; a=1e2; putint((int)a); }' '100'
+		tc_check 'int main(){ double a; a=2e1; putint((int)a); }' '20'
+		tc_check 'int main(){ double a; a=1E2; putint((int)a); }' '100'
+		tc_check 'int main(){ double a; a=1.5e3; putint((int)a); }' '1500'
+		tc_check 'int main(){ double a; a=5e-1; putint((int)(a*10.0)); }' '5'
+		tc_check 'int main(){ double a; a=5e+1; putint((int)a); }' '50'
+		tc_check 'int main(){ double a; a=2.5E-2; putint((int)(a*1000.0)); }' '25'
+		# ... und im globalen Initialisierer, wo tcGlobalOne den Zahltext
+		# SELBST abgrenzt: dort war der Exponent zuerst still abgeschnitten
+		# ("double g = 1e2;" ergab 1 statt 100). Die Sollwerte sind so
+		# gewaehlt, dass ein abgeschnittener Exponent auffaellt.
+		tc_check 'double g = 1e2; int main(){ putint((int)(g*100.0)); }' '10000'
+		tc_check 'double g = 1.5e3; int main(){ putint((int)(g*100.0)); }' '150000'
+		tc_check 'double g = -1.5e2; int main(){ putint((int)(g*100.0)); }' '-15000'
+		tc_check 'double g = 2.5E-2; int main(){ putint((int)(g*1000.0)); }' '25'
+		# Hexzahlen enden auf E, ohne einen Exponenten zu haben
+		tc_check 'int g = 0x1E; int main(){ putint(g); }' '30'
+		tc_check 'int main(){ int x; x = 0x1E; putint(x); }' '30'
 		# Und die Diagnose nennt den Typ beim Namen statt "?"
 		if build/qcc_p 'struct S { int a; }; int main(){ struct S s; double d; d = s; putint(1); }' 2>&1 | grep -qF 'double'; then
 			echo "ok    qcc: Diagnose nennt double beim Namen"

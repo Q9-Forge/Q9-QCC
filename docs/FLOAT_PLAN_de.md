@@ -465,3 +465,48 @@ Backend-Modul.
 - **`++`/`--` auf `s.d`, `a[0]`, `(*p)`** — es fehlt nur noch die
   Blockrotation für den Postfix-Fall.
 - `printf("%f")` (qclib) und `float` als eigener Typ.
+
+## Exponentschreibweise (2026-09-16) — und warum sie so schwer zu finden war
+
+`1e2`, `1.5e3`, `2.5E-2` gehen jetzt, im Ausdruck wie im globalen
+Initialisierer. Der Aufwand lag nicht dort, wo man ihn vermutet.
+
+**Der Umrechner konnte es längst.** `qccDecToDouble` (wortgleich
+`tools/dec2ieee.c`) liest `e`/`E` samt Vorzeichen seit jeher. Auch die
+Grammatik zu erweitern genügte nicht.
+
+**Die Ursache saß im LEXER.** Die `[LEXER]`-Sektion in `qcc.lextab` listet,
+welche Grammatikregeln als **Token** gebildet werden — `ident`, `number`,
+`stringLit`, `charLit`. `floatLit` fehlte. Damit zerfiel `1e2` in ein
+`number`-Token `1` und ein `ident`-Token `e2`, und in ein Ident-Token kann
+der Parser nicht mehr hineinschauen. Die Lösung ist eine Zeile:
+`TOKEN floatLit`, **vor** `TOKEN number`.
+
+**Die irreführende Spur:** `1e-2` und `5e+1` funktionierten die ganze Zeit —
+das Vorzeichen trennt die Tokens, `e` bleibt für sich. Das sah nach einem
+Problem mit der optionalen Vorzeichenregel aus und hat mehrere Umbauten der
+Grammatik gekostet, die alle nichts änderten. **Wer hier etwas ändert, prüfe
+zuerst, ob der Lexer das Literal überhaupt als ein Token bildet.**
+
+**Zweiter Fehler, im eigenen Code:** `tcGlobalOne` grenzt den Zahltext selbst
+ab — und schnitt den Exponenten ab. `double g = 1e2;` ergab **1 statt 100**,
+still. Die Abgrenzung liegt jetzt in **einer** Funktion (`tcFloatLitEnd`),
+die Ziffern, Punkt und Exponent gemeinsam liest; der Exponent zählt nur mit,
+wenn ihm Ziffern folgen, damit `1e` ein Fehler bleibt. Hexzahlen sind
+ausgenommen: `0x1E` endet auf ein `E`, das kein Exponent ist (eigener Test).
+
+### Nebenbefund: `MAX_RULES` in parsec meldet sich nicht
+
+`parsec` hat ein festes `MAX_RULES` (256) und überschreitet es **still**:
+`if (ruleSymbolCnt < MAX_RULES)` überspringt die überzähligen Regeln ohne
+ein Wort. Sichtbar wird das erst als „referenziert undefinierte Regel
+'digit'" — eine Meldung, die auf eine ganz andere Fährte führt. Dasselbe
+Muster bei `MAX_RULE_NAMES` (256) und `MAX_EDGES` (1024).
+
+**Die Grammatik liegt mit 250 Regeln dicht darunter.** Deshalb teilen sich
+`floatLit`, `globalFloat` und `initFloat` hier die aktionslosen Regeln
+`floatTail`/`floatDotTail`/`floatExp` statt je eigene Kopien zu haben — drei
+Kopien hätten die Grenze gerissen. Die Konstanten stehen außerdem **doppelt**:
+in `src/parsec.cpp` und als harte Zahlen im QCC-Port `src-qcc/ebnf.tc`.
+Eine Anhebung müsste beide anfassen; eine Meldung beim Überlauf wäre der
+lohnendere erste Schritt — beides ist hier bewusst nicht gemacht.

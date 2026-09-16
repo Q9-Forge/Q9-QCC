@@ -196,3 +196,16 @@ Treiber. Einzelheiten in `FLOAT_PLAN_de.md`.
 Noch offen: Initialisiererlisten für `double`-Arrays (werden gemeldet),
 Exponentliterale (stumm), `++`/`--` über die drei Adressformen,
 `printf("%f")`, `float`.
+
+## Nachtrag 2026-09-16 (6) — Exponentschreibweise
+
+`1e2`, `1.5e3`, `2.5E-2` werden gelesen, im Ausdruck wie im globalen
+Initialisierer. **Damit scheitert kein Gleitkomma-Konstrukt mehr stumm.**
+
+Die Ursache lag im **Lexer**, nicht im Umrechner und nicht in der Grammatik:
+`floatLit` war keine `TOKEN`-Regel, deshalb zerfiel `1e2` in `1` und `e2`.
+`1e-2` ging die ganze Zeit — das Vorzeichen trennt die Tokens. Einzelheiten
+und ein Nebenbefund zu `MAX_RULES` in `FLOAT_PLAN_de.md`.
+
+Noch offen bei `double`: Initialisiererlisten für Arrays, `++`/`--` über die
+drei Adressformen, `printf("%f")`, `float`.

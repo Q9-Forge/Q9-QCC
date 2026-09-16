@@ -233,7 +233,7 @@ constSizeOp = "+" | "-" | "*" .
    tc_floatlit ein PUSHD legen koennte. Die Form muss hier nur GELESEN
    werden, damit tcGlobalOne sie melden kann statt still abzubrechen. */
 globalValue = globalFloat | globalNumber | globalNeg | globalBool .
-globalFloat = digit { digit } "." { digit } .
+globalFloat = digit { digit } floatTail .
 globalBool  = "true" | "false" .
 globalNeg   = "-" ( globalFloat | globalNumber ) .
 globalNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
@@ -439,7 +439,7 @@ initNeg   = "-" ( initFloat | initNumber ) .
    Die Form muss hier nur LESBAR sein, damit "double t[3] = {1.0, 2.0};"
    eine Meldung bekommt statt still am Parser zu scheitern -- umgesetzt ist
    der Fall noch nicht (s. tcGlobalOne). */
-initFloat = digit { digit } "." { digit } .
+initFloat = digit { digit } floatTail .
 /* HEX UND SUFFIXE IN INITIALISIERERN (2026-09-16): initNumber las nur
    Dezimalziffern -- "unsigned long t[] = { 0x7FF00000UL };" scheiterte
    damit STILL, obwohl dieselbe Zahl in jedem Ausdruck gelesen wird.
@@ -821,6 +821,19 @@ decNumber = digit { digit } .
    qr68 sind alle im QCC-Subset ohne Gleitkomma geschrieben. Sie
    braucht also Ganzzahlarithmetik und ist ein eigener Baustein --
    s. docs/FLOAT_PLAN_de.md. */
-floatLit  = digit { digit } "." { digit } .
+floatLit  = digit { digit } floatTail .
+/* EXPONENTSCHREIBWEISE (2026-09-16). "1e2" scheiterte bis dahin STUMM, und
+   zwar an einer Stelle, die man der Grammatik nicht ansieht: der LEXER bildet
+   Tokens (siehe [LEXER] in qcc.lextab), und "e2" wurde dabei ein ident-Token,
+   in das der Parser nicht mehr hineinschauen kann. "1e-2" ging deshalb schon
+   immer -- das Minus trennt die Tokens. Erst "TOKEN floatLit" (vor number)
+   laesst den Lexer das ganze Literal als EIN Token bilden.
+   floatTail/floatDotTail/floatExp tragen keine Aktion und werden von
+   globalFloat und initFloat mitbenutzt statt kopiert -- parsec hat ein festes
+   MAX_RULES (256) und die Grammatik liegt dicht darunter. */
+floatTail = floatDotTail | floatExp .
+floatDotTail = "." { digit } [ floatExp ] .
+floatExp  = ( "e" | "E" ) [ floatExpSign ] digit { digit } .
+floatExpSign = "+" | "-" .
 letter    = "a"~"z" | "A"~"Z" | "_" .
 digit     = "0"~"9" .
