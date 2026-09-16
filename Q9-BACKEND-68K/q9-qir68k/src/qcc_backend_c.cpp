@@ -48,7 +48,18 @@
 /* The complete generated qcc_p parser contains about 1,053 globals, mostly
    string literals. 1024 was therefore an artificial bootstrap limit, not a
    memory limit. */
-#define MAX_GLOBALS     2048
+/* 2026-09-16 von 2048 auf 3072 angehoben. GEMESSEN, nicht geschaetzt: der
+   Selbsthost (QCC uebersetzt seinen eigenen Parser) brauchte 2053 und riss
+   damit die alte Grenze um fuenf. Der Zuwachs kommt fast ausschliesslich aus
+   String-Literalen -- jede neue Diagnose im Frontend ist ein eigenes
+   __strN-Global, und der Gleitkomma-Ausbau hat viele gebracht.
+   Hier steht bewusst NICHT der gemessene Bedarf: eine Grenze, die genau
+   passt, reisst bei der naechsten Fehlermeldung wieder (dieselbe Ueberlegung
+   wie bei TC_MAX_CTRL). Preis: die Global-Tabelle ist ein statisches Feld von
+   gut 100 Byte je Eintrag, die Anhebung kostet also rund 110 KB im
+   Backend-Modul -- vertretbar neben den 16 MB des Q9, und weit entfernt von
+   den 16,8 MB, an denen das alte init[]-im-Global-Feld gescheitert war. */
+#define MAX_GLOBALS     3072
 #define MAX_ARRAY_LEN   4096
 
 /* 2026-08-11: `args` used to be `char args[MAX_ARGS][ARG_LEN]`, or 6x64 = 384
@@ -548,6 +559,19 @@ static int tagShift(const char* w) { int s = tagSize(w); return s == 1 ? 0 : s =
 /* 68k size suffix for move/dc/ds. */
 static char tagSuffix(int size) { return size == 1 ? 'b' : size == 2 ? 'w' : 'l'; }
 
+/* Wie number(), aber vorzeichenlos: die beiden Haelften eines
+   double-Bitmusters (GINITD) reichen bis $FFFFFFFF und wuerden mit strtol
+   ueberlaufen. Gespeichert wird das Bitmuster, nicht der Zahlwert. */
+static int numberU(const char* text, int line) {
+	char* end;
+	unsigned long v;
+	char msg[160];
+	if (text[0] == '\0') { sprintf(msg, "IR Zeile %d: Zahl erwartet: %s", line, text); fatal(msg); }
+	v = strtoul(text, &end, 10);
+	if (*end != '\0') { sprintf(msg, "IR Zeile %d: Zahl erwartet: %s", line, text); fatal(msg); }
+	return (int)(unsigned int)v;
+}
+
 static int number(const char* text, int line) {
 	char* end;
 	long v;
@@ -694,6 +718,35 @@ static void collectGlobals(void) {
 			if (!found) fatal("GINIT fuer unbekanntes Array");
 			continue;
 		}
+		if (strcmp(insP->op, "GINITD") == 0) {
+			/* Anfangswert eines globalen double: zwei 32-Bit-Haelften, hi
+			   zuerst (wie PUSHD). init[] haelt EINEN int je Element, ein
+			   double braucht also ZWEI Plaetze -- deshalb wird hier mit
+			   length*2 alloziert und ueber 2*idx indiziert. */
+			int foundD = 0;
+			if (insP->argc != 4) fatal("ungueltiges GINITD");
+			for (gi = 0; gi < globalCount; gi++) {
+				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+					int* initD;
+					idx = number(insP->args[1], insP->line);
+					if (idx < 0 || idx >= globals[gi].length) fatal("GINITD-Index ausserhalb Array");
+					if (idx >= MAX_ARRAY_LEN / 2) fatal("GINITD-Index ueberschreitet MAX_ARRAY_LEN");
+					if (globals[gi].init == NULL) {
+						int wantD = globals[gi].length < MAX_ARRAY_LEN / 2 ? globals[gi].length : MAX_ARRAY_LEN / 2;
+						globals[gi].init = initAlloc(wantD * 2, insP->line);
+						globals[gi].initLen = wantD * 2;
+					}
+					initD = globals[gi].init;
+					initD[2 * idx] = numberU(insP->args[2], insP->line);
+					initD[2 * idx + 1] = numberU(insP->args[3], insP->line);
+					globals[gi].hasGinit = 1;
+					foundD = 1;
+					break;
+				}
+			}
+			if (!foundD) fatal("GINITD fuer unbekanntes Array");
+			continue;
+		}
 		if (strcmp(insP->op, "GLOBAL") != 0 && strcmp(insP->op, "GARRAY") != 0) continue;
 		if (strcmp(insP->op, "GARRAY") == 0) {
 			/* Fourth argument (2026-07-25, multi-file translation): optional
@@ -768,7 +821,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
+		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITD") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
 			/* Allowed before the first function (true globals), inside an open
 			   function (static locals), and between functions since 2026-08-10.
 			   C permits declarations and functions to be mixed freely; collectGlobals
@@ -1967,7 +2020,7 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PRINTC") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
 				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"), &serial, psectName);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0) {
 				/* Static local variable: already processed by collectGlobals() (its address
 				   and initial value are emitted in the DATA/BSS section); this point in the
 				   function body is a pure no-op with no runtime action. */
@@ -2016,6 +2069,14 @@ static void emitIR(FILE* out) {
 					if (g->elemSize != 1) emitAlign(out);
 					if (!g->isArray) {
 						fprintf(out, "%s:\tdc.%c\t%d\n", gAsmName, tagSuffix(g->elemSize), g->initialValue);
+					} else if (!g->hasGinit && g->elemSize == 8) {
+						/* Ein double belegt ACHT Byte; tagSuffix() kennt nur
+						   b/w/l und haette pro Element nur vier geschrieben.
+						   Ohne -remotedata laeuft ein uninitialisiertes
+						   double-Global durch genau diesen Zweig. */
+						int e;
+						fprintf(out, "%s:\n", gAsmName);
+						for (e = 0; e < g->length; e++) fputs("\tdc.l\t0\n\tdc.l\t0\n", out);
 					} else if (!g->hasGinit) {
 						/* perLine affects only readability of the generated assembly, not
 						   correctness; a middle value was added for short (elemSize 2) on
@@ -2028,6 +2089,19 @@ static void emitIR(FILE* out) {
 							for (k = 1; k < n; k++) fprintf(out, ",0");
 							fprintf(out, "\n");
 							e += n;
+						}
+					} else if (g->elemSize == 8) {
+						/* double mit Anfangswert: zwei dc.l je Element, hi
+						   zuerst -- der 68k ist big-endian, damit steht das
+						   Bitmuster genau so, wie fmove.d es liest. Hex, weil
+						   die Haelften vorzeichenlos bis $FFFFFFFF gehen. */
+						int e;
+						fprintf(out, "%s:\n", gAsmName);
+						for (e = 0; e < g->length; e++) {
+							int* gd = g->init;
+							unsigned long dhi = 2 * e < g->initLen ? (unsigned long)(unsigned int)gd[2 * e] : 0UL;
+							unsigned long dlo = 2 * e + 1 < g->initLen ? (unsigned long)(unsigned int)gd[2 * e + 1] : 0UL;
+							fprintf(out, "\tdc.l\t$%08lX\n\tdc.l\t$%08lX\n", dhi, dlo);
 						}
 					} else {
 						fprintf(out, "%s:\n", gAsmName);

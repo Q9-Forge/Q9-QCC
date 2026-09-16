@@ -259,6 +259,29 @@ static void collectGlobals(void) {
 			if (!found) fatal("GINITADDR fuer unbekannte globale Variable");
 			continue;
 		}
+		if (strcmp(x->op, "GINITD") == 0) {
+			/* Anfangswert eines globalen double: zwei 32-Bit-Haelften, hi zuerst
+			   (wie PUSHD). init[] haelt EINEN int je Element, ein double braucht
+			   also zwei Plaetze -- Indizierung ueber 2*idx. Zusammengesetzt wird
+			   erst bei der Ausgabe, denn nur dort steht fest, dass ARM64
+			   little-endian ist und ein .quad genuegt. */
+			int foundD = 0, giD, idxD;
+			if (x->argc != 4) fatal("ungueltiges GINITD");
+			for (giD = 0; giD < globalCount; giD++) {
+				if (strcmp(globals[giD].name, x->args[0]) == 0 && globals[giD].isArray) {
+					idxD = number(x->args[1], x->line);
+					if (idxD < 0 || idxD >= globals[giD].length) fatal("GINITD-Index ausserhalb Array");
+					if (idxD >= MAX_ARRAY_LEN / 2) fatal("GINITD-Index ueberschreitet MAX_ARRAY_LEN");
+					globals[giD].init[2 * idxD] = (int)(unsigned int)strtoul(x->args[2], 0, 10);
+					globals[giD].init[2 * idxD + 1] = (int)(unsigned int)strtoul(x->args[3], 0, 10);
+					globals[giD].hasGinit = 1;
+					foundD = 1;
+					break;
+				}
+			}
+			if (!foundD) fatal("GINITD fuer unbekanntes Array");
+			continue;
+		}
 		if (strcmp(x->op, "GINIT") == 0) {
 			int found = 0;
 			if (x->argc != 3) fatal("ungueltiges GINIT");
@@ -354,7 +377,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
-		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITADDR") == 0) {
+		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITD") == 0 || strcmp(x->op, "GINITADDR") == 0) {
 			/* Allowed before the first function or inside an open function (static
 			   local variable), but not between two functions. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
@@ -810,7 +833,7 @@ static void emit(FILE* o) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putuint\n", o);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITADDR") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITADDR") == 0) {
 				/* Static locals were handled by collectGlobals(); this occurrence in
 				   the function body is a no-op. */
 			} else {
@@ -849,12 +872,24 @@ static void emit(FILE* o) {
 					int e;
 					if (g->isShort) fputs("\t.p2align\t1\n", o);
 					else if (!g->isChar) fputs("\t.p2align\t2\n", o);
-					if (g->isPointer) fputs("\t.p2align\t3\n", o);
+					if (g->isPointer || g->isDouble) fputs("\t.p2align\t3\n", o);
 					if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 					fprintf(o, "_tc_g_%s:\n", g->name);
 					if (!g->isArray) {
 						fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->initialValue);
 					} else {
+						if (g->isDouble) {
+							/* Ein double ist hier ein 64-Bit-Bitmuster; .quad
+							   legt es little-endian ab, genau wie ldr es liest.
+							   Aus den beiden Haelften (hi zuerst in init[])
+							   wird der Wert erst an dieser Stelle gebildet --
+							   die Reihenfolge im Speicher ist Sache des Ziels. */
+							for (e = 0; e < g->length; e++) {
+								unsigned long long dhi = (unsigned long long)(unsigned int)g->init[2 * e];
+								unsigned long long dlo = (unsigned long long)(unsigned int)g->init[2 * e + 1];
+								fprintf(o, "\t.quad\t0x%016llx\n", (dhi << 32) | dlo);
+							}
+						} else
 						for (e = 0; e < g->length; e++) {
 							int ai;
 							const char* sym = 0;

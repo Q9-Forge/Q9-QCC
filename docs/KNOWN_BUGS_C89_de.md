@@ -179,3 +179,20 @@ Exponentliterale (stumm abgelehnt), `++`/`--` über die drei Adressformen,
 Nicht offen, sondern korrekt: `%` und die Bit-/Schiebeoperatoren verlangen
 auf `double` ganzzahlige Operanden (C89 3.3.5 bzw. 3.3.7 ff) — die Meldung
 ist die richtige Diagnose, kein fehlendes Feature.
+
+## Nachtrag 2026-09-16 (5) — Initialisierer an globalen `double`
+
+`double PI = 3.14159;` ist umgesetzt, über den neuen IR-Opcode `GINITD`
+(zwei 32-Bit-Hälften; die Reihenfolge im Speicher legt das Backend fest,
+nicht das Frontend). Auch `double g = -2.5;` und `double g = 5;` gehen.
+
+Nebenbei behoben: ein uninitialisiertes globales `double` bekam im 68k-
+Backend ohne `-remotedata` nur vier statt acht Byte je Element.
+
+`MAX_GLOBALS` musste dafür von 2048 auf 3072 — der Selbsthost brauchte 2053.
+**Jede neue Diagnose im Frontend ist ein eigenes String-Global**, das ist der
+Treiber. Einzelheiten in `FLOAT_PLAN_de.md`.
+
+Noch offen: Initialisiererlisten für `double`-Arrays (werden gemeldet),
+Exponentliterale (stumm), `++`/`--` über die drei Adressformen,
+`printf("%f")`, `float`.

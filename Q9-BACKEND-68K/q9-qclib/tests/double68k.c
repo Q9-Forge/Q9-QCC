@@ -12,6 +12,14 @@
 extern int printf(char*, ...);
 
 double g;
+/* INITIALISIERER AN GLOBALEN double (2026-09-16). Der Wert steht als
+   Bitmuster in den Daten -- auf dem 68k big-endian, zwei dc.l, hi zuerst.
+   Ob die Reihenfolge stimmt, zeigt nur die echte Maschine: im VM-Orakel
+   setzt Python den double selbst zusammen. */
+double gi = 4.5;
+double gneg = -2.5;
+double gpi = 3.14159;
+double gint = 5;
 
 int pruefe(char* name, int ist, int soll)
 {
@@ -222,6 +230,14 @@ int main()
 	i += 1.5;
 	bad = bad + pruefe("int i += 1.5 -> 8", i, 8);
 
-	printf("double68k fertig: %d von 44 falsch\n", bad);
+	bad = bad + pruefe("globaler Initialisierer 4.5", (int)(gi * 10.0), 45);
+	bad = bad + pruefe("globaler Initialisierer -2.5", (int)(gneg * 10.0), -25);
+	bad = bad + pruefe("globaler Initialisierer 3.14159", (int)(gpi * 100.0), 314);
+	bad = bad + pruefe("globaler Initialisierer 5 (ganz)", (int)(gint * 10.0), 50);
+	/* beschreibbar bleibt er auch */
+	gi = gi + 1.0;
+	bad = bad + pruefe("Initialisierter global ist schreibbar", (int)(gi * 10.0), 55);
+
+	printf("double68k fertig: %d von 49 falsch\n", bad);
 	return 0;
 }

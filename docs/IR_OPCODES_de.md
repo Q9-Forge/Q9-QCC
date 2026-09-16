@@ -37,6 +37,7 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
 | `GLOBAL <name> [init]` | — | globale skalare Variable, optionaler Initialwert |
 | `GARRAY <name> <typtag> <len>` | — | globales Array fester Länge |
 | `GINIT <name> <idx> <wert>` | — | Initialwert für ein Array-Element (mehrfach pro Array) |
+| `GINITD <name> <idx> <hi> <lo>` | — | Initialwert eines globalen `double`, als zwei 32-Bit-Hälften (hi zuerst) — wie `PUSHD`. **Welche Hälfte zuerst im Speicher landet, entscheidet das Backend**: der 68k schreibt zwei `dc.l` (big-endian), ARM64 ein `.quad` (little-endian). Deshalb ein eigener Opcode statt zweier `GINIT` |
 | `FUNC <name> <nargs>` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter |
 | `ENDFUNC` | — | Funktionsende (Rahmengröße = höchster Slot+1, vom Backend ermittelt) |
 | `LABEL <L>` | — | definiert Sprungziel `L` |

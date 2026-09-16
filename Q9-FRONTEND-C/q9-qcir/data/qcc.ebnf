@@ -235,7 +235,7 @@ constSizeOp = "+" | "-" | "*" .
 globalValue = globalFloat | globalNumber | globalNeg | globalBool .
 globalFloat = digit { digit } "." { digit } .
 globalBool  = "true" | "false" .
-globalNeg   = "-" globalNumber .
+globalNeg   = "-" ( globalFloat | globalNumber ) .
 globalNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
 
 /* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
@@ -430,10 +430,16 @@ initList  = "{" [ initValue { "," initValue } ] "}" .
    damit zurecht. Ausgewertet wird die Liste ohnehin als ROHTEXT
    (tcInitList), die Grammatik muss die Form nur lesen koennen; dort wird
    auch die Zeilenlaenge beachtet und eine zu tiefe Schachtelung gemeldet. */
-initValue = initNumber | initNeg | initBool | initString | initList .
+initValue = initFloat | initNumber | initNeg | initBool | initString | initList .
 initString = "\042" { character } "\042" .
 initBool  = "true" | "false" .
-initNeg   = "-" initNumber .
+initNeg   = "-" ( initFloat | initNumber ) .
+/* Wie globalFloat eine ABSICHTLICH AKTIONSLOSE Kopie: eine Liste wird nicht
+   ueber Aktionen ausgewertet, sondern als Rohtext von tcInitList gelesen.
+   Die Form muss hier nur LESBAR sein, damit "double t[3] = {1.0, 2.0};"
+   eine Meldung bekommt statt still am Parser zu scheitern -- umgesetzt ist
+   der Fall noch nicht (s. tcGlobalOne). */
+initFloat = digit { digit } "." { digit } .
 /* HEX UND SUFFIXE IN INITIALISIERERN (2026-09-16): initNumber las nur
    Dezimalziffern -- "unsigned long t[] = { 0x7FF00000UL };" scheiterte
    damit STILL, obwohl dieselbe Zahl in jedem Ausdruck gelesen wird.
