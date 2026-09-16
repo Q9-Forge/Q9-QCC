@@ -107,6 +107,17 @@ def type_size(tag):
 def mask_for(tag, value):
     # Nullerweiterung wie im 68k-Backend (moveq #0,d0 / move.b bzw. move.w) --
     # dieselbe Maske an vier Stellen (LOADIDX/STOREIDX/LOADIND/STOREIND).
+    if isinstance(value, float):
+        # MODELLGRENZE (2026-09-16): diese VM bildet Speicher als Liste
+        # TYPISIERTER Zellen ab, nicht als Bytes. Eine byteweise struct-Kopie
+        # (LOADIND c / STOREIND c, s. tcEmitStructCopy) trifft deshalb eine
+        # double-Zelle als GANZES statt acht einzelne Bytes. Auf dem 68k ist
+        # dieselbe Kopie echt byteweise und damit richtig -- das Bitmuster
+        # wandert unveraendert. Hier wird die Zelle durchgereicht, statt an
+        # "float & 0xff" mit einem TypeError abzubrechen; ohne das stuerzte
+        # jedes struct mit double-Feld ab, sobald es kopiert wurde
+        # (Zuweisung, Argument, Rueckgabewert).
+        return value
     if tag in ("c", "b"):
         return value & 0xff
     if tag == "h":
@@ -124,6 +135,22 @@ def pointer_index(value, tag):
     p = pointer(value, "dereference")
     size = type_size(tag)
     if p.offset % size:
+        if tag == "d":
+            # MODELLGRENZE (2026-09-16), keine Compilerfehler: diese VM bildet
+            # einen Block als Liste TYPISIERTER Zellen ab und rechnet den Index
+            # als offset//groesse. Ein double-Feld, das NICHT auf acht Byte
+            # liegt -- etwa in "struct { int n; double d; }", wo d bei Offset 4
+            # beginnt --, laesst sich darin nicht von einem int unterscheiden.
+            # Auf dem Ziel ist genau dieses Layout RICHTIG: xcc richtet double
+            # auf zwei Byte aus (68k-Wortausrichtung), und QCC stimmt damit
+            # ueberein ("{int i; double d;}" = 12 Byte in beiden, s.
+            # docs/FLOAT_PLAN_de.md). Geprueft wird der Fall deshalb auf echter
+            # Hardware, in Q9-BACKEND-68K/q9-qclib/tests/double68k.sh.
+            raise RuntimeError(
+                "qccvm: double-Feld bei Offset %d (kein Vielfaches von 8) -- "
+                "diese VM kann gemischte structs mit double nicht abbilden; "
+                "auf dem Ziel ist das Layout korrekt, s. double68k.sh"
+                % p.offset)
         raise RuntimeError("qccvm: unaligned pointer")
     index = p.offset // size
     if index < 0 or index >= len(p.block):

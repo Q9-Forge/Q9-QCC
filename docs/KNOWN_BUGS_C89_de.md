@@ -224,3 +224,17 @@ Noch offen bei `double`: struct mit `double`-Feld an Funktionsgrenzen
 (Absturz im VM-Orakel), unäres `+2.5` (stumm abgelehnt), `if (a)`/`!a` auf
 `double` (strenger als C), `++`/`--` über die drei Adressformen,
 Initialisiererlisten für Arrays, `printf("%f")`, `float`.
+
+## Nachtrag 2026-09-16 (8) — Bedingungen und structs
+
+`if (a)`, `!a`, `while (a)` mit `double` gehen jetzt (C89 3.6.4.1: jeder
+skalare Typ ist erlaubt); der Vergleich gegen 0.0 wird emittiert.
+
+`struct` mit `double`-Feld war **nie** kaputt — der Absturz lag im VM-Orakel,
+das Blöcke als typisierte Zellen führt, während die struct-Kopie byteweise
+ist. Auf echtem 68030 verifiziert, auch der gemischte Fall
+`{int n; double d;}` mit `d` bei Offset 4 (Layout wie xcc).
+
+**Unäres Plus (`+5`) bleibt ungelöst und ist bewusst nicht eingebaut:** es
+macht `(x)+1` als Cast lesbar und bricht damit korrekten Bestandscode.
+Begründung in `FLOAT_PLAN_de.md`.

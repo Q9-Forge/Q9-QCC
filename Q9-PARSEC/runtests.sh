@@ -848,6 +848,35 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'double g; int main(){ double *p; g=1.5; p=&g; putint((int)((*p)*10.0)); }' '15'
 		tc_check 'int main(){ double t[3]; double *p; t[1]=2.5; p=&t[1]; putint((int)((*p)*10.0)); }' '25'
 		tc_check 'int main(){ double t[3]; double *p; double s; int i; t[0]=1.0;t[1]=2.0;t[2]=3.0; p=t; s=0.0; for(i=0;i<3;i++){ s=s+(*p); p++; } putint((int)s); }' '6'
+		# double IN BEDINGUNGEN (2026-09-16). C89 3.6.4.1/3.6.5: eine Bedingung
+		# darf JEDEN skalaren Typ haben und heisst "ungleich 0". Fuer Ganzzahlen
+		# und Zeiger galt das in QCC laengst, double fehlte -- es wurde als
+		# "expects bool" abgelehnt, obwohl "if (x)" damit gueltiges C ist.
+		# Der Vergleich wird EMITTIERT (PUSHD 0 0 / DCMPNE), sonst laegen acht
+		# Byte auf dem Stapel, wo JZ einen ganzzahligen Wert erwartet.
+		tc_check 'int main(){ double a; a=1.5; if (a) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; a=0.0; if (a) putint(1); else putint(0); }' '0'
+		tc_check 'int main(){ double a; a=0.0; if (!a) putint(1); else putint(0); }' '1'
+		tc_check 'int main(){ double a; a=1.5; if (!a) putint(1); else putint(0); }' '0'
+		tc_check 'int main(){ double a; int n; a=3.0; n=0; while(a){ a=a-1.0; n=n+1; } putint(n); }' '3'
+		# UNAERES PLUS bleibt aussen vor: "+" in negFactor macht "(x)+1" auch
+		# als Cast lesbar, castExpr greift zuerst und meldet "unknown type
+		# name" -- bestehender, korrekter Code braeche. Siehe qcc.ebnf.
+		tc_check 'int main(){ int x; x=5; putint((x)+1); }' '6'
+		# STRUCT MIT double-FELD (2026-09-16). Der Absturz im Orakel war eine
+		# MODELLGRENZE, kein Compilerfehler: die VM fuehrt einen Block als Liste
+		# typisierter Zellen, und die struct-Kopie ist byteweise. Auf dem 68k
+		# ist sie echt byteweise und richtig. Der GEMISCHTE Fall
+		# ("{int n; double d;}", d bei Offset 4) laesst sich hier gar nicht
+		# abbilden und wird deshalb nur auf echter Hardware geprueft
+		# (double68k.sh) -- die VM sagt das jetzt auch, statt "unaligned".
+		tc_check 'struct S{double d;}; int main(){ struct S a; struct S b; a.d=1.5; b=a; putint((int)(b.d*10.0)); }' '15'
+		tc_check 'struct S{double d;}; int f(struct S s){ return (int)(s.d*10.0); } int main(){ struct S s; s.d=1.5; putint(f(s)); }' '15'
+		tc_check 'struct S{double d;}; struct S f(void){ struct S s; s.d=1.5; return s; } int main(){ struct S r; r=f(); putint((int)(r.d*10.0)); }' '15'
+		tc_check 'struct S{double d;}; int main(){ struct S t[2]; t[0].d=1.5; t[1].d=2.5; putint((int)((t[0].d+t[1].d)*10.0)); }' '40'
+		# Layout wie xcc: beide Anordnungen 12 Byte (s. docs/FLOAT_PLAN_de.md)
+		tc_check 'struct S{int i; double d;}; int main(){ putint(sizeof(struct S)); }' '12'
+		tc_check 'struct S{double d; int i;}; int main(){ putint(sizeof(struct S)); }' '12'
 		# ... und im globalen Initialisierer, wo tcGlobalOne den Zahltext
 		# SELBST abgrenzt: dort war der Exponent zuerst still abgeschnitten
 		# ("double g = 1e2;" ergab 1 statt 100). Die Sollwerte sind so
