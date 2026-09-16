@@ -264,6 +264,10 @@ Bei `double` bleiben damit nur noch: Initialisiererlisten für Arrays
 ## Nachtrag 2026-09-16 (11) — Initialisiererlisten für `double`-Arrays
 
 `double t[3] = {1.5, -2.5, 0.25};` ist umgesetzt (je Element ein `GINITD`,
-eigener Listenparser; `tcInitList` bleibt unberührt). Damit ist bei `double`
-**compilerseitig nichts mehr offen** — es bleiben nur `printf("%f")` (qclib)
-und `float` als eigener Typ.
+eigener Listenparser; `tcInitList` bleibt unberührt). Damit gibt es **keine
+`double`-spezifische Lücke mehr**.
+
+Zur Genauigkeit: `p[i]++` über einen **Zeiger** bleibt abgelehnt — das ist
+aber eine **allgemeine** Grenze, die `int *p` genauso trifft und schon vorher
+bestand. Außerhalb des Compilers bleiben `printf("%f")` (qclib) und `float`
+als eigener Typ.
