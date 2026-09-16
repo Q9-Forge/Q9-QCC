@@ -658,16 +658,14 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ double a; double b; a=1.5; b=9.5; putint((int)(a+b)); }' '11'
 		# ... auch nicht mit einem int im selben Rahmen
 		tc_check 'int main(){ int i; double d; i=7; d=2.5; putint(i+(int)d); }' '9'
-		# double als RUECKGABEWERT und als PARAMETER ist noch nicht umgesetzt --
-		# und wird GEMELDET. Beides waere sonst STILL FALSCH: das Backend holt
-		# den Rueckgabewert mit einem einzigen "move.l (a7)+,d0" (bei acht Byte
-		# also die halbe Zahl), und ein Parameter liegt in einem Slot, der auf
-		# dem 68k vier Byte breit ist. Im VM-Orakel endete der Parameterfall
-		# bisher in einem KeyError, also einem Absturz statt einer Diagnose.
+		# Auf double NICHT definiert und deshalb weiterhin gemeldet: der
+		# Restoperator und die Bit-/Schiebeoperatoren verlangen in C
+		# ganzzahlige Operanden (C89 3.3.5 bzw. 3.3.7 ff) -- das ist kein
+		# fehlendes Feature, sondern die richtige Diagnose.
 		for prog_msg2 in \
-			'double f(void){ double t; t = 6.5; return t; } int main(){ putint(1); }|returning double is not supported yet' \
-			'double g(double x){ return x; } int main(){ putint(1); }|double parameters are not supported yet' \
-			'int h(double x){ return (int)x; } int main(){ putint(1); }|double parameters are not supported yet'
+			'int main(){ double a; a=5.0; a%=2.0; putint(1); }|requires integer operands' \
+			'int main(){ double a; a=5.0; a&=2.0; putint(1); }|requires integer operands' \
+			'int main(){ double a; a=5.0; a<<=2.0; putint(1); }|requires integer operands'
 		do
 			prog="${prog_msg2%%|*}"; msg="${prog_msg2##*|}"
 			if build/qcc_p "$prog" 2>&1 | grep -qF "$msg"; then
@@ -762,6 +760,45 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ double a; int i; a=1.5; for(i=0;i<3;i++){ a++; } putint((int)(a*10.0)); }' '45'
 		# ein int daneben darf davon nichts abbekommen
 		tc_check 'int main(){ double a; int i; a=1.5; i=7; a++; i++; putint(i*100+(int)(a*10.0)); }' '825'
+		# DOUBLE AN FUNKTIONSGRENZEN (2026-09-16 umgesetzt). Acht Byte passen
+		# nicht in einen Parameter-Slot (im Rahmen fest vier Byte breit), also
+		# geht der Wert -- wie ein struct-Argument -- ueber einen globalen
+		# Puffer, uebergeben wird dessen ADRESSE. Der Aufgerufene packt beim
+		# Eintritt in einen echten lokalen Block aus; GENAU DESHALB traegt
+		# Rekursion, und genau das pruefen die letzten Faelle.
+		tc_check 'int f(double x){ return (int)(x*10.0); } int main(){ putint(f(3.5)); }' '35'
+		tc_check 'int f(double a, double b){ return (int)((a+b)*10.0); } int main(){ putint(f(1.5,2.5)); }' '40'
+		tc_check 'int f(double a, int b){ return (int)(a*10.0)+b; } int main(){ putint(f(1.5,7)); }' '22'
+		# C89 3.3.2.2: das Argument wird in den Parametertyp umgewandelt
+		tc_check 'int f(double x){ return (int)(x*10.0); } int main(){ putint(f(3)); }' '30'
+		# der Parameter ist ein normaler Lvalue, kein Nur-Lese-Wert
+		tc_check 'int f(double x){ x = x + 1.0; return (int)(x*10.0); } int main(){ putint(f(3.5)); }' '45'
+		tc_check 'int f(double x){ x++; return (int)(x*10.0); } int main(){ putint(f(3.5)); }' '45'
+		# Rueckgabe: die Funktion liefert die Adresse ihres Puffers, der
+		# Aufrufer laedt UNMITTELBAR danach -- deshalb genuegt ein Puffer.
+		tc_check 'double f(void){ return 3.5; } int main(){ putint((int)(f()*10.0)); }' '35'
+		tc_check 'double f(void){ return 3; } int main(){ putint((int)(f()*10.0)); }' '30'
+		tc_check 'double f(void){ return 3.5; } int main(){ putint((int)((f()+1.5)*10.0)); }' '50'
+		tc_check 'double f(double x){ return x*2.0; } int main(){ putint((int)(f(1.25)*10.0)); }' '25'
+		tc_check 'double f(double x){ return x*2.0; } int main(){ putint((int)(f(f(1.25))*10.0)); }' '50'
+		# Ein Puffer je AUFRUFSTELLE, nicht je Position: sonst ueberschriebe
+		# das Auswerten von g(2.0) das bereits abgelegte erste Argument.
+		tc_check 'double g(double x){ return x*2.0; } double f(double a, double b){ return a+b; } int main(){ putint((int)(f(1.0,g(2.0))*10.0)); }' '50'
+		# Rekursion ueber vier Ebenen -- 4*3*2*1
+		tc_check 'double f(double x){ if (x < 1.5) return 1.0; return x * f(x-1.0); } int main(){ putint((int)(f(4.0))); }' '24'
+		# ZUSAMMENGESETZTE ZUWEISUNG (C89 3.3.16.2: "E1 op= E2" wirkt wie
+		# "E1 = E1 op E2", also mit den ueblichen Konversionen).
+		tc_check 'int main(){ double a; a=1.5; a+=2.0; putint((int)(a*10.0)); }' '35'
+		tc_check 'int main(){ double a; a=5.5; a-=2.0; putint((int)(a*10.0)); }' '35'
+		tc_check 'int main(){ double a; a=1.5; a*=3.0; putint((int)(a*10.0)); }' '45'
+		tc_check 'int main(){ double a; a=9.0; a/=2.0; putint((int)(a*10.0)); }' '45'
+		tc_check 'int main(){ double a; a=1.5; a+=2; putint((int)(a*10.0)); }' '35'
+		# umgekehrte Richtung: ganzzahliges Ziel, double rechts -- der linke
+		# Operand liegt beim Emittieren schon UNTER dem rechten (I2DUNDER)
+		tc_check 'int main(){ int i; i=7; i+=1.5; putint(i); }' '8'
+		tc_check 'int main(){ int i; i=7; i*=1.5; putint(i); }' '10'
+		tc_check 'int main(){ char c; c=60; c+=2.9; putint(c); }' '62'
+		tc_check 'double g; int main(){ g=1.5; g+=2.0; putint((int)(g*10.0)); }' '35'
 		# Und die Diagnose nennt den Typ beim Namen statt "?"
 		if build/qcc_p 'struct S { int a; }; int main(){ struct S s; double d; d = s; putint(1); }' 2>&1 | grep -qF 'double'; then
 			echo "ok    qcc: Diagnose nennt double beim Namen"
@@ -3246,11 +3283,11 @@ fi
 #     Die Sollwerte diskriminieren: 7.0/2.0 muss 3 ergeben und nicht 4, denn
 #     (int) schneidet Richtung null ab und rundet nicht.
 if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
-	if build/qcc_p 'double g; int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); a=8.0; putint((int)(32/a)); putint((int)(10-a)); putint((int)(a+1)); putint((int)(1+a)); a=1.5; a++; putint((int)(a*10.0)); a=5.5; a--; putint((int)(a*10.0)); g=1.5; g++; putint((int)(g*10.0)); }' > build/qcc_double_arm64.ir && \
+	if build/qcc_p 'double g; int dp(double x){ return (int)(x*10.0); } int dz(double a, double b){ return (int)((a+b)*10.0); } double dr(void){ return 3.5; } double dd(double x){ return x*2.0; } double ds(double a, double b){ return a+b; } double df(double x){ if (x < 1.5) return 1.0; return x * df(x-1.0); } int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); a=8.0; putint((int)(32/a)); putint((int)(10-a)); putint((int)(a+1)); putint((int)(1+a)); a=1.5; a++; putint((int)(a*10.0)); a=5.5; a--; putint((int)(a*10.0)); g=1.5; g++; putint((int)(g*10.0)); a=1.5; a+=2.0; putint((int)(a*10.0)); a=9.0; a/=2; putint((int)(a*10.0)); i=7; i+=1.5; putint(i); putint(dp(3.5)); putint(dz(1.5,2.5)); a=dr(); putint((int)(a*10.0)); a=dd(dd(1.25)); putint((int)(a*10.0)); a=ds(1.0,dd(2.0)); putint((int)(a*10.0)); a=df(4.0); putint((int)a); }' > build/qcc_double_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_double_arm64.ir build/qcc_double_arm64.s && \
 		grep -q 'fmul' build/qcc_double_arm64.s && grep -q 'fcvtzs' build/qcc_double_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_double_arm64 build/qcc_double_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3\n4\n2\n9\n9\n25\n45\n25')" ] && \
+		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3\n4\n2\n9\n9\n25\n45\n25\n35\n45\n8\n35\n40\n35\n50\n50\n24')" ] && \
 		[ "$(build/qcc_double_arm64)" = "$(python3 tools/qccvm.py build/qcc_double_arm64.ir)" ]; then
 		echo "ok    qcc double ARM64: Rechnen/Vergleiche/Konversionen inkl. gemischter Operanden nativ, gleich wie das VM-Orakel"
 	else

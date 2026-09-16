@@ -333,3 +333,84 @@ nicht, und `DUP`/`DROP` sind dort ausdrücklich mehrdeutig. Bis die IR eine
 Blockrotation hat, wird gemeldet. Vorher liefen alle drei still durch und
 rechneten mit `PUSH 1 / ADD` ganzzahlig auf einem FPU-Bitmuster — im
 VM-Orakel unsichtbar, weil Python `float + int` richtig addiert.
+
+## Funktionsgrenzen, zusammengesetzte Zuweisung — und drei Backend-Fehler (2026-09-16)
+
+`double` ist ab hier in gewöhnlichem Code benutzbar: als **Parameter**, als
+**Rückgabewert** und mit `+=`/`-=`/`*=`/`/=`.
+
+### Der Weg über einen Puffer, nicht über die Aufrufkonvention
+
+Ein Parameter liegt in einem **Slot**, und der ist im Rahmen fest vier Byte
+breit (68k: `8+4*(nargs-1-slot)`). Acht Byte hätten das Rahmenlayout in allen
+drei Backends aufgebrochen. Stattdessen geht der Wert denselben Weg, den
+`struct`-Argumente längst gehen: der Aufrufer legt ihn in einen globalen
+Puffer und übergibt dessen **Adresse**.
+
+```
+  Aufrufer                      Aufgerufener (beim Eintritt)
+  PUSHD <hi> <lo>               LARRAY <n> d 1
+  STOREGD __dblArg_<k>          LOADP <p> / LOADIND d / STORED <n>
+  ADDRG  __dblArg_<k>           -> ab jetzt eine normale lokale Variable
+```
+
+Zwei Entscheidungen tragen das Ganze:
+
+- **Ein Puffer je AUFRUFSTELLE**, nicht je Argumentposition. Sonst
+  überschriebe `f(1.0, g(2.0))` beim Auswerten von `g` das bereits abgelegte
+  erste Argument — dieselbe Überlegung wie bei `__structArg_*`.
+- **Der Aufgerufene kopiert beim Eintritt** in einen echten lokalen Block.
+  Das ist der Grund, warum **Rekursion trägt**: der globale Puffer ist ab dem
+  ersten Befehl des Rumpfs wieder frei. Und es hält den Rumpf einfach — keine
+  Lesestelle muss zwischen „Slot hält Wert" und „Slot hält Adresse"
+  unterscheiden, eine vergessene wäre wieder ein stiller Rechenfehler.
+
+Der Rückgabewert läuft genauso, mit **einem** Puffer für das ganze Programm:
+der Aufrufer lädt ihn unmittelbar nach dem `CALL`, er ist also frei, bevor
+ihn der nächste Aufruf braucht.
+
+Nach außen bleibt der Parametertyp `double` — `tc_funcbegin` registriert die
+Signatur, bevor der Rumpf beginnt, und nur der Slot trägt intern eine Adresse.
+
+### Drei Fehler, die erst die echte Hardware gezeigt hat
+
+Das VM-Orakel war grün, der 68030 nicht: „zwei double-Parameter" rechnete
+falsch, `f(f(x))` stürzte mit einer PMMU-Ausnahme ab. Der Assembler zeigte
+es sofort:
+
+```
+    move.l  (a0),d0        ; LOADIND d lud VIER Byte
+    move.l  d0,-(a7)
+    fmove.d (a7)+,fp0      ; las aber ACHT
+```
+
+- **`LOADIND d`/`STOREIND d` waren im 68k-Backend nie für acht Byte
+  umgesetzt** — `'d'` fiel in den generischen Zweig. Jetzt über die FPU,
+  wie `LOADD`/`LOADGD`.
+- **Dasselbe im ARM64-Backend**: dort ist ein `double` ein 64-Bit-Bitmuster,
+  also `x0` statt `w0` — eine Zeile.
+- **Globale `double` wurden auf ARM64 mit VIER Byte angelegt.** Die
+  Größenformel kannte `char`, `short` und Zeiger, aber kein `double`, und sie
+  stand **zweimal** da. Ein `str x0` schrieb über das Global hinaus. Das
+  betraf jedes globale `double`, nicht nur die neuen Puffer; die Formel liegt
+  jetzt in `globalElemSize`/`globalAlignP2`.
+
+Alle drei waren **still falsch** und im Orakel unsichtbar, weil Python den
+Typ kennt. Für Gleitkomma gilt damit verschärft: eine Probe gegen `qccvm.py`
+allein beweist nichts über die Ablage.
+
+### Was weiterhin fehlt
+
+- **Initialisierer an globalen `double`** (`double g = 4.5;`). Das
+  Global-Datenmodell der Backends hält **einen `int` je Element**
+  (`globals[].init`); ein 8-Byte-Initialwert braucht dort einen eigenen
+  Opcode (`GINITD <name> <idx> <hi> <lo>`) und die passende Datenausgabe in
+  allen drei Konsumenten — hi/lo darf nicht das Frontend anordnen, die
+  Byte-Reihenfolge ist zielabhängig. Ein eigener Schritt.
+- **Exponentliterale** (`1e2`, `1.5e3`) werden **stumm** abgelehnt (Exit 1,
+  leerer stderr). Die Grammatik kennt nur `digit {digit} "." {digit}`;
+  nötig sind die EBNF-Regel, ihre aktionslose Kopie `globalFloat` und der
+  Exponent im Umrechner.
+- **`++`/`--` auf `s.d`, `a[0]`, `(*p)`** — seit `LOADIND d` stimmt, fehlt
+  nur noch die Blockrotation für den Postfix-Fall (`SWAP` über acht Byte).
+- `printf("%f")` (qclib) und `float` als eigener Typ.

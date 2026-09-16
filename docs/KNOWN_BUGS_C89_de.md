@@ -158,3 +158,24 @@ braucht eine Blockrotation in der IR und ist ein eigener Schritt.
 Lokale und globale `double` sind damit voll benutzbar, Präfix wie Postfix,
 mit dem richtigen Ergebniswert des Ausdrucks. Geprüft auf echtem 68030
 (`double68k.sh`, 30 Fälle), nativ auf ARM64 und gegen das VM-Orakel.
+
+## Nachtrag 2026-09-16 (4) — `double` wird benutzbar
+
+Umgesetzt: `double` als **Parameter** und **Rückgabewert** (über einen
+globalen Puffer, den der Aufgerufene beim Eintritt in einen lokalen Block
+auspackt — deshalb trägt Rekursion), die **zusammengesetzten Zuweisungen**
+`+=`/`-=`/`*=`/`/=` in beide Richtungen (`a += 2`, `int i += 1.5`), sowie
+Argument- und Rückgabekonversion (C89 3.3.2.2 und 3.6.6.4).
+
+Dabei kamen **drei stille Backend-Fehler** ans Licht, die das VM-Orakel nicht
+zeigen konnte: `LOADIND d`/`STOREIND d` luden auf 68k **vier statt acht Byte**,
+dasselbe auf ARM64, und **globale `double` wurden auf ARM64 mit vier Byte
+alloziert**. Einzelheiten in `FLOAT_PLAN_de.md`.
+
+Weiterhin offen und dort beschrieben: Initialisierer an globalen `double`,
+Exponentliterale (stumm abgelehnt), `++`/`--` über die drei Adressformen,
+`printf("%f")` und `float`.
+
+Nicht offen, sondern korrekt: `%` und die Bit-/Schiebeoperatoren verlangen
+auf `double` ganzzahlige Operanden (C89 3.3.5 bzw. 3.3.7 ff) — die Meldung
+ist die richtige Diagnose, kein fehlendes Feature.
