@@ -35,7 +35,13 @@
 #include "codegen.h"
 
 #define AST_MAX_NODES	8192
-#define AST_MAX_RULES	256
+/* 2026-09-16 von 256 auf 512 angehoben. MAX_RULES in parsec.cpp stand
+   laengst auf 512, AST_MAX_RULES hier aber noch auf 256 -- die Grammatik lief
+   mit 254 Regeln also zwei Regeln vor eine Wand, von der niemand wusste. Beim
+   Ueberschreiten gab es nur "kein AST vorhanden (leer oder Ueberlauf)" ohne
+   jeden Hinweis, WELCHE Grenze gerissen war. Beide Zahlen gehoeren zusammen
+   und muessen zusammen wachsen. */
+#define AST_MAX_RULES	512
 #define AST_TEXT_LEN	40
 #define AST_STACK_MAX	256
 #define GEN_NAME_LEN	64
@@ -80,6 +86,7 @@ int astMark() {
 static int newNode(int kind) {
 	AstNode* n;
 	if (nodeCnt >= AST_MAX_NODES) {
+		if (!astOverflow) printf("CODEGEN: AST_MAX_NODES (%d) erschoepft -- Grenze in codegen.cpp erhoehen.\n", AST_MAX_NODES);
 		astOverflow = 1;
 		return AST_MAX_NODES - 1;		// letzter Knoten wird Muellhalde; Codegen bricht ab
 	}
@@ -97,6 +104,7 @@ static void pushNode(int id) {
 		astStack[astDepth++] = id;
 	}
 	else {
+		if (!astOverflow) printf("CODEGEN: AST_STACK_MAX (%d) erschoepft -- Grenze in codegen.cpp erhoehen.\n", AST_STACK_MAX);
 		astOverflow = 1;
 	}
 }
@@ -170,6 +178,7 @@ void astWrapRep() {
 
 void astFinishRule(const char* name) {
 	if (ruleCnt >= AST_MAX_RULES) {
+		if (!astOverflow) printf("CODEGEN: AST_MAX_RULES (%d) erschoepft bei Regel '%s' -- Grenze in codegen.cpp erhoehen.\n", AST_MAX_RULES, name);
 		astOverflow = 1;
 		return;
 	}
