@@ -399,7 +399,7 @@ static void collectFunctions(void) {
 			if (strcmp(ir[k].op, "LARRAY") == 0) {
 				Instr* x = &ir[k];
 				int len, align;
-				if (x->argc != 3 || !(strcmp(x->args[1], "i") == 0 || isByteWord(x->args[1]) || isShortWord(x->args[1]) || strcmp(x->args[1], "p") == 0)) fatal("ungueltiges LARRAY");
+				if (x->argc != 3 || !(strcmp(x->args[1], "i") == 0 || isByteWord(x->args[1]) || isShortWord(x->args[1]) || strcmp(x->args[1], "p") == 0 || strcmp(x->args[1], "d") == 0)) fatal("ungueltiges LARRAY");
 				len = number(x->args[2], x->line);
 				if (len <= 0) fatal("LARRAY-Laenge muss positiv sein");
 				align = elemBytes(x->args[1]);
@@ -669,6 +669,70 @@ static void emit(FILE* o) {
 				fputs("\tldr\tw0,[sp]\n", o); push(o, "w0");
 			} else if (strcmp(op, "DUPP") == 0) {
 				fputs("\tldr\tx0,[sp]\n", o); push(o, "x0");
+			/* --- Gleitkomma (2026-09-16) ---
+			   Auf ARM64 ist ein double schlicht ein 64-Bit-Bitmuster: es
+			   reist in x0 ueber den Stapel und geht nur zum Rechnen in ein
+			   d-Register. Anders als auf dem 68k braucht es dafuer keine
+			   Emulation -- die Befehle sind da. */
+			} else if (strcmp(op, "PUSHD") == 0 && x->argc == 2) {
+				unsigned long hi = strtoul(x->args[0], NULL, 10);
+				unsigned long lo = strtoul(x->args[1], NULL, 10);
+				fprintf(o, "\tmovz\tx0,#%lu\n", lo & 0xffffUL);
+				fprintf(o, "\tmovk\tx0,#%lu,lsl #16\n", (lo >> 16) & 0xffffUL);
+				fprintf(o, "\tmovk\tx0,#%lu,lsl #32\n", hi & 0xffffUL);
+				fprintf(o, "\tmovk\tx0,#%lu,lsl #48\n", (hi >> 16) & 0xffffUL);
+				push(o, "x0");
+			} else if (strcmp(op, "LOADD") == 0 && x->argc == 1) {
+				int ignored;
+				int off = arrayOffset(f, number(x->args[0], x->line), &ignored, x->line);
+				fprintf(o, "\tsub\tx1,x29,#%d\n\tldr\tx0,[x1]\n", off);
+				push(o, "x0");
+			} else if (strcmp(op, "STORED") == 0 && x->argc == 1) {
+				int ignored;
+				int off = arrayOffset(f, number(x->args[0], x->line), &ignored, x->line);
+				pop(o, "x0");
+				fprintf(o, "\tsub\tx1,x29,#%d\n\tstr\tx0,[x1]\n", off);
+			} else if ((strcmp(op, "LOADGD") == 0 || strcmp(op, "STOREGD") == 0) && x->argc == 1) {
+				if (findGlobal(x->args[0]) < 0) fatal("unbekannte globale Variable");
+				fprintf(o, "\tadrp\tx9,_tc_g_%s@PAGE\n", x->args[0]);
+				if (strcmp(op, "LOADGD") == 0) {
+					fprintf(o, "\tldr\tx0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]); push(o, "x0");
+				} else {
+					pop(o, "x0"); fprintf(o, "\tstr\tx0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]);
+				}
+			} else if (strcmp(op, "DADD") == 0 || strcmp(op, "DSUB") == 0 ||
+			           strcmp(op, "DMUL") == 0 || strcmp(op, "DDIV") == 0) {
+				const char* insn = strcmp(op, "DADD") == 0 ? "fadd" : strcmp(op, "DSUB") == 0 ? "fsub" :
+				                   strcmp(op, "DMUL") == 0 ? "fmul" : "fdiv";
+				pop(o, "x1"); pop(o, "x0");
+				fprintf(o, "\tfmov\td0,x0\n\tfmov\td1,x1\n\t%s\td0,d0,d1\n\tfmov\tx0,d0\n", insn);
+				push(o, "x0");
+			} else if (strcmp(op, "DNEG") == 0) {
+				pop(o, "x0");
+				fputs("\tfmov\td0,x0\n\tfneg\td0,d0\n\tfmov\tx0,d0\n", o);
+				push(o, "x0");
+			} else if (strcmp(op, "I2D") == 0) {
+				pop(o, "w0");
+				fputs("\tscvtf\td0,w0\n\tfmov\tx0,d0\n", o);
+				push(o, "x0");
+			} else if (strcmp(op, "D2I") == 0) {
+				/* fcvtzs schneidet Richtung null ab -- dieselbe C-Regel wie
+				   fintrz auf dem 68k. */
+				pop(o, "x0");
+				fputs("\tfmov\td0,x0\n\tfcvtzs\tw0,d0\n", o);
+				push(o, "w0");
+			} else if (strcmp(op, "DDUP") == 0) {
+				fputs("\tldr\tx0,[sp]\n", o); push(o, "x0");
+			} else if (strcmp(op, "DDROP") == 0) {
+				fputs("\tadd\tsp,sp,#16\n", o);
+			} else if (strncmp(op, "DCMP", 4) == 0) {
+				const char* cc = strcmp(op, "DCMPLT") == 0 ? "mi" : strcmp(op, "DCMPGT") == 0 ? "gt" :
+				                 strcmp(op, "DCMPLE") == 0 ? "ls" : strcmp(op, "DCMPGE") == 0 ? "ge" :
+				                 strcmp(op, "DCMPEQ") == 0 ? "eq" : strcmp(op, "DCMPNE") == 0 ? "ne" : NULL;
+				if (!cc) fatal("unbekannter Gleitkomma-Vergleich");
+				pop(o, "x1"); pop(o, "x0");
+				fprintf(o, "\tfmov\td0,x0\n\tfmov\td1,x1\n\tfcmp\td0,d1\n\tcset\tw0,%s\n", cc);
+				push(o, "w0");
 			} else if (strcmp(op, "SWAP") == 0) {
 				/* Oberste zwei 64-bit Stackwerte vertauschen. */
 				fputs("\tldr\tx0,[sp]\n\tldr\tx1,[sp,#8]\n\tstr\tx1,[sp]\n\tstr\tx0,[sp,#8]\n", o);

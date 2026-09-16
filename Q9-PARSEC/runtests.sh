@@ -3162,6 +3162,29 @@ else
 	echo "warn  qcc short ARM64: nur auf arm64-macOS getestet -- uebersprungen"
 fi
 
+# 15c) double auf dem ARM64-Backend (2026-09-16, s. auch
+#     Q9-BACKEND-68K/q9-qclib/tests/double68k.sh fuer den 68k-Gegenpart auf
+#     echter Hardware). Dasselbe Programm, dieselben zwoelf Sollwerte -- der
+#     Sinn ist genau dieser Vergleich: eine IR, zwei Ziele, ein Ergebnis.
+#     Auf ARM64 ist ein double schlicht ein 64-Bit-Bitmuster und geht nur
+#     zum Rechnen in ein d-Register; auf dem 68030 rechnet ein Trap-Handler.
+#     Die Sollwerte diskriminieren: 7.0/2.0 muss 3 ergeben und nicht 4, denn
+#     (int) schneidet Richtung null ab und rundet nicht.
+if [ "$(uname -m)" = "arm64" ] && command -v clang >/dev/null 2>&1 && [ -x build/qcc_arm64_backend ]; then
+	if build/qcc_p 'double g; int main(){ double a; double b; double s; int i; a=1.5; b=2.5; putint((int)(a*b)); putint((int)(a+b)); putint((int)(b-a)); a=7.0; b=2.0; putint((int)(a/b)); a=-2.5; putint((int)a); a=0.1; b=0.2; s=a+b; putint((int)(s*10.0)); a=1.5; b=2.5; if(a<b) putint(1); else putint(0); if(b>a) putint(1); else putint(0); if(a==1.5) putint(1); else putint(0); g=3.75; putint((int)g); s=0.0; i=0; while(i<4){ s=s+1.5; i=i+1; } putint((int)s); i=7; a=(double)i; a=a*0.5; putint((int)a); }' > build/qcc_double_arm64.ir && \
+		build/qcc_arm64_backend build/qcc_double_arm64.ir build/qcc_double_arm64.s && \
+		grep -q 'fmul' build/qcc_double_arm64.s && grep -q 'fcvtzs' build/qcc_double_arm64.s && \
+		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_double_arm64 build/qcc_double_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
+		[ "$(build/qcc_double_arm64)" = "$(printf '3\n4\n1\n3\n-2\n3\n1\n1\n1\n3\n6\n3')" ] && \
+		[ "$(build/qcc_double_arm64)" = "$(python3 tools/qccvm.py build/qcc_double_arm64.ir)" ]; then
+		echo "ok    qcc double ARM64: Rechnen/Vergleiche/Konversionen nativ, gleich wie das VM-Orakel"
+	else
+		echo "FAIL  qcc double ARM64: nativer Backend-/Runtime-Pfad fehlerhaft"; fail=1
+	fi
+else
+	echo "warn  qcc double ARM64: nur auf arm64-macOS getestet -- uebersprungen"
+fi
+
 # 16a) QCC Mehrdatei-Uebersetzung, M3 (2026-07-25): ZWEI SEPARAT mit -part
 #     kompilierte Dateien werden mit clang zu getrennten .o-Objekten assembliert
 #     und mit demselben clang-Aufruf (der intern ld ruft) zu EINEM Programm

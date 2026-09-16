@@ -199,8 +199,8 @@ und die Offsetrechnung beider Backends bleibt unveraendert.
 ## Der Durchstich steht (2026-09-16)
 
 Ein C-Programm mit `double`, übersetzt mit der eigenen Kette, **rechnet auf
-echtem 68030**. Damit ist die Reihenfolge aus dem Plan oben abgearbeitet —
-bis auf ARM64.
+echtem 68030 — und auf ARM64**. Damit ist die Reihenfolge aus dem Plan oben
+abgearbeitet.
 
     double a; double b;
     a = 1.5; b = 2.5;
@@ -223,7 +223,7 @@ Was dabei aus der Kette wurde:
 | VM-Orakel | vollständig |
 | 68k-Backend | vollständig, FPU-Befehle |
 | Assembler | qr68 kann die FPU, byteidentisch zu r68 |
-| **ARM64** | **offen** — meldet die Opcodes als unbekannt, verschluckt sie nicht |
+| ARM64 | vollständig, native Gleitkommabefehle |
 
 ### Was bewusst offen blieb
 
@@ -240,3 +240,17 @@ Was dabei aus der Kette wurde:
 - **Aufrufe mit `double`-Argumenten** gegen die Microware-`clib`
   (`printf("%f")`). QCC übergibt alles auf dem Stack, xcc das erste
   Argument in `d0/d1` — das betrifft nur den `CALLEXT`-Pfad.
+
+### Beide Ziele, eine IR, dasselbe Ergebnis
+
+Dasselbe Programm läuft auf beiden Zielen mit denselben zwölf Sollwerten:
+auf dem 68030 rechnet ein Trap-Handler die F-Line-Befehle nach, auf ARM64
+sind die Gleitkommabefehle einfach da, und ein `double` ist dort nur ein
+64-Bit-Bitmuster, das zum Rechnen kurz in ein `d`-Register geht. Der
+ARM64-Lauf wird zusätzlich gegen das VM-Orakel verglichen — drei
+unabhängige Wege, ein Ergebnis.
+
+Auch hier zeigte sich wieder das Geschwister-Muster: die Taglisten, die ein
+neues Typkürzel zulassen müssen, liegen an **vier** Stellen (`isNumWord` in
+beiden Backends, die `LARRAY`-Prüfung in ARM64, die Größentabelle im
+Orakel). Wer nur eine anfasst, bekommt einen Abbruch an der nächsten.
