@@ -278,7 +278,15 @@ paramList = [ param { "," param } ] .
    gut: die AEUSSERE sammelt ueber tc_param in tcLocalTypes (daraus baut
    tc_funcend die Aufrufsignatur), die INNERE ueber tc_externparam in
    tcExternBuildParamTypes. Zwei getrennte Puffer, keine Ueberschneidung. */
-param     = fnPtrParam | [ constKw ] [ volatileKw ] type pointerDecl paramDecl .
+param     = fnPtrParam | [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
+/* Der Parametername ist OPTIONAL (2026-09-16). "int f(int);" ist die uebliche
+   Schreibweise in Header-Dateien und scheiterte bis dahin STUMM -- Exit 1,
+   "FAIL", kein Wort auf stderr. Die Aktion haengt an paramDecl, also am
+   NAMEN; ohne ihn feuerte sie nicht und der Parameter fehlte in der Signatur.
+   Deshalb zusaetzlich eine Abschlussaktion an param (tc_paramend), die einen
+   namenlosen Parameter mit leerem Namen nachtraegt. Ein leerer Name wird von
+   tcLookupLocal nie gefunden -- genau richtig: ansprechen laesst sich so ein
+   Parameter ohnehin nicht. */
 fnPtrParam = type pointerDecl fnPtrOpen "*" fnPtrParamName ")" fnPtrParams .
 fnPtrParamName = ident .
 paramDecl = paramName [ paramArray ] .

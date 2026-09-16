@@ -158,7 +158,7 @@
  <paramList>                      = [ <param> { "," <param> } ] .
 
  <param>                          = <fnPtrParam> 
-                                  | [ <constKw> ] [ <volatileKw> ] <type> <pointerDecl> <paramDecl> .
+                                  | [ <constKw> ] [ <volatileKw> ] <type> <pointerDecl> [ <paramDecl> ] .
 
  <fnPtrParam>                     = <type> <pointerDecl> <fnPtrOpen> "*" <fnPtrParamName> ")" <fnPtrParams> .
 
@@ -955,7 +955,15 @@ paramList = [ param { "," param } ] .
    gut: die AEUSSERE sammelt ueber tc_param in tcLocalTypes (daraus baut
    tc_funcend die Aufrufsignatur), die INNERE ueber tc_externparam in
    tcExternBuildParamTypes. Zwei getrennte Puffer, keine Ueberschneidung. */
-param     = fnPtrParam | [ constKw ] [ volatileKw ] type pointerDecl paramDecl .
+param     = fnPtrParam | [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
+/* Der Parametername ist OPTIONAL (2026-09-16). "int f(int);" ist die uebliche
+   Schreibweise in Header-Dateien und scheiterte bis dahin STUMM -- Exit 1,
+   "FAIL", kein Wort auf stderr. Die Aktion haengt an paramDecl, also am
+   NAMEN; ohne ihn feuerte sie nicht und der Parameter fehlte in der Signatur.
+   Deshalb zusaetzlich eine Abschlussaktion an param (tc_paramend), die einen
+   namenlosen Parameter mit leerem Namen nachtraegt. Ein leerer Name wird von
+   tcLookupLocal nie gefunden -- genau richtig: ansprechen laesst sich so ein
+   Parameter ohnehin nicht. */
 fnPtrParam = type pointerDecl fnPtrOpen "*" fnPtrParamName ")" fnPtrParams .
 fnPtrParamName = ident .
 paramDecl = paramName [ paramArray ] .
@@ -2106,7 +2114,7 @@ digit     = "0"~"9" .
 203   204   204   140   0     0     -                NTS  volatileKw
 204   205   -2    687   0     0     -                NTS  type
 205   206   -3    710   0     0     -                NTS  pointerDecl
-206   -1    -3    215   0     0     -                NTS  paramDecl
+206   -1    -1    215   0     0     -                NTS  paramDecl
 207   208   -2    687   0     0     fnPtrParam       NTS  type
 208   209   -3    710   0     0     -                NTS  pointerDecl
 209   210   -3    95    0     0     -                NTS  fnPtrOpen
@@ -2703,6 +2711,7 @@ ACTION AFTER externParam CALL tc_externparam
 ACTION AFTER ellipsisTok CALL tc_externvariadic
 ACTION AFTER externDecl CALL tc_externdeclend
 ACTION AFTER paramDecl CALL tc_param
+ACTION AFTER param CALL tc_paramend
 ACTION AFTER funcHead CALL tc_funcbegin
 ACTION AFTER funcBodyOpen CALL tc_funcbodybegin
 ACTION AFTER protoEnd CALL tc_funcdeclend
@@ -2911,6 +2920,10 @@ static void tcParseEnumBody(const char* start, const char* end);
 /* dito: tc_fnptrvar legt die Variable ueber die normale Lokalenanlage an. */
 void tc_local(const char* start, const char* end);
 void tc_param(const char* start, const char* end);
+void tc_paramend(const char* start, const char* end);
+/* Hat paramDecl (also der NAME) fuer den laufenden Parameter gefeuert?
+   tc_paramend traegt sonst einen namenlosen nach -- "int f(int);". */
+static int tcParamNamed = 0;
 static char tcStructBuildFieldNames[MAX_STRUCT_FIELDS][32];
 static TCType tcStructBuildFieldTypes[MAX_STRUCT_FIELDS];
 static int  tcStructBuildFieldArrayLen[MAX_STRUCT_FIELDS];
@@ -4835,6 +4848,7 @@ void tc_param(const char* start, const char* end) {
 	tcLocalConst[tcLocalCount] = tcPendingConst && !tcLocalTypes[tcLocalCount].pointers;
 	if (tcPendingConst && tcLocalTypes[tcLocalCount].pointers) tcLocalTypes[tcLocalCount].pointeeConst = 1;
 	tcLocalDead[tcLocalCount] = 0;
+	tcParamNamed = 1;
 	/* Ein Struct-Parameter kommt als Adresse an (s. tc_arg), eine lokale
 	   Struct-Variable liegt dagegen selbst im Slot. */
 	tcLocalStructByAddr[tcLocalCount] =
@@ -4879,6 +4893,22 @@ void tc_funcbegin(const char* start, const char* end) {
 	/* KEINE IR-Emission hier -- "FUNC <name> <nargs>" wird erst emittiert, wenn
 	   tatsaechlich ein Rumpf folgt (siehe tc_funcbodybegin); an dieser Stelle
 	   (Ende von funcHead) ist noch nicht bekannt, ob "{" oder ";" folgt. */
+}
+END
+ROUTINE C tc_paramend
+/* Feuert nach JEDEM Parameter. Hat paramDecl einen Namen geliefert, ist
+   nichts zu tun. Sonst war es ein namenloser Parameter ("int f(int);", die
+   uebliche Header-Schreibweise) -- er muss trotzdem in die Signatur, sonst
+   stimmt die Argumentzahl nicht.
+   tc_param wird dafuer mit einer LEEREN Namensspanne aufgerufen (start,
+   start): der Name wird leer, tcNameEnd liefert start, und weil damit
+   "nameEnd < end" falsch ist, kommt auch kein Array-Suffix-Zeiger dazu. Die
+   Fehlerposition bleibt korrekt, weil start in den Eingabepuffer zeigt. */
+void tc_paramend(const char* start, const char* end) {
+	(void)end;
+	if (tcParamNamed) { tcParamNamed = 0; return; }
+	tc_param(start, start);
+	tcParamNamed = 0;
 }
 END
 ROUTINE C tc_funcbodybegin

@@ -927,6 +927,22 @@ if command -v python3 >/dev/null 2>&1; then
 		fi
 		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
 		tc_check 'int main(){ int x; x = 0x10; putint(x); }' '16'
+		# PROTOTYPEN OHNE PARAMETERNAMEN (2026-09-16). "int f(int);" ist die
+		# uebliche Schreibweise in Header-Dateien und scheiterte STUMM: die
+		# Aktion haengt an paramDecl, also am NAMEN -- ohne ihn feuerte sie
+		# nicht und der Parameter fehlte in der Signatur. Jetzt traegt
+		# tc_paramend einen namenlosen Parameter mit LEEREM Namen nach; den
+		# findet tcLookupLocal nie, was genau richtig ist (ansprechen laesst
+		# er sich ohnehin nicht).
+		tc_check 'int f(int); int main(){ putint(f(1)); } int f(int a){ return a; }' '1'
+		tc_check 'int f(int,int); int main(){ putint(f(1,2)); } int f(int a,int b){ return a+b; }' '3'
+		tc_check 'int f(char*); int main(){ putint(1); } int f(char *s){ return 1; }' '1'
+		tc_check 'void f(void); int main(){ f(); putint(1); } void f(void){ }' '1'
+		# gegenseitige Rekursion braucht genau diese Form
+		tc_check 'int g(int); int f(int n){ return n<1?0:g(n-1); } int g(int n){ return n<1?7:f(n-1); } int main(){ putint(f(3)); }' '7'
+		# und die benannte Form muss unveraendert gehen
+		tc_check 'int f(int a); int main(){ putint(f(1)); } int f(int a){ return a; }' '1'
+		tc_check 'int f(int t[]); int main(){ int x[2]; x[0]=7; putint(f(x)); } int f(int t[]){ return t[0]; }' '7'
 		# BITFELDER und "long long" (2026-09-15): beide brachen vorher STILL im
 		# Parser ab -- FAIL, keine Meldung, keine Zeile. Beide sind bewusst NICHT
 		# umgesetzt (Bitfelder braeuchten Bitpacking plus maskierten Zugriff an
