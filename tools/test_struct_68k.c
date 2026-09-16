@@ -78,6 +78,28 @@ struct NN { struct NI a; struct NI b; };
 struct ND { struct NI in; };
 struct NL { struct ND d; };
 static struct NO gno;
+/* MEHRDIMENSIONALES ARRAY ALS PARAMETER (2026-09-17). Auf echter Hardware
+   zaehlt die SCHRITTWEITE: "m[i][j]" wird zu i*zeilenlaenge+j, und der
+   Zugriff skaliert das Ergebnis mit der Elementgroesse (int 4, char 1).
+   Die Host-VM sieht das nicht -- sie fuehrt typisierte Zellen statt Bytes.
+   Ein erster Anlauf wurde am 16.09.2026 zurueckgerollt, weil die Indizes
+   gar nicht kombiniert wurden; Lesen und Schreiben lagen auf dieselbe Weise
+   daneben und stimmten deshalb miteinander ueberein. */
+static int m2dLesen(int m[2][3])    { return m[1][2]; }
+static int m2dMix(int m[2][3])      { return m[0][0]*100 + m[0][2]*10 + m[1][0]; }
+static void m2dSchreiben(int m[2][3]) { m[1][1] = 42; }
+static int m2dOffen(int m[][3])     { return m[1][0]; }
+static int m3d(int m[2][3][4])      { return m[1][2][3]; }
+static int m2dChar(char m[2][3])    { return m[1][2]; }
+static int m2dSumme(int m[2][3])
+{
+	int i; int j; int t;
+	t = 0;
+	for (i = 0; i < 2; i = i + 1)
+		for (j = 0; j < 3; j = j + 1)
+			t = t + m[i][j];
+	return t;
+}
 static struct Z gz;
 static int zfeld[8];
 static char ztxt[8];
@@ -323,6 +345,31 @@ int main(void)
 	            val(p->d.in.a); }
 	/* globales verschachteltes struct */
 	mark(60); { gno.in.a = 60; gno.z = 1; val(gno.in.a); }
+
+	/* 61-68 MEHRDIMENSIONALES ARRAY ALS PARAMETER (2026-09-17) */
+	mark(61); { int a[2][3]; a[1][2] = 61; val(m2dLesen(a)); }
+	/* diskriminierend: jede Zelle traegt zu einer anderen Stelle bei, eine
+	   vertauschte oder fehlende Zeilenrechnung ergibt eine andere Zahl */
+	mark(62); { int a[2][3];
+	            a[0][0]=1; a[0][1]=9; a[0][2]=2; a[1][0]=3; a[1][1]=9; a[1][2]=9;
+	            val(m2dMix(a)); }
+	/* Schreiben durch den Parameter -- und die NACHBARN muessen unberuehrt
+	   bleiben; ein Test, der nur dieselbe Zelle zurueckliest, faende den
+	   alten Fehler nicht */
+	mark(63); { int a[2][3]; int i; int j;
+	            for (i=0;i<2;i=i+1) for (j=0;j<3;j=j+1) a[i][j] = 0;
+	            m2dSchreiben(a);
+	            val(a[1][1] + a[1][0]*1000 + a[0][1]*100); }
+	mark(64); { int a[2][3]; a[1][0] = 64; val(m2dOffen(a)); }
+	mark(65); { int a[2][3]; int i; int j;
+	            for (i=0;i<2;i=i+1) for (j=0;j<3;j=j+1) a[i][j] = i*3+j;
+	            val(m2dSumme(a) + 50); }
+	mark(66); { int a[2][3][4]; a[1][2][3] = 66; val(m3d(a)); }
+	/* char-Matrix: Schrittweite 1 statt 4 -- eine falsche Skalierung greift
+	   hier voellig woanders hin */
+	mark(67); { char a[2][3]; a[1][2] = 67; val(m2dChar(a)); }
+	/* die eindimensionale Nachbarform darf sich nicht geaendert haben */
+	mark(68); { int a[2][3]; a[0][1] = 68; val(m2dLesen(a) + a[0][1]); }
 
 	/* 47-48 globaler struct-Initialisierer, big-endian abgelegt */
 	mark(47); { val(ginit.a); }

@@ -332,7 +332,19 @@ param     = fnPtrParam | [ registerKw ] [ constKw ] [ volatileKw ] type pointerD
 fnPtrParam = type pointerDecl fnPtrOpen "*" fnPtrParamName ")" fnPtrParams .
 fnPtrParamName = ident .
 paramDecl = paramName [ paramArray ] .
-paramArray = "[" "]" .
+/* Mehrdimensionales Array als PARAMETER (2026-09-17): "int f(int m[2][3])".
+   Die ERSTE Dimension ist in C bedeutungslos (der Parameter ist ohnehin ein
+   Zeiger) und darf deshalb leer bleiben -- "int m[][3]" ist dieselbe
+   Deklaration. Die FOLGENDEN Dimensionen sind dagegen Pflicht und tragen die
+   Zeilenlaenge, aus der die Indexrechnung i*zeilenlaenge+j entsteht; genau
+   daran ist der erste Anlauf am 16.09.2026 gescheitert (die Indizes wurden
+   nicht kombiniert und der Zugriff rechnete STILL falsch). */
+paramArray = "[" [ constSize ] "]" { paramArrayN } .
+/* Eigene Regel statt arraySizeN: dort ist die Groesse PFLICHT, und
+   "int m[2][]" waere damit ein stummer Parse-Fehler. Hier wird die Klammer
+   auch leer geparst, damit tc_param sie MELDEN kann -- ab der zweiten
+   Dimension braucht die Indexrechnung die Zeilenlaenge zwingend. */
+paramArrayN = "[" [ constSize ] "]" .
 
 /* blockOpen (2026-08-20): eigene Regel fuer die oeffnende Klammer, damit eine
    ACTION beim BETRETEN des Blocks feuern kann -- dasselbe Muster wie
