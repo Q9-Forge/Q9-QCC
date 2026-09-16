@@ -1274,13 +1274,48 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "ok    qcc: gemischte Feldtypen (int+char) werden akzeptiert"
 		fi
-		# Pointer-Felder sind in structField (Grammatik ohne pointerDecl) schon strukturell
-		# unmoeglich; verschachtelte structs als Feld sind es aber und werden bewusst
-		# abgelehnt (siehe SELFHOSTING_LUECKENLISTE.md: eigener Folgeschritt).
-		if build/qcc_p 'struct Inner { int x; }; struct Outer { struct Inner i; }; int main(){ struct Outer o; }' 2>&1 | grep -q 'struct field type not supported'; then
-			echo "ok    qcc: verschachteltes struct als Feld wird bewusst abgelehnt (eigener Folgeschritt)"
+		# Verschachtelte structs als FELDWERT (2026-09-17). Bis dahin bewusst
+		# abgelehnt ("struct field type not supported"); der Test hier hat
+		# genau diese Ablehnung festgehalten und ist deshalb ersetzt worden.
+		# Gemessener Anlass: 526 Stellen in 202 von 1917 MWOS-Quellen (10,5%),
+		# ueberwiegend Geraete-Header (quicc.h, enet360.h).
+		#
+		# "o.in.a" ist reine OFFSET-ADDITION -- anders als "p->n->v", wo
+		# zwischendurch ein Zeiger geladen wird. Die Faelle unten pruefen
+		# beide Sorten und ihre MISCHUNG, weil genau dort der Unterschied
+		# sitzt: ein LOADIND zuviel deutet die ersten vier Byte des Feldes
+		# als Adresse und greift irgendwohin.
+		tc_check 'struct I{int a;int b;}; struct O{struct I in;int c;}; int main(){ struct O o; o.in.a=5; o.in.b=6; o.c=7; putint(o.in.a); putint(o.in.b); putint(o.c); }' '5\n6\n7'
+		tc_check 'struct I{int a;}; struct O{int c; struct I in;}; int main(){ struct O o; o.c=1; o.in.a=2; putint(o.c); putint(o.in.a); }' '1\n2'
+		tc_check 'struct A{int v;}; struct B{struct A a;}; struct C{struct B b;}; int main(){ struct C c; c.b.a.v=9; putint(c.b.a.v); }' '9'
+		tc_check 'struct I{int a;}; struct O{struct I in;}; int main(){ struct O o; struct O *p; p=&o; p->in.a=8; putint(p->in.a); }' '8'
+		tc_check 'struct A{int v;}; struct B{struct A *ap;}; struct C{struct B b;}; int main(){ struct A a; struct C c; a.v=3; c.b.ap=&a; putint(c.b.ap->v); }' '3'
+		tc_check 'struct A{int v;}; struct B{struct A a;}; int main(){ struct B b; struct B *p; b.a.v=4; p=&b; putint(p->a.v); }' '4'
+		tc_check 'struct I{int a;}; struct O{struct I in;int c;}; struct O g; int main(){ g.in.a=4; g.c=5; putint(g.in.a); putint(g.c); }' '4\n5'
+		tc_check 'struct I{char c; int a;}; struct O{struct I in; int z;}; int main(){ struct O o; o.in.c=65; o.in.a=7; o.z=9; putint(o.in.c); putint(o.in.a); putint(o.z); }' '65\n7\n9'
+		# Ein struct kann sich nicht selbst per WERT enthalten (unendlich) --
+		# ueberhaupt formulierbar erst, seit der Name VOR dem Rumpf registriert
+		# wird. Ein ZEIGER auf sich selbst bleibt richtig und erlaubt.
+		if build/qcc_p 'struct O { struct O in; }; int main(){ putint(1); }' 2>&1 | grep -q 'cannot contain itself by value'; then
+			echo "ok    qcc: struct-in-sich-selbst per Wert wird diagnostiziert"
 		else
-			echo "FAIL  qcc: Diagnose fuer verschachtelte struct-Felder fehlt"; tcfail=1; fail=1
+			echo "FAIL  qcc: struct-in-sich-selbst per Wert wird NICHT gemeldet"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct N; struct O { struct N in; }; int main(){ putint(1); }' 2>&1 | grep -q 'incomplete struct type'; then
+			echo "ok    qcc: unvollstaendiger struct-Typ als Feldwert wird diagnostiziert"
+		else
+			echo "FAIL  qcc: unvollstaendiger struct-Typ als Feldwert wird NICHT gemeldet"; tcfail=1; fail=1
+		fi
+		# Der Operator muss zu dem passen, was LINKS von ihm steht.
+		if build/qcc_p 'struct I{int a;}; struct O{struct I in;}; int main(){ struct O o; putint(o.in->a); }' 2>&1 | grep -q "used on a struct value"; then
+			echo "ok    qcc: '->' auf einem struct-WERT wird diagnostiziert"
+		else
+			echo "FAIL  qcc: '->' auf einem struct-Wert wird NICHT gemeldet"; tcfail=1; fail=1
+		fi
+		if build/qcc_p 'struct A{int v;}; struct B{struct A *ap;}; int main(){ struct B b; putint(b.ap.v); }' 2>&1 | grep -q "used on a pointer to struct"; then
+			echo "ok    qcc: '.' auf einem ZEIGER wird diagnostiziert"
+		else
+			echo "FAIL  qcc: '.' auf einem Zeiger wird NICHT gemeldet"; tcfail=1; fail=1
 		fi
 		# 2026-07-24: Array-Felder in struct (z.B. char name[8]) -- Byte-Layout inkl.
 		# Array-Feld-Groesse (Elementgroesse * Elementzahl), Zugriff nur ueber eine
