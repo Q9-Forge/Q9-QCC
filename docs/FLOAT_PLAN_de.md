@@ -686,9 +686,19 @@ nicht vorgesehen) und zu viele Werte.
 Geprüft im Orakel, auf echtem 68030 (`double68k.sh`, jetzt 80 Fälle) und im
 Selbsthost.
 
-## Stand `double` — was compilerseitig bleibt
+## Stand `double` — was bleibt
 
-Nichts mehr. Offen sind nur noch zwei Dinge außerhalb des Compilers:
+**Keine `double`-spezifische Lücke mehr.** Was noch fehlt, fehlt für *alle*
+Typen gleichermaßen oder liegt außerhalb des Compilers.
+
+**Allgemeine Grenze, nicht double-spezifisch:** `p[i]++` über einen **Zeiger**
+(statt über ein Array) wird abgelehnt — „++/-- on an indexed element is only
+supported for int/unsigned/char". Das gilt für `int *p` genauso wie für
+`double *p` und bestand schon vorher; `tcIndexIncDec` lehnt jeden Zeiger ab,
+weil dort ein `LOADIDX` auf einen Slot erwartet wird. Lesen und Schreiben
+über den Zeiger (`a[i]`, `a[i] = x`) gehen dagegen für beide Typen.
+
+Außerhalb des Compilers:
 
 - **`printf("%f")`** — Bibliotheksarbeit in qclib (Zahl↔Text). Rechnen kann
   ein Programm längst ohne.
