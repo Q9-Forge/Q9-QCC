@@ -551,3 +551,55 @@ Geprüft mit acht neuen Testfällen, darunter das Kernidiom, für das man einen
 `double*` überhaupt braucht — der Aufgerufene schreibt durch den Zeiger
 zurück — und auf echtem 68030 (`double68k.sh`, jetzt 60 Fälle), wo eine
 falsche Adresse fremde Daten trifft statt einer Python-Liste.
+
+## Bedingungen, structs und ein zurückgenommenes Feature (2026-09-16)
+
+### `if (a)`, `!a`, `while (a)` mit `double`
+
+C89 3.6.4.1/3.6.5: eine Bedingung darf **jeden** skalaren Typ haben und
+bedeutet „ungleich 0". Für Ganzzahlen, Zeichen und Zeiger galt das in QCC
+längst (`tcIsTruthy`); `double` war schlicht nie dazugekommen und wurde als
+„expects bool" abgelehnt.
+
+Der Vergleich wird **emittiert**, nicht bloß im Typstapel vermerkt: auf dem
+Stapel liegen acht Byte, und `JZ`/`NOT` erwarten einen ganzzahligen Wert.
+0.0 ist als IEEE-754-Bitmuster schlicht null, daher `PUSHD 0 0` + `DCMPNE`.
+Eine Funktion (`tcCondValue`) für alle vier Stellen — eine vergessene ließe
+acht Byte auf dem Stapel liegen.
+
+### `struct` mit `double`-Feld: eine Modellgrenze, kein Compilerfehler
+
+Der Absturz des VM-Orakels (`TypeError: unsupported operand for &`) sah nach
+einem Fehler aus, war aber keiner. Die struct-Kopie ist **byteweise**
+(`LOADIND c`/`STOREIND c`), und die VM bildet einen Block als Liste
+**typisierter Zellen** ab — eine `double`-Zelle trifft sie damit als Ganzes
+und scheitert an `float & 0xff`. **Auf dem 68k ist dieselbe Kopie echt
+byteweise und richtig**, das Bitmuster wandert unverändert.
+
+Die VM reicht `float`-Zellen bei byteweisem Zugriff jetzt durch. Der
+**gemischte** Fall bleibt außerhalb ihrer Reichweite: in
+`struct { int n; double d; }` liegt `d` bei **Offset 4**, und
+`index = offset/größe` kann das nicht von einem `int` unterscheiden. Das
+Layout ist dabei **korrekt** — xcc richtet `double` auf zwei Byte aus, und
+beide Anordnungen ergeben in QCC wie in xcc 12 Byte. Die VM sagt das jetzt
+auch, statt „unaligned pointer" zu melden.
+
+**Bewiesen wurde es dort, wo es sich zeigen kann:** `double68k.sh` prüft
+`struct{double}` beim Kopieren, als Parameter und als Rückgabewert, dazu
+`{int n; double d;}` und `{double d; int n;}` — auf echtem 68030, 67 Fälle.
+
+### Unäres Plus: versucht, gemessen, zurückgenommen
+
+`i = +5;` scheitert weiterhin, für jeden Typ. Der Versuch, `"+"` in
+`negFactor` aufzunehmen, **bricht bestehenden, korrekten Code**: mit einem
+unären Plus wird `(x)+1` auch als **Cast** lesbar — `(x)` angewandt auf `+1`.
+`castExpr` steht in `factor` vor `parenOpen`, greift also zuerst, und seine
+Aktion meldet „unknown type name 'x'", bevor der Generator zur
+Klammer-Alternative zurückkehren kann. Die Meldung ist dann schon abgesetzt.
+
+Beim Minus fällt das nicht auf, weil `-1` schon immer ein `factor` war.
+Der Nutzen wäre gering (`+x` ist im Wert ein No-op), der Preis wäre, dass
+`putint((x)+1)` nicht mehr übersetzt. Auflösen ließe es sich nur, indem
+`castExpr` erst meldet, wenn die Alternative endgültig gewählt ist — ein
+Eingriff in den Generator, nicht in diese Grammatik. Ein Testfall sichert
+`(x)+1` jetzt ab.

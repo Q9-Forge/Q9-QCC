@@ -700,6 +700,20 @@ static int tcIsDouble(TCType t) { return !t.pointers && t.base == 'd'; }
    sich nichts -- ein bool liegt ohnehin als 0/1 im selben 32-Bit-Slot wie ein
    int, und JZ/JNZ testen den Wert unabhaengig vom Typ. */
 static int tcIsTruthy(TCType t) { return t.pointers != 0 || t.base == 'b' || t.base == 'i' || t.base == 'u' || t.base == 'c' || t.base == 'h' || t.base == 'z'; }
+/* C89 3.6.4.1/3.6.5: eine Bedingung darf JEDEN skalaren Typ haben und
+   bedeutet "ungleich 0". Fuer Ganzzahlen, Zeichen und Zeiger gilt das in QCC
+   laengst (tcIsTruthy); double kam nie dazu, obwohl "if (x)" damit genauso
+   gueltiges C ist -- es wurde als "expects bool" abgelehnt.
+   Der Vergleich muss EMITTIERT werden, nicht bloss im Typstapel vermerkt: auf
+   dem Stapel liegen acht Byte, und JZ/NOT erwarten einen ganzzahligen Wert.
+   0.0 ist als IEEE-754-Bitmuster schlicht null, deshalb "PUSHD 0 0".
+   EINE Funktion fuer alle vier Bedingungsstellen (if, while, do-while, !) --
+   eine vergessene liesse acht Byte auf dem Stapel liegen. */
+static TCType tcCondValue(TCType t) {
+	if (!tcIsDouble(t)) return t;
+	printf("PUSHD 0 0\nDCMPNE\n");
+	return tcMakeType('b', 0);
+}
 static TCType tcPointerTo(TCType t) { if (t.pointers < 255) t.pointers++; else actionErrors++; return t; }
 static TCType tcPointee(TCType t) { if (t.pointers) t.pointers--; else actionErrors++; return t; }
 /* 'h' (short, 2026-09-09) dazu -- dieselbe Fallgruppe wie 'c'/'b': der
@@ -3036,6 +3050,7 @@ void tc_neg(const char* start, const char* end) {
 	TCType operand = tcTypePop();
 	(void)end;
 	if (*start == '!') {
+		operand = tcCondValue(operand);
 		if (!tcIsTruthy(operand)) tcTypeError("logical negation", tcMakeType('b', 0), operand);
 		tcTypePush(tcMakeType('b', 0)); printf("NOT\n");
 	} else if (*start == '~') {
@@ -4899,6 +4914,7 @@ void tc_ifbegin(const char* start, const char* end) {
 
 void tc_ifcond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
+	condition = tcCondValue(condition);
 	if (!tcIsTruthy(condition)) tcTypeError("if condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('i')) return;
 	printf("JZ L%d\n", tcCtrlTop[tcCtrlDepth - 1]);
@@ -4929,6 +4945,7 @@ void tc_whilebegin(const char* start, const char* end) {
 
 void tc_whilecond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
+	condition = tcCondValue(condition);
 	if (!tcIsTruthy(condition)) tcTypeError("while condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('w')) return;
 	printf("JZ L%d\n", tcCtrlEnd[tcCtrlDepth - 1]);
@@ -4994,6 +5011,7 @@ void tc_dowhiletok(const char* start, const char* end) {
 
 void tc_docond(const char* start, const char* end) {
 	TCType condition = tcTypePop(); (void)start; (void)end;
+	condition = tcCondValue(condition);
 	if (!tcIsTruthy(condition)) tcTypeError("do-while condition", tcMakeType('b', 0), condition);
 	if (!tcNeedCtrl('d')) return;
 	printf("JNZ L%d\n", tcCtrlTop[tcCtrlDepth - 1]);

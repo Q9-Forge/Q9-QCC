@@ -656,6 +656,20 @@ character = strEscape | " "~"!" | "#"~"~" .
 strEscape = "\134" strEscChar .
 strEscChar = " "~"~" .
 negFactor = ( "-" | "!" | "~" ) factor .
+/* UNAERES PLUS BLEIBT AUSSEN VOR (2026-09-16, gemessen und zurueckgenommen).
+   "i = +5;" scheitert weiterhin -- fuer jeden Typ, nicht nur fuer double.
+   Der Versuch, "+" hier aufzunehmen, BRICHT BESTEHENDEN, KORREKTEN CODE:
+   mit einem unaeren Plus wird "(x)+1" auch als CAST lesbar, naemlich "(x)"
+   angewandt auf "+1". castExpr steht in factor vor parenOpen, greift also
+   zuerst -- und seine Aktion meldet "unknown type name 'x'", bevor der
+   Generator zur Klammer-Alternative zurueckkehren kann. Die Meldung ist dann
+   schon abgesetzt und actionErrors erhoeht.
+   Beim Minus faellt das nicht auf, weil "-1" schon immer ein factor war und
+   die Mehrdeutigkeit dort seit jeher besteht.
+   Der Nutzen waere gering (im Wert ist "+x" ein No-op); der Preis waere, dass
+   "putint((x)+1)" nicht mehr uebersetzt. Aufloesen liesse es sich nur, indem
+   castExpr erst meldet, wenn die Alternative endgueltig gewaehlt ist --
+   ein Eingriff in den Generator, nicht in diese Grammatik. */
 addressRef = "&" ident [ index ] .
 
 sizeofExpr = "sizeof" "(" sizeofArg ")" .

@@ -76,6 +76,29 @@ double d_fak(double x)
 	return x * d_fak(x - 1.0);
 }
 
+/* STRUCTS MIT double-FELD (2026-09-16). Das VM-Orakel kann den GEMISCHTEN
+   Fall nicht abbilden: es fuehrt einen Block als Liste typisierter Zellen und
+   rechnet den Index als offset/groesse -- ein double bei Offset 4 laesst sich
+   darin nicht von einem int unterscheiden. Auf dem Ziel ist genau dieses
+   Layout richtig: xcc richtet double auf ZWEI Byte aus (68k-Wortausrichtung),
+   und QCC stimmt damit ueberein. Hier wird es deshalb auf echter Hardware
+   geprueft -- der einzige Ort, an dem es sich zeigen kann. */
+struct DblOnly { double d; };
+struct IntDbl  { int n; double d; };
+struct DblInt  { double d; int n; };
+
+int s_nimm(struct DblOnly s)
+{
+	return (int)(s.d * 10.0);
+}
+
+struct DblOnly s_gib()
+{
+	struct DblOnly s;
+	s.d = 3.5;
+	return s;
+}
+
 int d_ptr(double* p)
 {
 	return (int)((*p) * 10.0);
@@ -284,6 +307,32 @@ int main()
 	dp = &gi;
 	bad = bad + pruefe("Zeiger auf globales double", (int)((*dp) * 10.0), 15);
 
-	printf("double68k fertig: %d von 60 falsch\n", bad);
+	{
+		struct DblOnly s1;
+		struct DblOnly s2;
+		struct IntDbl m1;
+		struct IntDbl m2;
+		struct DblInt r1;
+
+		s1.d = 1.5;
+		s2 = s1;
+		bad = bad + pruefe("struct{double} kopieren", (int)(s2.d * 10.0), 15);
+		bad = bad + pruefe("struct{double} als Parameter", s_nimm(s1), 15);
+		s2 = s_gib();
+		bad = bad + pruefe("struct{double} als Rueckgabe", (int)(s2.d * 10.0), 35);
+
+		/* Der gemischte Fall -- das double liegt bei Offset 4. */
+		m1.n = 7;
+		m1.d = 2.5;
+		bad = bad + pruefe("struct{int,double} lesen", m1.n * 100 + (int)(m1.d * 10.0), 725);
+		m2 = m1;
+		bad = bad + pruefe("struct{int,double} kopieren", m2.n * 100 + (int)(m2.d * 10.0), 725);
+		r1.d = 1.5;
+		r1.n = 9;
+		bad = bad + pruefe("struct{double,int} lesen", r1.n * 100 + (int)(r1.d * 10.0), 915);
+		bad = bad + pruefe("sizeof struct{int,double}", (int)sizeof(struct IntDbl), 12);
+	}
+
+	printf("double68k fertig: %d von 67 falsch\n", bad);
 	return 0;
 }
