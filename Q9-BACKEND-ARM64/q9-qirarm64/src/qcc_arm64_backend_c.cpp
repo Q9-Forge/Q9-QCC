@@ -259,6 +259,32 @@ static void collectGlobals(void) {
 			if (!found) fatal("GINITADDR fuer unbekannte globale Variable");
 			continue;
 		}
+		if (strcmp(x->op, "GINITAT") == 0) {
+			/* Wie im 68k-Backend, aber LITTLE-ENDIAN: das niederwertigste Byte
+			   zuerst. Dass dieselbe IR-Zeile hier anders abgelegt wird, ist der
+			   ganze Grund fuer den eigenen Opcode. */
+			int foundA = 0, giA, idxA;
+			if (x->argc != 4) fatal("ungueltiges GINITAT");
+			for (giA = 0; giA < globalCount; giA++) {
+				if (strcmp(globals[giA].name, x->args[0]) == 0 && globals[giA].isArray) {
+					int fsz = strcmp(x->args[2], "c") == 0 || strcmp(x->args[2], "b") == 0 ? 1 :
+					          strcmp(x->args[2], "h") == 0 ? 2 :
+					          strcmp(x->args[2], "p") == 0 || strcmp(x->args[2], "d") == 0 ? 8 : 4;
+					int val = number(x->args[3], x->line);
+					int b;
+					idxA = number(x->args[1], x->line);
+					if (idxA < 0 || idxA + fsz > globals[giA].length) fatal("GINITAT-Offset ausserhalb Objekt");
+					if (idxA + fsz > MAX_ARRAY_LEN) fatal("GINITAT-Offset ueberschreitet MAX_ARRAY_LEN");
+					for (b = 0; b < fsz; b++)
+						globals[giA].init[idxA + b] = (int)(((unsigned int)val >> (8 * b)) & 0xffu);
+					globals[giA].hasGinit = 1;
+					foundA = 1;
+					break;
+				}
+			}
+			if (!foundA) fatal("GINITAT fuer unbekanntes Objekt");
+			continue;
+		}
 		if (strcmp(x->op, "GINITD") == 0) {
 			/* Anfangswert eines globalen double: zwei 32-Bit-Haelften, hi zuerst
 			   (wie PUSHD). init[] haelt EINEN int je Element, ein double braucht
@@ -377,7 +403,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
-		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITD") == 0 || strcmp(x->op, "GINITADDR") == 0) {
+		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITD") == 0 || strcmp(x->op, "GINITAT") == 0 || strcmp(x->op, "GINITADDR") == 0) {
 			/* Allowed before the first function or inside an open function (static
 			   local variable), but not between two functions. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
@@ -856,7 +882,7 @@ static void emit(FILE* o) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putuint\n", o);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITADDR") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITAT") == 0 || strcmp(op, "GINITADDR") == 0) {
 				/* Static locals were handled by collectGlobals(); this occurrence in
 				   the function body is a no-op. */
 			} else {

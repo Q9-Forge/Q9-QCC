@@ -512,6 +512,16 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct S{char a; int b;}; int main(){ struct S s = {65,300}; putint(s.a*1000+s.b); }' '65300'
 		tc_check 'struct S{int a; int b;}; int main(){ struct S s = {1,2}; struct S t; t=s; putint(t.b); }' '2'
 		tc_check 'struct S{int a;}; int f(struct S s){ return s.a; } int main(){ struct S s = {9}; putint(f(s)); }' '9'
+		# GLOBALER STRUCT-INITIALISIERER (2026-09-16): "struct S g = {1,2};".
+		# Der Block ist ein char-Array, ein int-Feld belegt darin VIER Byte --
+		# und in welcher Reihenfolge die liegen, weiss nur das BACKEND (68k
+		# big-endian, ARM64 little-endian). Deshalb der eigene Opcode GINITAT
+		# (Byte-Offset + Typtag + Wert) statt vier GINIT aus dem Frontend.
+		tc_check 'struct S{int a; int b;}; struct S g={1,2}; int main(){ putint(g.a*10+g.b); }' '12'
+		tc_check 'struct S{int a; int b;}; struct S g={7}; int main(){ putint(g.a); }' '7'
+		tc_check 'struct S{char a; int b;}; struct S g={65,300}; int main(){ putint(g.a*1000+g.b); }' '65300'
+		tc_check 'struct S{int a;}; static struct S g={9}; int main(){ putint(g.a); }' '9'
+		tc_check 'struct S{int a; int b;}; struct S g={1,2}; int main(){ struct S t; t=g; putint(t.b); }' '2'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 10; p.y = p.x * 2; putint(p.y); }' '20'
 		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
 		tc_check 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a = 1; m.b = 1000; m.c = 2; putint(m.b); putchar(m.a + 64); putchar(m.c + 64); }' '1000\nAB'
@@ -733,6 +743,7 @@ if command -v python3 >/dev/null 2>&1; then
 			'int main(){ double a; double b; a=1.0; b=2.0; putint((int)(a%b)); }|remainder operator requires integer' \
 			'struct S{int a;}; int main(){ struct S s = {1,2,3}; putint(1); }|too many values in struct initializer' \
 			'struct S{int a;}; struct S{int b;}; int main(){ putint(1); }|duplicate struct' \
+			'struct S{int a;}; struct S g={1,2}; int main(){ putint(1); }|too many values in struct initializer' \
 			'double t[2]={{1.0},{2.0}}; int main(){ putint(1); }|nested initializer list' \
 			'double t[2]={1.0,2.0,3.0}; int main(){ putint(1); }|bad or oversized array initializer'
 		do
@@ -1954,11 +1965,10 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; int main(){ garr[0].a=10; garr[1].a=20; garr[2].a=30; putint(garr[0].a); putint(garr[1].a); putint(garr[2].a); }' '10\n20\n30'
 		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec* gp; int main(){ gp = garr; gp[0].a=100; gp[1].a=200; putint(garr[0].a); putint(garr[1].a); putint(gp[1].a); }' '100\n200\n200'
 		tc_check 'struct Rec { int a; int b; }; struct Rec garr[3]; struct Rec g; int main(){ putint(sizeof(garr)); putint(sizeof(g)); putint(sizeof(struct Rec)); }' '24\n8\n8'
-		if build/qcc_p 'struct Rec { int a; }; struct Rec g = {1}; int main(){ putint(1); }' 2>&1 | grep -q 'struct global cannot have an initializer'; then
-			echo "ok    qcc: Initialisierer bei globaler struct-Variable wird diagnostiziert"
-		else
-			echo "FAIL  qcc: Diagnose fuer struct-Global-Initialisierer fehlt"; tcfail=1; fail=1
-		fi
+		# 2026-09-16: der Initialisierer an einer globalen struct-Variablen ist
+		# jetzt UMGESETZT (Opcode GINITAT) statt diagnostiziert -- der alte
+		# Meldungstest ist damit ueberholt und durch Wertetests ersetzt.
+		tc_check 'struct Rec { int a; }; struct Rec g = {1}; int main(){ putint(g.a); }' '1'
 		tc_check 'struct Rec { int a; }; struct Rec g[2][2]; int main(){ g[1][1].a=88; putint(g[1][1].a); }' '88'
 		# 2026-07-24: mehr als 2 Array-Dimensionen -- tcCheck2DIndex/tcEmit2DCombine
 		# generalisiert zu tcCheckNDIndex/tcEmitNDCombine (TC_MAXDIMS=6 als grosszuegige

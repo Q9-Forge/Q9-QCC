@@ -718,6 +718,39 @@ static void collectGlobals(void) {
 			if (!found) fatal("GINIT fuer unbekanntes Array");
 			continue;
 		}
+		if (strcmp(insP->op, "GINITAT") == 0) {
+			/* Feldwert eines globalen structs an einem BYTE-Offset. Der Block ist
+			   ein char-Array, ein int-Feld belegt darin VIER Byte -- und in welcher
+			   Reihenfolge die liegen, weiss nur das Backend. Der 68k ist
+			   BIG-ENDIAN: das hoechstwertige Byte zuerst. Genau deshalb gibt es
+			   den eigenen Opcode und nicht vier GINIT aus dem Frontend. */
+			int foundA = 0;
+			if (insP->argc != 4) fatal("ungueltiges GINITAT");
+			for (gi = 0; gi < globalCount; gi++) {
+				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+					int* initA;
+					int fsz = tagSize(insP->args[2]);
+					int val = number(insP->args[3], insP->line);
+					int b;
+					idx = number(insP->args[1], insP->line);
+					if (idx < 0 || idx + fsz > globals[gi].length) fatal("GINITAT-Offset ausserhalb Objekt");
+					if (idx + fsz > MAX_ARRAY_LEN) fatal("GINITAT-Offset ueberschreitet MAX_ARRAY_LEN");
+					if (globals[gi].init == NULL) {
+						int wantA = globals[gi].length < MAX_ARRAY_LEN ? globals[gi].length : MAX_ARRAY_LEN;
+						globals[gi].init = initAlloc(wantA, insP->line);
+						globals[gi].initLen = wantA;
+					}
+					initA = globals[gi].init;
+					for (b = 0; b < fsz; b++)
+						initA[idx + b] = (int)(((unsigned int)val >> (8 * (fsz - 1 - b))) & 0xffu);
+					globals[gi].hasGinit = 1;
+					foundA = 1;
+					break;
+				}
+			}
+			if (!foundA) fatal("GINITAT fuer unbekanntes Objekt");
+			continue;
+		}
 		if (strcmp(insP->op, "GINITD") == 0) {
 			/* Anfangswert eines globalen double: zwei 32-Bit-Haelften, hi
 			   zuerst (wie PUSHD). init[] haelt EINEN int je Element, ein
@@ -821,7 +854,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITD") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
+		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITD") == 0 || strcmp(insP->op, "GINITAT") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
 			/* Allowed before the first function (true globals), inside an open
 			   function (static locals), and between functions since 2026-08-10.
 			   C permits declarations and functions to be mixed freely; collectGlobals
@@ -2042,7 +2075,7 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PRINTC") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
 				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"), &serial, psectName);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITAT") == 0) {
 				/* Static local variable: already processed by collectGlobals() (its address
 				   and initial value are emitted in the DATA/BSS section); this point in the
 				   function body is a pure no-op with no runtime action. */
