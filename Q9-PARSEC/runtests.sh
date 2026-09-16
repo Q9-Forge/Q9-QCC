@@ -953,6 +953,31 @@ if command -v python3 >/dev/null 2>&1; then
 		fi
 		tc_check 'struct S { int a; }; int main(){ struct S s; s.a=1; putint(s.a); }' '1'
 		tc_check 'int main(){ int x; x = 0x10; putint(x); }' '16'
+		# C89-SCHLUESSELWOERTER, die STUMM scheiterten (2026-09-16).
+		# "signed" teilt sich unsignedInt mit "unsigned" -- die Regel beschreibt
+		# die Folgewoerter, nicht das Vorzeichen; nur die Aktion unterscheidet.
+		# Der Typtext wird an DREI Stellen gelesen (tc_type fuer Lokale,
+		# zweimal im globalen Pfad) -- wer nur eine anfasst, baut die naechste
+		# stille Abweichung ein.
+		tc_check 'int main(){ signed char c; c=65; putint(c); }' '65'
+		tc_check 'int main(){ signed int i; i=7; putint(i); }' '7'
+		tc_check 'int main(){ signed short h; h=9; putint(h); }' '9'
+		tc_check 'int main(){ signed x; x=5; putint(x); }' '5'
+		tc_check 'signed char g; int main(){ g=65; putint(g); }' '65'
+		tc_check 'struct S{signed char c;}; int main(){ struct S s; s.c=65; putint(s.c); }' '65'
+		# C89 laesst zu, dass long double dieselbe Genauigkeit hat wie double.
+		# Die Pruefung muss VOR dem blossen "long" stehen, sonst schluckt das
+		# den Typ und der double-Anteil landet im Deklaratortext.
+		tc_check 'int main(){ long double d; d=2.5; putint((int)(d*10.0)); }' '25'
+		tc_check 'long double g; int main(){ g=2.5; putint((int)(g*10.0)); }' '25'
+		tc_check 'int main(){ long l; l=7; putint((int)l); }' '7'
+		# "register" ist in C89 nur ein Hinweis und wird folgenlos ignoriert
+		tc_check 'int main(){ register int i; i=7; putint(i); }' '7'
+		tc_check 'int f(register int a){ return a; } int main(){ putint(f(7)); }' '7'
+		# "sizeof x" ohne Klammern -- gueltiges C89
+		tc_check 'int main(){ int x; x=1; putint(sizeof x); }' '4'
+		tc_check 'int main(){ double d; putint(sizeof d); }' '8'
+		tc_check 'int main(){ int x; putint(sizeof(x)); }' '4'
 		# PROTOTYPEN OHNE PARAMETERNAMEN (2026-09-16). "int f(int);" ist die
 		# uebliche Schreibweise in Header-Dateien und scheiterte STUMM: die
 		# Aktion haengt an paramDecl, also am NAMEN -- ohne ihn feuerte sie
