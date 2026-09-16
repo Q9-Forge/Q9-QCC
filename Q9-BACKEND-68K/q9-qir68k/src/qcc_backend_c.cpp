@@ -1227,9 +1227,24 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 		if (strcmp(op, "LOADIND") == 0) {
 			fputs("\tmove.l\t(a7)+,a0\n", out);
-			if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
-			else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
-			fputs("\tmove.l\td0,-(a7)\n", out);
+			if (elemSize == 8) {
+				/* DOUBLE UEBER EINEN ZEIGER (2026-09-16). Acht Byte gehen wie
+				   bei LOADD/LOADGD ueber die FPU. Vorher fiel 'd' in den
+				   generischen Zweig darunter und lud VIER Byte, waehrend das
+				   nachfolgende "fmove.d (a7)+" acht las -- ein halber Wert und
+				   ein schiefer Stapel, ohne jede Meldung. Im VM-Orakel war das
+				   unsichtbar, weil Python den Typ kennt; aufgefallen ist es
+				   erst auf echter Hardware (zwei double-Parameter, dann PMMU). */
+				fputs("\tfmove.d\t(a0),fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			} else {
+				if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
+				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
+				fputs("\tmove.l\td0,-(a7)\n", out);
+			}
+		} else if (elemSize == 8) {
+			/* Der Wert liegt OBEN (acht Byte), die Adresse darunter. */
+			fputs("\tfmove.d\t(a7)+,fp0\n\tmove.l\t(a7)+,a0\n\tfmove.d\tfp0,(a0)\n", out);
+			if (keepValue) fputs("\tfmove.d\tfp0,-(a7)\n", out);
 		} else {
 			fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n\tmove.%c\td0,(a0)\n", tagSuffix(elemSize));
 			if (elemSize == 1 && keepValue) fputs("\tand.l\t#$ff,d0\n", out);

@@ -45,6 +45,12 @@ typedef struct {
 	int isChar;
 	int isShort;
 	int isPointer;
+	/* 2026-09-16: ein double belegt acht Byte. Ohne dieses Feld fiel es in
+	   den 4-Byte-Standardfall der Groessenformel unten -- der Speicher war
+	   halb so gross wie der Wert, und ein "str x0" schrieb ueber das Global
+	   hinaus. Auf 68k gibt es das Problem nicht, dort liefert tagSize('d')
+	   von sich aus 8. */
+	int isDouble;
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
@@ -123,6 +129,24 @@ static int elemBytes(const char* w) {
 }
 /* Return the ldr/str size suffix: "b" (byte), "h" (halfword), or ""
    (word/doubleword, selected by the w/x register). */
+/* Byte-Groesse und Ausrichtung eines Globals -- EINE Stelle statt zweier
+   Kopien in den beiden zerofill-Zweigen. Genau diese Verdopplung hatte
+   double uebersehen (2026-09-16): der Puffer fuer ein double-Argument wurde
+   mit vier Byte angelegt, und der 8-Byte-Store lief darueber hinaus. */
+static int globalElemSize(const Global* g) {
+	if (g->isChar) return 1;
+	if (g->isShort) return 2;
+	if (g->isPointer) return 8;
+	if (g->isDouble) return 8;
+	return 4;
+}
+static int globalAlignP2(const Global* g) {
+	if (g->isChar) return 0;
+	if (g->isShort) return 1;
+	if (g->isPointer) return 3;
+	if (g->isDouble) return 3;
+	return 2;
+}
 static const char* elemSuffix(const char* w) {
 	if (isByteWord(w)) return "b";
 	if (isShortWord(w)) return "h";
@@ -278,6 +302,8 @@ static void collectGlobals(void) {
 			globals[gi].isChar = isByteWord(x->args[1]);
 			globals[gi].isShort = isShortWord(x->args[1]);
 			globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
+		globals[gi].isDouble = strcmp(x->args[1], "d") == 0;
+			globals[gi].isDouble = strcmp(x->args[1], "d") == 0;
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
 			globals[gi].isStatic = x->argc >= 4 && number(x->args[3], x->line) != 0;
@@ -295,6 +321,7 @@ static void collectGlobals(void) {
 		globals[gi].isChar = x->argc >= 3 && isByteWord(x->args[2]);
 		globals[gi].isShort = x->argc >= 3 && isShortWord(x->args[2]);
 		globals[gi].isPointer = x->argc >= 3 && strcmp(x->args[2], "p") == 0;
+		globals[gi].isDouble = x->argc >= 3 && strcmp(x->args[2], "d") == 0;
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
 		globals[gi].isStatic = x->argc >= 4 && number(x->args[3], x->line) != 0;
@@ -315,6 +342,7 @@ static void collectGlobals(void) {
 		globals[gi].isChar = isByteWord(x->args[1]);
 		globals[gi].isShort = isShortWord(x->args[1]);
 		globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
+		globals[gi].isDouble = strcmp(x->args[1], "d") == 0;
 		globals[gi].declOnly = 1;
 	}
 }
@@ -602,7 +630,11 @@ static void emit(FILE* o) {
 				fprintf(o, "\tadd\tx0,x0,w1,sxtw%s", scaleSuffix(x->args[0]));
 				push(o, "x0");
 			} else if ((strcmp(op, "LOADIND") == 0 || strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) && x->argc == 1) {
-				int ptr = strcmp(x->args[0], "p") == 0;
+				/* 'd' ist hier so breit wie ein Zeiger: auf ARM64 ist ein double
+				   schlicht ein 64-Bit-Bitmuster (s. LOADD/STORED), also x0 statt
+				   w0 und elemSuffix "" -- ldr/str laden damit acht Byte. Ohne
+				   diese Erweiterung lud LOADIND d nur vier. */
+				int ptr = strcmp(x->args[0], "p") == 0 || strcmp(x->args[0], "d") == 0;
 				int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 				if (strcmp(op, "LOADIND") == 0) {
 					pop(o, "x9");
@@ -800,13 +832,11 @@ static void emit(FILE* o) {
 			if (!g->isArray && g->initialValue == 0) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
-					(g->isChar ? 1 : g->isShort ? 2 : g->isPointer ? 8 : 4) * g->length,
-					g->isChar ? 0 : g->isShort ? 1 : g->isPointer ? 3 : 2);
+					globalElemSize(g) * g->length, globalAlignP2(g));
 			} else if (g->isArray && !g->hasGinit) {
 				if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 				fprintf(o, "\t.zerofill\t__DATA,__bss,_tc_g_%s,%d,%d\n", g->name,
-					(g->isChar ? 1 : g->isShort ? 2 : g->isPointer ? 8 : 4) * g->length,
-					g->isChar ? 0 : g->isShort ? 1 : g->isPointer ? 3 : 2);
+					globalElemSize(g) * g->length, globalAlignP2(g));
 			}
 			hasData |= (g->isArray && g->hasGinit) || (!g->isArray && g->initialValue != 0);
 		}

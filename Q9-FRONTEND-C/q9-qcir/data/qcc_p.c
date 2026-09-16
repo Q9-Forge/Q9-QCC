@@ -259,6 +259,18 @@ static int  tcStructArgSeq; /* laufende Nummer: je AUFRUFSTELLE ein eigener Argu
    liegen im Slot selbst (lokale Variable mit LARRAY). Bei beiden ist
    tcLocalArrayLen 0, deshalb diese eigene Markierung. */
 static int  tcLocalStructByAddr[MAX_LOCALS];
+/* DOUBLE ALS PARAMETER / RUECKGABE (2026-09-16). Ein Parameter liegt in einem
+   SLOT, und der ist im Rahmen fest vier Byte breit (68k: 8+4*(nargs-1-slot)).
+   Ein double braucht acht. Statt das Rahmenlayout in allen drei Backends
+   aufzubrechen, geht der Wert denselben Weg wie ein struct-Argument: der
+   Aufrufer legt ihn in einen globalen Puffer und uebergibt dessen ADRESSE
+   (vier Byte, passt in den Slot), der Aufgerufene holt ihn heraus.
+   EIGENER PUFFER JE AUFRUFSTELLE, nicht je Position -- sonst ueberschriebe
+   ein verschachtelter Aufruf ("f(1.0, g(2.0))") das schon abgelegte Argument.
+   Dieselbe Ueberlegung wie bei __structArg_*, siehe tc_arg. */
+static int  tcLocalDoubleByAddr[MAX_LOCALS];
+static int  tcDoubleArgSeq = 0;
+static int  tcDoubleRetDeclared = 0;
 /* Vorwaertsdeklaration: der Generator gibt tc_varinit vor tcAssignStore
    aus, wo die Kopierhilfe definiert ist. */
 static void tcEmitStructCopy(int dstSlot, const char* dstGlobal, int size, int sizeN);
@@ -1361,6 +1373,42 @@ static void tcCompoundAssign(void) {
 		else printf("P%s %c\n", tcAssignOp[0] == '+' ? "ADD" : "SUB", tcTypeTag(tcPointee(left)));
 		tcTypePush(left); return;
 	}
+	/* GLEITKOMMA (2026-09-16). C89 3.3.16.2: "E1 op= E2" wirkt wie
+	   "E1 = E1 op E2" -- es greifen also die ueblichen arithmetischen
+	   Konversionen, und das Ergebnis wandert beim Speichern in den Zieltyp
+	   zurueck (das erledigt tcCoerceToTarget, dieselbe Funktion wie bei der
+	   einfachen Zuweisung, samt Verengung auf char/short).
+	   WELCHER Konversionsopcode noetig ist, haengt an der STAPELLAGE: der
+	   linke Operand liegt beim Emittieren schon UNTER dem rechten, also
+	   I2DUNDER fuer links und I2D fuer rechts -- dieselbe Unterscheidung
+	   wie bei den gemischten Ausdruecken ("a + 1" gegen "1 + a").
+	   Nur die vier Grundrechenarten sind auf double definiert: % verlangt in
+	   C ganzzahlige Operanden (C89 3.3.5), ebenso die Bitoperatoren und die
+	   Schiebeoperatoren (3.3.7 ff). */
+	if (tcIsDouble(left) || tcIsDouble(right)) {
+		char op = tcAssignOp[0];
+		if (!tcIsDouble(left) && !tcIsInteger(left) && !tcIsBool(left)) {
+			tcTypeError("compound assignment", tcMakeType('d', 0), left);
+			tcTypePush(tcTargetType); return;
+		}
+		if (!tcIsDouble(right) && !tcIsInteger(right) && !tcIsBool(right)) {
+			tcTypeError("compound assignment", tcMakeType('d', 0), right);
+			tcTypePush(tcTargetType); return;
+		}
+		if (op != '+' && op != '-' && op != '*' && op != '/') {
+			tcErrAt(parserActionAt);
+			fprintf(stderr, "'%s' requires integer operands, got double\n", tcAssignOp);
+			actionErrors++; tcTypePush(tcTargetType); return;
+		}
+		if (!tcIsDouble(left)) printf("I2DUNDER\n");
+		if (!tcIsDouble(right)) printf("I2D\n");
+		if (op == '+') printf("DADD\n");
+		else if (op == '-') printf("DSUB\n");
+		else if (op == '*') printf("DMUL\n");
+		else printf("DDIV\n");
+		tcTypePush(tcCoerceToTarget(tcTargetType, tcMakeType('d', 0)));
+		return;
+	}
 	if (!tcIsInteger(left) || !tcIsInteger(right)) tcTypeError("compound assignment", tcMakeType('i', 0), !tcIsInteger(left) ? left : right);
 	if (tcAssignOp[0] == '+') printf("ADD\n");
 	else if (tcAssignOp[0] == '-') printf("SUB\n");
@@ -1894,9 +1942,18 @@ void tc_param(const char* start, const char* end) {
 	   acht und liegt deshalb ueberall sonst als Block; fuer Parameter gibt
 	   es diesen Weg noch nicht. Im VM-Orakel endete es bisher in einem
 	   KeyError, also einem Absturz statt einer Diagnose. */
+	/* DOUBLE ALS PARAMETER (2026-09-16 umgesetzt): der Slot nimmt die ADRESSE
+	   des Wertes auf (also ein double*), nicht den Wert selbst. Damit der
+	   Rumpf davon nichts wissen muss -- sonst muesste JEDE Lesestelle zwischen
+	   "Slot haelt Wert" und "Slot haelt Adresse" unterscheiden, und eine
+	   vergessene waere wieder ein stiller Rechenfehler -- kopiert
+	   tc_funcbodybegin den Wert beim Eintritt in einen echten lokalen Block
+	   und laesst den NAMEN auf diesen zeigen. Ab dem Rumpf ist der Parameter
+	   damit eine ganz normale lokale double-Variable. */
 	if (!tcLocalTypes[tcLocalCount].pointers && tcLocalTypes[tcLocalCount].base == 'd') {
-		tcErrAt(start); fprintf(stderr, "double parameters are not supported yet\n"); actionErrors++;
-		tcLocalTypes[tcLocalCount].base = 'i';
+		tcLocalDoubleByAddr[tcLocalCount] = 1;
+	} else {
+		tcLocalDoubleByAddr[tcLocalCount] = 0;
 	}
 	if (!tcLocalTypes[tcLocalCount].pointers && tcLocalTypes[tcLocalCount].base == 'v') {
 		tcErrAt(start); fprintf(stderr, "void is not a valid parameter type\n"); actionErrors++;
@@ -1969,6 +2026,46 @@ void tc_funcbodybegin(const char* start, const char* end) {
 	tcIndexDepth = 0;
 	if (tcCurrentFuncIndex >= 0) tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 0;
 	printf("FUNC %s %d %d\n", tcFuncName, tcLocalCount, tcCurrentFuncIndex >= 0 ? tcFunctionIsStatic[tcCurrentFuncIndex] : 0);
+	/* DOUBLE-PARAMETER AUSPACKEN (2026-09-16). Der Slot haelt eine Adresse
+	   (s. tc_param). Hier -- und nur hier -- wird daraus eine normale lokale
+	   double-Variable: ein eigener Block, der Wert hineinkopiert, und der
+	   NAME wandert vom Adress-Slot auf den Block. Der Adress-Slot behaelt
+	   einen Namen, den kein C-Bezeichner haben kann, damit die Namenssuche
+	   ihn nicht mehr findet.
+	   DASS HIER KOPIERT WIRD, ist der Grund, warum REKURSION traegt: der
+	   globale Argumentpuffer ist ab dem ersten Befehl des Rumpfs wieder frei,
+	   lange bevor ein rekursiver Aufruf ihn erneut beschreibt.
+	   Die Schleife laeuft ueber die urspruengliche Parameterzahl, waehrend
+	   tcLocalCount dabei waechst -- deshalb wird sie VORHER festgehalten. */
+	{
+		int pn = tcLocalCount;
+		int pi;
+		for (pi = 0; pi < pn; pi++) {
+			if (tcLocalDoubleByAddr[pi]) {
+				int nslot;
+				if (tcLocalCount >= MAX_LOCALS) {
+					tcErrAt(start); fprintf(stderr, "too many locals\n"); actionErrors++;
+					return;
+				}
+				nslot = tcLocalCount++;
+				tcCopy(tcNames[nslot], tcNames[pi], tcNames[pi] + strlen(tcNames[pi]));
+				tcLocalTypes[nslot].base = 'd';
+				tcLocalTypes[nslot].pointers = 0;
+				tcLocalTypes[nslot].structId = 0;
+				tcLocalTypes[nslot].pointeeConst = 0;
+				tcLocalArrayLen[nslot] = 0;
+				tcLocalArrayNDims[nslot] = 1;
+				tcLocalConst[nslot] = 0;
+				tcLocalDead[nslot] = 0;
+				tcLocalStructByAddr[nslot] = 0;
+				tcLocalDoubleByAddr[nslot] = 0;
+				tcNames[pi][0] = '.';
+				tcNames[pi][1] = 0;
+				printf("LARRAY %d d 1\n", nslot);
+				printf("LOADP %d\nLOADIND d\nSTORED %d\n", pi, nslot);
+			}
+		}
+	}
 }
 
 /* Feuert bei ";" statt einem Rumpf (protoEnd) -- reine Prototyp-Deklaration:
@@ -4417,7 +4514,14 @@ static void tcAssignStore(int leaveValue) {
 	   STOREIND erwartet aber p,v). Die KEEP-IR-Varianten verbrauchen p/v bzw.
 	   i/v und legen genau den gespeicherten Wert wieder ab. Bei einfachen
 	   Variablen ist DUP vor dem normalen Store korrekt und bleibt kompakter. */
-	if (leaveValue && !tcTargetIndirect && !tcTargetIsArray) printf("DUP\n");
+	/* Ein double liegt als 8-Byte-Block auf dem Stapel; DUP verdoppelt nur
+	   einen Slot -- docs/IR_OPCODES_de.md fuehrt DDUP/DDROP eigens auf,
+	   "weil DUP/DROP bei 8 Byte mehrdeutig waeren". Betrifft die Zuweisung
+	   als WERT, also "(a = 1.5)" im Komma-Ausdruck. */
+	if (leaveValue && !tcTargetIndirect && !tcTargetIsArray) {
+		if (tcIsDouble(tcTargetType)) printf("DDUP\n");
+		else printf("DUP\n");
+	}
 	if (tcTargetIndirect) printf("STOREIND%s %c\n", leaveValue ? "KEEP" : "", tag);
 	else if (tcTargetIsGlobal && tcTargetIsArray) printf("STOREIDX%s G %s %c\n", leaveValue ? "KEEP" : "", tcTargetGlobal, tag);
 	else if (tcTargetIsGlobal) printf("STOREG%s %s\n", tcIsPointer(tcTargetType) ? "P" : tcWordSuffix(tag), tcTargetGlobal);
@@ -4512,7 +4616,27 @@ void tc_arg(const char* start, const char* end) {
 	(void)end;
 	if (tcCallDepth <= 0) { actionErrors++; tcErrAt(start); fprintf(stderr, "missing call frame\n"); return; }
 	{ int f = tcLookupFunction(tcCallName[tcCallDepth - 1]); int n = tcCallArgCount[tcCallDepth - 1]; TCType got = tcTypePop();
+	  /* Argumentkonversion (2026-09-16): ein Argument wird wie bei einer
+	     Zuweisung in den Parametertyp umgewandelt (C89 3.3.2.2) -- "f(1)" an
+	     einem double-Parameter ist gueltiges C. tcCoerceToTarget EMITTIERT
+	     dabei I2D/D2I; laesst sich der Typ nicht wandeln, gibt es ihn
+	     unveraendert zurueck und die Pruefung darunter greift wie bisher. */
+	  if (f >= 0 && n < tcFunctionNargs[f]) got = tcCoerceToTarget(tcFunctionParamTypes[f][n], got);
 	  if (f >= 0 && n < tcFunctionNargs[f] && !tcCompatible(tcFunctionParamTypes[f][n], got)) tcTypeError("argument", tcFunctionParamTypes[f][n], got);
+	  /* DOUBLE PER WERT: acht Byte passen nicht in einen Slot (vier Byte im
+	     Rahmen). Wie beim struct-Argument wandert der Wert deshalb in einen
+	     globalen Puffer, und uebergeben wird dessen ADRESSE; der Aufgerufene
+	     packt ihn beim Eintritt aus (tc_funcbodybegin).
+	     EIGENER PUFFER JE AUFRUFSTELLE: mit einem Puffer je Argumentposition
+	     wuerde "f(1.0, g(2.0))" das bereits abgelegte erste Argument beim
+	     Auswerten von g ueberschreiben. */
+	  if (tcIsDouble(got)) {
+	  	char dargName[40];
+	  	sprintf(dargName, "__dblArg_%d", tcDoubleArgSeq++);
+	  	printf("GARRAY %s d 1 0\n", dargName);
+	  	printf("STOREGD %s\n", dargName);
+	  	printf("ADDRG %s\n", dargName);
+	  }
 	  /* Struct per Wert: auf dem Stapel liegt die Adresse des Originals.
 	     Der Aufgerufene darf seinen Parameter aendern (tcPointerTo/
 	     tcPointee tun genau das), also bekommt er eine Kopie. Ein Puffer
@@ -4589,6 +4713,11 @@ void tc_call(const char* start, const char* end) {
 		} else {
 			printf("%s %s %d\n", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLP" : "CALL", tcCallName[frame], tcCallArgCount[frame]);
 		}
+		/* Eine double-Funktion gibt die ADRESSE ihres Rueckgabepuffers zurueck
+		   (s. tc_return) -- hier wird daraus wieder ein Wert. Das geschieht
+		   UNMITTELBAR nach dem Aufruf, deshalb genuegt EIN Puffer fuer das
+		   ganze Programm: er ist frei, bevor der naechste Aufruf ihn braucht. */
+		if (!tcIsPointer(tcFunctionReturnTypes[f]) && tcFunctionReturnTypes[f].base == 'd') printf("LOADIND d\n");
 		if (!tcIsPointer(tcFunctionReturnTypes[f]) && tcFunctionReturnTypes[f].base == 'c') printf("NARROWC\n");
 		else if (!tcIsPointer(tcFunctionReturnTypes[f]) && tcFunctionReturnTypes[f].base == 'h') printf("NARROWH\n");
 		tcTypePush(tcFunctionReturnTypes[f]);
@@ -4612,8 +4741,25 @@ void tc_retval(const char* start, const char* end) {
 
 void tc_return(const char* start, const char* end) {
 	(void)end;
-	if (!tcRetHasVal) printf("PUSH 0\n");
+	/* Eine double-Funktion gibt die ADRESSE eines globalen Puffers zurueck --
+	   acht Byte passen nicht durch d0. Auch der wertlose Fall bekommt diese
+	   Adresse statt einer 0: "return;" in einer double-Funktion ist zwar
+	   undefiniertes Verhalten, ein LOADIND auf die Adresse 0 beim Aufrufer
+	   waere aber ein Absturz statt eines undefinierten Wertes. */
+	if (!tcRetHasVal && tcIsDouble(tcFuncType)) {
+		if (!tcDoubleRetDeclared) { printf("GARRAY __dblRet d 1 0\n"); tcDoubleRetDeclared = 1; }
+		printf("ADDRG __dblRet\n");
+	}
+	else if (!tcRetHasVal) printf("PUSH 0\n");
+	/* Rueckgabekonversion (C89 3.6.6.4: der Wert wird in den Rueckgabetyp
+	   umgewandelt) -- "double f(void){ return 3; }" ist gueltiges C. */
+	if (tcRetHasVal) tcRetType = tcCoerceToTarget(tcFuncType, tcRetType);
 	if (tcRetHasVal && !tcCompatible4(&tcFuncType, &tcRetType)) tcTypeError("return", tcFuncType, tcRetType);
+	if (tcRetHasVal && tcIsDouble(tcFuncType)) {
+		if (!tcDoubleRetDeclared) { printf("GARRAY __dblRet d 1 0\n"); tcDoubleRetDeclared = 1; }
+		printf("STOREGD __dblRet\n");
+		printf("ADDRG __dblRet\n");
+	}
 	/* DOUBLE ALS RUECKGABEWERT (2026-09-16): noch nicht umgesetzt, und ohne
 	   diese Meldung waere es STILL FALSCH. Das Backend holt den Rueckgabe-
 	   wert mit einem einzigen "move.l (a7)+,d0" -- bei acht Byte ist das
@@ -4621,11 +4767,7 @@ void tc_return(const char* start, const char* end) {
 	   Fuer die Umsetzung braucht die IR ein eigenes RETD und der Aufrufer
 	   eine Entsprechung; xcc gibt double in d0/d1 zurueck (gemessen, s.
 	   docs/FLOAT_PLAN_de.md). */
-	if (tcRetHasVal && tcIsDouble(tcFuncType)) {
-		tcErrAt(start);
-		fprintf(stderr, "returning double is not supported yet -- the return value would lose half its bits\n");
-		actionErrors++;
-	}
+
 	/* Struct-Rueckgabe: auf dem Stapel liegt die Adresse einer lokalen
 	   Variable DIESES Rahmens (die Leseseite legt fuer Structs Adressen ab).
 	   Sie ueberlebt das RET nicht, also vorher in den Rueckgabepuffer des
