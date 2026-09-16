@@ -279,6 +279,16 @@ int main(void)
 	            a.next = &b; b.next = &c; c.next = 0;
 	            val(listLen(&a)); }
 
+	/* 49-51 VERKETTETE MEMBER-ZUGRIFFE (2026-09-16). Auf echter Hardware
+	   zaehlt, dass die Zwischenstufe wirklich einen Zeiger aus dem Speicher
+	   laedt (LOADIND p) und die Adressrechnung ueber echte Bytes laeuft. */
+	mark(49); { struct N x; struct N y; struct N *q;
+	            y.v = 81; x.next = &y; q = &x; val(q->next->v); }
+	mark(50); { struct N x; struct N y; struct N z;
+	            z.v = 82; x.next = &y; y.next = &z; val(x.next->next->v); }
+	mark(51); { struct N x; struct N y; struct N *q;
+	            x.next = &y; q = &x; q->next->v = 83; val(y.v); }
+
 	/* 47-48 globaler struct-Initialisierer, big-endian abgelegt */
 	mark(47); { val(ginit.a); }
 	mark(48); { val(ginit.b); }

@@ -795,7 +795,10 @@ target    = directTarget | indirectTarget .
    Meldung -- bei einem 2D-Feld im struct ("char t[4][8]") war die
    natuerlichste Zugriffsform damit ein stilles FAIL. Jetzt liest die
    Grammatik es und tc_varref/tc_target lehnen es benannt ab. */
-directTarget = ident [ index { index } ] [ member [ index { index } ] ] .
+directTarget = ident [ index { index } ] [ member [ index { index } ] { member [ index { index } ] } ] .
+/* Die Kette auch auf der ZIELSEITE lesen (2026-09-16): "p->n->v = 7". Ohne
+   sie brach der Parser stumm ab, waehrend die Leseseite die Kette laengst
+   kann -- ein halber Zustand waere verwirrender als gar keiner. */
 indirectTarget = "*" factor .
 varRef    = ident [ index { index } ] [ member [ index { index } ] { member [ index { index } ] } ] .
 /* VERKETTETE MEMBER-ZUGRIFFE (2026-09-16): "p->n->v" und "a.b->c" scheiterten

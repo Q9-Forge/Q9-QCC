@@ -502,6 +502,23 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct S{int a;}; int main(){ struct S t[2]; struct S *p; t[1].a=7; p=t; putint(p[1].a); }' '7'
 		tc_check 'struct S{int t[3];}; int main(){ struct S s; struct S *p; s.t[1]=7; p=&s; putint(p->t[1]); }' '7'
 		tc_check 'struct S{int i;}; int main(){ int t[3]; struct S s; s.i=1; t[1]=7; putint(t[s.i]); }' '7'
+		# VERKETTETE MEMBER-ZUGRIFFE, jetzt EMITTIERT (2026-09-16). "p->n->v"
+		# ist das Idiom, fuer das man verkettete Listen baut. Die Kette wird in
+		# einer eigenen Funktion (tcEmitMemberChain) erzeugt, statt sich in die
+		# Verzweigung von tc_varref einzuhaengen -- ein Eingriff dort hatte im
+		# ersten Anlauf still die ADRESSE statt des Wertes geliefert.
+		# Muster je Stufe: PUSH offset / Basis / IPADD c, dann LOADIND p fuer
+		# jede Zwischenstufe, am Ende LOADIND <tag>. IPADD will den Zaehler
+		# unten, PADD den Zeiger -- daher der Wechsel nach der ersten Stufe.
+		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=7; a.n=&b; p=&a; putint(p->n->v); }' '7'
+		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N c; struct N *p; a.v=1;b.v=2;c.v=7; a.n=&b; b.n=&c; p=&a; putint(p->n->n->v); }' '7'
+		tc_check 'struct A{int v;}; struct B{struct A *a;}; int main(){ struct A x; struct B b; x.v=7; b.a=&x; putint(b.a->v); }' '7'
+		tc_check 'struct N{int v; struct N *n;}; struct N g; int main(){ struct N b; b.v=7; g.n=&b; putint(g.n->v); }' '7'
+		# und die ZIELSEITE: die Adresse bleibt stehen, gespeichert wird ueber
+		# tcTargetIndirect -- sonst waere "Lesen geht, Schreiben nicht" ein
+		# verwirrender halber Zustand
+		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.n=&b; p=&a; p->n->v=7; putint(b.v); }' '7'
+		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; a.n=&b; a.n->v=7; putint(b.v); }' '7'
 		tc_check 'union U{int i; union U *p;}; int main(){ union U u; u.i=7; putint(u.i); }' '7'
 		# GETRENNTE VORWAERTSDEKLARATION (2026-09-16): "struct N;" ohne Rumpf ist
 		# gueltiges C89 und scheiterte STUMM. Sie meldet nur den NAMEN an --
@@ -759,8 +776,6 @@ if command -v python3 >/dev/null 2>&1; then
 			'struct S{int a;}; int main(){ struct S s = {1,2,3}; putint(1); }|too many values in struct initializer' \
 			'struct S{int a;}; struct S{int b;}; int main(){ putint(1); }|duplicate struct' \
 			'struct S{int a;}; struct S g={1,2}; int main(){ putint(1); }|too many values in struct initializer' \
-			'struct N{int v; struct N *n;}; int main(){ struct N a; struct N *p; p=&a; putint(p->n->v); }|chained member access is not supported' \
-			'struct A{int v;}; struct B{struct A *a;}; int main(){ struct B b; putint(b.a->v); }|chained member access is not supported' \
 			'double t[2]={{1.0},{2.0}}; int main(){ putint(1); }|nested initializer list' \
 			'double t[2]={1.0,2.0,3.0}; int main(){ putint(1); }|bad or oversized array initializer'
 		do
