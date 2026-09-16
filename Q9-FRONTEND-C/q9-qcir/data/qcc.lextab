@@ -3420,6 +3420,20 @@ static int tcIsPointer(TCType t) { return t.pointers != 0; }
    Argument als Zeiger, damit der Helfer nicht selbst wieder eine Struct per
    Wert nimmt. */
 static int tcIsWholeStruct(const TCType* t) { return t->base == 's' && !t->pointers; }
+/* Liegt eine LOKALE Variable als BLOCK (LARRAY) statt in einem Slot?
+   Arrays, ganze structs -- und seit 2026-09-16 auch double, denn acht Byte
+   passen nicht in einen Slot (im Rahmen vier Byte breit).
+   Die Frage entscheidet, ob "&x" PUSHADDR L oder ADDRL braucht: ADDRL
+   liefert die SLOT-Adresse, und die zeigt bei einem Block ins Leere --
+   "double *p = &a; *p" las damit Muell, ohne jede Meldung. Genau derselbe
+   Fehler war bei skalaren structs schon einmal aufgetreten und wurde
+   damals an der Fundstelle geflickt. Deshalb steht die Regel jetzt als
+   Funktion da: der naechste Blocktyp wird sonst wieder vergessen. */
+static int tcLocalIsBlock(int slot, TCType t) {
+	if (tcLocalArrayLen[slot]) return 1;
+	if (t.pointers) return 0;
+	return t.base == 's' || t.base == 'd';
+}
 static int tcIsFnPtr(TCType t) { return t.base == 'F' && t.pointers == 1; }
 static TCType tcMakeFnPtr(int sigId) {
 	TCType t = tcMakeType('F', 1);
@@ -6309,11 +6323,11 @@ void tc_addressref(const char* start, const char* end) {
 			else { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; return; }
 			tcEmitElemIndexStep(valueType); tcTypePush(tcPointerTo(valueType)); return;
 		}
-		/* Eine skalare Struct liegt ebenfalls als Block vor (LARRAY, s.
-		   tc_localdecl), hat aber tcLocalArrayLen 0 -- ohne die zweite
-		   Bedingung liefert &s die Adresse eines leeren Skalarslots statt
-		   die des Objekts. */
-		if (tcLocalArrayLen[slot] || (valueType.base == 's' && !valueType.pointers))
+		/* Eine skalare Struct und ein double liegen ebenfalls als Block vor
+		   (LARRAY, s. tc_localdecl), haben aber tcLocalArrayLen 0 -- ohne
+		   tcLocalIsBlock liefert "&x" die Adresse eines leeren Skalarslots
+		   statt die des Objekts. */
+		if (tcLocalIsBlock(slot, valueType))
 			printf("PUSHADDR L %d\n", slot);
 		else printf("ADDRL %d\n", slot);
 		tcTypePush(tcPointerTo(valueType)); return;

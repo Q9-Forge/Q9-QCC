@@ -76,9 +76,20 @@ double d_fak(double x)
 	return x * d_fak(x - 1.0);
 }
 
+int d_ptr(double* p)
+{
+	return (int)((*p) * 10.0);
+}
+
+void d_setze(double* p)
+{
+	*p = 9.5;
+}
+
 int main()
 {
 	double a;
+	double* dp;
 	double b;
 	double s;
 	int i;
@@ -256,6 +267,23 @@ int main()
 	bad = bad + pruefe("globaler Init 1.5e3", (int)gexp, 1500);
 	bad = bad + pruefe("globaler Init 2.5E-2", (int)(gexpneg * 1000.0), 25);
 
-	printf("double68k fertig: %d von 55 falsch\n", bad);
+	/* ZEIGER AUF EIN LOKALES double (2026-09-16). "&a" lieferte die
+	   SLOT-Adresse statt der des Blocks -- der Zeiger zeigte ins Leere, und
+	   zwar ohne Meldung. Auf echter Hardware zaehlt das doppelt: hier ist
+	   der Rahmen wirklich ein Rahmen, und eine falsche Adresse trifft
+	   fremde Daten statt einer Python-Liste. */
+	a = 1.5;
+	dp = &a;
+	bad = bad + pruefe("*p liest 1.5", (int)((*dp) * 10.0), 15);
+	*dp = 2.5;
+	bad = bad + pruefe("*p = 2.5 schreibt durch", (int)(a * 10.0), 25);
+	bad = bad + pruefe("f(&a) nimmt den Zeiger", d_ptr(&a), 25);
+	d_setze(&a);
+	bad = bad + pruefe("Aufgerufener schreibt zurueck", (int)(a * 10.0), 95);
+	gi = 1.5;
+	dp = &gi;
+	bad = bad + pruefe("Zeiger auf globales double", (int)((*dp) * 10.0), 15);
+
+	printf("double68k fertig: %d von 60 falsch\n", bad);
 	return 0;
 }
