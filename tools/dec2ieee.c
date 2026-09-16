@@ -11,12 +11,12 @@
  */
 
 
-#define BIG_LIMBS 260          /* 260*16 = 4160 Bit, reicht fuer 10^325 samt Schiebeplatz */
-#define DBL_PREC  53
 
 typedef struct {
     int n;                      /* Anzahl belegter Glieder, 0 = Wert null */
-    unsigned long d[BIG_LIMBS]; /* Basis 2^16, kleinstes Glied zuerst */
+    unsigned long d[260]; /* Basis 2^16, kleinstes Glied zuerst.
+                             260 Glieder = 4160 Bit, genug fuer 10^325
+                             samt Schiebeplatz. */
 } Big;
 
 /* Zwischenwerte auf Dateiebene statt auf dem Stack: jede dieser Strukturen
@@ -36,23 +36,23 @@ static int bigIsZero(const Big* a) { return a->n == 0; }
 
 static void bigSetSmall(Big* a, unsigned long v) {
     bigZero(a);
-    while (v != 0UL && a->n < BIG_LIMBS) {
+    while (v != 0UL && a->n < 260) {
         a->d[a->n++] = v & 0xFFFFUL;
         v >>= 16;
     }
 }
 
-/* a = a * m + add,  m und add unter 2^16 */
-static int bigMulAddSmall(Big* a, unsigned long m, unsigned long add) {
+/* a = a * d2iRound + add,  d2iRound und add unter 2^16 */
+static int bigMulAddSmall(Big* a, unsigned long d2iRound, unsigned long add) {
     unsigned long carry = add;
     int i;
     for (i = 0; i < a->n; i++) {
-        unsigned long t = a->d[i] * m + carry;
+        unsigned long t = a->d[i] * d2iRound + carry;
         a->d[i] = t & 0xFFFFUL;
         carry = t >> 16;
     }
     while (carry != 0UL) {
-        if (a->n >= BIG_LIMBS) return 0;      /* Ueberlauf */
+        if (a->n >= 260) return 0;      /* Ueberlauf */
         a->d[a->n++] = carry & 0xFFFFUL;
         carry >>= 16;
     }
@@ -95,7 +95,7 @@ static int bigShiftLeft(Big* a, long bits) {
     int bitShift = (int)(bits % 16L);
     long i;
     if (bigIsZero(a) || bits <= 0L) return 1;
-    if (a->n + limbShift + 1L > (long)BIG_LIMBS) return 0;
+    if (a->n + limbShift + 1L > (long)260) return 0;
     if (limbShift > 0L) {
         for (i = (long)a->n - 1L; i >= 0L; i--) a->d[i + limbShift] = a->d[i];
         for (i = 0L; i < limbShift; i++) a->d[i] = 0UL;
@@ -109,7 +109,7 @@ static int bigShiftLeft(Big* a, long bits) {
             carry = t >> 16;
         }
         if (carry != 0UL) {
-            if (a->n >= BIG_LIMBS) return 0;
+            if (a->n >= 260) return 0;
             a->d[a->n++] = carry;
         }
     }
@@ -173,39 +173,37 @@ static int bigSetPow10(Big* a, long e) {
     return 1;
 }
 
-/* q = num / den, rest bleibt in num. Schulmethode, bitweise. */
-static int bigDivMod(const Big* num, const Big* den, Big* q, Big* rem) {
+/* q = d2iNum / d2iDen, rest bleibt in d2iNum. Schulmethode, bitweise. */
+static int bigDivMod(const Big* d2iNum, const Big* d2iDen, Big* q, Big* d2iRem) {
     long shift, i;
-#define cur d2iCur
-    if (bigIsZero(den)) return 0;
+    if (bigIsZero(d2iDen)) return 0;
     bigZero(q);
-    bigZero(&cur);
-    shift = bigBitLen(num) - 1L;
-    if (shift < 0L) { bigZero(rem); return 1; }
+    bigZero(&d2iCur);
+    shift = bigBitLen(d2iNum) - 1L;
+    if (shift < 0L) { bigZero(d2iRem); return 1; }
     q->n = (int)(shift / 16L) + 1;
     for (i = 0L; i < (long)q->n; i++) q->d[i] = 0UL;
     for (i = shift; i >= 0L; i--) {
-        if (!bigShiftLeft(&cur, 1L)) return 0;
-        if (bigGetBit(num, i)) {
-            if (cur.n == 0) { cur.n = 1; cur.d[0] = 1UL; }
-            else cur.d[0] |= 1UL;
+        if (!bigShiftLeft(&d2iCur, 1L)) return 0;
+        if (bigGetBit(d2iNum, i)) {
+            if (d2iCur.n == 0) { d2iCur.n = 1; d2iCur.d[0] = 1UL; }
+            else d2iCur.d[0] |= 1UL;
         }
-        if (bigCmp(&cur, den) >= 0) {
-            bigSub(&cur, den);
+        if (bigCmp(&d2iCur, d2iDen) >= 0) {
+            bigSub(&d2iCur, d2iDen);
             q->d[i / 16L] |= (1UL << (i % 16L));
         }
     }
     bigTrim(q);
-    bigCopy(rem, &cur);
+    bigCopy(d2iRem, &d2iCur);
     return 1;
 }
-#undef cur
 
 static unsigned long bigLimb(const Big* a, int i) {
     return (i < a->n) ? a->d[i] : 0UL;
 }
 
-/* Rundet den Wert q * 2^e0 (zuzueglich eines Restes, den stickyIn anzeigt)
+/* Rundet d2iDen Wert q * 2^e0 (zuzueglich eines Restes, d2iDen stickyIn anzeigt)
  * auf binary64 und liefert die beiden 32-Bit-Haelften.
  *
  * Alles laeuft ueber die Stelle `drop`: so viele Bits fallen unten weg.
@@ -214,8 +212,7 @@ static unsigned long bigLimb(const Big* a, int i) {
  */
 static void roundToDouble(const Big* q, long e0, int stickyIn, int neg,
                           unsigned long* hi, unsigned long* lo) {
-#define m d2iRound
-    long len, drop, exp2, biased;
+    long len, drop, exp2, biased;   /* 53 = Mantissenbits von binary64 */
     int roundBit, sticky;
     unsigned long field_lo, field_hi;
 
@@ -226,42 +223,42 @@ static void roundToDouble(const Big* q, long e0, int stickyIn, int neg,
     }
 
     len = bigBitLen(q);
-    drop = len - (long)DBL_PREC;
+    drop = len - (long)53;
     if (drop < -1074L - e0) drop = -1074L - e0;   /* nicht unter die kleinste Stufe */
 
-    bigCopy(&m, q);
+    bigCopy(&d2iRound, q);
     if (drop <= 0L) {
-        bigShiftLeft(&m, -drop);
+        bigShiftLeft(&d2iRound, -drop);
         roundBit = 0;
         sticky = stickyIn;
     } else {
         roundBit = bigGetBit(q, drop - 1L);
         sticky = bigAnyBitBelow(q, drop - 1L) || stickyIn;
-        bigShiftRight(&m, drop);
+        bigShiftRight(&d2iRound, drop);
     }
 
     /* Zur naechsten Zahl, bei genau der Haelfte zur geraden (Ties-to-even) */
-    if (roundBit && (sticky || (bigLimb(&m, 0) & 1UL))) {
+    if (roundBit && (sticky || (bigLimb(&d2iRound, 0) & 1UL))) {
         unsigned long carry = 1UL;
         int i = 0;
         while (carry != 0UL) {
-            if (i >= m.n) m.d[m.n++] = 0UL;
-            m.d[i] += carry;
-            carry = m.d[i] >> 16;
-            m.d[i] &= 0xFFFFUL;
+            if (i >= d2iRound.n) d2iRound.d[d2iRound.n++] = 0UL;
+            d2iRound.d[i] += carry;
+            carry = d2iRound.d[i] >> 16;
+            d2iRound.d[i] &= 0xFFFFUL;
             i++;
         }
     }
 
     /* Traegt das Aufrunden ein Bit ueber, verschiebt sich der Exponent. */
-    if (bigBitLen(&m) > (long)DBL_PREC) {
-        bigShiftRight(&m, 1L);
+    if (bigBitLen(&d2iRound) > (long)53) {
+        bigShiftRight(&d2iRound, 1L);
         drop += 1L;
     }
 
     exp2 = e0 + drop;
 
-    if (bigBitLen(&m) == (long)DBL_PREC) {
+    if (bigBitLen(&d2iRound) == (long)53) {
         biased = exp2 + 52L + 1023L;
     } else {
         biased = 0L;                 /* denormal: kein implizites Bit */
@@ -273,15 +270,14 @@ static void roundToDouble(const Big* q, long e0, int stickyIn, int neg,
         return;
     }
 
-    field_lo = bigLimb(&m, 0) | (bigLimb(&m, 1) << 16);
-    field_hi = (bigLimb(&m, 2) | ((bigLimb(&m, 3) & 0xFUL) << 16)) & 0xFFFFFUL;
+    field_lo = bigLimb(&d2iRound, 0) | (bigLimb(&d2iRound, 1) << 16);
+    field_hi = (bigLimb(&d2iRound, 2) | ((bigLimb(&d2iRound, 3) & 0xFUL) << 16)) & 0xFFFFFUL;
 
     *lo = field_lo;
     *hi = (neg ? 0x80000000UL : 0UL)
         | ((unsigned long)(biased & 0x7FFL) << 20)
         | field_hi;
 }
-#undef m
 
 /* Wandelt das Literal zwischen start und end um.
  * Rueckgabe: 1 = in Ordnung, 0 = kein gueltiges Gleitkommaliteral.
@@ -290,29 +286,23 @@ static void roundToDouble(const Big* q, long e0, int stickyIn, int neg,
  * auf dem Stack: unter OS-9 ist der Stack eines Moduls knapp bemessen, und
  * fuenf dieser Strukturen waeren gut sechs Kilobyte.
  */
-#define MAXDIG 800
 
 int qccDecToDouble(const char* start, const char* end, int neg,
                    unsigned long* hi, unsigned long* lo) {
-#define mant d2iMant
-#define den  d2iDen
-#define num  d2iNum
-#define quot d2iQuot
-#define rem  d2iRem
     const char* p = start;
     long decExp = 0L;
     long ndig = 0L;
     int seenDigit = 0, seenDot = 0, cut = 0;
     long e;
 
-    bigSetSmall(&mant, 0UL);
+    bigSetSmall(&d2iMant, 0UL);
 
     while (p < end) {
         if (*p >= '0' && *p <= '9') {
             seenDigit = 1;
-            if (ndig < MAXDIG) {
-                if (!(bigIsZero(&mant) && *p == '0')) {
-                    if (!bigMulAddSmall(&mant, 10UL, (unsigned long)(*p - '0'))) return 0;
+            if (ndig < 800) {
+                if (!(bigIsZero(&d2iMant) && *p == '0')) {
+                    if (!bigMulAddSmall(&d2iMant, 10UL, (unsigned long)(*p - '0'))) return 0;
                     ndig++;
                 }
             } else {
@@ -344,7 +334,7 @@ int qccDecToDouble(const char* start, const char* end, int neg,
     while (p < end && (*p == 'f' || *p == 'F' || *p == 'l' || *p == 'L')) p++;
     if (p != end) return 0;
 
-    if (bigIsZero(&mant)) {
+    if (bigIsZero(&d2iMant)) {
         *hi = neg ? 0x80000000UL : 0UL;
         *lo = 0UL;
         return 1;
@@ -364,21 +354,21 @@ int qccDecToDouble(const char* start, const char* end, int neg,
 
     if (decExp >= 0L) {
         /* Ganzzahl: Mantisse mal 10^E, dann runden */
-        bigCopy(&num, &mant);
+        bigCopy(&d2iNum, &d2iMant);
         for (e = 0L; e < decExp; e++)
-            if (!bigMulAddSmall(&num, 10UL, 0UL)) return 0;
-        roundToDouble(&num, 0L, cut, neg, hi, lo);
+            if (!bigMulAddSmall(&d2iNum, 10UL, 0UL)) return 0;
+        roundToDouble(&d2iNum, 0L, cut, neg, hi, lo);
     } else {
         /* Bruch: Zaehler so weit hochschieben, dass der Quotient reichlich
          * ueber 53 Bit hat -- der Divisionsrest wird zum Sticky-Bit. */
         long s;
-        if (!bigSetPow10(&den, -decExp)) return 0;
-        bigCopy(&num, &mant);
-        s = 64L + bigBitLen(&den) - bigBitLen(&num);
+        if (!bigSetPow10(&d2iDen, -decExp)) return 0;
+        bigCopy(&d2iNum, &d2iMant);
+        s = 64L + bigBitLen(&d2iDen) - bigBitLen(&d2iNum);
         if (s < 0L) s = 0L;
-        if (!bigShiftLeft(&num, s)) return 0;
-        if (!bigDivMod(&num, &den, &quot, &rem)) return 0;
-        roundToDouble(&quot, -s, cut || !bigIsZero(&rem), neg, hi, lo);
+        if (!bigShiftLeft(&d2iNum, s)) return 0;
+        if (!bigDivMod(&d2iNum, &d2iDen, &d2iQuot, &d2iRem)) return 0;
+        roundToDouble(&d2iQuot, -s, cut || !bigIsZero(&d2iRem), neg, hi, lo);
     }
     return 1;
 }
