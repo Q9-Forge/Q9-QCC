@@ -3916,8 +3916,14 @@ static void tcMemberIncDec(const char* start, const char* end, int isDec, int is
 		} else printf("PUSHADDR G %s\n", tcGlobalNames[global]); }
 	printf("IPADD c\n");
 	if (tcStructFieldArrayLen[sid][fi] > 0) printf("IPADD %c\n", tag);
-	if (isPre) printf("DUP\nDUP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\nLOADIND %c\n", tag, isDec ? "SUB" : "ADD", tag, tag);
-	else       printf("DUP\nLOADIND %c\nSWAP\nDUP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, tag, isDec ? "SUB" : "ADD", tag);
+	/* DUPP, nicht DUP: hier wird eine ADRESSE vervielfaeltigt. Auf dem 68k
+	   sind beide derselbe "move.l (a7),-(a7)", auf ARM64 NICHT -- dort laedt
+	   DUP 32 Bit (w0) und DUPP 64 (x0). Mit DUP ging die obere Haelfte der
+	   Adresse verloren, und "s.n++" endete nativ im Segfault, waehrend das
+	   VM-Orakel gruen blieb (2026-09-16). Beim Index-Zweig darunter bleibt
+	   DUP richtig: dort wird ein INDEX vervielfaeltigt, kein Zeiger. */
+	if (isPre) printf("DUPP\nDUPP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\nLOADIND %c\n", tag, isDec ? "SUB" : "ADD", tag, tag);
+	else       printf("DUPP\nLOADIND %c\nSWAP\nDUPP\nLOADIND %c\nPUSH 1\n%s\nSTOREIND %c\n", tag, tag, isDec ? "SUB" : "ADD", tag);
 	tcTypePush(ft);
 }
 static void tcIncDecEmit(int slot, int global, TCType t, int isDec, int isPre) {

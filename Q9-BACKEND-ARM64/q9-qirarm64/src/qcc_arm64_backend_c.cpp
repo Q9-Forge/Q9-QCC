@@ -793,8 +793,15 @@ static void emit(FILE* o) {
 				fprintf(o, "\tfmov\td0,x0\n\tfmov\td1,x1\n\tfcmp\td0,d1\n\tcset\tw0,%s\n", cc);
 				push(o, "w0");
 			} else if (strcmp(op, "SWAP") == 0) {
-				/* Oberste zwei 64-bit Stackwerte vertauschen. */
-				fputs("\tldr\tx0,[sp]\n\tldr\tx1,[sp,#8]\n\tstr\tx1,[sp]\n\tstr\tx0,[sp,#8]\n", o);
+				/* Oberste zwei Stackwerte vertauschen.
+				   2026-09-16 KORRIGIERT: hier stand #8, aber ein Stackelement
+				   ist auf diesem Ziel SECHZEHN Byte breit (s. push/pop:
+				   "str x,[sp,#-16]!"). Der Tausch griff damit mitten in das
+				   OBERSTE Element hinein statt auf das zweite -- "s.n++" und
+				   "a[0]++" (die einzigen Stellen, die SWAP emittieren)
+				   endeten nativ im Segfault, waehrend das VM-Orakel gruen war.
+				   Der Fehler betraf JEDEN Typ, nicht nur double. */
+				fputs("\tldr\tx0,[sp]\n\tldr\tx1,[sp,#16]\n\tstr\tx1,[sp]\n\tstr\tx0,[sp,#16]\n", o);
 			} else if (strncmp(op, "CMP", 3) == 0) {
 				const char* cc = strcmp(op, "CMPLT") == 0 ? "lt" : strcmp(op, "CMPGT") == 0 ? "gt" : strcmp(op, "CMPLE") == 0 ? "le" :
 					strcmp(op, "CMPGE") == 0 ? "ge" : strcmp(op, "CMPULT") == 0 ? "lo" : strcmp(op, "CMPUGT") == 0 ? "hi" :

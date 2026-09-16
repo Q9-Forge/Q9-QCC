@@ -603,3 +603,29 @@ Der Nutzen wäre gering (`+x` ist im Wert ein No-op), der Preis wäre, dass
 `castExpr` erst meldet, wenn die Alternative endgültig gewählt ist — ein
 Eingriff in den Generator, nicht in diese Grammatik. Ein Testfall sichert
 `(x)+1` jetzt ab.
+
+## Zwei ARM64-Fehler, gefunden beim Vorbereiten der Adressformen (2026-09-16)
+
+Auf dem Weg zu `++`/`--` über Adressen fiel auf, dass die **bestehende**
+Choreographie auf ARM64 gar nicht läuft — für **jeden** Typ, nicht nur
+`double`. Beide Fehler waren im VM-Orakel unsichtbar und nativ ein Segfault:
+
+**1. `SWAP` griff ins falsche Element.** Der Code tauschte `[sp]` mit
+`[sp,#8]`, aber ein Stackelement ist auf diesem Ziel **sechzehn** Byte breit
+(`push`/`pop`: `str x,[sp,#-16]!`). Der Tausch griff damit mitten in das
+oberste Element hinein statt auf das zweite. `a[0]++` endete im Segfault.
+
+**2. Die Adresse wurde mit `DUP` statt `DUPP` vervielfältigt.** Auf dem 68k
+sind beide derselbe `move.l (a7),-(a7)`, auf ARM64 **nicht**: `DUP` lädt 32
+Bit (`w0`), `DUPP` 64 (`x0`). In `tcMemberIncDec` ging damit die obere Hälfte
+der Adresse verloren — `s.n++` segfaultete. Im Index-Zweig bleibt `DUP`
+richtig: dort wird ein **Index** vervielfältigt, kein Zeiger.
+
+Beides sind gewöhnliche C-Konstrukte. Dass sie durchrutschen konnten, lag
+daran, dass die ARM64-Tests sie nicht abdeckten — das Orakel war grün, und
+nativ lief nie jemand dagegen. **Ein eigener nativer Testfall prüft jetzt
+`s.n++`, `++s.m`, `a[0]++`, `a[0]--` und `(*p)++` gegen das Orakel.**
+
+Die Lehre ist dieselbe wie bei `LOADIND d`: ein Backend-Unterschied, den der
+68k nicht kennt (dort sind `DUP`/`DUPP` identisch und Stackelemente vier
+Byte), wird nur sichtbar, wenn man auf dem anderen Ziel wirklich ausführt.
