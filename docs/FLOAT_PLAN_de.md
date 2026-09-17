@@ -796,18 +796,35 @@ eigenes `printf.c` kennt `%f` als Formatzeichen noch nicht (kein
 IEEE-754-zu-Dezimal-Umrichter, die Umkehrung von `tools/dec2ieee.c`). Das
 bleibt ein eigener, unabhängiger Schritt.
 
-### Hardware-Emulatorlauf: vorbereitet, aber nicht abgeschlossen
+### Hardware-Emulatorlauf: BESTAETIGT (17.09.2026, nach fuenf Versuchen)
 
-`Q9-BACKEND-68K/q9-qclib/tests/callext_double_68k.sh` (+ `.c`/`.a`) liegt im
-Repo und baut deterministisch sauber durch (Übersetzen, Assemblieren, Binden
-— viermal identisch reproduziert, 7392 Byte). Der eigentliche Emulatorlauf
-scheiterte viermal an `The system has no more ptys` — die geteilte
-Mac-Maschine hatte durchgehend acht fremde `q9.exe`-Instanzen aus anderen
-Sitzungen laufen (eine davon seit Dienstag, >2100 CPU-Minuten). Das ist
-Ressourcenkontention, keine Regression: dieselbe Einschränkung träfe jeden
-Emulatorlauf gerade jetzt, nicht nur diesen Test. Weder ein höheres
-`ulimit -n` noch ein Neuversuch änderten etwas — das Pty-Limit liegt
-system-, nicht prozessweit. Der Test ist lauffähig hinterlegt; ein Re-Lauf
-bei geringerer Auslastung (`bash tests/callext_double_68k.sh` in
-`Q9-BACKEND-68K/q9-qclib`) bringt die fehlende Bestätigung nach.
+`Q9-BACKEND-68K/q9-qclib/tests/callext_double_68k.sh` (+ `.c`/`.a`) baute in
+allen fuenf Versuchen deterministisch sauber (7392 Byte). Der Emulatorlauf
+selbst scheiterte in den ersten vier Anlaeufen an `The system has no more
+ptys` — NICHT wegen paralleler `q9.exe`-Instanzen (der vierte Versuch
+scheiterte identisch bei NULL laufenden Emulatoren), sondern wegen eines nach
+7 Tagen Uptime erschoepften, ueberwiegend VERWAISTEN Pty-Pools (527
+`/dev/ttys*`-Geraeteknoten gegen `kern.tty.ptmx_max=511`, bei nur ~13-25
+tatsaechlich gebundenen). Ein eigenes Testabbild aendert daran nichts -- das
+Problem sitzt unterhalb der Image-Ebene. Der fuenfte Versuch, nachdem sich
+der Pool von selbst (oder durch Aufraeumen) wieder etwas entspannt hatte, lief
+durch:
+
+```
+ok mock1 (double,int)
+ok mock2 (int,double)
+ok mock3 (double)
+ok mock4 (double,double)
+ok mock5 (int,double,int) sticky-spill
+
+CALLEXT-double-ABI KORREKT -- alle 5 Faelle stimmen
+```
+
+Alle fuenf Positionsfaelle inkl. des Sticky-Spill-Kernbefunds (`mock5`) sind
+damit auf echtem 68030 bestaetigt, nicht nur strukturell/per Regressionssuite.
+**Lehre fuer kuenftige `expect`-Emulatorlaeufe auf dieser Maschine:** bei
+`no more ptys` nicht auf die Zahl laufender Emulatoren schielen, sondern
+`ls /dev/ttys* | wc -l` gegen `sysctl kern.tty.ptmx_max` pruefen -- ein
+erschoepfter Pool loest sich manchmal von selbst wieder auf, ein Reboot ist
+aber die zuverlaessige Abhilfe (s. [[q9forge-on-mac]]).
 
