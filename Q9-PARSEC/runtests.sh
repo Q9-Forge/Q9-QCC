@@ -1603,11 +1603,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# traegt aber die Zeilenlaenge im selben Mechanismus wie ein
 		# mehrdimensionaler Array-Parameter -- diskriminierend wie oben: alle
 		# Zellen unterscheidbar, damit eine vertauschte/fehlende Zeilenrechnung
-		# auffiele. NUR lokale Variablen in dieser Version -- als PARAMETER
-		# ("int f(int (*p)[3])") teilt sich die Form ihr Praefix "type ( *" mit
-		# der bestehenden fnPtrParam-Regel (Funktionszeiger-Parameter); das ist
-		# ein eigener, separat zu verifizierender Schritt (Backtracking-Risiko
-		# wie beim K&R-vs-normalParams-Fund), bewusst nicht Teil dieser Version.
+		# auffiele.
 		tc_check 'int m[2][3]; int main(){ int (*p)[3]; m[0][0]=1;m[0][1]=2;m[0][2]=3;m[1][0]=4;m[1][1]=5;m[1][2]=6; p=m; putint(p[0][0]*100+p[0][2]*10+p[1][2]); }' '136'
 		tc_check 'int main(){ int a[2][3]; int (*p)[3]; a[0][0]=1;a[0][1]=2;a[0][2]=3;a[1][0]=4;a[1][1]=5;a[1][2]=6; p=a; p[1][0]=99; putint(a[1][0]); putint(a[1][1]); putint(a[0][0]); }' '99\n5\n1'
 		tc_check 'int main(){ int a[2][3][4]; int (*p)[3][4]; a[1][2][3]=9; p=a; putint(p[1][2][3]); }' '9'
@@ -1616,6 +1612,22 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: Zeiger auf Array von void wird NICHT gemeldet"; tcfail=1; fail=1
 		fi
+		# Zeiger auf Array ALS PARAMETER (2026-09-17), "int f(int (*p)[3])" --
+		# teilt sich das Praefix "type ( *" mit der bestehenden fnPtrParam-Regel
+		# (Funktionszeiger-Parameter); ptrArrayParam steht in der Grammatik VOR
+		# der einfachen Form, direkt hinter fnPtrParam. Deckt genau den Fall ab,
+		# den der K&R-vs-normalParams-Fund als Risiko benannt hatte: ein
+		# Parameter, der als EINE Alternative gescheitert, als ANDERE aber
+		# gueltig ist -- das Aktionsprotokoll muss fnPtrParams eigene Aktion
+		# (tc_fnptrbegin) sauber zurueckrollen.
+		tc_check 'int f(int (*p)[3]){ return p[0][0]*100 + p[1][2]; } int main(){ int a[2][3]; a[0][0]=7; a[1][2]=8; putint(f(a)); }' '708'
+		# Die Nachbarform (Funktionszeiger als Parameter) darf sich NICHT
+		# geaendert haben -- beide teilen sich das Praefix bis zum Namen.
+		tc_check 'int g(int x){ return x+1; } int f(int (*fp)(int)){ return fp(5); } int main(){ putint(f(g)); }' '6'
+		# Beide Formen GEMISCHT in derselben Parameterliste, in beiden
+		# Reihenfolgen -- der kritische Test fuer die Backtracking-Trennung.
+		tc_check 'int g(int x){ return x*2; } int f(int (*p)[2], int (*fp)(int)){ return p[0][1] + fp(3); } int main(){ int a[1][2]; a[0][1]=10; putint(f(a,g)); }' '16'
+		tc_check 'int g(int x){ return x*2; } int f(int (*fp)(int), int (*p)[2]){ return fp(3) + p[0][1]; } int main(){ int a[1][2]; a[0][1]=10; putint(f(g,a)); }' '16'
 		# Ab der ZWEITEN Dimension ist die Groesse Pflicht -- ohne sie gibt es
 		# keine Zeilenlaenge und damit keine Indexrechnung.
 		if build/qcc_p 'int f(int m[2][]){ return 0; } int main(){ putint(1); }' 2>&1 | grep -q "needs a size"; then

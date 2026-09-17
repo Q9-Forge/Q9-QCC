@@ -320,7 +320,18 @@ paramList = [ param { "," param } ] .
    gut: die AEUSSERE sammelt ueber tc_param in tcLocalTypes (daraus baut
    tc_funcend die Aufrufsignatur), die INNERE ueber tc_externparam in
    tcExternBuildParamTypes. Zwei getrennte Puffer, keine Ueberschneidung. */
-param     = fnPtrParam | [ registerKw ] [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
+param     = fnPtrParam | ptrArrayParam | [ registerKw ] [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
+/* Zeiger auf Array ALS PARAMETER (2026-09-17): "int f(int (*p)[3])" --
+   dieselbe Form wie bei einer lokalen Variable (ptrArrayDecl), nur ohne
+   const/register/volatile-Praefix (fnPtrParam hat das aus demselben Grund
+   auch nicht). MUSS vor der einfachen Form stehen, sonst scheitert die
+   Zeigerklammer dort ohne brauchbare Meldung -- exakt der Grund, aus dem
+   fnPtrParam schon vorn steht (s. Kommentar dort). Teilt sich das Praefix
+   "type ( *" mit fnPtrParam; die beiden unterscheiden sich erst NACH dem
+   Namen (")" gefolgt von "(" bei fnPtrParam, von "[" hier) -- der Generator
+   probiert bei Fehlschlag die naechste Alternative, das Aktionsprotokoll
+   rollt fnPtrParams eigene Aktionen (tc_fnptrbegin) dabei sauber zurueck. */
+ptrArrayParam = type "(" "*" fnPtrParamName ")" arraySizeN { arraySizeN } .
 /* Der Parametername ist OPTIONAL (2026-09-16). "int f(int);" ist die uebliche
    Schreibweise in Header-Dateien und scheiterte bis dahin STUMM -- Exit 1,
    "FAIL", kein Wort auf stderr. Die Aktion haengt an paramDecl, also am
