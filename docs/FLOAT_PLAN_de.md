@@ -822,9 +822,9 @@ CALLEXT-double-ABI KORREKT -- alle 5 Faelle stimmen
 
 Alle fuenf Positionsfaelle inkl. des Sticky-Spill-Kernbefunds (`mock5`) sind
 damit auf echtem 68030 bestaetigt, nicht nur strukturell/per Regressionssuite.
-**Lehre fuer kuenftige `expect`-Emulatorlaeufe auf dieser Maschine:** bei
-`no more ptys` nicht auf die Zahl laufender Emulatoren schielen, sondern
-`ls /dev/ttys* | wc -l` gegen `sysctl kern.tty.ptmx_max` pruefen -- ein
-erschoepfter Pool loest sich manchmal von selbst wieder auf, ein Reboot ist
-aber die zuverlaessige Abhilfe (s. [[q9forge-on-mac]]).
+**Die Ursache der ersten vier Fehlschlaege blieb ungeklaert** -- weder
+parallele Emulatoren (ein Fehlschlag trat bei NULL laufenden `q9.exe` auf)
+noch die Zahl der `/dev/ttys*`-Geraeteknoten (statische macOS-Eintraege,
+keine Kennzahl fuer echte Auslastung) erklaeren es. Ein Neuversuch nach
+kurzer Pause loeste es.
 
