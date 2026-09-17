@@ -143,7 +143,7 @@ typedefDeclarator = pointerDecl typedefTargetName .
    optionalem Parameternamen), und ihre Aktion tc_externparam sammelt die
    Typen im gemeinsamen Puffer, den tc_fnptrbegin vorher zuruecksetzt
    (Deklarationen schachteln nicht). */
-fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" fnPtrName ")" fnPtrParams ";" .
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" { pointerStar } fnPtrName ")" fnPtrParams ";" .
 /* Dieselbe (void)-Falle wie bei externDecl -- und dieselbe Loesung:
    voidParams/externRealParams sind bereits genau das Gebrauchte. */
 fnPtrParams  = voidParams | externRealParams .
@@ -340,7 +340,7 @@ ptrArrayParam = type "(" "*" fnPtrParamName ")" arraySizeN { arraySizeN } .
    namenlosen Parameter mit leerem Namen nachtraegt. Ein leerer Name wird von
    tcLookupLocal nie gefunden -- genau richtig: ansprechen laesst sich so ein
    Parameter ohnehin nicht. */
-fnPtrParam = type pointerDecl fnPtrOpen "*" fnPtrParamName ")" fnPtrParams .
+fnPtrParam = type pointerDecl fnPtrOpen "*" { pointerStar } fnPtrParamName ")" fnPtrParams .
 fnPtrParamName = ident .
 paramDecl = paramName [ paramArray ] .
 /* Mehrdimensionales Array als PARAMETER (2026-09-17): "int f(int m[2][3])".
@@ -407,7 +407,7 @@ unlabeledStmt = ifStmt
    Die Signatur wird wie beim typedef registriert; die Variable selbst
    legt dieselbe Routine an wie jede andere Lokale (tc_local), damit
    Slotvergabe, const-Behandlung und Aufrufpruefung unveraendert gelten. */
-fnPtrVarDecl = type pointerDecl fnPtrOpen "*" fnPtrVarName ")" fnPtrParams ";" .
+fnPtrVarDecl = type pointerDecl fnPtrOpen "*" { pointerStar } fnPtrVarName ")" fnPtrParams ";" .
 fnPtrVarName = ident .
 
 /* "static" lokale Variablen: konstanter Initialisierer (globalValue, dieselbe
