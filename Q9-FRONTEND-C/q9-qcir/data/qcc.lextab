@@ -3332,6 +3332,10 @@ static int tcExternBuildParamCount = 0;
 static int tcExternIsVariadic = 0;
 static char tcCallName[64][32];     /* verschachtelbare Aufruf-Frames */
 static int  tcCallArgCount[64];
+static char tcCallArgWidth[64][32]; /* nur fuer CALLEXT/CALLEXTP gebraucht:
+                                        je Argument '8' (double, acht Byte) oder
+                                        '4' (alles andere) -- Grundlage fuer das
+                                        Sticky-Spill-Modell im Backend, s. dort. */
 static int  tcCallFnSig[64];        /* >=0: indirekter Aufruf ueber diese Signatur; -1: normaler Aufruf */
 static char tcCallSavedAdd[64];
 static char tcCallSavedMul[64];
@@ -8489,14 +8493,26 @@ void tc_arg(const char* start, const char* end) {
 	     unveraendert zurueck und die Pruefung darunter greift wie bisher. */
 	  if (f >= 0 && n < tcFunctionNargs[f]) got = tcCoerceToTarget(tcFunctionParamTypes[f][n], got);
 	  if (f >= 0 && n < tcFunctionNargs[f] && !tcCompatible(tcFunctionParamTypes[f][n], got)) tcTypeError("argument", tcFunctionParamTypes[f][n], got);
-	  /* DOUBLE PER WERT: acht Byte passen nicht in einen Slot (vier Byte im
-	     Rahmen). Wie beim struct-Argument wandert der Wert deshalb in einen
-	     globalen Puffer, und uebergeben wird dessen ADRESSE; der Aufgerufene
-	     packt ihn beim Eintritt aus (tc_funcbodybegin).
+	  /* Breite fuer CALLEXT/CALLEXTP vormerken (s. tcCallArgWidth oben) --
+	     unabhaengig davon, ob dieser Aufruf ueberhaupt extern ist: harmlos,
+	     wird nur bei einem externen Aufruf in tc_call ausgelesen. */
+	  if (n < 32) tcCallArgWidth[tcCallDepth - 1][n] = tcIsDouble(got) ? (char)56 : (char)52;
+	  /* DOUBLE PER WERT -- ABER NUR FUER INTERNE AUFRUFE (2026-09-17).
+	     Acht Byte passen nicht in einen Slot (vier Byte im Rahmen). Wie beim
+	     struct-Argument wandert der Wert deshalb in einen globalen Puffer,
+	     und uebergeben wird dessen ADRESSE; der Aufgerufene packt ihn beim
+	     Eintritt aus (tc_funcbodybegin).
 	     EIGENER PUFFER JE AUFRUFSTELLE: mit einem Puffer je Argumentposition
 	     wuerde "f(1.0, g(2.0))" das bereits abgelegte erste Argument beim
-	     Auswerten von g ueberschreiben. */
-	  if (tcIsDouble(got)) {
+	     Auswerten von g ueberschreiben.
+	     BEI EINEM EXTERNEN AUFRUF (CALLEXT/CALLEXTP) GILT DAS NICHT: die
+	     echte Microware-ABI (an echtem xcc-erzeugtem Code gemessen, s.
+	     docs/FLOAT_PLAN_de.md) erwartet den ACHT-BYTE-WERT SELBST -- in
+	     d0:d1 oder auf dem Stack, je nach Byte-Offset-Modell im Backend --
+	     NIE eine Zeigeradresse. Der Wert steht dafuer schon richtig auf dem
+	     IR-Operandenstapel (PUSHD/LOADD lange vor diesem Punkt emittiert);
+	     hier ist also nichts zu tun, der Puffer-Umweg wird nur uebersprungen. */
+	  if (tcIsDouble(got) && !(f >= 0 && tcFunctionIsExternal[f])) {
 	  	char dargName[40];
 	  	sprintf(dargName, "__dblArg_%d", tcDoubleArgSeq++);
 	  	printf("GARRAY %s d 1 0\n", dargName);
@@ -8575,8 +8591,17 @@ void tc_call(const char* start, const char* end) {
 			   nach d0/d1 (genau wie bei einem nicht-variadischen Aufruf), der variadische
 			   Rest IMMER auf den Stack -- unabhaengig davon, WIEVIELE feste Parameter es
 			   gibt (bei printf(fmt, x) liegt fmt selbst in d0, nur x auf dem Stack). */
-			printf("%s %s %d %d\n", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLEXTP" : "CALLEXT",
+			printf("%s %s %d %d ", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLEXTP" : "CALLEXT",
 				tcCallName[frame], tcCallArgCount[frame], tcFunctionNargs[f]);
+			/* Viertes Feld (2026-09-17): die Breitenliste aus tcCallArgWidth,
+			   ein Zeichen 4/8 je Argument in Aufrufreihenfolge -- das
+			   Backend braucht sie fuer das Sticky-Spill-Modell (double
+			   belegt d0:d1 komplett oder geht komplett auf den Stack, nie
+			   geteilt, und eine frei bleibende Registerhaelfte wird NIE von
+			   einem spaeteren kleineren Argument aufgefuellt). */
+			{ int wi; int wn = tcCallArgCount[frame]; if (wn > 32) wn = 32;
+			  for (wi = 0; wi < wn; wi++) putchar(tcCallArgWidth[frame][wi]); }
+			printf("\n");
 		} else {
 			printf("%s %s %d\n", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLP" : "CALL", tcCallName[frame], tcCallArgCount[frame]);
 		}
