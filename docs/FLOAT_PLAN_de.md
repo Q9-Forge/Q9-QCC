@@ -887,3 +887,84 @@ negativ, Null, Rundung, sehr groß/klein, drei `double` hintereinander).
 die vorigen zwei Fälle (die brauchten fünf bzw. sieben). Übersetzen/
 Assemblieren/Binden lief dabei jedes Mal sauber durch (14.216 Byte). Der
 Test liegt lauffähig im Repo für einen späteren Re-Lauf.
+
+## Hardwareläufe nachgeholt, dabei echten Bug gefunden und behoben (2026-09-17)
+
+Nach einem Mac-Neustart (behob das `no more ptys`-Problem endgültig) liefen
+alle drei noch offenen Hardwarebestätigungen nach:
+
+- **CALLEXT-Double-ABI** (`callext_double_68k.sh`): alle 5 Fälle grün.
+- **`int (*p)[N]`** (`test_struct_68k.sh`): alle 74 Fälle grün (Fall
+  72=702, 73=16, 74=19 -- die neuen Zeiger-auf-Array-Fälle korrekt).
+- **`printf("%f")`** (`printf_float_68k.sh`): **acht von elf Fällen
+  korrekt (A-F, H, K), drei falsch (G, I, J)** -- also genau die Fälle mit
+  "unrunden", vollen 52-Bit-Mantissen: `1/3` (0,328213 statt 0,333333),
+  `0.001` (0,000980 statt 0,001000), `123456.789` (122919,881224 statt
+  123456,789000). Alle "runden" Werte (ganze Zahlen, exakte
+  Binärbrüche wie `.5`/`.25`) stimmten -- ein klarer Hinweis, dass der
+  Fehler mit der *Dichte* der Mantisse zusammenhängt, nicht mit
+  Vorzeichen/Größenordnung/Rundungsrichtung.
+
+### Eingrenzung
+
+Per Elimination (jeweils per Host-Bau + `qccvm.py`, ohne Emulator, viel
+schneller als Hardware):
+
+1. CALLEXT-Argumentübergabe (Register- **und** Stack-Pfad) einzeln mit
+   rohem Bitmuster getestet -- beide korrekt.
+2. `qp_run`s Sonderfall "erstes Argument ist `double`" **und** der normale
+   Pfad einzeln reproduziert (`printf("%d %f", 0, z)` erzwingt den
+   normalen Pfad) -- beide reproduzieren den Fehler identisch, also liegt
+   er *nicht* in der Argumentzuordnung.
+3. Bug reproduziert sich bereits im **VM-Orakel** (`qccvm.py`), nicht nur
+   auf echter Hardware -- also ein QCC-eigener Codegen-/Algorithmusfehler,
+   kein FPU-/Emulator-Spezifikum.
+4. `ibigSetMantissa` isoliert nachgerechnet (Limb für Limb gegen von Hand/
+   Python vorausberechnete Werte) -- **stimmte tatsächlich**. (Ein
+   vermeintlicher Fehler hier war ein eigener Hex→Dezimal-Rechenfehler:
+   `0xD2F1 = 54001`, nicht 53969, wie ich zunächst falsch umgerechnet
+   hatte -- Warnung an mich selbst, siehe [[feedback_verify_handover]]-
+   artiger Fallstrick auch bei der eigenen Arbeit.)
+5. Nächster Verdacht, bestätigt: `ibigMulAddSmall(&i2dM, 1000000UL, 0UL)`
+   -- die Multiplikation der (schon fertigen) Mantisse mit `10^6`, um beim
+   Textaufbau sechs Nachkommastellen als Ganzzahl greifbar zu haben.
+
+### Der eigentliche Fehler
+
+`ibigMulAddSmall` ist für Multiplikatoren gebaut, die selbst in einen
+16-Bit-Limb passen (`d[i] (16 Bit) * m (16 Bit) ≤ 32 Bit`, sicher in
+`unsigned long`). `1000000` braucht aber 20 Bit -- `d[i] * m` kann bis zu
+36 Bit brauchen. Auf dem 68k-Ziel ist `unsigned long` 32 Bit breit: das
+Produkt lief in `t` still über, und `carry = t >> 16` verlor genau die
+Bits, die in die nächsthöheren Limbs hätten wandern müssen. Bei "runden"
+Werten (wenige/kleine Limbs) trat der Überlauf nie ein, deshalb blieben
+diese Fälle beim ersten Hardwarelauf unentdeckt -- ein Schulbeispiel für
+[[feedback_schrittweiten]]s Verwandte: ein Fehler, der nur bei bestimmten
+*Werten*, nicht bestimmten *Codepfaden* auftritt, versteckt sich hinter
+einer zu kleinen Testauswahl.
+
+Auf dem Host (macOS/Linux, `unsigned long` = 64 Bit) trat der Fehler nie
+auf, weshalb der frühere reine Host-Test (18 Fälle, s. oben) ihn nicht
+fangen konnte -- ein Fall, in dem der Host als Orakel *nicht* ausreicht,
+weil er selbst eine andere Typbreite hat als das Ziel.
+
+### Fix
+
+`100^3 = 1000000`, und `65535 * 100 = 6.553.500` passt sicher in 32 Bit.
+Statt einmal mit `1000000UL` jetzt dreimal mit `100UL` multiplizieren (an
+beiden Stellen in `qp_double`, `e >= 0`- und `e < 0`-Zweig). Verifiziert:
+
+- **VM-Orakel**: Limb-für-Limb gegen exakt per Python berechnete Werte
+  verglichen (`M * 10^6` für `0.001`) -- alter Code weicht ab Limb 2 ab
+  (`30464,1,65526,65523,244` statt `30464,1,0,0,250`), neuer Code trifft
+  exakt.
+- **Echte Hardware** (`printf_float_68k.sh`, nach `qclib`-Neubau): **alle
+  elf Fälle A-K korrekt**, inklusive der vorher falschen G/I/J.
+- **Regressionssuite** (`runtests.sh`): weiterhin alle Tests grün.
+
+Commit `2d0b3da` auf `feature/printf-float-overflow-fix`, gemergt nach
+`main` (`2e99c72`), gepusht.
+
+**Damit ist `printf("%f")` jetzt vollständig hardwarebestätigt** -- alle
+drei zuvor offenen Hardwareläufe (CALLEXT-ABI, `int (*p)[N]`, `printf
+%f`) sind abgeschlossen, keine bekannten offenen double-/float-Fäden mehr.
