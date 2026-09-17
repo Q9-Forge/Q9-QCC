@@ -3191,8 +3191,7 @@ static int  tcTypedefCount = 0;
    Ein Funktionszeigertyp ist base='F', pointers=1 (er IST ein Zeiger, also
    liefert tcIsPointer korrekt 1 -- wichtig, weil Backend/IR danach zwischen
    Zeiger- und Zahlwerten unterscheiden). structId traegt 1-basiert die
-   Signatur-Id, genau wie bei base='s' der Struct-Index; tcSameType
-   vergleicht sie deshalb fuer 'F' mit. */
+   Signatur-Id, genau wie bei base='s' der Struct-Index. */
 #define MAX_FNSIGS 16
 #define MAX_FNSIG_PARAMS 8
 static TCType tcFnSigRet[MAX_FNSIGS];
@@ -3200,6 +3199,37 @@ static int    tcFnSigNargs[MAX_FNSIGS];
 static TCType tcFnSigParams[MAX_FNSIGS][MAX_FNSIG_PARAMS];
 static int    tcFnSigCount = 0;
 static TCType tcFnPtrRetPending;     /* Rueckgabetyp, gemerkt beim "(" der Zeigerklammer */
+/* Zwei Signaturen STRUKTURELL vergleichen (2026-09-17), nicht nur ihren
+   Index -- der fruehere Stand verglich zwei Funktionszeigertypen ueber
+   "structId == structId" (den rohen Signatur-Index), s. tcSameType unten.
+   Das ist FALSCH, sobald zwei VERSCHIEDENE Funktionen einen strukturell
+   GLEICHEN Funktionszeiger-Parameter deklarieren ("int f(int(*)(int))" UND
+   "int g(int(*)(int))"): jede Deklaration bekommt ihren EIGENEN Eintrag in
+   tcFnSigCount, auch wenn die Form identisch ist -- ein Aufruf wie
+   "f(h); g(h);" meldete dann faelschlich "argument expects function
+   pointer, got function pointer" bei der ZWEITEN Stelle. Gefunden beim Bau
+   eines Hardwaretests (zwei Helferfunktionen mit gleich geformtem
+   Parameter kollidierten), unabhaengig von jeder anderen Aenderung
+   reproduzierbar. Verschachtelte Funktionszeiger ALS Parameter/Rueckgabe
+   werden hier bewusst NICHT rekursiv aufgeloest (nur ueber Basistyp+Zeiger-
+   tiefe+structId verglichen) -- ein Funktionszeiger, der selbst wieder
+   einen Funktionszeiger uebernimmt, ist ein seltener Randfall und bleibt
+   damit auf dem alten (indexbasierten) Verhalten. */
+static int tcFnSigSame(int sigA, int sigB) {
+	int k; TCType ra, rb, pa, pb;
+	if (sigA == sigB) return 1;
+	if (sigA < 0 || sigB < 0 || sigA >= tcFnSigCount || sigB >= tcFnSigCount) return 0;
+	ra = tcFnSigRet[sigA]; rb = tcFnSigRet[sigB];
+	if (ra.base != rb.base || ra.pointers != rb.pointers) return 0;
+	if (ra.base == 's' && !ra.pointers && ra.structId != rb.structId) return 0;
+	if (tcFnSigNargs[sigA] != tcFnSigNargs[sigB]) return 0;
+	for (k = 0; k < tcFnSigNargs[sigA]; k++) {
+		pa = tcFnSigParams[sigA][k]; pb = tcFnSigParams[sigB][k];
+		if (pa.base != pb.base || pa.pointers != pb.pointers) return 0;
+		if (pa.base == 's' && !pa.pointers && pa.structId != pb.structId) return 0;
+	}
+	return 1;
+}
 /* enum: Konstanten UND (seit 2026-07-23) der Enum-NAME selbst sind bekannt, damit
    "enum Name var;" als Deklaration moeglich ist -- im Speicher/Typsystem bleibt
    ein enum-Wert einfach 'i' (int), keine eigene Typidentitaet/-pruefung noetig
@@ -3719,7 +3749,8 @@ static int tcDecodeStringLit(const char* start, const char* end, unsigned char* 
 static TCType tcBadType(void) { return tcMakeType('?', 0); }
 /* base=='F' (Funktionszeiger) traegt wie 's' eine Id in structId -- zwei
    Funktionszeiger sind nur bei GLEICHER Signatur derselbe Typ. */
-static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers && ((a.base != 's' && a.base != 'F') || a.structId == b.structId); }
+static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers &&
+	(a.base == 'F' ? tcFnSigSame((int)a.structId - 1, (int)b.structId - 1) : (a.base != 's' || a.structId == b.structId)); }
 static int tcIsPointer(TCType t) { return t.pointers != 0; }
 /* EINE STRUCT IST KEIN REGISTERWERT. Jede Stelle, die aus einer Adresse einen
    Wert laedt, muss fuer eine GANZE Struct die Adresse stehen lassen --

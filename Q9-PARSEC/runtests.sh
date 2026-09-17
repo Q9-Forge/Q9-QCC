@@ -1628,6 +1628,24 @@ if command -v python3 >/dev/null 2>&1; then
 		# Reihenfolgen -- der kritische Test fuer die Backtracking-Trennung.
 		tc_check 'int g(int x){ return x*2; } int f(int (*p)[2], int (*fp)(int)){ return p[0][1] + fp(3); } int main(){ int a[1][2]; a[0][1]=10; putint(f(a,g)); }' '16'
 		tc_check 'int g(int x){ return x*2; } int f(int (*fp)(int), int (*p)[2]){ return fp(3) + p[0][1]; } int main(){ int a[1][2]; a[0][1]=10; putint(f(g,a)); }' '16'
+		# NEBENFUND (2026-09-17): zwei VERSCHIEDENE Funktionen mit strukturgleichem
+		# Funktionszeiger-Parametertyp in DERSELBEN Uebersetzungseinheit meldeten
+		# den ZWEITEN Aufruf faelschlich als inkompatibel -- tcSameType verglich
+		# fuer 'F' (Funktionszeiger) nur die rohe Signatur-INDEX-Nummer
+		# (tcFnSigCount-Eintrag je Deklarationsstelle), nicht die Struktur.
+		# Behoben durch tcFnSigSame (struktureller Vergleich von Rueckgabe- und
+		# Parametertypen). Unabhaengig von ptrArrayParam reproduzierbar --
+		# reiner Funktionszeiger-Fund.
+		tc_check 'int h1(int x){ return x+1; } int h2(int x){ return x+2; } int fa(int (*fp)(int)){ return fp(10); } int fb(int (*fp)(int)){ return fp(20); } int main(){ putint(fa(h1)); putint(fb(h2)); }' '11\n22'
+		# Dieselbe Funktion an BEIDE strukturgleichen Parameter uebergeben --
+		# deckt den urspruenglich gefundenen Fall exakt ab.
+		tc_check 'int h(int x){ return x*2; } int fa(int (*fp)(int)){ return fp(3); } int fb(int (*fp)(int)){ return fp(4); } int main(){ putint(fa(h)); putint(fb(h)); }' '6\n8'
+		# Echte Formunterschiede muessen weiterhin abgelehnt werden.
+		if build/qcc_p 'int h(int x){ return x; } int f(void (*fp)(int)){ return 0; } int main(){ return f(h); }' 2>&1 | grep -q "expects function pointer"; then
+			echo "ok    qcc: unterschiedliche Funktionszeiger-Rueckgabetypen werden weiterhin abgelehnt"
+		else
+			echo "FAIL  qcc: unterschiedliche Funktionszeiger-Rueckgabetypen werden NICHT mehr abgelehnt"; tcfail=1; fail=1
+		fi
 		# Ab der ZWEITEN Dimension ist die Groesse Pflicht -- ohne sie gibt es
 		# keine Zeilenlaenge und damit keine Indexrechnung.
 		if build/qcc_p 'int f(int m[2][]){ return 0; } int main(){ putint(1); }' 2>&1 | grep -q "needs a size"; then
