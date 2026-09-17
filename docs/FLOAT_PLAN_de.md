@@ -828,3 +828,62 @@ noch die Zahl der `/dev/ttys*`-Geraeteknoten (statische macOS-Eintraege,
 keine Kennzahl fuer echte Auslastung) erklaeren es. Ein Neuversuch nach
 kurzer Pause loeste es.
 
+
+
+## `printf("%f")`: die letzte offene Lücke geschlossen (2026-09-17)
+
+Mit der korrekten `CALLEXT`-ABI (s. oben) und `int (*p)[N]` fehlte nur noch
+die eigentliche Textformatierung — `qclib`s `printf.c` kannte `%f` bis dahin
+nicht (fällt in den „unbekannt, unverändert durchreichen"-Zweig).
+
+### Zwei getrennte Probleme, nicht eins
+
+**Erstens: die Zuordnung.** `printf.a` (der Assembler-Adapter) kopiert
+`d0`/`d1`/Stack rein **mechanisch** in ein flaches `int args[]` — er kennt
+keine Typen. Für alle Argumente außer dem allerersten reicht das
+unverändert weiter: Sobald eines nicht mehr ins Register passt, spillen laut
+Byte-Offset-Modell alle folgenden ebenfalls auf den Stack, ein `double`
+belegt dort einfach zwei `args[]`-Zellen statt einer — reine
+C-Ebenen-Buchführung in `qp_run`, **keine Assembler-Änderung nötig**. Nur
+das **erste** variadische Argument ist ein echter Sonderfall: ist es ein
+`double`, passt es nicht neben `fmt` in `d0`, geht komplett auf den Stack,
+und `d1` bleibt unbenutzter Müll — `qp_run` muss also wissen, ob die
+*erste* Spezifikation `%f`/`%F` ist, und in dem Fall zwei Zellen weiter
+lesen statt `d1` zu nehmen.
+
+**Zweitens: die Umwandlung selbst.** IEEE-754 binary64 → Dezimaltext mit
+sechs Nachkommastellen (C89-Standardpräzision) ist die Umkehrung von
+`tools/dec2ieee.c` — gesucht ist die Ganzzahl `round(wert * 10^6)`. Bei
+positivem Zweierexponenten ist das exakt (nur Multiplikation), bei negativem
+eine Division durch eine Zweierpotenz, also ein Rechts-Schub mit Rundung am
+herausfallenden Bit — keine allgemeine Bignum-Division nötig. Die neue
+Funktion `qp_double` (in `printf.c`, **nicht** in einer eigenen Datei: ein
+Aufruf über Übersetzungseinheiten hinweg findet sein Ziel nicht, s. den
+`qp_pathof`-Kommentar) baut dafür dieselbe Art Bignum wie `dec2ieee.c` nach
+(eigene, kleinere Kopie — bewusste Duplikation nach demselben Muster).
+
+### Verifiziert, aber nicht auf dem Weg, den ich wollte
+
+- **Widths/ABI**: für alle Argumentreihenfolgen (`double` zuerst, `int`
+  zuerst, zwei/drei `double` hintereinander) per IR-Inspektion bestätigt --
+  exakt das erwartete Muster (`48`, `484`, `488`, `4888`).
+- **`qp_double` selbst**: 18 Fälle **direkt auf dem Host** getestet (derselbe
+  Quelltext, mit `cc` statt durch die QCC-Kette gebaut, da die Bitmuster-
+  Arithmetik plattformunabhängig ist) -- Null, negative Null, Vorzeichen,
+  Rundung an und über der Hälfte, Subnormalzahlen, sehr große/kleine Werte.
+  Alle stimmen mit Pythons `%.6f` überein.
+- **QCC-Frontend**: `printf.c` übersetzt vollständig fehlerfrei durch die
+  eigene Kette (`qcpp`→`qcir`, Schlusswort `OK`).
+- **Vollständiger `qclib`-Build**: `qclib.l` baut sauber (61.032 Byte,
+  ~13 KB mehr für den neuen Code). Der bestehende
+  `callext_double_68k`-Test (nutzt `printf` mit `%s`/`%d`) baut nach der
+  Änderung weiterhin unverändert sauber -- keine Regression.
+- **Regressionssuite**: unverändert 241 ok.
+
+**NICHT verifiziert:** der eigentliche Emulatorlauf von
+`tests/printf_float_68k.c` (elf Fälle: `double` zuerst/zuletzt/gemischt,
+negativ, Null, Rundung, sehr groß/klein, drei `double` hintereinander).
+**Sieben Versuche**, alle an `no more ptys` gescheitert -- hartnäckiger als
+die vorigen zwei Fälle (die brauchten fünf bzw. sieben). Übersetzen/
+Assemblieren/Binden lief dabei jedes Mal sauber durch (14.216 Byte). Der
+Test liegt lauffähig im Repo für einen späteren Re-Lauf.

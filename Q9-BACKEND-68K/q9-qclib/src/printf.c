@@ -159,7 +159,305 @@ void qp_int(int v)
 	qp_num(v, 10);
 }
 
+/* IEEE-754 binary64 nach Dezimaltext, fuer printf("%f") (2026-09-17).
+ *
+ * Die Umkehrung von tools/dec2ieee.c: dort Text->Bitmuster mit
+ * Ganzzahl-Bignum (kein Gleitkomma waehrend der Selbstuebersetzung
+ * verfuegbar), hier Bitmuster->Text aus demselben Grund. MUSS in dieser
+ * Datei bleiben, nicht in einer eigenen: ein Aufruf ueber
+ * Uebersetzungseinheiten hinweg findet sein Ziel nicht (s. qp_pathof
+ * weiter unten -- dieselbe Einschraenkung, dort dokumentiert).
+ *
+ * %f verlangt eine FESTE Anzahl Nachkommastellen (hier sechs, der
+ * C89-Standardwert) statt einer kuerzesten rundtrip-Darstellung wie %g --
+ * ein einfacheres Problem: gesucht ist die Ganzzahl round(wert * 10^6).
+ *
+ * wert = M * 2^E, M ganz (53 Bit inkl. implizitem Bit fuer normale Zahlen,
+ * 52 Bit ohne fuer subnormale), E aus [-1074, 971] (binary64-Grenzen).
+ *
+ *   E >= 0: M * 2^E * 10^6 ist eine EXAKTE Ganzzahl -- keine Rundung noetig.
+ *   E <  0: M * 10^6 muss durch 2^(-E) geteilt werden. Der Teiler ist eine
+ *           Zweierpotenz, also genuegt ein Rechts-Schub mit Pruefung des
+ *           herausfallenden hoechsten Bits (round half up) -- keine
+ *           allgemeine Bignum-Division noetig.
+ *
+ * Puffer wie in dec2ieee.c: 260 Glieder zu 16 Bit (4160 Bit) sind fuer den
+ * binary64-Bereich weit mehr als noetig, aber derselbe Wert spart eine
+ * zweite Abschaetzung. Das Zwischenergebnis liegt wie dort auf
+ * DATEIEBENE, nicht auf dem Stack -- gut ein Kilobyte, und der Stack
+ * eines OS-9-Moduls ist knapp. */
+
+typedef struct {
+	int n;
+	unsigned long d[260];
+} IBig;
+
+static IBig i2dM;
+
+static void ibigZero(IBig *a)
+{
+	a->n = 0;
+}
+
+static void ibigTrim(IBig *a)
+{
+	while (a->n > 0 && a->d[a->n - 1] == 0UL)
+		a->n--;
+}
+
+static int ibigIsZero(const IBig *a)
+{
+	return a->n == 0;
+}
+
+static void ibigSetSmall(IBig *a, unsigned long v)
+{
+	ibigZero(a);
+	while (v != 0UL && a->n < 260) {
+		a->d[a->n] = v & 0xFFFFUL;
+		a->n = a->n + 1;
+		v = v >> 16;
+	}
+}
+
+/* a = a * m + add (m, add < 2^16). */
+static int ibigMulAddSmall(IBig *a, unsigned long m, unsigned long add)
+{
+	unsigned long carry;
+	int i;
+
+	carry = add;
+	for (i = 0; i < a->n; i++) {
+		unsigned long t;
+
+		t = a->d[i] * m + carry;
+		a->d[i] = t & 0xFFFFUL;
+		carry = t >> 16;
+	}
+	while (carry != 0UL) {
+		if (a->n >= 260)
+			return 0;
+		a->d[a->n] = carry & 0xFFFFUL;
+		a->n = a->n + 1;
+		carry = carry >> 16;
+	}
+	return 1;
+}
+
+static int ibigShiftLeft(IBig *a, long bits)
+{
+	long limbShift;
+	int bitShift;
+	long i;
+
+	limbShift = bits / 16L;
+	bitShift = (int) (bits % 16L);
+	if (ibigIsZero(a) || bits <= 0L)
+		return 1;
+	if (a->n + limbShift + 1L > 260L)
+		return 0;
+	if (limbShift > 0L) {
+		for (i = (long) a->n - 1L; i >= 0L; i--)
+			a->d[i + limbShift] = a->d[i];
+		for (i = 0L; i < limbShift; i++)
+			a->d[i] = 0UL;
+		a->n = a->n + (int) limbShift;
+	}
+	if (bitShift > 0) {
+		unsigned long carry;
+
+		carry = 0UL;
+		for (i = limbShift; i < (long) a->n; i++) {
+			unsigned long t;
+
+			t = (a->d[i] << bitShift) | carry;
+			a->d[i] = t & 0xFFFFUL;
+			carry = t >> 16;
+		}
+		if (carry != 0UL) {
+			if (a->n >= 260)
+				return 0;
+			a->d[a->n] = carry;
+			a->n = a->n + 1;
+		}
+	}
+	return 1;
+}
+
+/* Bit an Position `bit` (0 = niedrigstwertig), 0 ausserhalb des Bereichs. */
+static int ibigGetBit(const IBig *a, long bit)
+{
+	long limb;
+
+	limb = bit / 16L;
+	if (bit < 0L || limb >= (long) a->n)
+		return 0;
+	return (int) ((a->d[limb] >> (bit % 16L)) & 1UL);
+}
+
+/* a >>= bits, OHNE Rundung -- die aufrufende Seite hat das herausfallende
+   Bit vorher selbst mit ibigGetBit gelesen. */
+static void ibigShiftRight(IBig *a, long bits)
+{
+	long limbShift;
+	int bitShift;
+	long i;
+
+	limbShift = bits / 16L;
+	bitShift = (int) (bits % 16L);
+	if (ibigIsZero(a) || bits <= 0L)
+		return;
+	if (limbShift >= (long) a->n) {
+		ibigZero(a);
+		return;
+	}
+	if (limbShift > 0L) {
+		for (i = 0L; i + limbShift < (long) a->n; i++)
+			a->d[i] = a->d[i + limbShift];
+		a->n = a->n - (int) limbShift;
+	}
+	if (bitShift > 0) {
+		for (i = 0L; i < (long) a->n; i++) {
+			unsigned long lo;
+			unsigned long hiw;
+
+			lo = a->d[i] >> bitShift;
+			hiw = (i + 1L < (long) a->n) ? a->d[i + 1L] : 0UL;
+			a->d[i] = (lo | (hiw << (16 - bitShift))) & 0xFFFFUL;
+		}
+	}
+	ibigTrim(a);
+}
+
+/* Division durch einen KLEINEN Teiler (<= 65535), von den hoechstwertigen
+   Gliedern her -- ein Durchlauf statt bitweiser Langdivision. Nur fuer die
+   Dezimalausgabe gebraucht (Teiler 10), NICHT fuer die eigentliche
+   Rundung: die laeuft ueber ibigShiftRight, weil binary64s Teiler dort
+   immer eine Zweierpotenz ist. */
+static unsigned long ibigDivSmall(IBig *a, unsigned long dv)
+{
+	unsigned long rem;
+	int i;
+
+	rem = 0UL;
+	for (i = a->n - 1; i >= 0; i--) {
+		unsigned long cur;
+
+		cur = (rem << 16) | a->d[i];
+		a->d[i] = cur / dv;
+		rem = cur % dv;
+	}
+	ibigTrim(a);
+	return rem;
+}
+
+/* Baut M (bis zu 53 Bit) direkt aus den Bitfeldern auf -- vier
+   16-Bit-Ziffern in Basis 65536, hoechstwertige zuerst (dasselbe Muster,
+   das ibigMulAddSmall fuer Dezimalliterale in dec2ieee.c benutzt, nur mit
+   Basis 65536 statt 10000). */
+static void ibigSetMantissa(IBig *m, unsigned long hi, unsigned long lo, int implicit)
+{
+	unsigned long mhi20;
+
+	mhi20 = hi & 0xFFFFFUL;                 /* Mantissenbits 32..51 */
+	ibigSetSmall(m, (unsigned long) ((implicit << 4) | ((mhi20 >> 16) & 0xFUL)));
+	ibigMulAddSmall(m, 65536UL, mhi20 & 0xFFFFUL);
+	ibigMulAddSmall(m, 65536UL, (lo >> 16) & 0xFFFFUL);
+	ibigMulAddSmall(m, 65536UL, lo & 0xFFFFUL);
+}
+
+/* Function: qp_double
+ * Formatiert ein binary64-Bitmuster als Dezimaltext mit sechs
+ * Nachkommastellen (printf("%f", x) und verwandte Formen).
+ * Parameters: hi Obere 32 Bit (Vorzeichen, Exponent, oberste Mantissenbits);
+ *             lo Untere 32 Bit der Mantisse.
+ * Returns: Nothing. */
+void qp_double(unsigned long hi, unsigned long lo)
+{
+	int sign;
+	int biased;
+	long e;
+	char digits[340];
+	int ndig;
+	unsigned long r;
+
+	sign = (int) ((hi >> 31) & 1UL);
+	biased = (int) ((hi >> 20) & 0x7FFUL);
+
+	if (biased == 0x7FF) {
+		/* Unendlich oder NaN -- in den 4109 Microware-Quellen und im
+		   eigenen Bootstrap kommt das nicht vor, aber ein still
+		   falscher Zahlenmuell waere schlimmer als diese Meldung. */
+		if (sign)
+			qp_putc(45);            /* - */
+		if ((hi & 0xFFFFFUL) == 0UL && lo == 0UL)
+			qp_putn("inf", -1);
+		else
+			qp_putn("nan", -1);
+		return;
+	}
+
+	if (sign)
+		qp_putc(45);                    /* - */
+
+	if (biased == 0 && (hi & 0xFFFFFUL) == 0UL && lo == 0UL) {
+		/* Null (auch -0.0: das Vorzeichen wurde oben schon gedruckt). */
+		qp_putn("0.000000", -1);
+		return;
+	}
+
+	ibigSetMantissa(&i2dM, hi, lo, biased != 0);
+	/* e ist der Zweierexponent von M: wert = M * 2^e. 52 Bruchbits sind
+	   in M schon als Ganzzahl aufgenommen, deshalb minus 52. Subnormale
+	   Zahlen haben KEINEN Bias-Ausgleich (biased ist 0, der wirkliche
+	   Exponent ist wie bei der kleinsten normalen Zahl: 1-1023). */
+	e = (biased != 0 ? (long) biased - 1023L : 1L - 1023L) - 52L;
+
+	if (e >= 0L) {
+		/* M * 2^e * 10^6 ist exakt -- keine Rundung. */
+		if (!ibigShiftLeft(&i2dM, e)) {
+			qp_putn("ovfl", -1);
+			return;
+		}
+		ibigMulAddSmall(&i2dM, 1000000UL, 0UL);
+	} else {
+		int roundUp;
+
+		ibigMulAddSmall(&i2dM, 1000000UL, 0UL);
+		/* Teilen durch 2^(-e): das herausfallende hoechste Bit
+		   entscheidet ueber Aufrunden (round half up -- C89 schreibt
+		   fuer %f keine bestimmte Rundungsrichtung vor, und schon die
+		   Bitmuster selbst sind beim Einlesen mit round-to-even
+		   entstanden, s. dec2ieee.c). */
+		roundUp = ibigGetBit(&i2dM, -e - 1L);
+		ibigShiftRight(&i2dM, -e);
+		if (roundUp)
+			ibigMulAddSmall(&i2dM, 1UL, 1UL);
+	}
+
+	/* Dezimalziffern rueckwaerts einsammeln (wie qp_num), mindestens
+	   sieben (eine Stelle vor, sechs hinter dem Komma) -- kuerzere Werte
+	   werden links mit Nullen aufgefuellt. */
+	ndig = 0;
+	while (!ibigIsZero(&i2dM) && ndig < 340) {
+		r = ibigDivSmall(&i2dM, 10UL);
+		digits[ndig] = (char) (48 + r);
+		ndig = ndig + 1;
+	}
+	while (ndig < 7) {
+		digits[ndig] = 48;
+		ndig = ndig + 1;
+	}
+	while (ndig > 0) {
+		ndig = ndig - 1;
+		if (ndig == 5)
+			qp_putc(46);             /* . */
+		qp_putc(digits[ndig]);
+	}
+}
+
 /* Shared formatter. fi is the format-string index; variadic arguments start
+ * at fi+1.
  * at fi+1.
  *
  * Supported forms are %d %i %u %x %c %s %%, length modifier l, and precision
@@ -184,9 +482,26 @@ int qp_run(int *args, int fi)
 	int ai;
 	int c;
 	int prec;
+	int firstArg;
 
 	f = (char *) args[fi];
 	ai = fi + 1;
+	/* WEICHE FUER double-ARGUMENTE (2026-09-17): printf.a kopiert d0/d1/
+	   Stack MECHANISCH in dieses Feld -- es weiss nichts von Typen. Fuer
+	   ALLE Argumente ausser dem ERSTEN ist das genug: sobald ein Argument
+	   nicht mehr ins Register passt (egal welcher Typ), spillen laut dem
+	   gemessenen Byte-Offset-Modell (docs/FLOAT_PLAN_de.md) auch alle
+	   folgenden -- ab dann liegt einfach alles hintereinander auf dem
+	   Stack, ein double belegt darin zwei aufeinanderfolgende args[]-
+	   Zellen (hi, lo) statt einer. NUR das ERSTE variadische Argument ist
+	   ein Sonderfall: bei einem "normalen" (4-Byte-)Wert liegt es in d1
+	   (args[fi+1], die bisherige Annahme), aber bei einem double passt es
+	   NICHT mehr neben das Formatstring-fmt in d0 -- es geht KOMPLETT auf
+	   den Stack, und d1 bleibt unbenutzter Muell. Die beiden Haelften
+	   liegen dann an der Stelle, wo mechanisch ohnehin schon der Stack-
+	   Anteil landet: args[fi+2]/args[fi+3] (fi+1 bleibt der ungenutzte
+	   d1-Platz und wird einfach uebersprungen). */
+	firstArg = 1;
 	qp_cnt = 0;
 	qp_len = 0;
 	if (f == 0)
@@ -210,6 +525,7 @@ int qp_run(int *args, int fi)
 				if (*f == 42) {                 /* * */
 					prec = args[ai];
 					ai = ai + 1;
+					firstArg = 0;
 					f++;
 				} else {
 					prec = 0;
@@ -237,18 +553,32 @@ int qp_run(int *args, int fi)
 		} else if (c == 100 || c == 105) {      /* d i */
 			qp_int(args[ai]);
 			ai = ai + 1;
+			firstArg = 0;
 		} else if (c == 117) {                  /* u */
 			qp_num(args[ai], 10);
 			ai = ai + 1;
+			firstArg = 0;
 		} else if (c == 120) {                  /* x */
 			qp_num(args[ai], 16);
 			ai = ai + 1;
+			firstArg = 0;
 		} else if (c == 99) {                   /* c */
 			qp_putc(args[ai]);
 			ai = ai + 1;
+			firstArg = 0;
 		} else if (c == 115) {                  /* s */
 			qp_putn((char *) args[ai], prec);
 			ai = ai + 1;
+			firstArg = 0;
+		} else if (c == 102 || c == 70) {       /* f F -- s.o., 2026-09-17 */
+			if (firstArg) {
+				qp_double((unsigned long) args[ai + 1], (unsigned long) args[ai + 2]);
+				ai = ai + 3;
+			} else {
+				qp_double((unsigned long) args[ai], (unsigned long) args[ai + 1]);
+				ai = ai + 2;
+			}
+			firstArg = 0;
 		} else {
 			/* Pass unknown specifications through unchanged instead of
 			   silently dropping them. */
