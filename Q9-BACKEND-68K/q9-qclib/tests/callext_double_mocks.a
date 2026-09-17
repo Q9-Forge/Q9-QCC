@@ -1,0 +1,114 @@
+ nam callext_dbl_mocks
+ psect callext_dbl_mocks,0,0,0,0,0
+* Mock-Stubs fuer den CALLEXT-double-ABI-Test (2026-09-17).
+* Jeder liest d0/d1/Stack als rohe 32-Bit-Werte -- keine FPU-Befehle noetig,
+* nur die Bit-Platzierung wird geprueft. Rueckgabe: Bitmaske, ein Bit je
+* korrektes Feld; der C-Test erwartet den VOLLEN Wert (alle Bits gesetzt).
+*
+* x = 3.5  IEEE-754 hi=$400C0000 lo=$00000000
+* y = 1.25 IEEE-754 hi=$3FF40000 lo=$00000000
+
+* mock1(double d, int i): d komplett in d0:d1, i komplett auf dem Stack (4(a7)).
+mock1:
+ moveq #0,d2
+ cmp.l #$400C0000,d0
+ bne L1a
+ or.l #1,d2
+L1a:
+ cmp.l #0,d1
+ bne L1b
+ or.l #2,d2
+L1b:
+ move.l 4(a7),d3
+ cmp.l #7,d3
+ bne L1c
+ or.l #4,d2
+L1c:
+ move.l d2,d0
+ rts
+
+* mock2(int i, double d): i in d0, d komplett auf dem Stack (4(a7)=hi, 8(a7)=lo).
+mock2:
+ moveq #0,d2
+ cmp.l #7,d0
+ bne L2a
+ or.l #1,d2
+L2a:
+ move.l 4(a7),d3
+ cmp.l #$400C0000,d3
+ bne L2b
+ or.l #2,d2
+L2b:
+ move.l 8(a7),d3
+ cmp.l #0,d3
+ bne L2c
+ or.l #4,d2
+L2c:
+ move.l d2,d0
+ rts
+
+* mock3(double d): allein, komplett in d0:d1.
+mock3:
+ moveq #0,d2
+ cmp.l #$400C0000,d0
+ bne L3a
+ or.l #1,d2
+L3a:
+ cmp.l #0,d1
+ bne L3b
+ or.l #2,d2
+L3b:
+ move.l d2,d0
+ rts
+
+* mock4(double a, double b): a in d0:d1, b komplett auf dem Stack.
+mock4:
+ moveq #0,d2
+ cmp.l #$400C0000,d0
+ bne L4a
+ or.l #1,d2
+L4a:
+ cmp.l #0,d1
+ bne L4b
+ or.l #2,d2
+L4b:
+ move.l 4(a7),d3
+ cmp.l #$3FF40000,d3
+ bne L4c
+ or.l #4,d2
+L4c:
+ move.l 8(a7),d3
+ cmp.l #0,d3
+ bne L4d
+ or.l #8,d2
+L4d:
+ move.l d2,d0
+ rts
+
+* mock5(int i, double d, int j): STICKY SPILL -- d passt nicht mehr (4+8>8)
+* und spillt; j MUSS ebenfalls auf den Stack (12(a7)), NICHT nach d1, obwohl
+* d1 rechnerisch noch frei waere (Kernbefund der Messung, s. probe6).
+mock5:
+ moveq #0,d2
+ cmp.l #7,d0
+ bne L5a
+ or.l #1,d2
+L5a:
+ move.l 4(a7),d3
+ cmp.l #$400C0000,d3
+ bne L5b
+ or.l #2,d2
+L5b:
+ move.l 8(a7),d3
+ cmp.l #0,d3
+ bne L5c
+ or.l #4,d2
+L5c:
+ move.l 12(a7),d3
+ cmp.l #9,d3
+ bne L5d
+ or.l #8,d2
+L5d:
+ move.l d2,d0
+ rts
+ ends

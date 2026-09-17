@@ -705,3 +705,126 @@ Außerhalb des Compilers:
 - **`float`** als eigener Typ — bewusst zurückgestellt: C zieht in den
   üblichen Konversionen auf `double` hoch, und `float` brächte eigene
   Rundungsfragen (32 vs. 64 vs. die 80 Bit der 68k-FPU).
+## `CALLEXT`/`CALLEXTP`: die echte Microware-ABI für `double`-Argumente (2026-09-17)
+
+### Der Fund war zweigeteilt
+
+**Erstens, still falsch:** `printf("%f", x)` (und jeder andere `extern`-Aufruf
+mit einem `double`-Argument) benutzte bislang den PUFFER-Mechanismus aus
+"`double` an Funktionsgrenzen" unverändert — auch für `CALLEXT`. Der
+Aufrufer schob die ADRESSE eines globalen Puffers (vier Byte), nicht die
+acht Byte des Werts selbst. Eine echte externe Funktion, die einen
+tatsächlichen `double` erwartet (Microware-`clib`, aber auch jede eigene
+qclib-Funktion, die `extern` deklariert wird), hätte einen Zeiger
+gelesen, wo ein Bitmuster stehen sollte — ohne jede Diagnose.
+
+**Zweitens, überhaupt erst zu klären:** wie sieht die reale
+Microware-Aufrufkonvention für `double`-Argumente aus? Die bestehende Regel
+("die ersten zwei Argumente insgesamt gehen nach `d0`/`d1`", 2026-07-26/27
+am `int`-Fall gemessen) sagt nichts darüber, was mit einem 8-Byte-Wert
+passiert, der nicht in ein einzelnes Register passt.
+
+### Gemessen, nicht angenommen: das Byte-Offset-Modell
+
+Sechs Proben gegen echten `xcc`-erzeugten Code (`xcc -e=be`, Assembler als
+Text, kein Emulator nötig — dieselbe Technik wie bei den initialisierten
+Zeigern) legen die Regel offen:
+
+`d0:d1` ist ein **einziges 8-Byte-Fenster**. Jedes Argument bekommt in
+Deklarations-/Aufrufreihenfolge einen Byte-Offset in diesem Fenster. Passt
+es dort **komplett** hinein (`offset + Größe ≤ 8`), geht es in Register(n);
+sonst **komplett** auf den Stack — nie geteilt. **Sobald ein Argument
+spillt, bleibt das Fenster für JEDES weitere Argument geschlossen**, auch
+wenn eine Registerhälfte danach rechnerisch noch frei wäre:
+
+| Aufruf | Ergebnis |
+|---|---|
+| `f(double d, int i)` | `d` → `d0:d1` (voll), `i` → Stack |
+| `f(int i, double d)` | `i` → `d0`, `d` → **komplett** Stack (d1 bleibt frei/ungenutzt) |
+| `f(double d)` | `d` → `d0:d1` |
+| `f(double a, double b)` | `a` → `d0:d1`, `b` → Stack |
+| `printf(fmt, double x)` | `fmt` → `d0`, `x` → **komplett** Stack |
+| `f(int i, double d, int j)` | `i` → `d0`, `d` → Stack (spillt bei Offset 4), **`j` → ebenfalls Stack** (NICHT `d1`, obwohl 4+4≤8 rechnerisch ginge) — der Sticky-Spill ist der eigentliche Kernbefund |
+
+Der letzte Fall widerlegt die naheliegendere Annahme "eine frei bleibende
+Registerhälfte wird von einem späteren kleineren Argument aufgefüllt".
+
+### Umsetzung
+
+- **Frontend** (`tc_arg`, `qcc.lextab`): der Pufferumweg für `double` gilt
+  jetzt **nur noch für interne Aufrufe** (`CALL`/`CALLP`). Bei einem
+  externen Ziel (`tcFunctionIsExternal[f]`) bleibt der Wert unverändert auf
+  dem IR-Operandenstapel liegen (er steht dort ohnehin schon durch
+  `PUSHD`/`LOADD`). Ein neues, viertes `CALLEXT`/`CALLEXTP`-Feld trägt eine
+  Breitenliste (`'4'`/`'8'` je Argument in Aufrufreihenfolge), gefüllt aus
+  einem neuen `tcCallArgWidth[64][32]`.
+  **Falle dabei:** bei einem null-argumentigen externen Aufruf frisst
+  `strtok()` im Backend das leere Breitenfeld zwischen zwei Leerzeichen weg
+  (`insP->argc` fällt von 4 auf 3) — der Backend-Einstieg akzeptiert
+  deshalb beide Werte, und das defaultmäßig leer vorbelegte `args[3]` passt
+  dann zu `nargsC==0`.
+- **68k-Backend** (`qcc_backend_c.cpp`): die alte Zwei-Register-Annahme
+  weicht dem Byte-Offset-Modell mit Sticky-Spill (oben). `tc_extcall_tmp`
+  wird jetzt mit tatsächlichen BYTE-Offsets adressiert statt mit
+  Wort-Indizes; ein `double` auf dem Stack liegt weiterhin hi-dann-lo
+  (dieselbe Konvention wie `PUSHD`). Die Vorab-Registrierung externer
+  Symbole für den `-largedata`-Wrapper (`registerExtern`-Aufrufer, zweite
+  Fundstelle mit `insP->argc == 3`) musste an derselben Stelle mitgezogen
+  werden — sonst bricht **jeder** `CALLEXT` mit mindestens einem Argument
+  mit "external function not registered" ab (als Regression beim ersten
+  Suite-Lauf gefunden und behoben).
+- **ARM64-Backend und VM-Orakel kennen `CALLEXT` gar nicht** (rein
+  68k/Microware-ABI-spezifisch) — keine Änderung dort nötig.
+
+### Verifikation
+
+Erzeugte Assembler-Ausgabe für `printf("%f", x)` (x=3.5) ist **Befehl für
+Befehl deckungsgleich** mit der von `xcc -e=be` gemessenen echten Ausgabe
+(lo-dann-hi auf den Stack, `fmt` nach `d0`). Fünf gezielte Hardware-Mocks
+(`mock1`..`mock5`, decken alle Positionsfälle inkl. Sticky-Spill ab) prüfen
+die rohen Bitmuster in `d0`/`d1`/Stack gegen die erwarteten Werte.
+Regressionssuite (`Q9-PARSEC/runtests.sh`) läuft unverändert grün (240 ok,
+inklusive Selbsthost-Vollport über echtes `r68`/`l68`, das `CALLEXT` massiv
+nutzt) und `double68k.sh` (bestehende Hardware-Regression) baut weiterhin
+sauber (1265 FPU-Befehle, unverändert).
+
+### Was damit NICHT erledigt ist
+
+Die ABI-Übergabe ist jetzt korrekt — **die Textformatierung fehlt weiterhin**.
+`printf("%f", x)` liest jetzt zwar das richtige Bitmuster, aber q9-qclibs
+eigenes `printf.c` kennt `%f` als Formatzeichen noch nicht (kein
+IEEE-754-zu-Dezimal-Umrichter, die Umkehrung von `tools/dec2ieee.c`). Das
+bleibt ein eigener, unabhängiger Schritt.
+
+### Hardware-Emulatorlauf: BESTAETIGT (17.09.2026, nach fuenf Versuchen)
+
+`Q9-BACKEND-68K/q9-qclib/tests/callext_double_68k.sh` (+ `.c`/`.a`) baute in
+allen fuenf Versuchen deterministisch sauber (7392 Byte). Der Emulatorlauf
+selbst scheiterte in den ersten vier Anlaeufen an `The system has no more
+ptys` — NICHT wegen paralleler `q9.exe`-Instanzen (der vierte Versuch
+scheiterte identisch bei NULL laufenden Emulatoren), sondern wegen eines nach
+7 Tagen Uptime erschoepften, ueberwiegend VERWAISTEN Pty-Pools (527
+`/dev/ttys*`-Geraeteknoten gegen `kern.tty.ptmx_max=511`, bei nur ~13-25
+tatsaechlich gebundenen). Ein eigenes Testabbild aendert daran nichts -- das
+Problem sitzt unterhalb der Image-Ebene. Der fuenfte Versuch, nachdem sich
+der Pool von selbst (oder durch Aufraeumen) wieder etwas entspannt hatte, lief
+durch:
+
+```
+ok mock1 (double,int)
+ok mock2 (int,double)
+ok mock3 (double)
+ok mock4 (double,double)
+ok mock5 (int,double,int) sticky-spill
+
+CALLEXT-double-ABI KORREKT -- alle 5 Faelle stimmen
+```
+
+Alle fuenf Positionsfaelle inkl. des Sticky-Spill-Kernbefunds (`mock5`) sind
+damit auf echtem 68030 bestaetigt, nicht nur strukturell/per Regressionssuite.
+**Die Ursache der ersten vier Fehlschlaege blieb ungeklaert** -- weder
+parallele Emulatoren (ein Fehlschlag trat bei NULL laufenden `q9.exe` auf)
+noch die Zahl der `/dev/ttys*`-Geraeteknoten (statische macOS-Eintraege,
+keine Kennzahl fuer echte Auslastung) erklaeren es. Ein Neuversuch nach
+kurzer Pause loeste es.
+
