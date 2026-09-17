@@ -975,7 +975,7 @@ static void collectExterns(void) {
 	int i;
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if ((strcmp(insP->op, "CALLEXT") == 0 || strcmp(insP->op, "CALLEXTP") == 0) && insP->argc == 3) {
+		if ((strcmp(insP->op, "CALLEXT") == 0 || strcmp(insP->op, "CALLEXTP") == 0) && (insP->argc == 3 || insP->argc == 4)) {
 			registerExtern(insP->args[0]);
 		}
 	}
@@ -1972,54 +1972,94 @@ static void emitIR(FILE* out) {
 				}
 				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
-			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && insP->argc == 3) {
+			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && (insP->argc == 3 || insP->argc == 4)) {
 				/* Call an external function not defined in this IR, such as an OS-9/
 				   Microware clib function (strcmp, printf, malloc, ...). Use the
-				   documented Microware 68k C/C++ ABI instead of QCC's internal stack ABI:
-				   the first two arguments overall go in d0/d1 and remaining arguments go
-				   on the stack in reverse order. The third IR field is the number of
-				   fixed parameters from the declaration and is retained for validation.
+				   documented Microware 68k C/C++ ABI instead of QCC's internal stack ABI.
 				   QCC's IR presents arguments in source order on a7, so stack arguments
 				   are first copied to tc_extcall_tmp while d0/d1 are extracted, then
 				   pushed back in the required order. The raw external symbol is called
 				   without the internal "tc_" prefix; final linking against clib.l is
-				   performed by l68 (see docs/FORTSCHRITT.md). */
+				   performed by l68 (see docs/FORTSCHRITT.md).
+
+				   BYTE-OFFSET-MODELL (2026-09-17, an echtem xcc-erzeugtem Code
+				   gemessen -- sechs Proben mit int/double in allen Positionen,
+				   printf("%f", x) eingeschlossen, s. docs/FLOAT_PLAN_de.md): d0:d1
+				   sind EIN 8-Byte-Fenster. Jedes Argument bekommt in Aufrufreihenfolge
+				   einen Byte-Offset in diesem Fenster; passt es dort KOMPLETT hinein
+				   (offset+groesse <= 8), geht es in Register, sonst KOMPLETT auf den
+				   Stack -- nie geteilt. SOBALD EIN ARGUMENT SPILLT, BLEIBT DAS FENSTER
+				   FUER JEDES WEITERE GESCHLOSSEN, auch wenn eine Registerhaelfte
+				   danach rechnerisch noch frei waere (gemessen mit
+				   "probe6(int i, double d, int j)": d spillt bei Offset 4 (4+8>8),
+				   und j landet TROTZDEM auf dem Stack statt in d1, obwohl 4+4<=8
+				   waere). Ein einzelnes double (8 Byte) an Position 1 belegt d0:d1
+				   VOLLSTAENDIG selbst -- ein nachfolgendes int hat dann KEINEN Platz
+				   mehr, ungeachtet der alten Annahme "die ersten zwei Argumente
+				   gehen nach d0/d1". Das vierte IR-Feld (Frontend, tcCallArgWidth)
+				   traegt dafuer je Argument ein Breitenzeichen '4'/'8'; bei
+				   nargsC==0 faellt das Feld durch strtok() weg (kein Token zwischen
+				   zwei Leerzeichen) -- insP->args[3] ist dann der von der IR-Leseschleife
+				   ohnehin vorbelegte Leerstring, was mit nargsC==0 konsistent ist. */
 				int nargsC = number(insP->args[1], insP->line);
 				int fixedCount = number(insP->args[2], insP->line);
-				/* BUG (2026-07-26/27, found live on Q9 and confirmed by Capstone
-				   disassembly of the real clib.l printf): the assumption that ONLY FIXED
-				   deklarierten Parameter gehen nach d0/d1, der GESAMTE variadische Teil
-				   auf den Stack" (2026-07-24-Fund) war FALSCH bzw. unvollstaendig. Die
-				   echte, kompilierte printf(char* fmt, ...) beginnt mit "move.l d0,-(a7)"
-				   gefolgt von "move.l d1,d0" -- sie erwartet also ihr ERSTES variadisches
-				   Argument (falls vorhanden) IMMER in d1, unabhaengig davon, ob es laut
-				   Deklaration "fest" oder Teil von "..." ist. Die REALE Regel ist: die
-				   ERSTEN ZWEI ARGUMENTE INSGESAMT (fest+variadisch zusammengezaehlt) gehen
-				   nach d0/d1, NUR ab dem DRITTEN Argument geht es auf den Stack -- exakt
-				   wie bei einem nicht-variadischen Aufruf, OHNE Sonderrolle fuer "...".
-				   fixedCount wird nicht mehr fuer die Register/Stack-Aufteilung gebraucht
-				   (bleibt nur zur IR-Validierung erhalten). */
-				int hasD0 = nargsC >= 1;
-				int hasD1 = nargsC >= 2;
-				int stackArgs = nargsC - (hasD0 ? 1 : 0) - (hasD1 ? 1 : 0);
-				int ai;
-				if (stackArgs > 8) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumente fuer externen Aufruf (max 8)", insP->line); fatal(msg); }
+				const char* widths = insP->args[3];
+				/* argKind: 0 = Stack, 1 = nur d0, 2 = nur d1, 3 = d0:d1 (double). */
+				int argSize[16], argKind[16], argTmpOff[16];
+				int regBytes = 0, regsOpen = 1, stackBytes = 0, ai;
+				(void)fixedCount; /* nicht mehr fuer die Aufteilung gebraucht, nur IR-Validierung */
+				if (nargsC > 16) { sprintf(msg, "IR Zeile %d: zu viele Argumente fuer externen Aufruf (max 16)", insP->line); fatal(msg); }
+				if ((int)strlen(widths) != nargsC) { sprintf(msg, "IR Zeile %d: CALLEXT-Breitenliste \"%s\" passt nicht zur Argumentzahl %d", insP->line, widths, nargsC); fatal(msg); }
+				for (ai = 0; ai < nargsC; ai++) {
+					argSize[ai] = (widths[ai] == '8') ? 8 : 4;
+					if (regsOpen && regBytes + argSize[ai] <= 8) {
+						argKind[ai] = (argSize[ai] == 8) ? 3 : (regBytes == 0 ? 1 : 2);
+						regBytes += argSize[ai];
+					} else {
+						regsOpen = 0; /* sticky: ab hier geht ALLES auf den Stack */
+						argKind[ai] = 0;
+						argTmpOff[ai] = stackBytes;
+						stackBytes += argSize[ai];
+					}
+				}
+				if (stackBytes > 32) { sprintf(msg, "IR Zeile %d: zu viele Stack-Argumentbytes fuer externen Aufruf (max 32)", insP->line); fatal(msg); }
 				/* Load the address ONCE into a0 (a0 is a free scratch address register
 				   throughout this backend; no IR opcode requires it to remain valid beyond
 				   its own emission). small uses PC-relative "lea" to match the backend's
 				   PIC style; large uses the same a3 indirection mechanism as real globals.
 				   tc_extcall_tmp consequently receives an additional table entry AFTER
 				   all real globals (offset globalCount*4). */
-				if (stackArgs > 0) {
+				if (stackBytes > 0) {
 					/* 2026-07-26: the tc_gadata entry is a link-time offset, not an
 					   absolute pointer (see emitLeaGlobal()); adda.l is required as usual. */
 					if (largeDataMode) fprintf(out, "\tmove.l\t%d(a3),a0\n\tadda.l\ta3,a0\n", globalCount * 4);
 					else fputs("\tlea\ttc_extcall_tmp(pc),a0\n", out);
 				}
-				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n", ai * 4);
-				if (hasD1) fputs("\tmove.l\t(a7)+,d1\n", out);
-				if (hasD0) fputs("\tmove.l\t(a7)+,d0\n", out);
-				for (ai = 0; ai < stackArgs; ai++) fprintf(out, "\tmove.l\t%d(a0),-(a7)\n", ai * 4);
+				/* Oben auf dem IR-Operandenstapel liegt das LETZTE Argument (Quelltext-
+				   reihenfolge) -- also rueckwaerts abbauen. Ein double auf dem Stack
+				   liegt als hi/lo (PUSHD: lo zuerst gepusht, hi liegt oben) -- die erste
+				   der beiden move.l holt deshalb hi. */
+				for (ai = nargsC - 1; ai >= 0; ai--) {
+					if (argKind[ai] == 0) {
+						if (argSize[ai] == 8) fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n\tmove.l\t(a7)+,%d(a0)\n", argTmpOff[ai], argTmpOff[ai] + 4);
+						else fprintf(out, "\tmove.l\t(a7)+,%d(a0)\n", argTmpOff[ai]);
+					} else if (argKind[ai] == 3) {
+						fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n", out);
+					} else if (argKind[ai] == 2) {
+						fputs("\tmove.l\t(a7)+,d1\n", out);
+					} else {
+						fputs("\tmove.l\t(a7)+,d0\n", out);
+					}
+				}
+				/* Zurueck auf den Maschinenstapel, rechts nach links (Quelltextreihenfolge
+				   rueckwaerts durchlaufen), damit das ERSTE Stack-Argument an der
+				   NIEDRIGSTEN Adresse landet -- die reale C-Konvention. Ein double wird
+				   lo-dann-hi gepusht (wie PUSHD), damit hi wieder obenauf liegt. */
+				for (ai = nargsC - 1; ai >= 0; ai--) {
+					if (argKind[ai] != 0) continue;
+					if (argSize[ai] == 8) fprintf(out, "\tmove.l\t%d(a0),-(a7)\n\tmove.l\t%d(a0),-(a7)\n", argTmpOff[ai] + 4, argTmpOff[ai]);
+					else fprintf(out, "\tmove.l\t%d(a0),-(a7)\n", argTmpOff[ai]);
+				}
 				/* IMPORTANT (2026-07-24, found live on the real Q9): "jsr <name>" to
 				   ein externes Symbol wird von r68/l68 NUR dann PIC-sicher (PC-
 				   relativ) aufgeloest, wenn es als "bsr" geschrieben wird -- ein
@@ -2060,7 +2100,7 @@ static void emitIR(FILE* out) {
 				} else {
 					fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", insP->args[0]);
 				}
-				if (stackArgs) fprintf(out, "\tlea\t%d(a7),a7\n", stackArgs * 4);
+				if (stackBytes) fprintf(out, "\tlea\t%d(a7),a7\n", stackBytes);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
