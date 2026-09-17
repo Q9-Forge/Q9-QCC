@@ -97,6 +97,12 @@ static int fpParam(int x)            { return x*2; }
 static int fpParam2(int x)           { return x*3; }
 static int mixedParamsA(int (*p)[2], int (*fp)(int)) { return p[0][1] + fp(3); }
 static int mixedParamsB(int (*fp)(int), int (*p)[2]) { return fp(3) + p[0][1]; }
+/* 75-78 (2026-09-17): Zeigerarithmetik auf einem row-len-Zeiger muss um
+   die GANZE Zeile springen, nicht um ein einzelnes Element -- vorher
+   still falsch (siehe docs/FLOAT_PLAN_de.md, "Zeigerarithmetik-
+   Skalierung"). rowStepParam deckt den DECAYED-2D-ARRAY-PARAMETER-Fall
+   ab (dieselbe Ablage wie int(*p)[N], s. tc_param). */
+static int rowStepParam(int (*p)[3]) { p = p + 1; return p[0][0]*100 + p[0][1]*10 + p[0][2]; }
 static int m2dMix(int m[2][3])      { return m[0][0]*100 + m[0][2]*10 + m[1][0]; }
 static void m2dSchreiben(int m[2][3]) { m[1][1] = 42; }
 static int m2dOffen(int m[][3])     { return m[1][0]; }
@@ -406,6 +412,26 @@ int main(void)
 	mark(72); { int a[2][3]; a[0][0]=7; a[1][2]=2; val(ptrArrParam(a)); }
 	mark(73); { int a[1][2]; a[0][1]=10; val(mixedParamsA(a, fpParam)); }
 	mark(74); { int a[1][2]; a[0][1]=10; val(mixedParamsB(fpParam2, a)); }
+
+	/* 75-78 Zeigerarithmetik-Skalierung um die Zeilenlaenge (2026-09-17) */
+	mark(75); { int a[2][3]; int (*p)[3];
+	            a[0][0]=1; a[0][1]=2; a[0][2]=3; a[1][0]=4; a[1][1]=5; a[1][2]=6;
+	            p = a; p = p + 1;
+	            val(p[0][0]*100 + p[0][1]*10 + p[0][2]); }
+	mark(76); { int a[2][3];
+	            a[0][0]=1; a[0][1]=2; a[0][2]=3; a[1][0]=4; a[1][1]=5; a[1][2]=6;
+	            val(rowStepParam(a)); }
+	mark(77); { int a[3][3]; int (*p)[3];
+	            a[0][0]=1;a[0][1]=2;a[0][2]=3; a[1][0]=4;a[1][1]=5;a[1][2]=6;
+	            a[2][0]=7;a[2][1]=8;a[2][2]=9;
+	            p = a; p = p + 2; p = p - 1;
+	            val(p[0][0]*100 + p[0][1]*10 + p[0][2]); }
+	/* 78 GEGENPROBE: gewoehnliche Zeigerarithmetik ohne Zeilenlaenge muss
+	   unveraendert bleiben (Regressionsschutz fuer den haeufigen Fall). */
+	mark(78); { int a[5]; int *q; int i;
+	            for (i = 0; i < 5; i = i + 1) a[i] = i * 11;
+	            q = a; q = q + 2;
+	            val(*q); }
 
 	return 0;
 }
