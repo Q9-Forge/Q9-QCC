@@ -419,11 +419,23 @@ void qp_double(unsigned long hi, unsigned long lo)
 			qp_putn("ovfl", -1);
 			return;
 		}
-		ibigMulAddSmall(&i2dM, 1000000UL, 0UL);
+		/* *1000000 in einem Schritt wuerde d[i]*m bei vollen 16-Bit-
+		   Limbs bis zu 36 Bit brauchen -- unsigned long ist hier 32 Bit,
+		   der Uebertrag ginge verloren. 100^3 = 1000000, und 65535*100
+		   passt sicher in 32 Bit, daher dreimal mit dem kleinen Faktor. */
+		ibigMulAddSmall(&i2dM, 100UL, 0UL);
+		ibigMulAddSmall(&i2dM, 100UL, 0UL);
+		ibigMulAddSmall(&i2dM, 100UL, 0UL);
 	} else {
 		int roundUp;
 
-		ibigMulAddSmall(&i2dM, 1000000UL, 0UL);
+		/* *1000000 in einem Schritt wuerde d[i]*m bei vollen 16-Bit-
+		   Limbs bis zu 36 Bit brauchen -- unsigned long ist hier 32 Bit,
+		   der Uebertrag ginge verloren. 100^3 = 1000000, und 65535*100
+		   passt sicher in 32 Bit, daher dreimal mit dem kleinen Faktor. */
+		ibigMulAddSmall(&i2dM, 100UL, 0UL);
+		ibigMulAddSmall(&i2dM, 100UL, 0UL);
+		ibigMulAddSmall(&i2dM, 100UL, 0UL);
 		/* Teilen durch 2^(-e): das herausfallende hoechste Bit
 		   entscheidet ueber Aufrunden (round half up -- C89 schreibt
 		   fuer %f keine bestimmte Rundungsrichtung vor, und schon die
