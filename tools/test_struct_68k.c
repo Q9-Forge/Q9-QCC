@@ -118,6 +118,14 @@ static void fpSetter(int (**out)(int)) { *out = fpInc; }
    hier auf echter Hardware. */
 struct AbiS { char a; int b; };
 static struct AbiS abig = { 65, 300 };
+/* 88-93 (2026-09-18): Bitfeld-Erweiterungen -- char/short als Basistyp
+   und indizierter/verketteter Zugriff (arr[i].feld, ptr[i].feld,
+   p->n->feld), Layout gegen echten xcc gemessen. */
+struct BFC { unsigned char a : 3; unsigned char b : 5; };
+static struct BFC bfcg;
+struct BFN { struct BFN *n; unsigned int a : 3; };
+static struct BFN bfnx;
+static struct BFN bfny;
 /* 81-84 (2026-09-17): Bitfelder, Layout gemessen gegen echten xcc
    ("xcc -e=be") -- BFLOAD/BFSTORE auf den nativen 68020-Befehlen
    bfextu/bfexts/bfins. bfS teilt Byte 0 zwischen a(3 Bit)+b(5 Bit),
@@ -470,6 +478,17 @@ int main(void)
 
 	/* 87 struct-ABI: char+int global, Offset/Groesse gegen xcc gemessen */
 	mark(87); val(abig.a * 1000 + abig.b);
+
+	/* 88-93 Bitfeld-Erweiterungen */
+	mark(88); { bfcg.a = 5; bfcg.b = 17; val(bfcg.a); }
+	mark(89); val(bfcg.b);
+	mark(90); { struct BF arr[2]; int i; i = 1; arr[0].a = 0; arr[0].b = 0; arr[0].c = 0;
+	            arr[i].a = 5; val(arr[i].a); }
+	mark(91); { struct BF buf[2]; struct BF *p; int i;
+	            buf[0].a = 0; buf[0].b = 0; buf[0].c = 0;
+	            p = buf; i = 1; p[i].a = 6; val(p[i].a); }
+	mark(92); { bfnx.n = &bfny; bfnx.n->a = 6; val(bfny.a); }
+	mark(93); { bfnx.n = &bfny; bfny.a = 5; val(bfnx.n->a); }
 
 	return 0;
 }

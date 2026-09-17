@@ -1760,6 +1760,8 @@ static const char* tcSkipWs(const char* p, const char* e) {
 /* Typ des LETZTEN Feldes einer Kette -- die Zielseite braucht ihn, nachdem
    tcEmitMemberChain nur die Adresse gelegt hat. */
 static TCType tcChainFieldType;
+static int tcChainFieldBitWidth;   /* >0 = letztes Kettenglied ist ein Bitfeld */
+static int tcChainFieldBitOffset;
 static int tcEmitMemberChain(const char* start, const char* end, int slot, int wantAddr) {
 	const char* p = tcNameEnd(start, end);
 	int global = -1;
@@ -1837,16 +1839,16 @@ static int tcEmitMemberChain(const char* start, const char* end, int slot, int w
 				tcErrAt(start); fprintf(stderr, "a whole struct field at the end of a chain is not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return 1;
 			}
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access at the end of a chain is not supported in this version\n");
-				actionErrors++; tcTypePush(tcBadType()); return 1;
-			}
 			tcChainFieldType = ft;
+			tcChainFieldBitWidth = tcStructFieldBitWidth[sid][fi];
+			tcChainFieldBitOffset = tcStructFieldBitOffset[sid][fi];
 			/* wantAddr: die ZIELSEITE will die Adresse stehen lassen und
-			   selbst speichern (tcTargetIndirect), nicht den Wert laden. */
+			   selbst speichern (tcTargetIndirect), nicht den Wert laden --
+			   tcChainFieldBitWidth/-Offset tragen die Bitfeld-Info bis zum
+			   Aufrufer (tc_target) weiter, der daraus tcTargetBitWidth/
+			   -Offset setzt. */
 			if (!wantAddr) {
-				printf("LOADIND %c\n", tcTypeTag(ft));
-				tcTypePush(ft);
+				tcEmitFieldRead(sid, fi);
 			}
 			return 1;
 		}
@@ -3945,10 +3947,6 @@ void tc_varref(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; tcTypePush(tcBadType()); return;
-			}
 			if (chain) tcStashChainedIndex();
 			{ printf("LOADP %d\nIPADDN ", slot); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) {
@@ -3957,8 +3955,7 @@ void tc_varref(const char* start, const char* end) {
 				return;
 			}
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
-			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
-			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+			tcEmitFieldRead(sid, fi); return;
 		}
 	}
 	/* arr[i].feld (2026-07-25): ein ARRAY von structs, indiziert, dann Feldzugriff --
@@ -3980,10 +3977,6 @@ void tc_varref(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; tcTypePush(tcBadType()); return;
-			}
 			if (tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
 				tcErrAt(start); fprintf(stderr, "member access requires a complete struct-array index\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
@@ -4001,8 +3994,7 @@ void tc_varref(const char* start, const char* end) {
 				return;
 			}
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
-			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
-			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+			tcEmitFieldRead(sid, fi); return;
 		}
 	}
 	/* p->feld (2026-08-10): identisch zu (*p).feld, braucht also KEINEN Index --
@@ -4165,16 +4157,11 @@ void tc_varref(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "ptr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; tcTypePush(tcBadType()); return;
-			}
 			if (chain) tcStashChainedIndex();
 			{ printf("LOADGP %s\nIPADDN ", gname); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
-			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
-			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+			tcEmitFieldRead(sid, fi); return;
 		}
 	}
 	if (global >= 0 && indexed && *nameEnd == '[' && tcGlobalArrayLen[global] > 0 && tcGlobalTypes[global].base == 's') {
@@ -4192,10 +4179,6 @@ void tc_varref(const char* start, const char* end) {
 				tcErrAt(start); fprintf(stderr, "arr[i].field[j] not supported in this version\n");
 				actionErrors++; tcTypePush(tcBadType()); return;
 			}
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; tcTypePush(tcBadType()); return;
-			}
 			if (tcCheckNDIndex(tcGlobalArrayNDims[global], tcGlobalArrayDims[global], tcCountTopIndexes(nameEnd, afterIdx)) != 1) {
 				tcErrAt(start); fprintf(stderr, "member access requires a complete struct-array index\n"); actionErrors++; tcTypePush(tcBadType()); return;
 			}
@@ -4204,8 +4187,7 @@ void tc_varref(const char* start, const char* end) {
 			{ printf("PUSHADDR G %s\nIPADDN ", gname); tcEmitStructSize(sid); printf("\nPUSH "); tcEmitFieldOffset(sid, fi); printf("\nPADD c\n"); }
 			if (chain) { tcTypePush(tcEmitStashedFieldIndex(sid, fi, 1)); return; }
 			if (tcStructFieldArrayLen[sid][fi] > 0) { tcTypePush(tcPointerTo(tcStructFieldTypes[sid][fi])); return; }
-			printf("LOADIND %c\n", tcTypeTag(tcStructFieldTypes[sid][fi]));
-			tcTypePush(tcStructFieldTypes[sid][fi]); return;
+			tcEmitFieldRead(sid, fi); return;
 		}
 	}
 	if (global >= 0 && indexed && *nameEnd == '.' && tcGlobalTypes[global].base == 's') {
@@ -4834,6 +4816,10 @@ void tc_target(const char* start, const char* end) {
 			if (tcEmitMemberChain(start, end, cslot, 1)) {
 				tcTargetType = tcChainFieldType;
 				tcTargetIndirect = 1;
+				if (tcChainFieldBitWidth > 0) {
+					tcTargetBitWidth = tcChainFieldBitWidth;
+					tcTargetBitOffset = tcChainFieldBitOffset;
+				}
 				tcTargetSlot = -1;
 				tcTargetIsGlobal = 0;
 				tcTargetIsArray = 0;
@@ -4973,10 +4959,6 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; return;
-			}
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
 			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
@@ -5003,6 +4985,10 @@ void tc_target(const char* start, const char* end) {
 			}
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
+			if (tcStructFieldBitWidth[sid][fi] > 0) {
+				tcTargetBitWidth = tcStructFieldBitWidth[sid][fi];
+				tcTargetBitOffset = tcStructFieldBitOffset[sid][fi];
+			}
 			return;
 		}
 	}
@@ -5017,10 +5003,6 @@ void tc_target(const char* start, const char* end) {
 			int fi = tcLookupStructField(sid, fieldStart, fieldEnd);
 			int chain;
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; return;
-			}
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
 			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
@@ -5051,6 +5033,10 @@ void tc_target(const char* start, const char* end) {
 			}
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
+			if (tcStructFieldBitWidth[sid][fi] > 0) {
+				tcTargetBitWidth = tcStructFieldBitWidth[sid][fi];
+				tcTargetBitOffset = tcStructFieldBitOffset[sid][fi];
+			}
 			return;
 		}
 	}
@@ -5144,10 +5130,6 @@ void tc_target(const char* start, const char* end) {
 			int chain;
 			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; return;
-			}
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
 			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
@@ -5174,6 +5156,10 @@ void tc_target(const char* start, const char* end) {
 			}
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
+			if (tcStructFieldBitWidth[sid][fi] > 0) {
+				tcTargetBitWidth = tcStructFieldBitWidth[sid][fi];
+				tcTargetBitOffset = tcStructFieldBitOffset[sid][fi];
+			}
 			return;
 		}
 		}
@@ -5188,10 +5174,6 @@ void tc_target(const char* start, const char* end) {
 			int chain;
 			tcCopy(gname, start, identEnd);
 			if (fi < 0) { tcErrAt(start); fprintf(stderr, "unknown struct field '%.*s'\n", (int)(fieldEnd - fieldStart), fieldStart); actionErrors++; return; }
-			if (tcStructFieldBitWidth[sid][fi] > 0) {
-				tcErrAt(start); fprintf(stderr, "bit field access through an indexed struct/pointer is not supported in this version\n");
-				actionErrors++; return;
-			}
 			/* SCHREIBEN AUF EIN const-FELD (2026-09-07). Bei einem
 			   ZEIGERfeld ist nur der Pointee konstant -- "s.cp = b" bleibt
 			   also erlaubt, und tcStructFieldConst ist dort 0; das Schreiben
@@ -5222,6 +5204,10 @@ void tc_target(const char* start, const char* end) {
 			}
 			tcTargetType = tcStructFieldTypes[sid][fi];
 			tcTargetIndirect = 1;
+			if (tcStructFieldBitWidth[sid][fi] > 0) {
+				tcTargetBitWidth = tcStructFieldBitWidth[sid][fi];
+				tcTargetBitOffset = tcStructFieldBitOffset[sid][fi];
+			}
 			return;
 		}
 	}
@@ -6677,17 +6663,27 @@ void tc_longlong(const char* start, const char* end) {
 }
 
 /* Bitfelder (2026-09-17). Layout gemessen gegen echten xcc (siehe
-   tcStructFieldBitWidth-Kommentar): nur int/unsigned int als Basistyp, ein
-   Bitfeld darf keine Arraygroesse tragen (s. tc_structfield). Breite 0 oder
-   > 32 ist kein gueltiges Bitfeld. */
+   tcStructFieldBitWidth-Kommentar): int/unsigned int/char/short als
+   Basistyp (2026-09-18 auf char/short erweitert -- gemessen gegen echten
+   xcc: derselbe 1/2/4-Byte-Wachstumslauf gilt UNABHAENGIG vom deklarierten
+   Basistyp, sogar bei GEMISCHTEN Basistypen im selben Lauf, "char a:3;
+   int b:5;" ist bei xcc genauso 1 Byte wie "int a:3; int b:5;"). Bitfelder
+   auf char/short zaehlen dabei bewusst immer als UNSIGNED: 'c'/'h' tragen
+   in diesem Typsystem keine eigene Vorzeicheninformation ("unsigned char"
+   UND "signed char" landen beide auf demselben Tag 'c', s. tc_type), eine
+   echte Unterscheidung waere hier nicht verlaesslich moeglich -- plain-char-
+   Bitfelder sind ohnehin implementation-defined (C89 3.5.2.1). Ein Bitfeld
+   darf keine Arraygroesse tragen (s. tc_structfield). Breite 0 oder > 32
+   ist kein gueltiges Bitfeld. */
 void tc_bitfield(const char* start, const char* end) {
 	const char* p = start + 1; /* hinter ":" */
 	int width = tcConstArrayLen(&p, end);
 	if (width <= 0 || width > 32) {
 		tcErrAt(start); fprintf(stderr, "bit field width must be between 1 and 32\n"); actionErrors++; return;
 	}
-	if (tcCurrentType.pointers || (tcCurrentType.base != 'i' && tcCurrentType.base != 'u')) {
-		tcErrAt(start); fprintf(stderr, "bit fields are only supported on int/unsigned int in this version\n"); actionErrors++; return;
+	if (tcCurrentType.pointers || (tcCurrentType.base != 'i' && tcCurrentType.base != 'u' &&
+	                               tcCurrentType.base != 'c' && tcCurrentType.base != 'h')) {
+		tcErrAt(start); fprintf(stderr, "bit fields are only supported on int/unsigned int/char/short in this version\n"); actionErrors++; return;
 	}
 	tcPendingBitWidth = width;
 }
