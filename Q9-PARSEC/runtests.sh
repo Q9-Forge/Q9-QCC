@@ -1598,6 +1598,24 @@ if command -v python3 >/dev/null 2>&1; then
 		# eindimensionaler Array-Parameter und ein echter Doppelzeiger.
 		tc_check 'int f(int m[]){ return m[2]; } int main(){ int a[3]; a[2]=6; putint(f(a)); }' '6'
 		tc_check 'int main(){ int v; int *r; int **p; v=9; r=&v; p=&r; putint(p[0][0]); }' '9'
+		# Zeiger auf Array (2026-09-17), "int (*p)[3];" -- gemessen: 14 der 1917
+		# MWOS-Quellen, vorher STUMMER Parse-Fehler. p ist ein Zeiger (EIN Slot),
+		# traegt aber die Zeilenlaenge im selben Mechanismus wie ein
+		# mehrdimensionaler Array-Parameter -- diskriminierend wie oben: alle
+		# Zellen unterscheidbar, damit eine vertauschte/fehlende Zeilenrechnung
+		# auffiele. NUR lokale Variablen in dieser Version -- als PARAMETER
+		# ("int f(int (*p)[3])") teilt sich die Form ihr Praefix "type ( *" mit
+		# der bestehenden fnPtrParam-Regel (Funktionszeiger-Parameter); das ist
+		# ein eigener, separat zu verifizierender Schritt (Backtracking-Risiko
+		# wie beim K&R-vs-normalParams-Fund), bewusst nicht Teil dieser Version.
+		tc_check 'int m[2][3]; int main(){ int (*p)[3]; m[0][0]=1;m[0][1]=2;m[0][2]=3;m[1][0]=4;m[1][1]=5;m[1][2]=6; p=m; putint(p[0][0]*100+p[0][2]*10+p[1][2]); }' '136'
+		tc_check 'int main(){ int a[2][3]; int (*p)[3]; a[0][0]=1;a[0][1]=2;a[0][2]=3;a[1][0]=4;a[1][1]=5;a[1][2]=6; p=a; p[1][0]=99; putint(a[1][0]); putint(a[1][1]); putint(a[0][0]); }' '99\n5\n1'
+		tc_check 'int main(){ int a[2][3][4]; int (*p)[3][4]; a[1][2][3]=9; p=a; putint(p[1][2][3]); }' '9'
+		if build/qcc_p 'int main(){ void (*p)[3]; return 0; }' 2>&1 | grep -q "void is not a valid variable type"; then
+			echo "ok    qcc: Zeiger auf Array von void wird diagnostiziert"
+		else
+			echo "FAIL  qcc: Zeiger auf Array von void wird NICHT gemeldet"; tcfail=1; fail=1
+		fi
 		# Ab der ZWEITEN Dimension ist die Groesse Pflicht -- ohne sie gibt es
 		# keine Zeilenlaenge und damit keine Indexrechnung.
 		if build/qcc_p 'int f(int m[2][]){ return 0; } int main(){ putint(1); }' 2>&1 | grep -q "needs a size"; then
