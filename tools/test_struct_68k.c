@@ -103,6 +103,13 @@ static int mixedParamsB(int (*fp)(int), int (*p)[2]) { return fp(3) + p[0][1]; }
    Skalierung"). rowStepParam deckt den DECAYED-2D-ARRAY-PARAMETER-Fall
    ab (dieselbe Ablage wie int(*p)[N], s. tc_param). */
 static int rowStepParam(int (*p)[3]) { p = p + 1; return p[0][0]*100 + p[0][1]*10 + p[0][2]; }
+static int fpInc(int x) { return x + 1; }
+/* 79-80 (2026-09-17): Zeiger auf Funktionszeiger, "int (**q)(int)" --
+   vorher an drei Stellen stumm abgelehnt (lokale Variable, Parameter,
+   typedef): die Grammatik kannte nur GENAU EIN "*" vor dem Namen.
+   fpSetter deckt die PARAMETER-Form ab (haeufigstes Korpusmuster: ein
+   Funktionszeiger als "out"-Parameter). */
+static void fpSetter(int (**out)(int)) { *out = fpInc; }
 static int m2dMix(int m[2][3])      { return m[0][0]*100 + m[0][2]*10 + m[1][0]; }
 static void m2dSchreiben(int m[2][3]) { m[1][1] = 42; }
 static int m2dOffen(int m[][3])     { return m[1][0]; }
@@ -432,6 +439,12 @@ int main(void)
 	            for (i = 0; i < 5; i = i + 1) a[i] = i * 11;
 	            q = a; q = q + 2;
 	            val(*q); }
+
+	/* 79-80 Zeiger auf Funktionszeiger, "int (**q)(int)" */
+	mark(79); { int (*f)(int); int (**q)(int); int (*g)(int);
+	            f = fpInc; q = &f; g = *q;
+	            val(g(4)); }
+	mark(80); { int (*f)(int); fpSetter(&f); val(f(4)); }
 
 	return 0;
 }
