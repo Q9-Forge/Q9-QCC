@@ -375,5 +375,17 @@ int main(void)
 	mark(47); { val(ginit.a); }
 	mark(48); { val(ginit.b); }
 
+	/* 69-71 ZEIGER AUF ARRAY, "int (*p)[3];" (2026-09-17) -- p ist ein
+	   Zeiger (EIN Slot), traegt die Zeilenlaenge im selben Mechanismus wie
+	   ein mehrdimensionaler Array-Parameter oben. Nur lokale Variablen in
+	   dieser Version. */
+	mark(69); { int a[2][3]; int (*p)[3];
+	            a[0][0]=1; a[1][0]=2; p=a; p[1][0]=99; val(a[1][0]); }
+	mark(70); { int a[2][3][4]; int (*p)[3][4];
+	            a[1][2][3]=70; p=a; val(p[1][2][3]); }
+	mark(71); { int a[2][3]; int (*p)[3];
+	            a[0][0]=1; a[0][1]=9; a[0][2]=3; a[1][0]=9; a[1][1]=9; a[1][2]=6;
+	            p=a; val(p[0][0]*100+p[0][2]*10+p[1][2]); }
+
 	return 0;
 }
