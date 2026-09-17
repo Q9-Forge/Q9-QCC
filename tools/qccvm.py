@@ -347,29 +347,45 @@ def run(prog):
             ip += 1
         elif op == "BFLOAD":
             # Bitfeld lesen: args = [Bit-Offset ab MSB, Breite, signed 0/1].
-            # Speichereinheit ist immer 4 Byte (nur int/unsigned int, s.
-            # tc_bitfield) -- dieselbe {offset:width}-Zaehlung wie die
-            # 68020-Befehle BFEXTU/BFEXTS, gegen die das Layout gemessen ist
-            # (docs/FLOAT_PLAN_de.md gilt hier nicht, s. qcc.lextab-Kommentar
-            # bei tcStructFieldBitWidth).
+            # Die Speichereinheit ist 1/2/4 Byte (s. tcBitfieldRunBits im
+            # Frontend) -- dieselbe {offset:width}-Zaehlung wie die
+            # 68020-Befehle BFEXTU/BFEXTS, gegen die das Layout gemessen ist.
+            # WICHTIG: der Block ist IMMER byte-granular abgelegt (LARRAY/
+            # GARRAY ... c ..., s. tcEmitStructCopy & Co) -- Zugriff deshalb
+            # ueber tag "c" (Index == Byte-Offset) und die noetigen Bytes
+            # selbst zu einem Wort zusammensetzen, NIE ueber tag "i" (das
+            # verlangt durch-4-teilbare Offsets, die ein array-indizierter
+            # Bitfeld-Zugriff mit einer schmalen Struct-Groesse nicht immer
+            # hat -- "qccvm: unaligned pointer" waere die Folge, obwohl der
+            # Zugriff auf echter Hardware voellig normal ist).
             bitoff = int(args[0]); width = int(args[1]); signed = int(args[2])
-            block, index = pointer_index(opstack.pop(), "i")
-            raw = block[index] & 0xFFFFFFFF
-            shift = 32 - bitoff - width
+            unit_bytes = 1 if bitoff + width <= 8 else 2 if bitoff + width <= 16 else 4
+            block, index = pointer_index(opstack.pop(), "c")
+            if index < 0 or index + unit_bytes > len(block):
+                raise RuntimeError("qccvm: BFLOAD ausserhalb des Objekts")
+            raw = 0
+            for i in range(unit_bytes):
+                raw = (raw << 8) | (block[index + i] & 0xff)
+            shift = unit_bytes * 8 - bitoff - width
             val = (raw >> shift) & ((1 << width) - 1)
             if signed and (val & (1 << (width - 1))):
                 val -= 1 << width
             opstack.append(val); ip += 1
         elif op in ("BFSTORE", "BFSTOREKEEP"):
             bitoff = int(args[0]); width = int(args[1]); signed = int(args[2])
-            value = opstack.pop(); block, index = pointer_index(opstack.pop(), "i")
-            raw = block[index] & 0xFFFFFFFF
-            shift = 32 - bitoff - width
+            unit_bytes = 1 if bitoff + width <= 8 else 2 if bitoff + width <= 16 else 4
+            value = opstack.pop(); block, index = pointer_index(opstack.pop(), "c")
+            if index < 0 or index + unit_bytes > len(block):
+                raise RuntimeError("qccvm: BFSTORE ausserhalb des Objekts")
+            raw = 0
+            for i in range(unit_bytes):
+                raw = (raw << 8) | (block[index + i] & 0xff)
+            shift = unit_bytes * 8 - bitoff - width
+            unit_mask = (1 << (unit_bytes * 8)) - 1
             mask = ((1 << width) - 1) << shift
-            raw = (raw & ~mask) | ((value & ((1 << width) - 1)) << shift)
-            if raw & 0x80000000:
-                raw -= 1 << 32
-            block[index] = raw
+            raw = (raw & (~mask & unit_mask)) | ((value & ((1 << width) - 1)) << shift)
+            for i in range(unit_bytes):
+                block[index + i] = (raw >> ((unit_bytes - 1 - i) * 8)) & 0xff
             if op == "BFSTOREKEEP":
                 result = value & ((1 << width) - 1)
                 if signed and (result & (1 << (width - 1))):

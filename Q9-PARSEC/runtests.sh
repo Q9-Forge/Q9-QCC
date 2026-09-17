@@ -1089,18 +1089,32 @@ if command -v python3 >/dev/null 2>&1; then
 			fi
 		done
 		# BITFELDER (2026-09-17): Layout gemessen gegen echten xcc ("xcc -e=be"),
-		# s. docs/FLOAT_PLAN_de.md -- ab dem MSB der 4-Byte-Speichereinheit
-		# abwaerts, in Deklarationsreihenfolge, BFLOAD/BFSTORE auf den nativen
-		# 68020-Bitfeldbefehlen. Nur int/unsigned int, keine Arrays, keine
-		# indizierten/verketteten Zugriffe (dort weiterhin gemeldet).
+		# s. docs/FLOAT_PLAN_de.md -- ab dem MSB der Speichereinheit (1/2/4
+		# Byte, je nach kumulierten Bit) abwaerts, in Deklarationsreihenfolge,
+		# BFLOAD/BFSTORE auf den nativen 68020-Bitfeldbefehlen.
 		tc_check 'struct S { unsigned int a:3; unsigned int b:5; int c:24; }; struct S g; int main(){ g.a=1; g.b=2; g.c=-1; putint(g.a); putint(g.b); putint(g.c); }' '1
 2
 -1'
 		tc_check 'struct S { unsigned int a:3; unsigned int b:5; }; struct S g; struct S *p; int main(){ g.a=1; g.b=2; p=&g; putint(p->a); putint(p->b); }' '1
 2'
 		tc_check 'struct S { unsigned int a:3; int b:24; }; int main(){ putint(sizeof(struct S)); }' '4'
-		for q in 'struct S { unsigned a:3; }; struct S arr[2]; int main(){ int i; i=0; arr[i].a=1; return 0; }|bit field access through an indexed struct/pointer is not supported' \
-		         'struct S { char a:3; }; int main(){ return 0; }|bit fields are only supported on int/unsigned int'; do
+		# char/short als Basistyp (2026-09-18): derselbe Wachstumslauf wie
+		# int, sogar gemischt im selben Lauf -- gemessen gegen echten xcc.
+		tc_check 'struct S { unsigned char a:3; unsigned char b:5; }; int main(){ putint(sizeof(struct S)); }' '1'
+		tc_check 'struct S { unsigned char a:3; unsigned char b:6; }; int main(){ putint(sizeof(struct S)); }' '2'
+		tc_check 'struct S { unsigned short a:3; unsigned short b:14; }; int main(){ putint(sizeof(struct S)); }' '4'
+		tc_check 'struct S { unsigned char a:3; unsigned int b:5; }; struct S g; int main(){ g.a=5; g.b=17; putint(g.a); putint(g.b); }' '5
+17'
+		# Indizierter und verketteter Zugriff (2026-09-18): die Feldadresse
+		# wurde an diesen Stellen schon vorher berechnet, nur BFLOAD/BFSTORE
+		# fehlten -- jetzt ueber denselben Helfer wie beim "plain" Zugriff.
+		tc_check 'struct S { unsigned int a:3; }; struct S arr[2]; int main(){ int i; i=1; arr[i].a=5; putint(arr[i].a); }' '5'
+		tc_check 'struct S { unsigned int a:3; }; struct S buf[2]; struct S *p; int main(){ int i; p=buf; i=1; p[i].a=6; putint(p[i].a); }' '6'
+		tc_check 'struct N { struct N *n; unsigned int a:3; }; int main(){ struct N x; struct N y; x.n=&y; x.n->a=6; putint(y.a); }' '6'
+		tc_check 'struct N { struct N *n; unsigned int a:3; }; int main(){ struct N x; struct N y; struct N z; x.n=&y; y.n=&z; z.a=7; putint(x.n->n->a); }' '7'
+		# Verbleibende, bewusste Grenzen: keine Arraygroesse auf einem
+		# Bitfeld, kein Zeiger/void als Basistyp.
+		for q in 'struct S { void *p:3; }; int main(){ return 0; }|bit fields are only supported on int/unsigned int/char/short'; do
 			src="${q%%|*}"; want="${q#*|}"
 			if build/qcc_p "$src" 2>&1 | grep -qF "$want"; then
 				echo "ok    qcc: Bitfeld-Grenze wird gemeldet ($want)"
