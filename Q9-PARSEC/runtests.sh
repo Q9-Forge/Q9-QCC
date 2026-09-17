@@ -442,6 +442,22 @@ if command -v python3 >/dev/null 2>&1; then
 				tcfail=1; fail=1
 			fi
 		}
+		tc_check68() {
+			tccount=$((tccount + 1))
+			if build/qcc_p "$1" > /tmp/tc68_$$.ir 2>/dev/null && \
+			   build/qcc_backend /tmp/tc68_$$.ir /tmp/tc68_$$.s68 >/dev/null 2>&1; then
+				got=$(python3 tools/qcc68sim.py /tmp/tc68_$$.s68 2>/dev/null)
+			else
+				got="<Uebersetzungsfehler>"
+			fi
+			rm -f /tmp/tc68_$$.ir /tmp/tc68_$$.s68
+			exp=$(printf '%b' "$2")
+			if [ "$got" != "$exp" ]; then
+				echo "FAIL  qcc(68k-Sim): [$1]"
+				echo "        erhalten: [$got]  erwartet: [$exp]"
+				tcfail=1; fail=1
+			fi
+		}
 		tc_check 'int main(){ putint(2 + 3 * 4); }'                        '14'
 		tc_check 'int main(){ putint(10 - 2 - 3); }'                       '5'
 		tc_check 'int main(){ putint((2 + 3) * 4); }'                      '20'
@@ -481,12 +497,12 @@ if command -v python3 >/dev/null 2>&1; then
 		# was genuegt, weil ein ZEIGER darauf nur die Zeigergroesse braucht.
 		# Ein Feld vom Typ "struct N" selbst bleibt abgelehnt, es kann also kein
 		# unendliches Layout entstehen.
-		tc_check 'struct N{int v; struct N *next;}; int main(){ struct N a; a.v=7; a.next=0; putint(a.v); }' '7'
+		tc_check68 'struct N{int v; struct N *next;}; int main(){ struct N a; a.v=7; a.next=0; putint(a.v); }' '7'
 		# das Kernidiom, fuer das man Selbstreferenz ueberhaupt braucht
-		tc_check 'struct N{int v; struct N *n;}; int summe(struct N *p){ int s; s=0; while(p){ s=s+p->v; p=p->n; } return s; } int main(){ struct N a; struct N b; a.v=1;b.v=2; a.n=&b; b.n=0; putint(summe(&a)); }' '3'
+		tc_check68 'struct N{int v; struct N *n;}; int summe(struct N *p){ int s; s=0; while(p){ s=s+p->v; p=p->n; } return s; } int main(){ struct N a; struct N b; a.v=1;b.v=2; a.n=&b; b.n=0; putint(summe(&a)); }' '3'
 		# Zwischenvariable statt verketteter Zugriff: "a.n->v" geht nicht, das
 		# ist aber eine ALLGEMEINE Grenze, die auch ohne Selbstreferenz besteht
-		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=2; a.n=&b; p=a.n; putint(p->v); }' '2'
+		tc_check68 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=2; a.n=&b; p=a.n; putint(p->v); }' '2'
 		# VERKETTETE MEMBER-ZUGRIFFE (2026-09-16): "p->n->v" scheiterte STUMM --
 		# die Grammatik liess nur EIN member zu und der Parser brach mit "FAIL"
 		# ab, ohne ein Wort. Die Regel liest die Kette jetzt, damit tc_varref
@@ -510,15 +526,15 @@ if command -v python3 >/dev/null 2>&1; then
 		# Muster je Stufe: PUSH offset / Basis / IPADD c, dann LOADIND p fuer
 		# jede Zwischenstufe, am Ende LOADIND <tag>. IPADD will den Zaehler
 		# unten, PADD den Zeiger -- daher der Wechsel nach der ersten Stufe.
-		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=7; a.n=&b; p=&a; putint(p->n->v); }' '7'
-		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N c; struct N *p; a.v=1;b.v=2;c.v=7; a.n=&b; b.n=&c; p=&a; putint(p->n->n->v); }' '7'
+		tc_check68 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.v=1;b.v=7; a.n=&b; p=&a; putint(p->n->v); }' '7'
+		tc_check68 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N c; struct N *p; a.v=1;b.v=2;c.v=7; a.n=&b; b.n=&c; p=&a; putint(p->n->n->v); }' '7'
 		tc_check 'struct A{int v;}; struct B{struct A *a;}; int main(){ struct A x; struct B b; x.v=7; b.a=&x; putint(b.a->v); }' '7'
-		tc_check 'struct N{int v; struct N *n;}; struct N g; int main(){ struct N b; b.v=7; g.n=&b; putint(g.n->v); }' '7'
+		tc_check68 'struct N{int v; struct N *n;}; struct N g; int main(){ struct N b; b.v=7; g.n=&b; putint(g.n->v); }' '7'
 		# und die ZIELSEITE: die Adresse bleibt stehen, gespeichert wird ueber
 		# tcTargetIndirect -- sonst waere "Lesen geht, Schreiben nicht" ein
 		# verwirrender halber Zustand
-		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.n=&b; p=&a; p->n->v=7; putint(b.v); }' '7'
-		tc_check 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; a.n=&b; a.n->v=7; putint(b.v); }' '7'
+		tc_check68 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; struct N *p; a.n=&b; p=&a; p->n->v=7; putint(b.v); }' '7'
+		tc_check68 'struct N{int v; struct N *n;}; int main(){ struct N a; struct N b; a.n=&b; a.n->v=7; putint(b.v); }' '7'
 		tc_check 'union U{int i; union U *p;}; int main(){ union U u; u.i=7; putint(u.i); }' '7'
 		# GETRENNTE VORWAERTSDEKLARATION (2026-09-16): "struct N;" ohne Rumpf ist
 		# gueltiges C89 und scheiterte STUMM. Sie meldet nur den NAMEN an --
@@ -541,7 +557,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# erlaubt, mehr sind ein Fehler.
 		tc_check 'struct S{int a; int b;}; int main(){ struct S s = {1,2}; putint(s.a*10+s.b); }' '12'
 		tc_check 'struct S{int a; int b;}; int main(){ struct S s = {7}; putint(s.a); }' '7'
-		tc_check 'struct S{char a; int b;}; int main(){ struct S s = {65,300}; putint(s.a*1000+s.b); }' '65300'
+		tc_check68 'struct S{char a; int b;}; int main(){ struct S s = {65,300}; putint(s.a*1000+s.b); }' '65300'
 		tc_check 'struct S{int a; int b;}; int main(){ struct S s = {1,2}; struct S t; t=s; putint(t.b); }' '2'
 		tc_check 'struct S{int a;}; int f(struct S s){ return s.a; } int main(){ struct S s = {9}; putint(f(s)); }' '9'
 		# GLOBALER STRUCT-INITIALISIERER (2026-09-16): "struct S g = {1,2};".
@@ -551,17 +567,25 @@ if command -v python3 >/dev/null 2>&1; then
 		# (Byte-Offset + Typtag + Wert) statt vier GINIT aus dem Frontend.
 		tc_check 'struct S{int a; int b;}; struct S g={1,2}; int main(){ putint(g.a*10+g.b); }' '12'
 		tc_check 'struct S{int a; int b;}; struct S g={7}; int main(){ putint(g.a); }' '7'
-		tc_check 'struct S{char a; int b;}; struct S g={65,300}; int main(){ putint(g.a*1000+g.b); }' '65300'
+		# tc_check68 (qcc68sim.py) kann diesen Fall NICHT pruefen: qcc68sim
+		# bildet globale dc.b-Daten als EINZELNE Byte-Eintraege ab, und
+		# "move.l (a0),d0" liest bei einem NICHT 4-Byte-ausgerichteten
+		# Offset (hier 2, seit der ABI-Angleichung moeglich) nur EINEN
+		# dieser Eintraege statt vier zu vier Byte zusammenzusetzen --
+		# dieselbe Art Modellgrenze wie bei qccvm.py, hier zum ersten Mal
+		# sichtbar. Auf echter 68030-Hardware bestaetigt korrekt (65300,
+		# 2026-09-17); Regressionsschutz jetzt in tools/test_struct_68k.c
+		# (Fall 'globaler struct-Initialisierer, int nach char').
 		tc_check 'struct S{int a;}; static struct S g={9}; int main(){ putint(g.a); }' '9'
 		tc_check 'struct S{int a; int b;}; struct S g={1,2}; int main(){ struct S t; t=g; putint(t.b); }' '2'
 		tc_check 'struct Point { int x; int y; }; int main(){ struct Point p; p.x = 10; p.y = p.x * 2; putint(p.y); }' '20'
 		tc_check 'struct Pair { char a; char b; }; int main(){ struct Pair pr; pr.a = 65; pr.b = 66; putchar(pr.a); putchar(pr.b); }' 'AB'
-		tc_check 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a = 1; m.b = 1000; m.c = 2; putint(m.b); putchar(m.a + 64); putchar(m.c + 64); }' '1000\nAB'
-		tc_check 'struct Mixed { char a; int b; }; int main(){ struct Mixed m; m.a = 1; m.b = 100; m.b += 5; m.a += 1; putint(m.b); putchar(m.a + 64); }' '105\nB'
+		tc_check68 'struct Mixed { char a; int b; char c; }; int main(){ struct Mixed m; m.a = 1; m.b = 1000; m.c = 2; putint(m.b); putchar(m.a + 64); putchar(m.c + 64); }' '1000\nAB'
+		tc_check68 'struct Mixed { char a; int b; }; int main(){ struct Mixed m; m.a = 1; m.b = 100; m.b += 5; m.a += 1; putint(m.b); putchar(m.a + 64); }' '105\nB'
 		tc_check 'typedef int MyInt; int main(){ MyInt a = 5; MyInt b = 7; putint(a + b); }' '12'
 		tc_check 'typedef int* IntPtr; int main(){ int x = 42; IntPtr p = &x; putint(*p); }' '42'
-		tc_check 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a = 1; m.b = 1000; putint(m.b + m.a); }' '1001'
-		tc_check 'typedef struct { char a; int b; } Mixed; int main(){ putint(sizeof(struct Mixed)); }' '8'
+		tc_check68 'typedef struct { char a; int b; } Mixed; int main(){ Mixed m; m.a = 1; m.b = 1000; putint(m.b + m.a); }' '1001'
+		tc_check68 'typedef struct { char a; int b; } Mixed; int main(){ putint(sizeof(struct Mixed)); }' '6'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ putint(RED); putint(GREEN); putint(BLUE); }' '0\n1\n2'
 		tc_check 'enum Color { RED, GREEN, BLUE }; int main(){ int c = GREEN; if (c == GREEN) putint(1); else putint(0); putint(BLUE - RED); }' '1\n2'
 		if build/qcc_p 'enum A { X, Y }; enum B { X, Z }; int main(){ putint(X); }' 2>&1 | grep -q 'duplicate enum constant'; then
@@ -1274,7 +1298,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# Zeigergroesse, wohl aber, dass die symbolische Form ueberhaupt
 		# korrekt aufgeloest wird (ein unaufgeloestes "0+3P" gibt 0).
 		tc_check 'struct S { int a; char *p; char *q; int b; }; int main(){ struct S s; s.b = 77; putint(s.b); }' '77'
-		tc_check 'struct S { char c; char *p; int n; }; int main(){ struct S s; s.c = 3; s.n = 9; putint(s.c + s.n); }' '12'
+		tc_check68 'struct S { char c; char *p; int n; }; int main(){ struct S s; s.c = 3; s.n = 9; putint(s.c + s.n); }' '12'
 		if build/qcc_p 'int main(){ enum Nope x; }' 2>&1 | grep -q 'unknown enum'; then
 			echo "ok    qcc: unbekannter enum-Typ wird diagnostiziert"
 		else
@@ -1308,7 +1332,7 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'struct A{int v;}; struct B{struct A *ap;}; struct C{struct B b;}; int main(){ struct A a; struct C c; a.v=3; c.b.ap=&a; putint(c.b.ap->v); }' '3'
 		tc_check 'struct A{int v;}; struct B{struct A a;}; int main(){ struct B b; struct B *p; b.a.v=4; p=&b; putint(p->a.v); }' '4'
 		tc_check 'struct I{int a;}; struct O{struct I in;int c;}; struct O g; int main(){ g.in.a=4; g.c=5; putint(g.in.a); putint(g.c); }' '4\n5'
-		tc_check 'struct I{char c; int a;}; struct O{struct I in; int z;}; int main(){ struct O o; o.in.c=65; o.in.a=7; o.z=9; putint(o.in.c); putint(o.in.a); putint(o.z); }' '65\n7\n9'
+		tc_check68 'struct I{char c; int a;}; struct O{struct I in; int z;}; int main(){ struct O o; o.in.c=65; o.in.a=7; o.z=9; putint(o.in.c); putint(o.in.a); putint(o.z); }' '65\n7\n9'
 		# Ein struct kann sich nicht selbst per WERT enthalten (unendlich) --
 		# ueberhaupt formulierbar erst, seit der Name VOR dem Rumpf registriert
 		# wird. Ein ZEIGER auf sich selbst bleibt richtig und erlaubt.
@@ -1340,7 +1364,7 @@ if command -v python3 >/dev/null 2>&1; then
 		# Array-Feld wird diagnostiziert (wie in echtem C nicht erlaubt).
 		tc_check 'struct Rec { char name[8]; int id; }; int main(){ putint(sizeof(struct Rec)); }' '12'
 		tc_check 'struct Rec { char name[8]; int id; }; int main(){ struct Rec r; r.id = 42; char *p = r.name; p[0] = 65; p[1] = 66; putint(r.id); putchar(p[0]); putchar(p[1]); }' '42\nAB'
-		tc_check 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' '1\n1000\n9\n12'
+		tc_check68 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' '1\n1000\n9\n10'
 		if build/qcc_p 'struct Rec { char name[8]; }; int main(){ struct Rec r; struct Rec r2; r.name = r2.name; }' 2>&1 | grep -q 'cannot assign to array field'; then
 			echo "ok    qcc: Zuweisung an ganzes Array-Feld wird diagnostiziert"
 		else
@@ -3433,7 +3457,7 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/
 	if build/qcc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/qcc_struct_arrfield.ir && \
 		build/qcc_backend build/qcc_struct_arrfield.ir build/qcc_struct_arrfield.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_struct_arrfield.bin build/qcc_struct_arrfield.s68 2>/dev/null && \
-		[ "$(python3 tools/qcc68sim.py build/qcc_struct_arrfield.s68 2>/dev/null)" = "$(printf '1\n1000\n9\n12')" ]; then
+		[ "$(python3 tools/qcc68sim.py build/qcc_struct_arrfield.s68 2>/dev/null)" = "$(printf '1\n1000\n9\n10')" ]; then
 		echo "ok    qcc struct 68000: Array-Feld (char buf[4]) korrekt"
 	else
 		echo "FAIL  qcc struct 68000: Array-Feld fehlerhaft"; fail=1
@@ -3879,7 +3903,7 @@ if [ -x build/qcc_arm64_backend ]; then
 	if build/qcc_p 'struct Rec { char tag; int value; char buf[4]; }; int main(){ struct Rec r; r.tag = 1; r.value = 1000; char *p = r.buf; p[0]=9; putint(r.tag); putint(r.value); putint(p[0]); putint(sizeof(struct Rec)); }' > build/qcc_struct_arrfield_arm64.ir && \
 		build/qcc_arm64_backend build/qcc_struct_arrfield_arm64.ir build/qcc_struct_arrfield_arm64.s && \
 		clang -arch arm64 -nostartfiles -Wl,-e,_start -o build/qcc_struct_arrfield_arm64 build/qcc_struct_arrfield_arm64.s runtime/arm64_darwin/start.s 2>/dev/null && \
-		[ "$(build/qcc_struct_arrfield_arm64)" = "$(printf '1\n1000\n9\n12')" ]; then
+		[ "$(build/qcc_struct_arrfield_arm64)" = "$(printf '1\n1000\n9\n10')" ]; then
 		echo "ok    qcc struct ARM64: Array-Feld (char buf[4]) korrekt"
 	else
 		echo "FAIL  qcc struct ARM64: Array-Feld fehlerhaft"; fail=1
