@@ -345,6 +345,37 @@ def run(prog):
             block[index] = value
             if op == "STOREINDKEEP": opstack.append(value)
             ip += 1
+        elif op == "BFLOAD":
+            # Bitfeld lesen: args = [Bit-Offset ab MSB, Breite, signed 0/1].
+            # Speichereinheit ist immer 4 Byte (nur int/unsigned int, s.
+            # tc_bitfield) -- dieselbe {offset:width}-Zaehlung wie die
+            # 68020-Befehle BFEXTU/BFEXTS, gegen die das Layout gemessen ist
+            # (docs/FLOAT_PLAN_de.md gilt hier nicht, s. qcc.lextab-Kommentar
+            # bei tcStructFieldBitWidth).
+            bitoff = int(args[0]); width = int(args[1]); signed = int(args[2])
+            block, index = pointer_index(opstack.pop(), "i")
+            raw = block[index] & 0xFFFFFFFF
+            shift = 32 - bitoff - width
+            val = (raw >> shift) & ((1 << width) - 1)
+            if signed and (val & (1 << (width - 1))):
+                val -= 1 << width
+            opstack.append(val); ip += 1
+        elif op in ("BFSTORE", "BFSTOREKEEP"):
+            bitoff = int(args[0]); width = int(args[1]); signed = int(args[2])
+            value = opstack.pop(); block, index = pointer_index(opstack.pop(), "i")
+            raw = block[index] & 0xFFFFFFFF
+            shift = 32 - bitoff - width
+            mask = ((1 << width) - 1) << shift
+            raw = (raw & ~mask) | ((value & ((1 << width) - 1)) << shift)
+            if raw & 0x80000000:
+                raw -= 1 << 32
+            block[index] = raw
+            if op == "BFSTOREKEEP":
+                result = value & ((1 << width) - 1)
+                if signed and (result & (1 << (width - 1))):
+                    result -= 1 << width
+                opstack.append(result)
+            ip += 1
         elif op == "PADD":
             count = opstack.pop(); p = pointer(opstack.pop(), "addition")
             opstack.append(p.shifted(count, type_size(args[0]))); ip += 1
