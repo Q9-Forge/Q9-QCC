@@ -85,7 +85,7 @@ typedef struct TCType {
    abgedeckt (siehe SELFHOSTING_LUECKENLISTE.md, je eigener Folgeschritt): Array-Felder,
    Pointer-Felder (unterschiedliche Groesse 68k/ARM64 wuerde das frontend-berechnete Layout
    architekturabhaengig machen) und verschachtelte structs. */
-#define MAX_STRUCTS 16
+#define MAX_STRUCTS 32
 #define MAX_STRUCT_FIELDS 16
 static char tcStructNames[MAX_STRUCTS][32];
 static int  tcStructFieldCount[MAX_STRUCTS];
@@ -140,6 +140,13 @@ static char tcStructFieldConst[MAX_STRUCTS][MAX_STRUCT_FIELDS];
 static int  tcFieldConst = 0;
 static int  tcPendingBitWidth = 0;  /* von tc_bitfield gesetzt, von tc_structfield konsumiert */
 static int  tcStructByteSizeK[MAX_STRUCTS];
+/* Struct-eigene Ausrichtung (gemessen gegen echten xcc, 2026-09-17):
+   NIE ueber 2, auch fuer int/Zeiger/eingebettete structs -- xcc richtet
+   in einer Struktur alles auf hoechstens 2 aus ("struct{char c;int i;}"
+   ist 6 Byte, nicht 8) und rundet die Gesamtgroesse auf DIESE Ausrichtung,
+   nicht starr auf 4. Eingebettete structs tragen ihre EIGENE (rekursiv
+   berechnete) Ausrichtung weiter, keinen festen Wert. */
+static int  tcStructAlign[MAX_STRUCTS];
 static int  tcStructByteSizeN[MAX_STRUCTS];  /* Zeigeranteil der Structgroesse */
 static int  tcStructCount = 0;
 static char tcStructBuildName[32];
@@ -6761,6 +6768,18 @@ static int tcPtrLinear(int v4, int v8) {
 	if (v4 - TC_PTR_SMALL * tcPtrN(v4, v8) < 0) return 0;
 	return 1;
 }
+/* Kumulierte Bitbreite eines zusammenhaengenden Bitfeld-Laufs ab startIdx --
+   dieselbe Regel wie beim eigentlichen Packen unten (naechstes Feld passt
+   noch, wenn die Summe 32 nicht ueberschreitet), nur vorab bestimmt, damit
+   die Einheitgroesse schon beim ERSTEN Feld des Laufs feststeht. */
+static int tcBitfieldRunBits(int startIdx) {
+	int i, total = 0;
+	for (i = startIdx; i < tcStructBuildFieldCount && tcStructBuildFieldBitWidth[i] > 0; i++) {
+		if (total + tcStructBuildFieldBitWidth[i] > 32) break;
+		total += tcStructBuildFieldBitWidth[i];
+	}
+	return total;
+}
 static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	int i; int offset = 0; int sid = tcStructCount; int pass;
 	int predeclared = 0;
@@ -6852,39 +6871,56 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 	for (pass = 0; pass < 2; pass++) {
 		int psize;
 		int maxSize;
+		int maxAlign;
 		int bitsUsed;
 		int unitStartOffset;
+		int runTotalBits;
 		psize = pass == 0 ? TC_PTR_SMALL : TC_PTR_LARGE;
 		offset = 0;
 		maxSize = 0;
+		maxAlign = 1;
 		bitsUsed = 0;
 		unitStartOffset = 0;
+		runTotalBits = 0;
 		for (i = 0; i < tcStructBuildFieldCount; i++) {
 			TCType ft = tcStructBuildFieldTypes[i]; int elemSize, align, size;
 			/* BITFELD: eigene Ablage statt der ueblichen align/size-Rechnung.
-			   Speichereinheit ist immer 4 Byte (nur int/unsigned int, s.
-			   tc_bitfield); ein neues Feld beginnt eine neue Einheit, wenn
-			   keine offen ist oder die laufende nicht mehr genug Bit frei hat
-			   -- Bitfelder spannen nie ueber zwei Einheiten (wie bei xcc
-			   gemessen). In einer union startet jedes Bitfeld isoliert bei
-			   Offset 0, wie jedes andere union-Feld auch. */
+			   Die Speichereinheit waechst nur so gross wie fuer die KUMULIERTEN
+			   Bit des zusammenhaengenden Laufs noetig (1/2/4 Byte, gemessen
+			   gegen echten xcc: "unsigned int a:3;" allein belegt 1 Byte, nicht
+			   starr 4) -- tcBitfieldRunBits schaut dafuer beim ERSTEN Feld
+			   eines Laufs voraus. Bewusst NICHT nachgebaut: xcc laesst eine
+			   Einheit gelegentlich mit einem VORANGEHENDEN kleineren Feld
+			   ueberlappen, wenn dafuer noch Platz waere (gemessen an
+			   "struct{char c; unsigned int a:20;}" = 4 statt der hier
+			   erzeugten 5 Byte) -- ein seltener, nicht sicher rekonstruierter
+			   Sonderfall, der bewusst zugunsten von Einfachheit/Sicherheit
+			   nicht repliziert wird (kein Speicherfehler, nur ein groesseres
+			   Struct als bei xcc). In einer union startet jedes Bitfeld
+			   isoliert bei Offset 0, wie jedes andere union-Feld auch. */
 			if (tcStructBuildFieldBitWidth[i] > 0) {
 				int width = tcStructBuildFieldBitWidth[i];
 				if (tcBuildIsUnion) {
 					if (pass == 0) { tcStructFieldOffsetK[sid][i] = 0; tcStructFieldBitOffset[sid][i] = 0; }
 					else tcStructFieldOffsetN[sid][i] = 0;
 					if (4 > maxSize) maxSize = 4;
+					if (2 > maxAlign) maxAlign = 2;
 					continue;
 				}
-				if (bitsUsed == 0 || bitsUsed + width > 32) {
-					offset = (offset + 3) & ~3;
+				if (bitsUsed == 0) {
+					int unitBytes, unitAlign;
+					runTotalBits = tcBitfieldRunBits(i);
+					unitBytes = runTotalBits <= 8 ? 1 : runTotalBits <= 16 ? 2 : 4;
+					unitAlign = unitBytes > 2 ? 2 : unitBytes;
+					offset = (offset + unitAlign - 1) & ~(unitAlign - 1);
+					if (unitAlign > maxAlign) maxAlign = unitAlign;
 					unitStartOffset = offset;
-					offset += 4;
-					bitsUsed = 0;
+					offset += unitBytes;
 				}
 				if (pass == 0) { tcStructFieldOffsetK[sid][i] = unitStartOffset; tcStructFieldBitOffset[sid][i] = bitsUsed; }
 				else tcStructFieldOffsetN[sid][i] = unitStartOffset;
 				bitsUsed += width;
+				if (bitsUsed >= runTotalBits) bitsUsed = 0;
 				continue;
 			}
 			bitsUsed = 0;
@@ -6898,30 +6934,20 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 				elemSize = tcStructByteSizeK[fsid] + psize * tcStructByteSizeN[fsid];
 			} else
 			elemSize = tcIsPointer(ft) ? psize : (ft.base == 'c' || ft.base == 'b') ? 1 : ft.base == 'h' ? 2 : ft.base == 'd' ? 8 : 4;
-			/* Die AUSRICHTUNG ist bei double nicht die Groesse: xcc richtet ein
-			   double nur auf 2 Byte aus (68k-Wortausrichtung), nicht auf 8 --
-			   nachgemessen an "struct { char c; double d; }", das xcc mit 10
-			   Byte belegt und nicht mit 16. Ohne diese Unterscheidung waeren
-			   QCC-Strukturen mit double nicht mehr ABI-gleich zu xcc, und
-			   genau dort sitzen die MWOS-Header. */
-			/* Ausrichtung eines eingebetteten structs: VIER, nicht seine
-			   Groesse. QCC rundet jede Strukturgroesse ohnehin auf 4 auf
-			   (s. unten), damit ist 4 die natuerliche und zugleich
-			   sicherste Ausrichtung -- die Groesse selbst waere bei einem
-			   grossen struct eine unsinnig strenge Forderung (ein 40-Byte-
-			   struct auf 40 auszurichten).
-			   ANMERKUNG zur ABI (gemessen 17.09.2026, s. ISO_C_GAP_LIST):
-			   xcc richtet in einer Struktur ALLES auf hoechstens 2 aus und
-			   rundet die Gesamtgroesse nicht auf 4. QCC weicht davon schon
-			   bei "struct{char c; int i;}" ab (QCC 8, xcc 6) -- das ist ein
-			   VORBESTEHENDER Unterschied an jeder gemischten Struktur, nicht
-			   erst am eingebetteten struct. Hier wird bewusst die BESTEHENDE
-			   QCC-Regel fortgeschrieben: zwei verschiedene Regeln in einer
-			   Struktur waeren schlimmer als eine durchgaengig eigene. Die
-			   ABI-Angleichung ist ein eigener Schritt. */
-			align = (ft.base == 'd' && !tcIsPointer(ft)) ? 2 :
-			        (ft.base == 's' && !tcIsPointer(ft)) ? 4 : elemSize;
+			/* AUSRICHTUNG, gemessen gegen echten xcc (2026-09-17, "xcc -e=be"):
+			   NICHTS wird ueber 2 ausgerichtet -- weder int/Zeiger (4/8 Byte
+			   Groesse, aber nur 2 Byte Ausrichtung: "struct{char c;int i;}"
+			   ist bei xcc 6 Byte, nicht 8) noch double (bereits vorher bekannt:
+			   68k-Wortausrichtung) noch ein eingebettetes struct (dessen
+			   EIGENE, rekursiv berechnete Ausrichtung gilt -- selbst schon
+			   hoechstens 2, s. tcStructAlign -- statt eines festen Werts).
+			   Vorher wich QCC hier ab (int/Zeiger auf ihre volle Groesse,
+			   eingebettetes struct starr auf 4) und rundete die Gesamtgroesse
+			   zusaetzlich starr auf 4 -- beides jetzt behoben, s. unten. */
+			align = ft.base == 's' && !tcIsPointer(ft) ? tcStructAlign[ft.structId - 1] :
+			        elemSize > 2 ? 2 : elemSize;
 			size = tcStructBuildFieldArrayLen[i] > 0 ? elemSize * tcStructBuildFieldArrayLen[i] : elemSize;
+			if (align > maxAlign) maxAlign = align;
 			/* UNION: alle Felder beginnen bei 0 und teilen sich denselben
 			   Speicher; die Groesse ist die des groessten Felds. Sonst wie
 			   bei einer struct -- und weil die union auch als struct
@@ -6939,8 +6965,9 @@ static int tcRegisterStruct(const char* nameStart, const char* nameEnd) {
 			offset += size;
 		}
 		if (tcBuildIsUnion) offset = maxSize;
-		if (pass == 0) tcStructByteSizeK[sid] = (offset + 3) & ~3;
-		else tcStructByteSizeN[sid] = (offset + 3) & ~3;
+		if (maxAlign < 1) maxAlign = 1;
+		if (pass == 0) { tcStructByteSizeK[sid] = (offset + maxAlign - 1) & ~(maxAlign - 1); tcStructAlign[sid] = maxAlign; }
+		else tcStructByteSizeN[sid] = (offset + maxAlign - 1) & ~(maxAlign - 1);
 	}
 	for (i = 0; i < tcStructBuildFieldCount; i++) tcStructFieldBitWidth[sid][i] = tcStructBuildFieldBitWidth[i];
 	/* Aus den beiden Ergebnissen k und n ableiten -- und NACHRECHNEN, statt
