@@ -1370,6 +1370,32 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		fprintf(out, "\tmove.l\t(a7)+,a0\n\tmove.l\t(a7)+,d0\n\tmove.l\t#%s,d1\n", insP->args[0]);
 		emitCall(out, "tc_mul_i32", helperTableOffset("tc_mul_i32"), serial, psectName);
 		fputs("\tadda.l\td0,a0\n\tmove.l\ta0,-(a7)\n", out);
+	} else if (strcmp(op, "BFLOAD") == 0 && insP->argc == 3) {
+		/* Bitfeld lesen -- native 68020-Befehle, byteidentisch zu dem, was
+		   ein echter Microware-xcc fuer "unsigned int a:3;" & Co erzeugt
+		   (gemessen per "xcc -e=be", s. docs/FLOAT_PLAN_de.md-Notiz und den
+		   tcStructFieldBitWidth-Kommentar im Frontend). args[0]=Bit-Offset
+		   ab MSB, args[1]=Breite, args[2]="1"=signed (bfexts) / "0"=unsigned
+		   (bfextu). Adresse liegt oben auf dem Stapel. */
+		fputs("\tmove.l\t(a7)+,a0\n", out);
+		fprintf(out, "\tbfext%s\t(a0){%s:%s},d0\n", strcmp(insP->args[2], "1") == 0 ? "s" : "u", insP->args[0], insP->args[1]);
+		fputs("\tmove.l\td0,-(a7)\n", out);
+	} else if ((strcmp(op, "BFSTORE") == 0 || strcmp(op, "BFSTOREKEEP") == 0) && insP->argc == 3) {
+		/* Bitfeld schreiben. Wert liegt oben, Adresse darunter (wie bei
+		   STOREIND). bfins nimmt den einzufuegenden Wert aus einem
+		   Datenregister -- die oberen, ausserhalb der Breite liegenden Bits
+		   von d0 ignoriert es von selbst. Fuer die KEEP-Variante wird der
+		   Wert danach per bfext[u|s] aus dem Speicher zurueckgelesen, damit
+		   der auf dem Stapel verbleibende Wert exakt dem entspricht, was ein
+		   nachfolgendes Lesen des Feldes liefern wuerde (maskiert bzw.
+		   vorzeichenerweitert), statt des rohen, unmaskierten Eingabewerts. */
+		int keep = strcmp(op, "BFSTOREKEEP") == 0;
+		fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,a0\n", out);
+		fprintf(out, "\tbfins\td0,(a0){%s:%s}\n", insP->args[0], insP->args[1]);
+		if (keep) {
+			fprintf(out, "\tbfext%s\t(a0){%s:%s},d0\n", strcmp(insP->args[2], "1") == 0 ? "s" : "u", insP->args[0], insP->args[1]);
+			fputs("\tmove.l\td0,-(a7)\n", out);
+		}
 	} else if (strcmp(op, "PDIFF") == 0 && insP->argc == 1) {
 		fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tsub.l\td1,d0\n", out);
 		if (tagSize(insP->args[0]) > 1) fprintf(out, "\tasr.l\t#%d,d0\n", tagShift(insP->args[0]));

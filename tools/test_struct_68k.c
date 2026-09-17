@@ -110,6 +110,12 @@ static int fpInc(int x) { return x + 1; }
    fpSetter deckt die PARAMETER-Form ab (haeufigstes Korpusmuster: ein
    Funktionszeiger als "out"-Parameter). */
 static void fpSetter(int (**out)(int)) { *out = fpInc; }
+/* 81-84 (2026-09-17): Bitfelder, Layout gemessen gegen echten xcc
+   ("xcc -e=be") -- BFLOAD/BFSTORE auf den nativen 68020-Befehlen
+   bfextu/bfexts/bfins. bfS teilt Byte 0 zwischen a(3 Bit)+b(5 Bit),
+   c(24 Bit, signed) belegt den Rest. */
+struct BF { unsigned int a : 3; unsigned int b : 5; int c : 24; };
+static struct BF bfg;
 static int m2dMix(int m[2][3])      { return m[0][0]*100 + m[0][2]*10 + m[1][0]; }
 static void m2dSchreiben(int m[2][3]) { m[1][1] = 42; }
 static int m2dOffen(int m[][3])     { return m[1][0]; }
@@ -445,6 +451,14 @@ int main(void)
 	            f = fpInc; q = &f; g = *q;
 	            val(g(4)); }
 	mark(80); { int (*f)(int); fpSetter(&f); val(f(4)); }
+
+	/* 81-86 Bitfelder */
+	mark(81); { bfg.a = 5; bfg.b = 17; bfg.c = -1; val(bfg.a); }
+	mark(82); val(bfg.b);
+	mark(83); val(bfg.c);
+	mark(84); { struct BF *bp; bp = &bfg; val(bp->a); }
+	mark(85); { bfg.a = 7; bfg.b = 31; bfg.c = 8388607; val(bfg.c); }
+	mark(86); val((int) sizeof(bfg));
 
 	return 0;
 }
