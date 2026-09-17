@@ -1052,20 +1052,36 @@ if command -v python3 >/dev/null 2>&1; then
 		# und die benannte Form muss unveraendert gehen
 		tc_check 'int f(int a); int main(){ putint(f(1)); } int f(int a){ return a; }' '1'
 		tc_check 'int f(int t[]); int main(){ int x[2]; x[0]=7; putint(f(x)); } int f(int t[]){ return t[0]; }' '7'
-		# BITFELDER und "long long" (2026-09-15): beide brachen vorher STILL im
-		# Parser ab -- FAIL, keine Meldung, keine Zeile. Beide sind bewusst NICHT
-		# umgesetzt (Bitfelder braeuchten Bitpacking plus maskierten Zugriff an
-		# jeder Feldzugriffsstelle fuer 5 von 4109 Korpusquellen; "long long"
-		# braucht 64-Bit-Hilfsroutinen im Backend). Die Grammatik LIEST die Form
-		# jetzt trotzdem, damit die Aktion sie ablehnen kann -- sonst gibt es
-		# keine Meldung, weil bei einem Parse-Abbruch keine Aktion laeuft.
-		for q in 'struct B { unsigned a:3; }; int main(){ return 0; }|bit fields are not supported' \
-		         'int main(){ long long x; return 0; }|long long is not supported'; do
+		# "long long" (2026-09-15): brach vorher STILL im Parser ab -- FAIL,
+		# keine Meldung, keine Zeile. Bewusst NICHT umgesetzt (braeuchte
+		# 64-Bit-Hilfsroutinen im Backend). Die Grammatik LIEST die Form
+		# trotzdem, damit die Aktion sie ablehnen kann.
+		for q in 'int main(){ long long x; return 0; }|long long is not supported'; do
 			src="${q%%|*}"; want="${q#*|}"
 			if build/qcc_p "$src" 2>&1 | grep -qF "$want"; then
 				echo "ok    qcc: nicht umgesetzte Form wird gemeldet ($want)"
 			else
 				echo "FAIL  qcc: still gescheitert statt gemeldet: $want"; tcfail=1; fail=1
+			fi
+		done
+		# BITFELDER (2026-09-17): Layout gemessen gegen echten xcc ("xcc -e=be"),
+		# s. docs/FLOAT_PLAN_de.md -- ab dem MSB der 4-Byte-Speichereinheit
+		# abwaerts, in Deklarationsreihenfolge, BFLOAD/BFSTORE auf den nativen
+		# 68020-Bitfeldbefehlen. Nur int/unsigned int, keine Arrays, keine
+		# indizierten/verketteten Zugriffe (dort weiterhin gemeldet).
+		tc_check 'struct S { unsigned int a:3; unsigned int b:5; int c:24; }; struct S g; int main(){ g.a=1; g.b=2; g.c=-1; putint(g.a); putint(g.b); putint(g.c); }' '1
+2
+-1'
+		tc_check 'struct S { unsigned int a:3; unsigned int b:5; }; struct S g; struct S *p; int main(){ g.a=1; g.b=2; p=&g; putint(p->a); putint(p->b); }' '1
+2'
+		tc_check 'struct S { unsigned int a:3; int b:24; }; int main(){ putint(sizeof(struct S)); }' '4'
+		for q in 'struct S { unsigned a:3; }; struct S arr[2]; int main(){ int i; i=0; arr[i].a=1; return 0; }|bit field access through an indexed struct/pointer is not supported' \
+		         'struct S { char a:3; }; int main(){ return 0; }|bit fields are only supported on int/unsigned int'; do
+			src="${q%%|*}"; want="${q#*|}"
+			if build/qcc_p "$src" 2>&1 | grep -qF "$want"; then
+				echo "ok    qcc: Bitfeld-Grenze wird gemeldet ($want)"
+			else
+				echo "FAIL  qcc: Bitfeld-Grenze nicht gemeldet: $want"; tcfail=1; fail=1
 			fi
 		done
 		# Was daneben liegt, muss unveraendert gehen.
