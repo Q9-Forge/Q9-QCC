@@ -489,6 +489,13 @@ static int  tcChainHandled = 0;
 static char tcAssignOp[3];
 static TCType tcValueTypes[256];
 static int  tcValueDepth = 0;
+/* Parallel zu tcValueTypes: Zeilenlaenge (in ELEMENTEN, 1 = keine
+   Sonderskalierung) des Wertes an derselben Stapelposition. Jeder
+   Push-Pfad setzt seinen Slot auf 1 zurueck -- nur der Bare-Load
+   eines Zeiger-auf-Array-Slots (tc_varref) traegt einen groesseren
+   Wert ein. So bleibt jeder bestehende Pfad byteidentisch, solange
+   er keine Zeilenlaenge kennt. */
+static int  tcValueRowLen[256];
 static TCType tcRetType;
 static int  tcArgCount = 0;
 static int  tcRetHasVal = 0;
@@ -1034,7 +1041,7 @@ static int tcFnSigForFunction(int fnIdx) {
 		tcFnSigParams[tcFnSigCount][k] = tcFunctionParamTypes[fnIdx][k];
 	return tcFnSigCount++;
 }
-static void tcTypePush(TCType type) { if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = type; else actionErrors++; }
+static void tcTypePush(TCType type) { if (tcValueDepth < 256) { tcValueRowLen[tcValueDepth] = 1; tcValueTypes[tcValueDepth++] = type; } else actionErrors++; }
 static TCType tcTypePop(void) { return tcValueDepth > 0 ? tcValueTypes[--tcValueDepth] : tcBadType(); }
 /* Die Typwert-Stacks duerfen im selbstgehosteten 68k-Pfad keine TCType-Werte
    als Funktionsargument/Rueckgabe bewegen. Stattdessen werden die vier Bytes
@@ -1045,6 +1052,7 @@ static void tcTypePush4(int base, int pointers, int structId, int pointeeConst) 
 	tcValueTypes[tcValueDepth].pointers = (unsigned char)pointers;
 	tcValueTypes[tcValueDepth].structId = (unsigned char)structId;
 	tcValueTypes[tcValueDepth].pointeeConst = (unsigned char)pointeeConst;
+	tcValueRowLen[tcValueDepth] = 1;
 	tcValueDepth++;
 }
 static void tcTypePop4(TCType* out) {
@@ -1054,6 +1062,20 @@ static void tcTypePop4(TCType* out) {
 	out->pointers = tcValueTypes[tcValueDepth].pointers;
 	out->structId = tcValueTypes[tcValueDepth].structId;
 	out->pointeeConst = tcValueTypes[tcValueDepth].pointeeConst;
+}
+/* Row-Laenge (Elemente) des OBERSTEN Stapelwertes lesen, OHNE zu poppen --
+   muss vor dem zugehoerigen tcTypePop() aufgerufen werden, s. tc_term. */
+static int tcTopRowLen(void) { return tcValueDepth > 0 ? tcValueRowLen[tcValueDepth - 1] : 1; }
+static void tcSetTopRowLen(int rowLen) { if (tcValueDepth > 0) tcValueRowLen[tcValueDepth - 1] = rowLen; }
+/* Zeilenlaenge in ELEMENTEN eines lokalen Slots -- Produkt aller Dimensionen
+   AUSSER der ersten (tcLocalArrayNDims/tcLocalArrayDims, s. tc_ptrarraydecl/
+   tc_ptrarrayparam und die mehrdimensionale Array-Parameter-Ablage). 1, wenn
+   der Slot keine solche Information traegt (gewoehnlicher Zeiger/Skalar). */
+static int tcLocalRowLenElems(int slot) {
+	int i, r = 1;
+	if (slot < 0 || tcLocalArrayNDims[slot] <= 1) return 1;
+	for (i = 0; i < tcLocalArrayNDims[slot] - 1; i++) r *= tcLocalArrayDims[slot][i];
+	return r;
 }
 static int tcCompatible4(const TCType* wanted, const TCType* got) {
 	if (wanted->base == got->base && wanted->pointers == got->pointers &&
@@ -1071,7 +1093,7 @@ static int tcCompatible4(const TCType* wanted, const TCType* got) {
 	return !wanted->pointers && !got->pointers && tcIsInteger(*wanted) && tcIsInteger(*got);
 }
 #define TC_SET_CURRENT(B, P) do { tcCurrentType.base = (unsigned char)(B); tcCurrentType.pointers = (unsigned char)(P); tcCurrentType.structId = 0; tcCurrentType.pointeeConst = 0; } while (0)
-#define TC_TYPE_PUSH(B, P, S, C) do { if (tcValueDepth < 256) { tcValueTypes[tcValueDepth].base = (unsigned char)(B); tcValueTypes[tcValueDepth].pointers = (unsigned char)(P); tcValueTypes[tcValueDepth].structId = (unsigned char)(S); tcValueTypes[tcValueDepth].pointeeConst = (unsigned char)(C); tcValueDepth++; } else actionErrors++; } while (0)
+#define TC_TYPE_PUSH(B, P, S, C) do { if (tcValueDepth < 256) { tcValueTypes[tcValueDepth].base = (unsigned char)(B); tcValueTypes[tcValueDepth].pointers = (unsigned char)(P); tcValueTypes[tcValueDepth].structId = (unsigned char)(S); tcValueTypes[tcValueDepth].pointeeConst = (unsigned char)(C); tcValueRowLen[tcValueDepth] = 1; tcValueDepth++; } else actionErrors++; } while (0)
 #define TC_TYPE_POP(OUT) do { \
 	if (tcValueDepth > 0) { \
 		tcValueDepth--; \
@@ -4191,7 +4213,7 @@ void tc_varref(const char* start, const char* end) {
 		TCType localValueType = tcLocalTypes[slot];
 		if (tcLocalArrayLen[slot]) {
 			if (!indexed) {
-				localValueType.pointers++; printf("PUSHADDR L %d\n", slot); tcTypePush(localValueType); return;
+				localValueType.pointers++; printf("PUSHADDR L %d\n", slot); tcTypePush(localValueType); tcSetTopRowLen(tcLocalRowLenElems(slot)); return;
 			}
 			if (tcCheckNDIndex(tcLocalArrayNDims[slot], tcLocalArrayDims[slot], tcCountTopIndexes(nameEnd, end)) == 2) {
 				printf("PUSHADDR L %d\nIPADD %c\n", slot, tcTypeTag(localValueType));
@@ -4230,6 +4252,11 @@ void tc_varref(const char* start, const char* end) {
 			printf("LOAD%s %d\n", tcLocalTypes[slot].pointers ? "P" : tcWordSuffixL(tcTypeTag(tcLocalTypes[slot])), slot);
 			TC_TYPE_PUSH(tcLocalTypes[slot].base, tcLocalTypes[slot].pointers,
 			             tcLocalTypes[slot].structId, tcLocalTypes[slot].pointeeConst);
+			/* Zeiger auf Array (tc_ptrarraydecl) UND decayed mehrdim.
+			   Array-Parameter (tc_param) tragen ihre Zeilenlaenge in
+			   DENSELBEN Feldern -- diese Stelle war der bisher fehlende
+			   Kanal, ueber den 'p + 1' sie in tc_term erreicht. */
+			if (tcLocalTypes[slot].pointers) tcSetTopRowLen(tcLocalRowLenElems(slot));
 		}
 	} else if ((global = tcLookupGlobal(start, identEnd)) >= 0) {
 		char name[32]; TCType globalValueType = tcGlobalTypes[global]; tcCopy(name, start, identEnd);
@@ -4266,7 +4293,7 @@ void tc_varref(const char* start, const char* end) {
 				{ printf("LOADGP %s\nIPADDN ", name); tcEmitStructSize(valueType.structId - 1); printf("\n"); }
 			else
 				printf("LOADGP %s\nPTRINDEX %c\nLOADIND %c\n", name, valueTag, valueTag);
-			if (tcValueDepth < 256) tcValueTypes[tcValueDepth++] = valueType; else actionErrors++;
+			if (tcValueDepth < 256) { tcValueRowLen[tcValueDepth] = 1; tcValueTypes[tcValueDepth++] = valueType; } else actionErrors++;
 		} else if (indexed) { tcErrAt(start); fprintf(stderr, "scalar variable cannot be indexed\n"); actionErrors++; }
 		else if (globalValueType.base == 's' && !globalValueType.pointers) {
 			/* Wie im lokalen Fall (siehe dort): eine Struct als Ganzes wird als
@@ -4436,19 +4463,46 @@ void tc_addop(const char* start, const char* end) {
 }
 
 void tc_term(const char* start, const char* end) {
+	TCType right, left;
+	int leftVoidPtr, rightVoidPtr;
+	int rightRowLen, leftRowLen;
 	(void)start; (void)end;
 	if (tcPendingAdd) {
-		TCType right = tcTypePop(), left = tcTypePop();
+		rightRowLen = tcTopRowLen();
+		right = tcTypePop();
+		leftRowLen = tcTopRowLen();
+		left = tcTypePop();
 		/* void* traegt keine Elementgroesse -- Zeigerarithmetik/-differenz waere sonst
 		   still (und falsch) mit Groesse 4 skaliert (tcTypeTag faellt fuer 'v' auf 'i'
 		   zurueck). Bewusst wie echtes C behandelt: keine Arithmetik auf void*. */
-		int leftVoidPtr = tcIsPointer(left) && !tcIsPointer(tcPointee(left)) && tcPointee(left).base == 'v';
-		int rightVoidPtr = tcIsPointer(right) && !tcIsPointer(tcPointee(right)) && tcPointee(right).base == 'v';
+		leftVoidPtr = tcIsPointer(left) && !tcIsPointer(tcPointee(left)) && tcPointee(left).base == 'v';
+		rightVoidPtr = tcIsPointer(right) && !tcIsPointer(tcPointee(right)) && tcPointee(right).base == 'v';
+		/* Zeiger auf Array (Zeilenlaenge > 1 Element, s. tcTopRowLen/
+		   tc_ptrarraydecl): "p + n" muss um GANZE Zeilen springen, nicht nur
+		   um ein Element des Zieltyps -- IPADDN (Bytegroesse als Laufzeit-
+		   konstante) statt PADD/IPADD (die nur feste Typtag-Groessen kennen).
+		   IPADDN erwartet den Zeiger OBEN, PADD dagegen ZAeHLER OBEN -- daher
+		   das SWAP im ersten Zweig (Zeiger zuerst emittiert, liegt unten).
+		   Struct-Elementtypen bewusst ausgenommen (tcElemByteSize kennt keine
+		   echte Structgroesse) -- kommt fuer diese Form nicht vor. */
 		if (tcIsPointer(left) && tcIsInteger(right) && !leftVoidPtr) {
-			printf("P%s %c\n", tcPendingAdd == '+' ? "ADD" : "SUB", tcTypeTag(tcPointee(left))); tcTypePush(left);
+			if (leftRowLen > 1 && tcPointee(left).base != 's') {
+				printf("SWAP\nIPADDN %d\n", (tcPendingAdd == '+' ? 1 : -1) * leftRowLen * tcElemByteSize(tcPointee(left)));
+			} else {
+				printf("P%s %c\n", tcPendingAdd == '+' ? "ADD" : "SUB", tcTypeTag(tcPointee(left)));
+			}
+			tcTypePush(left);
 		} else if (tcPendingAdd == '+' && tcIsInteger(left) && tcIsPointer(right) && !rightVoidPtr) {
-			printf("IPADD %c\n", tcTypeTag(tcPointee(right))); tcTypePush(right);
+			if (rightRowLen > 1 && tcPointee(right).base != 's') {
+				printf("IPADDN %d\n", rightRowLen * tcElemByteSize(tcPointee(right)));
+			} else {
+				printf("IPADD %c\n", tcTypeTag(tcPointee(right)));
+			}
+			tcTypePush(right);
 		} else if (tcPendingAdd == '-' && tcIsPointer(left) && tcIsPointer(right) && tcSameType(left, right) && !leftVoidPtr) {
+			/* Zeigerdifferenz bei Zeile-auf-Array bleibt bewusst UNSKALIERT --
+			   vorbestehende, unabhaengige Luecke (PDIFF kennt wie IPADD nur
+			   feste Typtag-Groessen, kein Laufzeit-Byte-Aequivalent bisher). */
 			printf("PDIFF %c\n", tcTypeTag(tcPointee(left))); tcTypePush(tcMakeType('i', 0));
 		} else if (tcIsInteger(left) && tcIsInteger(right)) {
 			tcTypePush(tcPromoteInteger(left, right)); printf("%s", tcPendingAdd == '+' ? "ADD\n" : "SUB\n");
