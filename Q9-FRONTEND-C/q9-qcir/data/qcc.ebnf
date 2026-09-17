@@ -460,7 +460,16 @@ varDecl   = [ registerKw ] [ constKw ] [ volatileKw ] type varDeclarator { "," v
    darf folgenlos ignoriert werden -- genau das passiert hier. Vorher
    scheiterte die Deklaration stumm. */
 registerKw = "register" .
-varDeclarator = pointerDecl localDecl [ "=" varInit ] .
+varDeclarator = ptrArrayDecl | plainVarDeclarator .
+/* Zeiger auf Array (2026-09-17), z.B. "int (*p)[3];": eine EIGENE
+   Alternative statt einer Erweiterung von localDecl -- die Klammer aendert
+   die Bindung ("(*p)[3]" = Zeiger auf ein 3er-int-Array, waehrend "*p[3]"
+   ohne Klammer ein 3er-Array von Zeigern waere, siehe pointerDecl/localDecl
+   weiter unten). Nur EIN Stern (kein "Zeiger auf Zeiger auf Array" in dieser
+   Version). Wiederverwendet arraySizeN (Groesse PFLICHT) fuer die
+   Zeilenlaengen -- dieselbe Regel, die schon paramArrayN benutzt. */
+plainVarDeclarator = pointerDecl localDecl [ "=" varInit ] .
+ptrArrayDecl = "(" "*" localName ")" arraySizeN { arraySizeN } .
 /* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
    2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
    struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
