@@ -86,6 +86,18 @@ static struct NO gno;
    gar nicht kombiniert wurden; Lesen und Schreiben lagen auf dieselbe Weise
    daneben und stimmten deshalb miteinander ueberein. */
 static int m2dLesen(int m[2][3])    { return m[1][2]; }
+/* Zeiger auf Array ALS PARAMETER (2026-09-17), "int f(int (*p)[3])". Die
+   zweite Reihenfolge (Funktionszeiger-Parameter ZUERST) ist bereits ueber
+   Q9-PARSEC/runtests.sh (isolierte Einzelprogramme) verifiziert -- hier NUR
+   eine Mischform, weil zwei VERSCHIEDENE Funktionen mit strukturgleichem
+   Funktionszeiger-Parametertyp einen eigenstaendigen, von dieser Aenderung
+   UNABHAENGIGEN Fehler auf (s. docs/FLOAT_PLAN_de.md): der zweite Aufruf
+   eines strukturell gleichen "int(*)(int)"-Parameters an einer ANDEREN
+   Funktion wird faelschlich als inkompatibel gemeldet, unabhaengig davon,
+   welche Funktion tatsaechlich uebergeben wird. */
+static int ptrArrParam(int (*p)[3])  { return p[0][0]*100 + p[1][2]; }
+static int fpParam(int x)            { return x*2; }
+static int mixedParamsA(int (*p)[2], int (*fp)(int)) { return p[0][1] + fp(3); }
 static int m2dMix(int m[2][3])      { return m[0][0]*100 + m[0][2]*10 + m[1][0]; }
 static void m2dSchreiben(int m[2][3]) { m[1][1] = 42; }
 static int m2dOffen(int m[][3])     { return m[1][0]; }
@@ -386,6 +398,14 @@ int main(void)
 	mark(71); { int a[2][3]; int (*p)[3];
 	            a[0][0]=1; a[0][1]=9; a[0][2]=3; a[1][0]=9; a[1][1]=9; a[1][2]=6;
 	            p=a; val(p[0][0]*100+p[0][2]*10+p[1][2]); }
+
+	/* 72-74 Zeiger auf Array ALS PARAMETER (2026-09-17) -- teilt sich das
+	   Praefix "type ( *" mit der Funktionszeiger-Parameter-Regel, deshalb
+	   zusaetzlich BEIDE Reihenfolgen gemischt (72 kritisch fuer die
+	   Backtracking-Trennung, s. docs/FLOAT_PLAN_de.md bzw. den
+	   K&R-vs-normalParams-Fund). */
+	mark(72); { int a[2][3]; a[0][0]=7; a[1][2]=2; val(ptrArrParam(a)); }
+	mark(73); { int a[1][2]; a[0][1]=10; val(mixedParamsA(a, fpParam)); }
 
 	return 0;
 }
