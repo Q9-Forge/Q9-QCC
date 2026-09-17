@@ -86,18 +86,17 @@ static struct NO gno;
    gar nicht kombiniert wurden; Lesen und Schreiben lagen auf dieselbe Weise
    daneben und stimmten deshalb miteinander ueberein. */
 static int m2dLesen(int m[2][3])    { return m[1][2]; }
-/* Zeiger auf Array ALS PARAMETER (2026-09-17), "int f(int (*p)[3])". Die
-   zweite Reihenfolge (Funktionszeiger-Parameter ZUERST) ist bereits ueber
-   Q9-PARSEC/runtests.sh (isolierte Einzelprogramme) verifiziert -- hier NUR
-   eine Mischform, weil zwei VERSCHIEDENE Funktionen mit strukturgleichem
-   Funktionszeiger-Parametertyp einen eigenstaendigen, von dieser Aenderung
-   UNABHAENGIGEN Fehler auf (s. docs/FLOAT_PLAN_de.md): der zweite Aufruf
-   eines strukturell gleichen "int(*)(int)"-Parameters an einer ANDEREN
-   Funktion wird faelschlich als inkompatibel gemeldet, unabhaengig davon,
-   welche Funktion tatsaechlich uebergeben wird. */
+/* Zeiger auf Array ALS PARAMETER (2026-09-17), "int f(int (*p)[3])". Beide
+   Reihenfolgen (Array-Zeiger zuerst/zuletzt) gemischt mit einem
+   Funktionszeiger-Parameter -- ehemals ein eigenstaendiger Fund (zwei
+   VERSCHIEDENE Funktionen mit strukturgleichem "int(*)(int)"-Parameter
+   meldeten den zweiten Aufruf faelschlich als inkompatibel, s.
+   tcFnSigSame), inzwischen behoben. */
 static int ptrArrParam(int (*p)[3])  { return p[0][0]*100 + p[1][2]; }
 static int fpParam(int x)            { return x*2; }
+static int fpParam2(int x)           { return x*3; }
 static int mixedParamsA(int (*p)[2], int (*fp)(int)) { return p[0][1] + fp(3); }
+static int mixedParamsB(int (*fp)(int), int (*p)[2]) { return fp(3) + p[0][1]; }
 static int m2dMix(int m[2][3])      { return m[0][0]*100 + m[0][2]*10 + m[1][0]; }
 static void m2dSchreiben(int m[2][3]) { m[1][1] = 42; }
 static int m2dOffen(int m[][3])     { return m[1][0]; }
@@ -406,6 +405,7 @@ int main(void)
 	   K&R-vs-normalParams-Fund). */
 	mark(72); { int a[2][3]; a[0][0]=7; a[1][2]=2; val(ptrArrParam(a)); }
 	mark(73); { int a[1][2]; a[0][1]=10; val(mixedParamsA(a, fpParam)); }
+	mark(74); { int a[1][2]; a[0][1]=10; val(mixedParamsB(fpParam2, a)); }
 
 	return 0;
 }
