@@ -22,8 +22,8 @@ KEEP=0
 [ "${1:-}" = "-k" ] && KEEP=1
 
 # id -> erwarteter Wert. Reihenfolge = Reihenfolge im Testprogramm.
-EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 47 48 69 70 71 72 73 74 75 76 77 78)
-EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 32 55 56 81 82 83 84 85 86 87 91 92 93 94 4 95 50 96 97 6 3 81 82 83 52 53 54 55 56 57 58 59 60 61 123 42 64 65 66 67 68 71 72 99 70 136 702 16 19 456 456 456 22)
+EXPECT_IDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 47 48 69 70 71 72 73 74 75 76 77 78 79 80)
+EXPECT_VALS=(98 3 11 98 98 98 3 98 5 7 105 63 105 2 1 41 42 7 88 1 71 72 73 74 75 32 55 56 81 82 83 84 85 86 87 91 92 93 94 4 95 50 96 97 6 3 81 82 83 52 53 54 55 56 57 58 59 60 61 123 42 64 65 66 67 68 71 72 99 70 136 702 16 19 456 456 456 22 5 5)
 EXPECT_WHAT=(
 	"Zuweisung lokal -> lokal"
 	"Initialisierung aus Variable"
@@ -103,6 +103,8 @@ EXPECT_WHAT=(
 	"Zeigerarithmetik-Skalierung: decayed 2D-Array-Parameter, p=p+1"
 	"Zeigerarithmetik-Skalierung: p=p+2 dann p=p-1 (int(*p)[3])"
 	"Gegenprobe: gewoehnlicher Zeiger ohne Zeilenlaenge unveraendert"
+	"Zeiger auf Funktionszeiger: lokale int(**q)(int), Aufruf ueber Zwischenvariable"
+	"Zeiger auf Funktionszeiger: PARAMETER-Form (out-Parameter-Muster)"
 )
 
 # Nach dem Umbau vom 2026-09-12 liegen die Werkzeuge in eigenen
