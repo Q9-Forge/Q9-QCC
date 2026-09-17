@@ -110,6 +110,14 @@ static int fpInc(int x) { return x + 1; }
    fpSetter deckt die PARAMETER-Form ab (haeufigstes Korpusmuster: ein
    Funktionszeiger als "out"-Parameter). */
 static void fpSetter(int (**out)(int)) { *out = fpInc; }
+/* 87 (2026-09-17, struct-ABI-Angleichung an xcc): globaler struct-
+   Initialisierer mit char VOR int -- b liegt jetzt bei Offset 2, nicht
+   mehr 4 (Ausrichtung hoechstens 2, wie bei echtem xcc gemessen).
+   qcc68sim.py kann diesen Fall nicht pruefen (Modellgrenze bei
+   dc.b-initialisierten Globals ausserhalb eines 4-Byte-Rasters), daher
+   hier auf echter Hardware. */
+struct AbiS { char a; int b; };
+static struct AbiS abig = { 65, 300 };
 /* 81-84 (2026-09-17): Bitfelder, Layout gemessen gegen echten xcc
    ("xcc -e=be") -- BFLOAD/BFSTORE auf den nativen 68020-Befehlen
    bfextu/bfexts/bfins. bfS teilt Byte 0 zwischen a(3 Bit)+b(5 Bit),
@@ -459,6 +467,9 @@ int main(void)
 	mark(84); { struct BF *bp; bp = &bfg; val(bp->a); }
 	mark(85); { bfg.a = 7; bfg.b = 31; bfg.c = 8388607; val(bfg.c); }
 	mark(86); val((int) sizeof(bfg));
+
+	/* 87 struct-ABI: char+int global, Offset/Groesse gegen xcc gemessen */
+	mark(87); val(abig.a * 1000 + abig.b);
 
 	return 0;
 }
