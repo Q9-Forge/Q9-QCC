@@ -1,0 +1,26 @@
+* strpbrk: first string byte belonging to the accept set, or NULL.
+* d0=string, d1=accept. Preserve d2; compare complete bytes.
+         psect qstrpbrk,0,0,0,0,0
+strpbrk:
+         move.l d2,-(a7)
+         movea.l d0,a0
+         moveq #0,d0
+sp_next
+         move.b (a0),d2
+         beq sp_done
+         movea.l d1,a1
+sp_set
+         tst.b (a1)
+         beq sp_advance
+         cmp.b (a1)+,d2
+         beq sp_found
+         bra sp_set
+sp_advance
+         addq.l #1,a0
+         bra sp_next
+sp_found
+         move.l a0,d0
+sp_done
+         move.l (a7)+,d2
+         rts
+         ends

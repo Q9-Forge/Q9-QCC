@@ -27,6 +27,13 @@ extern char* strrchr(const char*, int);
 extern char* strtok(char*, const char*);
 extern void* memset(void*, int, size_t);
 extern void* memcpy(void*, const void*, size_t);
+extern int memcmp(const void*, const void*, size_t);
+extern void* memmove(void*, const void*, size_t);
+extern void* memchr(const void*, int, size_t);
+extern char* strncat(char*, const char*, size_t);
+extern size_t strspn(const char*, const char*);
+extern size_t strcspn(const char*, const char*);
+extern char* strpbrk(const char*, const char*);
 
 /* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
 extern char* strcpy(char*, const char*);
