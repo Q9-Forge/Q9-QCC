@@ -1,0 +1,23 @@
+* strspn: length of initial bytes belonging to the accept set.
+* d0=string, d1=accept. Preserve d2; compare complete bytes.
+         psect qstrspn,0,0,0,0,0
+strspn:
+         move.l d2,-(a7)
+         movea.l d0,a0
+         moveq #0,d0
+ss_next
+         move.b (a0),d2
+         beq ss_done
+         movea.l d1,a1
+ss_set
+         tst.b (a1)
+         beq ss_done
+         cmp.b (a1)+,d2
+         bne ss_set
+         addq.l #1,d0
+         addq.l #1,a0
+         bra ss_next
+ss_done
+         move.l (a7)+,d2
+         rts
+         ends
