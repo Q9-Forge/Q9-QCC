@@ -1,0 +1,25 @@
+* strcspn: length of initial bytes not belonging to the reject set.
+* d0=string, d1=reject. Preserve d2; compare complete bytes.
+         psect qstrcspn,0,0,0,0,0
+strcspn:
+         move.l d2,-(a7)
+         movea.l d0,a0
+         moveq #0,d0
+sc_next
+         move.b (a0),d2
+         beq sc_done
+         movea.l d1,a1
+sc_set
+         tst.b (a1)
+         beq sc_advance
+         cmp.b (a1)+,d2
+         beq sc_done
+         bra sc_set
+sc_advance
+         addq.l #1,d0
+         addq.l #1,a0
+         bra sc_next
+sc_done
+         move.l (a7)+,d2
+         rts
+         ends
