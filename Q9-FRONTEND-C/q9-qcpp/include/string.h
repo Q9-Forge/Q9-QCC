@@ -33,5 +33,6 @@ extern void* memchr(const void*, int, size_t);
 extern char* strncat(char*, const char*, size_t);
 extern size_t strspn(const char*, const char*);
 extern size_t strcspn(const char*, const char*);
+extern char* strpbrk(const char*, const char*);
 
 #endif
