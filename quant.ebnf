@@ -42,12 +42,14 @@ FunctionCall        ::= Identifier "(" [ ArgList ] ")"
 ArgList             ::= Expression { "," Expression }
 Expression          ::= Term { ("+" | "-") Term }
 Term                ::= Factor { ("*" | "/") Factor }
-Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr
+Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr
 AddressOfExpr       ::= "&" Identifier
 DereferenceExpr     ::= "*" Identifier
+CastExpr            ::= "(" Type ")" Factor
 
-Type                ::= Identifier | PointerType
+Type                ::= Identifier | PointerType | ArrayType
 PointerType         ::= "*" Type
+ArrayType           ::= Identifier "[" Number "]"
 
 Identifier          ::= Letter { Letter | Digit }
 Number              ::= Digit { Digit }

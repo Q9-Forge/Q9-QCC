@@ -1,4 +1,4 @@
-// Beispiel für die Quant-Syntax mit Kontrollfluss, Sichtbarkeit und Pointern
+// Beispiel für die Quant-Syntax mit Kontrollfluss, Sichtbarkeit, Pointern, Arrays und Casting
 import namespace IO.Console;
 
 namespace Math.Geometry {
@@ -26,15 +26,21 @@ namespace Math.Geometry {
     }
 }
 
-// Beispiel für Memory-Mapped I/O und Pointer
+// Beispiel für Memory-Mapped I/O, Pointer, Arrays und Casting
 [& 0xFF0020] let UART_STATUS: int;
 
 function main(): int {
     let p: Point = Point(10, 20);
     let ptr: *Point = &p;
     
+    // Array-Deklaration
+    let buffer: int[10];
+    
     // Dereferenzierung
     let val: int = (*ptr).area();
+
+    // Expliziter Type-Cast
+    let statusPtr: *int = (*int)0xFF0020;
 
     // Zugriff auf Memory-Mapped Register
     if (UART_STATUS == 1) {
