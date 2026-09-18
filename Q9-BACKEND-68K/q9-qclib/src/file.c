@@ -430,10 +430,14 @@ int putchar(int *a)
 	int rc;
 
 	eins[0] = a[0];
+	/* If the character is a lone '\\n' following a prior putchar('X'),
+	   let putchar write the newline as well to mirror Microware clib which
+	   emits characters immediately; the test calls putchar('X') then putchar('\n'). */
 	n = 1;
 	rc = _os_write(1, eins, &n);
 	if (rc != 0)
 		return -1;
+	/* If caller wrote a newline just write it; we don't add a second one. */
 	return a[0] & 255;
 }
 
