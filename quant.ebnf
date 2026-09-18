@@ -1,12 +1,12 @@
 (* Quant9 Grammatik - Basierend auf README.md Spezifikation *)
 
-Program             ::= { ImportNamespaceDecl } { SystemBlock | ClassDecl | InterfaceDecl | FunctionDecl }
+Program             ::= { ImportNamespaceDecl } { NamespaceBlock | ClassDecl | InterfaceDecl | FunctionDecl }
 
 ImportNamespaceDecl ::= "import" "namespace" NamespacePath ";"
 NamespacePath       ::= Identifier { "." Identifier }
 
-(* System-Namensräume *)
-SystemBlock         ::= ("quant" | "qbit" | "namespace") NamespacePath "{" { ClassDecl | InterfaceDecl | FunctionDecl } "}"
+(* Namensräume *)
+NamespaceBlock      ::= "namespace" NamespacePath "{" { ClassDecl | InterfaceDecl | FunctionDecl } "}"
 
 (* Interfaces *)
 InterfaceDecl       ::= "interface" Identifier "{" { MethodSignature } "}"
@@ -28,8 +28,12 @@ Parameter           ::= Identifier ":" Type
 VariableDecl        ::= "let" Identifier ":" Type [ "=" Expression ] ";"
 Assignment          ::= Identifier "=" Expression ";"
 
+(* Kontrollfluss & Statements *)
 Block               ::= "{" { Statement } "}"
-Statement           ::= VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";"
+Statement           ::= VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";" | IfStmt | WhileStmt
+
+IfStmt              ::= "if" "(" Expression ")" Block [ "else" Block ]
+WhileStmt           ::= "while" "(" Expression ")" Block
 
 (* Ausdrücke & Basis-Typen *)
 FunctionCall        ::= Identifier "(" [ ArgList ] ")"
