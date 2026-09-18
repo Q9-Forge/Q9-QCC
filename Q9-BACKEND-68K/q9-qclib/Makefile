@@ -20,7 +20,8 @@ QCCB  ?= $(QCC)/Q9-BACKEND-68K/q9-qir68k/build/qir68k
 # Reihenfolge = Bindereihenfolge.
 # Blaetter zuletzt: os9call.r ruft nichts mehr auf. mem_c.r braucht
 # _os_srqmem daraus, steht also davor; str_c.r braucht gar nichts.
-ROFS = build/printf.r build/printf_c.r build/file.r build/file_c.r \
+ROFS = $(patsubst src/extra_%.a,build/extra_%.r,$(sort $(wildcard src/extra_*.a))) \
+       build/printf.r build/printf_c.r build/file.r build/file_c.r \
        build/str.r build/str_c.r build/ctype.r build/ctype_c.r \
        build/mem.r build/mem_c.r \
        build/iob.r build/os9call.r
@@ -50,7 +51,7 @@ build/%.r: src/%.a | build
 # ARBEITSverzeichnis, deshalb liegen beide Dateien nebeneinander in build/.
 build/q9_cstart.r: $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d | build
 	cp $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d build/
-	cd build && ../$(QR68) q9_cstart.a -o=q9_cstart.r
+	cd build && $(abspath $(QR68)) q9_cstart.a -o=q9_cstart.r
 
 build:
 	mkdir -p build
