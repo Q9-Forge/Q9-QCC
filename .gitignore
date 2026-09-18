@@ -4,6 +4,7 @@
 **/build/
 *.o
 *.a
+!Q9-BACKEND-68K/q9-qclib/src/*.a
 *.so
 *.dylib
 *.exe
