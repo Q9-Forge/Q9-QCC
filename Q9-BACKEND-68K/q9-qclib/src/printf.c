@@ -101,6 +101,9 @@ void qp_putc(int c)
 		qp_flush();
 	qp_buf[qp_len] = c;
 	qp_len = qp_len + 1;
+	/* Flush immediately on newline to avoid interleaving with direct writes */
+	if (c == 10)
+		qp_flush();
 }
 
 /* Emit at most prec characters of a string; prec < 0 means unlimited. This

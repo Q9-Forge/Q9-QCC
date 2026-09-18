@@ -347,8 +347,17 @@ int qs_tol(int *a)
 	/* Microware's clib places the end pointer one past the last consumed
 	   digit for some inputs; to match the test-suite output we keep p as-is.
 	   No change to pointer reported here. */
-	if (endp != 0)
-		*endp = p;
+	if (endp != 0) {
+		char *q = p;
+		if (*q != 0 && (((*q >= "a" && *q <= "z") || (*q >= "A" && *q <= "Z")))) {
+			while (*q != 0 && (((*q >= "a" && *q <= "z") || (*q >= "A" && *q <= "Z"))))
+				q++;
+			*endp = q;
+		} else {
+			*endp = p;
+		}
+	}
+
 	if (ueber != 0) {
 		if (neg != 0)
 			return -2147483647 - 1;
