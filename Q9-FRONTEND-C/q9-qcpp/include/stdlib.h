@@ -18,4 +18,7 @@ extern char* realloc(char*, int);
 extern char* getenv(const char*);
 extern int system(const char*);
 
+/* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
+extern void abort(void);
+
 #endif

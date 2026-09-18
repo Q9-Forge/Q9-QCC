@@ -202,4 +202,32 @@ strstr:
          move.l  a1,-(a7)
          rts
 
+* Function: strcpy -- copies a string, including the terminating NUL.
+strcpy:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_scpy
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+* Function: toupper -- converts one ASCII lowercase byte to uppercase.
+toupper:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qs_upper
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
          ends

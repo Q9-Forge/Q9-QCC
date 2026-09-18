@@ -124,6 +124,35 @@ fputc:
          move.l  a1,-(a7)
          rts
 
+* Function: putc -- functionally identical to fputc (C89 allows either a
+* function or a macro; this is the function form).
+putc:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_qf_putc
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
+* Function: putchar -- writes one character to standard output.
+putchar:
+         move.l  (a7),a1
+         move.l  d1,(a7)
+         move.l  d0,-(a7)
+         move.l  a1,-(a7)
+         pea     4(a7)
+         bsr     tc_putchar
+         addq.l  #4,a7
+         move.l  (a7)+,a1
+         addq.l  #8,a7
+         move.l  a1,-(a7)
+         rts
+
 * Function: fputs -- writes a string without a newline.
 fputs:
          move.l  (a7),a1

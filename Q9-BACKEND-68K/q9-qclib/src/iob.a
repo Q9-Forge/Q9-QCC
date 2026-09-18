@@ -60,6 +60,18 @@ exit:
          bsr     _os_exit
          rts
 
+* abort() -- C89 verlangt nur "abnormale Beendigung", keinen bestimmten
+* Status; -1 unterscheidet sich von jedem gewoehnlichen exit(status).
+* Derselbe Doppelaufruf wie bei exit, aus demselben Grund.
+abort:
+* Function: abort
+* Terminates the current process abnormally through the Q9 OS-9 wrapper.
+* Returns: Normally does not return.
+         moveq   #-1,d0
+         bsr     _os_exit
+         bsr     _os_exit
+         rts
+
          vsect
 _iob:    ds.b    512
          ends

@@ -28,4 +28,7 @@ extern char* strtok(char*, const char*);
 extern void* memset(void*, int, size_t);
 extern void* memcpy(void*, const void*, size_t);
 
+/* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
+extern char* strcpy(char*, const char*);
+
 #endif

@@ -10,4 +10,15 @@
 
 extern int tolower(int c);
 
+/* Added 2026-09-18 for the qclib STATUS.md gap-closing test (tests/hello.c
+   compares these against Microware clib). */
+extern int isdigit(int c);
+extern int isupper(int c);
+extern int islower(int c);
+extern int isxdigit(int c);
+extern int iscntrl(int c);
+extern int isgraph(int c);
+extern int ispunct(int c);
+extern int toupper(int c);
+
 #endif
