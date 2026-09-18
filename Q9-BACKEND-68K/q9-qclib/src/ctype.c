@@ -22,6 +22,8 @@
 #define C_ISPUNCT  32
 #define C_ISXDIGIT 64
 
+static int ctype_mask_of(int ch);
+
 /* Provide single-character wrappers for C89 macros used by tests. */
 int iscntrl_c(int ch) { return ctype_mask_of(ch) & C_ISCNTRL; }
 int isupper_c(int ch) { return ctype_mask_of(ch) & C_ISUPPER; }
