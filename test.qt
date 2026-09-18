@@ -1,4 +1,4 @@
-// Beispiel für die Quant-Syntax gemäß README-Spezifikation
+// Beispiel für die Quant-Syntax mit Kontrollfluss
 import namespace IO.Console;
 
 namespace Math.Geometry {
@@ -17,14 +17,24 @@ namespace Math.Geometry {
         }
 
         area(): int {
-            return this.x * this.y;
+            // Beispiel für Kontrollfluss
+            if (this.x < 0) {
+                return 0;
+            } else {
+                return this.x * this.y;
+            }
         }
     }
 }
 
 function main(): int {
     let p: Point = Point(10, 20);
-    let result: int = p.area();
+    let result: int = 0;
 
-    return result;
+    // Beispiel für eine Schleife
+    while (result < 5) {
+        result = result + 1;
+    }
+
+    return p.area();
 }
