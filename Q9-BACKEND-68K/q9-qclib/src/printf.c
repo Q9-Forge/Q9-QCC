@@ -32,7 +32,7 @@
 
 extern int _os_write(int path, char *buf, int *count);
 
-#define QP_BUF 256
+#define QP_BUF 128
 
 int qp_sink;                    /* 0 = OS-9 path, 1 = string buffer. */
 int qp_path;                    /* Destination path when qp_sink == 0. */
