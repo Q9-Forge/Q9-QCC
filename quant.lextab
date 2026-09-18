@@ -1,0 +1,50 @@
+# Lexical Table for Quant9
+# Generiert aus quant.ebnf
+
+# Keywords
+TOKEN import      "import"
+TOKEN namespace   "namespace"
+TOKEN interface   "interface"
+TOKEN class       "class"
+TOKEN implements  "implements"
+TOKEN constructor "constructor"
+TOKEN function    "function"
+TOKEN let         "let"
+TOKEN return      "return"
+TOKEN if          "if"
+TOKEN else        "else"
+TOKEN while       "while"
+TOKEN public      "public"
+TOKEN private     "private"
+
+# Operatoren & Symbole
+TOKEN LBRACE      "{"
+TOKEN RBRACE      "}"
+TOKEN LPAREN      "("
+TOKEN RPAREN      ")"
+TOKEN COLON       ":"
+TOKEN SEMICOLON   ";"
+TOKEN DOT         "."
+TOKEN ASSIGN      "="
+TOKEN PLUS        "+"
+TOKEN MINUS       "-"
+TOKEN STAR        "*"
+TOKEN SLASH       "/"
+TOKEN LBRACK      "["
+TOKEN RBRACK      "]"
+TOKEN AMPERSAND   "&"
+
+# Literale
+TOKEN Identifier  [a-zA-Z][a-zA-Z0-9]*
+TOKEN Number      [0-9]+
+TOKEN HexNumber   0x[0-9A-Fa-f]+
+
+# Operator-Prioritäten (Precedence)
+# Höhere Zahl bedeutet höhere Priorität
+PRECEDENCE 10 PLUS MINUS
+PRECEDENCE 20 STAR SLASH
+
+# Whitespace & Kommentare (werden ignoriert)
+SKIP [ \t\n\r]+
+SKIP //.*
+SKIP /\*([^*]|\*+[^*/])*\*+/
