@@ -1,0 +1,28 @@
+* memmove: overlap-safe byte copy. d0=dst, d1=src, 4(sp)=count.
+* Keep the original destination in d0 and preserve d2.
+         psect qmemmove,0,0,0,0,0
+memmove:
+         move.l d2,-(a7)
+         movea.l d0,a0
+         movea.l d1,a1
+         move.l 8(a7),d2
+         cmpa.l a1,a0
+         bls mm_forward
+         adda.l d2,a0
+         adda.l d2,a1
+mm_back
+         tst.l d2
+         beq mm_done
+         move.b -(a1),-(a0)
+         subq.l #1,d2
+         bra mm_back
+mm_forward
+         tst.l d2
+         beq mm_done
+         move.b (a1)+,(a0)+
+         subq.l #1,d2
+         bra mm_forward
+mm_done
+         move.l (a7)+,d2
+         rts
+         ends

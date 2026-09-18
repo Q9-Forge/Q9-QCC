@@ -1,0 +1,25 @@
+* strncat: append at most n source bytes and always terminate.
+* d0=destination (also result), d1=source, 4(sp)=unsigned n.
+         psect qstrncat,0,0,0,0,0
+strncat:
+         move.l d2,-(a7)
+         movea.l d0,a0
+         movea.l d1,a1
+         move.l 8(a7),d2
+sn_end
+         tst.b (a0)+
+         bne sn_end
+         subq.l #1,a0
+sn_copy
+         tst.l d2
+         beq sn_zero
+         move.b (a1)+,(a0)+
+         beq sn_done
+         subq.l #1,d2
+         bra sn_copy
+sn_zero
+         clr.b (a0)
+sn_done
+         move.l (a7)+,d2
+         rts
+         ends
