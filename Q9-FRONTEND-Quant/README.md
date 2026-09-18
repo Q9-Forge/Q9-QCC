@@ -17,7 +17,8 @@ InterfaceDecl       ::= "interface" Identifier "{" { MethodSignature } "}"
 MethodSignature     ::= Identifier "(" [ ParameterList ] ")" ":" Type ";"
 
 ; --- Klassen (Statisches, flaches Speicherlayout ohne V8-Bloat) ---
-ClassDecl           ::= "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}"
+; Optionaler Dekorator [@dynamic] aktiviert Map-basierte Eigenschaften
+ClassDecl           ::= [ "[@dynamic]" ] "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}"
 ClassMember         ::= FieldDecl | ConstructorDecl | MethodDecl
 
 FieldDecl           ::= [ "public" | "private" ] Identifier ":" Type ";"
@@ -32,7 +33,8 @@ Parameter           ::= Identifier ":" Type
 ; --- Variable mit optionalem Decorator für Memory-Mapping ---
 VariableDecl        ::= [ "[" Decorator "]" ] "let" Identifier ":" Type [ "=" Expression ] ";"
 Decorator           ::= "&" HexNumber
-Assignment          ::= Identifier "=" Expression ";"
+Assignment          ::= LValue "=" Expression ";"
+LValue              ::= Identifier | DereferenceExpr | DynamicAccessExpr
 
 Block               ::= "{" { Statement } "}"
 Statement           ::= VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";"
@@ -42,10 +44,11 @@ FunctionCall        ::= Identifier "(" [ ArgList ] ")"
 ArgList             ::= Expression { "," Expression }
 Expression          ::= Term { ("+" | "-") Term }
 Term                ::= Factor { ("*" | "/") Factor }
-Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr
+Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr | DynamicAccessExpr
 AddressOfExpr       ::= "&" Identifier
 DereferenceExpr     ::= "*" Identifier
 CastExpr            ::= "(" Type ")" Factor
+DynamicAccessExpr   ::= Identifier "[" Expression "]"
 
 Type                ::= Identifier | PointerType | ArrayType
 PointerType         ::= "*" Type

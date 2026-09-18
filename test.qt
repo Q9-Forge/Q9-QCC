@@ -1,4 +1,4 @@
-// Beispiel für die Quant-Syntax mit Kontrollfluss, Sichtbarkeit, Pointern, Arrays und Casting
+// Beispiel für die Quant-Syntax mit Kontrollfluss, Sichtbarkeit, Pointern, Arrays, Casting und dynamischen Klassen
 import namespace IO.Console;
 
 namespace Math.Geometry {
@@ -26,6 +26,12 @@ namespace Math.Geometry {
     }
 }
 
+// Beispiel für dynamische Klassen
+[@dynamic]
+class Config {
+    public id: int;
+}
+
 // Beispiel für Memory-Mapped I/O, Pointer, Arrays und Casting
 [& 0xFF0020] let UART_STATUS: int;
 
@@ -46,6 +52,12 @@ function main(): int {
     if (UART_STATUS == 1) {
         return 1;
     }
+
+    // Dynamischer Zugriff
+    let c: Config = Config();
+    let key: int = 100;
+    c[key] = 500;
+    let dynamicVal: int = c[key];
 
     return 0;
 }
