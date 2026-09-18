@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 43/140 umgesetzt (30 %).**
+**Stand: 45/140 umgesetzt (32 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -58,7 +58,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `realloc` | `stdlib.h` | 98 |  |
 | ✅ | `tolower` | `ctype.h` | 89 |  |
 | ✅ | `memcmp` | `string.h` | 87 |  |
-| ❌ | `memmove` | `string.h` | 86 |  |
+| ✅ | `memmove` | `string.h` | 86 |  |
 | ❌ | `atan` | `math.h` | 82 |  |
 | ❌ | `system` | `stdlib.h` | 81 |  |
 | ❌ | `sscanf` | `stdio.h` | 71 |  |
@@ -72,7 +72,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `ftell` | `stdio.h` | 51 |  |
 | ✅ | `strstr` | `string.h` | 48 |  |
 | ❌ | `pow` | `math.h` | 47 |  |
-| ❌ | `memchr` | `string.h` | 45 |  |
+| ✅ | `memchr` | `string.h` | 45 |  |
 | ❌ | `cosh` | `math.h` | 42 |  |
 | ❌ | `log10` | `math.h` | 41 |  |
 | ❌ | `tan` | `math.h` | 40 |  |
