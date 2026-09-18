@@ -47,7 +47,13 @@ LOADP 0              ; Übergibt die Objektadresse selbst als 'this'-Parameter
 ; --- Schritt 3: Indirekter Aufruf ---
 CALLIND 1            ; Ruft die Methode mit 1 Argument auf
 DROP                 ; Da 'void', das unbenutzte Ergebnis vom Stack werfen
-Verwende Code mit Vorsicht.5. Definition der Symboltabelle in reinem CFür die Einbindung in Ihr bestehendes, C-basiertes Parser-Frontend (parsec.cpp / C89-Strukturen) wird das folgende Symbol-Struct im neuen Quant9-Verzeichnis hinterlegt:c/* quant_symtab.h - Symboltabelle für den Quant9-Compiler (Reines C) */
+Verwende Code mit Vorsicht.5. Speichermanagement
+Die Speicherallokation folgt einer einfachen, deterministischen Regel, um die Komplexität des Compilers gering zu halten:
+- Lokale Instanzen (innerhalb von Funktionen/Methoden): Werden auf dem Stack allokiert.
+- Globale Instanzen (außerhalb von Funktionen): Werden auf dem Heap allokiert.
+Dies vereinfacht die Speicherverwaltung erheblich und vermeidet komplexe Garbage-Collection-Logik.
+
+6. Definition der Symboltabelle in reinem CFür die Einbindung in Ihr bestehendes, C-basiertes Parser-Frontend (parsec.cpp / C89-Strukturen) wird das folgende Symbol-Struct im neuen Quant9-Verzeichnis hinterlegt:c/* quant_symtab.h - Symboltabelle für den Quant9-Compiler (Reines C) */
 #ifndef QUANT_SYMTAB_H
 #define QUANT_SYMTAB_H
 
