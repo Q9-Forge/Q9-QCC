@@ -1,4 +1,4 @@
-// Beispiel für die Quant-Syntax mit Kontrollfluss
+// Beispiel für die Quant-Syntax mit Kontrollfluss und Sichtbarkeit
 import namespace IO.Console;
 
 namespace Math.Geometry {
@@ -8,15 +8,15 @@ namespace Math.Geometry {
     }
 
     class Point implements Shape {
-        x: int;
-        y: int;
+        private x: int;
+        private y: int;
 
-        constructor(x: int, y: int) {
+        public constructor(x: int, y: int) {
             this.x = x;
             this.y = y;
         }
 
-        area(): int {
+        public area(): int {
             // Beispiel für Kontrollfluss
             if (this.x < 0) {
                 return 0;

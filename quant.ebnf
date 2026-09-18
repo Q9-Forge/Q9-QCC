@@ -16,9 +16,9 @@ MethodSignature     ::= Identifier "(" [ ParameterList ] ")" ":" Type ";"
 ClassDecl           ::= "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}"
 ClassMember         ::= FieldDecl | ConstructorDecl | MethodDecl
 
-FieldDecl           ::= Identifier ":" Type ";"
-ConstructorDecl     ::= "constructor" "(" [ ParameterList ] ")" Block
-MethodDecl          ::= Identifier "(" [ ParameterList ] ")" ":" Type Block
+FieldDecl           ::= [ "public" | "private" ] Identifier ":" Type ";"
+ConstructorDecl     ::= [ "public" | "private" ] "constructor" "(" [ ParameterList ] ")" Block
+MethodDecl          ::= [ "public" | "private" ] Identifier "(" [ ParameterList ] ")" ":" Type Block
 
 (* Funktionen & Variablen *)
 FunctionDecl        ::= "function" Identifier "(" [ ParameterList ] ")" ":" Type Block
