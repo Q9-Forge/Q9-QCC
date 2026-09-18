@@ -12,8 +12,8 @@ NamespaceBlock      ::= "namespace" NamespacePath "{" { ClassDecl | InterfaceDec
 InterfaceDecl       ::= "interface" Identifier "{" { MethodSignature } "}"
 MethodSignature     ::= Identifier "(" [ ParameterList ] ")" ":" Type ";"
 
-(* Klassen *)
-ClassDecl           ::= "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}"
+(* Klassen mit optionalem Dynamic-Decorator *)
+ClassDecl           ::= [ "[@dynamic]" ] "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}"
 ClassMember         ::= FieldDecl | ConstructorDecl | MethodDecl
 
 FieldDecl           ::= [ "public" | "private" ] Identifier ":" Type ";"
@@ -28,7 +28,8 @@ Parameter           ::= Identifier ":" Type
 (* Variable mit optionalem Decorator für Memory-Mapping *)
 VariableDecl        ::= [ "[" Decorator "]" ] "let" Identifier ":" Type [ "=" Expression ] ";"
 Decorator           ::= "&" HexNumber
-Assignment          ::= Identifier "=" Expression ";"
+Assignment          ::= LValue "=" Expression ";"
+LValue              ::= Identifier | DereferenceExpr | DynamicAccessExpr
 
 (* Kontrollfluss & Statements *)
 Block               ::= "{" { Statement } "}"
@@ -42,10 +43,11 @@ FunctionCall        ::= Identifier "(" [ ArgList ] ")"
 ArgList             ::= Expression { "," Expression }
 Expression          ::= Term { ("+" | "-") Term }
 Term                ::= Factor { ("*" | "/") Factor }
-Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr
+Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr | DynamicAccessExpr
 AddressOfExpr       ::= "&" Identifier
 DereferenceExpr     ::= "*" Identifier
 CastExpr            ::= "(" Type ")" Factor
+DynamicAccessExpr   ::= Identifier "[" Expression "]"
 
 Type                ::= Identifier | PointerType | ArrayType
 PointerType         ::= "*" Type
