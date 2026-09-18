@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 49/140 umgesetzt (35 %).**
+**Stand: 54/140 umgesetzt (38 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -23,7 +23,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `sprintf` | `stdio.h` | 879 |  |
 | ✅ | `strlen` | `string.h` | 836 |  |
 | ✅ | `exit` | `stdlib.h` | 825 |  |
-| ❌ | `strcpy` | `string.h` | 773 |  |
+| ✅ | `strcpy` | `string.h` | 773 |  |
 | ✅ | `free` | `stdlib.h` | 681 |  |
 | ✅ | `strcmp` | `string.h` | 515 |  |
 | ✅ | `malloc` | `stdlib.h` | 494 |  |
@@ -38,7 +38,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `sin` | `math.h` | 214 |  |
 | ✅ | `strchr` | `string.h` | 207 |  |
 | ❌ | `atoi` | `stdlib.h` | 199 |  |
-| ❌ | `putchar` | `stdio.h` | 192 |  |
+| ✅ | `putchar` | `stdio.h` | 192 |  |
 | ❌ | `perror` | `stdio.h` | 160 |  |
 | ❌ | `fflush` | `stdio.h` | 159 |  |
 | ✅ | `isspace` | `ctype.h` | 153 |  |
@@ -47,11 +47,11 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `fgets` | `stdio.h` | 143 | bewusst NICHT clib-kompatibel: trennt an `$0a` (QCCs `\n`-Abbildung), nicht an `$0d` wie Microwares fgets -- Host-libc ist hier das gueltige Orakel, nicht clib. |
 | ✅ | `strncpy` | `string.h` | 141 |  |
 | ✅ | `fputc` | `stdio.h` | 137 |  |
-| ❌ | `abort` | `stdlib.h` | 132 |  |
+| ✅ | `abort` | `stdlib.h` | 132 |  |
 | ✅ | `isdigit` | `ctype.h` | 124 |  |
 | ❌ | `signal` | `signal.h` | 119 |  |
 | ✅ | `fputs` | `stdio.h` | 117 |  |
-| ❌ | `putc` | `stdio.h` | 113 |  |
+| ✅ | `putc` | `stdio.h` | 113 |  |
 | ❌ | `fabs` | `math.h` | 107 |  |
 | ❌ | `getenv` | `stdlib.h` | 104 |  |
 | ✅ | `puts` | `stdio.h` | 103 |  |
@@ -68,7 +68,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `time` | `time.h` | 65 |  |
 | ❌ | `fseek` | `stdio.h` | 64 |  |
 | ❌ | `strerror` | `string.h` | 55 |  |
-| ❌ | `toupper` | `ctype.h` | 54 |  |
+| ✅ | `toupper` | `ctype.h` | 54 |  |
 | ❌ | `ftell` | `stdio.h` | 51 |  |
 | ✅ | `strstr` | `string.h` | 48 |  |
 | ❌ | `pow` | `math.h` | 47 |  |
