@@ -28,5 +28,6 @@ extern char* strtok(char*, const char*);
 extern void* memset(void*, int, size_t);
 extern void* memcpy(void*, const void*, size_t);
 extern int memcmp(const void*, const void*, size_t);
+extern void* memmove(void*, const void*, size_t);
 
 #endif
