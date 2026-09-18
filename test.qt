@@ -1,32 +1,30 @@
-// Beispiel für die Quant-Syntax
-import IO.Console;
-import Math.Geometry;
+// Beispiel für die Quant-Syntax gemäß README-Spezifikation
+import namespace IO.Console;
 
-class Base {
-    id: int;
-}
+namespace Math.Geometry {
 
-class Point extends Base {
-    x: int;
-    y: int;
+    interface Shape {
+        area(): int;
+    }
 
-    /* Methode zum Verschieben des Punktes */
-    move(dx: int, dy: int): int {
-        this.x = this.x + dx;
-        this.y = this.y + dy;
-        return this.x;
+    class Point implements Shape {
+        x: int;
+        y: int;
+
+        constructor(x: int, y: int) {
+            this.x = x;
+            this.y = y;
+        }
+
+        area(): int {
+            return this.x * this.y;
+        }
     }
 }
 
 function main(): int {
-    let p: Point;
-    let offset: int = 10;
+    let p: Point = Point(10, 20);
+    let result: int = p.area();
 
-    p.x = 0;
-    p.y = 0;
-
-    // Aufruf der Methode
-    p.move(offset, 5);
-
-    return 0;
+    return result;
 }

@@ -1,40 +1,44 @@
-(* Quant9 Grammatik - Minimalistisch (Wirth-Stil) *)
+(* Quant9 Grammatik - Basierend auf README.md Spezifikation *)
 
-Program             = { ImportDecl } { Declaration } .
+Program             ::= { ImportNamespaceDecl } { SystemBlock | ClassDecl | InterfaceDecl | FunctionDecl }
 
-ImportDecl          = "import" NamespacePath ";" .
-NamespacePath       = Identifier { "." Identifier } .
+ImportNamespaceDecl ::= "import" "namespace" NamespacePath ";"
+NamespacePath       ::= Identifier { "." Identifier }
 
-Declaration         = ClassDecl | FunctionDecl | VariableDecl .
+(* System-Namensräume *)
+SystemBlock         ::= ("quant" | "qbit" | "namespace") NamespacePath "{" { ClassDecl | InterfaceDecl | FunctionDecl } "}"
 
-ClassDecl           = "class" Identifier [ "extends" Identifier ] "{" { ClassMember } "}" .
-ClassMember         = FieldDecl | MethodDecl .
+(* Interfaces *)
+InterfaceDecl       ::= "interface" Identifier "{" { MethodSignature } "}"
+MethodSignature     ::= Identifier "(" [ ParameterList ] ")" ":" Type ";"
 
-FieldDecl           = Identifier ":" Type ";" .
-MethodDecl          = Identifier "(" [ ParameterList ] ")" ":" Type Block .
+(* Klassen *)
+ClassDecl           ::= "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}"
+ClassMember         ::= FieldDecl | ConstructorDecl | MethodDecl
 
-FunctionDecl        = "function" Identifier "(" [ ParameterList ] ")" ":" Type Block .
+FieldDecl           ::= Identifier ":" Type ";"
+ConstructorDecl     ::= "constructor" "(" [ ParameterList ] ")" Block
+MethodDecl          ::= Identifier "(" [ ParameterList ] ")" ":" Type Block
 
-ParameterList       = Parameter { "," Parameter } .
-Parameter           = Identifier ":" Type .
+(* Funktionen & Variablen *)
+FunctionDecl        ::= "function" Identifier "(" [ ParameterList ] ")" ":" Type Block
+ParameterList       ::= Parameter { "," Parameter }
+Parameter           ::= Identifier ":" Type
 
-VariableDecl        = "let" Identifier ":" Type [ "=" Expression ] ";" .
+VariableDecl        ::= "let" Identifier ":" Type [ "=" Expression ] ";"
+Assignment          ::= Identifier "=" Expression ";"
 
-Block               = "{" { Statement } "}" .
+Block               ::= "{" { Statement } "}"
+Statement           ::= VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";"
 
-Statement           = VariableDecl | Assignment | ReturnStmt | CallStmt | Block .
-Assignment          = Identifier "=" Expression ";" .
-ReturnStmt          = "return" Expression ";" .
-CallStmt            = Identifier "(" [ ArgList ] ")" ";" .
-
-Expression          = Term { ("+" | "-") Term } .
-Term                = Factor { ("*" | "/") Factor } .
-Factor              = Identifier | Number | "(" Expression ")" | CallExpr .
-CallExpr            = Identifier "(" [ ArgList ] ")" .
-ArgList             = Expression { "," Expression } .
-
-Type                = Identifier .
-Identifier          = Letter { Letter | Digit } .
-Number              = Digit { Digit } .
-Letter              = "a" | ... | "z" | "A" | ... | "Z" .
-Digit               = "0" | ... | "9" .
+(* Ausdrücke & Basis-Typen *)
+FunctionCall        ::= Identifier "(" [ ArgList ] ")"
+ArgList             ::= Expression { "," Expression }
+Expression          ::= Term { ("+" | "-") Term }
+Term                ::= Factor { ("*" | "/") Factor }
+Factor              ::= Identifier | Number | "(" Expression ")" | FunctionCall
+Type                ::= Identifier
+Identifier          ::= Letter { Letter | Digit }
+Number              ::= Digit { Digit }
+Letter              ::= "a" | ... | "z" | "A" | ... | "Z"
+Digit               ::= "0" | ... | "9"
