@@ -65,8 +65,24 @@ void qp_flush(void)
 		return;
 	}
 	n = qp_len;
+	/* Handle partial writes: _os_write updates n with number of bytes written. */
 	_os_write(qp_path, qp_buf, &n);
-	qp_len = 0;
+	if (n <= 0) {
+		/* nothing written or error: drop buffer to avoid infinite loop */
+		qp_len = 0;
+		return;
+	}
+	/* If only part was written, move remaining bytes to start of buffer. */
+	if (n < qp_len) {
+		int i = 0;
+		while (n + i < qp_len) {
+			qp_buf[i] = qp_buf[n + i];
+			i++;
+		}
+		qp_len = qp_len - n;
+	} else {
+		qp_len = 0;
+	}
 }
 
 /* Function: qp_putc
