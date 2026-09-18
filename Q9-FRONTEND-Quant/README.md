@@ -29,11 +29,32 @@ FunctionDecl        ::= "function" Identifier "(" [ ParameterList ] ")" ":" Type
 ParameterList       ::= Parameter { "," Parameter }
 Parameter           ::= Identifier ":" Type
 
-VariableDecl        ::= "let" Identifier ":" Type [ "=" Expression ] ";"
+; --- Variable mit optionalem Decorator für Memory-Mapping ---
+VariableDecl        ::= [ "[" Decorator "]" ] "let" Identifier ":" Type [ "=" Expression ] ";"
+Decorator           ::= "&" HexNumber
 Assignment          ::= Identifier "=" Expression ";"
 
 Block               ::= "{" { Statement } "}"
 Statement           ::= VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";"
+
+; --- Ausdrücke & Basis-Typen ---
+FunctionCall        ::= Identifier "(" [ ArgList ] ")"
+ArgList             ::= Expression { "," Expression }
+Expression          ::= Term { ("+" | "-") Term }
+Term                ::= Factor { ("*" | "/") Factor }
+Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr
+AddressOfExpr       ::= "&" Identifier
+DereferenceExpr     ::= "*" Identifier
+
+Type                ::= Identifier | PointerType
+PointerType         ::= "*" Type
+
+Identifier          ::= Letter { Letter | Digit }
+Number              ::= Digit { Digit }
+HexNumber           ::= "0x" HexDigit { HexDigit }
+Letter              ::= "a" | ... | "z" | "A" | ... | "Z"
+Digit               ::= "0" | ... | "9"
+HexDigit            ::= "0" | ... | "9" | "A" | ... | "F"
 Verwende Code mit Vorsicht.3. Namespace- & Pfad-Management (Portabilität)Um absolute Portabilität über verschiedene Entwicklungs- und Zielplattformen (Amiga/68k, x86, RISC-V) zu garantieren, sind physische Dateipfade im Quellcode verboten.Kommandozeilen-Flags: Der Compiler Quant9 erhält Include-Pfade beim Aufruf via Parameter (z. B. quant9 main.ts -I ./libs/68k/). Der C-Parser verwaltet diese in einem einfachen, flachen String-Array (char* searchPaths[]).Namensauflösung via Hash-Maps: Das C-Frontend nutzt flache, eindeutige Schlüssel für die Symbol-Hash-Map (Name-Mangling). Ein Block quant Geometrie { class Kreis ... } wird intern unter dem Schlüssel "Geometrie.Kreis" abgelegt.Using-Suchliste: Bei einem Aufruf wie new Kreis() wandert der Parser die Liste der importierten Namespaces ab und prüft in der Hash-Map, ob die Kombination (z. B. "Geometrie.Kreis") existiert. Bei Namenskonflikten bricht der Compiler sofort mit einem Fehler ab.4. Speicherlayout & IR-Abbildung (100% Relocatable)Die Sprache erzeugt 100 % relocatiblen (positionsunabhängigen) Code. Objekte im Speicher besitzen ein vollkommen flaches, statisches Layout. Stringbasierte Eigenschaftssuchen zur Laufzeit sind ausgeschlossen. Dynamische Key-Value-Strukturen werden strikt in ein separates, integriertes Map-Objekt ausgelagert.Objekt-Layout im Heap/Stack:Offset 0: __vtable_ptr (Ein architekturabhängiger Pointer p auf die virtuelle Funktionstabelle. Wird vom Compiler nur generiert, wenn die Klasse ein Interface implementiert).Ab Offset 1 (auf Pointer-Ebene): Die deklarierten Variablen-Felder (z. B. tinte: int32).QCC Stack-IR Muster für Interface-Aufrufe (CALLIND):Da die Pointer-Breite (4 Byte auf 68k, 8 Byte auf modernen RISC-CPUs) erst im Backend oder beim Start des Interpreters (Q9-Run) aufgelöst wird, arbeitet das Frontend in parsec-C-Code ausschließlich mit logischen Indizes und den IR-Typtags (p für Pointer, i für Integer).Beim Aufruf einer Interface-Methode erzeugt der Parser das von der QCC-IR strikt vorgegebene Muster für CALLIND (Funktionszeiger ganz unten auf dem Stack, Argumente inklusive this darüber):text; --- Schritt 1: Funktionszeiger berechnen und zuunterst platzieren ---
 LOADP 0              ; Lädt das Interface-Objekt 'd' aus lokalem Slot 0
 LOADIND p            ; Holt den VTable-Zeiger (liegt bei Offset 0 des Objekts)
