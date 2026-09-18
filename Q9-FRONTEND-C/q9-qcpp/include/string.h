@@ -30,5 +30,6 @@ extern void* memcpy(void*, const void*, size_t);
 extern int memcmp(const void*, const void*, size_t);
 extern void* memmove(void*, const void*, size_t);
 extern void* memchr(const void*, int, size_t);
+extern char* strncat(char*, const char*, size_t);
 
 #endif
