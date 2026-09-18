@@ -1,4 +1,4 @@
-// Beispiel für die Quant-Syntax mit Kontrollfluss und Sichtbarkeit
+// Beispiel für die Quant-Syntax mit Kontrollfluss, Sichtbarkeit und Pointern
 import namespace IO.Console;
 
 namespace Math.Geometry {
@@ -17,7 +17,6 @@ namespace Math.Geometry {
         }
 
         public area(): int {
-            // Beispiel für Kontrollfluss
             if (this.x < 0) {
                 return 0;
             } else {
@@ -27,14 +26,20 @@ namespace Math.Geometry {
     }
 }
 
+// Beispiel für Memory-Mapped I/O und Pointer
+[& 0xFF0020] let UART_STATUS: int;
+
 function main(): int {
     let p: Point = Point(10, 20);
-    let result: int = 0;
+    let ptr: *Point = &p;
+    
+    // Dereferenzierung
+    let val: int = (*ptr).area();
 
-    // Beispiel für eine Schleife
-    while (result < 5) {
-        result = result + 1;
+    // Zugriff auf Memory-Mapped Register
+    if (UART_STATUS == 1) {
+        return 1;
     }
 
-    return p.area();
+    return 0;
 }

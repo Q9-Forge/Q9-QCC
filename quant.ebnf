@@ -25,7 +25,9 @@ FunctionDecl        ::= "function" Identifier "(" [ ParameterList ] ")" ":" Type
 ParameterList       ::= Parameter { "," Parameter }
 Parameter           ::= Identifier ":" Type
 
-VariableDecl        ::= "let" Identifier ":" Type [ "=" Expression ] ";"
+(* Variable mit optionalem Decorator für Memory-Mapping *)
+VariableDecl        ::= [ "[" Decorator "]" ] "let" Identifier ":" Type [ "=" Expression ] ";"
+Decorator           ::= "&" HexNumber
 Assignment          ::= Identifier "=" Expression ";"
 
 (* Kontrollfluss & Statements *)
@@ -40,9 +42,16 @@ FunctionCall        ::= Identifier "(" [ ArgList ] ")"
 ArgList             ::= Expression { "," Expression }
 Expression          ::= Term { ("+" | "-") Term }
 Term                ::= Factor { ("*" | "/") Factor }
-Factor              ::= Identifier | Number | "(" Expression ")" | FunctionCall
-Type                ::= Identifier
+Factor              ::= Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr
+AddressOfExpr       ::= "&" Identifier
+DereferenceExpr     ::= "*" Identifier
+
+Type                ::= Identifier | PointerType
+PointerType         ::= "*" Type
+
 Identifier          ::= Letter { Letter | Digit }
 Number              ::= Digit { Digit }
+HexNumber           ::= "0x" HexDigit { HexDigit }
 Letter              ::= "a" | ... | "z" | "A" | ... | "Z"
 Digit               ::= "0" | ... | "9"
+HexDigit            ::= "0" | ... | "9" | "A" | ... | "F"
