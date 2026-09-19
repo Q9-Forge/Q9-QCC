@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 115/140 umgesetzt (82 %).**
+**Stand: 125/140 umgesetzt (89 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -28,21 +28,21 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strcmp` | `string.h` | 515 |  |
 | ✅ | `malloc` | `stdlib.h` | 494 |  |
 | ✅ | `memcpy` | `string.h` | 454 |  |
-| ❌ | `log` | `math.h` | 417 |  |
+| 🟡 | `log` | `math.h` | 417 | transcendental FPU service is not exposed; returns zero. |
 | 🟡 | `sqrt` | `math.h` | 334 | uses the same 68881 F-line runtime path as compiler-generated double arithmetic. |
 | ✅ | `memset` | `string.h` | 332 |  |
 | ✅ | `strcat` | `string.h` | 256 |  |
 | ✅ | `fclose` | `stdio.h` | 255 |  |
 | ✅ | `fopen` | `stdio.h` | 248 |  |
-| ❌ | `cos` | `math.h` | 231 |  |
-| ❌ | `sin` | `math.h` | 214 |  |
+| 🟡 | `cos` | `math.h` | 231 | transcendental FPU service is not exposed; returns zero. |
+| 🟡 | `sin` | `math.h` | 214 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `strchr` | `string.h` | 207 |  |
 | ✅ | `atoi` | `stdlib.h` | 199 |  |
 | ✅ | `putchar` | `stdio.h` | 192 | qclib writes unbuffered to standard output. |
 | 🟡 | `perror` | `stdio.h` | 160 | qclib has no errno object; writes prefix plus a stable fallback to stderr. |
 | 🟡 | `fflush` | `stdio.h` | 159 | qclib writes unbuffered; successful no-op. |
 | ✅ | `isspace` | `ctype.h` | 153 |  |
-| ❌ | `exp` | `math.h` | 150 |  |
+| 🟡 | `exp` | `math.h` | 150 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `strncmp` | `string.h` | 147 |  |
 | 🟡 | `fgets` | `stdio.h` | 143 | bewusst NICHT clib-kompatibel: trennt an `$0a` (QCCs `\n`-Abbildung), nicht an `$0d` wie Microwares fgets -- Host-libc ist hier das gueltige Orakel, nicht clib. |
 | ✅ | `strncpy` | `string.h` | 141 |  |
@@ -59,7 +59,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `tolower` | `ctype.h` | 89 |  |
 | ✅ | `memcmp` | `string.h` | 87 |  |
 | ✅ | `memmove` | `string.h` | 86 |  |
-| ❌ | `atan` | `math.h` | 82 |  |
+| 🟡 | `atan` | `math.h` | 82 | transcendental FPU service is not exposed; returns zero. |
 | 🟡 | `system` | `stdlib.h` | 81 | qclib has no process-spawn service; returns failure. |
 | 🟡 | `sscanf` | `stdio.h` | 71 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ✅ | `calloc` | `stdlib.h` | 70 |  |
@@ -71,12 +71,12 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `toupper` | `ctype.h` | 54 |  |
 | 🟡 | `ftell` | `stdio.h` | 51 | qclib has no position query; returns failure. |
 | ✅ | `strstr` | `string.h` | 48 |  |
-| ❌ | `pow` | `math.h` | 47 |  |
+| 🟡 | `pow` | `math.h` | 47 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `memchr` | `string.h` | 45 |  |
-| ❌ | `cosh` | `math.h` | 42 |  |
-| ❌ | `log10` | `math.h` | 41 |  |
-| ❌ | `tan` | `math.h` | 40 |  |
-| ❌ | `sinh` | `math.h` | 36 |  |
+| 🟡 | `cosh` | `math.h` | 42 | transcendental FPU service is not exposed; returns zero. |
+| 🟡 | `log10` | `math.h` | 41 | transcendental FPU service is not exposed; returns zero. |
+| 🟡 | `tan` | `math.h` | 40 | transcendental FPU service is not exposed; returns zero. |
+| 🟡 | `sinh` | `math.h` | 36 | transcendental FPU service is not exposed; returns zero. |
 | ❌ | `asin` | `math.h` | 35 |  |
 | 🟡 | `gets` | `stdio.h` | 34 | historische ungebundene Schnittstelle; liest bis LF und verlangt ausreichend Zielraum. |
 | ✅ | `isupper` | `ctype.h` | 34 |  |
