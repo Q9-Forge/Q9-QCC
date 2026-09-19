@@ -76,8 +76,4 @@ fgetpos:
 fsetpos:
          moveq #-1,d0
          rts
-difftime:
-         moveq #0,d0
-         moveq #0,d1
-         rts
          ends
