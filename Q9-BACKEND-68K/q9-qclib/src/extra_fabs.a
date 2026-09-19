@@ -1,0 +1,6 @@
+* fabs: clear the IEEE-754 sign bit of a double in d0:d1.
+         psect qfabs,0,0,0,0,0
+fabs:
+         andi.l #$7fffffff,d0
+         rts
+         ends

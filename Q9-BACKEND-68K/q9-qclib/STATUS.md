@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 74/140 umgesetzt (52 %).**
+**Stand: 75/140 umgesetzt (53 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -52,7 +52,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `signal` | `signal.h` | 119 |  |
 | ✅ | `fputs` | `stdio.h` | 117 |  |
 | ❌ | `putc` | `stdio.h` | 113 |  |
-| ❌ | `fabs` | `math.h` | 107 |  |
+| ✅ | `fabs` | `math.h` | 107 |  |
 | ❌ | `getenv` | `stdlib.h` | 104 |  |
 | ✅ | `puts` | `stdio.h` | 103 |  |
 | ✅ | `realloc` | `stdlib.h` | 98 |  |
