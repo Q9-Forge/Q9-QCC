@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 78/140 umgesetzt (55 %).**
+**Stand: 79/140 umgesetzt (56 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -29,7 +29,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `malloc` | `stdlib.h` | 494 |  |
 | ✅ | `memcpy` | `string.h` | 454 |  |
 | ❌ | `log` | `math.h` | 417 |  |
-| ❌ | `sqrt` | `math.h` | 334 |  |
+| 🟡 | `sqrt` | `math.h` | 334 | uses the same 68881 F-line runtime path as compiler-generated double arithmetic. |
 | ✅ | `memset` | `string.h` | 332 |  |
 | ✅ | `strcat` | `string.h` | 256 |  |
 | ✅ | `fclose` | `stdio.h` | 255 |  |
