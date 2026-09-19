@@ -29,6 +29,8 @@ extern int mbtowc(int*, const char*, int);
 extern int wctomb(char*, int);
 extern int mbstowcs(int*, const char*, int);
 extern int wcstombs(char*, const int*, int);
+extern double atof(const char*);
+extern double strtod(const char*, char**);
 extern int rand(void);
 extern void srand(unsigned int);
 
