@@ -44,4 +44,17 @@ mktime:
 strftime:
          moveq #0,d0
          rts
+log:
+cos:
+sin:
+exp:
+atan:
+pow:
+cosh:
+log10:
+tan:
+sinh:
+         moveq #0,d0
+         moveq #0,d1
+         rts
          ends
