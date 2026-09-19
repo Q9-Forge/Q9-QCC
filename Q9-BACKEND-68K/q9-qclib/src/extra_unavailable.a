@@ -1,0 +1,15 @@
+* Stable failure returns for OS-9 services not yet exposed by qclib.
+         psect qunavailable,0,0,0,0,0
+signal:
+raise:
+clock:
+         moveq #-1,d0
+         rts
+time:
+         moveq #-1,d0
+         rts
+tmpfile:
+tmpnam:
+         moveq #0,d0
+         rts
+         ends

@@ -27,4 +27,7 @@ struct tm {
 	int tm_year;
 };
 
+extern time_t time(time_t*);
+extern long clock(void);
+
 #endif
