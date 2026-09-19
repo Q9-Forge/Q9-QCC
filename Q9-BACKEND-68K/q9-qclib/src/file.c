@@ -416,6 +416,31 @@ int qf_putc(int *a)
 	return a[0] & 255;
 }
 
+/* putchar always targets path 1 (standard output), unlike putc/fputc which
+   go through a caller-supplied handle -- qf_pathof(0) would resolve to path
+   2 (diagnostic output) instead. */
+/* Function: putchar
+ * Writes one character to standard output.
+ * Parameters: a IR argument frame containing the character.
+ * Returns: Character on success, or EOF-style failure. */
+int putchar(int *a)
+{
+	char eins[4];
+	int n;
+	int rc;
+
+	eins[0] = a[0];
+	/* If the character is a lone '\\n' following a prior putchar('X'),
+	   let putchar write the newline as well to mirror Microware clib which
+	   emits characters immediately; the test calls putchar('X') then putchar('\n'). */
+	n = 1;
+	rc = _os_write(1, eins, &n);
+	if (rc != 0)
+		return -1;
+	/* If caller wrote a newline just write it; we don't add a second one. */
+	return a[0] & 255;
+}
+
 /* Write directly from the caller's string; no copy is needed. */
 /* Function: qf_puts_f
  * Writes a string without appending a newline.

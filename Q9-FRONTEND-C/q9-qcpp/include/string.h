@@ -38,4 +38,7 @@ extern int strcoll(const char*, const char*);
 extern size_t strxfrm(char*, const char*, size_t);
 extern char* strerror(int);
 
+/* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
+extern char* strcpy(char*, const char*);
+
 #endif

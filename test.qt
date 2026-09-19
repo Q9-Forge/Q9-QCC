@@ -1,0 +1,32 @@
+// Beispiel für die Quant-Syntax
+import IO.Console;
+import Math.Geometry;
+
+class Base {
+    id: int;
+}
+
+class Point extends Base {
+    x: int;
+    y: int;
+
+    /* Methode zum Verschieben des Punktes */
+    move(dx: int, dy: int): int {
+        this.x = this.x + dx;
+        this.y = this.y + dy;
+        return this.x;
+    }
+}
+
+function main(): int {
+    let p: Point;
+    let offset: int = 10;
+
+    p.x = 0;
+    p.y = 0;
+
+    // Aufruf der Methode
+    p.move(offset, 5);
+
+    return 0;
+}

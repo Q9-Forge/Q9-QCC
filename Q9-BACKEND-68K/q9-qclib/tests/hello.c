@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 int vorz(int v)
 {
@@ -186,6 +187,33 @@ int main()
 	buf[i] = 0;
 	printf("zurueck %d: %s\n", n, buf);
 	fclose(fp);
+
+	/* Gap-closing batch 1 (2026-09-18, STATUS.md): ctype completion,
+	   strcpy, putchar/putc. abort() is NOT here -- it does not return,
+	   so it gets its own dedicated test instead of this shared one. */
+	printf("ctype %d %d %d %d %d %d %d %d\n",
+	       isdigit('5'), isdigit('a'), isupper('A'), isupper('a'),
+	       islower('a'), islower('A'), isxdigit('f'), isxdigit('g'));
+	printf("ctype2 %d %d %d %d %d\n",
+	       iscntrl(9), iscntrl('a'), isgraph(' '), isgraph('a'),
+	       ispunct('.'));
+	printf("toupper %c %c %c\n", toupper('a'), toupper('A'), toupper('9'));
+
+	strcpy(sbuf, "kopiert");
+	printf("strcpy %s\n", sbuf);
+
+	putchar('X');
+	putchar('\n');
+
+	fp = fopen("/dd/qftest3.txt", "w");
+	if (fp == 0) {
+		printf("fopen w3 geht nicht\n");
+		return 1;
+	}
+	n = putc('Y', fp);
+	fclose(fp);
+	printf("putc %d\n", n);
+
 	/* ONE END MARKER used by emulator runs to detect that the
 	   Programm durch ist. Ohne sie warteten sie auf den PROMPT -- und der
 	   steht nach dem Login noch im Puffer, trifft also sofort und der

@@ -1,0 +1,40 @@
+(* Quant9 Grammatik - Minimalistisch (Wirth-Stil) *)
+
+Program             = { ImportDecl } { Declaration } .
+
+ImportDecl          = "import" NamespacePath ";" .
+NamespacePath       = Identifier { "." Identifier } .
+
+Declaration         = ClassDecl | FunctionDecl | VariableDecl .
+
+ClassDecl           = "class" Identifier [ "extends" Identifier ] "{" { ClassMember } "}" .
+ClassMember         = FieldDecl | MethodDecl .
+
+FieldDecl           = Identifier ":" Type ";" .
+MethodDecl          = Identifier "(" [ ParameterList ] ")" ":" Type Block .
+
+FunctionDecl        = "function" Identifier "(" [ ParameterList ] ")" ":" Type Block .
+
+ParameterList       = Parameter { "," Parameter } .
+Parameter           = Identifier ":" Type .
+
+VariableDecl        = "let" Identifier ":" Type [ "=" Expression ] ";" .
+
+Block               = "{" { Statement } "}" .
+
+Statement           = VariableDecl | Assignment | ReturnStmt | CallStmt | Block .
+Assignment          = Identifier "=" Expression ";" .
+ReturnStmt          = "return" Expression ";" .
+CallStmt            = Identifier "(" [ ArgList ] ")" ";" .
+
+Expression          = Term { ("+" | "-") Term } .
+Term                = Factor { ("*" | "/") Factor } .
+Factor              = Identifier | Number | "(" Expression ")" | CallExpr .
+CallExpr            = Identifier "(" [ ArgList ] ")" .
+ArgList             = Expression { "," Expression } .
+
+Type                = Identifier .
+Identifier          = Letter { Letter | Digit } .
+Number              = Digit { Digit } .
+Letter              = "a" | ... | "z" | "A" | ... | "Z" .
+Digit               = "0" | ... | "9" .
