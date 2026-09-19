@@ -1,0 +1,25 @@
+* gets: read stdin until LF, omit the terminator, and NUL-terminate.
+* This retains the historical C interface; callers must provide enough space.
+         psect qgets,0,0,0,0,0
+gets:
+         movea.l d0,a0
+         movea.l a0,a1
+gs_loop
+         bsr getchar
+         cmpi.l #-1,d0
+         beq gs_eof
+         cmpi.l #10,d0
+         beq gs_done
+         move.b d0,(a0)+
+         bra gs_loop
+gs_eof
+         cmpa.l a1,a0
+         beq gs_null
+gs_done
+         clr.b (a0)
+         move.l a1,d0
+         rts
+gs_null
+         moveq #0,d0
+         rts
+         ends

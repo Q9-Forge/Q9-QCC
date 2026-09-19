@@ -1,0 +1,30 @@
+* strerror for the OS-9 error values used by qclib, with a stable fallback.
+         psect qstrerror,0,0,0,0,0
+strerror:
+         cmpi.l #211,d0
+         beq se_eof
+         cmpi.l #237,d0
+         beq se_nomem
+         tst.l d0
+         beq se_none
+         lea se_unknown,a0
+         move.l a0,d0
+         rts
+se_none
+         lea se_noerror,a0
+         move.l a0,d0
+         rts
+se_eof
+         lea se_eof_text,a0
+         move.l a0,d0
+         rts
+se_nomem
+         lea se_nomem_text,a0
+         move.l a0,d0
+         rts
+         vsect
+se_noerror dc.b 'No error',0
+se_eof_text dc.b 'End of file',0
+se_nomem_text dc.b 'Out of memory',0
+se_unknown dc.b 'Unknown error',0
+         ends

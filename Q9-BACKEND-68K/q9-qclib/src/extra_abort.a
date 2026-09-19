@@ -1,0 +1,7 @@
+* abort: terminate the process with a non-zero status.
+         psect qabort,0,0,0,0,0
+abort:
+         moveq #1,d0
+         bsr _os_exit
+         rts
+         ends

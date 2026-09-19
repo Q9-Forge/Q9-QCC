@@ -16,6 +16,8 @@
 #ifndef Q9_TIME_H
 #define Q9_TIME_H
 
+#include <stddef.h>
+
 typedef long time_t;
 
 struct tm {
@@ -26,5 +28,15 @@ struct tm {
 	int tm_mon;
 	int tm_year;
 };
+
+extern time_t time(time_t*);
+extern long clock(void);
+extern double difftime(time_t, time_t);
+extern struct tm* localtime(const time_t*);
+extern struct tm* gmtime(const time_t*);
+extern time_t mktime(struct tm*);
+extern char* asctime(const struct tm*);
+extern char* ctime(const time_t*);
+extern size_t strftime(char*, size_t, const char*, const struct tm*);
 
 #endif

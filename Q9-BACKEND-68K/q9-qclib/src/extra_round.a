@@ -1,0 +1,40 @@
+         psect qround,0,0,0,0,0
+floor:
+         move.l d1,-(a7)
+         move.l d0,-(a7)
+         fmove.d (a7)+,fp0
+         fmove.d fp0,-(a7)
+         fmove.d (a7)+,fp1
+         fintrz.x fp0,fp0
+         fcmp.x fp1,fp0
+         fbeq fr_done
+         ftst.x fp1
+         fbge fr_done
+         fmove.d one,fp2
+         fsub.x fp2,fp0
+fr_done
+         fmove.d fp0,-(a7)
+         move.l (a7)+,d0
+         move.l (a7)+,d1
+         rts
+ceil:
+         move.l d1,-(a7)
+         move.l d0,-(a7)
+         fmove.d (a7)+,fp0
+         fmove.d fp0,-(a7)
+         fmove.d (a7)+,fp1
+         fintrz.x fp0,fp0
+         fcmp.x fp1,fp0
+         fbeq cr_done
+         ftst.x fp1
+         fble cr_done
+         fmove.d one,fp2
+         fadd.x fp2,fp0
+cr_done
+         fmove.d fp0,-(a7)
+         move.l (a7)+,d0
+         move.l (a7)+,d1
+         rts
+         vsect
+one dc.d 0x3ff00000,0
+         ends

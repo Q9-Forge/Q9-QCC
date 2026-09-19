@@ -21,6 +21,9 @@ QCCB  ?= $(QCC)/Q9-BACKEND-68K/q9-qir68k/build/qir68k
 # Blaetter zuletzt: os9call.r ruft nichts mehr auf. mem_c.r braucht
 # _os_srqmem daraus, steht also davor; str_c.r braucht gar nichts.
 ROFS = $(patsubst src/extra_%.a,build/extra_%.r,$(sort $(wildcard src/extra_*.a))) \
+       build/extra_file_c.r \
+       build/extra_bsearch_c.r \
+       build/extra_qsort_c.r \
        build/printf.r build/printf_c.r build/file.r build/file_c.r \
        build/str.r build/str_c.r build/ctype.r build/ctype_c.r \
        build/mem.r build/mem_c.r \

@@ -56,6 +56,9 @@ exit:
 * Terminates the current process through the Q9 OS-9 wrapper.
 * Parameters: d0 Process status.
 * Returns: Normally does not return.
+         move.l  d0,d2
+         bsr     tc_run_atexit
+         move.l  d2,d0
          bsr     _os_exit                * d0 traegt den Status schon
          bsr     _os_exit
          rts

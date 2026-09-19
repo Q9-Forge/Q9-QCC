@@ -33,6 +33,33 @@ extern int sprintf(char*, const char*, ...);
    ferror checks the result after writing. */
 extern char* fgets(char*, int, FILE*);
 extern int ferror(FILE*);
+extern void clearerr(FILE*);
+extern int fflush(FILE*);
+extern int getchar(void);
+extern int getc(FILE*);
+extern int fgetc(FILE*);
+extern FILE* freopen(const char*, const char*, FILE*);
+extern int ungetc(int, FILE*);
+extern FILE* tmpfile(void);
+extern char* tmpnam(char*);
+extern int fgetpos(FILE*, void*);
+extern int fsetpos(FILE*, const void*);
+extern int scanf(const char*, ...);
+extern int fscanf(FILE*, const char*, ...);
+extern int vprintf(const char*, int*);
+extern int vfprintf(FILE*, const char*, int*);
+extern int vsprintf(char*, const char*, int*);
+extern int putchar(int);
+extern int putc(int, FILE*);
+extern char* gets(char*);
+extern void setbuf(FILE*, char*);
+extern int setvbuf(FILE*, char*, int, size_t);
+extern int fseek(FILE*, long, int);
+extern long ftell(FILE*);
+extern void rewind(FILE*);
+extern int remove(const char*);
+extern int rename(const char*, const char*);
+extern void perror(const char*);
 
 /* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
 extern int putchar(int);

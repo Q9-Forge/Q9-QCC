@@ -1,0 +1,37 @@
+* strxfrm in the C locale: copy at most n-1 bytes and return source length.
+* d0=destination, d1=source, 4(sp)=n. The source and destination may not
+* overlap, as required by C89 for this operation.
+         psect qstrxfrm,0,0,0,0,0
+strxfrm:
+         move.l d2,-(a7)
+         move.l d3,-(a7)
+         movea.l d0,a0
+         movea.l d1,a1
+         move.l 12(a7),d2
+         movea.l a1,a2
+         moveq #0,d3
+sx_len
+         tst.b (a2)+
+         beq sx_copy
+         addq.l #1,d3
+         bra sx_len
+sx_copy
+         move.l d3,d0
+         tst.l d2
+         beq sx_done
+         subq.l #1,d2
+         movea.l a1,a2
+sx_loop
+         tst.l d2
+         beq sx_zero
+         move.b (a2)+,(a0)+
+         beq sx_done
+         subq.l #1,d2
+         bra sx_loop
+sx_zero
+         clr.b (a0)
+sx_done
+         move.l (a7)+,d3
+         move.l (a7)+,d2
+         rts
+         ends

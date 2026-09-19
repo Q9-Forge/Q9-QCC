@@ -1,0 +1,23 @@
+* qclib supports the C locale only. setlocale returns the active locale
+* name for queries and accepts "C"/""; all other locale names fail.
+         psect qlocale,0,0,0,0,0
+setlocale:
+         tst.l d1
+         beq lc_c
+         movea.l d1,a0
+         move.b (a0),d0
+         beq lc_c
+         cmpi.b #'C',d0
+         bne lc_fail
+         tst.b 1(a0)
+         bne lc_fail
+lc_c
+         lea lc_name,a0
+         move.l a0,d0
+         rts
+lc_fail
+         moveq #0,d0
+         rts
+         vsect
+lc_name dc.b 'C',0
+         ends
