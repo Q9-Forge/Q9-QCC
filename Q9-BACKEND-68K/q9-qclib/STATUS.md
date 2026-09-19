@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 87/140 umgesetzt (62 %).**
+**Stand: 88/140 umgesetzt (62 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -60,7 +60,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `memcmp` | `string.h` | 87 |  |
 | ✅ | `memmove` | `string.h` | 86 |  |
 | ❌ | `atan` | `math.h` | 82 |  |
-| ❌ | `system` | `stdlib.h` | 81 |  |
+| 🟡 | `system` | `stdlib.h` | 81 | qclib has no process-spawn service; returns failure. |
 | ❌ | `sscanf` | `stdio.h` | 71 |  |
 | ✅ | `calloc` | `stdlib.h` | 70 |  |
 | ✅ | `getc` | `stdio.h` | 70 | qclib reads unbuffered from standard input. |

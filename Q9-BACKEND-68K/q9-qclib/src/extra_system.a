@@ -1,0 +1,7 @@
+* system: process spawning is not exposed by the self-contained qclib OS
+* layer; report the command facility as unavailable.
+         psect qsystem,0,0,0,0,0
+system:
+         moveq #-1,d0
+         rts
+         ends
