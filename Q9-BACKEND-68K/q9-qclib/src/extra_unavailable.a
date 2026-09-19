@@ -25,4 +25,23 @@ atof:
          moveq #0,d0
          moveq #0,d1
          rts
+frexp:
+fmod:
+ldexp:
+modf:
+         moveq #0,d0
+         moveq #0,d1
+         rts
+localtime:
+gmtime:
+asctime:
+ctime:
+         moveq #0,d0
+         rts
+mktime:
+         moveq #-1,d0
+         rts
+strftime:
+         moveq #0,d0
+         rts
          ends
