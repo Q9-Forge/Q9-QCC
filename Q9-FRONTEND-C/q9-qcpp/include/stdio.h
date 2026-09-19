@@ -38,6 +38,7 @@ extern int fflush(FILE*);
 extern int getchar(void);
 extern int getc(FILE*);
 extern int fgetc(FILE*);
+extern FILE* freopen(const char*, const char*, FILE*);
 extern int putchar(int);
 extern int putc(int, FILE*);
 extern char* gets(char*);
