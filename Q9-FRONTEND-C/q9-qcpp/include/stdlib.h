@@ -21,5 +21,7 @@ extern int abs(int);
 extern int atoi(const char*);
 extern long atol(const char*);
 extern long labs(long);
+extern int rand(void);
+extern void srand(unsigned int);
 
 #endif
