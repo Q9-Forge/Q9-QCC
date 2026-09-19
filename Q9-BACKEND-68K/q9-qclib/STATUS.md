@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 56/140 umgesetzt (40 %).**
+**Stand: 57/140 umgesetzt (40 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -142,7 +142,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `iscntrl` | `ctype.h` | 6 |  |
 | ❌ | `mbstowcs` | `stdlib.h` | 6 |  |
 | ✅ | `strcoll` | `string.h` | 6 |  |
-| ❌ | `strxfrm` | `string.h` | 6 |  |
+| ✅ | `strxfrm` | `string.h` | 6 |  |
 | ❌ | `tmpnam` | `stdio.h` | 6 |  |
 | ❌ | `clearerr` | `stdio.h` | 5 |  |
 | ❌ | `fscanf` | `stdio.h` | 5 |  |
