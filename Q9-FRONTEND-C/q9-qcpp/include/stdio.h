@@ -33,6 +33,8 @@ extern int sprintf(char*, const char*, ...);
    ferror checks the result after writing. */
 extern char* fgets(char*, int, FILE*);
 extern int ferror(FILE*);
+extern void clearerr(FILE*);
+extern int fflush(FILE*);
 
 #endif
 

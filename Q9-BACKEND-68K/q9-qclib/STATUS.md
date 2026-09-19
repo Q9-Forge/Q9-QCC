@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 64/140 umgesetzt (45 %).**
+**Stand: 66/140 umgesetzt (47 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -40,7 +40,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `atoi` | `stdlib.h` | 199 |  |
 | ❌ | `putchar` | `stdio.h` | 192 |  |
 | ❌ | `perror` | `stdio.h` | 160 |  |
-| ❌ | `fflush` | `stdio.h` | 159 |  |
+| 🟡 | `fflush` | `stdio.h` | 159 | qclib writes unbuffered; successful no-op. |
 | ✅ | `isspace` | `ctype.h` | 153 |  |
 | ❌ | `exp` | `math.h` | 150 |  |
 | ✅ | `strncmp` | `string.h` | 147 |  |
@@ -144,7 +144,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strcoll` | `string.h` | 6 |  |
 | ✅ | `strxfrm` | `string.h` | 6 |  |
 | ❌ | `tmpnam` | `stdio.h` | 6 |  |
-| ❌ | `clearerr` | `stdio.h` | 5 |  |
+| 🟡 | `clearerr` | `stdio.h` | 5 | qclib currently has no externally resettable stream-error state; successful no-op. |
 | ❌ | `fscanf` | `stdio.h` | 5 |  |
 | ❌ | `gmtime` | `time.h` | 5 |  |
 | ✅ | `ispunct` | `ctype.h` | 5 |  |
