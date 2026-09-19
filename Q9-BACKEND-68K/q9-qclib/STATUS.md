@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 51/140 umgesetzt (36 %).**
+**Stand: 54/140 umgesetzt (38 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -111,7 +111,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `raise` | `signal.h` | 19 |  |
 | ❌ | `ldexp` | `math.h` | 18 |  |
 | ❌ | `srand` | `stdlib.h` | 18 |  |
-| ❌ | `atol` | `stdlib.h` | 17 |  |
+| ✅ | `atol` | `stdlib.h` | 17 |  |
 | ❌ | `localtime` | `time.h` | 17 |  |
 | ❌ | `vfprintf` | `stdio.h` | 17 |  |
 | ✅ | `islower` | `ctype.h` | 16 |  |
@@ -141,7 +141,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `wctomb` | `stdlib.h` | 7 |  |
 | ✅ | `iscntrl` | `ctype.h` | 6 |  |
 | ❌ | `mbstowcs` | `stdlib.h` | 6 |  |
-| ❌ | `strcoll` | `string.h` | 6 |  |
+| ✅ | `strcoll` | `string.h` | 6 |  |
 | ❌ | `strxfrm` | `string.h` | 6 |  |
 | ❌ | `tmpnam` | `stdio.h` | 6 |  |
 | ❌ | `clearerr` | `stdio.h` | 5 |  |
@@ -154,7 +154,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `bsearch` | `stdlib.h` | 3 |  |
 | ❌ | `fgetpos` | `stdio.h` | 3 |  |
 | ❌ | `fsetpos` | `stdio.h` | 3 |  |
-| ❌ | `labs` | `stdlib.h` | 3 |  |
+| ✅ | `labs` | `stdlib.h` | 3 |  |
 | ❌ | `wcstombs` | `stdlib.h` | 3 |  |
 | ❌ | `difftime` | `time.h` | 2 |  |
 | ❌ | `mblen` | `stdlib.h` | 2 |  |

@@ -48,4 +48,8 @@ at_finish
          neg.l d0
 at_done
          rts
+
+* atol has the same 32-bit representation and conversion rules on 68k.
+atol:
+         bra atoi
          ends
