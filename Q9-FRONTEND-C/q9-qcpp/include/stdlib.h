@@ -13,6 +13,7 @@
 #define Q9_STDLIB_H
 
 extern void exit(int);
+extern void abort(void);
 extern long strtol(const char*, char**, int);
 extern char* realloc(char*, int);
 extern char* getenv(const char*);
