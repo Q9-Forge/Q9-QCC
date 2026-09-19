@@ -17,5 +17,6 @@ extern long strtol(const char*, char**, int);
 extern char* realloc(char*, int);
 extern char* getenv(const char*);
 extern int system(const char*);
+extern int abs(int);
 
 #endif

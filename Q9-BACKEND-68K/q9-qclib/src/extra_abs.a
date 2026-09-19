@@ -1,0 +1,9 @@
+* abs: 32-bit signed magnitude. INT_MIN is outside the C89 domain.
+         psect qabs,0,0,0,0,0
+abs:
+         tst.l d0
+         bpl ab_done
+         neg.l d0
+ab_done
+         rts
+         ends
