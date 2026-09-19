@@ -35,5 +35,6 @@ extern size_t strspn(const char*, const char*);
 extern size_t strcspn(const char*, const char*);
 extern char* strpbrk(const char*, const char*);
 extern int strcoll(const char*, const char*);
+extern size_t strxfrm(char*, const char*, size_t);
 
 #endif
