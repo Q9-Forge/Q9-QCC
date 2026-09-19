@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 54/140 umgesetzt (38 %).**
+**Stand: 56/140 umgesetzt (40 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -110,7 +110,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `clock` | `time.h` | 19 |  |
 | ❌ | `raise` | `signal.h` | 19 |  |
 | ❌ | `ldexp` | `math.h` | 18 |  |
-| ❌ | `srand` | `stdlib.h` | 18 |  |
+| ✅ | `srand` | `stdlib.h` | 18 |  |
 | ✅ | `atol` | `stdlib.h` | 17 |  |
 | ❌ | `localtime` | `time.h` | 17 |  |
 | ❌ | `vfprintf` | `stdio.h` | 17 |  |
@@ -118,7 +118,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `rewind` | `stdio.h` | 16 |  |
 | ✅ | `isalnum` | `ctype.h` | 15 |  |
 | ❌ | `mktime` | `time.h` | 15 |  |
-| ❌ | `rand` | `stdlib.h` | 15 |  |
+| ✅ | `rand` | `stdlib.h` | 15 |  |
 | ❌ | `modf` | `math.h` | 14 |  |
 | ❌ | `freopen` | `stdio.h` | 13 |  |
 | ❌ | `vprintf` | `stdio.h` | 13 |  |
