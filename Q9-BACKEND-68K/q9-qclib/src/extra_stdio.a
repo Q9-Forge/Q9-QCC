@@ -6,4 +6,12 @@ setbuf:
 setvbuf:
          moveq #0,d0
          rts
+fseek:
+         moveq #-1,d0
+         rts
+ftell:
+         moveq #-1,d0
+         rts
+rewind:
+         rts
          ends

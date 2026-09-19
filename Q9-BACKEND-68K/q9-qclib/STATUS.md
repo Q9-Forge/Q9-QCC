@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 88/140 umgesetzt (62 %).**
+**Stand: 91/140 umgesetzt (65 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -66,10 +66,10 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `getc` | `stdio.h` | 70 | qclib reads unbuffered from standard input. |
 | ✅ | `getchar` | `stdio.h` | 69 | qclib reads unbuffered from standard input. |
 | ❌ | `time` | `time.h` | 65 |  |
-| ❌ | `fseek` | `stdio.h` | 64 |  |
+| 🟡 | `fseek` | `stdio.h` | 64 | qclib has no OS-9 seek wrapper yet; returns failure. |
 | 🟡 | `strerror` | `string.h` | 55 | qclib maps the OS-9 errors used by the runtime and returns a stable fallback for other codes. |
 | ✅ | `toupper` | `ctype.h` | 54 |  |
-| ❌ | `ftell` | `stdio.h` | 51 |  |
+| 🟡 | `ftell` | `stdio.h` | 51 | qclib has no position query; returns failure. |
 | ✅ | `strstr` | `string.h` | 48 |  |
 | ❌ | `pow` | `math.h` | 47 |  |
 | ✅ | `memchr` | `string.h` | 45 |  |
@@ -115,7 +115,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `localtime` | `time.h` | 17 |  |
 | ❌ | `vfprintf` | `stdio.h` | 17 |  |
 | ✅ | `islower` | `ctype.h` | 16 |  |
-| ❌ | `rewind` | `stdio.h` | 16 |  |
+| 🟡 | `rewind` | `stdio.h` | 16 | qclib has no seek wrapper; successful no-op. |
 | ✅ | `isalnum` | `ctype.h` | 15 |  |
 | ❌ | `mktime` | `time.h` | 15 |  |
 | ✅ | `rand` | `stdlib.h` | 15 |  |
