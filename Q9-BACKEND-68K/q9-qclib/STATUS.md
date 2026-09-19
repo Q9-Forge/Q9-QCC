@@ -84,7 +84,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `fread` | `stdio.h` | 33 |  |
 | ✅ | `isalpha` | `ctype.h` | 33 |  |
 | ❌ | `ungetc` | `stdio.h` | 33 |  |
-| ❌ | `floor` | `math.h` | 32 |  |
+| 🟡 | `floor` | `math.h` | 32 | uses the verified 68k F-line truncation path. |
 | ✅ | `fwrite` | `stdio.h` | 32 |  |
 | ❌ | `acos` | `math.h` | 30 |  |
 | ❌ | `tanh` | `math.h` | 29 |  |
@@ -106,7 +106,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `longjmp` | `setjmp.h` | 21 |  |
 | ✅ | `strpbrk` | `string.h` | 20 |  |
 | ✅ | `strspn` | `string.h` | 20 |  |
-| ❌ | `ceil` | `math.h` | 19 |  |
+| 🟡 | `ceil` | `math.h` | 19 | uses the verified 68k F-line truncation path. |
 | ❌ | `clock` | `time.h` | 19 |  |
 | ❌ | `raise` | `signal.h` | 19 |  |
 | ❌ | `ldexp` | `math.h` | 18 |  |
