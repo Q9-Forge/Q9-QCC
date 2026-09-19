@@ -7,4 +7,7 @@
 #ifndef Q9_SIGNAL_H
 #define Q9_SIGNAL_H
 
+extern int signal(int, int);
+extern int raise(int);
+
 #endif

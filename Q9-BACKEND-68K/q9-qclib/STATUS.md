@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 91/140 umgesetzt (65 %).**
+**Stand: 97/140 umgesetzt (69 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -49,7 +49,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `fputc` | `stdio.h` | 137 |  |
 | ✅ | `abort` | `stdlib.h` | 132 |  |
 | ✅ | `isdigit` | `ctype.h` | 124 |  |
-| ❌ | `signal` | `signal.h` | 119 |  |
+| 🟡 | `signal` | `signal.h` | 119 | qclib has no signal subsystem; returns failure. |
 | ✅ | `fputs` | `stdio.h` | 117 |  |
 | ✅ | `putc` | `stdio.h` | 113 | qclib writes unbuffered through fputc. |
 | ✅ | `fabs` | `math.h` | 107 |  |
@@ -65,7 +65,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `calloc` | `stdlib.h` | 70 |  |
 | ✅ | `getc` | `stdio.h` | 70 | qclib reads unbuffered from standard input. |
 | ✅ | `getchar` | `stdio.h` | 69 | qclib reads unbuffered from standard input. |
-| ❌ | `time` | `time.h` | 65 |  |
+| 🟡 | `time` | `time.h` | 65 | qclib has no OS-9 clock wrapper; returns failure. |
 | 🟡 | `fseek` | `stdio.h` | 64 | qclib has no OS-9 seek wrapper yet; returns failure. |
 | 🟡 | `strerror` | `string.h` | 55 | qclib maps the OS-9 errors used by the runtime and returns a stable fallback for other codes. |
 | ✅ | `toupper` | `ctype.h` | 54 |  |
@@ -107,8 +107,8 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strpbrk` | `string.h` | 20 |  |
 | ✅ | `strspn` | `string.h` | 20 |  |
 | 🟡 | `ceil` | `math.h` | 19 | uses the verified 68k F-line truncation path. |
-| ❌ | `clock` | `time.h` | 19 |  |
-| ❌ | `raise` | `signal.h` | 19 |  |
+| 🟡 | `clock` | `time.h` | 19 | qclib has no OS-9 clock wrapper; returns failure. |
+| 🟡 | `raise` | `signal.h` | 19 | qclib has no signal subsystem; returns failure. |
 | ❌ | `ldexp` | `math.h` | 18 |  |
 | ✅ | `srand` | `stdlib.h` | 18 |  |
 | ✅ | `atol` | `stdlib.h` | 17 |  |
@@ -137,13 +137,13 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `asctime` | `time.h` | 7 |  |
 | ❌ | `scanf` | `stdio.h` | 7 |  |
 | 🟡 | `setvbuf` | `stdio.h` | 7 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
-| ❌ | `tmpfile` | `stdio.h` | 7 |  |
+| 🟡 | `tmpfile` | `stdio.h` | 7 | temporary-file service is not exposed by qclib; returns null. |
 | ✅ | `wctomb` | `stdlib.h` | 7 |  |
 | ✅ | `iscntrl` | `ctype.h` | 6 |  |
 | ✅ | `mbstowcs` | `stdlib.h` | 6 |  |
 | ✅ | `strcoll` | `string.h` | 6 |  |
 | ✅ | `strxfrm` | `string.h` | 6 |  |
-| ❌ | `tmpnam` | `stdio.h` | 6 |  |
+| 🟡 | `tmpnam` | `stdio.h` | 6 | temporary-name service is not exposed by qclib; returns null. |
 | 🟡 | `clearerr` | `stdio.h` | 5 | qclib currently has no externally resettable stream-error state; successful no-op. |
 | ❌ | `fscanf` | `stdio.h` | 5 |  |
 | ❌ | `gmtime` | `time.h` | 5 |  |

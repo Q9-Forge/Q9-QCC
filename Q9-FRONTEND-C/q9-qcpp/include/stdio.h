@@ -40,6 +40,8 @@ extern int getc(FILE*);
 extern int fgetc(FILE*);
 extern FILE* freopen(const char*, const char*, FILE*);
 extern int ungetc(int, FILE*);
+extern FILE* tmpfile(void);
+extern char* tmpnam(char*);
 extern int putchar(int);
 extern int putc(int, FILE*);
 extern char* gets(char*);
