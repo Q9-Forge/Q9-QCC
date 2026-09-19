@@ -19,5 +19,7 @@ extern char* getenv(const char*);
 extern int system(const char*);
 extern int abs(int);
 extern int atoi(const char*);
+extern long atol(const char*);
+extern long labs(long);
 
 #endif

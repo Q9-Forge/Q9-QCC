@@ -1,0 +1,16 @@
+* strcoll follows the C locale used by qclib (the bytewise C locale).
+* The implementation is the same unsigned-byte ordering as strcmp.
+         psect qstrcoll,0,0,0,0,0
+strcoll:
+         move.l (a7),a1
+         move.l d1,(a7)
+         move.l d0,-(a7)
+         move.l a1,-(a7)
+         pea 4(a7)
+         bsr tc_qs_cmp
+         addq.l #4,a7
+         move.l (a7)+,a1
+         addq.l #8,a7
+         move.l a1,-(a7)
+         rts
+         ends

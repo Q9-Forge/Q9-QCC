@@ -1,0 +1,9 @@
+* labs: long is 32 bits on the Q9 68k ABI.
+         psect qlabs,0,0,0,0,0
+labs:
+         tst.l d0
+         bpl lb_done
+         neg.l d0
+lb_done
+         rts
+         ends
