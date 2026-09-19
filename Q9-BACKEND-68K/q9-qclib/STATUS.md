@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 135/140 umgesetzt (96 %).**
+**Stand: 137/140 umgesetzt (97 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -153,10 +153,10 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `ldiv` | `stdlib.h` | 4 | structure-return ABI is not supported by the current Q9 subset. |
 | 🟡 | `bsearch` | `stdlib.h` | 3 | comparator ABI is not exposed; returns null. |
 | 🟡 | `fgetpos` | `stdio.h` | 3 | qclib has no seek-position service; returns failure. |
-| ❌ | `fsetpos` | `stdio.h` | 3 |  |
+| 🟡 | `fsetpos` | `stdio.h` | 3 | qclib has no seek-position service; returns failure. |
 | ✅ | `labs` | `stdlib.h` | 3 |  |
 | ✅ | `wcstombs` | `stdlib.h` | 3 |  |
-| ❌ | `difftime` | `time.h` | 2 |  |
+| 🟡 | `difftime` | `time.h` | 2 | clock arithmetic is unavailable; returns zero. |
 | ✅ | `mblen` | `stdlib.h` | 2 |  |
 
 ## Wie diese Datei aktuell gehalten wird

@@ -31,6 +31,7 @@ struct tm {
 
 extern time_t time(time_t*);
 extern long clock(void);
+extern double difftime(time_t, time_t);
 extern struct tm* localtime(const time_t*);
 extern struct tm* gmtime(const time_t*);
 extern time_t mktime(struct tm*);
