@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 138/140 umgesetzt (99 %).**
+**Stand: 139/140 umgesetzt (99 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -151,7 +151,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `localeconv` | `locale.h` | 5 | locale object is not exposed; returns null. |
 | ✅ | `isgraph` | `ctype.h` | 4 |  |
 | 🟡 | `ldiv` | `stdlib.h` | 4 | structure-return ABI is not supported by the current Q9 subset. |
-| 🟡 | `bsearch` | `stdlib.h` | 3 | comparator ABI is not exposed; returns null. |
+| ✅ | `bsearch` | `stdlib.h` | 3 | binary search with indirect comparator calls. |
 | 🟡 | `fgetpos` | `stdio.h` | 3 | qclib has no seek-position service; returns failure. |
 | 🟡 | `fsetpos` | `stdio.h` | 3 | qclib has no seek-position service; returns failure. |
 | ✅ | `labs` | `stdlib.h` | 3 |  |
