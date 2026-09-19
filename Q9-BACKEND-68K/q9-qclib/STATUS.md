@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 80/140 umgesetzt (57 %).**
+**Stand: 81/140 umgesetzt (57 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -39,7 +39,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strchr` | `string.h` | 207 |  |
 | ✅ | `atoi` | `stdlib.h` | 199 |  |
 | ✅ | `putchar` | `stdio.h` | 192 | qclib writes unbuffered to standard output. |
-| ❌ | `perror` | `stdio.h` | 160 |  |
+| 🟡 | `perror` | `stdio.h` | 160 | qclib has no errno object; writes prefix plus a stable fallback to stderr. |
 | 🟡 | `fflush` | `stdio.h` | 159 | qclib writes unbuffered; successful no-op. |
 | ✅ | `isspace` | `ctype.h` | 153 |  |
 | ❌ | `exp` | `math.h` | 150 |  |
