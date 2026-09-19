@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 137/140 umgesetzt (97 %).**
+**Stand: 138/140 umgesetzt (99 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -101,7 +101,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `atan2` | `math.h` | 24 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `isprint` | `ctype.h` | 23 |  |
 | 🟡 | `frexp` | `math.h` | 22 | FPU decomposition service is not exposed; returns zero. |
-| ❌ | `qsort` | `stdlib.h` | 22 |  |
+| ✅ | `qsort` | `stdlib.h` | 22 | bytewise insertion sort with indirect comparator calls. |
 | 🟡 | `fmod` | `math.h` | 21 | FPU remainder service is not exposed; returns zero. |
 | 🟡 | `longjmp` | `setjmp.h` | 21 | setjmp state is not exposed; returns failure. |
 | ✅ | `strpbrk` | `string.h` | 20 |  |

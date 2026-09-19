@@ -32,6 +32,8 @@ extern int wcstombs(char*, const int*, int);
 extern double atof(const char*);
 extern double strtod(const char*, char**);
 extern void* bsearch(const void*, const void*, int, int, int (*)(const void*, const void*));
+typedef int (*qsort_cmp)(const void*, const void*);
+extern void qsort(void*, int, int, qsort_cmp);
 extern int div(int, int);
 extern long ldiv(long, long);
 extern int rand(void);
