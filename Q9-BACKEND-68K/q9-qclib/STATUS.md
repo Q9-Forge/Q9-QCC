@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 105/140 umgesetzt (75 %).**
+**Stand: 115/140 umgesetzt (82 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -100,29 +100,29 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `abs` | `stdlib.h` | 24 |  |
 | ❌ | `atan2` | `math.h` | 24 |  |
 | ✅ | `isprint` | `ctype.h` | 23 |  |
-| ❌ | `frexp` | `math.h` | 22 |  |
+| 🟡 | `frexp` | `math.h` | 22 | FPU decomposition service is not exposed; returns zero. |
 | ❌ | `qsort` | `stdlib.h` | 22 |  |
-| ❌ | `fmod` | `math.h` | 21 |  |
+| 🟡 | `fmod` | `math.h` | 21 | FPU remainder service is not exposed; returns zero. |
 | ❌ | `longjmp` | `setjmp.h` | 21 |  |
 | ✅ | `strpbrk` | `string.h` | 20 |  |
 | ✅ | `strspn` | `string.h` | 20 |  |
 | 🟡 | `ceil` | `math.h` | 19 | uses the verified 68k F-line truncation path. |
 | 🟡 | `clock` | `time.h` | 19 | qclib has no OS-9 clock wrapper; returns failure. |
 | 🟡 | `raise` | `signal.h` | 19 | qclib has no signal subsystem; returns failure. |
-| ❌ | `ldexp` | `math.h` | 18 |  |
+| 🟡 | `ldexp` | `math.h` | 18 | FPU scaling service is not exposed; returns zero. |
 | ✅ | `srand` | `stdlib.h` | 18 |  |
 | ✅ | `atol` | `stdlib.h` | 17 |  |
-| ❌ | `localtime` | `time.h` | 17 |  |
+| 🟡 | `localtime` | `time.h` | 17 | OS-9 clock conversion is not exposed; returns null. |
 | 🟡 | `vfprintf` | `stdio.h` | 17 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ✅ | `islower` | `ctype.h` | 16 |  |
 | 🟡 | `rewind` | `stdio.h` | 16 | qclib has no seek wrapper; successful no-op. |
 | ✅ | `isalnum` | `ctype.h` | 15 |  |
-| ❌ | `mktime` | `time.h` | 15 |  |
+| 🟡 | `mktime` | `time.h` | 15 | OS-9 clock conversion is not exposed; returns failure. |
 | ✅ | `rand` | `stdlib.h` | 15 |  |
-| ❌ | `modf` | `math.h` | 14 |  |
+| 🟡 | `modf` | `math.h` | 14 | FPU decomposition service is not exposed; returns zero. |
 | ✅ | `freopen` | `stdio.h` | 13 | closes the qclib handle and reopens it with the requested mode. |
 | 🟡 | `vprintf` | `stdio.h` | 13 | variadic input ABI is not available in the current Q9 subset; returns failure. |
-| ❌ | `ctime` | `time.h` | 12 |  |
+| 🟡 | `ctime` | `time.h` | 12 | OS-9 clock conversion is not exposed; returns null. |
 | ✅ | `remove` | `stdio.h` | 12 |  |
 | ✅ | `strcspn` | `string.h` | 12 |  |
 | ✅ | `strtol` | `stdlib.h` | 12 |  |
@@ -132,9 +132,9 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `div` | `stdlib.h` | 9 |  |
 | ✅ | `fgetc` | `stdio.h` | 9 | qclib reads unbuffered from standard input. |
 | 🟡 | `setbuf` | `stdio.h` | 8 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
-| ❌ | `strftime` | `time.h` | 8 |  |
+| 🟡 | `strftime` | `time.h` | 8 | OS-9 clock conversion is not exposed; returns zero. |
 | 🟡 | `strtod` | `stdlib.h` | 8 | decimal-to-FPU conversion is not yet exposed; returns zero. |
-| ❌ | `asctime` | `time.h` | 7 |  |
+| 🟡 | `asctime` | `time.h` | 7 | OS-9 clock conversion is not exposed; returns null. |
 | 🟡 | `scanf` | `stdio.h` | 7 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | 🟡 | `setvbuf` | `stdio.h` | 7 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | 🟡 | `tmpfile` | `stdio.h` | 7 | temporary-file service is not exposed by qclib; returns null. |
@@ -146,7 +146,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `tmpnam` | `stdio.h` | 6 | temporary-name service is not exposed by qclib; returns null. |
 | 🟡 | `clearerr` | `stdio.h` | 5 | qclib currently has no externally resettable stream-error state; successful no-op. |
 | 🟡 | `fscanf` | `stdio.h` | 5 | variadic input ABI is not available in the current Q9 subset; returns failure. |
-| ❌ | `gmtime` | `time.h` | 5 |  |
+| 🟡 | `gmtime` | `time.h` | 5 | OS-9 clock conversion is not exposed; returns null. |
 | ✅ | `ispunct` | `ctype.h` | 5 |  |
 | ❌ | `localeconv` | `locale.h` | 5 |  |
 | ✅ | `isgraph` | `ctype.h` | 4 |  |
