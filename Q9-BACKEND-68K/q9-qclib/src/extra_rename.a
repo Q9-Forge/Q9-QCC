@@ -1,0 +1,6 @@
+* rename: public C adapter for the OS-9 I$Rename wrapper.
+         psect qrename,0,0,0,0,0
+rename:
+         bsr _os_rename
+         rts
+         ends
