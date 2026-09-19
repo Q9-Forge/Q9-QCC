@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 58/140 umgesetzt (41 %).**
+**Stand: 61/140 umgesetzt (43 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -96,7 +96,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `isxdigit` | `ctype.h` | 26 |  |
 | ❌ | `setlocale` | `locale.h` | 26 |  |
 | ✅ | `strrchr` | `string.h` | 26 |  |
-| ❌ | `mbtowc` | `stdlib.h` | 25 |  |
+| ✅ | `mbtowc` | `stdlib.h` | 25 |  |
 | ✅ | `abs` | `stdlib.h` | 24 |  |
 | ❌ | `atan2` | `math.h` | 24 |  |
 | ✅ | `isprint` | `ctype.h` | 23 |  |
@@ -138,7 +138,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `scanf` | `stdio.h` | 7 |  |
 | ❌ | `setvbuf` | `stdio.h` | 7 |  |
 | ❌ | `tmpfile` | `stdio.h` | 7 |  |
-| ❌ | `wctomb` | `stdlib.h` | 7 |  |
+| ✅ | `wctomb` | `stdlib.h` | 7 |  |
 | ✅ | `iscntrl` | `ctype.h` | 6 |  |
 | ❌ | `mbstowcs` | `stdlib.h` | 6 |  |
 | ✅ | `strcoll` | `string.h` | 6 |  |
@@ -157,7 +157,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `labs` | `stdlib.h` | 3 |  |
 | ❌ | `wcstombs` | `stdlib.h` | 3 |  |
 | ❌ | `difftime` | `time.h` | 2 |  |
-| ❌ | `mblen` | `stdlib.h` | 2 |  |
+| ✅ | `mblen` | `stdlib.h` | 2 |  |
 
 ## Wie diese Datei aktuell gehalten wird
 
