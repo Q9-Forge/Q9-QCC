@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 81/140 umgesetzt (57 %).**
+**Stand: 83/140 umgesetzt (59 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -23,7 +23,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `sprintf` | `stdio.h` | 879 |  |
 | ✅ | `strlen` | `string.h` | 836 |  |
 | ✅ | `exit` | `stdlib.h` | 825 |  |
-| ❌ | `strcpy` | `string.h` | 773 |  |
+| ✅ | `strcpy` | `string.h` | 773 |  |
 | ✅ | `free` | `stdlib.h` | 681 |  |
 | ✅ | `strcmp` | `string.h` | 515 |  |
 | ✅ | `malloc` | `stdlib.h` | 494 |  |
@@ -68,7 +68,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `time` | `time.h` | 65 |  |
 | ❌ | `fseek` | `stdio.h` | 64 |  |
 | 🟡 | `strerror` | `string.h` | 55 | qclib maps the OS-9 errors used by the runtime and returns a stable fallback for other codes. |
-| ❌ | `toupper` | `ctype.h` | 54 |  |
+| ✅ | `toupper` | `ctype.h` | 54 |  |
 | ❌ | `ftell` | `stdio.h` | 51 |  |
 | ✅ | `strstr` | `string.h` | 48 |  |
 | ❌ | `pow` | `math.h` | 47 |  |
