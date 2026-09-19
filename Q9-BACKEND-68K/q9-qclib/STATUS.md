@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 86/140 umgesetzt (61 %).**
+**Stand: 87/140 umgesetzt (62 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -53,7 +53,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `fputs` | `stdio.h` | 117 |  |
 | ✅ | `putc` | `stdio.h` | 113 | qclib writes unbuffered through fputc. |
 | ✅ | `fabs` | `math.h` | 107 |  |
-| ❌ | `getenv` | `stdlib.h` | 104 |  |
+| 🟡 | `getenv` | `stdlib.h` | 104 | qclib has no process environment table; always reports an unset variable. |
 | ✅ | `puts` | `stdio.h` | 103 |  |
 | ✅ | `realloc` | `stdlib.h` | 98 |  |
 | ✅ | `tolower` | `ctype.h` | 89 |  |
