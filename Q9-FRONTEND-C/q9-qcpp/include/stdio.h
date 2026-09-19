@@ -35,6 +35,8 @@ extern char* fgets(char*, int, FILE*);
 extern int ferror(FILE*);
 extern void clearerr(FILE*);
 extern int fflush(FILE*);
+extern void setbuf(FILE*, char*);
+extern int setvbuf(FILE*, char*, int, size_t);
 
 #endif
 

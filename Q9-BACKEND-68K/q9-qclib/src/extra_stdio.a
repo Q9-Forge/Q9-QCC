@@ -1,0 +1,9 @@
+* qclib file output is deliberately unbuffered. Buffer-selection APIs are
+* therefore successful no-ops.
+         psect qextra_stdio,0,0,0,0,0
+setbuf:
+         rts
+setvbuf:
+         moveq #0,d0
+         rts
+         ends

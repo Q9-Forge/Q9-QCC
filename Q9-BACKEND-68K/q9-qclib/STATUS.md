@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 66/140 umgesetzt (47 %).**
+**Stand: 68/140 umgesetzt (48 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -131,12 +131,12 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `vsprintf` | `stdio.h` | 10 |  |
 | ❌ | `div` | `stdlib.h` | 9 |  |
 | ❌ | `fgetc` | `stdio.h` | 9 |  |
-| ❌ | `setbuf` | `stdio.h` | 8 |  |
+| 🟡 | `setbuf` | `stdio.h` | 8 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | ❌ | `strftime` | `time.h` | 8 |  |
 | ❌ | `strtod` | `stdlib.h` | 8 |  |
 | ❌ | `asctime` | `time.h` | 7 |  |
 | ❌ | `scanf` | `stdio.h` | 7 |  |
-| ❌ | `setvbuf` | `stdio.h` | 7 |  |
+| 🟡 | `setvbuf` | `stdio.h` | 7 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | ❌ | `tmpfile` | `stdio.h` | 7 |  |
 | ✅ | `wctomb` | `stdlib.h` | 7 |  |
 | ✅ | `iscntrl` | `ctype.h` | 6 |  |
