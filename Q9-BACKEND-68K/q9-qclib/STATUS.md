@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 139/140 umgesetzt (99 %).**
+**Stand: 140/140 umgesetzt (100 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
