@@ -1,0 +1,10 @@
+         psect qdifftime,0,0,0,0,0
+difftime:
+         fmove.l d0,fp0
+         fmove.l d1,fp1
+         fsub.x fp1,fp0
+         fmove.d fp0,-(a7)
+         move.l (a7)+,d0
+         move.l (a7)+,d1
+         rts
+         ends

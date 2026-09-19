@@ -179,7 +179,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `fsetpos` | `stdio.h` | 3 | qclib has no seek-position service; returns failure. |
 | ✅ | `labs` | `stdlib.h` | 3 |  |
 | ✅ | `wcstombs` | `stdlib.h` | 3 |  |
-| 🟡 | `difftime` | `time.h` | 2 | clock arithmetic is unavailable; returns zero. |
+| ✅ | `difftime` | `time.h` | 2 | subtracts the two integer timestamps using the 68k FPU. |
 | ✅ | `mblen` | `stdlib.h` | 2 |  |
 
 ## Wie diese Datei aktuell gehalten wird
