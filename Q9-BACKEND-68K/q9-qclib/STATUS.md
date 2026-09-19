@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 71/140 umgesetzt (50 %).**
+**Stand: 74/140 umgesetzt (52 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -63,8 +63,8 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `system` | `stdlib.h` | 81 |  |
 | ❌ | `sscanf` | `stdio.h` | 71 |  |
 | ✅ | `calloc` | `stdlib.h` | 70 |  |
-| ❌ | `getc` | `stdio.h` | 70 |  |
-| ❌ | `getchar` | `stdio.h` | 69 |  |
+| ✅ | `getc` | `stdio.h` | 70 | qclib reads unbuffered from standard input. |
+| ✅ | `getchar` | `stdio.h` | 69 | qclib reads unbuffered from standard input. |
 | ❌ | `time` | `time.h` | 65 |  |
 | ❌ | `fseek` | `stdio.h` | 64 |  |
 | 🟡 | `strerror` | `string.h` | 55 | qclib maps the OS-9 errors used by the runtime and returns a stable fallback for other codes. |
@@ -130,7 +130,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `atof` | `stdlib.h` | 10 |  |
 | ❌ | `vsprintf` | `stdio.h` | 10 |  |
 | ❌ | `div` | `stdlib.h` | 9 |  |
-| ❌ | `fgetc` | `stdio.h` | 9 |  |
+| ✅ | `fgetc` | `stdio.h` | 9 | qclib reads unbuffered from standard input. |
 | 🟡 | `setbuf` | `stdio.h` | 8 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | ❌ | `strftime` | `time.h` | 8 |  |
 | ❌ | `strtod` | `stdlib.h` | 8 |  |
