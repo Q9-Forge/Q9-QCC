@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 75/140 umgesetzt (53 %).**
+**Stand: 76/140 umgesetzt (54 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -78,7 +78,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `tan` | `math.h` | 40 |  |
 | ❌ | `sinh` | `math.h` | 36 |  |
 | ❌ | `asin` | `math.h` | 35 |  |
-| ❌ | `gets` | `stdio.h` | 34 |  |
+| 🟡 | `gets` | `stdio.h` | 34 | historische ungebundene Schnittstelle; liest bis LF und verlangt ausreichend Zielraum. |
 | ✅ | `isupper` | `ctype.h` | 34 |  |
 | ✅ | `strtok` | `string.h` | 34 |  |
 | ✅ | `fread` | `stdio.h` | 33 |  |
