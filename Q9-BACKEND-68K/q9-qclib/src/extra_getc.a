@@ -1,10 +1,24 @@
 * Unbuffered single-byte input from standard input (path 1).
          psect qextra_getc,0,0,0,0,0
 getchar:
+         tst.b gc_push_valid
+         beq gc_read_std
+         moveq #0,d0
+         move.b gc_push_byte,d0
+         clr.b gc_push_valid
+         rts
+gc_read_std
          moveq #1,d0
          bra gc_read
 getc:
 fgetc:
+         tst.b gc_push_valid
+         beq gc_read_std2
+         moveq #0,d0
+         move.b gc_push_byte,d0
+         clr.b gc_push_valid
+         rts
+gc_read_std2
          moveq #1,d0
 gc_read
          move.l d0,d2
@@ -24,7 +38,19 @@ gc_read
 gc_eof
          moveq #-1,d0
          rts
+ungetc:
+         cmpi.l #-1,d0
+         beq gc_unfail
+         move.b d0,gc_push_byte
+         move.b #1,gc_push_valid
+         andi.l #255,d0
+         rts
+gc_unfail
+         moveq #-1,d0
+         rts
          vsect
 gc_byte ds.b 1
 gc_count dc.l 1
+gc_push_byte ds.b 1
+gc_push_valid dc.b 0
          ends
