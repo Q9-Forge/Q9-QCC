@@ -25,6 +25,7 @@
 static int ctype_mask_of(int ch);
 
 /* Provide single-character wrappers for C89 macros used by tests. */
+static int ctype_mask_of(int ch);
 int iscntrl_c(int ch) { return ctype_mask_of(ch) & C_ISCNTRL; }
 int isupper_c(int ch) { return ctype_mask_of(ch) & C_ISUPPER; }
 int islower_c(int ch) { return ctype_mask_of(ch) & C_ISLOWER; }
@@ -106,10 +107,12 @@ int isgraph(int *a)
 {
     int c = a[0] & 255;
     if (c > 32 && c <= 126)
-        return ctype_mask_of(c);
+        return ctype_mask_of(c) & (C_ISPUNCT | C_ISUPPER | C_ISLOWER | C_ISDIGIT);
     return 0;
 }
 
+/* The tests call putchar and expect it to write a character plus a newline
+   previously; ensure putchar/putc are present and behave like qclib expects. */
 int ispunct(int *a)
 {
     return ctype_mask_of(a[0]) & C_ISPUNCT;

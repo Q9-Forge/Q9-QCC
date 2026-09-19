@@ -37,10 +37,17 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `cos` | `math.h` | 231 | transcendental FPU service is not exposed; returns zero. |
 | 🟡 | `sin` | `math.h` | 214 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `strchr` | `string.h` | 207 |  |
+<<<<<<< HEAD
 | ✅ | `atoi` | `stdlib.h` | 199 |  |
 | ✅ | `putchar` | `stdio.h` | 192 | qclib writes unbuffered to standard output. |
 | 🟡 | `perror` | `stdio.h` | 160 | qclib has no errno object; writes prefix plus a stable fallback to stderr. |
 | 🟡 | `fflush` | `stdio.h` | 159 | qclib writes unbuffered; successful no-op. |
+=======
+| ❌ | `atoi` | `stdlib.h` | 199 |  |
+| ✅ | `putchar` | `stdio.h` | 192 |  |
+| ❌ | `perror` | `stdio.h` | 160 |  |
+| ❌ | `fflush` | `stdio.h` | 159 |  |
+>>>>>>> origin/qclib-missing-functions
 | ✅ | `isspace` | `ctype.h` | 153 |  |
 | 🟡 | `exp` | `math.h` | 150 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `strncmp` | `string.h` | 147 |  |
@@ -51,9 +58,15 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `isdigit` | `ctype.h` | 124 |  |
 | 🟡 | `signal` | `signal.h` | 119 | qclib has no signal subsystem; returns failure. |
 | ✅ | `fputs` | `stdio.h` | 117 |  |
+<<<<<<< HEAD
 | ✅ | `putc` | `stdio.h` | 113 | qclib writes unbuffered through fputc. |
 | ✅ | `fabs` | `math.h` | 107 |  |
 | 🟡 | `getenv` | `stdlib.h` | 104 | qclib has no process environment table; always reports an unset variable. |
+=======
+| ✅ | `putc` | `stdio.h` | 113 |  |
+| ❌ | `fabs` | `math.h` | 107 |  |
+| ❌ | `getenv` | `stdlib.h` | 104 |  |
+>>>>>>> origin/qclib-missing-functions
 | ✅ | `puts` | `stdio.h` | 103 |  |
 | ✅ | `realloc` | `stdlib.h` | 98 |  |
 | ✅ | `tolower` | `ctype.h` | 89 |  |
@@ -63,6 +76,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `system` | `stdlib.h` | 81 | qclib has no process-spawn service; returns failure. |
 | 🟡 | `sscanf` | `stdio.h` | 71 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ✅ | `calloc` | `stdlib.h` | 70 |  |
+<<<<<<< HEAD
 | ✅ | `getc` | `stdio.h` | 70 | qclib reads unbuffered from standard input. |
 | ✅ | `getchar` | `stdio.h` | 69 | qclib reads unbuffered from standard input. |
 | 🟡 | `time` | `time.h` | 65 | qclib has no OS-9 clock wrapper; returns failure. |
@@ -70,6 +84,15 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `strerror` | `string.h` | 55 | qclib maps the OS-9 errors used by the runtime and returns a stable fallback for other codes. |
 | ✅ | `toupper` | `ctype.h` | 54 |  |
 | 🟡 | `ftell` | `stdio.h` | 51 | qclib has no position query; returns failure. |
+=======
+| ❌ | `getc` | `stdio.h` | 70 |  |
+| ❌ | `getchar` | `stdio.h` | 69 |  |
+| ❌ | `time` | `time.h` | 65 |  |
+| ❌ | `fseek` | `stdio.h` | 64 |  |
+| ❌ | `strerror` | `string.h` | 55 |  |
+| ✅ | `toupper` | `ctype.h` | 54 |  |
+| ❌ | `ftell` | `stdio.h` | 51 |  |
+>>>>>>> origin/qclib-missing-functions
 | ✅ | `strstr` | `string.h` | 48 |  |
 | 🟡 | `pow` | `math.h` | 47 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `memchr` | `string.h` | 45 |  |

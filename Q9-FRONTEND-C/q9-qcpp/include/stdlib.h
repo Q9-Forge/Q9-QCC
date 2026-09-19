@@ -39,4 +39,7 @@ extern long ldiv(long, long);
 extern int rand(void);
 extern void srand(unsigned int);
 
+/* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
+extern void abort(void);
+
 #endif
