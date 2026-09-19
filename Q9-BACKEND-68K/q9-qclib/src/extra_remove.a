@@ -1,0 +1,6 @@
+* remove: qclib's OS-9 delete wrapper already implements the required ABI.
+         psect qremove,0,0,0,0,0
+remove:
+         bsr _os_delete
+         rts
+         ends

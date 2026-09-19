@@ -1,0 +1,56 @@
+* ASCII multibyte/wide-string conversion for the Q9 C locale.
+         psect qmbs,0,0,0,0,0
+mbstowcs:
+         move.l (a7),a2
+         move.l 4(a7),d2
+         movea.l d1,a1
+         movea.l d0,a0
+         moveq #0,d0
+         tst.l a1
+         beq mbs_done
+mbs_loop
+         tst.l d2
+         beq mbs_done
+         moveq #0,d1
+         move.b (a1)+,d1
+         beq mbs_done
+         tst.l a0
+         beq mbs_count
+         move.l d1,(a0)+
+mbs_count
+         addq.l #1,d0
+         subq.l #1,d2
+         bra mbs_loop
+mbs_done
+         move.l a2,(a7)
+         rts
+
+wcstombs:
+         move.l (a7),a2
+         move.l 4(a7),d2
+         movea.l d1,a1
+         movea.l d0,a0
+         moveq #0,d0
+         tst.l a1
+         beq wcs_done
+wcs_loop
+         tst.l d2
+         beq wcs_done
+         move.l (a1)+,d1
+         tst.l d1
+         beq wcs_done
+         cmpi.l #127,d1
+         bhi wcs_bad
+         tst.l a0
+         beq wcs_count
+         move.b d1,(a0)+
+wcs_count
+         addq.l #1,d0
+         subq.l #1,d2
+         bra wcs_loop
+wcs_bad
+         moveq #-1,d0
+wcs_done
+         move.l a2,(a7)
+         rts
+         ends

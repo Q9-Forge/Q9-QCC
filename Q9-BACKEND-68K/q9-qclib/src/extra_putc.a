@@ -1,0 +1,26 @@
+* putchar writes one byte to stdout; putc shares the existing fputc ABI.
+         psect qextra_putc,0,0,0,0,0
+putchar:
+         move.l d0,d2
+         moveq #1,d0
+         move.l #1,pc_count
+         lea pc_byte,a0
+         move.b d2,(a0)
+         move.l a0,d1
+         pea pc_count
+         bsr _os_write
+         addq.l #4,a7
+         tst.l d0
+         bne pc_fail
+         move.l d2,d0
+         andi.l #255,d0
+         rts
+pc_fail
+         moveq #-1,d0
+         rts
+putc:
+         bra fputc
+         vsect
+pc_byte ds.b 1
+pc_count dc.l 1
+         ends

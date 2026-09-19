@@ -1,0 +1,7 @@
+* qclib has no process environment table; getenv therefore reports an
+* unset variable for every name.
+         psect qenv,0,0,0,0,0
+getenv:
+         moveq #0,d0
+         rts
+         ends

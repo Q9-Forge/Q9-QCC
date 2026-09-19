@@ -1,0 +1,37 @@
+* atexit callback registry. Callbacks have the C ABI and take no arguments.
+         psect qatexit,0,0,0,0,0
+atexit:
+         move.l d0,d1
+         tst.l d1
+         beq ax_fail
+         move.l ax_count,d0
+         cmpi.l #32,d0
+         bge ax_fail
+         lea ax_table,a0
+         lsl.l #2,d0
+         move.l d1,0(a0,d0.l)
+         addq.l #1,ax_count
+         moveq #0,d0
+         rts
+ax_fail
+         moveq #-1,d0
+         rts
+
+tc_run_atexit:
+         move.l ax_count,ax_index
+         beq ax_done
+         lea ax_table,a0
+ax_loop
+         subq.l #1,ax_index
+         move.l ax_index,d0
+         move.l 0(a0,d0.l),a1
+         jsr (a1)
+         tst.l ax_index
+         bne ax_loop
+ax_done
+         rts
+         vsect
+ax_count dc.l 0
+ax_index dc.l 0
+ax_table ds.l 32
+         ends
