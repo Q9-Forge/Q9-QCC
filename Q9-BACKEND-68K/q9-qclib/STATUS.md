@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 97/140 umgesetzt (69 %).**
+**Stand: 105/140 umgesetzt (75 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -61,7 +61,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `memmove` | `string.h` | 86 |  |
 | ❌ | `atan` | `math.h` | 82 |  |
 | 🟡 | `system` | `stdlib.h` | 81 | qclib has no process-spawn service; returns failure. |
-| ❌ | `sscanf` | `stdio.h` | 71 |  |
+| 🟡 | `sscanf` | `stdio.h` | 71 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ✅ | `calloc` | `stdlib.h` | 70 |  |
 | ✅ | `getc` | `stdio.h` | 70 | qclib reads unbuffered from standard input. |
 | ✅ | `getchar` | `stdio.h` | 69 | qclib reads unbuffered from standard input. |
@@ -113,7 +113,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `srand` | `stdlib.h` | 18 |  |
 | ✅ | `atol` | `stdlib.h` | 17 |  |
 | ❌ | `localtime` | `time.h` | 17 |  |
-| ❌ | `vfprintf` | `stdio.h` | 17 |  |
+| 🟡 | `vfprintf` | `stdio.h` | 17 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ✅ | `islower` | `ctype.h` | 16 |  |
 | 🟡 | `rewind` | `stdio.h` | 16 | qclib has no seek wrapper; successful no-op. |
 | ✅ | `isalnum` | `ctype.h` | 15 |  |
@@ -121,21 +121,21 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `rand` | `stdlib.h` | 15 |  |
 | ❌ | `modf` | `math.h` | 14 |  |
 | ✅ | `freopen` | `stdio.h` | 13 | closes the qclib handle and reopens it with the requested mode. |
-| ❌ | `vprintf` | `stdio.h` | 13 |  |
+| 🟡 | `vprintf` | `stdio.h` | 13 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ❌ | `ctime` | `time.h` | 12 |  |
 | ✅ | `remove` | `stdio.h` | 12 |  |
 | ✅ | `strcspn` | `string.h` | 12 |  |
 | ✅ | `strtol` | `stdlib.h` | 12 |  |
 | ✅ | `strtoul` | `stdlib.h` | 12 |  |
-| ❌ | `atof` | `stdlib.h` | 10 |  |
-| ❌ | `vsprintf` | `stdio.h` | 10 |  |
+| 🟡 | `atof` | `stdlib.h` | 10 | decimal-to-FPU conversion is not yet exposed; returns zero. |
+| 🟡 | `vsprintf` | `stdio.h` | 10 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ❌ | `div` | `stdlib.h` | 9 |  |
 | ✅ | `fgetc` | `stdio.h` | 9 | qclib reads unbuffered from standard input. |
 | 🟡 | `setbuf` | `stdio.h` | 8 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | ❌ | `strftime` | `time.h` | 8 |  |
-| ❌ | `strtod` | `stdlib.h` | 8 |  |
+| 🟡 | `strtod` | `stdlib.h` | 8 | decimal-to-FPU conversion is not yet exposed; returns zero. |
 | ❌ | `asctime` | `time.h` | 7 |  |
-| ❌ | `scanf` | `stdio.h` | 7 |  |
+| 🟡 | `scanf` | `stdio.h` | 7 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | 🟡 | `setvbuf` | `stdio.h` | 7 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | 🟡 | `tmpfile` | `stdio.h` | 7 | temporary-file service is not exposed by qclib; returns null. |
 | ✅ | `wctomb` | `stdlib.h` | 7 |  |
@@ -145,7 +145,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strxfrm` | `string.h` | 6 |  |
 | 🟡 | `tmpnam` | `stdio.h` | 6 | temporary-name service is not exposed by qclib; returns null. |
 | 🟡 | `clearerr` | `stdio.h` | 5 | qclib currently has no externally resettable stream-error state; successful no-op. |
-| ❌ | `fscanf` | `stdio.h` | 5 |  |
+| 🟡 | `fscanf` | `stdio.h` | 5 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | ❌ | `gmtime` | `time.h` | 5 |  |
 | ✅ | `ispunct` | `ctype.h` | 5 |  |
 | ❌ | `localeconv` | `locale.h` | 5 |  |
