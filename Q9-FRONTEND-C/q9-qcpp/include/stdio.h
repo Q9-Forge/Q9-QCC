@@ -38,6 +38,8 @@ extern int fflush(FILE*);
 extern int getchar(void);
 extern int getc(FILE*);
 extern int fgetc(FILE*);
+extern int putchar(int);
+extern int putc(int, FILE*);
 extern char* gets(char*);
 extern void setbuf(FILE*, char*);
 extern int setvbuf(FILE*, char*, int, size_t);
