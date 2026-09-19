@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 84/140 umgesetzt (60 %).**
+**Stand: 85/140 umgesetzt (61 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -120,7 +120,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `mktime` | `time.h` | 15 |  |
 | ✅ | `rand` | `stdlib.h` | 15 |  |
 | ❌ | `modf` | `math.h` | 14 |  |
-| ❌ | `freopen` | `stdio.h` | 13 |  |
+| ✅ | `freopen` | `stdio.h` | 13 | closes the qclib handle and reopens it with the requested mode. |
 | ❌ | `vprintf` | `stdio.h` | 13 |  |
 | ❌ | `ctime` | `time.h` | 12 |  |
 | ✅ | `remove` | `stdio.h` | 12 |  |
