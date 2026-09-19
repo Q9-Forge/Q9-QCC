@@ -1,0 +1,64 @@
+* C-locale ASCII multibyte helpers. Q9 uses one-byte characters.
+         psect qmb,0,0,0,0,0
+mblen:
+         movea.l d0,a0
+         tst.l d0
+         beq mb_len_zero
+         tst.l d1
+         ble mb_len_bad
+         tst.b (a0)
+         beq mb_len_zero
+         moveq #1,d0
+         rts
+mb_len_zero
+         moveq #0,d0
+         rts
+mb_len_bad
+         moveq #-1,d0
+         rts
+
+mbtowc:
+         move.l (a7),a1
+         move.l 4(a7),d2
+         beq mbtowc_null
+         movea.l d1,a0
+         tst.l a0
+         beq mbtowc_null
+         tst.l d2
+         ble mbtowc_bad
+         tst.b (a0)
+         beq mbtowc_zero
+         movea.l d0,a1
+         moveq #0,d0
+         move.b (a0),d0
+         move.b d0,(a1)
+         moveq #1,d0
+         bra mbtowc_out
+mbtowc_zero
+         moveq #0,d0
+         bra mbtowc_out
+mbtowc_null
+         moveq #0,d0
+         bra mbtowc_out
+mbtowc_bad
+         moveq #-1,d0
+mbtowc_out
+         move.l a1,(a7)
+         rts
+
+wctomb:
+         movea.l d0,a0
+         tst.l d0
+         beq wc_null
+         cmpi.l #127,d1
+         bhi wc_bad
+         move.b d1,(a0)
+         moveq #1,d0
+         rts
+wc_null
+         moveq #0,d0
+         rts
+wc_bad
+         moveq #-1,d0
+         rts
+         ends

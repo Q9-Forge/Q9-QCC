@@ -22,6 +22,9 @@ extern int atoi(const char*);
 extern long atol(const char*);
 extern long labs(long);
 extern unsigned long strtoul(const char*, char**, int);
+extern int mblen(const char*, int);
+extern int mbtowc(int*, const char*, int);
+extern int wctomb(char*, int);
 extern int rand(void);
 extern void srand(unsigned int);
 
