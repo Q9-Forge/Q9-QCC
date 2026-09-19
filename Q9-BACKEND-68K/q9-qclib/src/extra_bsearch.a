@@ -1,0 +1,14 @@
+         psect qextra_bsearch,0,0,0,0,0
+bsearch:
+         move.l (a7),a1
+         move.l d1,(a7)
+         move.l d0,-(a7)
+         move.l a1,-(a7)
+         pea 4(a7)
+         bsr tc_qf_bsearch
+         addq.l #4,a7
+         move.l (a7)+,a1
+         addq.l #8,a7
+         move.l a1,-(a7)
+         rts
+         ends

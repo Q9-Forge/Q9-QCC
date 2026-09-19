@@ -80,7 +80,4 @@ difftime:
          moveq #0,d0
          moveq #0,d1
          rts
-bsearch:
-         moveq #0,d0
-         rts
          ends
