@@ -18,5 +18,6 @@ extern char* realloc(char*, int);
 extern char* getenv(const char*);
 extern int system(const char*);
 extern int abs(int);
+extern int atoi(const char*);
 
 #endif
