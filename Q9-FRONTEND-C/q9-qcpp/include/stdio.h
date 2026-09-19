@@ -37,6 +37,7 @@ extern void clearerr(FILE*);
 extern int fflush(FILE*);
 extern void setbuf(FILE*, char*);
 extern int setvbuf(FILE*, char*, int, size_t);
+extern int remove(const char*);
 
 #endif
 
