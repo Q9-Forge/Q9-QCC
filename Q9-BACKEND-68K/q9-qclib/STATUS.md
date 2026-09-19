@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 79/140 umgesetzt (56 %).**
+**Stand: 80/140 umgesetzt (57 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -90,7 +90,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `tanh` | `math.h` | 29 |  |
 | ❌ | `atexit` | `stdlib.h` | 28 |  |
 | ✅ | `feof` | `stdio.h` | 28 |  |
-| ❌ | `rename` | `stdio.h` | 27 |  |
+| 🟡 | `rename` | `stdio.h` | 27 | direct OS-9 `I$Rename` wrapper; target file-manager semantics apply. |
 | ✅ | `strncat` | `string.h` | 27 |  |
 | ✅ | `ferror` | `stdio.h` | 26 |  |
 | ✅ | `isxdigit` | `ctype.h` | 26 |  |
