@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 76/140 umgesetzt (54 %).**
+**Stand: 78/140 umgesetzt (55 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -38,7 +38,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `sin` | `math.h` | 214 |  |
 | ✅ | `strchr` | `string.h` | 207 |  |
 | ✅ | `atoi` | `stdlib.h` | 199 |  |
-| ❌ | `putchar` | `stdio.h` | 192 |  |
+| ✅ | `putchar` | `stdio.h` | 192 | qclib writes unbuffered to standard output. |
 | ❌ | `perror` | `stdio.h` | 160 |  |
 | 🟡 | `fflush` | `stdio.h` | 159 | qclib writes unbuffered; successful no-op. |
 | ✅ | `isspace` | `ctype.h` | 153 |  |
@@ -51,7 +51,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `isdigit` | `ctype.h` | 124 |  |
 | ❌ | `signal` | `signal.h` | 119 |  |
 | ✅ | `fputs` | `stdio.h` | 117 |  |
-| ❌ | `putc` | `stdio.h` | 113 |  |
+| ✅ | `putc` | `stdio.h` | 113 | qclib writes unbuffered through fputc. |
 | ✅ | `fabs` | `math.h` | 107 |  |
 | ❌ | `getenv` | `stdlib.h` | 104 |  |
 | ✅ | `puts` | `stdio.h` | 103 |  |
