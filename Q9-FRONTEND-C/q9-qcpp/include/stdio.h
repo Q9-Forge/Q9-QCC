@@ -45,6 +45,7 @@ extern void setbuf(FILE*, char*);
 extern int setvbuf(FILE*, char*, int, size_t);
 extern int remove(const char*);
 extern int rename(const char*, const char*);
+extern void perror(const char*);
 
 #endif
 
