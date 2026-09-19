@@ -42,6 +42,7 @@ extern FILE* freopen(const char*, const char*, FILE*);
 extern int ungetc(int, FILE*);
 extern FILE* tmpfile(void);
 extern char* tmpnam(char*);
+extern int fgetpos(FILE*, void*);
 extern int scanf(const char*, ...);
 extern int fscanf(FILE*, const char*, ...);
 extern int vprintf(const char*, int*);

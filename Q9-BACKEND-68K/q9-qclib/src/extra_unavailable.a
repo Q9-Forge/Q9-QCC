@@ -57,4 +57,23 @@ sinh:
          moveq #0,d0
          moveq #0,d1
          rts
+acos:
+asin:
+tanh:
+atan2:
+         moveq #0,d0
+         moveq #0,d1
+         rts
+localeconv:
+         moveq #0,d0
+         rts
+longjmp:
+div:
+ldiv:
+fgetpos:
+         moveq #-1,d0
+         rts
+bsearch:
+         moveq #0,d0
+         rts
          ends

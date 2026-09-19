@@ -18,4 +18,8 @@ extern double cosh(double);
 extern double log10(double);
 extern double tan(double);
 extern double sinh(double);
+extern double acos(double);
+extern double asin(double);
+extern double tanh(double);
+extern double atan2(double, double);
 #endif

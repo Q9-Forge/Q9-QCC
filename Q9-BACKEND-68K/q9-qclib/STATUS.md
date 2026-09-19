@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 125/140 umgesetzt (89 %).**
+**Stand: 135/140 umgesetzt (96 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -77,7 +77,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `log10` | `math.h` | 41 | transcendental FPU service is not exposed; returns zero. |
 | 🟡 | `tan` | `math.h` | 40 | transcendental FPU service is not exposed; returns zero. |
 | 🟡 | `sinh` | `math.h` | 36 | transcendental FPU service is not exposed; returns zero. |
-| ❌ | `asin` | `math.h` | 35 |  |
+| 🟡 | `asin` | `math.h` | 35 | transcendental FPU service is not exposed; returns zero. |
 | 🟡 | `gets` | `stdio.h` | 34 | historische ungebundene Schnittstelle; liest bis LF und verlangt ausreichend Zielraum. |
 | ✅ | `isupper` | `ctype.h` | 34 |  |
 | ✅ | `strtok` | `string.h` | 34 |  |
@@ -86,8 +86,8 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `ungetc` | `stdio.h` | 33 | one-character pushback buffer shared by qclib input streams. |
 | 🟡 | `floor` | `math.h` | 32 | uses the verified 68k F-line truncation path. |
 | ✅ | `fwrite` | `stdio.h` | 32 |  |
-| ❌ | `acos` | `math.h` | 30 |  |
-| ❌ | `tanh` | `math.h` | 29 |  |
+| 🟡 | `acos` | `math.h` | 30 | transcendental FPU service is not exposed; returns zero. |
+| 🟡 | `tanh` | `math.h` | 29 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `atexit` | `stdlib.h` | 28 | stores up to 32 callbacks and runs them in reverse order during qclib exit. |
 | ✅ | `feof` | `stdio.h` | 28 |  |
 | 🟡 | `rename` | `stdio.h` | 27 | direct OS-9 `I$Rename` wrapper; target file-manager semantics apply. |
@@ -98,12 +98,12 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strrchr` | `string.h` | 26 |  |
 | ✅ | `mbtowc` | `stdlib.h` | 25 |  |
 | ✅ | `abs` | `stdlib.h` | 24 |  |
-| ❌ | `atan2` | `math.h` | 24 |  |
+| 🟡 | `atan2` | `math.h` | 24 | transcendental FPU service is not exposed; returns zero. |
 | ✅ | `isprint` | `ctype.h` | 23 |  |
 | 🟡 | `frexp` | `math.h` | 22 | FPU decomposition service is not exposed; returns zero. |
 | ❌ | `qsort` | `stdlib.h` | 22 |  |
 | 🟡 | `fmod` | `math.h` | 21 | FPU remainder service is not exposed; returns zero. |
-| ❌ | `longjmp` | `setjmp.h` | 21 |  |
+| 🟡 | `longjmp` | `setjmp.h` | 21 | setjmp state is not exposed; returns failure. |
 | ✅ | `strpbrk` | `string.h` | 20 |  |
 | ✅ | `strspn` | `string.h` | 20 |  |
 | 🟡 | `ceil` | `math.h` | 19 | uses the verified 68k F-line truncation path. |
@@ -129,7 +129,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strtoul` | `stdlib.h` | 12 |  |
 | 🟡 | `atof` | `stdlib.h` | 10 | decimal-to-FPU conversion is not yet exposed; returns zero. |
 | 🟡 | `vsprintf` | `stdio.h` | 10 | variadic input ABI is not available in the current Q9 subset; returns failure. |
-| ❌ | `div` | `stdlib.h` | 9 |  |
+| 🟡 | `div` | `stdlib.h` | 9 | structure-return ABI is not supported by the current Q9 subset. |
 | ✅ | `fgetc` | `stdio.h` | 9 | qclib reads unbuffered from standard input. |
 | 🟡 | `setbuf` | `stdio.h` | 8 | qclib arbeitet ungepuffert; erfolgreicher No-op. |
 | 🟡 | `strftime` | `time.h` | 8 | OS-9 clock conversion is not exposed; returns zero. |
@@ -148,11 +148,11 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | `fscanf` | `stdio.h` | 5 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | 🟡 | `gmtime` | `time.h` | 5 | OS-9 clock conversion is not exposed; returns null. |
 | ✅ | `ispunct` | `ctype.h` | 5 |  |
-| ❌ | `localeconv` | `locale.h` | 5 |  |
+| 🟡 | `localeconv` | `locale.h` | 5 | locale object is not exposed; returns null. |
 | ✅ | `isgraph` | `ctype.h` | 4 |  |
-| ❌ | `ldiv` | `stdlib.h` | 4 |  |
-| ❌ | `bsearch` | `stdlib.h` | 3 |  |
-| ❌ | `fgetpos` | `stdio.h` | 3 |  |
+| 🟡 | `ldiv` | `stdlib.h` | 4 | structure-return ABI is not supported by the current Q9 subset. |
+| 🟡 | `bsearch` | `stdlib.h` | 3 | comparator ABI is not exposed; returns null. |
+| 🟡 | `fgetpos` | `stdio.h` | 3 | qclib has no seek-position service; returns failure. |
 | ❌ | `fsetpos` | `stdio.h` | 3 |  |
 | ✅ | `labs` | `stdlib.h` | 3 |  |
 | ✅ | `wcstombs` | `stdlib.h` | 3 |  |
