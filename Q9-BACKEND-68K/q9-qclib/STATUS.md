@@ -167,7 +167,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strcoll` | `string.h` | 6 |  |
 | ✅ | `strxfrm` | `string.h` | 6 |  |
 | 🟡 | `tmpnam` | `stdio.h` | 6 | temporary-name service is not exposed by qclib; returns null. |
-| 🟡 | `clearerr` | `stdio.h` | 5 | qclib currently has no externally resettable stream-error state; successful no-op. |
+| ✅ | `clearerr` | `stdio.h` | 5 | resets qclib's per-stream error and EOF flags. |
 | 🟡 | `fscanf` | `stdio.h` | 5 | variadic input ABI is not available in the current Q9 subset; returns failure. |
 | 🟡 | `gmtime` | `time.h` | 5 | OS-9 clock conversion is not exposed; returns null. |
 | ✅ | `ispunct` | `ctype.h` | 5 |  |

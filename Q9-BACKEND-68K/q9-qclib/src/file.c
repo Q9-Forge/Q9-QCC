@@ -76,6 +76,20 @@ int qf_index(char *fp)
 	return -1;
 }
 
+/* Function: qf_clearerr
+ * Clears the per-stream error and end-of-file indicators. */
+int qf_clearerr(int *a)
+{
+	int i;
+
+	i = qf_index((char *) a[0]);
+	if (i >= 0) {
+		qf_err[i] = 0;
+		qf_eof[i] = 0;
+	}
+	return 0;
+}
+
 /* Refills one per-file read buffer. */
 /* Function: qf_fill
  * Fills the read buffer for an open file.
