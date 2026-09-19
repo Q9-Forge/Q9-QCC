@@ -1,0 +1,51 @@
+* atoi: decimal conversion with leading whitespace and optional sign.
+* d0=string; result in d0. Invalid input returns zero.
+         psect qatoi,0,0,0,0,0
+atoi:
+         movea.l d0,a0
+         moveq #0,d0
+         moveq #0,d2
+at_space
+         move.b (a0),d1
+         cmpi.b #' ',d1
+         beq at_skip
+         cmpi.b #9,d1
+         blo at_sign
+         cmpi.b #13,d1
+         bhi at_sign
+at_skip
+         addq.l #1,a0
+         bra at_space
+at_sign
+         cmpi.b #'-',d1
+         bne at_plus
+         moveq #-1,d2
+         addq.l #1,a0
+         bra at_digits
+at_plus
+         cmpi.b #'+',d1
+         bne at_digits
+         addq.l #1,a0
+at_digits
+         moveq #0,d0
+at_loop
+         moveq #0,d1
+         move.b (a0)+,d1
+         cmpi.b #'0',d1
+         blo at_finish
+         cmpi.b #'9',d1
+         bhi at_finish
+         subi.b #'0',d1
+         move.l d0,d3
+         lsl.l #3,d0
+         lsl.l #1,d3
+         add.l d3,d0
+         add.l d1,d0
+         bra at_loop
+at_finish
+         tst.l d2
+         beq at_done
+         neg.l d0
+at_done
+         rts
+         ends
