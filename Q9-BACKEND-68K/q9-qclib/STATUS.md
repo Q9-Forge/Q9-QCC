@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 61/140 umgesetzt (43 %).**
+**Stand: 63/140 umgesetzt (45 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -140,7 +140,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `tmpfile` | `stdio.h` | 7 |  |
 | ✅ | `wctomb` | `stdlib.h` | 7 |  |
 | ✅ | `iscntrl` | `ctype.h` | 6 |  |
-| ❌ | `mbstowcs` | `stdlib.h` | 6 |  |
+| ✅ | `mbstowcs` | `stdlib.h` | 6 |  |
 | ✅ | `strcoll` | `string.h` | 6 |  |
 | ✅ | `strxfrm` | `string.h` | 6 |  |
 | ❌ | `tmpnam` | `stdio.h` | 6 |  |
@@ -155,7 +155,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ❌ | `fgetpos` | `stdio.h` | 3 |  |
 | ❌ | `fsetpos` | `stdio.h` | 3 |  |
 | ✅ | `labs` | `stdlib.h` | 3 |  |
-| ❌ | `wcstombs` | `stdlib.h` | 3 |  |
+| ✅ | `wcstombs` | `stdlib.h` | 3 |  |
 | ❌ | `difftime` | `time.h` | 2 |  |
 | ✅ | `mblen` | `stdlib.h` | 2 |  |
 

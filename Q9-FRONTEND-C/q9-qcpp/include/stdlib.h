@@ -25,6 +25,8 @@ extern unsigned long strtoul(const char*, char**, int);
 extern int mblen(const char*, int);
 extern int mbtowc(int*, const char*, int);
 extern int wctomb(char*, int);
+extern int mbstowcs(int*, const char*, int);
+extern int wcstombs(char*, const int*, int);
 extern int rand(void);
 extern void srand(unsigned int);
 
