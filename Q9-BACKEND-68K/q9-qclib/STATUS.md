@@ -12,7 +12,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | 🟡 | umgesetzt, aber MIT bewusster, dokumentierter Abweichung von clib |
 | ❌ | fehlt noch |
 
-**Stand: 85/140 umgesetzt (61 %).**
+**Stand: 86/140 umgesetzt (61 %).**
 
 ## Alle 140 Funktionen, nach Korpus-Haeufigkeit sortiert
 
@@ -83,7 +83,7 @@ Gemessen, nicht geschaetzt: die 140 oeffentlichen Codesymbole sind aus `clib.l` 
 | ✅ | `strtok` | `string.h` | 34 |  |
 | ✅ | `fread` | `stdio.h` | 33 |  |
 | ✅ | `isalpha` | `ctype.h` | 33 |  |
-| ❌ | `ungetc` | `stdio.h` | 33 |  |
+| 🟡 | `ungetc` | `stdio.h` | 33 | one-character pushback buffer shared by qclib input streams. |
 | 🟡 | `floor` | `math.h` | 32 | uses the verified 68k F-line truncation path. |
 | ✅ | `fwrite` | `stdio.h` | 32 |  |
 | ❌ | `acos` | `math.h` | 30 |  |
