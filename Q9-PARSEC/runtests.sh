@@ -4682,6 +4682,99 @@ else
 	echo "warn  qcc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
 fi
 
+
+# ---------------------------------------------------------------------------
+# 17) QCC-DEFMODUL (2026-09-22, Branch QCC-DEFMODUL): #DEFOS/#DEFMODUL
+#
+# Verankert die Faelle, die beim Aufbau der Grammatikregeln und der
+# MODHEADER/ENTRY-Emission (siehe docs/STATUS_DEFMODUL.md Phase 2) manuell
+# verifiziert wurden, als echte Regressionstests -- vor allem Faell 1
+# (Regressionssicherheit fuer ALLE bestehenden Programme ohne #DEFMODUL)
+# ist kritisch: eine fruehere Fassung emittierte MODHEADER bedingungslos
+# und brach dadurch mehrere Selbsthosting-Tests in dieser Suite (siehe
+# Commit 73d0c66).
+# ---------------------------------------------------------------------------
+dmfail=0
+
+if cc -std=c11 -Wall -Wextra -x c -o build/qcc_p_dm data/qcc_p.c 2>/dev/null; then
+	# 17a) OHNE jede #DEFOS-/#DEFMODUL-Zeile: exakt das alte Verhalten, kein MODHEADER.
+	out=$(build/qcc_p_dm 'int main(void){ return 0; }' 2>&1)
+	if echo "$out" | grep -q '^MODHEADER'; then
+		echo "FAIL  qcc-defmodul 17a: MODHEADER ohne jede Direktive emittiert (Regression)"; dmfail=1
+	elif ! echo "$out" | tail -1 | grep -q '^OK$'; then
+		echo "FAIL  qcc-defmodul 17a: normales Programm nicht mehr OK"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17a: ohne #DEFMODUL bleibt alles unveraendert (kein MODHEADER)"
+	fi
+
+	# 17b) #DEFOS allein registriert sich, keine IR-Wirkung noetig, muss durchlaufen.
+	out=$(build/qcc_p_dm '#defos Q9
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -1 | grep -q '^OK$'; then
+		echo "FAIL  qcc-defmodul 17b: #defos allein schlaegt fehl"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17b: #defos allein wird akzeptiert"
+	fi
+
+	# 17c) Voller #DEFMODUL-Satz: MODHEADER mit allen angegebenen Werten, ENTRY main.
+	out=$(build/qcc_p_dm '#defmodul NAME cfide
+#defmodul EDITION 3
+#defmodul STACK 4096
+#defmodul ATTR 0x8000
+#defmodul TYPE PROG main
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER name=cfide type=PROG attr=0x8000 edition=3 stack=4096$'; then
+		echo "FAIL  qcc-defmodul 17c: MODHEADER-Zeile nicht wie erwartet"; dmfail=1
+	elif ! echo "$out" | grep -q '^ENTRY main$'; then
+		echo "FAIL  qcc-defmodul 17c: ENTRY-Zeile fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17c: voller #DEFMODUL-Satz erzeugt korrektes MODHEADER+ENTRY"
+	fi
+
+	# 17d) #DEFOS ALLEIN (kein einziges #DEFMODUL) signalisiert schon "das soll
+	# ein Modul werden" und defaultet komplett auf TYPE PROG, ENTRY main --
+	# genau die Faelle, die #DEFOS von einem reinen #DEFMODUL-Subkommando
+	# unterscheiden (s. STATUS_DEFMODUL.md Abschnitt 1.e).
+	out=$(build/qcc_p_dm '#defos Q9
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER type=PROG attr=0x8000 edition=1 stack=4096$'; then
+		echo "FAIL  qcc-defmodul 17d: #defos allein haette auf TYPE PROG/main defaulten muessen"; dmfail=1
+	elif ! echo "$out" | grep -q '^ENTRY main$'; then
+		echo "FAIL  qcc-defmodul 17d: #defos allein: ENTRY main fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17d: #defos allein defaultet korrekt auf TYPE PROG, ENTRY main"
+	fi
+
+	# 17e) TYPE PROG OHNE Einsprungnamen muss FAIL liefern (Architekturfund,
+	# s. STATUS_DEFMODUL.md Phase 2 -- keine stille Fehlinterpretation des
+	# naechsten Tokens als Einsprungname).
+	out=$(build/qcc_p_dm '#defmodul TYPE PROG
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -1 | grep -q '^FAIL$'; then
+		echo "FAIL  qcc-defmodul 17e: TYPE PROG ohne Einsprung haette FAIL liefern muessen"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17e: TYPE PROG ohne Einsprungnamen liefert korrekt FAIL"
+	fi
+
+	# 17f) Kompletter End-to-End-Pfad bis zum 68k-Backend: MODHEADER/ENTRY
+	# duerfen dort nicht mehr "Opcode ausserhalb einer Funktion" ausloesen.
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
+		build/qcc_p_dm '#defmodul NAME cfide
+#defmodul TYPE PROG main
+int main(void){ return 0; }' > build/qcc_dm.ir 2>/dev/null
+		if build/qcc_backend_dm build/qcc_dm.ir build/qcc_dm.s68 -os9 >/dev/null 2>&1; then
+			echo "ok    qcc-defmodul 17f: MODHEADER/ENTRY werden vom 68k-Backend ohne Absturz verarbeitet"
+		else
+			echo "FAIL  qcc-defmodul 17f: 68k-Backend scheitert an MODHEADER/ENTRY"; dmfail=1
+		fi
+	else
+		echo "FAIL  qcc-defmodul 17f: qcc_backend_dm baut nicht"; dmfail=1
+	fi
+else
+	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
+fi
+
+[ $dmfail -eq 0 ] || fail=1
 # ---------------------------------------------------------------------------
 # -peephole (2026-09-14 erstmals automatisiert)
 #
