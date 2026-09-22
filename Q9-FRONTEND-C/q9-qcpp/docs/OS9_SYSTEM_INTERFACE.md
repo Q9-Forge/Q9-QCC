@@ -8,7 +8,7 @@ Projekt: Q9-QCC (Branch `QCC-DEFMODUL`)
 
 ## 1. Überblick & Motivation
 Dieses Dokument beschreibt die Erweiterung des Compilers (Q9-QCC für C und Quant9) um:
-1. **Native OS-9 Modul-Erzeugung:** Direktiven zur Erzeugung beliebiger OS-9 Modultypen (`#DEFMODUL`).
+1. **Native OS-9 Modul-Erzeugung:** Direktiven zur Kennzeichnung des Ziel-Betriebssystems (`#DEFOS`) und zur Erzeugung beliebiger OS-9 Modultypen (`#DEFMODUL`).
 2. **Dedizierte Calling-Conventions:** Sprachschlüsselwörter für Treiber, Interrupts und Systemaufrufe (`driver`, `interrupt`, `trap`, `__syscall`).
 3. **Universelle Syscall-Archetypen:** Reduktion von über 100 OS-9-Systemaufrufen auf 3 generische Register-Muster über Prefix-Sharing – vollständig ohne manuelle Assembler-Wrapper (`os9call.a`).
 4. **Hardwarenaher Inline-Assembler:** `#ASM ... #ENDASM` für direkte Register- und Hardware-Manipulationen.
@@ -17,7 +17,33 @@ Dieses Dokument beschreibt die Erweiterung des Compilers (Q9-QCC für C und Quan
 
 ---
 
-## 2. Modul-Definition (`#DEFMODUL`)
+## 2. Ziel-Betriebssystem & Modul-Definition (`#DEFOS`, `#DEFMODUL`)
+
+### `#DEFOS` — Ziel-Betriebssystem (entschieden 2026-09-22, Branch `QCC-DEFMODUL`)
+
+Eigene, `#DEFMODUL` vorgeschaltete Direktive — steckt den Rahmen ab, in
+dem `#DEFMODUL` und die Calling-Convention-Keywords (`modul driver`
+usw.) überhaupt gelten, statt nur eine Eigenschaft unter vielen im
+Modulkopf zu sein. Muss vor dem ersten `#DEFMODUL` einer Datei stehen.
+
+```c
+#DEFOS Q9              // oder: OS9 — Default Q9, wenn weggelassen
+
+#DEFMODUL NAME cfide
+#DEFMODUL TYPE DRIVER rbf
+```
+
+- **`Q9`** (Default): Ziel ist der eigene Q9-Kernel.
+- **`OS9`**: Ziel ist echtes Microware-OS-9. Heute vermutlich
+  byteidentisch zu `Q9` (Q9 ist bewusst ABI-kompatibel zu echtem OS-9,
+  linkt gegen dieselben `clib.l`/`sys.l`/`os_lib.l`) — die Unterscheidung
+  ist ein Zukunfts-Haken für den Tag, an dem sich Q9 bewusst von echtem
+  OS-9 unterscheidet, kein aktueller Verhaltensunterschied.
+- Bei `#DEFMODUL TYPE NOOS` ist `#DEFOS` **wirkungslos** (informativ,
+  kein Fehler) — ein Flat Binary ohne OS-9-Modul-Sync hat keine
+  OS-Variante, gegen die es sich unterscheiden könnte.
+
+### Modul-Definition (`#DEFMODUL`)
 
 Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfang der Quelldatei. Das Format folgt dem `#define`-Muster mit Subkommandos:
 
