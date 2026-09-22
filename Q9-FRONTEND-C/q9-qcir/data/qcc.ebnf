@@ -6,7 +6,61 @@
    funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
    plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
    faellt korrekt hierher zurueck. */
-program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl } .
+program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl | defmodulDecl } .
+
+/* Moduldefinition (siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 2/3,
+   Branch QCC-DEFMODUL). Dieser Schritt deckt nur NAME/EDITION/STACK/ATTR
+   und TYPE PROG/SYSTEM/NOOS ab -- reines Registrieren wie bei defosDecl,
+   noch keine MODHEADER-IR-Emission. TYPE DRIVER/MANAGER/TRAPHANDLER (mit
+   variabler Einsprungliste, braucht DISPATCHTAB) kommt separat mit
+   Phase 4, ebenso ORG/ALIGN (Phase 6) -- absichtlich nicht Teil dieser
+   Regel, ein #DEFMODUL mit einem dieser Subkommandos scheitert also noch
+   mit FAIL, wie jedes andere noch nicht angebundene Subkommando auch. */
+defmodulDecl    = "#defmodul" ( defmodulName | defmodulEdition | defmodulStack | defmodulAttr | defmodulType ) .
+
+defmodulName    = "NAME" defmodulNameArg .
+defmodulNameArg = ident .
+
+/* EIGENE Zahl-Regel statt der bestehenden "number" -- number traegt
+   schon "ACTION AFTER number CALL tc_number" fuer echte Ausdruecke
+   (emittiert PUSH <wert>). Ein Direktiv-Argument ist kein Ausdruck, das
+   wuerde ungewollten IR-Code erzeugen (gemessen: "#defmodul EDITION 55"
+   emittierte vor der Korrektur ein PUSH 55 mitten im IR-Strom). hexNumber/
+   decNumber/integerSuffix selbst tragen KEINE eigene ACTION. */
+defmodulNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
+
+defmodulEdition    = "EDITION" defmodulEditionArg .
+defmodulEditionArg = defmodulNumber .
+
+defmodulStack    = "STACK" defmodulStackArg .
+defmodulStackArg = defmodulNumber .
+
+defmodulAttr    = "ATTR" defmodulAttrArg .
+defmodulAttrArg = defmodulNumber .
+
+/* defmodulTypeKw als eigene Regel, NUR damit sie eine eigene ACTION tragen
+   kann (ein Literal allein traegt keine ACTION, gleiches Muster wie
+   funcBodyOpen/blockOpen) -- die Regel feuert VOR PROG/SYSTEM/NOOS.
+   WICHTIG (gemessen, nicht nur vermutet): der Einsprungname ist hier
+   bewusst NICHT optional, anders als in der urspruenglichen Spec
+   ("PROG [entry]"). Diese Grammatik kennt keine Zeilengrenzen -- ws()
+   behandelt Zeilenumbrueche wie gewoehnlichen Leerraum. Ein optionaler
+   Einsprung wuerde bei "#DEFMODUL TYPE PROG" (ohne Namen), gefolgt von
+   "int main(void)...", GIERIG das naechste echte Token "int" als
+   vermeintlichen Einsprungnamen verschlucken -- der Rest der Datei
+   scheitert dann mit FAIL, ohne erkennbaren Grund. Reproduziert und
+   verifiziert vor dieser Korrektur. Die "Default main, wenn weggelassen"-
+   Regel aus der Spec muss auf Ebene der spaeteren Default-Anwendung
+   (MODHEADER-Emission) geloest werden, nicht hier auf Grammatikebene --
+   siehe Notiz in STATUS_DEFMODUL.md. Betrifft KUENFTIG auch die
+   Dispatch-Einsprunglisten aus Phase 4 (DRIVER/MANAGER/TRAPHANDLER),
+   dort staerker (wiederholte Liste statt einzelner optionaler Wert). */
+defmodulType      = defmodulTypeKw ( defmodulTypeProg | defmodulTypeSystem | defmodulTypeNoos ) .
+defmodulTypeKw    = "TYPE" .
+defmodulTypeProg  = "PROG" defmodulEntryArg .
+defmodulTypeSystem = "SYSTEM" .
+defmodulTypeNoos  = ( "NOOS" | "BAREMETAL" ) defmodulEntryArg .
+defmodulEntryArg  = ident .
 
 /* Ziel-Betriebssystem-Direktive (siehe docs/OS9_SYSTEM_INTERFACE.md
    Abschnitt 2, Branch QCC-DEFMODUL). Q9-QCC-eigene Erweiterung, kein

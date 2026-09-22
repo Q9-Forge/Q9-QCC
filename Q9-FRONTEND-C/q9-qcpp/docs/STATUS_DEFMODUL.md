@@ -25,7 +25,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🟢 | Alle fünf Komponenten gebaut+gehasht, `smoke.c`-Golden-Test durch die Kette, Header-/CRC-Tests gesammelt, `gdp.a` als Referenztreiber gefunden |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
-| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`modul syscall` |
+| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | `#DEFOS`/`#DEFMODUL` (Grundform) im Frontend geparst+registriert, dabei Zeilengrenzen-Architekturfund gemacht+behoben; IR-Validierung und Backend-Aufnahme noch offen |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
 | **5. Weitere Calling-Conventions** | `interrupt`, `trap`, `naked` | 🔴 | In dieser Reihenfolge, je eigener Prolog-/Epilog-Test |
@@ -176,12 +176,21 @@ Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTA
 | Teilschritt | Status | Anmerkung |
 |---|:---:|---|
 | Scanner-Erkennung `#DEFMODUL` in `q9-qcpp` | 🟢 | Bereits vorhanden (`edcd65a`), reines Passthrough |
-| Scanner-Erkennung `#DEFOS` in `q9-qcpp` | 🔴 | Neu seit 1.e, noch nicht implementiert — muss vor `#DEFMODUL` geprüft werden können |
-| Semantische Verarbeitung im C-Frontend/`q9-qcir` | 🔴 | Muss Moduldefinition, Funktionen und Symbole tatsächlich zuordnen, nicht nur durchreichen |
+| Scanner-Erkennung `#DEFOS` in `q9-qcpp` | 🟢 | Erledigt 22.09.2026 (`62d2544`), reines Passthrough wie `#DEFMODUL` |
+| `#DEFOS` im C-Frontend/`q9-qcir` geparst und registriert | 🟢 | Erledigt 22.09.2026 (`7e76535`), Name in `tcDefOsName` abgelegt, noch keine IR-Emission |
+| `#DEFMODUL` im C-Frontend/`q9-qcir` geparst und registriert | 🟡 | `NAME`/`EDITION`/`STACK`/`ATTR`/`TYPE PROG`\|`SYSTEM`\|`NOOS` erledigt (Werte in `tcDefModul*`-Variablen, noch keine IR-Emission); `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` und `ORG`/`ALIGN` bewusst noch offen (Phase 4/6) — s. Architekturfund unten |
 | IR-Validierung (Pflichtfelder, unbekannte Metadaten, Kollision mit bestehendem `FUNC`-Format) | 🔴 | |
 | Backend-Aufnahme der neuen Opcodes (68k: implementieren; ARM64/C-Backend: klare „noch nicht implementiert"-Ablehnung; QCCVM: Metadaten ignorieren, Funktionsrumpf interpretieren) | 🔴 | gemäß 1.d |
 
 **Abnahmekriterium:** eine minimale IR mit Modulheader und einer Funktion wird akzeptiert; dieselbe IR ohne Pflichtargumente wird verständlich abgelehnt.
+
+### Architekturfund (22.09.2026): die Grammatik kennt keine Zeilengrenzen
+
+Bei der `#DEFMODUL`-Umsetzung gemessen, nicht nur vermutet: `q9-qcir`s Grammatik ist ein reiner Zeichenstrom-Parser, `ws()` behandelt Zeilenumbrüche exakt wie gewöhnlichen Leerraum. Ein **optionaler** abschließender Bezeichner in einer Regel (z. B. `"PROG" [ entry ]`, wörtlich wie in der ursprünglichen Spec) ist deshalb gefährlich: Bei `#DEFMODUL TYPE PROG` **ohne** Namen, gefolgt von `int main(void)...`, verschlingt die Regel gierig das `int` der nächsten Zeile als vermeintlichen Einsprungnamen — der Rest der Datei scheitert danach mit einem nichtssagenden `FAIL`. Reproduziert, verifiziert, behoben.
+
+**Übernommene Regel für diesen Schritt:** der Einsprungname bei `TYPE PROG`/`TYPE NOOS` ist jetzt **verpflichtend**, nicht optional wie in der Spec (`PROG [entry]`, Default `main`). Die „Default anwenden, wenn weggelassen"-Logik aus der Spec gehört auf die Ebene der späteren `MODHEADER`-Emission (wo ein leerer `tcDefModulEntry`-Puffer einfach `main` einsetzt), nicht auf die Grammatikebene selbst.
+
+**Für künftige Arbeit relevant, nicht nur für diesen Schritt:** jede optionale oder wiederholte (`{ ident }`) Bezeichnerliste am Ende einer `#DEFMODUL`-Regel trägt dasselbe Risiko, sobald ihr echter C-Code oder eine weitere bezeichnerartige Direktive folgen kann. Phase 4s aktueller Entwurf (ein `#DEFMODUL ENTRY <slot> <funcname>` pro Zeile, je genau zwei Pflicht-Bezeichner) umgeht die akute Form davon bereits von sich aus — sollte aber bei der Umsetzung bewusst so bleiben (keine Rückkehr zur ursprünglichen `TYPE DRIVER rbf my_init my_read ...`-Auto-Default-Form auf einer Zeile, ohne das Zeilengrenzen-Problem vorher grundsätzlich zu lösen, z. B. durch einen expliziten Endemarker, den `qcpp` beim Durchreichen anhängt).
 
 ---
 
@@ -210,7 +219,7 @@ int main(void) {
 
 ## Phase 4 — Minimaler `DRIVER`-Pfad
 
-Erster Schritt bewusst ohne automatische Default-Einsprünge (Codex' Empfehlung, übernommen) — explizite Zuordnung, korrigiert um den fehlenden `trap`-Slot aus 1.b:
+Erster Schritt bewusst ohne automatische Default-Einsprünge (Codex' Empfehlung, übernommen) — explizite Zuordnung, korrigiert um den fehlenden `trap`-Slot aus 1.b. Die Ein-Zeile-pro-`ENTRY`-Form ist seit dem Architekturfund in Phase 2 (s. o.) nicht mehr nur eine Stilentscheidung, sondern vermeidet aktiv das dort gemessene Zeilengrenzen-Problem (je Zeile genau zwei Pflicht-Bezeichner, keine offene/optionale Liste) — bei der Umsetzung so beibehalten:
 
 ```c
 #DEFMODUL TYPE DRIVER rbf
