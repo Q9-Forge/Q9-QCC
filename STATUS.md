@@ -16,11 +16,11 @@ Status-Übersicht und Arbeitsplan für die Implementierung nativer OS-9 Modulart
 | **1. Spezifikation & IR** | 1.1 IR-Opcodes formal festlegen | 🟢 | `MODHEADER`, `DISPATCHTAB`, `ORG`, `SECTION`, `INLINEASM`, `FUNC ... [conv]` |
 | | 1.2 Doku `IR_OPCODES_de.md` aktualisieren | 🟢 | Opcodes in Referenzdokumentation aufgenommen |
 | | 1.3 `OS9_SYSTEM_INTERFACE.md` abgleichen | 🟢 | Architektur, `#DEFMODUL`-Syntax, Calling-Conventions (`driver`, `interrupt`, `trap`, `naked`) & Multi-Regionen spezifiziert |
-| **2. Frontend (`q9-qcpp` / `qcir`)** | 2.1 `#DEFMODUL` Parser im Präprozessor | 🔴 | Syntax `#DEFMODUL <KEYWORD> ...` (NAME, EDITION, STACK, ATTR, ORG, ALIGN, TYPE) einlesen |
+| **2. Frontend (`q9-qcpp` / `qcir`)** | 2.1 `#DEFMODUL` Parser im Präprozessor | 🟢 | Syntax `#DEFMODUL <KEYWORD> ...` (NAME, EDITION, STACK, ATTR, ORG, ALIGN, TYPE) sowie `#ORG`, `#SECTION` & `#ASM/#ENDASM` im Präprozessor implementiert |
 | | 2.2 Calling-Convention Keywords (`driver`, `interrupt`, `trap`, `naked`) | 🔴 | ABI-Modifikatoren auf `static`-Ebene parsen |
 | | 2.3 Syscall-Intrinsics (`__syscall`) | 🔴 | 3 Archetypen (`CALL_D`, `CALL_DA`, `CALL_FORK`) unterstützen |
 | | 2.4 IR-Emission von Modul- und Funktions-Metadaten | 🔴 | `MODHEADER`, `DISPATCHTAB`, `FUNC ... [conv]` im `.qir`-Stream |
-| | 2.5 `#ASM ... #ENDASM` Parser & IR-Emission | 🔴 | Inline-Assembler erfassen und als `INLINEASM` weiterleiten |
+| | 2.5 `#ASM ... #ENDASM` Parser & IR-Emission | 🟡 | Präprozessor fertig 🟢; `qcir`-Parser & `INLINEASM`-Emission offen 🔴 |
 | **3. Backend 68k (`q9-qir68k`)** | 3.1 Handler für `MODHEADER` | 🔴 | Generierung von `psect`, Typ/Sprache, Attr/Rev |
 | | 3.2 Handler für `DISPATCHTAB` | 🔴 | Relative Offset-Tabelle zu den C-Funktionen emittieren |
 | | 3.3 Codegen für `driver` Calling-Convention | 🔴 | Register-Prolog (`a1`/`a2`) & Carry-Flag Epilog + `rts` |

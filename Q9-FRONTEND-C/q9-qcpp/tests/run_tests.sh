@@ -574,6 +574,20 @@ EOF
 t_run "29 #asm: Makro expandiert, move.l bleibt zusammen"
 
 t_src <<'EOF'
+#ASM
+ move.w #0x2700,sr
+#ENDASM
+int c = 1;
+EOF
+t_exp <<'EOF'
+#asm
+move.w #0x2700,sr
+#endasm
+int c = 1;
+EOF
+t_run "29a #ASM/#ENDASM Grossschreibung"
+
+t_src <<'EOF'
 #asm
  nop
 #endasm
@@ -678,6 +692,24 @@ int zweimal;
 int zweimal;
 EOF
 t_run "33b ohne once wird zweimal eingebunden" "-I$TMP"
+
+t_src <<'EOF'
+#DEFMODUL TYPE DRIVER rbf
+#DEFMODUL NAME cfide
+#DEFMODUL ORG 0xFFF80000
+#ORG 0xFFF81000
+#SECTION fast_ram 0x00001000
+int main(void) { return 0; }
+EOF
+t_exp <<'EOF'
+#defmodul TYPE DRIVER rbf
+#defmodul NAME cfide
+#defmodul ORG 0xFFF80000
+#org 0xFFF81000
+#section fast_ram 0x00001000
+int main(void) { return 0; }
+EOF
+t_run "33c #DEFMODUL/#ORG/#SECTION Direktiven"
 
 t_src <<'EOF'
 int a = __LINE__;
