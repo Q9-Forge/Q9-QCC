@@ -676,6 +676,48 @@ static int tcEq(const char* a, const char* b) {
 	while (*a && *b) { if (*a != *b) return 0; a++; b++; }
 	return *a == *b;
 }
+
+static int tcModHeaderEmitted = 0;
+
+/* Emittiert MODHEADER (und ggf. ENTRY) genau einmal, direkt vor der ersten
+   echten FUNC-Zeile (Aufrufstelle: tc_funcbodybegin) -- damit steht es wie
+   gefordert vor allen Deklarationen im .qir-Stream, solange #DEFMODUL wie
+   dokumentiert am Dateianfang steht. Wendet die in
+   docs/OS9_SYSTEM_INTERFACE.md Abschnitt 2 dokumentierten Defaults an,
+   AUSSER bei NAME: dort wird bewusst nichts geraten, das uebernimmt der
+   Linker mit seiner schon bestehenden Konvention "kein Name -> aus dem
+   Ausgabedateinamen" (ql68k -O=/-n=, dieselbe Regel doppelt zu pflegen
+   waere unnoetig). STACK-Default 4096 gilt fuer PROG/NOOS/SYSTEM; der
+   abweichende DRIVER-Default (0) kommt erst mit Phase 4. */
+static void tcEmitModHeaderIfNeeded(void) {
+	long edition, stack, attr;
+	const char* type;
+	if (tcModHeaderEmitted) return;
+	tcModHeaderEmitted = 1;
+	/* Ohne jede #DEFOS-/#DEFMODUL-Zeile im Quelltext bleibt das Verhalten
+	   unveraendert wie vor dieser Erweiterung -- kein MODHEADER, kein
+	   ENTRY. Sonst wuerde JEDES bestehende Testprogramm (das nie ein
+	   Modul werden wollte) ploetzlich ein MODHEADER bekommen, das das
+	   68k-Backend noch gar nicht kennt (erst mit der Backend-Anbindung
+	   spaeter in Phase 2) -- gemessen als echte Regression in
+	   Q9-PARSEC/runtests.sh (IR Zeile 108: Opcode ausserhalb einer
+	   Funktion), vor dieser Korrektur. Die "PROG/main, wenn nichts
+	   angegeben"-Defaults gelten also nur INNERHALB eines Quelltexts,
+	   der bereits erkennbar ein Modul werden will (mindestens eine
+	   #DEFOS- oder #DEFMODUL-Zeile), nicht fuer jede Datei ueberhaupt. */
+	if (!tcDefOsName[0] && !tcDefModulType[0] && !tcDefModulName[0] &&
+	    tcDefModulEdition < 0 && tcDefModulStack < 0 && tcDefModulAttr < 0)
+		return;
+	type = tcDefModulType[0] ? tcDefModulType : "PROG";
+	edition = tcDefModulEdition >= 0 ? tcDefModulEdition : 1;
+	stack = tcDefModulStack >= 0 ? tcDefModulStack : 4096;
+	attr = tcDefModulAttr >= 0 ? tcDefModulAttr : 0x8000;
+	printf("MODHEADER");
+	if (tcDefModulName[0]) printf(" name=%s", tcDefModulName);
+	printf(" type=%s attr=0x%lx edition=%ld stack=%ld\n", type, (unsigned long)attr, edition, stack);
+	if (tcDefModulEntry[0]) printf("ENTRY %s\n", tcDefModulEntry);
+	else if (tcEq(type, "PROG") || tcEq(type, "NOOS")) printf("ENTRY main\n");
+}
 /* Holt den Bezeichner aus dem erkannten Textbereich einer VOLLSTAENDIGEN
    Regel -- noetig, weil die goto/label-Aktionen bewusst an der Gesamtregel
    haengen und nicht an einer Namens-Unterregel (siehe Kommentar in
@@ -2710,6 +2752,7 @@ void tc_funcbodybegin(const char* start, const char* end) {
 	tcPendingShift1 = 0;
 	tcIndexDepth = 0;
 	if (tcCurrentFuncIndex >= 0) tcFunctionIsDeclOnly[tcCurrentFuncIndex] = 0;
+	tcEmitModHeaderIfNeeded();
 	printf("FUNC %s %d %d\n", tcFuncName, tcLocalCount, tcCurrentFuncIndex >= 0 ? tcFunctionIsStatic[tcCurrentFuncIndex] : 0);
 	/* DOUBLE-PARAMETER AUSPACKEN (2026-09-16). Der Slot haelt eine Adresse
 	   (s. tc_param). Hier -- und nur hier -- wird daraus eine normale lokale
