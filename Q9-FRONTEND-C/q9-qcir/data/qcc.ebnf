@@ -6,7 +6,18 @@
    funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
    plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
    faellt korrekt hierher zurueck. */
-program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef } .
+program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl } .
+
+/* Ziel-Betriebssystem-Direktive (siehe docs/OS9_SYSTEM_INTERFACE.md
+   Abschnitt 2, Branch QCC-DEFMODUL). Q9-QCC-eigene Erweiterung, kein
+   C89-Standardkonstrukt -- deshalb "#defos" als eigenes Literal statt einer
+   echten Praeprozessor-Direktive (dieselbe Microware-Tradition wie #asm).
+   Erster Ausbauschritt: nur registrieren (ACTION legt den Namen ab), noch
+   keine IR-Emission -- die folgt zusammen mit #defmodul in einem spaeteren
+   Schritt. Kein Terminator noetig, ws() behandelt den Zeilenumbruch wie
+   gewoehnlichen Leerraum, genau wie qcpp es beim Durchreichen schon tut. */
+defosDecl = "#defos" defosArg .
+defosArg  = ident .
 
 /* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
