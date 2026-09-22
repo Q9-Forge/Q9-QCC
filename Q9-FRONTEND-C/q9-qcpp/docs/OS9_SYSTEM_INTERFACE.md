@@ -93,14 +93,21 @@ Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfa
 
 * **System-Manager / File-Manager (OS-9 Typ $0D):**
   ```c
-  #DEFMODUL TYPE MANAGER fscs mgr_link mgr_create mgr_open
+  #DEFMODUL TYPE MANAGER fscs
+  #DEFMODUL ENTRY open   mgr_open
+  #DEFMODUL ENTRY create mgr_create
+  #DEFMODUL ENTRY link   mgr_link
   ```
+  *(Korrigiert 22.09.2026 — Einsprünge stehen wie bei `DRIVER` in eigenen `ENTRY`-Zeilen, nicht inline hinter `TYPE MANAGER`; die frühere Inline-Form widersprach der später für `DRIVER` getroffenen Entscheidung, s. `STATUS_DEFMODUL.md` Phase 4. Zur Größenordnung: das eingebaute `RBF` (Random Block File Manager) hat allein 13 Einsprungpunkte — `ChgDir`, `Close`, `Create`, `Delete`, `GetStt`, `MakDir`, `Open`, `Read`, `ReadLn`, `Seek`, `SetStt`, `Write`, `WritLn` (Microware-Handbuch `68k_techio.pdf`, Tabelle 2-1) —, genau der Fall, für den die separate `ENTRY`-Form gebraucht wird.*
+
+  **Offen, nicht spekulativ ergänzt:** Das verfügbare Microware-Handbuch beschreibt eingebaute Manager wie RBF/SCF nur aus **Aufrufer-Sicht** (was sie intern tun), nicht als Anleitung zum Schreiben eines eigenen Managers — anders als beim Treiber-Kapitel gibt es dort keine `(a1)=.../(a2)=...`-Registertabelle für die Manager-Einsprungpunkte selbst. Die genaue Register-ABI für `modul driver`-artige Manager-Funktionen ist deshalb **noch nicht verifiziert** und wird bei Bedarf gesondert recherchiert (vermutlich ein anderes MWOS-Handbuch als `68k_techio.pdf`), bevor Phase 4 das für `MANAGER` umsetzt.
 
 * **Systemmodul / Kernel (OS-9 Typ $0C):**
   ```c
   #DEFMODUL TYPE SYSTEM
   #DEFMODUL ATTR 0xA000        // Supervisor-State ($20) + Reentrant ($80)
   ```
+  *(Kein Einsprungpunkt-Konzept wie bei `PROG`/`DRIVER` — Systemmodule werden typischerweise über ihre eigene, modulspezifische Schnittstelle angesprochen, nicht über eine feste Dispatch-Tabelle. Register-ABI ebenfalls noch nicht verifiziert.)*
 
 * **Bare-Metal / BIOS / Boot-ROM (Kein OS-Header, Flat Binary):**
   ```c
@@ -110,8 +117,11 @@ Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfa
 
 * **Trap-Handler / Bibliothek (OS-9 Typ $0B):**
   ```c
-  #DEFMODUL TYPE TRAPHANDLER math trap_func1 trap_func2
+  #DEFMODUL TYPE TRAPHANDLER math
+  #DEFMODUL ENTRY func1 trap_func1
+  #DEFMODUL ENTRY func2 trap_func2
   ```
+  *(Korrigiert 22.09.2026, gleicher Grund wie bei `MANAGER` oben — separate `ENTRY`-Zeilen statt Inline-Liste. Register-ABI ebenfalls noch nicht gegen eine autoritative Quelle verifiziert.)*
 
 ---
 
