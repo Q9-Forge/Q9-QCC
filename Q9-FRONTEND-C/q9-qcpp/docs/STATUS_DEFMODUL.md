@@ -2,7 +2,7 @@
 
 Status-Übersicht und Arbeitsplan für die Implementierung nativer OS-9 Modulartefakte (`#DEFMODUL`, Dispatch-Tabellen, Calling-Conventions, `#ASM`) in Q9-QCC.
 
-Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste durch den Phasenplan aus `PLAN_REVIEW_DEFMODUL.md` (Codex) und trägt die dort offen gelassenen bzw. dort fehlenden Entscheidungen aus `PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md` (Claude) als konkrete Ergebnisse ein. Beide Dokumente bleiben als Begründungstext stehen — hier steht nur, was daraus folgt.
+Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste durch den Phasenplan aus den Reviews von Codex und Claude (`PLAN_REVIEW_DEFMODUL.md`/`PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md`, beide nach vollständiger Einarbeitung gelöscht, s. Abschnitt "Quellen") und trägt deren Ergebnisse konkret ein.
 
 **Leitsatz aus beiden Reviews, unverändert übernommen:** erst ABI und IR verbindlich machen, dann ein kleines `PROG`-/`DRIVER`-MVP durch die komplette Pipeline bringen, danach erst `modul syscall`, Adressplatzierung und Inline-Assembler ergänzen.
 
@@ -51,7 +51,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 
 ### 1.a Register-ABI (jetzt entschieden 🟢)
 
-Ursprüngliche Spec (`OS9_SYSTEM_INTERFACE.md` §4.1) hatte `a1`/`a2` vertauscht. Aufgelöst mit drei unabhängigen Quellen (`PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md` Abschnitt 1): offizielles Microware-Handbuch `MWOS/DOC/PDF/68k_techio.pdf` (S. 143/149/154, für READ/GETSTAT/SETSTAT/INIT übereinstimmend), `HOSTFS_MANAGER.md`, realer `ss_gdp.a`-Fund.
+Ursprüngliche Spec (`OS9_SYSTEM_INTERFACE.md` §4.1) hatte `a1`/`a2` vertauscht. Aufgelöst mit drei unabhängigen Quellen (ursprünglich zusammengetragen im inzwischen gelöschten Review, s. "Quellen"): offizielles Microware-Handbuch `MWOS/DOC/PDF/68k_techio.pdf` (S. 143/149/154, für READ/GETSTAT/SETSTAT/INIT übereinstimmend), `HOSTFS_MANAGER.md`, realer `ss_gdp.a`-Fund.
 
 | Register | Bedeutung | Quelle |
 |---|---|---|
@@ -61,7 +61,13 @@ Ursprüngliche Spec (`OS9_SYSTEM_INTERFACE.md` §4.1) hatte `a1`/`a2` vertauscht
 | `a5` | Caller-Register-Stack-Pointer | Handbuch, in ursprünglicher Spec gefehlt — ergänzen |
 | `a6` | System-Global-Data-Storage-Pointer | Handbuch, deckt sich mit ursprünglicher Spec |
 
-**To-do:** `OS9_SYSTEM_INTERFACE.md` §4.1 entsprechend korrigieren (`a1`/`a2` tauschen, `a5` ergänzen).
+**Erledigt:** in `OS9_SYSTEM_INTERFACE.md` §4.1 korrigiert (`a1`/`a2` getauscht, `a5` ergänzt).
+
+**Noch offen aus Codex' Review §2.1, nicht vergessen:** welche Register
+jede Calling-Convention **erhalten** muss und welche sie **zerstören**
+darf (callee-saved vs. clobbered) — für `driver`/`interrupt`/`trap`/
+`naked` einzeln festzulegen, bisher nirgends dokumentiert. Gehört in
+Phase 3/4/5 vor den jeweiligen Backend-Codegen.
 
 ### 1.b Dispatch-Tabelle für `DRIVER` (jetzt entschieden 🟢)
 
@@ -69,9 +75,9 @@ Handbuch: *„branch table with **seven** entries"* — `INIT, READ, WRITE, GETS
 
 **To-do:** überall, wo die Standard-Dispatch-Liste auftaucht (`OS9_SYSTEM_INTERFACE.md` §2.1/§7, `IR_OPCODES_de.md`-Beispiel, Codex' Phase-4-Beispiel), einen siebten Eintrag `trap`/`drv_trap` (Default-Ziel: 0) ergänzen.
 
-### 1.c Globals-Adressierung in Calling-Convention-Funktionen (Grundsatz entschieden 🟢, Umsetzung offen 🔴)
+### 1.c Globals-Adressierung in Calling-Convention-Funktionen (Grundsatz + Spec-Text 🟢, Backend-Umsetzung offen 🔴)
 
-`-remotedata`/`vsect remote` ist seit 08.09.2026 projektweiter Standard und adressiert `a6`-relativ. Im Treiberkontext ist `a6` aber der System-Global-Pointer des Kernels (s. 1.a), nicht die private `vsect remote`-Basis eines `PROG`-Moduls. Grundsatzentscheidung: innerhalb von `driver`/`interrupt`/`trap`/`naked`-Funktionen wird für **alle** Globals (auch `const`/Pointer-Globals mit `GINITADDR`) PC-relative Adressierung erzwungen, der `-remotedata`-Pfad dort deaktiviert. Die technische Umsetzung im Backend ist Teil von Phase 3/4, nicht von Phase 1.
+`-remotedata`/`vsect remote` ist seit 08.09.2026 projektweiter Standard und adressiert `a6`-relativ. Im Treiberkontext ist `a6` aber der System-Global-Pointer des Kernels (s. 1.a), nicht die private `vsect remote`-Basis eines `PROG`-Moduls. Grundsatzentscheidung: innerhalb von `modul driver`/`interrupt`/`trap`/`naked`-Funktionen wird für **alle** Globals (auch `const`/Pointer-Globals mit `GINITADDR`) PC-relative Adressierung erzwungen, der `-remotedata`-Pfad dort deaktiviert. Seit 22.09.2026 als eigener Absatz in `OS9_SYSTEM_INTERFACE.md` Abschnitt 3, Punkt 3 ausformuliert (dabei nebenbei eine veraltete `a1`-Referenz in Punkt 2 auf das korrekte `a2` korrigiert). Die technische Umsetzung im Backend ist weiterhin Teil von Phase 3/4, nicht von Phase 1.
 
 **To-do:** eigener Arbeitsschritt in Phase 3 (Backend-Erkennung „Funktion hat Calling-Convention ≠ Standard → PC-relativ statt `-remotedata`") plus negativer Testfall (`const char*` in einer `driver`-Funktion referenziert).
 
@@ -220,6 +226,12 @@ Erster Schritt bewusst ohne automatische Default-Einsprünge (Codex' Empfehlung,
 
 Reihenfolge: `interrupt` → `trap` → `naked`. Jede Convention bekommt einen eigenen Prolog-/Epilog-Test. Bei `naked` muss vorher feststehen, welche Rückkehr erlaubt ist und ob bestimmte C-Konstrukte im Funktionsrumpf verboten werden müssen.
 
+**Testmethode aus Codex' Review §2.1, gilt auch rückwirkend für `driver`
+in Phase 4:** zu jeder Calling-Convention ein kleines, von Hand
+geschriebenes Assembler-Golden-File als Referenz anlegen (erwarteter
+Prolog/Epilog byteweise), gegen das der generierte Code verglichen wird —
+nicht nur "läuft/läuft nicht", sondern exakter Soll-Ist-Vergleich.
+
 | Teilschritt | Status |
 |---|:---:|
 | `interrupt`: `movem.l`-Prolog/-Epilog, Abschluss mit `rte` | 🔴 |
@@ -297,22 +309,26 @@ Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert):
 
 ## Ausstehende Dokumentänderungen
 
-**Erledigt (2026-09-22):** `a1`/`a2`-Tausch + `a5` (1.a), 7-Wort-Dispatch-Tabelle inkl. `trap` (1.b), Schlüsselwortform inkl. `ENTRY`-Opcode (1.d), `modul`-Präfix für Calling-Convention-Keywords (1.d), `#DEFOS`-Direktive (1.e) und QCCVM-/ARM64-/C-Backend-Verhalten (1.d) sind in `OS9_SYSTEM_INTERFACE.md` und `IR_OPCODES_de.md` eingetragen. Damit ist Phase 1 inhaltlich vollständig.
+**Erledigt (2026-09-22):** `a1`/`a2`-Tausch + `a5` (1.a, inkl. einer nachtraeglich gefundenen veralteten `a1`-Referenz in §3), 7-Wort-Dispatch-Tabelle inkl. `trap` (1.b), Schlüsselwortform inkl. `ENTRY`-Opcode (1.d), `modul`-Präfix für Calling-Convention-Keywords und Syscalls (1.d), `#DEFOS`-Direktive (1.e), QCCVM-/ARM64-/C-Backend-Verhalten (1.d), PC-relative Zwangsadressierung als Spec-Absatz (1.c), Grammatik-Position von `modul` relativ zu `static`/`extern` und die toten `ARCHITEKTUR.md`-Verweise sind in `OS9_SYSTEM_INTERFACE.md` und `IR_OPCODES_de.md` eingetragen bzw. entfernt. Damit ist Phase 1 vollständig — sowohl inhaltlich als auch in den Spec-Dokumenten selbst.
 
-**`OS9_SYSTEM_INTERFACE.md`, noch offen:**
-- Neuer Absatz zur PC-relativen Zwangsadressierung in Calling-Convention-Funktionen (1.c) — bisher nur als Grundsatz in `STATUS_DEFMODUL.md`, noch nicht in der Spec selbst ausformuliert
-- genaue Grammatik-Position von `modul` relativ zu `static`/`extern` (offen für Phase-1-Grammatikarbeit, `Data/qcc.ebnf`)
-- toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
+**`OS9_SYSTEM_INTERFACE.md`, noch offen (aus Codex' Review §4, bisher nicht nachgezogen):**
+- Für jeden Modultyp eine vollständige Minimaldefinition ergänzen — `DRIVER` ist inzwischen detailliert (Register, Dispatch, Prolog/Epilog), `MANAGER`/`SYSTEM`/`TRAPHANDLER` haben bisher nur ein Kurzbeispiel in §2.2, keine eigene Tiefe wie `DRIVER` in §4.1
 
-**`IR_OPCODES_de.md`, noch offen:**
+**`IR_OPCODES_de.md`, noch offen (reine Ausführungsarbeit, keine Entscheidung mehr):**
 - Argumentanzahl, Wertebereiche und Position im Stream je neuem Opcode ergänzen (Codex §2.2)
-- toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
+- `ALIGN` als eigener IR-Opcode fehlt noch in der Opcode-Tabelle — `#DEFMODUL ALIGN`/`#ORG`/`#SECTION` sind als Quelldirektiven beschrieben, aber `ALIGN` hat (anders als inzwischen `ORG`/`SECTION`) noch keine eigene IR-Opcode-Zeile (Codex §4)
 
 ---
 
 ## Quellen
 
-- `PLAN_REVIEW_DEFMODUL.md` (Codex) — Phasenplan, IR-Spezifikationsdisziplin, Backend-Abdeckung, Testkatalog
-- `PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md` (Claude) — Register-ABI-Auflösung, Dispatch-Tabellen-Korrektur, `-remotedata`/`a6`-Lücke, Keyword-Kollisionsrisiko
+- `PLAN_REVIEW_DEFMODUL.md` (Codex) und `PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md`
+  (Claude) — beide Review-Dokumente vom 22.09.2026, nach vollständiger
+  Einarbeitung ihres Inhalts in diese Datei sowie in `OS9_SYSTEM_INTERFACE.md`
+  und `IR_OPCODES_de.md` am selben Tag gelöscht (Andreas' Entscheidung,
+  keine Duplikate lebender Inhalte). Phasenplan, IR-Spezifikationsdisziplin,
+  Backend-Abdeckung, Testkatalog, Register-ABI-Auflösung,
+  Dispatch-Tabellen-Korrektur, `-remotedata`/`a6`-Lücke,
+  Keyword-Kollisionsrisiko — alles oben eingearbeitet, nichts verloren.
 - `MWOS/DOC/PDF/68k_techio.pdf` (offizielles Microware-Handbuch, „OS-9 for 68K Processors Technical I/O Manual")
 - `Q9-Flux/Q9-Flux-68kQEMU/docs/HOSTFS_MANAGER.md`, `Q9-Flux-68k/docs/ARBEITSPLAN_de.md` (realer `ss_gdp.a`-Fund)
