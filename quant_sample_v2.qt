@@ -1,0 +1,125 @@
+# Quant9 Beispiel: Komplexe System-Programmierung
+# Demonstration von Structs, Mixins, Statischen Membern und Memory-Mapping
+
+import namespace System.IO;
+
+# 1. Ein hilfreiches Mixin für Logging-Funktionalität
+type Logger = struct {
+    let logFile: int32;
+
+    function Log(msg: *int8) : bool {
+        # Logik würde hier Speicher-Mapped I/O oder Syscalls nutzen
+        return true;
+    }
+};
+
+# 2. Ein weiterer Mixin für Status-Überwachung
+type Monitor = struct {
+    let tickCount: uint64;
+
+    function ResetTicks() : void {
+        tickCount = 0;
+    }
+};
+
+# 3. Haupt-Controller, der Mixins nutzt
+type Controller = struct {
+    mixin Logger;
+    mixin Monitor;
+
+    let status: int32;
+    static let totalInstances: int32 = 0;
+
+    # Statische Factory-Funktion
+    static function Create(initVal: int32) : *Controller {
+        totalInstances = totalInstances + 1;
+        let c : *Controller = new Controller();
+        c.status = initVal;
+        c.logFile = 1; # Zugriff auf gemixtes Feld
+        return c;
+    }
+
+    # Instanz-Methode
+    function Process(data: int32) : int32 {
+        tickCount = tickCount + 1;
+        Log("Processing data...");
+        return status * data;
+    }
+};
+
+# Operatoren-Demo: zeigt Arithmetik, Bitops, Shifts, Vergleiche, Logik
+function OperatorsDemo() : void {
+    let i: int32 = 17;
+    let j: int32 = 5;
+    let k: int32 = 0;
+    let u: uint32 = 0xFF00;
+
+    # Arithmetik
+    k = i + j;
+    k = i - j;
+    k = i * j;
+    k = i / j;
+    k = i % j;
+
+    # Shifts
+    k = i << 2;
+    k = i >> 1;
+
+    # Bitweise Operatoren
+    k = i & j;
+    k = i | j;
+    k = i ^ j;
+
+    # Kombinationen und Prioritäten
+    k = (i & 0xF) << 3;
+
+    # Vergleiche und Logik
+    if ((i > j) && (j != 0)) { k = 1; }
+    if ((i == 10) || (j == 0)) { k = k + 2; }
+    if (!(i == j)) { k = k + 4; }
+
+    # Cast-Beispiel (unsigned >> then cast)
+    let kk: int32 = (int32)(u >> 4);
+    k = k + kk;
+
+    # Inkrement/ Dekrement: Prefix und Postfix
+    ++i;        # prefix
+    j++;        # postfix
+    k = i + j;
+
+    # Compound assignments
+    k += 5;
+    k -= 2;
+    k *= 3;
+    k /= 2;
+    k %= 3;
+
+    # Compound bit/shift assignments
+    k <<= 1;
+    k >>= 2;
+    k &= 0xF;
+    k |= 0x10;
+    k ^= 0x3;
+
+    # Verwende das Controller-Objekt, um auf gemixte Methoden zuzugreifen
+    let tmp : *Controller = Controller.Create(0);
+    tmp.Log("Operators demo ran");
+}
+
+# 4. Hardware-Mapping Demonstration
+[ &0x4000 ] let HardwareReg : *int32;
+
+function main() : int {
+    # Statischer Zugriff
+    let ctrl : *Controller = Controller.Create(10);
+    
+    # Mixin-Funktionalität nutzen
+    ctrl.ResetTicks();
+    
+    let result : int32 = ctrl.Process(5);
+    
+    # Direkter Hardware-Register-Zugriff
+    *HardwareReg = result;
+    
+    return 0;
+}

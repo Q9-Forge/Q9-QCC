@@ -1,0 +1,39 @@
+# Test der Quant9 Mixin-Semantik
+# Ziel: Daten- und Verhaltens-Wiederverwendung ohne komplexe VTable-Vererbung
+
+# 1. Das Mixin-Modul
+type Logger = struct {
+    let logFile: int32;
+
+    # Methode für den Logger
+    function Log(msg: *int8) : bool {
+        # Hier soll später die Logik rein
+        return true;
+    }
+};
+
+# 2. Die Hauptstruktur mit Mixin
+type Controller = struct {
+    mixin Logger;   # Flattening: logFile wird Teil von Controller
+    let status: int32;
+
+    # Spezifische Methode
+    function Process(data: int32) : int32 {
+        # Zugriff auf eigenes Feld 'status'
+        # Zugriff auf 'Log' vom Mixin als wäre es lokal
+        return status * data;
+    }
+};
+
+function main() : int {
+    let ctrl : *Controller = new Controller();
+    
+    # Zugriff auf gemixte Daten
+    ctrl.logFile = 1; 
+    
+    # Aufruf der gemixten Methode
+    # Compiler wandelt das um in: Logger_Log(ctrl.as_Logger, "Test")
+    ctrl.Log("Test");
+    
+    return 0;
+}

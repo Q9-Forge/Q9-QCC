@@ -1,0 +1,86 @@
+# Quant9 - Ultimatives Referenz-Beispiel (v4)
+# Features: types (class, struct, union), new mit Konstruktor, statische Member, Mixins, Operatoren.
+
+import System.IO;
+
+namespace Quant.System {
+
+    # 1. Ein einfaches Struct (reiner Werttyp ohne Methoden)
+    type Point = struct {
+        x: int32;
+        y: int32;
+    };
+
+    # 2. Eine Union (Low-Level / Type-Punning)
+    type DataPayload = union {
+        asInt: int32;
+        asFloat: float32;
+        asBytes: int8[4];
+    };
+
+    # 3. Ein Mixin für Logging
+    type Logger = class {
+        logFile: int32;
+
+        function Log(msg: *int8) : bool {
+            return true;
+        }
+    };
+
+    # 4. Eine vollständige Klasse mit statischen Membern, Konstruktor und Instanz-Methoden
+    type Controller = class {
+        mixin Logger;
+
+        status: int32;
+        static totalInstances: int32 = 0;
+
+        # Konstruktor (wird automatisch bei 'new' aufgerufen)
+        constructor(initialStatus: int32) {
+            totalInstances += 1;
+            status = initialStatus;
+            logFile = 1;
+        }
+
+        # Instanz-Methode
+        function Process(data: int32) : int32 {
+            Log("Processing data...");
+            return status * data;
+        }
+
+        # Statische Methode (direkt auf dem Typ aufrufbar)
+        static function GetInstanceCount() : int32 {
+            return totalInstances;
+        }
+    };
+}
+
+namespace Quant.App {
+    import Quant.System;
+
+    [ &0x4000 ] HardwareReg : *int32;
+
+    function main() : int {
+        # Instanziierung via 'new' (ruft automatisch den Konstruktor auf)
+        ctrl : *Controller = new Controller(10);
+
+        # Nutzung von Structs (Werttyp, direkt auf dem Stack/Inline)
+        pt : Point;
+        pt.x = 5;
+        pt.y = 20;
+
+        # Nutzung von Unions
+        payload : DataPayload;
+        payload.asInt = 12345;
+
+        # Statischer Aufruf ohne Instanz
+        count : int32 = Controller.GetInstanceCount();
+
+        # Instanz-Methode und Operatoren
+        result : int32 = ctrl.Process(pt.x + pt.y);
+
+        # Hardware-Mapping Zuweisung
+        *HardwareReg = result + count;
+
+        return 0;
+    }
+}

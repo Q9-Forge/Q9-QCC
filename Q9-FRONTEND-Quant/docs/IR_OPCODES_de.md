@@ -2,7 +2,7 @@
 
 *English version: [IR_OPCODES.md](IR_OPCODES.md)*
 
-Stand: **2026-09-22**
+Stand: **2026-07-25**
 
 Ausführliches Referenzdokument zur Text-IR, die zwischen dem generierten
 QCC-Frontend-Parser und den Backends (QCCVM, 68000, ARM64, C) steht.
@@ -25,11 +25,10 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
   (68k, ARM64, C) muss für dieselbe IR dasselbe Ergebnis liefern wie der
   QCCVM-Interpreter. Bei Zweifeln an der Semantik eines Opcodes: dort
   nachschauen, nicht raten.
-- Drei Opcode-Familien sind **backend-only** und von QCCVM nicht
+- Zwei Opcode-Familien sind **backend-only** und von QCCVM nicht
   ausführbar: `CALLEXT`/`CALLEXTP` (echte `extern`-Aufrufe gegen Microware-
-  `clib.l`, nur 68k), `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
-  deklarationen ohne Rumpf — reine Backend-/Linker-Information) und
-  die Modul-/System-Opcodes `MODHEADER`, `DISPATCHTAB`, `INLINEASM`.
+  `clib.l`, nur 68k) und `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
+  deklarationen ohne Rumpf — reine Backend-/Linker-Information).
 
 ## Programmstruktur / Deklarationen
 
@@ -38,24 +37,11 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
 | `GLOBAL <name> [init]` | — | globale skalare Variable, optionaler Initialwert |
 | `GARRAY <name> <typtag> <len>` | — | globales Array fester Länge |
 | `GINIT <name> <idx> <wert>` | — | Initialwert für ein Array-Element (mehrfach pro Array) |
-| `GINITD <name> <idx> <hi> <lo>` | — | Initialwert eines globalen `double`, als zwei 32-Bit-Hälften (hi zuerst) — wie `PUSHD`. **Welche Hälfte zuerst im Speicher landet, entscheidet das Backend**: der 68k schreibt zwei `dc.l` (big-endian), ARM64 ein `.quad` (little-endian). Deshalb ein eigener Opcode statt zweier `GINIT` |
-| `FUNC <name> <nargs> [convention]` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter. Optionales `convention`-Attribut (`driver`, `interrupt`, `trap`, `naked`) steuert ABI-Prolog/Epilog im Backend |
+| `FUNC <name> <nargs>` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter |
 | `ENDFUNC` | — | Funktionsende (Rahmengröße = höchster Slot+1, vom Backend ermittelt) |
 | `LABEL <L>` | — | definiert Sprungziel `L` |
 | `FUNCDECL <name> <argc> [static]` | — | Vorwärtsdeklaration ohne Rumpf (Mehrdatei/gegenseitige Rekursion); backend-only. `static=1` erhält die private Namensverfremdung, wenn eine Übersetzungseinheit gezielt in Backend-Teile zerlegt wird. |
 | `GLOBALDECL <name> <typ> [static]` | — | `extern`-Variable ohne eigene Allokation; backend-only. Das optionale Flag hat dieselbe Bedeutung wie bei `FUNCDECL`. |
-
-## Modul-Header & System-Schnittstellen (OS-9 / Native)
-
-Diese Opcodes transportieren Metadaten für native Betriebssystemmodule (z. B. OS-9 Treiber, File-Manager, Trap-Handler, Kernel). Sie stehen typischerweise ganz am Anfang des `.qir`-Streams noch vor den Deklarationen.
-
-| Opcode | Stack-Effekt | Beschreibung |
-|---|---|---|
-| `MODHEADER <name> <type> <subtype> <attr> <edition> <stack>` | — | Definiert Zielmodul-Metadaten für das Backend (`type`: `prog`, `driver`, `manager`, `system`, `noos`/`baremetal`, `traphandler`). Das Backend generiert daraus das Wurzel-`psect` samt Modul-Header bzw. ein Flat-Binary bei `noos`. |
-| `DISPATCHTAB <sym1> <sym2> ...` | — | Emittiert am Modulkopf eine geordnete Sprungverteiler-Tabelle (z. B. relative Word-Offsets für OS-9 Treiber-Einsprünge `init`, `read`, `write`, `getstat`, `putstat`, `term`). |
-| `ORG <adresse>` | — | Setzt die absolute Basisadresse bzw. füllt den Raum bis zur Zieladresse auf (für Flat-Binaries / ROM-Images). |
-| `SECTION <name> [adresse]` | — | Wechselt in ein benanntes `psect` mit optionaler Zieladresse (für Multi-Regionen wie ROM und Fast-RAM). |
-| `INLINEASM "<assembler-zeile>"` | — | Reicht hardwarenahe CPU-Assemblerzeilen transparent durch das Backend in die Ziel-Assemblerausgabe. |
 
 ## Werte laden/speichern
 
@@ -108,40 +94,6 @@ Lokal (`L`) und global (`G`), je getrennt nach int/char/pointer:
 | `SWAP` | `a, b → b, a` | oberste zwei Stackelemente vertauschen |
 | `DUPP` | `p → p, p` | wie `DUP`, für Pointer (semantisch identisch, eigener Opcode zur Klarheit im Backend) |
 
-## Gleitkomma (`double`, seit 2026-09-16)
-
-Ein `double` liegt **nie in einem Slot, sondern immer als Block** — die
-Slots sind zielabhängig breit (68k 4 Byte, ARM64 16), ein Block ist es
-nicht. Eine lokale Variable wird deshalb mit `LARRAY <i> d 1` reserviert,
-eine globale mit `GARRAY <name> d 1`, genau wie bei einer struct-Variablen.
-Auf dem Operandenstapel belegt ein `double` 8 Byte.
-
-| Opcode | Stack-Effekt | Beschreibung |
-|---|---|---|
-| `PUSHD <hi> <lo>` | `→ d` | Literal als zwei 32-Bit-Hälften, hi zuerst. Zwei Ganzzahlen statt eines Gleitkommatextes, weil die IR von Werkzeugen gelesen wird, die selbst kein Gleitkomma haben |
-| `LOADD <i>` / `STORED <i>` | `→ d` / `d →` | lokale `double`-Variable (Block) |
-| `LOADGD <n>` / `STOREGD <n>` | `→ d` / `d →` | globale `double`-Variable |
-| `DADD` `DSUB` `DMUL` `DDIV` | `d d → d` | Grundrechenarten |
-| `DNEG` | `d → d` | Vorzeichenwechsel |
-| `DCMPEQ` `DCMPNE` `DCMPLT` `DCMPLE` `DCMPGT` `DCMPGE` | `d d → i` | Vergleiche, Ergebnis ganzzahlig 0/1 |
-| `I2D` | `i → d` | Ganzzahl nach `double` |
-| `I2DUNDER` | `i d → d d` | wandelt den Wert **unter** dem obersten um. Gebraucht für `1 + a`: dort liegt die Ganzzahl beim Emittieren schon unter dem `double` |
-| `D2I` | `d → i` | `double` nach Ganzzahl, **schneidet Richtung null ab** (C-Regel, auf dem 68k `fintrz`) |
-| `DDUP` / `DDROP` | | eigene Formen, weil `DUP`/`DROP` bei 8 Byte mehrdeutig wären |
-| `DSWAP` | `x d → d x` | tauscht das oberste `double` mit dem **4-Byte-Wert darunter** (Adresse oder Index). Gebraucht beim Postfix-`++`/`--` über eine Adresse, wo der alte Wert als Ergebnis unter der Adresse bleiben muss. `SWAP` taugt dort nicht — es tauscht zwei Langworte und zerrisse die acht Byte. Auf ARM64 und in der VM belegt ein `double` genau ein Stackelement, dort ist es derselbe Tausch wie `SWAP` |
-
-Auf dem 68k werden daraus FPU-Befehle (`fadd.x`, `fcmp.x` + `FBcc`,
-`fintrz.x`), gerechnet wird intern mit 80 Bit, geladen und gespeichert mit
-64 — dieselbe Aufteilung, die xcc verwendet. **Genauigkeit:** das VM-Orakel
-rechnet mit Pythons 64 Bit. Für Vergleiche zwischen Orakel und Hardware
-taugen deshalb nur Werte, die in beiden exakt sind.
-
-Gemischte Ausdrücke (`a + 1`, `10 - a`) lösen die üblichen arithmetischen
-Konversionen aus; welcher Opcode das tut, hängt an der Stapellage.
-
-**Noch nicht in der IR:** Initialisierer an globalen `double` und `float`
-als eigener Typ.
-
 ## Vergleiche
 
 Alle Vergleiche: `a, b → 0|1`.
@@ -179,7 +131,6 @@ Alle Vergleiche: `a, b → 0|1`.
 
 - `docs/ARCHITEKTUR.md` Abschnitt 10 — Entstehung der IR, Emissions-Muster
   (wie Parser-Aktionen die IR erzeugen), Funktions-ABI (Slots/Frames).
-- `docs/OS9_SYSTEM_INTERFACE.md` — OS-9 Modul-Definition (`#DEFMODUL`), Calling-Conventions (`driver`, `interrupt`, `trap`), Syscall-Archetypen und Inline-Assembler.
 - `tools/qccvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
   alle Backends.
 - `docs/SELFHOSTING_GAP_LIST_de.md` / `[[qcc-vollport-status]]` (Memory)
