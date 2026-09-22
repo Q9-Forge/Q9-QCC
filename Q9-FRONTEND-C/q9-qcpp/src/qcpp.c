@@ -2935,6 +2935,54 @@ static void doPragma(void)
 	agTop = lineAt;
 }
 
+/* Function: doPassthroughDir
+ * Emits a passthrough directive line to output for downstream compiler stages.
+ * Parameters: keyword Canonical lowercase directive keyword;
+ *             errMissing Error message when line arguments are missing.
+ * Returns: Nothing. */
+static void doPassthroughDir(const char *keyword, const char *errMissing)
+{
+	int i;
+
+	collectLine();
+	if (lineN < 1)
+		fatal(errMissing, "");
+
+	if (!atOutBOL)
+		outCh(10);
+	outStr(keyword);
+	for (i = 0; i < lineN; i++) {
+		if (i == 0 || agWs[lineAt + i])
+			outCh(' ');
+		outStr(poolAt(agText[lineAt + i]));
+	}
+	outCh(10);
+	lastLine = lxLine;
+	lastFile = lxFile;
+	agTop = lineAt;
+}
+
+/* Function: doDefModul
+ * Handles #defmodul / #DEFMODUL directives by emitting them to output. */
+static void doDefModul(void)
+{
+	doPassthroughDir("#defmodul", "#defmodul: Parameter erwartet");
+}
+
+/* Function: doOrgDir
+ * Handles #org / #ORG directives by emitting them to output. */
+static void doOrgDir(void)
+{
+	doPassthroughDir("#org", "#org: Adresse erwartet");
+}
+
+/* Function: doSectionDir
+ * Handles #section / #SECTION directives by emitting them to output. */
+static void doSectionDir(void)
+{
+	doPassthroughDir("#section", "#section: Sektionsname erwartet");
+}
+
 /* Function: doLineDir
  * Handles a #line directive and updates source location state.
  * Parameters: None.
@@ -3020,7 +3068,7 @@ static void doAsm(void)
 		    !tkFromPB) {
 			save = pbN;
 			nextRaw();
-			if (tkKind == TK_ID && tkText == textEndasm) {
+			if (tkKind == TK_ID && (tkText == textEndasm || poolEq(tkText, "ENDASM") || poolEq(tkText, "endasm"))) {
 				skipRestOfLine();
 				inAsm = 0;
 				emitAsmMarker("#endasm");
@@ -3204,11 +3252,23 @@ static void directive(void)
 		doLineDir();
 		return;
 	}
-	if (poolEq(name, "asm")) {
+	if (poolEq(name, "defmodul") || poolEq(name, "DEFMODUL")) {
+		doDefModul();
+		return;
+	}
+	if (poolEq(name, "org") || poolEq(name, "ORG")) {
+		doOrgDir();
+		return;
+	}
+	if (poolEq(name, "section") || poolEq(name, "SECTION")) {
+		doSectionDir();
+		return;
+	}
+	if (poolEq(name, "asm") || poolEq(name, "ASM")) {
 		doAsm();
 		return;
 	}
-	if (poolEq(name, "endasm"))
+	if (poolEq(name, "endasm") || poolEq(name, "ENDASM"))
 		fatal("#endasm ohne #asm", "");
 	if (poolEq(name, "ident") || poolEq(name, "sccs")) {
 		/* Identification directives from older Unix compilers have no effect
