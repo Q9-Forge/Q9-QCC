@@ -25,7 +25,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🟢 | Alle fünf Komponenten gebaut+gehasht, `smoke.c`-Golden-Test durch die Kette, Header-/CRC-Tests gesammelt, `gdp.a` als Referenztreiber gefunden |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
-| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | `#DEFOS`/`#DEFMODUL` (Grundform) im Frontend geparst+registriert, dabei Zeilengrenzen-Architekturfund gemacht+behoben; IR-Validierung und Backend-Aufnahme noch offen |
+| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | `MODHEADER`/`ENTRY` werden jetzt emittiert (mit Defaults, an tatsächliches `#DEFOS`/`#DEFMODUL`-Vorkommen gekoppelt); IR-Validierung und Backend-Aufnahme noch offen |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
 | **5. Weitere Calling-Conventions** | `interrupt`, `trap`, `naked` | 🔴 | In dieser Reihenfolge, je eigener Prolog-/Epilog-Test |
@@ -180,6 +180,7 @@ Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTA
 | `#DEFOS` im C-Frontend/`q9-qcir` geparst und registriert | 🟢 | Erledigt 22.09.2026 (`7e76535`), Name in `tcDefOsName` abgelegt, noch keine IR-Emission |
 | `#DEFMODUL` im C-Frontend/`q9-qcir` geparst und registriert | 🟡 | `NAME`/`EDITION`/`STACK`/`ATTR`/`TYPE PROG`\|`SYSTEM`\|`NOOS` erledigt (Werte in `tcDefModul*`-Variablen, noch keine IR-Emission); `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` und `ORG`/`ALIGN` bewusst noch offen (Phase 4/6) — s. Architekturfund unten |
 | IR-Validierung (Pflichtfelder, unbekannte Metadaten, Kollision mit bestehendem `FUNC`-Format) | 🔴 | |
+| `MODHEADER`/`ENTRY`-IR-Emission im Frontend (Defaults gemäß Spec, gekoppelt an tatsächliches Vorkommen) | 🟢 | Erledigt 22.09.2026 (`73d0c66`) |
 | Backend-Aufnahme der neuen Opcodes (68k: implementieren; ARM64/C-Backend: klare „noch nicht implementiert"-Ablehnung; QCCVM: Metadaten ignorieren, Funktionsrumpf interpretieren) | 🔴 | gemäß 1.d |
 
 **Abnahmekriterium:** eine minimale IR mit Modulheader und einer Funktion wird akzeptiert; dieselbe IR ohne Pflichtargumente wird verständlich abgelehnt.
