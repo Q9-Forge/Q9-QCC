@@ -30,6 +30,17 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
   `clib.l`, nur 68k), `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
   deklarationen ohne Rumpf — reine Backend-/Linker-Information) und
   die Modul-/System-Opcodes `MODHEADER`, `ENTRY`, `DISPATCHTAB`, `INLINEASM`.
+  **Entschieden 2026-09-22 (Branch `QCC-DEFMODUL`):** QCCVM verwirft diese
+  drei Opcodes nicht als Fehler, sondern ignoriert nur die Modul-/
+  Dispatch-Metadaten selbst (keine Simulation von Calling-Convention-
+  Semantik wie Registern/Carry-Flag) und interpretiert den reinen
+  Funktionsrumpf ganz normal weiter — damit bleibt die C-Logik einer
+  Treiberfunktion vorab am Orakel testbar, auch ohne dass QCCVM ein
+  OS-9-Modul simuliert. ARM64- und C-Backend lehnen diese drei Opcodes
+  dagegen mit klarer Fehlermeldung ab — als „noch nicht implementiert",
+  nicht als grundsätzlich ausgeschlossen: ein künftiges `#DEFOS Q9` auf
+  ARM64 (z. B. bare-metal) soll dieselbe IR irgendwann genauso verarbeiten
+  können wie heute der 68k.
 
 ## Programmstruktur / Deklarationen
 

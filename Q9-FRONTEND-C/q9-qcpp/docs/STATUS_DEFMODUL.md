@@ -24,7 +24,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 | Phase | Ziel | Status | Kurzbeschreibung |
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🔴 | Aktuellen Build aller fünf Komponenten + Golden-Test für normale Programme sichern |
-| **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟡 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform und Keyword-Namensraum jetzt entschieden (s. u.); nur Backend-Abdeckung noch offen |
+| **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
 | **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`__syscall` |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
@@ -101,12 +101,43 @@ Grammatikarbeit in Phase 1: genaue Position von `modul` relativ zu
 `static`/`extern`. `__syscall(...)` bleibt unverändert (kollisionssicher
 durch den doppelten Unterstrich, kein `modul`-Präfix nötig).
 
-Weiterhin **nicht** entschieden — Geschmacks-/Architekturfrage, die noch
-Andreas' Bestätigung braucht:
+**Backend-Abdeckung nicht-68k-Ziele — entschieden 2026-09-22:** Wichtige
+Erkenntnis aus der Diskussion: Ziel-Betriebssystem (Q9/OS-9) und
+CPU-Backend (68k/ARM64/...) sind zwei unabhängige Achsen, keine an die
+andere gekoppelt. Ein künftiges bare-metal-Q9-auf-ARM64 bräuchte dieselbe
+Modul-Maschinerie wie heute 68k. Deshalb: ARM64- und C-Backend lehnen
+`MODHEADER`/`ENTRY`/`DISPATCHTAB`/`INLINEASM`/`ORG`/`SECTION` mit klarer
+Fehlermeldung als **„noch nicht implementiert"** ab (nicht als
+grundsätzlich ausgeschlossen). QCCVM ignoriert nur die Modul-/Dispatch-
+Metadaten, interpretiert den reinen Funktionsrumpf aber normal weiter,
+damit die C-Logik von Treiberfunktionen vorab am Orakel testbar bleibt —
+Begründung: kurzfristig ist fast alle Arbeit Q9-Code, ohne diesen
+Mittelweg verlöre genau der aktuell wichtigste Code die
+Orakel-Absicherung. Bereits eingetragen in `IR_OPCODES_de.md`.
 
-- **Backend-Abdeckung nicht-68k-Ziele:** QCCVM, C-Backend und ARM64 müssen `MODHEADER`/`ENTRY`/`DISPATCHTAB`/`INLINEASM`/`ORG`/`SECTION` je bewusst ablehnen (klare Fehlermeldung) oder gezielt unterstützen — dürfen sie nicht stillschweigend verwerfen. Festlegung pro Backend fehlt noch.
+### 1.e `#DEFOS` — Ziel-Betriebssystem als eigene Direktive (entschieden 2026-09-22)
 
-**Abnahmekriterium (gesamte Phase 1):** für jede Entscheidung — inklusive 1.a/1.b/1.c — existiert mindestens ein positives und ein negatives Beispiel mit erwarteter IR bzw. erwarteter Diagnose.
+Ursprünglich als Kommandozeilenschalter (Erweiterung des bestehenden
+68k-Backend-Schalters `-os9`) angedacht, dann als `#DEFMODUL`-Subkommando
+— am Ende als **eigene, `#DEFMODUL` vorgeschaltete Direktive** entschieden,
+weil eine Modul-Eigenschaft unter vielen die falsche Ebene gewesen wäre:
+`#DEFOS` steckt den Rahmen ab, in dem `#DEFMODUL` und die
+Calling-Convention-Keywords überhaupt gelten.
+
+```c
+#DEFOS Q9               // oder: OS9 — Default Q9, wenn weggelassen
+
+#DEFMODUL NAME cfide
+#DEFMODUL TYPE DRIVER rbf
+```
+
+Muss vor dem ersten `#DEFMODUL` einer Datei stehen. Bei `TYPE NOOS`
+wirkungslos (informativ). `Q9` und `OS9` sind heute vermutlich
+byteidentisch (Q9 ist bewusst ABI-kompatibel zu echtem Microware-OS-9) —
+die Unterscheidung ist ein Zukunfts-Haken. Bereits eingetragen in
+`OS9_SYSTEM_INTERFACE.md` Abschnitt 2.
+
+**Abnahmekriterium (gesamte Phase 1):** für jede Entscheidung — inklusive 1.a/1.b/1.c — existiert mindestens ein positives und ein negatives Beispiel mit erwarteter IR bzw. erwarteter Diagnose. Für `#DEFOS`/Backend-Abdeckung zusätzlich: ein Testfall pro Backend (68k/ARM64/C-Backend/QCCVM), der das jeweils erwartete Verhalten zeigt.
 
 ---
 
@@ -117,9 +148,10 @@ Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTA
 | Teilschritt | Status | Anmerkung |
 |---|:---:|---|
 | Scanner-Erkennung `#DEFMODUL` in `q9-qcpp` | 🟢 | Bereits vorhanden (`edcd65a`), reines Passthrough |
+| Scanner-Erkennung `#DEFOS` in `q9-qcpp` | 🔴 | Neu seit 1.e, noch nicht implementiert — muss vor `#DEFMODUL` geprüft werden können |
 | Semantische Verarbeitung im C-Frontend/`q9-qcir` | 🔴 | Muss Moduldefinition, Funktionen und Symbole tatsächlich zuordnen, nicht nur durchreichen |
 | IR-Validierung (Pflichtfelder, unbekannte Metadaten, Kollision mit bestehendem `FUNC`-Format) | 🔴 | |
-| Backend-Aufnahme der neuen Opcodes | 🔴 | |
+| Backend-Aufnahme der neuen Opcodes (68k: implementieren; ARM64/C-Backend: klare „noch nicht implementiert"-Ablehnung; QCCVM: Metadaten ignorieren, Funktionsrumpf interpretieren) | 🔴 | gemäß 1.d |
 
 **Abnahmekriterium:** eine minimale IR mit Modulheader und einer Funktion wird akzeptiert; dieselbe IR ohne Pflichtargumente wird verständlich abgelehnt.
 
@@ -260,15 +292,15 @@ Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert):
 
 ## Ausstehende Dokumentänderungen
 
-**Erledigt (2026-09-22):** `a1`/`a2`-Tausch + `a5` (1.a), 7-Wort-Dispatch-Tabelle inkl. `trap` (1.b) und Schlüsselwortform inkl. `ENTRY`-Opcode (1.d) sind in `OS9_SYSTEM_INTERFACE.md` und `IR_OPCODES_de.md` eingetragen.
+**Erledigt (2026-09-22):** `a1`/`a2`-Tausch + `a5` (1.a), 7-Wort-Dispatch-Tabelle inkl. `trap` (1.b), Schlüsselwortform inkl. `ENTRY`-Opcode (1.d), `modul`-Präfix für Calling-Convention-Keywords (1.d), `#DEFOS`-Direktive (1.e) und QCCVM-/ARM64-/C-Backend-Verhalten (1.d) sind in `OS9_SYSTEM_INTERFACE.md` und `IR_OPCODES_de.md` eingetragen. Damit ist Phase 1 inhaltlich vollständig.
 
 **`OS9_SYSTEM_INTERFACE.md`, noch offen:**
 - Neuer Absatz zur PC-relativen Zwangsadressierung in Calling-Convention-Funktionen (1.c) — bisher nur als Grundsatz in `STATUS_DEFMODUL.md`, noch nicht in der Spec selbst ausformuliert
+- genaue Grammatik-Position von `modul` relativ zu `static`/`extern` (offen für Phase-1-Grammatikarbeit, `Data/qcc.ebnf`)
 - toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
 
 **`IR_OPCODES_de.md`, noch offen:**
 - Argumentanzahl, Wertebereiche und Position im Stream je neuem Opcode ergänzen (Codex §2.2)
-- VM-/C-Backend-/ARM64-Verhalten für die neuen, backend-only markierten Opcodes ausdrücklich dokumentieren, sobald 1.d (Backend-Abdeckung) entschieden ist
 - toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
 
 ---
