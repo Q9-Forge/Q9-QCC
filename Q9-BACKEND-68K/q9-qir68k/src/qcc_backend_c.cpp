@@ -867,6 +867,17 @@ static void collectFunctions(void) {
 			/* Multi-file translation (2026-07-25): "exists but is not defined here"
 			   is allowed outside every FUNC span, like GLOBAL/GARRAY. FUNCDECL is
 			   registered in a separate pass because it opens no FUNC/ENDFUNC span. */
+		} else if (strcmp(insP->op, "MODHEADER") == 0 || strcmp(insP->op, "ENTRY") == 0) {
+			/* QCC-DEFMODUL (Phase 2, 2026-09-22): nur als gueltig anerkennen, damit
+			   das Frontend #DEFMODUL bereits jetzt verwenden kann, ohne dieses
+			   Backend abstuerzen zu lassen ("Opcode ausserhalb einer Funktion").
+			   Die Felder (name=/type=/attr=/edition=/stack=, Einsprungname) werden
+			   hier NOCH NICHT ausgewertet -- die bestehende os9Mode-psect-Zeile
+			   weiter unten (feste Werte "%s,0,0,%d,0,0") ist ungeklaert, ob sie
+			   ueberhaupt reale OS-9-Modulkopf-Felder traegt oder nur ein
+			   Platzhalter ist, den q9_cstart.a beim Linken ueberschreibt/ergaenzt
+			   -- absichtlich nicht spekulativ veraendert, bevor das geklaert ist
+			   (s. STATUS_DEFMODUL.md Phase 3). Echte Verarbeitung folgt separat. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
 			/* Third argument (2026-07-25): optional isstatic flag (name mangling in
 			   emitIR; see mangledName()). r68/l68 have no visibility concept. */
