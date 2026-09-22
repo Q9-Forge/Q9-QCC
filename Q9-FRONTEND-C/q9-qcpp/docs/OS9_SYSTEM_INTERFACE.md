@@ -121,10 +121,12 @@ Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfa
    - Treiber und Kernelmodule laufen im Re-Entrant- bzw. Supervisor-Modus (`$8000` / `$A000`).
    - In Treibern zeigt `a6` auf die System-Globals des Kernels, **nicht** auf ein privates Programm-Datensegment.
    - **Regel:** Schreibbare globale C-Variablen (`static int count;`) sind in Treibern und Kernelmodulen verboten. Das Frontend meldet bei Deklaration schreibbarer globaler Variablen einen Compilerfehler.
-2. **Device-Static-Storage (`a1`):**
-   - Treiberdaten müssen im von OS-9 übergebenen Static-Storage liegen (erster Parameter der Treiberfunktionen). Der Zugriff erfolgt typsicher über Struct-Pointer.
-3. **Konstanten (`const`):**
-   - Read-Only-Daten (`const`, Strings, Lookup-Tabellen) liegen legal im `psect` und werden PC-relativ adressiert.
+2. **Device-Static-Storage (`a2`):**
+   - Treiberdaten müssen im von OS-9 übergebenen Static-Storage liegen (zweiter Parameter der Treiberfunktionen, s. Abschnitt 4.1). Der Zugriff erfolgt typsicher über Struct-Pointer.
+3. **Konstanten (`const`) — PC-relative Zwangsadressierung (entschieden 2026-09-22, Branch `QCC-DEFMODUL`, s. `STATUS_DEFMODUL.md` Abschnitt 1.c):**
+   - Read-Only-Daten (`const`, Strings, Lookup-Tabellen, Pointer-Tabellen) liegen legal im `psect` und werden PC-relativ adressiert.
+   - **Grund für die eigene Regel:** `-remotedata`/`vsect remote` ist seit 08.09.2026 projektweiter Standard für vollständig genullte UND (seit 15.09.2026) initialisierte Pointer-Globals — normalerweise `a6`-relativ adressiert (`movea.l #sym,reg` / `adda.l a6,reg`) gegen die private `vsect remote`-Basis eines `PROG`-Moduls. Im Treiber-/Kernelkontext zeigt `a6` aber auf die System-Globals des Kernels (Punkt 1), ein völlig anderer Zeiger.
+   - **Backend-Pflicht:** innerhalb von Funktionen mit `modul driver`/`modul interrupt`/`modul trap`/`modul naked` wird für **alle** globalen `const`-Daten (auch Pointer-Globals über `GINITADDR`) PC-relative Adressierung erzwungen, der `-remotedata`-Codepfad dort deaktiviert — unabhängig davon, ob `-remotedata` projektweit als Default aktiv ist.
 4. **Lokale Variablen:**
    - Liegen ganz normal auf dem CPU-Stack (`link a5` / `unlk a5`).
 
@@ -153,15 +155,24 @@ Sonderbedeutung. Passt zur bereits bestehenden `#DEFMODUL`-Direktive
 `__syscall`-Präfixes -- ein einheitlicher Mechanismus für die ganze
 Spracherweiterung.
 
-*Offen für die Grammatikarbeit in Phase 1 (`Data/qcc.ebnf`):* genaue
-Position von `modul` relativ zu `static`/`extern` (z. B. `static modul
-driver ...` vs. `modul driver static ...`) — noch festzulegen.
+**Grammatik-Position von `modul` — entschieden 2026-09-22:** `static`/
+`extern` (falls vorhanden) stehen **zuerst**, `modul <convention>`
+unmittelbar davor dem Rückgabetyp — dieselbe Reihenfolge, in der
+C-Storage-Class-Specifier konventionell vor anderen Deklarator-Präfixen
+stehen:
+
+```c
+static modul driver int32_t drv_read(void *path_desc, void *dev_storage) { ... }
+extern modul syscall(0x8a, CALL_DA) int32_t os_write(int32_t path, const void *buf, uint32_t count);
+```
+
+Ohne `static`/`extern` steht `modul <convention>` einfach am Anfang, wie
+in allen Beispielen oben. Umzusetzen in `Data/qcc.ebnf` (Phase 1/2).
 
 ### 4.1 `driver` (OS-9 Gerätetreiber)
 Treiber-Routinen werden von OS-9 über feste CPU-Register angesprungen.
 **Register-Zuordnung korrigiert am 2026-09-22** (Branch `QCC-DEFMODUL`,
-siehe `PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md` Abschnitt 1 sowie
-`STATUS_DEFMODUL.md` Abschnitt 1.a) — vorherige Fassung hatte `a1`/`a2`
+siehe `STATUS_DEFMODUL.md` Abschnitt 1.a und dortige Quellenangabe) — vorherige Fassung hatte `a1`/`a2`
 vertauscht. Belegt durch das offizielle Microware-Handbuch
 (`MWOS/DOC/PDF/68k_techio.pdf`, S. 143/149/154, für READ/GETSTAT/SETSTAT/
 INIT übereinstimmend), das eigene `HOSTFS_MANAGER.md` und den realen

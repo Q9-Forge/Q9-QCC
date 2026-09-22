@@ -6,8 +6,8 @@ Stand: **2026-09-22**
 
 Ausführliches Referenzdokument zur Text-IR, die zwischen dem generierten
 QCC-Frontend-Parser und den Backends (QCCVM, 68000, ARM64, C) steht.
-Kurzfassung mit Einbettung in den Gesamtkontext: `docs/ARCHITEKTUR.md`
-Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
+(Toter Verweis auf `docs/ARCHITEKTUR.md` entfernt 2026-09-22 — diese Datei
+existiert in Q9-QCC nicht, nur in Q9-PARSEC/Q9-RUN/Q9-FRONTEND-Quant.)
 
 ## Modell
 
@@ -62,8 +62,7 @@ Diese Opcodes transportieren Metadaten für native Betriebssystemmodule (z. B. O
 
 **`MODHEADER` verwendet Schlüssel-Wert-Paare** (`schlüssel=wert`) statt
 fester Positionen — Entscheidung vom 2026-09-22 (Branch `QCC-DEFMODUL`,
-siehe `q9-qcpp/docs/PLAN_REVIEW_DEFMODUL.md` Abschnitt 2.2 und
-`STATUS_DEFMODUL.md` Abschnitt 1.d): die Reihenfolge der Paare ist
+siehe `STATUS_DEFMODUL.md` Abschnitt 1.d): die Reihenfolge der Paare ist
 beliebig, jedes Feld ist über seinen Namen eindeutig statt über seine
 Position. `DISPATCHTAB` bleibt davon bewusst unberührt positional — diese
 Reihenfolge entspricht den physischen Offsets der echten OS-9-Sprung-
@@ -198,9 +197,7 @@ Alle Vergleiche: `a, b → 0|1`.
 
 ## Siehe auch
 
-- `docs/ARCHITEKTUR.md` Abschnitt 10 — Entstehung der IR, Emissions-Muster
-  (wie Parser-Aktionen die IR erzeugen), Funktions-ABI (Slots/Frames).
-- `docs/OS9_SYSTEM_INTERFACE.md` — OS-9 Modul-Definition (`#DEFMODUL`), Calling-Conventions (`driver`, `interrupt`, `trap`), Syscall-Archetypen und Inline-Assembler.
+- `docs/OS9_SYSTEM_INTERFACE.md` — Ziel-Betriebssystem (`#DEFOS`), Modul-Definition (`#DEFMODUL`), Calling-Conventions (`modul driver`/`interrupt`/`trap`/`naked`), Syscall-Archetypen (`modul syscall`) und Inline-Assembler.
 - `tools/qccvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
   alle Backends.
 - `docs/SELFHOSTING_GAP_LIST_de.md` / `[[qcc-vollport-status]]` (Memory)
