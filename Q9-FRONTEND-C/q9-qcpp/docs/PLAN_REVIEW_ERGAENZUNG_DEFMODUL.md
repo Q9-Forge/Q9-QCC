@@ -1,4 +1,4 @@
-# Ergänzung zum Plan-Review: `QCC-DEFMODUL`
+# Ergänzung zum Plan-Review: `QCC-DEFMODUL` (Claud Ada)
 
 Stand: 2026-09-22
 Branch: `QCC-DEFMODUL`
