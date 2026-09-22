@@ -4770,6 +4770,32 @@ int main(void){ return 0; }' > build/qcc_dm.ir 2>/dev/null
 	else
 		echo "FAIL  qcc-defmodul 17f: qcc_backend_dm baut nicht"; dmfail=1
 	fi
+	# 17g) QCCVM: MODHEADER/ENTRY ignorieren, Funktionsrumpf normal ausfuehren
+	# (Entscheidung 1.d -- kein eigener Code noetig, die bestehende Zwei-Pass-
+	# Architektur ueberspringt beide Opcodes schon in der ersten Sammelschleife).
+	build/qcc_p_dm '#defmodul TYPE PROG main
+int main(void){ putint(42); }' > build/qcc_dm_vm.ir 2>/dev/null
+	if command -v python3 >/dev/null 2>&1; then
+		vmout=$(python3 tools/qccvm.py build/qcc_dm_vm.ir 2>&1)
+		if [ "$vmout" = "42" ]; then
+			echo "ok    qcc-defmodul 17g: QCCVM ignoriert MODHEADER/ENTRY, fuehrt main() korrekt aus"
+		else
+			echo "FAIL  qcc-defmodul 17g: QCCVM-Ausgabe erwartet 42, war: $vmout"; dmfail=1
+		fi
+	else
+		echo "warn  qcc-defmodul 17g: python3 fehlt, uebersprungen"
+	fi
+
+	# 17h) ARM64-Backend: klare Ablehnung statt Absturz (Entscheidung 1.d).
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend_dm "$QIRARM64_SRC" 2>/dev/null; then
+		if build/qcc_arm64_backend_dm build/qcc_dm_vm.ir build/qcc_dm_vm_arm64.s >/dev/null 2>&1; then
+			echo "FAIL  qcc-defmodul 17h: ARM64-Backend haette MODHEADER ablehnen sollen"; dmfail=1
+		else
+			echo "ok    qcc-defmodul 17h: ARM64-Backend lehnt MODHEADER/ENTRY klar ab (kein Absturz)"
+		fi
+	else
+		echo "warn  qcc-defmodul 17h: qcc_arm64_backend_dm baut nicht, uebersprungen"
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
