@@ -4824,6 +4824,31 @@ int main(void){ return 0; }' 2>&1)
 	else
 		echo "ok    qcc-defmodul 17j: #defmodul ORG liefert eigene 'noch nicht implementiert'-Diagnose"
 	fi
+
+	# 17k) doppelte #DEFMODUL NAME-Angabe: SEMERR statt stillschweigendem
+	# Ueberschreiben (Testsatz-Punkt 8).
+	out=$(build/qcc_p_dm '#defmodul NAME cfide
+#defmodul NAME andere
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17k: doppeltes NAME haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "NAME: doppelte Angabe"; then
+		echo "FAIL  qcc-defmodul 17k: Diagnosetext fuer doppeltes NAME fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17k: doppeltes #DEFMODUL NAME liefert klares SEMERR"
+	fi
+
+	# 17l) doppelte #DEFMODUL TYPE-Angabe: SEMERR, gleiches Muster.
+	out=$(build/qcc_p_dm '#defmodul TYPE PROG main
+#defmodul TYPE SYSTEM
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17l: doppeltes TYPE haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "TYPE: doppelte Angabe"; then
+		echo "FAIL  qcc-defmodul 17l: Diagnosetext fuer doppeltes TYPE fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17l: doppeltes #DEFMODUL TYPE liefert klares SEMERR"
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
