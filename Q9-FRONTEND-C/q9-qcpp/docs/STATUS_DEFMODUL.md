@@ -379,12 +379,12 @@ Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert):
 
 **Erledigt (2026-09-22):** `a1`/`a2`-Tausch + `a5` (1.a, inkl. einer nachtraeglich gefundenen veralteten `a1`-Referenz in §3), 7-Wort-Dispatch-Tabelle inkl. `trap` (1.b), Schlüsselwortform inkl. `ENTRY`-Opcode (1.d), `modul`-Präfix für Calling-Convention-Keywords und Syscalls (1.d), `#DEFOS`-Direktive (1.e), QCCVM-/ARM64-/C-Backend-Verhalten (1.d), PC-relative Zwangsadressierung als Spec-Absatz (1.c), Grammatik-Position von `modul` relativ zu `static`/`extern` und die toten `ARCHITEKTUR.md`-Verweise sind in `OS9_SYSTEM_INTERFACE.md` und `IR_OPCODES_de.md` eingetragen bzw. entfernt. Damit ist Phase 1 vollständig — sowohl inhaltlich als auch in den Spec-Dokumenten selbst.
 
-**`OS9_SYSTEM_INTERFACE.md`, noch offen (aus Codex' Review §4, bisher nicht nachgezogen):**
-- Für jeden Modultyp eine vollständige Minimaldefinition ergänzen — `DRIVER` ist inzwischen detailliert (Register, Dispatch, Prolog/Epilog), `MANAGER`/`SYSTEM`/`TRAPHANDLER` haben bisher nur ein Kurzbeispiel in §2.2, keine eigene Tiefe wie `DRIVER` in §4.1
+**`OS9_SYSTEM_INTERFACE.md`, teilweise erledigt 22.09.2026:** `MANAGER`/`TRAPHANDLER`-Beispiele in §2.2 von der veralteten Inline-Einsprungliste (widersprach der später für `DRIVER` getroffenen `ENTRY`-pro-Zeile-Entscheidung) auf separate `ENTRY`-Zeilen korrigiert, dabei RBFs echte 13 Einsprungpunkte als Größenordnungs-Beleg ergänzt (Microware-Handbuch, Tabelle 2-1). **Weiterhin offen:** die Register-ABI für `MANAGER`/`SYSTEM`/`TRAPHANDLER` (wie bei `DRIVER` in §4.1) ist NICHT verifiziert — das verfügbare `68k_techio.pdf` beschreibt eingebaute Manager (RBF/SCF) nur aus Aufrufer-Sicht, keine Registertabelle für selbstgeschriebene Manager. Braucht vermutlich ein anderes MWOS-Handbuch, bevor Phase 4 das umsetzen kann — bewusst nicht spekulativ ergänzt.
 
 **`IR_OPCODES_de.md`, noch offen (reine Ausführungsarbeit, keine Entscheidung mehr):**
 - Argumentanzahl, Wertebereiche und Position im Stream je neuem Opcode ergänzen (Codex §2.2)
-- `ALIGN` als eigener IR-Opcode fehlt noch in der Opcode-Tabelle — `#DEFMODUL ALIGN`/`#ORG`/`#SECTION` sind als Quelldirektiven beschrieben, aber `ALIGN` hat (anders als inzwischen `ORG`/`SECTION`) noch keine eigene IR-Opcode-Zeile (Codex §4)
+
+**`IR_OPCODES_de.md`, erledigt 22.09.2026:** `ALIGN <grenze>` als eigener IR-Opcode-Eintrag ergänzt (fehlte bisher, anders als `ORG`/`SECTION`).
 
 ---
 
