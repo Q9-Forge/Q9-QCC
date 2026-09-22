@@ -24,7 +24,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 | Phase | Ziel | Status | Kurzbeschreibung |
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🔴 | Aktuellen Build aller fünf Komponenten + Golden-Test für normale Programme sichern |
-| **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟡 | Register-ABI, Dispatch-Tabelle und IR-Syntaxform jetzt entschieden (s. u.); Namensraum und Backend-Abdeckung noch offen |
+| **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟡 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform und Keyword-Namensraum jetzt entschieden (s. u.); nur Backend-Abdeckung noch offen |
 | **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`__syscall` |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
@@ -87,10 +87,23 @@ IR-Notationsdetail) — **nicht** vertauschbar, unabhängig von dieser
 Entscheidung. Bereits umgesetzt in `OS9_SYSTEM_INTERFACE.md` und
 `IR_OPCODES_de.md` (inklusive der Korrekturen aus 1.a/1.b).
 
-Die folgenden zwei Punkte sind weiterhin **nicht** entschieden — Geschmacks-/
-Architekturfragen, die noch Andreas' Bestätigung brauchen:
+**Namensraum der Calling-Convention-Keywords — entschieden 2026-09-22
+(Andreas):** weder bare Keywords noch reines `__`-Präfix, sondern eine
+dritte, von Andreas vorgeschlagene Variante — genau **ein** neues
+Schlüsselwort `modul`, dem `driver`/`interrupt`/`trap`/`naked`
+unmittelbar folgen müssen, um als Calling-Convention erkannt zu werden
+(`modul driver int32_t drv_read(...) { ... }`). Löst die Kollisionslücke
+auf, die reines kontextgebundenes B noch gehabt hätte (eine Funktion
+namens `driver` ohne vorangestelltes `modul` bleibt unberührt), ohne vier
+neue reservierte Wörter einzuführen wie bei Variante A. Bereits
+eingetragen in `OS9_SYSTEM_INTERFACE.md` Abschnitt 4. Offen für die
+Grammatikarbeit in Phase 1: genaue Position von `modul` relativ zu
+`static`/`extern`. `__syscall(...)` bleibt unverändert (kollisionssicher
+durch den doppelten Unterstrich, kein `modul`-Präfix nötig).
 
-- **Namensraum der Calling-Convention-Keywords:** `driver`/`interrupt`/`trap`/`naked` als bare Keywords riskieren Kollision mit bestehenden Identifiern im MWOS-C89-Korpus. Empfehlung (nicht verbindlich): `__driver`/`__interrupt`/`__trap`/`__naked`, konsistent zu `__syscall`. Alternative: kontextgebundene Erkennung nur unmittelbar vor einem Funktionsrückgabetyp am Deklarationsanfang.
+Weiterhin **nicht** entschieden — Geschmacks-/Architekturfrage, die noch
+Andreas' Bestätigung braucht:
+
 - **Backend-Abdeckung nicht-68k-Ziele:** QCCVM, C-Backend und ARM64 müssen `MODHEADER`/`ENTRY`/`DISPATCHTAB`/`INLINEASM`/`ORG`/`SECTION` je bewusst ablehnen (klare Fehlermeldung) oder gezielt unterstützen — dürfen sie nicht stillschweigend verwerfen. Festlegung pro Backend fehlt noch.
 
 **Abnahmekriterium (gesamte Phase 1):** für jede Entscheidung — inklusive 1.a/1.b/1.c — existiert mindestens ein positives und ein negatives Beispiel mit erwarteter IR bzw. erwarteter Diagnose.
@@ -175,7 +188,7 @@ Reihenfolge: `interrupt` → `trap` → `naked`. Jede Convention bekommt einen e
 | `interrupt`: `movem.l`-Prolog/-Epilog, Abschluss mit `rte` | 🔴 |
 | `trap`: Trap-Frame-Behandlung, Abschluss mit `rte` | 🔴 |
 | `naked`: kein Prolog/Epilog, Entwickler steuert Rücksprung selbst | 🔴 |
-| Keyword-Namensraum gemäß Entscheidung aus 1.d umgesetzt | 🔴 |
+| `modul`-Präfix-Grammatik umgesetzt (gemäß Entscheidung aus 1.d) | 🔴 |
 
 ---
 
@@ -251,7 +264,6 @@ Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert):
 
 **`OS9_SYSTEM_INTERFACE.md`, noch offen:**
 - Neuer Absatz zur PC-relativen Zwangsadressierung in Calling-Convention-Funktionen (1.c) — bisher nur als Grundsatz in `STATUS_DEFMODUL.md`, noch nicht in der Spec selbst ausformuliert
-- Entscheidung zum Keyword-Namensraum (`driver`/`interrupt`/`trap`/`naked`) eintragen, sobald getroffen
 - toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
 
 **`IR_OPCODES_de.md`, noch offen:**
