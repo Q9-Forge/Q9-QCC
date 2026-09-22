@@ -357,22 +357,24 @@ Aufwand geringer als ursprünglich veranschlagt, da der Marker-Mechanismus wiede
 
 ## Minimaler Testsatz
 
-Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert):
+Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert). **Punkte 1/2/3/11/12 seit 22.09.2026 als echte Regressionstests in `Q9-PARSEC/runtests.sh` Abschnitt 17 (`qcc-defmodul 17a`–`17h`) verankert**, Rest weiterhin offen (setzt Phase 4/`DRIVER` bzw. IR-Validierung voraus, beide noch nicht umgesetzt):
 
-1. normale Programmübersetzung ohne neue Direktiven
-2. `PROG` mit Standardwerten
-3. `PROG` mit explizitem Entry und Stack
-4. `DRIVER` mit vollständiger **7-Wort**-Dispatch-Tabelle inkl. `trap` *(ergänzt)*
-5. fehlendes Dispatch-Symbol
-6. falsche Treiberfunktion-Signatur
-7. falscher Modul- oder Subtyp
-8. doppelte `#DEFMODUL`-Angabe
-9. unbekanntes Subkommando
-10. CRC-/Header-Prüfung des erzeugten Moduls
-11. falscher Einsatz eines zielabhängigen Opcodes im VM-/C-Backend (muss abgelehnt werden, nicht verworfen)
-12. Regressionstest für einen normalen Nicht-Modul-Build
-13. `const`/Pointer-Global in einer `driver`-Funktion referenziert — PC-relative statt `-remotedata`-Adressierung erwartet *(ergänzt)*
-14. Calling-Convention-Keyword als gewöhnlicher Identifier in portiertem C89-Code — darf nicht brechen *(ergänzt)*
+1. normale Programmübersetzung ohne neue Direktiven — 🟢 `17a`
+2. `PROG` mit Standardwerten — 🟢 `17d` (über `#DEFOS` allein, vollständige Defaults)
+3. `PROG` mit explizitem Entry und Stack — 🟢 `17c`
+4. `DRIVER` mit vollständiger **7-Wort**-Dispatch-Tabelle inkl. `trap` *(ergänzt)* — 🔴 setzt Phase 4 voraus
+5. fehlendes Dispatch-Symbol — 🔴 setzt Phase 4 voraus
+6. falsche Treiberfunktion-Signatur — 🔴 setzt Phase 4 voraus
+7. falscher Modul- oder Subtyp — 🔴 setzt IR-Validierung voraus (aktuell nur generisches `FAIL`, s. u.)
+8. doppelte `#DEFMODUL`-Angabe — 🔴 setzt IR-Validierung voraus
+9. unbekanntes Subkommando — 🔴 setzt IR-Validierung voraus
+10. CRC-/Header-Prüfung des erzeugten Moduls — 🔴 setzt echte `MODHEADER`-Backend-Umsetzung voraus (Phase 3)
+11. falscher Einsatz eines zielabhängigen Opcodes im VM-/C-Backend (muss abgelehnt werden, nicht verworfen) — 🟢 `17g` (QCCVM) + `17h` (ARM64)
+12. Regressionstest für einen normalen Nicht-Modul-Build — 🟢 `17a` (deckt sich mit Punkt 1)
+13. `const`/Pointer-Global in einer `driver`-Funktion referenziert — PC-relative statt `-remotedata`-Adressierung erwartet *(ergänzt)* — 🔴 setzt Phase 3/4 voraus
+14. Calling-Convention-Keyword als gewöhnlicher Identifier in portiertem C89-Code — darf nicht brechen *(ergänzt)* — 🔴 setzt `modul`-Grammatik voraus (Phase 5)
+
+**Noch offene Erkenntnis aus 17e beim Testschreiben:** die IR-Validierung (Punkte 7–9) ist architektonisch nicht trivial — der Parser in `qcc_p.c` ist ein rückverfolgender (PEG-artiger) Zeichenstrom-Parser, der bei jedem nicht passenden Zweig nur ein generisches `FAIL` ohne genaue Diagnose liefert (verifiziert an `TYPE PROG` ohne Einsprungnamen, Test `17e`). Eigene, aussagekräftige Fehlermeldungen für „unbekanntes Subkommando" o. ä. brauchen vermutlich eigene Prüfpunkte in den `tc_defmodul*`-Actions selbst, nicht nur Grammatikregeln — noch nicht umgesetzt.
 
 ---
 
