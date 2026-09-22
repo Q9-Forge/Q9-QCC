@@ -1,4 +1,4 @@
-# Review und überarbeiteter Implementierungsplan für `QCC-DEFMODUL`
+# Review und überarbeiteter Implementierungsplan für `QCC-DEFMODUL` (Codex)
 
 Stand: 2026-09-22  
 Branch: `QCC-DEFMODUL`  
