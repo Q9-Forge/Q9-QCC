@@ -236,21 +236,21 @@ Für Bare-Metal/BIOS-Entwicklung können innerhalb einer C-Datei feste Zieladres
 Das Frontend bleibt 100 % plattformunabhängig. Es emittiert ausschließlich neutrale IR-Opcodes:
 
 ```text
-; --- Header & Dispatch-Tabelle am Dateianfang ---
+; --- Module header & dispatch table ---
 MODHEADER cfide driver rbf 8000 1 0
 DISPATCHTAB drv_init drv_read drv_write drv_getstat drv_putstat drv_term
 
-; --- Funktionsdefinition mit Calling-Convention-Attribut ---
+; --- Function definition with calling convention attribute ---
 FUNC drv_read 2 driver
-    LOADL 0             ; dev_storage (aus a1 geladen)
-    LOADL 1             ; path_desc (aus a2 geladen)
+    LOADL 0             ; dev_storage (loaded from a1)
+    LOADL 1             ; path_desc (loaded from a2)
     PUSH 0
-    RET                 ; Backend emittiert Carry-Clear + RTS
+    RET                 ; Backend emits carry clear + RTS
 ENDFUNC
 
 FUNC my_timer_isr 0 interrupt
-    ; Rumpf
-    RET                 ; Backend emittiert RTE
+    ; Body
+    RET                 ; Backend emits RTE
 ENDFUNC
 ```
 
