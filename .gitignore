@@ -36,3 +36,4 @@ __pycache__/
 # KI-Arbeitsanweisungen bleiben lokal, nicht oeffentlich im Git.
 AGENTS.md
 PROJECT.md
+.aider*

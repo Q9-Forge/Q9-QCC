@@ -1,0 +1,36 @@
+# Operatoren-Test für Quant9
+# Dieses Beispiel demonstriert alle geplanten Operatoren,
+# um sicherzustellen, dass die Grammatik sie korrekt abdeckt.
+
+import namespace System.IO;
+
+type OperatorTest = class {
+    let a: int32;
+    let b: int32;
+
+    static function RunTests(val: int32) : bool {
+        let x: int32 = 10;
+        let y: int32 = 5;
+        let z: int32 = 0;
+
+        # Arithmetische Operatoren
+        z = x + y;
+        z = x - y;
+        z = x * y;
+        z = x / y;
+        
+        # Logische/Vergleichs-Operatoren (aus if/while Kontext)
+        if (x > y) { z = 1; }
+        if (x < y) { z = 2; }
+        if (x == y) { z = 3; }
+        if (x != y) { z = 4; }
+        if (x >= y) { z = 5; }
+        if (x <= y) { z = 6; }
+
+        # Logische Verknüpfungen (müssen in die EBNF)
+        # return (x > 0) && (y < 10);
+        # return !true;
+
+        return true;
+    }
+};

@@ -1,0 +1,44 @@
+import namespace System.IO;
+
+namespace Quant.App {
+
+    interface IProcessor {
+        Process(data: *int) : int;
+    }
+
+    [@dynamic] class Controller implements IProcessor {
+        private status : int;
+
+        public constructor(initial: int) {
+            this.status = initial;
+        }
+
+        public Process(data: *int) : int {
+            let result : int = 0;
+            if (*data > 0) {
+                result = *data * 2;
+            } else {
+                result = 0;
+            }
+            return result;
+        }
+    }
+
+    [ &0x4000 ] let HardwareReg : *int;
+
+    function main() : int {
+        let val : int = 10;
+        let ctrl : *Controller = new Controller(1);
+        
+        # for-Schleife mit lokaler Variablendeklaration
+        for (let i: int = 0; i < 5; i = i + 1) {
+            val = val - 1;
+        }
+
+        while (val > 0) {
+            val = val - 1;
+            *HardwareReg = ctrl.Process(&val);
+        }
+        return 0;
+    }
+}

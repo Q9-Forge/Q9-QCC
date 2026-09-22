@@ -1,64 +1,93 @@
-#---------------------------------------------------------------------------------------------------------------------------------------------------
-# Quant9 Grammatik in EBNF
-# Angepasst an den Parsec-Generator-Stil
-#---------------------------------------------------------------------------------------------------------------------------------------------------
+# Quant9 Grammar (EBNF) — complete working draft
+# Overwritten per user request (includes generics, mixins, operators, control flow)
 
-Program = { ImportNamespaceDecl } { SystemBlock | ClassDecl | InterfaceDecl | FunctionDecl } .
+Program = { ImportNamespaceDecl } { SystemBlock | StructDecl | InterfaceDecl | FunctionDecl } .
 
 ImportNamespaceDecl = "import" "namespace" NamespacePath ";" .
 NamespacePath = Identifier { "." Identifier } .
 
-# System-Namensräume
-SystemBlock = "namespace" NamespacePath "{" { ClassDecl | InterfaceDecl | FunctionDecl } "}" .
+# System namespaces / modules
+SystemBlock = "namespace" NamespacePath "{" { StructDecl | InterfaceDecl | FunctionDecl } "}" .
 
-# Interfaces
+# Interfaces (method signatures only)
 InterfaceDecl = "interface" Identifier "{" { MethodSignature } "}" .
 MethodSignature = Identifier "(" [ ParameterList ] ")" ":" Type ";" .
 
-# Klassen mit optionalem Dynamic-Decorator
-ClassDecl = [ "[@dynamic]" ] "class" Identifier [ "implements" Identifier ] "{" { ClassMember } "}" .
-ClassMember = FieldDecl | ConstructorDecl | MethodDecl .
-
-FieldDecl = [ "public" | "private" ] Identifier ":" Type ";" .
+# Struct / Class declarations (single unified construct)
+StructDecl = "type" Identifier "=" ( "class" | "struct" ) "{" { StructMember } "}" ";" .
+StructMember = FieldDecl | MethodDecl | MixinDecl | ConstructorDecl .
+FieldDecl = [ "public" | "private" ] [ "static" ] "let" Identifier ":" Type [ "=" Expression ] ";" .
+MethodDecl = [ "public" | "private" ] [ "static" ] "function" Identifier "(" [ ParameterList ] ")" ":" Type Block .
 ConstructorDecl = [ "public" | "private" ] "constructor" "(" [ ParameterList ] ")" Block .
-MethodDecl = [ "public" | "private" ] Identifier "(" [ ParameterList ] ")" ":" Type Block .
+MixinDecl = "mixin" Identifier ";" .
 
-# Funktionen & Variablen
+# Functions & variables
 FunctionDecl = "function" Identifier "(" [ ParameterList ] ")" ":" Type Block .
 ParameterList = Parameter { "," Parameter } .
 Parameter = Identifier ":" Type .
 
-# Variable mit optionalem Decorator für Memory-Mapping
+# Variable with optional Decorator (memory-mapped)
 VariableDecl = [ "[" Decorator "]" ] "let" Identifier ":" Type [ "=" Expression ] ";" .
 Decorator = "&" HexNumber .
-Assignment = LValue "=" Expression ";" .
-LValue = Identifier | DereferenceExpr | DynamicAccessExpr .
 
-# Kontrollfluss & Statements
+# LValues and Assignments (compound assignments included)
+LValue = Identifier | DereferenceExpr | DynamicAccessExpr | FieldAccess .
+FieldAccess = Identifier "." Identifier .
+Assignment = LValue ( "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "<<=" | ">>=" | "&=" | "|=" | "^=" ) Expression ";" .
+
+# Control flow / statements
 Block = "{" { Statement } "}" .
-Statement = VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";" | IfStmt | WhileStmt .
+Statement = VariableDecl | Assignment | FunctionCall ";" | Block | "return" [ Expression ] ";" | IfStmt | WhileStmt | ForStmt | DoWhileStmt | RepeatStmt | ForInStmt | SwitchStmt | BreakStmt | ContinueStmt | GotoStmt | LabelDecl .
 
-IfStmt = "if" "(" Expression ")" Block [ "else" Block ] .
-WhileStmt = "while" "(" Expression ")" Block .
+IfStmt = "if" "(" Condition ")" Block [ "else" Block ] .
+WhileStmt = "while" "(" Condition ")" Block .
+DoWhileStmt = "do" Block "while" "(" Condition ")" ";" .
+RepeatStmt = "repeat" Block "until" "(" Condition ")" ";" .
+ForStmt = "for" "(" ( Assignment | VariableDecl | "" ) ";" [ Condition ] ";" [ Assignment ] ")" Block .
+ForInStmt = "for" "(" "let" Identifier ":" Type "in" Expression ")" Block | "for" "(" "let" Identifier ":" Type "," Identifier ":" Type "in" Expression ")" Block .
+SwitchStmt = "switch" "(" Expression ")" "{" { CaseClause } [ DefaultClause ] "}" .
+CaseClause = "case" Literal ":" { Statement } .
+DefaultClause = "default" ":" { Statement } .
+BreakStmt = "break" ";" .
+ContinueStmt = "continue" ";" .
+GotoStmt = "goto" Identifier ";" .
+LabelDecl = Identifier ":" .
 
-# Ausdrücke & Basis-Typen
+# Function call
 FunctionCall = Identifier "(" [ ArgList ] ")" .
 ArgList = Expression { "," Expression } .
+
+# Operators & Expressions (precedence rules)
+Primary = Identifier | Number | HexNumber | StringLiteral | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr | DynamicAccessExpr | FieldAccess .
+Postfix = Primary [ "++" | "--" ] .
+Unary = [ "++" | "--" | "!" | "-" ] Postfix .
+Term = Unary { ( "*" | "/" | "%" | "<<" | ">>" | "&" | "|" | "^" ) Unary } .
 Expression = Term { ( "+" | "-" ) Term } .
-Term = Factor { ( "*" | "/" ) Factor } .
-Factor = Identifier | Number | HexNumber | "(" Expression ")" | FunctionCall | AddressOfExpr | DereferenceExpr | CastExpr | DynamicAccessExpr .
+Comparison = Expression [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) Expression ] .
+Condition = Comparison { ( "&&" | "||" ) Comparison } .
+
+# Address / pointer / cast / array access
 AddressOfExpr = "&" Identifier .
 DereferenceExpr = "*" Identifier .
-CastExpr = "(" Type ")" Factor .
+CastExpr = "(" Type ")" Expression .
 DynamicAccessExpr = Identifier "[" Expression "]" .
 
-Type = Identifier | PointerType | ArrayType .
+# Types (with generics/monomorphisation syntax)
+SimpleType = Identifier [ "<" TypeList ">" ] .
+TypeList = Type { "," Type } .
+Type = SimpleType | PointerType | ArrayType .
 PointerType = "*" Type .
-ArrayType = Identifier "[" Number "]" .
+ArrayType = Type "[" Number "]" .
 
-Identifier = letter { letter | digit } .
+# Literals and tokens
+Literal = Number | StringLiteral .
+StringLiteral = '"' { /* any char except " or linebreak */ } '"' .
+Identifier = letter { letter | digit | '_' } .
 Number = digit { digit } .
 HexNumber = "0x" hexDigit { hexDigit } .
 letter = "a"~"z" | "A"~"Z" .
 digit = "0"~"9" .
-hexDigit = "0"~"9" | "A"~"F" .
+hexDigit = "0"~"9" | "A"~"F" | "a"~"f" .
+
+# Whitespace / comments left to lexer conventions
+
