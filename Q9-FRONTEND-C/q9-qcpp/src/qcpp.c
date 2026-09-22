@@ -2962,6 +2962,17 @@ static void doPassthroughDir(const char *keyword, const char *errMissing)
 	agTop = lineAt;
 }
 
+/* Function: doDefOs
+ * Handles #defos / #DEFOS directives by emitting them to output. Muss im
+ * Quelltext vor jedem #defmodul stehen (Q9-QCC-Konvention, s.
+ * docs/OS9_SYSTEM_INTERFACE.md Abschnitt 2) -- die Reihenfolge wird hier
+ * bewusst NICHT geprueft, reines Passthrough wie bei den Geschwister-
+ * Direktiven; die Prüfung ist Sache der semantischen Stufe (q9-qcir). */
+static void doDefOs(void)
+{
+	doPassthroughDir("#defos", "#defos: Parameter erwartet");
+}
+
 /* Function: doDefModul
  * Handles #defmodul / #DEFMODUL directives by emitting them to output. */
 static void doDefModul(void)
@@ -3250,6 +3261,10 @@ static void directive(void)
 	}
 	if (poolEq(name, "line")) {
 		doLineDir();
+		return;
+	}
+	if (poolEq(name, "defos") || poolEq(name, "DEFOS")) {
+		doDefOs();
 		return;
 	}
 	if (poolEq(name, "defmodul") || poolEq(name, "DEFMODUL")) {

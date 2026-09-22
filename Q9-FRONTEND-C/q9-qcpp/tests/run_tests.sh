@@ -712,6 +712,18 @@ EOF
 t_run "33c #DEFMODUL/#ORG/#SECTION Direktiven"
 
 t_src <<'EOF'
+#DEFOS Q9
+#DEFMODUL TYPE DRIVER rbf
+int main(void) { return 0; }
+EOF
+t_exp <<'EOF'
+#defos Q9
+#defmodul TYPE DRIVER rbf
+int main(void) { return 0; }
+EOF
+t_run "33d #DEFOS Direktive (Kleinschreibung, vor #DEFMODUL)"
+
+t_src <<'EOF'
 int a = __LINE__;
 #define L __LINE__
 int b = L;
