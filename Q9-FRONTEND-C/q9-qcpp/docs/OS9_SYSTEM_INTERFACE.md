@@ -106,7 +106,28 @@ Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfa
 
 ## 4. Sprach-Erweiterung: Calling-Conventions & ABI-Modifikatoren
 
-Funktionen können mit ABI-Schlüsselwörtern auf der Ebene von `static`/`extern` deklariert werden:
+**Namensraum-Entscheidung vom 2026-09-22** (Branch `QCC-DEFMODUL`, siehe
+`STATUS_DEFMODUL.md` Abschnitt 1.d): `driver`, `interrupt`, `trap` und
+`naked` sind **keine eigenständigen Schlüsselwörter**. Als bare Keywords
+hätten sie mit gewöhnlichen Bezeichnern im MWOS-C89-Korpus kollidieren
+können (z. B. eine bestehende Funktion `int driver(void)`). Stattdessen
+gibt es genau **ein** neues Schlüsselwort, `modul`, das den vier Wörtern
+unmittelbar vorausgehen muss, damit sie als Calling-Convention erkannt
+werden:
+
+```c
+modul <convention> <rückgabetyp> <name>(<parameter>) { ... }
+```
+
+`driver`/`interrupt`/`trap`/`naked` bleiben dadurch überall sonst ganz
+normale Bezeichner — nur direkt nach `modul` bekommen sie ihre
+Sonderbedeutung. Passt zur bereits bestehenden `#DEFMODUL`-Direktive
+(gleicher Wortstamm). `__syscall(...)` bleibt unverändert außerhalb
+dieses Musters, da der doppelte Unterstrich schon kollisionssicher ist.
+
+*Offen für die Grammatikarbeit in Phase 1 (`Data/qcc.ebnf`):* genaue
+Position von `modul` relativ zu `static`/`extern` (z. B. `static modul
+driver ...` vs. `modul driver static ...`) — noch festzulegen.
 
 ### 4.1 `driver` (OS-9 Gerätetreiber)
 Treiber-Routinen werden von OS-9 über feste CPU-Register angesprungen.
@@ -130,7 +151,7 @@ INIT übereinstimmend), das eigene `HOSTFS_MANAGER.md` und den realen
 ```c
 #DEFMODUL TYPE DRIVER rbf
 
-driver int32_t drv_read(void *path_desc, void *dev_storage) {
+modul driver int32_t drv_read(void *path_desc, void *dev_storage) {
     if (!dev_storage) return 216; // E$PNNP (Path Not Found / Error)
     return 0;                     // Erfolg
 }
@@ -141,7 +162,7 @@ driver int32_t drv_read(void *path_desc, void *dev_storage) {
 - **Epilog:** Stellt Register wieder her und beendet zwingend mit **`rte`** (Return from Exception) statt `rts`.
 
 ```c
-interrupt void my_timer_isr(void) {
+modul interrupt void my_timer_isr(void) {
     // Hardware-Tick bearbeiten
 }
 ```
@@ -152,7 +173,7 @@ interrupt void my_timer_isr(void) {
 - **Einsatz:** Kaltstart/Reset-Routinen vor RAM-Initialisierung oder ultra-schnelle Hardware-Entrypoints.
 
 ```c
-naked void reset_entry(void) {
+modul naked void reset_entry(void) {
     #ASM
         move.w  #0x2700, sr
         lea     0x0007FF00, sp
@@ -163,6 +184,12 @@ naked void reset_entry(void) {
 
 ### 4.4 `trap` (Exception- & Software-Trap-Handler)
 - Behandelt den CPU-Trap-Frame und beendet mit `rte`.
+
+```c
+modul trap void my_trap_handler(void) {
+    // Trap-Frame behandeln
+}
+```
 
 ---
 
