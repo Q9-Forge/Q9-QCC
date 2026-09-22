@@ -9,7 +9,7 @@ Projekt: Q9-QCC (Branch `QCC-DEFMODUL`)
 ## 1. Überblick & Motivation
 Dieses Dokument beschreibt die Erweiterung des Compilers (Q9-QCC für C und Quant9) um:
 1. **Native OS-9 Modul-Erzeugung:** Direktiven zur Kennzeichnung des Ziel-Betriebssystems (`#DEFOS`) und zur Erzeugung beliebiger OS-9 Modultypen (`#DEFMODUL`).
-2. **Dedizierte Calling-Conventions:** Sprachschlüsselwörter für Treiber, Interrupts und Systemaufrufe (`driver`, `interrupt`, `trap`, `__syscall`).
+2. **Dedizierte Calling-Conventions:** Sprachschlüsselwörter für Treiber, Interrupts und Systemaufrufe, alle unter dem `modul`-Präfix (`modul driver`, `modul interrupt`, `modul trap`, `modul syscall`).
 3. **Universelle Syscall-Archetypen:** Reduktion von über 100 OS-9-Systemaufrufen auf 3 generische Register-Muster über Prefix-Sharing – vollständig ohne manuelle Assembler-Wrapper (`os9call.a`).
 4. **Hardwarenaher Inline-Assembler:** `#ASM ... #ENDASM` für direkte Register- und Hardware-Manipulationen.
 5. **Vollständige Plattformunabhängigkeit:** Alle Konzepte werden über neutrale Stack-IR-Opcodes transportiert. Das Frontend bleibt frei von 68k-Spezifika.
@@ -148,8 +148,10 @@ modul <convention> <rückgabetyp> <name>(<parameter>) { ... }
 `driver`/`interrupt`/`trap`/`naked` bleiben dadurch überall sonst ganz
 normale Bezeichner — nur direkt nach `modul` bekommen sie ihre
 Sonderbedeutung. Passt zur bereits bestehenden `#DEFMODUL`-Direktive
-(gleicher Wortstamm). `__syscall(...)` bleibt unverändert außerhalb
-dieses Musters, da der doppelte Unterstrich schon kollisionssicher ist.
+(gleicher Wortstamm). Syscalls fallen seit dem 22.09.2026 ebenfalls unter
+`modul` (`modul syscall(...)`, siehe Abschnitt 5) statt eines eigenen
+`__syscall`-Präfixes -- ein einheitlicher Mechanismus für die ganze
+Spracherweiterung.
 
 *Offen für die Grammatikarbeit in Phase 1 (`Data/qcc.ebnf`):* genaue
 Position von `modul` relativ zu `static`/`extern` (z. B. `static modul
@@ -239,12 +241,29 @@ Für die wenigen komplexen Prozessaufrufe:
 - `F$Fork(name, params, tylan, mem, param_size)`
 - `F$Chain(...)`
 
-### Direkte Deklaration in C (Inline-Syscall-Intrinsics):
+### Direkte Deklaration in C (entschieden 2026-09-22, unter `modul` statt `__syscall`)
+
+Aus Konsistenzgründen wandert die Syscall-Deklaration unter dasselbe
+`modul`-Präfix wie die Calling-Conventions (Abschnitt 4) — sonst gäbe es
+zwei verschiedene Präfix-Mechanismen für dieselbe Funktionsgruppe.
+`__syscall(...)` entfällt zugunsten von:
+
 ```c
-__syscall(0x8a, CALL_DA) int32_t os_write(int32_t path, const void *buf, uint32_t count);
-__syscall(0x84, CALL_DA) int32_t os_open(int32_t mode, const char *name);
-__syscall(0x06, CALL_D)  void    os_exit(int32_t status);
+modul syscall(0x8a, CALL_DA) int32_t os_write(int32_t path, const void *buf, uint32_t count);
+modul syscall(0x84, CALL_DA) int32_t os_open(int32_t mode, const char *name);
+modul syscall(0x06, CALL_D)  void    os_exit(int32_t status);
 ```
+
+Erster Parameter Trap-Nummer, zweiter der Archetyp. Die C-Parameter
+werden **der Reihe nach** den Registerslots des gewählten Archetyps
+zugeordnet (`CALL_DA`: Slot 1 `d0`, Slot 2 `a0`, optionaler Slot 3 `d1`).
+Der Compiler prüft dabei sowohl **Anzahl** als auch **Typ** je Slot gegen
+die feste Form des Archetyps — z. B. verlangt `CALL_DA` an Slot 2 zwingend
+einen Pointer-Typ, ein `int32_t` an dieser Stelle wäre ein Fehler.
+Registernamen selbst (`d0`/`a0`/...) sind dabei **keine reservierten
+Wörter** — die C-Parameter tragen ganz normale, freie Bezeichner, ihre
+Position in der Liste (nicht ihr Name) bestimmt das Register.
+
 Der Compiler erzeugt direkt an der Aufrufstelle den `TRAP #0` samt Parameterübergabe. Die gesamte Datei `os9call.a` wird mittelfristig überflüssig.
 
 ---
