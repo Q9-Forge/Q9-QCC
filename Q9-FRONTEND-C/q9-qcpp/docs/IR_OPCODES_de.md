@@ -29,7 +29,7 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
   ausführbar: `CALLEXT`/`CALLEXTP` (echte `extern`-Aufrufe gegen Microware-
   `clib.l`, nur 68k), `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
   deklarationen ohne Rumpf — reine Backend-/Linker-Information) und
-  die Modul-/System-Opcodes `MODHEADER`, `DISPATCHTAB`, `INLINEASM`.
+  die Modul-/System-Opcodes `MODHEADER`, `ENTRY`, `DISPATCHTAB`, `INLINEASM`.
 
 ## Programmstruktur / Deklarationen
 
@@ -49,10 +49,20 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
 
 Diese Opcodes transportieren Metadaten für native Betriebssystemmodule (z. B. OS-9 Treiber, File-Manager, Trap-Handler, Kernel). Sie stehen typischerweise ganz am Anfang des `.qir`-Streams noch vor den Deklarationen.
 
+**`MODHEADER` verwendet Schlüssel-Wert-Paare** (`schlüssel=wert`) statt
+fester Positionen — Entscheidung vom 2026-09-22 (Branch `QCC-DEFMODUL`,
+siehe `q9-qcpp/docs/PLAN_REVIEW_DEFMODUL.md` Abschnitt 2.2 und
+`STATUS_DEFMODUL.md` Abschnitt 1.d): die Reihenfolge der Paare ist
+beliebig, jedes Feld ist über seinen Namen eindeutig statt über seine
+Position. `DISPATCHTAB` bleibt davon bewusst unberührt positional — diese
+Reihenfolge entspricht den physischen Offsets der echten OS-9-Sprung-
+tabelle im Modulkopf und ist Teil des Binärformats, nicht der IR-Notation.
+
 | Opcode | Stack-Effekt | Beschreibung |
 |---|---|---|
-| `MODHEADER <name> <type> <subtype> <attr> <edition> <stack>` | — | Definiert Zielmodul-Metadaten für das Backend (`type`: `prog`, `driver`, `manager`, `system`, `noos`/`baremetal`, `traphandler`). Das Backend generiert daraus das Wurzel-`psect` samt Modul-Header bzw. ein Flat-Binary bei `noos`. |
-| `DISPATCHTAB <sym1> <sym2> ...` | — | Emittiert am Modulkopf eine geordnete Sprungverteiler-Tabelle (z. B. relative Word-Offsets für OS-9 Treiber-Einsprünge `init`, `read`, `write`, `getstat`, `putstat`, `term`). |
+| `MODHEADER name=<name> type=<type> subtype=<subtype> attr=<attr> edition=<edition> stack=<stack>` | — | Definiert Zielmodul-Metadaten für das Backend (`type`: `prog`, `driver`, `manager`, `system`, `noos`/`baremetal`, `traphandler`). Reihenfolge der Schlüssel-Wert-Paare beliebig. Das Backend generiert daraus das Wurzel-`psect` samt Modul-Header bzw. ein Flat-Binary bei `noos`. |
+| `ENTRY <sym>` | — | Primärer Einstiegspunkt des Moduls (bei `prog`/`noos`). Bei `driver`/`manager`/`traphandler` ergibt sich der Einstieg implizit aus dem ersten `DISPATCHTAB`-Eintrag; `ENTRY` ist dort optional/informativ. |
+| `DISPATCHTAB <sym1> <sym2> ...` | — | Emittiert am Modulkopf eine geordnete Sprungverteiler-Tabelle. Reihenfolge FEST, nicht vertauschbar. Für OS-9-Treiber (RBF) 7 Einträge: `init`, `read`, `write`, `getstat`, `setstat`, `term`, `trap` — der siebte (`trap`) darf laut Microware-Handbuch auf 0 zeigen, muss als Tabellenslot aber vorhanden sein ("branch table with seven entries"). |
 | `ORG <adresse>` | — | Setzt die absolute Basisadresse bzw. füllt den Raum bis zur Zieladresse auf (für Flat-Binaries / ROM-Images). |
 | `SECTION <name> [adresse]` | — | Wechselt in ein benanntes `psect` mit optionaler Zieladresse (für Multi-Regionen wie ROM und Fast-RAM). |
 | `INLINEASM "<assembler-zeile>"` | — | Reicht hardwarenahe CPU-Assemblerzeilen transparent durch das Backend in die Ziel-Assemblerausgabe. |
