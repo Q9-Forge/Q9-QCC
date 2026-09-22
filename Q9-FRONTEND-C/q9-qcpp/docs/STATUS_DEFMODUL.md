@@ -24,7 +24,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 | Phase | Ziel | Status | Kurzbeschreibung |
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🔴 | Aktuellen Build aller fünf Komponenten + Golden-Test für normale Programme sichern |
-| **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟡 | Register-ABI und Dispatch-Tabelle jetzt entschieden (s. u.); IR-Syntaxform, Namensraum und Backend-Abdeckung noch offen |
+| **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟡 | Register-ABI, Dispatch-Tabelle und IR-Syntaxform jetzt entschieden (s. u.); Namensraum und Backend-Abdeckung noch offen |
 | **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`__syscall` |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
@@ -75,13 +75,23 @@ Handbuch: *„branch table with **seven** entries"* — `INIT, READ, WRITE, GETS
 
 **To-do:** eigener Arbeitsschritt in Phase 3 (Backend-Erkennung „Funktion hat Calling-Convention ≠ Standard → PC-relativ statt `-remotedata`") plus negativer Testfall (`const char*` in einer `driver`-Funktion referenziert).
 
-### 1.d Noch offene Entscheidungen (Bestätigung durch Andreas nötig)
+### 1.d Entscheidungen
 
-Diese drei Punkte wurden bewusst **nicht** selbstständig entschieden, weil sie Geschmacks-/Architekturfragen sind, keine Tatsachenkorrekturen:
+**IR-Syntaxform — entschieden 2026-09-22 (Andreas):** Codex' Schlüsselwortform
+(`MODHEADER name=cfide type=driver subtype=rbf attr=0x8000 edition=1 stack=0`
+plus eigener `ENTRY`-Opcode) statt der ursprünglichen Positionssyntax —
+Begründung: "kann sich ja keiner merken in welcher Reihenfolge das muss".
+Reihenfolge der Schlüssel-Wert-Paare ist damit beliebig. `DISPATCHTAB`
+bleibt bewusst positional (physische OS-9-Sprungtabellen-Offsets, kein
+IR-Notationsdetail) — **nicht** vertauschbar, unabhängig von dieser
+Entscheidung. Bereits umgesetzt in `OS9_SYSTEM_INTERFACE.md` und
+`IR_OPCODES_de.md` (inklusive der Korrekturen aus 1.a/1.b).
 
-- **IR-Syntaxform:** bestehende Positionssyntax (`MODHEADER cfide driver rbf 8000 1 0`) beibehalten, oder auf Codex' Schlüsselwortform (`MODHEADER name=cfide type=driver ...` plus eigener `ENTRY`-Opcode) wechseln? Codex selbst: „weniger wichtig als die eindeutige und dokumentierte Semantik" — muss aber vor Phase 2 feststehen, egal wie entschieden wird, inklusive der aus 1.a/1.b korrigierten Werte.
+Die folgenden zwei Punkte sind weiterhin **nicht** entschieden — Geschmacks-/
+Architekturfragen, die noch Andreas' Bestätigung brauchen:
+
 - **Namensraum der Calling-Convention-Keywords:** `driver`/`interrupt`/`trap`/`naked` als bare Keywords riskieren Kollision mit bestehenden Identifiern im MWOS-C89-Korpus. Empfehlung (nicht verbindlich): `__driver`/`__interrupt`/`__trap`/`__naked`, konsistent zu `__syscall`. Alternative: kontextgebundene Erkennung nur unmittelbar vor einem Funktionsrückgabetyp am Deklarationsanfang.
-- **Backend-Abdeckung nicht-68k-Ziele:** QCCVM, C-Backend und ARM64 müssen `MODHEADER`/`DISPATCHTAB`/`INLINEASM`/`ORG`/`SECTION` je bewusst ablehnen (klare Fehlermeldung) oder gezielt unterstützen — dürfen sie nicht stillschweigend verwerfen. Festlegung pro Backend fehlt noch.
+- **Backend-Abdeckung nicht-68k-Ziele:** QCCVM, C-Backend und ARM64 müssen `MODHEADER`/`ENTRY`/`DISPATCHTAB`/`INLINEASM`/`ORG`/`SECTION` je bewusst ablehnen (klare Fehlermeldung) oder gezielt unterstützen — dürfen sie nicht stillschweigend verwerfen. Festlegung pro Backend fehlt noch.
 
 **Abnahmekriterium (gesamte Phase 1):** für jede Entscheidung — inklusive 1.a/1.b/1.c — existiert mindestens ein positives und ein negatives Beispiel mit erwarteter IR bzw. erwarteter Diagnose.
 
@@ -237,17 +247,16 @@ Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert):
 
 ## Ausstehende Dokumentänderungen
 
-**`OS9_SYSTEM_INTERFACE.md`:**
-- §4.1 `a1`/`a2` tauschen, `a5` ergänzen (1.a)
-- §2.1/§7 Dispatch-Beispiele auf 7 Einträge inkl. `trap` erweitern (1.b)
-- Neuer Absatz zur PC-relativen Zwangsadressierung in Calling-Convention-Funktionen (1.c)
-- Entscheidung aus 1.d zum Keyword-Namensraum eintragen, sobald getroffen
+**Erledigt (2026-09-22):** `a1`/`a2`-Tausch + `a5` (1.a), 7-Wort-Dispatch-Tabelle inkl. `trap` (1.b) und Schlüsselwortform inkl. `ENTRY`-Opcode (1.d) sind in `OS9_SYSTEM_INTERFACE.md` und `IR_OPCODES_de.md` eingetragen.
+
+**`OS9_SYSTEM_INTERFACE.md`, noch offen:**
+- Neuer Absatz zur PC-relativen Zwangsadressierung in Calling-Convention-Funktionen (1.c) — bisher nur als Grundsatz in `STATUS_DEFMODUL.md`, noch nicht in der Spec selbst ausformuliert
+- Entscheidung zum Keyword-Namensraum (`driver`/`interrupt`/`trap`/`naked`) eintragen, sobald getroffen
 - toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
 
-**`IR_OPCODES_de.md`:**
-- IR-Syntaxform gemäß 1.d final dokumentieren (inkl. `ENTRY`, falls so entschieden)
+**`IR_OPCODES_de.md`, noch offen:**
 - Argumentanzahl, Wertebereiche und Position im Stream je neuem Opcode ergänzen (Codex §2.2)
-- VM-/C-Backend-/ARM64-Verhalten für die neuen, backend-only markierten Opcodes ausdrücklich dokumentieren
+- VM-/C-Backend-/ARM64-Verhalten für die neuen, backend-only markierten Opcodes ausdrücklich dokumentieren, sobald 1.d (Backend-Abdeckung) entschieden ist
 - toten Verweis auf `docs/ARCHITEKTUR.md` entfernen oder Datei für Q9-QCC nachziehen
 
 ---

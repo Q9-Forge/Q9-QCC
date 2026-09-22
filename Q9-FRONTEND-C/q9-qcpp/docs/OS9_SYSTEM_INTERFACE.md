@@ -37,17 +37,18 @@ Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfa
   Fehlt `#DEFMODUL NAME`, wird automatisch der Basisname der Quelldatei (z. B. `cfide` bei `cfide.c`) bzw. der `-O=` Parameter des Linkers verwendet.
 
 - **Einsprungnamen bei `DRIVER`:**  
-  Wird `#DEFMODUL TYPE DRIVER <subsystem>` ohne explizite Funktionsliste angegeben, setzt der Compiler automatisch die 6 OS-9 Standard-Einsprünge ein:
+  Wird `#DEFMODUL TYPE DRIVER <subsystem>` ohne explizite Funktionsliste angegeben, setzt der Compiler automatisch die 7 OS-9 Standard-Einsprünge ein (Microware-Handbuch: "branch table with seven entries" — der siebte, `trap`, zeigt per Default auf 0, muss als Tabellenslot aber vorhanden sein):
   1. `drv_init`
   2. `drv_read`
   3. `drv_write`
   4. `drv_getstat`
-  5. `drv_putstat`
+  5. `drv_setstat`
   6. `drv_term`
+  7. `drv_trap` (Default: 0)
 
   Explizite abweichende Namen können optional angehängt werden:
   ```c
-  #DEFMODUL TYPE DRIVER rbf my_init my_read my_write my_getstat my_putstat my_term
+  #DEFMODUL TYPE DRIVER rbf my_init my_read my_write my_getstat my_setstat my_term my_trap
   ```
 
 ### 2.2 Unterstützte Modul-Typen (`TYPE`):
@@ -108,11 +109,19 @@ Die Konfiguration des Zielmoduls erfolgt über die `#DEFMODUL`-Direktive am Anfa
 Funktionen können mit ABI-Schlüsselwörtern auf der Ebene von `static`/`extern` deklariert werden:
 
 ### 4.1 `driver` (OS-9 Gerätetreiber)
-Treiber-Routinen werden von OS-9 über feste CPU-Register angesprungen:
+Treiber-Routinen werden von OS-9 über feste CPU-Register angesprungen.
+**Register-Zuordnung korrigiert am 2026-09-22** (Branch `QCC-DEFMODUL`,
+siehe `PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md` Abschnitt 1 sowie
+`STATUS_DEFMODUL.md` Abschnitt 1.a) — vorherige Fassung hatte `a1`/`a2`
+vertauscht. Belegt durch das offizielle Microware-Handbuch
+(`MWOS/DOC/PDF/68k_techio.pdf`, S. 143/149/154, für READ/GETSTAT/SETSTAT/
+INIT übereinstimmend), das eigene `HOSTFS_MANAGER.md` und den realen
+`ss_gdp.a`-Fund:
 - **Eingang:**
-  - `a1` = Zeiger auf Device-Static-Storage (Treiber-Instanzdaten)
-  - `a2` = Zeiger auf Path-Descriptor
+  - `a1` = Zeiger auf Path-Descriptor
+  - `a2` = Zeiger auf Device-Static-Storage (Treiber-Instanzdaten)
   - `a4` = Current Process Descriptor
+  - `a5` = Caller-Register-Stack-Pointer
   - `a6` = System-Globals
 - **Rückgabe:**
   - `return 0;` $\rightarrow$ Erfolg: Carry-Bit gelöscht, `rts`.
@@ -121,7 +130,7 @@ Treiber-Routinen werden von OS-9 über feste CPU-Register angesprungen:
 ```c
 #DEFMODUL TYPE DRIVER rbf
 
-driver int32_t drv_read(void *dev_storage, void *path_desc) {
+driver int32_t drv_read(void *path_desc, void *dev_storage) {
     if (!dev_storage) return 216; // E$PNNP (Path Not Found / Error)
     return 0;                     // Erfolg
 }
@@ -237,13 +246,14 @@ Das Frontend bleibt 100 % plattformunabhängig. Es emittiert ausschließlich neu
 
 ```text
 ; --- Header & Dispatch-Tabelle am Dateianfang ---
-MODHEADER cfide driver rbf 8000 1 0
-DISPATCHTAB drv_init drv_read drv_write drv_getstat drv_putstat drv_term
+; MODHEADER: Schluessel-Wert-Form, Reihenfolge der Paare beliebig (Entscheidung 2026-09-22)
+MODHEADER name=cfide type=driver subtype=rbf attr=0x8000 edition=1 stack=0
+DISPATCHTAB drv_init drv_read drv_write drv_getstat drv_setstat drv_term drv_trap
 
 ; --- Funktionsdefinition mit Calling-Convention-Attribut ---
 FUNC drv_read 2 driver
-    LOADL 0             ; dev_storage (aus a1 geladen)
-    LOADL 1             ; path_desc (aus a2 geladen)
+    LOADL 0             ; path_desc (aus a1 geladen)
+    LOADL 1             ; dev_storage (aus a2 geladen)
     PUSH 0
     RET                 ; Backend emittiert Carry-Clear + RTS
 ENDFUNC
