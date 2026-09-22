@@ -4796,6 +4796,34 @@ int main(void){ putint(42); }' > build/qcc_dm_vm.ir 2>/dev/null
 	else
 		echo "warn  qcc-defmodul 17h: qcc_arm64_backend_dm baut nicht, uebersprungen"
 	fi
+
+	# 17i) unbekanntes Subkommando OHNE Argument: klares SEMERR statt bloszem
+	# FAIL (IR-Validierung, Testsatz-Punkt 9). Bekannte Einschraenkung: MIT
+	# einem Argument bleibt es beim generischen FAIL, weil der uebrige Text
+	# dann unverbraucht bleibt und die Aktionswiedergabe (die die Diagnose
+	# ausgibt) nur bei VOLLSTAENDIG konsumierter Datei laeuft -- s.
+	# STATUS_DEFMODUL.md.
+	out=$(build/qcc_p_dm '#defmodul FOO
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17i: unbekanntes Subkommando haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "unbekanntes Subkommando 'FOO'"; then
+		echo "FAIL  qcc-defmodul 17i: Diagnosetext fehlt oder falsch"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17i: unbekanntes Subkommando (ohne Argument) liefert klares SEMERR"
+	fi
+
+	# 17j) dokumentiertes, aber noch nicht implementiertes Subkommando (ORG):
+	# eigene, unterscheidbare Diagnose statt "unbekanntes Subkommando".
+	out=$(build/qcc_p_dm '#defmodul ORG 0xFFF80000
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17j: #defmodul ORG haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "noch nicht implementiert"; then
+		echo "FAIL  qcc-defmodul 17j: Diagnosetext fuer ORG fehlt oder falsch"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17j: #defmodul ORG liefert eigene 'noch nicht implementiert'-Diagnose"
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
