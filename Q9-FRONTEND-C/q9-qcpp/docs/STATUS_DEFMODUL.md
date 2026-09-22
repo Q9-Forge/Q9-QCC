@@ -25,7 +25,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🟢 | Alle fünf Komponenten gebaut+gehasht, `smoke.c`-Golden-Test durch die Kette, Header-/CRC-Tests gesammelt, `gdp.a` als Referenztreiber gefunden |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
-| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | Emission (mit Defaults) + alle vier Backend-Ziele geklärt (QCCVM/ARM64 brauchten keinen Code, 68k erkennt die Opcodes jetzt, kein eigenständiges C-Backend gefunden); Architekturfund: echter Modulkopf kommt von `q9_cstart.a`, nicht von der `psect`-Zeile. Nur noch IR-Validierung offen |
+| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | Emission + alle vier Backend-Ziele geklärt + IR-Diagnose für unbekannte/noch-nicht-implementierte Subkommandos (ohne Argument); 10 Regressionstests in `runtests.sh` (17a–17j). Architekturfund: echter Modulkopf kommt von `q9_cstart.a`. Rest: Pflichtfeld-/Kollisionsprüfung, Diagnose für Subkommandos MIT Argument |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
 | **5. Weitere Calling-Conventions** | `interrupt`, `trap`, `naked` | 🔴 | In dieser Reihenfolge, je eigener Prolog-/Epilog-Test |
@@ -179,7 +179,7 @@ Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTA
 | Scanner-Erkennung `#DEFOS` in `q9-qcpp` | 🟢 | Erledigt 22.09.2026 (`62d2544`), reines Passthrough wie `#DEFMODUL` |
 | `#DEFOS` im C-Frontend/`q9-qcir` geparst und registriert | 🟢 | Erledigt 22.09.2026 (`7e76535`), Name in `tcDefOsName` abgelegt, noch keine IR-Emission |
 | `#DEFMODUL` im C-Frontend/`q9-qcir` geparst und registriert | 🟡 | `NAME`/`EDITION`/`STACK`/`ATTR`/`TYPE PROG`\|`SYSTEM`\|`NOOS` erledigt (Werte in `tcDefModul*`-Variablen, noch keine IR-Emission); `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` und `ORG`/`ALIGN` bewusst noch offen (Phase 4/6) — s. Architekturfund unten |
-| IR-Validierung (Pflichtfelder, unbekannte Metadaten, Kollision mit bestehendem `FUNC`-Format) | 🔴 | |
+| IR-Validierung (Pflichtfelder, unbekannte Metadaten, Kollision mit bestehendem `FUNC`-Format) | 🟡 | Unbekannte/noch-nicht-implementierte Subkommandos liefern jetzt SEMERR mit Klartext statt bloßem FAIL (argumentlose Fälle) — s. Testsatz Punkte 7/9 unten. Pflichtfelder/Kollisions-Prüfung weiterhin offen. |
 | `MODHEADER`/`ENTRY`-IR-Emission im Frontend (Defaults gemäß Spec, gekoppelt an tatsächliches Vorkommen) | 🟢 | Erledigt 22.09.2026 (`73d0c66`) |
 | QCCVM: `MODHEADER`/`ENTRY` ignorieren, Funktionsrumpf normal interpretieren | 🟢 | **Kein Code nötig** — geprüft 22.09.2026: die bestehende Zwei-Pass-Architektur (`tools/qccvm.py`) überspringt beide Opcodes in der ersten Deklarations-Sammelschleife bereits stillschweigend (kein `else`-Fehlerzweig dort), die zweite Ausführungsschleife beginnt erst bei `FUNC main` und erreicht sie nie. Empirisch verifiziert (`PUSH 42` lief korrekt durch). |
 | 68k-Backend (`qir68k`): `MODHEADER`/`ENTRY` als gültige Top-Level-Opcodes anerkennen (ohne Absturz) | 🟢 | Erledigt 22.09.2026. **Wichtiger Architekturfund dabei:** der generierte Code trägt bereits den Kommentar *„No private tc_start bootstrap here: cstart.r (the real Microware C runtime) calls 'main' directly"* — der reale OS-9-Modulkopf für normale Programme kommt demnach schon heute von `runtime/os9/q9_cstart.a` beim Linken, **nicht** aus der hier emittierten `psect`-Zeile. Deren hartcodierte Felder (`%s,0,0,%d,0,0`) sind vermutlich nur ein generischer Platzhalter fürs Assemblieren/Linken, keine echten Modulkopf-Werte. Bewusst **nicht spekulativ verändert** — die Bedeutung dieser Zeile muss erst geklärt werden (vermutlich gegen `MWOS/DOC/PDF` oder durch Vergleich mit `q9_cstart.a`), bevor `name=`/`type=`/`attr=`/`edition=`/`stack=` aus `MODHEADER` sinnvoll eingebaut werden können. |
@@ -365,16 +365,19 @@ Aus Codex' Vorschlag übernommen, um die drei neuen Punkte ergänzt (markiert). 
 4. `DRIVER` mit vollständiger **7-Wort**-Dispatch-Tabelle inkl. `trap` *(ergänzt)* — 🔴 setzt Phase 4 voraus
 5. fehlendes Dispatch-Symbol — 🔴 setzt Phase 4 voraus
 6. falsche Treiberfunktion-Signatur — 🔴 setzt Phase 4 voraus
-7. falscher Modul- oder Subtyp — 🔴 setzt IR-Validierung voraus (aktuell nur generisches `FAIL`, s. u.)
+7. falscher Modul- oder Subtyp — 🟡 `ORG`/`ALIGN` (dokumentiert, Phase 6) bekommen eigene Diagnose (`17j`); ein falscher `TYPE`-Wert fällt unter Punkt 9
 8. doppelte `#DEFMODUL`-Angabe — 🔴 setzt IR-Validierung voraus
-9. unbekanntes Subkommando — 🔴 setzt IR-Validierung voraus
+9. unbekanntes Subkommando — 🟡 `17i`, nur ohne Argument (Grenze s. u.)
 10. CRC-/Header-Prüfung des erzeugten Moduls — 🔴 setzt echte `MODHEADER`-Backend-Umsetzung voraus (Phase 3)
 11. falscher Einsatz eines zielabhängigen Opcodes im VM-/C-Backend (muss abgelehnt werden, nicht verworfen) — 🟢 `17g` (QCCVM) + `17h` (ARM64)
 12. Regressionstest für einen normalen Nicht-Modul-Build — 🟢 `17a` (deckt sich mit Punkt 1)
 13. `const`/Pointer-Global in einer `driver`-Funktion referenziert — PC-relative statt `-remotedata`-Adressierung erwartet *(ergänzt)* — 🔴 setzt Phase 3/4 voraus
 14. Calling-Convention-Keyword als gewöhnlicher Identifier in portiertem C89-Code — darf nicht brechen *(ergänzt)* — 🔴 setzt `modul`-Grammatik voraus (Phase 5)
 
-**Noch offene Erkenntnis aus 17e beim Testschreiben:** die IR-Validierung (Punkte 7–9) ist architektonisch nicht trivial — der Parser in `qcc_p.c` ist ein rückverfolgender (PEG-artiger) Zeichenstrom-Parser, der bei jedem nicht passenden Zweig nur ein generisches `FAIL` ohne genaue Diagnose liefert (verifiziert an `TYPE PROG` ohne Einsprungnamen, Test `17e`). Eigene, aussagekräftige Fehlermeldungen für „unbekanntes Subkommando" o. ä. brauchen vermutlich eigene Prüfpunkte in den `tc_defmodul*`-Actions selbst, nicht nur Grammatikregeln — noch nicht umgesetzt.
+**Punkte 7/9 (Diagnose statt bloßem `FAIL`) seit 22.09.2026 umgesetzt** — die beim Testschreiben gefundene Erkenntnis (der Parser in `qcc_p.c` ist ein rückverfolgender Zeichenstrom-Parser, der bei jedem nicht passenden Zweig nur ein generisches `FAIL` ohne Diagnose liefert, verifiziert an `TYPE PROG` ohne Einsprungnamen, Test `17e`) führte zu zwei neuen Auffang-Grammatikregeln (`defmodulNotImpl`, `defmodulUnknown`), die selbst erfolgreich matchen und ihre Action dann gezielt `SEMERR` mit Klartext melden, statt eines harten Parser-`FAIL`s:
+- **9. unbekanntes Subkommando** — 🟡 `17i`: funktioniert für Subkommandos **ohne** Argument (`#DEFMODUL FOO`). **Bekannte Grenze:** mit Argument (`#DEFMODUL FOO bar`) bleibt `bar` unverbraucht liegen — die Aktionswiedergabe (die die Diagnose ausgibt) läuft nur bei vollständig konsumierter Datei, deshalb fällt der Gesamt-Parse dann auf das alte, undiagnostizierte `FAIL` zurück. Ein voll allgemeiner Auffangzweig bräuchte dieselbe Zeilengrenzen-Lösung wie der Architekturfund aus Phase 2 — bewusst nicht mitgelöst.
+- **7. falscher Modul-/Subtyp** — 🟡 teilweise: `ORG`/`ALIGN` (dokumentiert, aber Phase 6) bekommen jetzt eine eigene, unterscheidbare „noch nicht implementiert"-Diagnose statt „unbekanntes Subkommando" — 🟢 `17j`. Ein wirklich falscher `TYPE`-Wert (z. B. `TYPE FOOBAR`) fällt weiterhin unter die generische `defmodulUnknown`-Regel mit derselben Argument-Einschränkung wie oben.
+- **8. doppelte `#DEFMODUL`-Angabe** — weiterhin 🔴, nicht angefasst (würde eine eigene Prüfung brauchen, ob z. B. `TYPE` zweimal gesetzt wird).
 
 ---
 

@@ -16,7 +16,7 @@ program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | ext
    Phase 4, ebenso ORG/ALIGN (Phase 6) -- absichtlich nicht Teil dieser
    Regel, ein #DEFMODUL mit einem dieser Subkommandos scheitert also noch
    mit FAIL, wie jedes andere noch nicht angebundene Subkommando auch. */
-defmodulDecl    = "#defmodul" ( defmodulName | defmodulEdition | defmodulStack | defmodulAttr | defmodulType ) .
+defmodulDecl    = "#defmodul" ( defmodulName | defmodulEdition | defmodulStack | defmodulAttr | defmodulType | defmodulNotImpl | defmodulUnknown ) .
 
 defmodulName    = "NAME" defmodulNameArg .
 defmodulNameArg = ident .
@@ -61,6 +61,21 @@ defmodulTypeProg  = "PROG" defmodulEntryArg .
 defmodulTypeSystem = "SYSTEM" .
 defmodulTypeNoos  = ( "NOOS" | "BAREMETAL" ) defmodulEntryArg .
 defmodulEntryArg  = ident .
+
+/* IR-Validierung (22.09.2026, STATUS_DEFMODUL.md Testsatz-Punkte 7/9):
+   zwei Auffangregeln, MUESSEN in der program-Alternation nach defmodulDecl
+   in dieser Reihenfolge geprueft werden (geordnete Auswahl -- erst die
+   bekannten Subkommandos oben, dann "bekannt aber noch nicht
+   implementiert", zuletzt "wirklich unbekannt"). Ohne diese Regeln
+   scheitert #DEFMODUL mit einem falschen Subkommando nur am generischen
+   FAIL der ganzen Datei, ohne Diagnose (gemessen an "TYPE PROG" ohne
+   Einsprungnamen, s. Testfall 17e in Q9-PARSEC/runtests.sh) -- diese
+   beiden Regeln machen den Zeichenstrom-Parser an dieser einen Stelle
+   diagnosefaehig, indem sie selbst erfolgreich matchen (also kein FAIL
+   der Gesamtdatei mehr ausloesen) und ihre ACTION dann gezielt SEMERR
+   meldet (actionErrors++), statt eines harten Parserfehlers. */
+defmodulNotImpl   = ( "ORG" | "ALIGN" ) defmodulNumber .
+defmodulUnknown   = ident .
 
 /* Ziel-Betriebssystem-Direktive (siehe docs/OS9_SYSTEM_INTERFACE.md
    Abschnitt 2, Branch QCC-DEFMODUL). Q9-QCC-eigene Erweiterung, kein
