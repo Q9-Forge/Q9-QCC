@@ -2233,19 +2233,43 @@ void tc_static(const char* start, const char* end) {
 	tcPendingStatic = 1;
 }
 
+/* Doppelte Angabe (Testsatz-Punkt 8, STATUS_DEFMODUL.md) meldet SEMERR
+   statt die erste stillschweigend zu ueberschreiben -- derselbe
+   tcErrAt/actionErrors++-Mechanismus wie bei den Auffangregeln oben,
+   dasselbe Muster fuer EDITION/STACK/ATTR/TYPE darunter. */
 void tc_defmodulname(const char* start, const char* end) {
+	if (tcDefModulName[0]) {
+		tcErrAt(start);
+		fprintf(stderr, "#defmodul NAME: doppelte Angabe\n");
+		actionErrors++;
+	}
 	tcCopy(tcDefModulName, start, end);
 }
 
 void tc_defmoduledition(const char* start, const char* end) {
+	if (tcDefModulEdition >= 0) {
+		tcErrAt(start);
+		fprintf(stderr, "#defmodul EDITION: doppelte Angabe\n");
+		actionErrors++;
+	}
 	tcDefModulEdition = tcNum(start, end);
 }
 
 void tc_defmodulstack(const char* start, const char* end) {
+	if (tcDefModulStack >= 0) {
+		tcErrAt(start);
+		fprintf(stderr, "#defmodul STACK: doppelte Angabe\n");
+		actionErrors++;
+	}
 	tcDefModulStack = tcNum(start, end);
 }
 
 void tc_defmodulattr(const char* start, const char* end) {
+	if (tcDefModulAttr >= 0) {
+		tcErrAt(start);
+		fprintf(stderr, "#defmodul ATTR: doppelte Angabe\n");
+		actionErrors++;
+	}
 	tcDefModulAttr = tcNum(start, end);
 }
 
@@ -2255,7 +2279,12 @@ void tc_defmodulattr(const char* start, const char* end) {
    angibt (ein Literal allein kann keine eigene ACTION tragen, deshalb
    die eigene defmodulTypeKw-Regel in der Grammatik). */
 void tc_defmoduletypestart(const char* start, const char* end) {
-	(void)start; (void)end;
+	(void)end;
+	if (tcDefModulType[0]) {
+		tcErrAt(start);
+		fprintf(stderr, "#defmodul TYPE: doppelte Angabe\n");
+		actionErrors++;
+	}
 	tcDefModulEntry[0] = 0;
 }
 
