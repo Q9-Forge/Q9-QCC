@@ -23,7 +23,7 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 
 | Phase | Ziel | Status | Kurzbeschreibung |
 |---|---|:---:|---|
-| **0. Baseline** | Reproduzierbare Ausgangsbasis | 🔴 | Aktuellen Build aller fünf Komponenten + Golden-Test für normale Programme sichern |
+| **0. Baseline** | Reproduzierbare Ausgangsbasis | 🟢 | Alle fünf Komponenten gebaut+gehasht, `smoke.c`-Golden-Test durch die Kette, Header-/CRC-Tests gesammelt, `gdp.a` als Referenztreiber gefunden |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
 | **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`modul syscall` |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
@@ -35,15 +35,32 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 
 ---
 
-## Phase 0 — Baseline einfrieren
+## Phase 0 — Baseline einfrieren (abgeschlossen 2026-09-22) 🟢
 
-- [ ] Build von `q9-qcpp`, `q9-qcir`, `q9-qir68k`, `q9-qr68k`, `q9-ql68k` dokumentieren
-- [ ] Normalen Programm-Build als Golden-Test sichern (ohne jede neue Direktive)
-- [ ] Bestehende Modul-Header-/CRC-Tests in `ql68k` sammeln
-- [ ] Prüfen, ob ein vorhandener realer Treiber als Referenzmodul dienen kann
-- [ ] Uncommitteten Ausgangszustand vor der Erweiterung separat sichern
+- [x] **Build dokumentiert** — alle fünf Komponenten clean gebaut gegen Branch-Commit `fc78f7f`, Apple clang 21.0.0 (arm64-apple-darwin25.6.0), nur Warnungen, keine Fehler:
 
-**Abnahmekriterium:** ein unveränderter normaler Programm-Build bleibt bitweise bzw. semantisch reproduzierbar.
+  | Komponente | Binärgröße | SHA-256 |
+  |---|---:|---|
+  | `q9-qcpp/build/qcpp` | 76.088 B | `025827...58d9` |
+  | `q9-qcir/build/qcir` | 422.136 B | `16e23c...80d3d` |
+  | `q9-qir68k/build/qir68k` | 105.160 B | `27cc1f...128b5` |
+  | `q9-qr68k/build/qr68k` | 155.544 B | `f09b40...d9920` |
+  | `q9-ql68k/build/ql68k` | 72.472 B | `4c0806...93d25` |
+
+- [x] **Golden-Test gesichert** — `Q9-QCC/tests/smoke.c` (`int main(){ putint(42); }`, bereits bestehende Testquelle, keine neue Direktive) durch die volle Kette `qcpp → qcir → qir68k -os9 → qr68k` geführt, jede Stufe erfolgreich (rc=0), Hashes der Zwischenstufen festgehalten (nicht als Binärartefakte committet — bei Bedarf mit denselben Befehlen und demselben Toolchain-Commit exakt reproduzierbar):
+  - `smoke.i` (qcpp) byteidentisch zu `smoke.c` (keine Makros/Includes in diesem Minimalfall)
+  - `smoke.ir` (qcir): `FUNC main 0 0 / PUSH 42 / PRINT / PUSH 0 / RET / ENDFUNC`, Schlusswort `OK`
+  - `smoke.s68` (qir68k -os9): 228 Zeilen Assembler
+  - `smoke.r` (qr68k): 1.261 Byte ROF
+  - Volles Linken zu einem lauffähigen Modul (ql68k gegen `clib.l`/`sys.l`) bewusst **nicht** Teil dieser Baseline — das deckt die bestehende Testinfrastruktur (`tools/test_short_68k.sh` u. ä., läuft gegen die reale Microware-Toolchain im DOS-Emulator) bereits ab; für die reine "bleibt reproduzierbar"-Frage reicht die Kette bis zum ROF.
+- [x] **Bestehende Modul-Header-/CRC-Tests in `ql68k` gesammelt** — drei einschlägige Skripte in `Q9-BACKEND-68K/q9-ql68k/tests/`:
+  - `difftest.sh` — dieselbe ROF-Datei durch `ql68k` und echtes `l68`, byteweiser Vergleich
+  - `optstest.sh` — Differenztest für alle modulverändernden `l68`-Schalter
+  - `sdkdiff.sh` — Differenztest über den ganzen SDK-Korpus mit dessen eigenen realen Aufrufen
+- [x] **Realer Referenztreiber gefunden** — `gdp.a` (`/Volumes/SSD1TB/projects/MWOS/OS9/68030/PORTS/Q9/SCF/gdp.a`, 15.576 Byte, eigenes Q9-Forge-Copyright): SCF-Framebuffer-Treiber, GetStt/SetStt-basiert, laut Kopfkommentar gegen das reale historische Microware/VCS-GDP-Protokoll verifiziert (derselbe Disk-Image-Fund, der auch die `a1`=Path-Descriptor-Korrektur in 1.a belegt) und bereits erfolgreich gegen echte `sys.l`/`scfstat.l` assembliert+gelinkt. Eignet sich als Strukturvergleich für Phase 4 (wie muss ein QCC-erzeugtes Treibermodul aussehen) — ist selbst Assembler, kein C, also kein direkter Kompilierungs-Testfall, aber eine belastbare Zielform.
+- [x] **Uncommitteter Ausgangszustand gesichert** — Arbeitsbaum war zu Beginn von Phase 0 bereits sauber (`git status --short` leer), nichts zu sichern.
+
+**Abnahmekriterium erfüllt:** der unveränderte normale Programm-Build (`smoke.c`) bleibt über alle vier lokal reproduzierbaren Kettenstufen hinweg erfolgreich und mit dokumentierten Hashes nachprüfbar.
 
 ---
 
