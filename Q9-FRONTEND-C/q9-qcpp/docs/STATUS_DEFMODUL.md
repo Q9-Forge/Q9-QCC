@@ -4,7 +4,7 @@ Status-Übersicht und Arbeitsplan für die Implementierung nativer OS-9 Modulart
 
 Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste durch den Phasenplan aus `PLAN_REVIEW_DEFMODUL.md` (Codex) und trägt die dort offen gelassenen bzw. dort fehlenden Entscheidungen aus `PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md` (Claude) als konkrete Ergebnisse ein. Beide Dokumente bleiben als Begründungstext stehen — hier steht nur, was daraus folgt.
 
-**Leitsatz aus beiden Reviews, unverändert übernommen:** erst ABI und IR verbindlich machen, dann ein kleines `PROG`-/`DRIVER`-MVP durch die komplette Pipeline bringen, danach erst `__syscall`, Adressplatzierung und Inline-Assembler ergänzen.
+**Leitsatz aus beiden Reviews, unverändert übernommen:** erst ABI und IR verbindlich machen, dann ein kleines `PROG`-/`DRIVER`-MVP durch die komplette Pipeline bringen, danach erst `modul syscall`, Adressplatzierung und Inline-Assembler ergänzen.
 
 **Legende:**
 - 🔴 Offen / Noch nicht begonnen
@@ -25,12 +25,12 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🔴 | Aktuellen Build aller fünf Komponenten + Golden-Test für normale Programme sichern |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
-| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`__syscall` |
+| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🔴 | Nur `MODHEADER`, Entry-Zuordnung, `DISPATCHTAB`, `FUNC ... [conv]` — kein `ORG`/`SECTION`/`ALIGN`/`INLINEASM`/`modul syscall` |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
 | **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
 | **5. Weitere Calling-Conventions** | `interrupt`, `trap`, `naked` | 🔴 | In dieser Reihenfolge, je eigener Prolog-/Epilog-Test |
 | **6. Adressplatzierung** | `ALIGN`, `SECTION`, `ORG`, `NOOS` | 🟡 | Scanner-Passthrough für `#ORG`/`#SECTION` existiert; Semantik/Backend offen |
-| **7. `__syscall`** | Wenige konkrete Syscalls zuerst | 🔴 | Pro Syscall eigene Registrierung statt Archetyp allein |
+| **7. `modul syscall`** | Wenige konkrete Syscalls zuerst | 🔴 | Pro Syscall eigene Registrierung statt Archetyp allein; Syntax entschieden 22.09. (s. `OS9_SYSTEM_INTERFACE.md` Abschnitt 5) |
 | **8. Inline-Assembler** | `#ASM`/`#ENDASM` → `INLINEASM` | 🟡 | Präprozessor-Marker existiert bereits 🟢; `qcir`-Parser & IR-Emission offen 🔴 |
 
 ---
@@ -98,8 +98,13 @@ namens `driver` ohne vorangestelltes `modul` bleibt unberührt), ohne vier
 neue reservierte Wörter einzuführen wie bei Variante A. Bereits
 eingetragen in `OS9_SYSTEM_INTERFACE.md` Abschnitt 4. Offen für die
 Grammatikarbeit in Phase 1: genaue Position von `modul` relativ zu
-`static`/`extern`. `__syscall(...)` bleibt unverändert (kollisionssicher
-durch den doppelten Unterstrich, kein `modul`-Präfix nötig).
+`static`/`extern`. **Nachtrag 22.09.2026:** Syscalls wandern doch unter
+`modul` (`modul syscall(trapnr, archetyp) ...`, s. `OS9_SYSTEM_INTERFACE.md`
+Abschnitt 5) statt bei `__syscall` zu bleiben -- einheitlicher Mechanismus
+für die ganze Spracherweiterung. C-Parameter werden der Reihe nach den
+Registerslots des Archetyps zugeordnet, Compiler prueft Anzahl und Typ je
+Slot. Registernamen selbst (`d0`/`a0`/...) sind keine reservierten
+Woerter, nur Parameterpositionen zaehlen.
 
 **Backend-Abdeckung nicht-68k-Ziele — entschieden 2026-09-22:** Wichtige
 Erkenntnis aus der Diskussion: Ziel-Betriebssystem (Q9/OS-9) und
@@ -143,7 +148,7 @@ die Unterscheidung ist ein Zukunfts-Haken. Bereits eingetragen in
 
 ## Phase 2 — Minimaler IR-Metadatenpfad
 
-Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTAB`, `FUNC ... [convention]`. Noch **nicht**: `ORG`, `SECTION`, `ALIGN`, `INLINEASM`, `__syscall`.
+Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTAB`, `FUNC ... [convention]`. Noch **nicht**: `ORG`, `SECTION`, `ALIGN`, `INLINEASM`, `modul syscall`.
 
 | Teilschritt | Status | Anmerkung |
 |---|:---:|---|
@@ -237,7 +242,7 @@ Betrifft nicht nur die IR, sondern auch Assembler, ROF-Layout, Linker und Symbol
 
 ---
 
-## Phase 7 — `__syscall`
+## Phase 7 — `modul syscall`
 
 Zunächst nur wenige konkret definierte Syscalls, pro Syscall eine eigene Registrierung statt nur die drei Archetypen:
 
