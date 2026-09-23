@@ -1,16 +1,51 @@
 * atexit callback registry. Callbacks have the C ABI and take no arguments.
+*
+* 2026-09-23 (found while investigating a fresh-build qclib crash unrelated
+* to long long): the original version put ax_count/ax_index/ax_table in a
+* separate "vsect" block and referenced them as BARE absolute labels
+* ("move.l ax_count,d0"). Live reproduction: even a program that never
+* calls atexit() crashed with a PMMU fault inside tc_run_atexit (called by
+* every exit()), jumping through a garbage ax_table entry. A byte dump at
+* the faulting instruction showed the exact absolute address ql68k had
+* resolved "ax_count" to: $FFFF82D0 -- nowhere near this tiny module's
+* actual storage, clearly a wrong bare-absolute-vsect-reference relocation.
+* A first attempt to fix this by keeping the vsect but switching to
+* PC-relative addressing ("ax_count(pc)") does not even assemble: qr68k
+* rejects it outright ("PC-Bezug auf einen anderen Abschnitt") because a
+* vsect is a genuinely separate section from the surrounding psect, unlike
+* what it looks like from the source layout.
+* Real fix: drop the vsect entirely and declare the three fields as plain
+* data directly inside this file's OWN psect, exactly the convention QCC's
+* own generated code already uses successfully for its module-local
+* statics (see tc_io_buf/tc_io_cnt in qcc_backend_c.cpp's emitM68kCore --
+* plain "dc.l" lines inside the psect, no vsect, verified on real 68030
+* hardware across the whole C89 test history). Referenced via PC-relative
+* addressing, now valid since they live in the SAME section as the code
+* that reads them. This intentionally does NOT touch q9_cstart.a's own
+* vsect (that one is legitimately cross-module, per-process OS-9 storage
+* reached via the Microware a6-relative convention) or the several other
+* qclib leaf modules (rand/getc/perror/putc/locale/strerror/round) that
+* still use vsect+bare-label for their own local statics: none of those
+* currently use their stored value as a jump-table index, so the same
+* underlying relocation defect stays latent there rather than crashing --
+* worth an audit of its own, out of scope for this fix.
+* tc_run_atexit reloads every "(pc)" pointer fresh after each callback
+* invocation: an atexit() callback is arbitrary C code and may clobber a0/
+* a1/d0 like any other call, so nothing computed before the "jsr" may be
+* trusted afterwards.
          psect qatexit,0,0,0,0,0
 atexit:
          move.l d0,d1
          tst.l d1
          beq ax_fail
-         move.l ax_count,d0
+         lea ax_count(pc),a0
+         move.l (a0),d0
          cmpi.l #32,d0
          bge ax_fail
-         lea ax_table,a0
+         lea ax_table(pc),a1
          lsl.l #2,d0
-         move.l d1,0(a0,d0.l)
-         addq.l #1,ax_count
+         move.l d1,0(a1,d0.l)
+         addq.l #1,(a0)
          moveq #0,d0
          rts
 ax_fail
@@ -18,20 +53,27 @@ ax_fail
          rts
 
 tc_run_atexit:
-         move.l ax_count,ax_index
+         lea ax_count(pc),a0
+         move.l (a0),d0
+         lea ax_index(pc),a0
+         move.l d0,(a0)
          beq ax_done
-         lea ax_table,a0
 ax_loop
-         subq.l #1,ax_index
-         move.l ax_index,d0
-         move.l 0(a0,d0.l),a1
+         lea ax_index(pc),a0
+         move.l (a0),d0
+         subq.l #1,d0
+         move.l d0,(a0)
+         lea ax_table(pc),a1
+         move.l 0(a1,d0.l),a1
          jsr (a1)
-         tst.l ax_index
+         lea ax_index(pc),a0
+         tst.l (a0)
          bne ax_loop
 ax_done
          rts
-         vsect
-ax_count dc.l 0
-ax_index dc.l 0
-ax_table ds.l 32
-         ends
+
+	align	4
+ax_count:	dc.l	0
+ax_index:	dc.l	0
+ax_table:	ds.l	32
+	ends
