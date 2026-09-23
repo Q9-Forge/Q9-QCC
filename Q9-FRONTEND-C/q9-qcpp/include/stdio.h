@@ -61,10 +61,6 @@ extern int remove(const char*);
 extern int rename(const char*, const char*);
 extern void perror(const char*);
 
-/* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
-extern int putchar(int);
-extern int putc(int, FILE*);
-
 #endif
 
 /* C89 formatted input; implemented by the target runtime. */
