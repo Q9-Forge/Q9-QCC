@@ -998,10 +998,28 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'int main(){ double a; a=0.0; if (!a) putint(1); else putint(0); }' '1'
 		tc_check 'int main(){ double a; a=1.5; if (!a) putint(1); else putint(0); }' '0'
 		tc_check 'int main(){ double a; int n; a=3.0; n=0; while(a){ a=a-1.0; n=n+1; } putint(n); }' '3'
-		# UNAERES PLUS bleibt aussen vor: "+" in negFactor macht "(x)+1" auch
-		# als Cast lesbar, castExpr greift zuerst und meldet "unknown type
-		# name" -- bestehender, korrekter Code braeche. Siehe qcc.ebnf.
+		# UNAERES PLUS (2026-09-23): jetzt implementiert als EIGENE Regel
+		# posFactor, NUR in der allgemeinen factor-Alternative, NICHT in
+		# castOperand (das behaelt bewusst die alte, engere Liste) -- sonst
+		# waere "(x)+1" wieder als Cast lesbar (castExpr greift vor
+		# parenOpen). Diese Regressionspruefung bleibt deshalb stehen.
 		tc_check 'int main(){ int x; x=5; putint((x)+1); }' '6'
+		tc_check 'int main(){ int i; i = +5; putint(i); }' '5'
+		tc_check 'int main(){ putint(+3 * 4); }' '12'
+		tc_check 'int main(){ int x; x=-7; putint(+x); }' '-7'
+		tc_check 'int main(){ putint(+ +5); }' '5'
+		tc_check 'int f(int a){ return a; } int main(){ putint(f(+9)); }' '9'
+		# Cast-Workaround, s. Kommentar bei posFactor in qcc.ebnf: ein echter
+		# Typname als Cast-Ziel mit unaerem Plus als Operand braucht jetzt
+		# eine zweite Klammer.
+		tc_check 'int main(){ putint((int)(+5)); }' '5'
+		# Zeiger sind kein arithmetischer Typ -- unaeres Plus muss wie
+		# unaeres Minus ablehnen, nicht stillschweigend durchlassen.
+		if build/qcc_p 'int main(){ int x; int *p; p=&x; p=+p; }' 2>&1 | grep -q 'unary plus expects int'; then
+			echo "ok    qcc: unaeres Plus auf Zeiger wird diagnostiziert"
+		else
+			echo "FAIL  qcc: unaeres Plus auf Zeiger scheitert still"; tcfail=1; fail=1
+		fi
 		# STRUCT MIT double-FELD (2026-09-16). Der Absturz im Orakel war eine
 		# MODELLGRENZE, kein Compilerfehler: die VM fuehrt einen Block als Liste
 		# typisierter Zellen, und die struct-Kopie ist byteweise. Auf dem 68k

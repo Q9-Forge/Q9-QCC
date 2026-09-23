@@ -679,6 +679,7 @@ factor    = sizeofExpr
           | floatLit
           | number
           | stringLit [ postfixIndex ]
+          | posFactor
           | negFactor .
 
 /* Direkte Indizierung ohne Zwischenvariable (2026-07-24): "func()[i]" und
@@ -742,20 +743,35 @@ character = strEscape | " "~"!" | "#"~"~" .
 strEscape = "\134" strEscChar .
 strEscChar = " "~"~" .
 negFactor = ( "-" | "!" | "~" ) factor .
-/* UNAERES PLUS BLEIBT AUSSEN VOR (2026-09-16, gemessen und zurueckgenommen).
-   "i = +5;" scheitert weiterhin -- fuer jeden Typ, nicht nur fuer double.
-   Der Versuch, "+" hier aufzunehmen, BRICHT BESTEHENDEN, KORREKTEN CODE:
-   mit einem unaeren Plus wird "(x)+1" auch als CAST lesbar, naemlich "(x)"
-   angewandt auf "+1". castExpr steht in factor vor parenOpen, greift also
-   zuerst -- und seine Aktion meldet "unknown type name 'x'", bevor der
-   Generator zur Klammer-Alternative zurueckkehren kann. Die Meldung ist dann
-   schon abgesetzt und actionErrors erhoeht.
-   Beim Minus faellt das nicht auf, weil "-1" schon immer ein factor war und
-   die Mehrdeutigkeit dort seit jeher besteht.
-   Der Nutzen waere gering (im Wert ist "+x" ein No-op); der Preis waere, dass
-   "putint((x)+1)" nicht mehr uebersetzt. Aufloesen liesse es sich nur, indem
-   castExpr erst meldet, wenn die Alternative endgueltig gewaehlt ist --
-   ein Eingriff in den Generator, nicht in diese Grammatik. */
+/* UNAERES PLUS (2026-09-23): "i = +5;" war 2026-09-16 versucht und
+   zurueckgenommen worden, weil "+" naiv in factor aufzunehmen "(x)+1"
+   (x kein Typ) zum CAST macht -- castExpr steht in factor VOR parenOpen,
+   und ein Cast auf einen beliebigen Bezeichner "x" matcht syntaktisch
+   IMMER (typedefRef = ident laesst jeden Namen durch), unabhaengig davon,
+   ob x wirklich ein Typ ist. Sobald "+1" ein gueltiger castOperand ist,
+   gewinnt castExpr die LAENGERE syntaktische Deckung gegen parenOpen und
+   der Generator backtrackt nie mehr zur Klammer-Alternative -- das ist
+   keine Frage der Aktions-REIHENFOLGE (Aktionen werden ohnehin erst per
+   actionLogReplay nach dem Parsen abgespielt), sondern eine ECHTE
+   syntaktische Mehrdeutigkeit: beide Lesarten sind grammatisch gueltig,
+   nur eine ist semantisch sinnvoll, und die Grammatik hat keinen
+   Ausschluss-Operator, um "ident, der KEIN Typ ist" auszudruecken.
+   LOESUNG OHNE GENERATOR-EINGRIFF: posFactor (das neue "+") wird NUR der
+   allgemeinen factor-Alternative hinzugefuegt, NICHT aber castOperand --
+   castOperand bekommt stattdessen eine EIGENE Kopie der alten
+   factor-Liste (ohne posFactor). Dadurch matcht "(x)+1" als castOperand
+   weiterhin NICHT (weder positiv factor noch die alten negFactor-Faelle
+   decken ein fuehrendes "+" ab), castExpr scheitert also am Operanden und
+   der Generator faellt wie vorher auf parenOpen zurueck -- "x + 1" bleibt
+   korrekt. Das kostet einen Randfall, der beim Minus SEIT JEHER ebenso
+   besteht und dort seit jeher akzeptiert ist (Kommentar oben): ein
+   ECHTER Cast auf einen Typ-SCHLUESSELWORT mit unmittelbar folgendem
+   unaerem Plus als Operand, z.B. "(int)+5", parst nicht mehr als Cast
+   (castOperand liesse "+5" nicht mehr durch) -- ein seltenes Konstrukt,
+   das sich durch doppelte Klammern ("(int)(+5)") jederzeit umschreiben
+   laesst. Im Wert ist "+x" ohnehin ein No-op; nur der Typ wird wie bei
+   "-x" auf int erweitert (char/short -> int), s. tc_pos. */
+posFactor = "+" factor .
 addressRef = "&" ident [ index ] .
 
 sizeofExpr = "sizeof" ( "(" sizeofArg ")" | sizeofVarName ) .
@@ -784,7 +800,28 @@ castExpr   = "(" castType ")" castOperand .
 /* Ein Cast verwendet dieselbe Typgrammatik wie eine Deklaration. Damit sind
    typedef-Namen und beliebig viele Zeigersterne moeglich, z.B. (ActionFn*)p. */
 castType   = type pointerDecl .
-castOperand = factor .
+/* castOperand ist BEWUSST eine eigene Kopie der alten factor-Liste, KEIN
+   Verweis auf factor selbst -- s. ausfuehrliche Begruendung beim
+   posFactor-Kommentar oben (negFactor). Wird factor spaeter um eine
+   weitere Form erweitert, die vor einem echten Typnamen in Klammern
+   nicht als Cast-Operand stehen darf, gehoert sie NICHT automatisch
+   hierher, sondern nur nach bewusster Pruefung wie bei posFactor. */
+castOperand = sizeofExpr
+          | castExpr
+          | preIncDec
+          | postIncDec
+          | parenOpen commaExpr parenClose
+          | call [ postfixIndex ] [ callMember ]
+          | indirectCall
+          | boolLit
+          | addressRef
+          | derefRef
+          | varRef
+          | charLit
+          | floatLit
+          | number
+          | stringLit [ postfixIndex ]
+          | negFactor .
 
 /* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
    Operand hier kein blosser Bezeichner ist. Die Aktionen erkennen die Form
