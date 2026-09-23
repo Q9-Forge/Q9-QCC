@@ -312,7 +312,17 @@ krDeclName = ident .
 krArray    = "[" "]" .
 voidParams = "(" "void" ")" .
 normalParams = "(" paramList ")" .
-paramList = [ param { "," param } ] .
+/* EIGENE VARIADISCHE FUNKTIONSDEFINITION (2026-09-23): "int f(int a, ...)
+   { ... }" -- anders als externDecl (das schon lange "..." kennt) bekommt
+   hier ein echter QCC-Rumpf einen Aufrufweg per bsr/CALL, keine Microware-
+   ABI. Eigener Token funcEllipsis statt des bei externParamList schon
+   vorhandenen ellipsisTok: dessen Aktion setzt tcExternIsVariadic, ein
+   Zustand, der NUR fuer die extern-Registrierung gilt -- Wiederverwendung
+   haette den echten Funktionsrumpf-Pfad mit dem externen verwechselt.
+   Mindestens EIN benannter Parameter vor "..." Pflicht, wie in echtem C89
+   und wie bei externParamList. */
+paramList = [ param { "," param } [ "," funcEllipsis ] ] .
+funcEllipsis = "..." .
 /* Funktionszeiger ALS PARAMETER: "int f(int (*fp)(int))". Steht als ERSTE
    Alternative -- der gewoehnliche Zweig scheitert sonst an der
    Zeigerklammer, ohne etwas Brauchbares zu melden.
@@ -394,6 +404,7 @@ unlabeledStmt = ifStmt
           | block
           | emptyStmt
           | voidCastStmt
+          | vaStmt
           | callStmt
           | incDecStmt
           | assignStmt
@@ -544,6 +555,30 @@ assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
            | "<<=" | ">>=" | "&=" | "^=" | "|=" .
 callStmt  = call ";" | indirectCall ";" .
 
+/* va_start/va_arg/va_end (2026-09-23, C89 4.8 "Variable arguments"):
+   EIGENE Sonderformen statt normaler Funktionsaufrufe -- das zweite
+   Argument von va_start ist der NAME des letzten benannten Parameters
+   (dessen SLOT wird gebraucht, nicht sein Wert; ein normaler Aufruf
+   wuerde ihn stattdessen auswerten und pushen), und va_arg braucht einen
+   TYPNAMEN als drittes Token, keinen Ausdruck. ap wird intern als
+   SLOT-INDEX gefuehrt (siehe tc_vastart/tc_vaargend) -- fuer den Anwender
+   bleibt va_list trotzdem undurchsichtig (C89 3.7), er sieht diesen Wert
+   nie direkt.
+   va_end ist bewusst ein reines No-op (kein Aufraeumen im vereinfachten
+   Modell dieses Compilers noetig) -- dennoch als eigene Form gefuehrt,
+   damit "va_end(ap);" syntaktisch gueltig bleibt UND ap als benutzt
+   erkannt wird (kein "unused variable"-artiger Nebenschauplatz). */
+vaStmt      = vaStartCall ";" | vaEndCall ";" .
+vaStartCall = "va_start" "(" vaApRef "," vaLastName ")" .
+vaEndCall   = "va_end" "(" vaApRef ")" .
+vaApRef     = ident .
+vaLastName  = ident .
+/* vaArgExpr steht in factor UND castOperand -- anders als bei posFactor
+   gibt es hier KEINE Mehrdeutigkeit mit castExpr ("va_arg" ist ein festes
+   Schluesselwort, kein Bezeichner, der als Typname gelesen werden
+   koennte), also keine Randfall-Einschraenkung wie dort noetig. */
+vaArgExpr   = "va_arg" "(" vaApRef "," type pointerDecl ")" .
+
 /* "(void)ausdruck;" -- wertet aus und verwirft. In C das uebliche Mittel,
    einen absichtlich unbenutzten Parameter stillzulegen; qcc_p.c benutzt es
    genau dafuer ("(void)start; (void)end;"). Kein anderes Statement beginnt
@@ -664,7 +699,17 @@ addExpr   = term { addop term } .
 addop     = "+" | "-" .
 term      = factor { mulop factor } .
 mulop     = "*" | "/" | "%" .
+/* vaArgExpr steht VORNE, VOR call -- "va_arg(ap,int)" matcht sonst
+   syntaktisch bereits als GEWOEHNLICHER Funktionsaufruf (funcName "("
+   argList ")"; "int" darin waere fuer die Grammatik einfach ein Bezeichner,
+   da es hier keinen Ausschluss-Operator fuer reservierte Woerter gibt --
+   dieselbe Ursache wie beim typedefRef/castExpr-Problem bei posFactor),
+   und der Generator kaeme dann NIE mehr bis zu dieser Alternative zurueck.
+   Anders als bei posFactor reicht hier einfaches VORZIEHEN, weil "va_arg"
+   selbst ein festes Schluesselwort ist -- keine Rueckwirkung auf andere
+   Formen wie dort (s. Kommentar bei posFactor unten). */
 factor    = sizeofExpr
+          | vaArgExpr
           | castExpr
           | preIncDec
           | postIncDec
@@ -807,6 +852,7 @@ castType   = type pointerDecl .
    nicht als Cast-Operand stehen darf, gehoert sie NICHT automatisch
    hierher, sondern nur nach bewusster Pruefung wie bei posFactor. */
 castOperand = sizeofExpr
+          | vaArgExpr
           | castExpr
           | preIncDec
           | postIncDec
@@ -934,7 +980,13 @@ funcName  = ident .
    koennen; umgesetzt ist sie nicht: 64-Bit-Arithmetik auf dem 68k
    braucht Hilfsroutinen fuer Multiplikation und Division und ist ein
    eigenes Vorhaben, kein Randfall. */
-type      = "unsigned" unsignedInt | "signed" unsignedInt | "int" | longLongType | longDoubleType | "long" | "short" | "char" | "bool" | "double" | "float" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
+/* "va_list" (2026-09-23, s. Kopfkommentar bei funcEllipsis): intern EIN
+   PLAIN INT -- kein eigener Basistyp/Speicher-Tag noetig, weil sein Wert
+   NIE ausserhalb von va_start/va_arg/va_end angefasst wird (fuer den
+   Anwender undurchsichtig, wie C89 3.7 es verlangt). Steht VOR typedefRef,
+   damit es nicht als Typedefname gilt (dasselbe Muster wie longLongType
+   vor "long"). */
+type      = "unsigned" unsignedInt | "signed" unsignedInt | "int" | longLongType | longDoubleType | "long" | "short" | "char" | "bool" | "double" | "float" | "va_list" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" | typedefRef .
 /* "signed" (2026-09-16): scheiterte STUMM. Es teilt sich unsignedInt mit
    "unsigned" -- die Regel beschreibt die Folgewoerter (char/short/int/long),
    nicht das Vorzeichen; nur die Aktion unterscheidet. Eine eigene Kopie

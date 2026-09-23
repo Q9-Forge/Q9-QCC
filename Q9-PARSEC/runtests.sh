@@ -1020,6 +1020,47 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: unaeres Plus auf Zeiger scheitert still"; tcfail=1; fail=1
 		fi
+		# EIGENE VARIADISCHE FUNKTIONSDEFINITIONEN (2026-09-23). "int f(int
+		# a, ...) { ... }" -- die extern-Deklaration konnte das schon lange,
+		# ein echter Rumpf bisher nicht. Kernproblem: die aktuelle Aufruf-
+		# konvention pusht Argumente in Quellreihenfolge, wodurch die
+		# Position des LETZTEN benannten Parameters von der (pro Aufruf
+		# unterschiedlichen) Gesamtzahl abhaengt -- va_start braeuchte dann
+		# eine Laufzeitgroesse, die es nirgends bekommt. VAREVERSE (im
+		# 68k-Backend ein compile-time abgerolltes Umdrehen der obersten n
+		# Stack-Slots, in der VM ein reines No-op -- sie ordnet CALL-
+		# Argumente ohnehin per Index zu) plus eine fuer variadische
+		# Funktionen AUFSTEIGENDE statt absteigende Parameter-Offset-
+		# Formel (s. slotAddress() im 68k-Backend) loesen das, ohne die
+		# Adressierung gewoehnlicher (nicht variadischer) Funktionen
+		# anzufassen. va_list/va_start/va_arg/va_end sind eigene
+		# Sonderformen (wie sizeof), kein generischer Funktionsaufruf --
+		# sonst waere "va_arg(ap,int)" schon syntaktisch ein GEWOEHNLICHER
+		# Aufruf gewesen (call steht in factor VOR ihnen) und haette sie
+		# nie erreicht, exakt dieselbe Klasse Problem wie bei posFactor.
+		tc_check 'void putint(int n); int sum(int n, ...) { va_list ap; int i; int t; va_start(ap,n); t=0; i=0; while(i<n){ t=t+va_arg(ap,int); i=i+1; } va_end(ap); putint(t); } int main(){ sum(3,10,20,30); }' '60'
+		tc_check 'void putint(int n); int f(int a, int b, ...) { va_list ap; int r; va_start(ap,b); r=a*1000+b*100+va_arg(ap,int); va_end(ap); putint(r); } int main(){ f(1,2,3); }' '1203'
+		tc_check 'void putint(int n); int f(int a, ...) { putint(a); } int main(){ f(42); }' '42'
+		tc_check 'void putint(int n); int deref(int fmt, ...) { va_list ap; int *p; va_start(ap,fmt); p=va_arg(ap,int*); putint(*p); } int main(){ int x; x=99; deref(0,&x); }' '99'
+		tc_check 'void putint(int n); int f(int fmt, ...) { va_list ap; double d; va_start(ap,fmt); d=va_arg(ap,double); putint((int)(d*10.0)); } int main(){ f(0,2.5); }' '25'
+		tc_check 'void putint(int n); int f(int fmt, ...) { va_list ap; int i; double d; va_start(ap,fmt); i=va_arg(ap,int); d=va_arg(ap,double); putint(i+(int)(d*10.0)); } int main(){ f(0,7,2.5); }' '32'
+		# Zu wenige Argumente (weniger als die benannten Parameter) --
+		# derselbe Fehlercode wie bei einer gewoehnlichen Funktion, nicht
+		# stillschweigend akzeptiert.
+		if build/qcc_p 'int f(int a, int b, ...) { return a; } int main(){ return f(1); }' 2>&1 | grep -q 'wrong argument count'; then
+			echo "ok    qcc: variadischer Aufruf mit zu wenigen Argumenten wird diagnostiziert"
+		else
+			echo "FAIL  qcc: variadischer Aufruf mit zu wenigen Argumenten scheitert still"; tcfail=1; fail=1
+		fi
+		# va_start MUSS den letzten benannten Parameter nennen -- ein
+		# anderer Parameter ergaebe die falsche Adresse (kein Analogon zu
+		# echtem UB hier, das ist eine der wenigen Stellen, die dieser
+		# Compiler tatsaechlich PRUEFT statt nur zu dokumentieren).
+		if build/qcc_p 'int f(int a, int b, ...) { va_list ap; va_start(ap, a); return a; } int main(){ return f(1,2,3); }' 2>&1 | grep -q 'va_start expects the last named parameter'; then
+			echo "ok    qcc: va_start auf einem falschen Parameter wird diagnostiziert"
+		else
+			echo "FAIL  qcc: va_start auf falschem Parameter scheitert still"; tcfail=1; fail=1
+		fi
 		# STRUCT MIT double-FELD (2026-09-16). Der Absturz im Orakel war eine
 		# MODELLGRENZE, kein Compilerfehler: die VM fuehrt einen Block als Liste
 		# typisierter Zellen, und die struct-Kopie ist byteweise. Auf dem 68k

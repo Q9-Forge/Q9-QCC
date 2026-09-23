@@ -414,8 +414,16 @@ static void collectFunctions(void) {
 			   a FUNC/ENDFUNC span. */
 		} else if (strcmp(x->op, "FUNC") == 0) {
 			/* Third argument (2026-07-25): optional isstatic flag controlling .globl
-			   emission. */
-			if (open || (x->argc != 2 && x->argc != 3)) fatal("ungueltiges FUNC");
+			   emission. Fourth argument (2026-09-23): isVariadic-Flag fuer eigene
+			   variadische Funktionsdefinitionen -- ARM64 unterstuetzt diese Sprach-
+			   erweiterung BEWUSST NICHT (kein VASTART/VAARG-Opcode implementiert,
+			   s. das generische "unbekannter Opcode"-fatal() weiter unten, das genau
+			   wie bei Bitfeldern greift), aber die Zeile selbst muss trotzdem geparst
+			   werden koennen -- das vierte Feld steht jetzt auf JEDER FUNC-Zeile,
+			   nicht nur bei variadischen Funktionen. Wert wird hier bewusst NICHT
+			   gelesen (kein current.isVariadic-Feld), genau deshalb bleibt jede
+			   Parameteradresse hier bei der bisherigen, einzigen Formel. */
+			if (open || (x->argc != 2 && x->argc != 3 && x->argc != 4)) fatal("ungueltiges FUNC");
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, x->args[0], NAME_LEN - 1);
 			current.nargs = number(x->args[1], x->line);
