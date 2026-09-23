@@ -2249,25 +2249,48 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "I2Q") == 0) {
 				/* Vorzeichenrichtige Erweiterung 32->64: ext.l gibt es fuer
 				   Langwort->Langwort nicht (nur byte/word->long) -- die
-				   Standardform ist "sign in d1 durch Vergleich mit 0". */
-				fputs("\tmove.l\t(a7)+,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_i2q_pos\n\tmoveq\t#-1,d1\n"
-				      "tc_i2q_pos:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+				   Standardform ist "sign in d1 durch Vergleich mit 0".
+				   Serialisierte Marke (2026-09-23, nachtraeglich beim ersten
+				   echten Hardwarelauf gefunden): dieser Code wird wie
+				   QCMP/emitCompare an JEDER Aufrufstelle inline emittiert,
+				   nicht einmal global -- eine feste Marke kollidierte beim
+				   zweiten I2Q in DERSELBEN Funktion mit "Symbol doppelt
+				   definiert". Jedes Programm mit mehr als einer int->long-
+				   long-Zuweisung/Cast pro Funktion traf das; das VM-Orakel
+				   kennt keine Assemblermarken und der reine vasm-Syntaxlauf
+				   in runtests.sh testete nie ein Programm mit zwei solchen
+				   Konversionen in einer Funktion. */
+				{
+					int id = serial++;
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_i2q_pos_%d__%s\n\tmoveq\t#-1,d1\n"
+					        "tc_i2q_pos_%d__%s:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", id, psectName, id, psectName);
+				}
 			} else if (strcmp(op, "I2QUNDER") == 0) {
 				/* Die Ganzzahl liegt UNTER dem long long (oben acht, macht
 				   zwoelf Byte insgesamt) -- beides herunter, umwandeln, in
-				   derselben Reihenfolge zurueck, wie bei I2DUNDER. */
-				fputs("\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_i2qu_pos\n\tmoveq\t#-1,d1\n"
-				      "tc_i2qu_pos:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td2,-(a7)\n", out);
+				   derselben Reihenfolge zurueck, wie bei I2DUNDER.
+				   Serialisierte Marke aus demselben Grund wie bei I2Q. */
+				{
+					int id = serial++;
+					fprintf(out, "\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_i2qu_pos_%d__%s\n\tmoveq\t#-1,d1\n"
+					        "tc_i2qu_pos_%d__%s:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td2,-(a7)\n", id, psectName, id, psectName);
+				}
 			} else if (strcmp(op, "Q2I") == 0) {
 				/* Untere 32 Bit -- wie D2I "ohne Rundung", hier ohnehin
-				   verlustfrei innerhalb dieser 32 Bit. */
+				   verlustfrei innerhalb dieser 32 Bit. Kein Sprung, also
+				   keine Marke -- von der Serialisierungsluecke oben nicht
+				   betroffen. */
 				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td1,-(a7)\n", out);
 			} else if (strcmp(op, "D2Q") == 0) {
 				/* double -> long long: Richtung null abschneiden (fintrz),
 				   dann das 32-Bit-Ergebnis vorzeichenrichtig auf 64 erweitern
-				   -- fmove.l liefert nur 32 Bit, exakt wie bei D2I. */
-				fputs("\tfmove.d\t(a7)+,fp0\n\tfintrz.x\tfp0,fp0\n\tfmove.l\tfp0,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_d2q_pos\n\tmoveq\t#-1,d1\n"
-				      "tc_d2q_pos:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+				   -- fmove.l liefert nur 32 Bit, exakt wie bei D2I.
+				   Serialisierte Marke aus demselben Grund wie bei I2Q. */
+				{
+					int id = serial++;
+					fprintf(out, "\tfmove.d\t(a7)+,fp0\n\tfintrz.x\tfp0,fp0\n\tfmove.l\tfp0,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_d2q_pos_%d__%s\n\tmoveq\t#-1,d1\n"
+					        "tc_d2q_pos_%d__%s:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", id, psectName, id, psectName);
+				}
 			} else if (strcmp(op, "Q2D") == 0) {
 				/* long long -> double: 64-Bit-Ganzzahl hat keine direkte
 				   FPU-Ladeinstruktion -- ueber zwei fmove.l und eine Skalierung
@@ -2275,11 +2298,24 @@ static void emitIR(FILE* out) {
 				   dazu; lo muss dafuer als UNSIGNED behandelt werden (seine
 				   oberen 32 Bit tragen kein eigenes Vorzeichen), deshalb der
 				   Unsigned-Ausgleich mit 2^32, falls d0 negativ (als int32)
-				   erscheint. */
-				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
-				fputs("\tfmove.l\td1,fp0\n\tfmove.d\t#4294967296.0,fp2\n\tfmul.x\tfp2,fp0\n", out);
-				fputs("\tfmove.l\td0,fp1\n\ttst.l\td0\n\tbpl.s\ttc_q2d_lopos\n\tfadd.x\tfp2,fp1\n", out);
-				fputs("tc_q2d_lopos:\tfadd.x\tfp1,fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+				   erscheint. Serialisierte Marke aus demselben Grund wie I2Q. */
+				{
+					/* "fmove.d #4294967296.0,fpN" ist KEINE gueltige
+					   Immediate-Syntax fuer qr68k (gefunden beim ersten
+					   echten Assemblerlauf: "Rest im Ausdruck nicht
+					   auswertbar: .0") -- Gleitkommakonstanten kommen in
+					   dieser Kette nirgends als Text-Literal in den
+					   Assembler, sondern als IEEE-754-Bitmuster ueber zwei
+					   move.l-Immediates auf den Stapel und von dort per
+					   fmove.d geladen, exakt wie PUSHD es fuer den
+					   double-Typ selbst macht. 2^32 als double:
+					   Vorzeichen 0, Exponent 1055 (0x41F), Mantisse 0. */
+					int id = serial++;
+					fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
+					fputs("\tfmove.l\td1,fp0\n\tmove.l\t#$00000000,-(a7)\n\tmove.l\t#$41F00000,-(a7)\n\tfmove.d\t(a7)+,fp2\n\tfmul.x\tfp2,fp0\n", out);
+					fprintf(out, "\tfmove.l\td0,fp1\n\ttst.l\td0\n\tbpl.s\ttc_q2d_lopos_%d__%s\n\tfadd.x\tfp2,fp1\n", id, psectName);
+					fprintf(out, "tc_q2d_lopos_%d__%s:\tfadd.x\tfp1,fp0\n\tfmove.d\tfp0,-(a7)\n", id, psectName);
+				}
 			} else if (strcmp(op, "CMPLT") == 0) { emitCompare(out, "blt", &serial);
 			} else if (strcmp(op, "CMPGT") == 0) { emitCompare(out, "bgt", &serial);
 			} else if (strcmp(op, "CMPLE") == 0) { emitCompare(out, "ble", &serial);
