@@ -1,8 +1,16 @@
 * perror: write prefix plus the qclib fallback error text to stderr (path 2).
+*
+* 2026-09-23 (vsect-Adressierungs-Audit nach dem atexit-Fund, `c342e53`):
+* pe_buf/pe_count lagen in einem separaten "vsect"-Block und wurden als
+* BARE absolute Labels referenziert -- dieselbe Signatur wie bei
+* extra_atexit.a. Fix nach demselben Muster: die Felder liegen jetzt
+* direkt im psect, referenziert ueber PC-relative Adressierung
+* ("label(pc)" fuer LESEN direkt, "lea label(pc),aN" + Registerindirekt
+* fuer SCHREIBEN, da PC-relativ laut qr68k kein Schreibziel sein kann).
          psect qperror,0,0,0,0,0
 perror:
          movea.l d0,a0
-         lea pe_buf,a1
+         lea pe_buf(pc),a1
          movea.l a1,a2
          moveq #0,d2
 pe_copy
@@ -34,14 +42,16 @@ pe_sep
          move.b #10,(a1)+
          move.b #0,(a1)
          addi.l #16,d2
-         move.l d2,pe_count
+         lea pe_count(pc),a1
+         move.l d2,(a1)
          moveq #2,d0
          move.l a2,d1
-         pea pe_count
+         move.l a1,-(a7)
          bsr _os_write
          addq.l #4,a7
          rts
-         vsect
-pe_buf ds.b 256
-pe_count dc.l 0
+
+         align 4
+pe_buf:   ds.b 256
+pe_count: dc.l 0
          ends
