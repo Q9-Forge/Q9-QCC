@@ -472,6 +472,10 @@ static int helperTableOffset(const char* rawName) {
 	if (strcmp(rawName, "tc_putint")   == 0) return 20;
 	if (strcmp(rawName, "tc_putuint")  == 0) return 24;
 	if (strcmp(rawName, "tc_putchar")  == 0) return 28;
+	/* long long (2026-09-23): tc_mul_i64/tc_div_i64/tc_mod_i64 werden BEWUSST
+	   NICHT hier eingetragen -- ihre Aufrufstellen (QMUL/QDIV/QMOD) nutzen
+	   immer ein reines "bsr", nie emitCall()/diese Tabelle, s. dortigen
+	   Kommentar. */
 	fatal("internal error: unknown runtime helper for -largedata function table");
 	return -1;
 }
@@ -545,7 +549,7 @@ static void emitCall(FILE* out, const char* asmName, int tableOffset, int* seria
 
 static int isNumWord(const char* w) {
 	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 ||
-	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0 || strcmp(w, "d") == 0;
+	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0 || strcmp(w, "d") == 0 || strcmp(w, "q") == 0;
 }
 
 /* Byte size of a type tag for LOAD/STORE width and pointer/index scaling
@@ -558,6 +562,12 @@ static int tagSize(const char* w) {
 	/* 'd' = double, 8 Byte (2026-09-16). Ein double liegt immer als BLOCK,
 	   nie in einem Slot -- s. docs/FLOAT_IR_ENTWURF_de.md. */
 	if (strcmp(w, "d") == 0) return 8;
+	/* 'q' = long long, ebenfalls 8 Byte (2026-09-23) -- dieselbe Block-
+	   Notwendigkeit wie 'd'. OHNE diesen Zweig fiele 'q' auf die 4-Byte-
+	   Standardgroesse zurueck: falsche Arrayschrittweite, falsche
+	   GARRAY-Allozierung, falsche Skalierung ueberall, wo tagSize() den
+	   Elementabstand bestimmt. */
+	if (strcmp(w, "q") == 0) return 8;
 	return 4;
 }
 /* Shift amount for lsl.l/asr.l scaling in pointer arithmetic/indexing:
@@ -787,6 +797,36 @@ static void collectGlobals(void) {
 			if (!foundD) fatal("GINITD fuer unbekanntes Array");
 			continue;
 		}
+		if (strcmp(insP->op, "GINITQ") == 0) {
+			/* long long (2026-09-23): dieselbe Zwei-Haelften-Ablage wie
+			   GINITD zwei Zeilen darueber, nur ganzzahlig statt IEEE-754 --
+			   die Ausgabeseite (s. unten, ".dc.l"-Emission) behandelt beide
+			   ohnehin identisch, weil dort nur rohe 32-Bit-Worte geschrieben
+			   werden. */
+			int foundQ = 0;
+			if (insP->argc != 4) fatal("ungueltiges GINITQ");
+			for (gi = 0; gi < globalCount; gi++) {
+				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+					int* initQ;
+					idx = number(insP->args[1], insP->line);
+					if (idx < 0 || idx >= globals[gi].length) fatal("GINITQ-Index ausserhalb Array");
+					if (idx >= MAX_ARRAY_LEN / 2) fatal("GINITQ-Index ueberschreitet MAX_ARRAY_LEN");
+					if (globals[gi].init == NULL) {
+						int wantQ = globals[gi].length < MAX_ARRAY_LEN / 2 ? globals[gi].length : MAX_ARRAY_LEN / 2;
+						globals[gi].init = initAlloc(wantQ * 2, insP->line);
+						globals[gi].initLen = wantQ * 2;
+					}
+					initQ = globals[gi].init;
+					initQ[2 * idx] = numberU(insP->args[2], insP->line);
+					initQ[2 * idx + 1] = numberU(insP->args[3], insP->line);
+					globals[gi].hasGinit = 1;
+					foundQ = 1;
+					break;
+				}
+			}
+			if (!foundQ) fatal("GINITQ fuer unbekanntes Array");
+			continue;
+		}
 		if (strcmp(insP->op, "GLOBAL") != 0 && strcmp(insP->op, "GARRAY") != 0) continue;
 		if (strcmp(insP->op, "GARRAY") == 0) {
 			/* Fourth argument (2026-07-25, multi-file translation): optional
@@ -861,7 +901,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITD") == 0 || strcmp(insP->op, "GINITAT") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
+		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITD") == 0 || strcmp(insP->op, "GINITQ") == 0 || strcmp(insP->op, "GINITAT") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
 			/* Allowed before the first function (true globals), inside an open
 			   function (static locals), and between functions since 2026-08-10.
 			   C permits declarations and functions to be mixed freely; collectGlobals
@@ -1157,6 +1197,84 @@ static void emitM68kCore(FILE* out) {
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_div_i32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
 	fputs("tc_umod_u32:\n", out);
 	fputs("\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td0,d2\n\tmove.l\td1,d3\n\tbsr\ttc_udiv_u32\n\tmove.l\td0,d1\n\tmove.l\td3,d0\n\tbsr\ttc_mul_i32\n\tsub.l\td0,d2\n\tmove.l\td2,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\trts\n\n", out);
+
+	/* long long (2026-09-23): eigene 64-Bit-Ganzzahl-Helfer, analog zu den
+	   32-Bit-Routinen oben, aber mit EIGENER Aufrufkonvention -- diese drei
+	   Routinen haben KEINEN anderen Aufrufer als QMUL/QDIV/QMOD weiter unten,
+	   deshalb muss NICHTS fuer fremden Code preserved werden (anders als
+	   tc_mul_i32 & Co, die "preserve d2-d5" beachten, weil aeltere Opcodes wie
+	   IPADDN das voraussetzen). Aufrufkonvention: EIN d0=Lo/d1=Hi je 64-Bit-
+	   Operand (A zuerst d0:d1, B danach d2:d3), Ergebnis in d0:d1.
+	   Register a0 dient als Schleifenzaehler (movea.l/subq.l/cmpa.l -- CMPA
+	   ist die einzige Vergleichsform, die auf einem Adressregister ohne
+	   Umweg funktioniert; SUBQ auf An setzt laut 68000-PRM KEINE Flags).
+	   a0 ist laut Kopfkommentar oben ("a0=Skalar-Scratch") frei, ebenso
+	   a1/a2 -- a3/a4 (Tabellenbasen) und a5/a6 (Frame-Pointer je os9Mode)
+	   werden hier bewusst NICHT beruehrt. */
+	fprintf(out, "%s 68k-Core: int64 MUL/DIV fuer long long (2026-09-23)\n", fullCommentPrefix());
+	fputs("tc_mul_i64:\n", out);
+	/* URSPRUENGLICH mit MULU.L Dn,Dh:Dl (68020+, volles 32x32->64-Bit-
+	   Produkt) entworfen -- LIVE GEFUNDEN (2026-09-23, runtests.sh M4a):
+	   die Testsuite assembliert mit "vasm ... -m68000" (reiner 68000), und
+	   MULU.L in der Dh:Dl-Form brach dort JEDES Programm, nicht nur
+	   long-long-Code, weil diese Routine bedingungslos mitemittiert wird.
+	   Ersetzt durch Schiebe-und-Addieren (dieselbe Grundidee wie
+	   tc_mul_i32, nur ueber 64 statt 32 Bit, KEIN 68020-Befehl mehr) --
+	   nur die unteren 64 Bit des Produkts zaehlen (C definiert
+	   Ganzzahlueberlauf ohnehin nicht anders), und die sind bei
+	   Zweierkomplement-Multiplikation UNABHAENGIG vom Vorzeichen der
+	   Operanden dieselben wie bei vorzeichenloser Multiplikation der
+	   rohen Bitmuster -- deshalb ist HIER, anders als bei der Division,
+	   KEINE Vorzeichenkorrektur noetig. B(d3:d2) wird bitweise nach rechts
+	   geschoben und getestet, A(d1:d0) waechst dabei parallel nach links;
+	   ist das getestete Bit gesetzt, wird das aktuelle A in Q(d5:d4)
+	   aufaddiert. */
+	fputs("\tmoveq\t#0,d4\n\tmoveq\t#0,d5\n\tmovea.l\t#64,a0\n", out);
+	fputs("tc_mul64_loop:\n\tbtst\t#0,d2\n\tbeq.s\ttc_mul64_skip\n", out);
+	fputs("\tadd.l\td0,d4\n\taddx.l\td1,d5\n", out);
+	fputs("tc_mul64_skip:\n\tlsr.l\t#1,d3\n\troxr.l\t#1,d2\n\tlsl.l\t#1,d0\n\troxl.l\t#1,d1\n", out);
+	fputs("\tsubq.l\t#1,a0\n\tcmpa.l\t#0,a0\n\tbne.s\ttc_mul64_loop\n", out);
+	fputs("\tmove.l\td4,d0\n\tmove.l\td5,d1\n\trts\n\n", out);
+
+	fputs("tc_div_i64:\n", out);
+	/* Vorzeichenbehandlung wie tc_div_i32 (Betraege bilden, Ergebnis am Ende
+	   ggf. negieren) -- d6 traegt das Vorzeichenflag NUR bis zum Schleifenbeginn
+	   (dort auf den Stapel gerettet, danach als Quotient-LO-Akkumulator
+	   wiederverwendet: kein Registerkonflikt, weil beide Rollen sich nie
+	   ueberlappen). Schulmethode ueber 64 Iterationen: A(d1:d0) wird
+	   bitweise nach R(d5:d4) hineingeschoben (vierstufige lsl/roxl-Kette,
+	   dieselbe Technik wie tc_div_i32s zweistufige, nur ueber vier statt
+	   zwei Register), pro Bit ein Versuchsabzug von B(d3:d2) mit sub/subx
+	   und Rueckbuchung bei Ausleihe (bcs) statt eines echten Zweiwortvergleichs
+	   -- SUBX/ADDX kennen auf dem 68000 ohnehin nur Dn,Dn oder -(Ay),-(Ax),
+	   kein Speicheroperand, B muss also in Registern bleiben. */
+	fputs("\tmove.l\td3,d5\n\tor.l\td2,d5\n\tbne.s\ttc_div64_nz\n\tmoveq\t#0,d0\n\tmoveq\t#0,d1\n\trts\n", out);
+	fputs("tc_div64_nz:\n\tmoveq\t#0,d6\n", out);
+	fputs("\ttst.l\td1\n\tbpl.s\ttc_div64_apos\n\tneg.l\td0\n\tnegx.l\td1\n\taddq.l\t#1,d6\n", out);
+	fputs("tc_div64_apos:\n\ttst.l\td3\n\tbpl.s\ttc_div64_bpos\n\tneg.l\td2\n\tnegx.l\td3\n\teor.l\t#1,d6\n", out);
+	fputs("tc_div64_bpos:\n\tmove.l\td6,-(a7)\n", out);
+	fputs("\tmoveq\t#0,d4\n\tmoveq\t#0,d5\n\tmoveq\t#0,d6\n\tmoveq\t#0,d7\n\tmovea.l\t#64,a0\n", out);
+	fputs("tc_div64_loop:\n", out);
+	fputs("\tlsl.l\t#1,d0\n\troxl.l\t#1,d1\n\troxl.l\t#1,d4\n\troxl.l\t#1,d5\n", out);
+	fputs("\tlsl.l\t#1,d6\n\troxl.l\t#1,d7\n", out);
+	fputs("\tsub.l\td2,d4\n\tsubx.l\td3,d5\n\tbcs.s\ttc_div64_restore\n\taddq.l\t#1,d6\n\tbra.s\ttc_div64_next\n", out);
+	fputs("tc_div64_restore:\n\tadd.l\td2,d4\n\taddx.l\td3,d5\n", out);
+	fputs("tc_div64_next:\n\tsubq.l\t#1,a0\n\tcmpa.l\t#0,a0\n\tbne.s\ttc_div64_loop\n", out);
+	fputs("\tmove.l\t(a7)+,d0\n\ttst.l\td0\n\tbeq.s\ttc_div64_ret\n\tneg.l\td6\n\tnegx.l\td7\n", out);
+	fputs("tc_div64_ret:\n\tmove.l\td6,d0\n\tmove.l\td7,d1\n\trts\n\n", out);
+
+	fputs("tc_mod_i64:\n", out);
+	/* Rest = A - (A/B)*B, dieselbe Herleitung wie tc_mod_i32 -- A und B
+	   ueberleben beide bsr (tc_div_i64/tc_mul_i64 preserven nichts) nur
+	   dadurch, dass sie auf dem Stapel liegen statt in Registern. */
+	fputs("\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n\tmove.l\td2,-(a7)\n\tmove.l\td3,-(a7)\n", out);
+	fputs("\tbsr\ttc_div_i64\n", out);
+	fputs("\tmove.l\td0,d4\n\tmove.l\td1,d5\n", out);
+	fputs("\tmove.l\t4(a7),d2\n\tmove.l\t0(a7),d3\n", out);
+	fputs("\tmove.l\td4,d0\n\tmove.l\td5,d1\n\tbsr\ttc_mul_i64\n", out);
+	fputs("\tmove.l\t12(a7),d2\n\tmove.l\t8(a7),d3\n", out);
+	fputs("\tsub.l\td0,d2\n\tsubx.l\td1,d3\n", out);
+	fputs("\tmove.l\td2,d0\n\tmove.l\td3,d1\n\tlea\t16(a7),a7\n\trts\n\n", out);
 }
 
 /* Data-access and pointer opcodes (PUSH..PDIFF), moved out of emitIR() on
@@ -1293,11 +1411,23 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		   stimmte schon (tagShift kennt 8 -> 3), es fehlten die Typzulassung
 		   und die FPU-Befehle fuer acht Byte. */
 		int isD = strcmp(insP->args[2], "d") == 0;
+		/* 'q' (long long, 2026-09-23): dieselbe Notwendigkeit wie 'd' zwei
+		   Zeilen darueber -- OHNE eigenen Pfad fiele ein Array von long long
+		   entweder auf "unbekannter Arraytyp" (Typzulassung fehlt) oder,
+		   schlimmer, wuerde ueber fmove.d bewegt: das ist eine ECHTE IEEE-
+		   Formatkonversion (double <-> 80-Bit erweitert), keine reine
+		   Byteverschiebung -- fuer ein beliebiges 64-Bit-Ganzzahl-Bitmuster
+		   (kein gueltiges/normalisiertes double) nicht verlaesslich
+		   bitidentisch. Deshalb ein EIGENER, rein ganzzahliger Pfad mit
+		   move.l-Paaren statt fmove.d. d2/d3 (statt d0/d1) halten HI/LO ueber
+		   die Adressberechnung hinweg, die selbst nur a0/d1 anfasst. */
+		int isQ = strcmp(insP->args[2], "q") == 0;
 		if (strcmp(insP->args[2], "i") != 0 && strcmp(insP->args[2], "p") != 0 &&
 		    strcmp(insP->args[2], "h") != 0 && strcmp(insP->args[2], "c") != 0 &&
-		    strcmp(insP->args[2], "b") != 0 && !isD) fatal("unbekannter Arraytyp");
+		    strcmp(insP->args[2], "b") != 0 && !isD && !isQ) fatal("unbekannter Arraytyp");
 		if (strcmp(op, "STOREIDX") == 0 || keepValue) {
 			if (isD) fputs("\tfmove.d\t(a7)+,fp0\n", out);
+			else if (isQ) fputs("\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n", out);
 			else fputs("\tmove.l\t(a7)+,d0\n", out);
 		}
 		fputs("\tmove.l\t(a7)+,d1\n", out);
@@ -1316,6 +1446,7 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		fputs("\tadd.l\td1,a0\n", out);
 		if (strcmp(op, "LOADIDX") == 0) {
 			if (isD) fputs("\tfmove.d\t(a0),fp0\n\tfmove.d\tfp0,-(a7)\n", out);
+			else if (isQ) fputs("\tmove.l\t(a0),d0\n\tmove.l\t4(a0),d1\n\tmove.l\td1,-(a7)\n\tmove.l\td0,-(a7)\n", out);
 			else {
 				if (elemSize == 4) fputs("\tmove.l\t(a0),d0\n", out);
 				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
@@ -1324,6 +1455,9 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		} else if (isD) {
 			fputs("\tfmove.d\tfp0,(a0)\n", out);
 			if (keepValue) fputs("\tfmove.d\tfp0,-(a7)\n", out);
+		} else if (isQ) {
+			fputs("\tmove.l\td2,(a0)\n\tmove.l\td3,4(a0)\n", out);
+			if (keepValue) fputs("\tmove.l\td3,-(a7)\n\tmove.l\td2,-(a7)\n", out);
 		} else {
 			if (elemSize == 1 && keepValue) fputs("\tand.l\t#$ff,d0\n", out);
 			else if (elemSize == 2 && keepValue) fputs("\tand.l\t#$ffff,d0\n", out);
@@ -1394,7 +1528,16 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 		if (strcmp(op, "LOADIND") == 0) {
 			fputs("\tmove.l\t(a7)+,a0\n", out);
-			if (elemSize == 8) {
+			if (elemSize == 8 && strcmp(insP->args[0], "q") == 0) {
+				/* long long UEBER EINEN ZEIGER (2026-09-23): dieselbe
+				   Notwendigkeit wie beim double-Zweig direkt darunter, aber
+				   ueber move.l-Paare statt fmove.d -- eine beliebige 64-Bit-
+				   Ganzzahl ist kein gueltiges IEEE-double-Bitmuster, dem die
+				   FPU beim reinen Durchreichen (ohne jede Arithmetik) etwas
+				   antun duerfte (Rundung/Quieting eines sNaN-aehnlichen
+				   Musters). Reine Byteverschiebung ist hier die sichere Wahl. */
+				fputs("\tmove.l\t(a0),d0\n\tmove.l\t4(a0),d1\n\tmove.l\td1,-(a7)\n\tmove.l\td0,-(a7)\n", out);
+			} else if (elemSize == 8) {
 				/* DOUBLE UEBER EINEN ZEIGER (2026-09-16). Acht Byte gehen wie
 				   bei LOADD/LOADGD ueber die FPU. Vorher fiel 'd' in den
 				   generischen Zweig darunter und lud VIER Byte, waehrend das
@@ -1408,6 +1551,12 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 				else fprintf(out, "\tmoveq\t#0,d0\n\tmove.%c\t(a0),d0\n", tagSuffix(elemSize));
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			}
+		} else if (elemSize == 8 && strcmp(insP->args[0], "q") == 0) {
+			/* Der Wert liegt OBEN (zwei Langworte, HI dann LO Richtung
+			   Stapelboden), die Adresse darunter -- s. Kommentar im
+			   LOADIND-Zweig oben, gleicher Grund fuer move.l statt fmove.d. */
+			fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,a0\n\tmove.l\td0,(a0)\n\tmove.l\td1,4(a0)\n", out);
+			if (keepValue) fputs("\tmove.l\td1,-(a7)\n\tmove.l\td0,-(a7)\n", out);
 		} else if (elemSize == 8) {
 			/* Der Wert liegt OBEN (acht Byte), die Adresse darunter. */
 			fputs("\tfmove.d\t(a7)+,fp0\n\tmove.l\t(a7)+,a0\n\tfmove.d\tfp0,(a0)\n", out);
@@ -1548,6 +1697,8 @@ static void emitIR(FILE* out) {
 		fprintf(out, "\tdc.l\ttc_mod_i32-tc_functab__%s\n\tdc.l\ttc_umod_u32-tc_functab__%s\n", psectName, psectName);
 		fprintf(out, "\tdc.l\ttc_putint-tc_functab__%s\n\tdc.l\ttc_putuint-tc_functab__%s\n\tdc.l\ttc_putchar-tc_functab__%s\n",
 			psectName, psectName, psectName);
+		/* long long (2026-09-23): KEIN Tabelleneintrag fuer tc_mul_i64/
+		   tc_div_i64/tc_mod_i64 -- s. Kommentar bei helperTableOffset(). */
 		/* 2026-07-26 (see the registerExtern() comment): external CALLEXT/CALLEXTP
 		   targets do NOT get a direct table entry for the raw external name. That
 		   name would be outside this psect, so "label-tab" would no longer be a
@@ -1979,6 +2130,156 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "DCMPGE") == 0) { emitFCompare(out, "fbge", &serial);
 			} else if (strcmp(op, "DCMPEQ") == 0) { emitFCompare(out, "fbeq", &serial);
 			} else if (strcmp(op, "DCMPNE") == 0) { emitFCompare(out, "fbne", &serial);
+			/* --- long long (2026-09-23) ---
+			   Stapel-Konvention wie bei double: HI liegt nach dem Push OBEN,
+			   LO darunter (grosses Endian, dieselbe Reihenfolge wie PUSHD --
+			   move.l lo zuerst, dann move.l hi). DDUP/DDROP/DSWAP werden
+			   UNVERAENDERT mitbenutzt (reine Byteverschiebung, kein
+			   IEEE-Formatwechsel -- deshalb an KEINER Stelle hier erwaehnt).
+			   KEIN fmove.d irgendwo: eine beliebige 64-Bit-Ganzzahl ist kein
+			   gueltiges double-Bitmuster, dem die FPU beim reinen
+			   Durchreichen (ohne Arithmetik) etwas antun duerfte. */
+			} else if (strcmp(op, "PUSHQ") == 0 && insP->argc == 2) {
+				unsigned long hi = strtoul(insP->args[0], 0, 10);
+				unsigned long lo = strtoul(insP->args[1], 0, 10);
+				fprintf(out, "\tmove.l\t#$%08lX,-(a7)\n\tmove.l\t#$%08lX,-(a7)\n", lo, hi);
+			} else if (strcmp(op, "LOADQ") == 0 && insP->argc == 1) {
+				int ignored;
+				int off = arrayOffset(fn, number(insP->args[0], insP->line), &ignored, insP->line);
+				fprintf(out, "\tmove.l\t-%d(%s),d0\n\tmove.l\t-%d(%s),d1\n\tmove.l\td1,-(a7)\n\tmove.l\td0,-(a7)\n",
+				        off, framePtr(), off - 4, framePtr());
+			} else if (strcmp(op, "STOREQ") == 0 && insP->argc == 1) {
+				int ignored;
+				int off = arrayOffset(fn, number(insP->args[0], insP->line), &ignored, insP->line);
+				fprintf(out, "\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td0,-%d(%s)\n\tmove.l\td1,-%d(%s)\n",
+				        off, framePtr(), off - 4, framePtr());
+			} else if (strcmp(op, "LOADGQ") == 0 && insP->argc == 1) {
+				int gidx = findGlobal(insP->args[0]);
+				char gmsg[200];
+				if (gidx < 0) { sprintf(gmsg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(gmsg); }
+				emitLeaGlobal(out, gidx, "a0");
+				fputs("\tmove.l\t(a0),d0\n\tmove.l\t4(a0),d1\n\tmove.l\td1,-(a7)\n\tmove.l\td0,-(a7)\n", out);
+			} else if (strcmp(op, "STOREGQ") == 0 && insP->argc == 1) {
+				int gidx = findGlobal(insP->args[0]);
+				char gmsg[200];
+				if (gidx < 0) { sprintf(gmsg, "IR Zeile %d: unbekannte globale Variable %s", insP->line, insP->args[0]); fatal(gmsg); }
+				emitLeaGlobal(out, gidx, "a0");
+				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td0,(a0)\n\tmove.l\td1,4(a0)\n", out);
+			} else if (strcmp(op, "QADD") == 0) {
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d0\n"
+				      "\tadd.l\td2,d0\n\taddx.l\td1,d3\n\tmove.l\td0,-(a7)\n\tmove.l\td3,-(a7)\n", out);
+			} else if (strcmp(op, "QSUB") == 0) {
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d0\n"
+				      "\tsub.l\td2,d0\n\tsubx.l\td1,d3\n\tmove.l\td0,-(a7)\n\tmove.l\td3,-(a7)\n", out);
+			} else if (strcmp(op, "QNEG") == 0) {
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tneg.l\td0\n\tnegx.l\td1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "QNOT") == 0) {
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tnot.l\td0\n\tnot.l\td1\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "QAND") == 0 || strcmp(op, "QOR") == 0 || strcmp(op, "QXOR") == 0) {
+				const char* mnem = strcmp(op, "QAND") == 0 ? "and" : strcmp(op, "QOR") == 0 ? "or" : "eor";
+				fprintf(out, "\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d0\n"
+				             "\t%s.l\td2,d0\n\t%s.l\td1,d3\n\tmove.l\td0,-(a7)\n\tmove.l\td3,-(a7)\n", mnem, mnem);
+			} else if (strcmp(op, "QMUL") == 0 || strcmp(op, "QDIV") == 0 || strcmp(op, "QMOD") == 0) {
+				const char* fn2 = strcmp(op, "QMUL") == 0 ? "mul_i64" : strcmp(op, "QDIV") == 0 ? "div_i64" : "mod_i64";
+				char helperAsmName[24];
+				sprintf(helperAsmName, "tc_%s", fn2);
+				/* Aufrufkonvention der eigenen 64-Bit-Helfer (s. emitM68kCore):
+				   d0=A_lo,d1=A_hi,d2=B_lo,d3=B_hi, Ergebnis in d0:d1. B liegt
+				   beim Emittieren oben (zuletzt gepusht), also zuerst gepoppt.
+				   BEWUSST PLAIN "bsr", NICHT emitCall()/-largedata-Tabelle
+				   (2026-09-23, live gefunden): irgendetwas an der Tabellen-
+				   Indirektion fuehrte bei "-largedata" zu einem FALSCHEN
+				   Sprungziel (landete mitten in tc_mul_i64 statt an dessen
+				   Anfang) -- Ursache nicht abschliessend geklärt (vermutlich
+				   ein Zusammenspiel mit qcc68sim.pys Label-Adressvergabe, s.
+				   dortigen Kommentar zu global_addresses), Risiko aber zu
+				   hoch fuer eine ungeprüfte Vermutung. tc_mul_i64/tc_div_i64/
+				   tc_mod_i64 stehen als Teil von emitM68kCore IMMER nahe am
+				   Programmanfang; ein reines bsr bleibt daher auch in
+				   -largedata-Programmen in Reichweite, ausser die
+				   AUFRUFSTELLE selbst liegt weit hinter der 32-KB-Grenze --
+				   dann meldet r68 das klar als "value out of range" statt
+				   still falsch zu rechnen. */
+				fputs("\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
+				fprintf(out, "\tbsr\t%s\n", helperAsmName);
+				fputs("\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "QSHL") == 0 || strcmp(op, "QSHR") == 0) {
+				int id = serial++;
+				const char* body = strcmp(op, "QSHL") == 0
+					? "\tlsl.l\t#1,d0\n\troxl.l\t#1,d1\n"
+					: "\tasr.l\t#1,d1\n\troxr.l\t#1,d0\n";
+				/* Variable Schiebeweite: der 68k kennt kein natives 64-Bit-
+				   Schieben, deshalb bitweise in einer Schleife -- dieselbe
+				   Grund-Idee wie die Divisionsschleife oben, nur einstufig
+				   (kein Versuchsabzug). Zaehler bleibt ein PLAIN int (kein
+				   I2Q auf der rechten Seite, s. tcShiftEnd im Frontend). */
+				fputs("\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
+				fprintf(out, "tc_qshift_loop_%d__%s:\n\ttst.l\td2\n\tbeq.s\ttc_qshift_done_%d__%s\n", id, psectName, id, psectName);
+				fputs(body, out);
+				fprintf(out, "\tsubq.l\t#1,d2\n\tbra.s\ttc_qshift_loop_%d__%s\n", id, psectName);
+				fprintf(out, "tc_qshift_done_%d__%s:\n\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", id, psectName);
+			} else if (strcmp(op, "QCMPEQ") == 0 || strcmp(op, "QCMPNE") == 0 || strcmp(op, "QCMPLT") == 0 ||
+			           strcmp(op, "QCMPLE") == 0 || strcmp(op, "QCMPGT") == 0 || strcmp(op, "QCMPGE") == 0) {
+				/* 64-Bit-Vergleich: erst HI vergleichen, nur bei Gleichheit
+				   LO entscheiden -- der klassische Zweiwortvergleich (nicht
+				   ueber eine Subtraktion, die bei extremen Werten selbst
+				   ueberliefe und das Vorzeichen des Ergebnisses verfaelschen
+				   koennte). d1/d0 = B_hi/B_lo (oben, zuletzt gepusht),
+				   d3/d2 = A_hi/A_lo. cmp.l ist SIGNED fuer die HI-Haelfte
+				   (long long ist vorzeichenbehaftet, s. tc_longlong-Kopf),
+				   aber UNSIGNED fuer die LO-Haelfte (die unteren 32 Bit
+				   tragen kein eigenes Vorzeichen) -- deshalb blt/bgt fuer
+				   HI, aber bcs/bhi (unsigned) fuer LO. */
+				int id = serial++;
+				const char* hiLt = "blt"; const char* hiGt = "bgt";
+				const char* loLt = "bcs"; const char* loGt = "bhi";
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d2\n", out);
+				fputs("\tcmp.l\td1,d3\n", out);
+				fprintf(out, "\t%s\ttc_qcmp_lt_%d__%s\n\t%s\ttc_qcmp_gt_%d__%s\n", hiLt, id, psectName, hiGt, id, psectName);
+				fputs("\tcmp.l\td0,d2\n", out);
+				fprintf(out, "\t%s\ttc_qcmp_lt_%d__%s\n\t%s\ttc_qcmp_gt_%d__%s\n", loLt, id, psectName, loGt, id, psectName);
+				fprintf(out, "\tbra\ttc_qcmp_eq_%d__%s\n", id, psectName);
+				fprintf(out, "tc_qcmp_lt_%d__%s:\tmoveq\t#%d,d0\n\tbra\ttc_qcmp_done_%d__%s\n",
+				        id, psectName, strcmp(op, "QCMPLT") == 0 || strcmp(op, "QCMPLE") == 0 || strcmp(op, "QCMPNE") == 0 ? 1 : 0, id, psectName);
+				fprintf(out, "tc_qcmp_gt_%d__%s:\tmoveq\t#%d,d0\n\tbra\ttc_qcmp_done_%d__%s\n",
+				        id, psectName, strcmp(op, "QCMPGT") == 0 || strcmp(op, "QCMPGE") == 0 || strcmp(op, "QCMPNE") == 0 ? 1 : 0, id, psectName);
+				fprintf(out, "tc_qcmp_eq_%d__%s:\tmoveq\t#%d,d0\n",
+				        id, psectName, strcmp(op, "QCMPEQ") == 0 || strcmp(op, "QCMPLE") == 0 || strcmp(op, "QCMPGE") == 0 ? 1 : 0);
+				fprintf(out, "tc_qcmp_done_%d__%s:\tmove.l\td0,-(a7)\n", id, psectName);
+			} else if (strcmp(op, "I2Q") == 0) {
+				/* Vorzeichenrichtige Erweiterung 32->64: ext.l gibt es fuer
+				   Langwort->Langwort nicht (nur byte/word->long) -- die
+				   Standardform ist "sign in d1 durch Vergleich mit 0". */
+				fputs("\tmove.l\t(a7)+,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_i2q_pos\n\tmoveq\t#-1,d1\n"
+				      "tc_i2q_pos:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "I2QUNDER") == 0) {
+				/* Die Ganzzahl liegt UNTER dem long long (oben acht, macht
+				   zwoelf Byte insgesamt) -- beides herunter, umwandeln, in
+				   derselben Reihenfolge zurueck, wie bei I2DUNDER. */
+				fputs("\tmove.l\t(a7)+,d2\n\tmove.l\t(a7)+,d3\n\tmove.l\t(a7)+,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_i2qu_pos\n\tmoveq\t#-1,d1\n"
+				      "tc_i2qu_pos:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n\tmove.l\td3,-(a7)\n\tmove.l\td2,-(a7)\n", out);
+			} else if (strcmp(op, "Q2I") == 0) {
+				/* Untere 32 Bit -- wie D2I "ohne Rundung", hier ohnehin
+				   verlustfrei innerhalb dieser 32 Bit. */
+				fputs("\tmove.l\t(a7)+,d0\n\tmove.l\t(a7)+,d1\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "D2Q") == 0) {
+				/* double -> long long: Richtung null abschneiden (fintrz),
+				   dann das 32-Bit-Ergebnis vorzeichenrichtig auf 64 erweitern
+				   -- fmove.l liefert nur 32 Bit, exakt wie bei D2I. */
+				fputs("\tfmove.d\t(a7)+,fp0\n\tfintrz.x\tfp0,fp0\n\tfmove.l\tfp0,d0\n\tmoveq\t#0,d1\n\ttst.l\td0\n\tbpl.s\ttc_d2q_pos\n\tmoveq\t#-1,d1\n"
+				      "tc_d2q_pos:\tmove.l\td0,-(a7)\n\tmove.l\td1,-(a7)\n", out);
+			} else if (strcmp(op, "Q2D") == 0) {
+				/* long long -> double: 64-Bit-Ganzzahl hat keine direkte
+				   FPU-Ladeinstruktion -- ueber zwei fmove.l und eine Skalierung
+				   (hi * 2^32 + lo). fp1 = hi, hoch skaliert per fmul, dann lo
+				   dazu; lo muss dafuer als UNSIGNED behandelt werden (seine
+				   oberen 32 Bit tragen kein eigenes Vorzeichen), deshalb der
+				   Unsigned-Ausgleich mit 2^32, falls d0 negativ (als int32)
+				   erscheint. */
+				fputs("\tmove.l\t(a7)+,d1\n\tmove.l\t(a7)+,d0\n", out);
+				fputs("\tfmove.l\td1,fp0\n\tfmove.d\t#4294967296.0,fp2\n\tfmul.x\tfp2,fp0\n", out);
+				fputs("\tfmove.l\td0,fp1\n\ttst.l\td0\n\tbpl.s\ttc_q2d_lopos\n\tfadd.x\tfp2,fp1\n", out);
+				fputs("tc_q2d_lopos:\tfadd.x\tfp1,fp0\n\tfmove.d\tfp0,-(a7)\n", out);
 			} else if (strcmp(op, "CMPLT") == 0) { emitCompare(out, "blt", &serial);
 			} else if (strcmp(op, "CMPGT") == 0) { emitCompare(out, "bgt", &serial);
 			} else if (strcmp(op, "CMPLE") == 0) { emitCompare(out, "ble", &serial);
@@ -2209,7 +2510,7 @@ static void emitIR(FILE* out) {
 			} else if (strcmp(op, "PRINTC") == 0) {
 				fputs("\tmove.l\t(a7)+,d0\n", out);
 				emitCall(out, "tc_putchar", helperTableOffset("tc_putchar"), &serial, psectName);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITAT") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITQ") == 0 || strcmp(op, "GINITAT") == 0) {
 				/* Static local variable: already processed by collectGlobals() (its address
 				   and initial value are emitted in the DATA/BSS section); this point in the
 				   function body is a pure no-op with no runtime action. */

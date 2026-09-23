@@ -1135,16 +1135,49 @@ if command -v python3 >/dev/null 2>&1; then
 		# und die benannte Form muss unveraendert gehen
 		tc_check 'int f(int a); int main(){ putint(f(1)); } int f(int a){ return a; }' '1'
 		tc_check 'int f(int t[]); int main(){ int x[2]; x[0]=7; putint(f(x)); } int f(int t[]){ return t[0]; }' '7'
-		# "long long" (2026-09-15): brach vorher STILL im Parser ab -- FAIL,
-		# keine Meldung, keine Zeile. Bewusst NICHT umgesetzt (braeuchte
-		# 64-Bit-Hilfsroutinen im Backend). Die Grammatik LIEST die Form
-		# trotzdem, damit die Aktion sie ablehnen kann.
-		for q in 'int main(){ long long x; return 0; }|long long is not supported'; do
+		# "long long" (2026-09-23): echter 64-Bit-Typ, s. project_qcc_c89_stand.md.
+		# Literale ueber der 32-Bit-Grenze werden bewusst von tcNum/tcNarrowTo32
+		# geschnitten (dokumentierte Grenze) -- die Tests erzeugen grosse Werte
+		# deshalb per Laufzeit-Multiplikation kleiner Literale, nie per grossem
+		# Literal direkt. putint((int)x) zeigt bewusst die UNTEREN 32 Bit,
+		# x>>32 die oberen -- so bleibt jeder Wert eindeutig nachrechenbar.
+		tc_check 'int main(){ long long a,b,r; a=1000000000; b=5; r=a*b; putint((int)(r>>32)); putint((int)r); }' '1
+5000000000'
+		tc_check 'int main(){ long long a,b,r; a=2000000000; b=2000000000; r=a+b; putint((int)(r>>32)); putint((int)r); }' '0
+4000000000'
+		tc_check 'int main(){ long long a,b,r; a=1000000000; b=7; r=a*b; b=3; r=r/b; putint((int)r); }' '2333333333'
+		tc_check 'int main(){ long long a,b,r; a=1000000000; b=7; r=a*b; r=-r; b=3; r=r/b; putint((int)r); r=r%b; putint((int)r); }' '-2333333333
+-2'
+		tc_check 'int main(){ long long a; int sh; a=1000000000; sh=3; putint((int)((a<<sh)>>32)); putint((int)(a>>sh)); }' '1
+125000000'
+		tc_check 'int main(){ long long a,r; a=1000000000; r=a&7; putint((int)r); r=a|7; putint((int)r); r=~a; putint((int)(r>>32)); }' '0
+1000000007
+-1'
+		tc_check 'int main(){ long long a; a=5; if(a<10) putint(1); else putint(0); if(a>10) putint(1); else putint(0); a=-5; if(a<0) putint(1); else putint(0); }' '1
+0
+1'
+		tc_check 'long long square(long long x){ return x*x; } int main(){ long long r; r=square(100000); putint((int)(r>>32)); putint((int)r); }' '2
+10000000000'
+		tc_check 'long long g; int main(){ g=1000000000; g=g*7; putint((int)(g>>32)); putint((int)g); }' '1
+7000000000'
+		tc_check 'struct Rec { long long value; int tag; }; int main(){ struct Rec s; long long r; r=1000000000; r=r*7; s.value=r; s.tag=9; putint(s.tag); putint((int)(s.value>>32)); putint((int)s.value); }' '9
+1
+7000000000'
+		tc_check 'long long arr[3]; int main(){ long long r; r=1000000000; r=r*7; arr[1]=r; putint((int)(arr[1]>>32)); putint((int)arr[1]); }' '1
+7000000000'
+		tc_check 'int main(){ int x; x=sizeof(long long); putint(x); }' '8'
+		tc_check 'int main(){ int x; x=(int)(long long)12345; putint(x); }' '12345'
+		# bewusste Luecke: ++/-- durch Zeiger/Index/Feld bleibt fuer long long
+		# abgelehnt (Auffangzweig wuerde sonst mit einem 32-Bit ADD/SUB nur die
+		# untere Haelfte treffen, s. tcDerefIncDec/tcIndexIncDec/tcMemberIncDec).
+		for q in 'long long g; int main(){ long long *p; p=&g; (*p)++; return 0; }|is only supported for int/unsigned/char/double' \
+		         'long long a[2]; int main(){ a[0]++; return 0; }|is only supported for int/unsigned/char/double' \
+		         'struct S { long long v; }; struct S s; int main(){ s.v++; return 0; }|is only supported for int/unsigned/char/double'; do
 			src="${q%%|*}"; want="${q#*|}"
 			if build/qcc_p "$src" 2>&1 | grep -qF "$want"; then
-				echo "ok    qcc: nicht umgesetzte Form wird gemeldet ($want)"
+				echo "ok    qcc: long long ++/-- ueber Adressform wird abgelehnt ($want)"
 			else
-				echo "FAIL  qcc: still gescheitert statt gemeldet: $want"; tcfail=1; fail=1
+				echo "FAIL  qcc: long long ++/-- ueber Adressform faelschlich angenommen ($want)"; tcfail=1; fail=1
 			fi
 		done
 		# BITFELDER (2026-09-17): Layout gemessen gegen echten xcc ("xcc -e=be"),

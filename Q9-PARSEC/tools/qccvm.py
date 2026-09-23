@@ -73,6 +73,20 @@ def u32(a):
     return a & 0xffffffff
 
 
+def u64(a):
+    # long long (2026-09-23): dieselbe Maskierung wie u32, nur ueber acht
+    # Byte -- fuer QAND/QOR/QXOR/QNOT/QSHL, genau wie u32 bei BAND & Co.
+    return a & 0xffffffffffffffff
+
+
+def s64(a):
+    # Vorzeichenrichtige 64-Bit-Ruecklesung, gebraucht fuer GINITQ/PUSHQ:
+    # die IR schreibt zwei UNSIGNED 32-Bit-Haelften (hi zuerst), der C-Wert
+    # kann aber negativ sein.
+    v = a & 0xffffffffffffffff
+    return v - 0x10000000000000000 if v & 0x8000000000000000 else v
+
+
 class Pointer:
     """Zielneutrale Byteadresse in einen VM-Speicherblock."""
     __slots__ = ("block", "offset")
@@ -101,7 +115,9 @@ class FnRef:
 
 def type_size(tag):
     # 2026-09-09: 'h' (short) dazu -- echte 2 Byte, wie im 68k-Backend.
-    return 1 if tag in ("c", "b") else 2 if tag == "h" else 8 if tag in ("p", "d") else 4
+    # 2026-09-23: 'q' (long long) dazu -- acht Byte wie 'd', dieselbe
+    # Blockspeicher-Notwendigkeit.
+    return 1 if tag in ("c", "b") else 2 if tag == "h" else 8 if tag in ("p", "d", "q") else 4
 
 
 def mask_for(tag, value):
@@ -135,22 +151,22 @@ def pointer_index(value, tag):
     p = pointer(value, "dereference")
     size = type_size(tag)
     if p.offset % size:
-        if tag == "d":
-            # MODELLGRENZE (2026-09-16), keine Compilerfehler: diese VM bildet
-            # einen Block als Liste TYPISIERTER Zellen ab und rechnet den Index
-            # als offset//groesse. Ein double-Feld, das NICHT auf acht Byte
-            # liegt -- etwa in "struct { int n; double d; }", wo d bei Offset 4
-            # beginnt --, laesst sich darin nicht von einem int unterscheiden.
-            # Auf dem Ziel ist genau dieses Layout RICHTIG: xcc richtet double
-            # auf zwei Byte aus (68k-Wortausrichtung), und QCC stimmt damit
-            # ueberein ("{int i; double d;}" = 12 Byte in beiden, s.
-            # docs/FLOAT_PLAN_de.md). Geprueft wird der Fall deshalb auf echter
-            # Hardware, in Q9-BACKEND-68K/q9-qclib/tests/double68k.sh.
+        if tag in ("d", "q"):
+            # MODELLGRENZE (2026-09-16, 2026-09-23 um 'q' erweitert): diese VM
+            # bildet einen Block als Liste TYPISIERTER Zellen ab und rechnet
+            # den Index als offset//groesse. Ein double- ODER long-long-Feld,
+            # das NICHT auf acht Byte liegt -- etwa in "struct { int n; double
+            # d; }", wo d bei Offset 4 beginnt --, laesst sich darin nicht von
+            # einem int unterscheiden. Auf dem Ziel ist genau dieses Layout
+            # RICHTIG: xcc richtet double auf zwei Byte aus (68k-Wortausrichtung),
+            # long long uebernimmt dieselbe Ausrichtung (s. qcc.lextab,
+            # tcStructBuildFieldTypes-Layout). Geprueft wird der Fall deshalb
+            # auf echter Hardware, in Q9-BACKEND-68K/q9-qclib/tests/double68k.sh.
             raise RuntimeError(
-                "qccvm: double-Feld bei Offset %d (kein Vielfaches von 8) -- "
-                "diese VM kann gemischte structs mit double nicht abbilden; "
-                "auf dem Ziel ist das Layout korrekt, s. double68k.sh"
-                % p.offset)
+                "qccvm: %s-Feld bei Offset %d (kein Vielfaches von 8) -- "
+                "diese VM kann gemischte structs mit double/long-long nicht "
+                "abbilden; auf dem Ziel ist das Layout korrekt, s. double68k.sh"
+                % ("double" if tag == "d" else "long-long", p.offset))
         raise RuntimeError("qccvm: unaligned pointer")
     index = p.offset // size
     if index < 0 or index >= len(p.block):
@@ -192,6 +208,13 @@ def run(prog):
             ghi = int(args[2]) & 0xffffffff
             glo = int(args[3]) & 0xffffffff
             globals_[args[0]][int(args[1])] = struct.unpack(">d", struct.pack(">II", ghi, glo))[0]
+        elif op == "GINITQ":
+            # long long (2026-09-23): dieselbe Zwei-Haelften-Darstellung wie
+            # GINITD, nur ganzzahlig statt als IEEE-754-Bitmuster -- hi zuerst,
+            # s64() macht daraus wieder einen vorzeichenrichtigen Python-int.
+            qhi = int(args[2]) & 0xffffffff
+            qlo = int(args[3]) & 0xffffffff
+            globals_[args[0]][int(args[1])] = s64((qhi << 32) | qlo)
         elif op == "GINITADDR":
             # Die ADRESSE eines anderen Globalen als Anfangswert -- entsteht aus
             # einem String-Literal in einer Initialisiererliste
@@ -318,6 +341,97 @@ def run(prog):
             opstack.append(opstack[-1]); ip += 1
         elif op == "DDROP":
             opstack.pop(); ip += 1
+        # ---- long long (2026-09-23) ---------------------------------------
+        # Wie double liegt long long als BLOCK (LARRAY/GARRAY ... q ...) in
+        # frames[-1][2]/globals_, nie in einem 4-Byte-Slot -- dieselbe
+        # Begruendung wie beim double-Abschnitt oben. Anders als double ist
+        # der Python-Wert bereits ein int, keine eigene Bitmuster-Klasse
+        # noetig; DDUP/DDROP/DSWAP werden unveraendert mitbenutzt (reine
+        # Stapelmechanik, s. deren Definition oben).
+        elif op == "PUSHQ":
+            hi = int(args[0]) & 0xffffffff
+            lo = int(args[1]) & 0xffffffff
+            opstack.append(s64((hi << 32) | lo))
+            ip += 1
+        elif op == "LOADQ":
+            opstack.append(frames[-1][2][int(args[0])][0]); ip += 1
+        elif op == "STOREQ":
+            frames[-1][2][int(args[0])][0] = int(opstack.pop()); ip += 1
+        elif op == "LOADGQ":
+            opstack.append(globals_[args[0]][0]); ip += 1
+        elif op == "STOREGQ":
+            globals_[args[0]][0] = int(opstack.pop()); ip += 1
+        elif op == "QADD":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a + b); ip += 1
+        elif op == "QSUB":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a - b); ip += 1
+        elif op == "QMUL":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a * b); ip += 1
+        elif op == "QDIV":
+            # cdiv/cmod sind bereits breitenneutral (reines Python-int,
+            # dieselben Funktionen wie bei DIV/MOD oben) -- schneiden Richtung
+            # 0 ab, wie C es fuer long long ebenso vorschreibt.
+            b = opstack.pop(); a = opstack.pop()
+            if b == 0:
+                sys.stderr.write("qccvm: Division durch null (long long)\n")
+                return 2
+            opstack.append(cdiv(a, b)); ip += 1
+        elif op == "QMOD":
+            b = opstack.pop(); a = opstack.pop()
+            if b == 0:
+                sys.stderr.write("qccvm: Division durch null (long long)\n")
+                return 2
+            opstack.append(cmod(a, b)); ip += 1
+        elif op == "QNEG":
+            opstack.append(-opstack.pop()); ip += 1
+        elif op == "QNOT":
+            # KEINE u64()-Maskierung (2026-09-23, live gefunden): Pythons "~"
+            # auf einem int liefert bereits exakt das vorzeichenrichtige
+            # Zweierkomplement-Ergebnis (~1000000000 == -1000000001) --
+            # u64() wuerde daraus die UNSIGNED-Bitmuster-Zahl machen
+            # (18446744072709551615-ish), die ein nachfolgendes QSHR (das
+            # Pythons natives, vorzeichenrichtiges ">>" voraussetzt) als
+            # RIESIGE positive Zahl statt als kleine negative sieht --
+            # "~1000000000 >> 32" lieferte so 4294967295 statt -1. Dieselbe
+            # Begruendung gilt fuer QAND/QOR/QXOR: Pythons Bitoperatoren
+            # rechnen auf beliebig praezisen Zweierkomplement-Werten bereits
+            # korrekt, solange beide Operanden im 64-Bit-Bereich liegen (den
+            # alle anderen Q-Opcodes ohnehin einhalten).
+            opstack.append(~opstack.pop()); ip += 1
+        elif op == "QAND":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a & b); ip += 1
+        elif op == "QXOR":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a ^ b); ip += 1
+        elif op == "QOR":
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a | b); ip += 1
+        elif op == "QSHL":
+            # s64() statt u64(): ein Ueberlauf ueber 64 Bit soll (wie bei
+            # hardwarenahem Verschieben) abgeschnitten werden, aber
+            # vorzeichenrichtig zurueckgegeben werden -- aus demselben Grund
+            # wie oben bei QNOT.
+            b = opstack.pop(); a = opstack.pop(); opstack.append(s64(a << b)); ip += 1
+        elif op == "QSHR":
+            # Vorzeichenrichtig, wie SHR bei plain int -- Pythons ">>" auf
+            # einem negativen int schiebt bereits arithmetisch (floor durch
+            # 2**b), keine eigene Maskierung noetig.
+            b = opstack.pop(); a = opstack.pop(); opstack.append(a >> b); ip += 1
+        elif op in ("QCMPEQ", "QCMPNE", "QCMPLT", "QCMPLE", "QCMPGT", "QCMPGE"):
+            b = opstack.pop(); a = opstack.pop()
+            r = {"QCMPEQ": a == b, "QCMPNE": a != b, "QCMPLT": a < b,
+                 "QCMPLE": a <= b, "QCMPGT": a > b, "QCMPGE": a >= b}[op]
+            opstack.append(1 if r else 0); ip += 1
+        elif op == "I2Q" or op == "I2QUNDER" or op == "Q2I":
+            # No-op (2026-09-23): anders als I2D/D2I, die zwischen Pythons
+            # float und int wechseln muessen, ist long long in dieser VM
+            # bereits derselbe Python-int wie ein gewoehnliches int -- es gibt
+            # nichts umzuwandeln. I2QUNDER braucht aus demselben Grund keinen
+            # Zugriff auf opstack[-2] (anders als I2DUNDER).
+            ip += 1
+        elif op == "D2Q":
+            # double -> long long: Richtung null abschneiden, wie D2I.
+            opstack.append(int(opstack.pop())); ip += 1
+        elif op == "Q2D":
+            opstack.append(float(opstack.pop())); ip += 1
         elif op == "LARRAY":
             frames[-1][2][int(args[0]) if args[0].isdigit() else args[0]] = [0] * int(args[2]); ip += 1
         elif op == "PUSHADDR":
@@ -500,7 +614,7 @@ def run(prog):
                 if a.block is not b.block: raise RuntimeError("qccvm: comparison of unrelated pointers")
                 result = a.offset < b.offset if op == "PCMPLT" else a.offset <= b.offset if op == "PCMPLE" else a.offset > b.offset if op == "PCMPGT" else a.offset >= b.offset
             opstack.append(1 if result else 0); ip += 1
-        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITD" or op == "GINITAT" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
+        elif op == "GLOBAL" or op == "GARRAY" or op == "GINIT" or op == "GINITD" or op == "GINITQ" or op == "GINITAT" or op == "GINITADDR" or op == "LABEL" or op == "FUNC" or op == "ENDFUNC":
             ip += 1
         elif op == "JMP":
             ip = label_at[args[0]]
@@ -546,7 +660,10 @@ def run(prog):
                 sys.stderr.write("qccvm: va_arg liest ueber das Ende der variadischen Argumente hinaus\n")
                 return 4
             raw = extra[idx]
-            if tag == "d":
+            if tag in ("d", "q"):
+                # long long (2026-09-23): dieselbe ZWEIFACHE Indirektion wie
+                # double -- der Slot haelt nur die vom Aufrufer geboxte
+                # Adresse, s. tc_arg/__llArg_N.
                 block, index = pointer_index(raw, tag)
                 value = block[index]
             else:
