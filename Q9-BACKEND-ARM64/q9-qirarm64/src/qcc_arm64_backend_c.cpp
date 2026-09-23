@@ -51,6 +51,10 @@ typedef struct {
 	   hinaus. Auf 68k gibt es das Problem nicht, dort liefert tagSize('d')
 	   von sich aus 8. */
 	int isDouble;
+	/* long long (2026-09-23): dieselbe Notwendigkeit wie isDouble zwei
+	   Zeilen darueber -- ohne eigenes Feld fiele 'q' auf die 4-Byte-
+	   Standardgroesse zurueck. */
+	int isLongLong;
 	int isArray;
 	int length;
 	int init[MAX_ARRAY_LEN];
@@ -103,7 +107,7 @@ static int findGlobal(const char* name) {
 
 static int isNumWord(const char* w) {
 	return strcmp(w, "i") == 0 || strcmp(w, "u") == 0 || strcmp(w, "c") == 0 || strcmp(w, "b") == 0 ||
-	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0 || strcmp(w, "d") == 0;
+	       strcmp(w, "h") == 0 || strcmp(w, "p") == 0 || strcmp(w, "d") == 0 || strcmp(w, "q") == 0;
 }
 
 static int isByteWord(const char* w) {
@@ -124,6 +128,7 @@ static int elemBytes(const char* w) {
 	   Slot (16 Byte breit), es liegt trotzdem als Block -- die IR soll auf
 	   beiden Zielen dieselbe sein. */
 	if (strcmp(w, "d") == 0) return 8;
+	if (strcmp(w, "q") == 0) return 8;
 	if (strcmp(w, "p") == 0) return 8;
 	return 4;
 }
@@ -138,6 +143,7 @@ static int globalElemSize(const Global* g) {
 	if (g->isShort) return 2;
 	if (g->isPointer) return 8;
 	if (g->isDouble) return 8;
+	if (g->isLongLong) return 8;
 	return 4;
 }
 static int globalAlignP2(const Global* g) {
@@ -145,6 +151,7 @@ static int globalAlignP2(const Global* g) {
 	if (g->isShort) return 1;
 	if (g->isPointer) return 3;
 	if (g->isDouble) return 3;
+	if (g->isLongLong) return 3;
 	return 2;
 }
 static const char* elemSuffix(const char* w) {
@@ -308,6 +315,26 @@ static void collectGlobals(void) {
 			if (!foundD) fatal("GINITD fuer unbekanntes Array");
 			continue;
 		}
+		if (strcmp(x->op, "GINITQ") == 0) {
+			/* long long (2026-09-23): dieselbe Zwei-Haelften-Ablage wie
+			   GINITD zwei Zeilen darueber, nur ganzzahlig statt IEEE-754. */
+			int foundQ = 0, giQ, idxQ;
+			if (x->argc != 4) fatal("ungueltiges GINITQ");
+			for (giQ = 0; giQ < globalCount; giQ++) {
+				if (strcmp(globals[giQ].name, x->args[0]) == 0 && globals[giQ].isArray) {
+					idxQ = number(x->args[1], x->line);
+					if (idxQ < 0 || idxQ >= globals[giQ].length) fatal("GINITQ-Index ausserhalb Array");
+					if (idxQ >= MAX_ARRAY_LEN / 2) fatal("GINITQ-Index ueberschreitet MAX_ARRAY_LEN");
+					globals[giQ].init[2 * idxQ] = (int)(unsigned int)strtoul(x->args[2], 0, 10);
+					globals[giQ].init[2 * idxQ + 1] = (int)(unsigned int)strtoul(x->args[3], 0, 10);
+					globals[giQ].hasGinit = 1;
+					foundQ = 1;
+					break;
+				}
+			}
+			if (!foundQ) fatal("GINITQ fuer unbekanntes Array");
+			continue;
+		}
 		if (strcmp(x->op, "GINIT") == 0) {
 			int found = 0;
 			if (x->argc != 3) fatal("ungueltiges GINIT");
@@ -352,7 +379,9 @@ static void collectGlobals(void) {
 			globals[gi].isShort = isShortWord(x->args[1]);
 			globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
 		globals[gi].isDouble = strcmp(x->args[1], "d") == 0;
+		globals[gi].isLongLong = strcmp(x->args[1], "q") == 0;
 			globals[gi].isDouble = strcmp(x->args[1], "d") == 0;
+			globals[gi].isLongLong = strcmp(x->args[1], "q") == 0;
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
 			globals[gi].isStatic = x->argc >= 4 && number(x->args[3], x->line) != 0;
@@ -371,6 +400,7 @@ static void collectGlobals(void) {
 		globals[gi].isShort = x->argc >= 3 && isShortWord(x->args[2]);
 		globals[gi].isPointer = x->argc >= 3 && strcmp(x->args[2], "p") == 0;
 		globals[gi].isDouble = x->argc >= 3 && strcmp(x->args[2], "d") == 0;
+		globals[gi].isLongLong = x->argc >= 3 && strcmp(x->args[2], "q") == 0;
 		globals[gi].isArray = 0;
 		globals[gi].length = 1;
 		globals[gi].isStatic = x->argc >= 4 && number(x->args[3], x->line) != 0;
@@ -392,6 +422,7 @@ static void collectGlobals(void) {
 		globals[gi].isShort = isShortWord(x->args[1]);
 		globals[gi].isPointer = strcmp(x->args[1], "p") == 0;
 		globals[gi].isDouble = strcmp(x->args[1], "d") == 0;
+		globals[gi].isLongLong = strcmp(x->args[1], "q") == 0;
 		globals[gi].declOnly = 1;
 	}
 }
@@ -403,7 +434,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* x = &ir[i];
-		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITD") == 0 || strcmp(x->op, "GINITAT") == 0 || strcmp(x->op, "GINITADDR") == 0) {
+		if (strcmp(x->op, "GLOBAL") == 0 || strcmp(x->op, "GARRAY") == 0 || strcmp(x->op, "GINIT") == 0 || strcmp(x->op, "GINITD") == 0 || strcmp(x->op, "GINITQ") == 0 || strcmp(x->op, "GINITAT") == 0 || strcmp(x->op, "GINITADDR") == 0) {
 			/* Allowed before the first function or inside an open function (static
 			   local variable), but not between two functions. */
 			if (!open && seen) fatal("ungueltiges GLOBAL");
@@ -484,7 +515,7 @@ static void collectFunctions(void) {
 			if (strcmp(ir[k].op, "LARRAY") == 0) {
 				Instr* x = &ir[k];
 				int len, align;
-				if (x->argc != 3 || !(strcmp(x->args[1], "i") == 0 || isByteWord(x->args[1]) || isShortWord(x->args[1]) || strcmp(x->args[1], "p") == 0 || strcmp(x->args[1], "d") == 0)) fatal("ungueltiges LARRAY");
+				if (x->argc != 3 || !(strcmp(x->args[1], "i") == 0 || isByteWord(x->args[1]) || isShortWord(x->args[1]) || strcmp(x->args[1], "p") == 0 || strcmp(x->args[1], "d") == 0 || strcmp(x->args[1], "q") == 0)) fatal("ungueltiges LARRAY");
 				len = number(x->args[2], x->line);
 				if (len <= 0) fatal("LARRAY-Laenge muss positiv sein");
 				align = elemBytes(x->args[1]);
@@ -547,6 +578,9 @@ static const char* scaleSuffix(const char* typeWord) {
 	/* 'd' (2026-09-16): ein double ist acht Byte, also dieselbe Skalierung
 	   wie ein Zeiger. Ohne diesen Zweig rechnete der Index mit vier. */
 	if (strcmp(typeWord, "d") == 0) return " #3\n";
+	/* 'q' (long long, 2026-09-23): dieselbe Skalierung wie 'd' zwei Zeilen
+	   darueber -- acht Byte. */
+	if (strcmp(typeWord, "q") == 0) return " #3\n";
 	return " #2\n";
 }
 
@@ -643,7 +677,12 @@ static void emit(FILE* o) {
 				   VM-Orakel kannte den Fall. Auf ARM64 ist ein double ein
 				   64-Bit-Bitmuster, also genau so breit wie ein Zeiger --
 				   x0 statt w0, elemSuffix "" und Skalierung #3. */
-				int isWide = strcmp(x->args[2], "p") == 0 || strcmp(x->args[2], "d") == 0;
+				/* 'q' (long long, 2026-09-23): dieselbe Behandlung wie 'd'/'p'
+				   zwei Zeilen darueber -- auf ARM64 ist auch long long
+				   schlicht ein 64-Bit-Bitmuster in x0, KEIN fmov/FPU-Umweg
+				   noetig (anders als der 68k, wo dieser Pfad extra beachtet
+				   werden musste, s. dortigen Kommentar). */
+				int isWide = strcmp(x->args[2], "p") == 0 || strcmp(x->args[2], "d") == 0 || strcmp(x->args[2], "q") == 0;
 				int keepValue = strcmp(op, "STOREIDXKEEP") == 0;
 				if (strcmp(x->args[2], "i") != 0 && !isByteWord(x->args[2]) && !isShortWord(x->args[2]) && !isWide)
 					fatal("unbekannter Arraytyp");
@@ -700,7 +739,9 @@ static void emit(FILE* o) {
 				   schlicht ein 64-Bit-Bitmuster (s. LOADD/STORED), also x0 statt
 				   w0 und elemSuffix "" -- ldr/str laden damit acht Byte. Ohne
 				   diese Erweiterung lud LOADIND d nur vier. */
-				int ptr = strcmp(x->args[0], "p") == 0 || strcmp(x->args[0], "d") == 0;
+				/* 'q' (2026-09-23): dieselbe Breite wie 'd'/'p', s. LOADIDX-
+				   Kommentar oben -- reines x0, kein FPU-Umweg. */
+				int ptr = strcmp(x->args[0], "p") == 0 || strcmp(x->args[0], "d") == 0 || strcmp(x->args[0], "q") == 0;
 				int keepValue = strcmp(op, "STOREINDKEEP") == 0;
 				if (strcmp(op, "LOADIND") == 0) {
 					pop(o, "x9");
@@ -842,6 +883,97 @@ static void emit(FILE* o) {
 				   acht Byte auf dem Stapel und braucht eine eigene Form --
 				   deshalb gibt es den Opcode ueberhaupt. */
 				fputs("\tldr\tx0,[sp]\n\tldr\tx1,[sp,#16]\n\tstr\tx1,[sp]\n\tstr\tx0,[sp,#16]\n", o);
+			/* --- long long (2026-09-23) ---
+			   Auf ARM64 DEUTLICH einfacher als auf dem 68k: ein Stapelplatz
+			   ist ohnehin ueberall 16 Byte breit, long long passt also wie
+			   double in GENAU EINEN Platz, als rohes 64-Bit-Muster in x0 --
+			   OHNE jeden fmov/FPU-Umweg, weil es hier gar keine Formatfrage
+			   gibt (anders als double, das nur zum RECHNEN kurz nach d0/d1
+			   wechselt). Arithmetik ist NATIV: add/sub/mul/sdiv auf x-Registern
+			   kennt der Prozessor bereits, keine Softwareroutine wie beim
+			   68k noetig. DDUP/DDROP/DSWAP werden unveraendert mitbenutzt. */
+			} else if (strcmp(op, "PUSHQ") == 0 && x->argc == 2) {
+				unsigned long hi = strtoul(x->args[0], NULL, 10);
+				unsigned long lo = strtoul(x->args[1], NULL, 10);
+				fprintf(o, "\tmovz\tx0,#%lu\n", lo & 0xffffUL);
+				fprintf(o, "\tmovk\tx0,#%lu,lsl #16\n", (lo >> 16) & 0xffffUL);
+				fprintf(o, "\tmovk\tx0,#%lu,lsl #32\n", hi & 0xffffUL);
+				fprintf(o, "\tmovk\tx0,#%lu,lsl #48\n", (hi >> 16) & 0xffffUL);
+				push(o, "x0");
+			} else if (strcmp(op, "LOADQ") == 0 && x->argc == 1) {
+				int ignored;
+				int off = arrayOffset(f, number(x->args[0], x->line), &ignored, x->line);
+				fprintf(o, "\tsub\tx1,x29,#%d\n\tldr\tx0,[x1]\n", off);
+				push(o, "x0");
+			} else if (strcmp(op, "STOREQ") == 0 && x->argc == 1) {
+				int ignored;
+				int off = arrayOffset(f, number(x->args[0], x->line), &ignored, x->line);
+				pop(o, "x0");
+				fprintf(o, "\tsub\tx1,x29,#%d\n\tstr\tx0,[x1]\n", off);
+			} else if ((strcmp(op, "LOADGQ") == 0 || strcmp(op, "STOREGQ") == 0) && x->argc == 1) {
+				if (findGlobal(x->args[0]) < 0) fatal("unbekannte globale Variable");
+				fprintf(o, "\tadrp\tx9,_tc_g_%s@PAGE\n", x->args[0]);
+				if (strcmp(op, "LOADGQ") == 0) {
+					fprintf(o, "\tldr\tx0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]); push(o, "x0");
+				} else {
+					pop(o, "x0"); fprintf(o, "\tstr\tx0,[x9,_tc_g_%s@PAGEOFF]\n", x->args[0]);
+				}
+			} else if (strcmp(op, "QADD") == 0 || strcmp(op, "QSUB") == 0 || strcmp(op, "QMUL") == 0 || strcmp(op, "QDIV") == 0) {
+				pop(o, "x1"); pop(o, "x0");
+				fprintf(o, "\t%s\tx0,x0,x1\n", strcmp(op, "QADD") == 0 ? "add" : strcmp(op, "QSUB") == 0 ? "sub" :
+				        strcmp(op, "QMUL") == 0 ? "mul" : "sdiv");
+				push(o, "x0");
+			} else if (strcmp(op, "QMOD") == 0) {
+				pop(o, "x1"); pop(o, "x0");
+				fputs("\tsdiv\tx2,x0,x1\n\tmsub\tx0,x2,x1,x0\n", o);
+				push(o, "x0");
+			} else if (strcmp(op, "QNEG") == 0) {
+				pop(o, "x0"); fputs("\tneg\tx0,x0\n", o); push(o, "x0");
+			} else if (strcmp(op, "QNOT") == 0) {
+				pop(o, "x0"); fputs("\tmvn\tx0,x0\n", o); push(o, "x0");
+			} else if (strcmp(op, "QAND") == 0 || strcmp(op, "QXOR") == 0 || strcmp(op, "QOR") == 0) {
+				pop(o, "x0"); fputs("\tmov\tx1,x0\n", o); pop(o, "x0");
+				fprintf(o, "\t%s\tx0,x0,x1\n", strcmp(op, "QAND") == 0 ? "and" : strcmp(op, "QXOR") == 0 ? "eor" : "orr");
+				push(o, "x0");
+			} else if (strcmp(op, "QSHL") == 0 || strcmp(op, "QSHR") == 0) {
+				/* Die Schiebeweite bleibt ein plain int (w), s. tcShiftEnd im
+				   Frontend -- nur die untersten 6 Bit von x1 zaehlen fuer
+				   lslv/asrv auf 64 Bit, daher ist es unerheblich, dass die
+				   oberen 32 Bit von x1 beim Poppen als w1 undefiniert bleiben. */
+				pop(o, "w1"); pop(o, "x0");
+				fprintf(o, "\t%s\tx0,x0,x1\n", strcmp(op, "QSHL") == 0 ? "lslv" : "asrv");
+				push(o, "x0");
+			} else if (strncmp(op, "QCMP", 4) == 0) {
+				const char* cc = strcmp(op, "QCMPLT") == 0 ? "lt" : strcmp(op, "QCMPGT") == 0 ? "gt" :
+				                 strcmp(op, "QCMPLE") == 0 ? "le" : strcmp(op, "QCMPGE") == 0 ? "ge" :
+				                 strcmp(op, "QCMPEQ") == 0 ? "eq" : strcmp(op, "QCMPNE") == 0 ? "ne" : NULL;
+				if (!cc) fatal("unbekannter long-long-Vergleich");
+				pop(o, "x1"); pop(o, "x0");
+				fprintf(o, "\tcmp\tx0,x1\n\tcset\tw0,%s\n", cc);
+				push(o, "w0");
+			} else if (strcmp(op, "I2Q") == 0) {
+				pop(o, "w0");
+				fputs("\tsxtw\tx0,w0\n", o);
+				push(o, "x0");
+			} else if (strcmp(op, "I2QUNDER") == 0) {
+				/* Die Ganzzahl liegt UNTER dem long long (siehe I2DUNDER) --
+				   ein Stapelplatz ist hier immer 16 Byte breit, "unter" heisst
+				   also schlicht Offset +16, unabhaengig vom logischen Typ. */
+				fputs("\tldr\tw0,[sp,#16]\n\tsxtw\tx0,w0\n\tstr\tx0,[sp,#16]\n", o);
+			} else if (strcmp(op, "Q2I") == 0) {
+				pop(o, "x0");
+				push(o, "w0");
+			} else if (strcmp(op, "D2Q") == 0) {
+				/* fcvtzs wandelt direkt double->int64 mit Abschneiden Richtung
+				   null -- dieselbe C-Regel wie fintrz/fcvtzs bei D2I, hier ohne
+				   Umweg auf 64 Bit statt 32. */
+				pop(o, "x0");
+				fputs("\tfmov\td0,x0\n\tfcvtzs\tx0,d0\n", o);
+				push(o, "x0");
+			} else if (strcmp(op, "Q2D") == 0) {
+				pop(o, "x0");
+				fputs("\tscvtf\td0,x0\n\tfmov\tx0,d0\n", o);
+				push(o, "x0");
 			} else if (strcmp(op, "SWAP") == 0) {
 				/* Oberste zwei Stackwerte vertauschen.
 				   2026-09-16 KORRIGIERT: hier stand #8, aber ein Stackelement
@@ -890,7 +1022,7 @@ static void emit(FILE* o) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putuint\n", o);
 			} else if (strcmp(op, "PRINTC") == 0) {
 				pop(o, "w0"); fputs("\tbl\t_tc_putchar\n", o);
-			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITAT") == 0 || strcmp(op, "GINITADDR") == 0) {
+			} else if (strcmp(op, "GLOBAL") == 0 || strcmp(op, "GARRAY") == 0 || strcmp(op, "GINIT") == 0 || strcmp(op, "GINITD") == 0 || strcmp(op, "GINITQ") == 0 || strcmp(op, "GINITAT") == 0 || strcmp(op, "GINITADDR") == 0) {
 				/* Static locals were handled by collectGlobals(); this occurrence in
 				   the function body is a no-op. */
 			} else {
@@ -929,18 +1061,21 @@ static void emit(FILE* o) {
 					int e;
 					if (g->isShort) fputs("\t.p2align\t1\n", o);
 					else if (!g->isChar) fputs("\t.p2align\t2\n", o);
-					if (g->isPointer || g->isDouble) fputs("\t.p2align\t3\n", o);
+					if (g->isPointer || g->isDouble || g->isLongLong) fputs("\t.p2align\t3\n", o);
 					if (!g->isStatic) fprintf(o, "\t.globl\t_tc_g_%s\n", g->name);
 					fprintf(o, "_tc_g_%s:\n", g->name);
 					if (!g->isArray) {
 						fprintf(o, "\t.%s\t%d\n", g->isChar ? "byte" : g->isShort ? "short" : g->isPointer ? "quad" : "long", g->initialValue);
 					} else {
-						if (g->isDouble) {
-							/* Ein double ist hier ein 64-Bit-Bitmuster; .quad
-							   legt es little-endian ab, genau wie ldr es liest.
-							   Aus den beiden Haelften (hi zuerst in init[])
-							   wird der Wert erst an dieser Stelle gebildet --
-							   die Reihenfolge im Speicher ist Sache des Ziels. */
+						if (g->isDouble || g->isLongLong) {
+							/* Ein double/long long ist hier ein 64-Bit-Bitmuster;
+							   .quad legt es little-endian ab, genau wie ldr es
+							   liest. Aus den beiden Haelften (hi zuerst in
+							   init[]) wird der Wert erst an dieser Stelle
+							   gebildet -- die Reihenfolge im Speicher ist Sache
+							   des Ziels. Fuer long long bewusst dieselbe Zeile
+							   wie fuer double: beides ist hier nur ein rohes
+							   64-Bit-Muster, .quad kennt keine Typinterpretation. */
 							for (e = 0; e < g->length; e++) {
 								unsigned long long dhi = (unsigned long long)(unsigned int)g->init[2 * e];
 								unsigned long long dlo = (unsigned long long)(unsigned int)g->init[2 * e + 1];
