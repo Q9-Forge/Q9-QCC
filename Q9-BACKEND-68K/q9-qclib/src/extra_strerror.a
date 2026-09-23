@@ -1,4 +1,18 @@
 * strerror for the OS-9 error values used by qclib, with a stable fallback.
+*
+* 2026-09-23 (vsect-Adressierungs-Audit nach dem atexit-Fund, `c342e53`):
+* die vier Fehlertexte lagen in einem separaten "vsect"-Block und wurden
+* als BARE absolute Labels referenziert -- dieselbe Signatur wie bei
+* extra_atexit.a. Erster Fix (psect + PC-relative "lea label(pc)") zeigte
+* live einen ZWEITEN, unabhaengigen Fund: "lea label(pc),aN" auf ein per
+* "dc.b 'Text',0" (Quoted-String) deklariertes Label loeste bei qr68k auf
+* "Adresse + (Textlaenge-1)" auf statt auf die Startadresse -- bestaetigt
+* per Minimalreproduktion (dc.b 'Hello',0 lieferte den letzten Buchstaben
+* 'o' statt 'H'). Bei extra_locale.a blieb das unsichtbar, weil "C" nur
+* EIN Zeichen lang ist (Laenge-1 = 0, kein Unterschied). Workaround (die
+* eigentliche qr68k-Assemblerkorrektur ist ausserhalb dieses Fundes):
+* die Zeichenketten als NUMERISCHE Byteliste statt als Quoted-String
+* deklarieren -- das umgeht die fehlerhafte qr68k-Stelle nachweislich.
          psect qstrerror,0,0,0,0,0
 strerror:
          cmpi.l #211,d0
@@ -7,24 +21,29 @@ strerror:
          beq se_nomem
          tst.l d0
          beq se_none
-         lea se_unknown,a0
+         lea se_unknown(pc),a0
          move.l a0,d0
          rts
 se_none
-         lea se_noerror,a0
+         lea se_noerror(pc),a0
          move.l a0,d0
          rts
 se_eof
-         lea se_eof_text,a0
+         lea se_eof_text(pc),a0
          move.l a0,d0
          rts
 se_nomem
-         lea se_nomem_text,a0
+         lea se_nomem_text(pc),a0
          move.l a0,d0
          rts
-         vsect
-se_noerror dc.b 'No error',0
-se_eof_text dc.b 'End of file',0
-se_nomem_text dc.b 'Out of memory',0
-se_unknown dc.b 'Unknown error',0
+
+         align 4
+* "No error",0
+se_noerror:    dc.b 78,111,32,101,114,114,111,114,0
+* "End of file",0
+se_eof_text:   dc.b 69,110,100,32,111,102,32,102,105,108,101,0
+* "Out of memory",0
+se_nomem_text: dc.b 79,117,116,32,111,102,32,109,101,109,111,114,121,0
+* "Unknown error",0
+se_unknown:    dc.b 85,110,107,110,111,119,110,32,101,114,114,111,114,0
          ends

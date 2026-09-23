@@ -1,39 +1,54 @@
 * Unbuffered single-byte input from standard input (path 1).
+*
+* 2026-09-23 (vsect-Adressierungs-Audit nach dem atexit-Fund, `c342e53`):
+* gc_byte/gc_count/gc_push_byte/gc_push_valid lagen in einem separaten
+* "vsect"-Block und wurden als BARE absolute Labels referenziert -- exakt
+* dieselbe Signatur wie bei extra_atexit.a. Live reproduziert: schon der
+* ALLERERSTE getchar()-Aufruf (vor jedem ungetc()) stuerzte mit einem
+* PMMU-Fehler ab, weil "tst.b gc_push_valid" von einer falsch
+* aufgeloesten Adresse las statt vom deklarierten Anfangswert 0.
+* Fix nach demselben Muster wie extra_atexit.a: die Felder liegen jetzt
+* direkt im psect, gelesen ueber PC-relative Adressierung ("label(pc)",
+* fuer LESEN direkt zulaessig), geschrieben ueber "lea label(pc),a0" +
+* Registerindirekt (PC-relative kann laut qr68k kein Schreibziel sein).
          psect qextra_getc,0,0,0,0,0
 getchar:
-         tst.b gc_push_valid
+         tst.b gc_push_valid(pc)
          beq gc_read_std
          moveq #0,d0
-         move.b gc_push_byte,d0
-         clr.b gc_push_valid
+         move.b gc_push_byte(pc),d0
+         lea gc_push_valid(pc),a0
+         clr.b (a0)
          rts
 gc_read_std
          moveq #1,d0
          bra gc_read
 getc:
 fgetc:
-         tst.b gc_push_valid
+         tst.b gc_push_valid(pc)
          beq gc_read_std2
          moveq #0,d0
-         move.b gc_push_byte,d0
-         clr.b gc_push_valid
+         move.b gc_push_byte(pc),d0
+         lea gc_push_valid(pc),a0
+         clr.b (a0)
          rts
 gc_read_std2
          moveq #1,d0
 gc_read
          move.l d0,d2
-         move.l #1,gc_count
-         lea gc_byte,a0
+         lea gc_count(pc),a1
+         move.l #1,(a1)
+         lea gc_byte(pc),a0
          move.l a0,d1
-         pea gc_count
+         move.l a1,-(a7)
          bsr _os_read
          addq.l #4,a7
          tst.l d0
          bne gc_eof
-         tst.l gc_count
+         tst.l (a1)
          beq gc_eof
          moveq #0,d0
-         move.b gc_byte,d0
+         move.b gc_byte(pc),d0
          rts
 gc_eof
          moveq #-1,d0
@@ -41,16 +56,19 @@ gc_eof
 ungetc:
          cmpi.l #-1,d0
          beq gc_unfail
-         move.b d0,gc_push_byte
-         move.b #1,gc_push_valid
+         lea gc_push_byte(pc),a0
+         move.b d0,(a0)
+         lea gc_push_valid(pc),a0
+         move.b #1,(a0)
          andi.l #255,d0
          rts
 gc_unfail
          moveq #-1,d0
          rts
-         vsect
-gc_byte ds.b 1
-gc_count dc.l 1
-gc_push_byte ds.b 1
-gc_push_valid dc.b 0
+
+         align 4
+gc_byte:       ds.b 1
+gc_count:      dc.l 1
+gc_push_byte:  ds.b 1
+gc_push_valid: dc.b 0
          ends
