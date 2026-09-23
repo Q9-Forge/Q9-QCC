@@ -167,6 +167,7 @@ def pointer_equal(a, b):
 
 def run(prog):
     func_start = {}
+    func_meta = {}
     label_at = {}
     globals_ = {}
     for i, (op, args) in enumerate(prog):
@@ -200,6 +201,12 @@ def run(prog):
             globals_[args[0]][int(args[1])] = Pointer(globals_[args[2]])
         elif op == "FUNC":
             func_start[args[0]] = i + 1
+            # Eigene variadische Funktionsdefinitionen (2026-09-23): Anzahl der
+            # BENANNTEN Parameter + isVariadic-Flag, gebraucht von CALL/CALLIND
+            # unten, um die "ueberzaehligen" (variadischen) Argumente NICHT in
+            # denselben Slot-Index-Raum wie die spaeter deklarierten echten
+            # Locals der Funktion zu legen (s. Kopfkommentar bei "extra" dort).
+            func_meta[args[0]] = (int(args[1]), len(args) >= 4 and int(args[3]) != 0)
         elif op == "LABEL":
             label_at[args[0]] = i
     if "main" not in func_start:
@@ -207,7 +214,14 @@ def run(prog):
         return 1
 
     opstack = []
-    frames = [(-1, {}, {})]      # (return_ip, locals, arrays); -1 = Programmende
+    # (return_ip, locals, arrays, extra_varargs); -1 = Programmende. Viertes
+    # Feld (2026-09-23): die tatsaechlich uebergebenen VARIADISCHEN Werte
+    # EINER variadischen Funktion, in einer vom Slot-Index-Raum der echten
+    # Locals GETRENNTEN Liste -- s. Kopfkommentar bei CALL unten fuer den
+    # Grund (Kollision waere sonst moeglich: newlocals[k] fuer k >= nargs
+    # trifft GENAU die Slot-Nummern, die die Funktion gleich selbst fuer
+    # ihre eigenen echten Locals vergibt).
+    frames = [(-1, {}, {}, [])]
     ip = func_start["main"]
     steps = 0
     while True:
@@ -494,11 +508,74 @@ def run(prog):
             ip = label_at[args[0]] if opstack.pop() == 0 else ip + 1
         elif op == "JNZ":
             ip = label_at[args[0]] if opstack.pop() != 0 else ip + 1
+        elif op == "VAREVERSE":
+            # Eigene variadische Funktionsdefinitionen (2026-09-23): fuer den
+            # 68k-Backend gedacht (dort muss das rohe Layout auf dem
+            # physischen Stack umsortiert werden, s. dessen Kopfkommentar).
+            # Diese VM ordnet CALL-Argumente stattdessen per AUFRUF-INDEX zu
+            # (newlocals[k], zwei Zeilen weiter unten, unabhaengig von der
+            # rohen Push-Reihenfolge) -- ein zusaetzliches Umdrehen des
+            # opstacks wuerde CALLs eigene "pop dann [::-1]"-Rekonstruktion
+            # NICHT einfach aufheben (nachgerechnet: zwei verschiedene
+            # Reihenfolgen ergeben KEIN neutrales Element), sondern sie
+            # kaputt machen. Deshalb hier bewusst ein reines No-op.
+            ip += 1
+        elif op == "VASTART":
+            # va_start(ap, last): ap wird als INDEX in die EIGENE "extra"-
+            # Liste des aktuellen Frames gefuehrt (s. Kopfkommentar bei CALL
+            # oben), NICHT als Slot-Nummer in newlocals -- eine Kollision mit
+            # den Slot-Nummern, die die Funktion gleich fuer ihre eigenen
+            # echten Locals vergibt, ist so ausgeschlossen. "last" (das
+            # zweite Argument) wird hier bewusst NICHT gebraucht: die
+            # "extra"-Liste beginnt immer bei Index 0 fuer den ERSTEN
+            # variadischen Wert, unabhaengig davon, welcher Slot der letzte
+            # benannte Parameter selbst hat.
+            apSlot = int(args[0])
+            frames[-1][1].setdefault(apSlot, [0])[0] = 0
+            ip += 1
+        elif op == "VAARG":
+            # va_arg(ap, type): liest extra[ap], rueckt ap um EINEN
+            # Listenindex weiter. 'd' (double) braucht dieselbe Boxing-
+            # Indirektion wie ein normaler double-Aufrufparameter (s.
+            # LOADIND/pointer_index oben) -- der Slot haelt dort einen
+            # Pointer auf den echten Wert, kein double direkt.
+            apSlot = int(args[0]); tag = args[1]
+            idx = frames[-1][1].setdefault(apSlot, [0])[0]
+            extra = frames[-1][3]
+            if idx < 0 or idx >= len(extra):
+                sys.stderr.write("qccvm: va_arg liest ueber das Ende der variadischen Argumente hinaus\n")
+                return 4
+            raw = extra[idx]
+            if tag == "d":
+                block, index = pointer_index(raw, tag)
+                value = block[index]
+            else:
+                value = mask_for(tag, raw)
+            opstack.append(value)
+            frames[-1][1][apSlot][0] = idx + 1
+            ip += 1
         elif op == "CALL" or op == "CALLP":
             name = args[0]; n = int(args[1])
             callargs = [opstack.pop() for _ in range(n)][::-1]
-            newlocals = {k: [callargs[k]] for k in range(n)}
-            frames.append((ip + 1, newlocals, {}))
+            # Eigene variadische Funktionsdefinitionen (2026-09-23): bei einem
+            # Aufruf einer variadischen Funktion gehen NUR die ersten
+            # "fixedN" (die deklarierten Parameter) in newlocals -- exakt die
+            # Slot-Nummern, die die Funktion beim Betreten selbst schon fuer
+            # sie erwartet. Alles darueber (die tatsaechlichen variadischen
+            # Werte) landet in einer EIGENEN Liste ("extra"), NICHT unter
+            # newlocals[fixedN], newlocals[fixedN+1], ... -- sonst wuerden
+            # genau diese Slot-Nummern spaeter von echten lokalen Variablen
+            # der Funktion (ap, i, total, ...) ueberschrieben, weil
+            # tc_defname Locals fortlaufend AB der Parameterzahl durchzaehlt.
+            meta = func_meta.get(name)
+            if meta and meta[1]:
+                fixedN = meta[0]
+                newlocals = {k: [callargs[k]] for k in range(fixedN)}
+                extra = callargs[fixedN:]
+            else:
+                newlocals = {k: [callargs[k]] for k in range(n)}
+                extra = []
+            frames.append((ip + 1, newlocals, {}, extra))
             ip = func_start[name]
         elif op == "PUSHFN":
             opstack.append(FnRef(args[0])); ip += 1
@@ -519,12 +596,22 @@ def run(prog):
                 print("qccvm: CALLIND auf unbekannte Funktion '%s'" % fnref.name,
                       file=sys.stderr)
                 return 1
-            newlocals = {k: [callargs[k]] for k in range(n)}
-            frames.append((ip + 1, newlocals, {}))
+            # s. Kopfkommentar bei CALL oben -- dieselbe Trennung von
+            # newlocals/extra, falls jemals ueber einen Funktionszeiger auf
+            # eine variadische Funktion gezeigt wird.
+            meta = func_meta.get(fnref.name)
+            if meta and meta[1]:
+                fixedN = meta[0]
+                newlocals = {k: [callargs[k]] for k in range(fixedN)}
+                extra = callargs[fixedN:]
+            else:
+                newlocals = {k: [callargs[k]] for k in range(n)}
+                extra = []
+            frames.append((ip + 1, newlocals, {}, extra))
             ip = func_start[fnref.name]
         elif op == "RET" or op == "RETP":
             retval = opstack.pop()
-            ret_ip, _, _ = frames.pop()
+            ret_ip, _, _, _ = frames.pop()
             if not frames:
                 return 0                # main zurueck -> Programmende
             opstack.append(retval)

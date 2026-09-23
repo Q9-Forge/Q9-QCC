@@ -91,6 +91,13 @@ typedef struct {
 	   r68/l68 have no visibility concept, so mangling is the only way for two
 	   files to use the same private helper name without a duplicate symbol. */
 	int declOnly, isStatic;
+	/* Eigene variadische Funktionsdefinitionen (2026-09-23), viertes FUNC-Feld.
+	   Aendert NUR die Richtung der Parameter-Offset-Formel in slotAddress()
+	   (aufsteigend statt absteigend) -- s. dort. Ohne diese Umkehr haette der
+	   letzte benannte Parameter je nach Aufrufstelle eine andere Adresse,
+	   weil sie sonst von der (variablen) Gesamtzahl der Argumente abhaengt;
+	   der Aufrufer gleicht das mit VAREVERSE aus (s. tc_call in qcc.lextab). */
+	int isVariadic;
 } Function;
 
 typedef struct {
@@ -869,14 +876,17 @@ static void collectFunctions(void) {
 			   registered in a separate pass because it opens no FUNC/ENDFUNC span. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
 			/* Third argument (2026-07-25): optional isstatic flag (name mangling in
-			   emitIR; see mangledName()). r68/l68 have no visibility concept. */
-			if (open || (insP->argc != 2 && insP->argc != 3)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
+			   emitIR; see mangledName()). r68/l68 have no visibility concept.
+			   Viertes Argument (2026-09-23): optionales isVariadic-Flag, s.
+			   Kopfkommentar bei Function.isVariadic. */
+			if (open || (insP->argc != 2 && insP->argc != 3 && insP->argc != 4)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
 			current.nargs = number(insP->args[1], insP->line);
 			current.first = i + 1;
 			current.last = -1;
 			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
+			current.isVariadic = insP->argc >= 4 && number(insP->args[3], insP->line) != 0;
 			open = 1;
 			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {
@@ -1009,7 +1019,13 @@ static int arrayOffset(const Function* fn, int wanted, int* elemSize, int line) 
 static void slotAddress(char* out, int slotN, const Function* fn, int line) {
 	char msg[200];
 	if (slotN < fn->nargs) {
-		sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN), framePtr());
+		/* Variadische Funktion (2026-09-23): AUFSTEIGEND statt absteigend --
+		   s. Kopfkommentar bei Function.isVariadic. Slot 0 (erster benannter
+		   Parameter) liegt dadurch IMMER bei 8(a6), unabhaengig von der
+		   (variablen) Gesamtzahl der Argumente an einer konkreten Aufrufstelle;
+		   VAARG setzt genau darauf auf (Slot-Index * 4 + 8). */
+		if (fn->isVariadic) sprintf(out, "%d(%s)", 8 + 4 * slotN, framePtr());
+		else sprintf(out, "%d(%s)", 8 + 4 * (fn->nargs - 1 - slotN), framePtr());
 		return;
 	}
 	if (slotN >= fn->nargs + fn->locals) {
@@ -1188,6 +1204,56 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		if (gidx < 0) fatal("unbekannte globale Variable");
 		emitLeaGlobal(out, gidx, "a0");
 		fputs("\tmove.l\ta0,-(a7)\n", out);
+	} else if (strcmp(op, "VAREVERSE") == 0 && insP->argc == 1) {
+		/* Eigene variadische Funktionsdefinitionen (2026-09-23). Dreht die
+		   obersten n bereits gepushten 4-Byte-Slots komplett um -- n ist
+		   eine literale Konstante aus der IR (die Argumentzahl DIESES
+		   Aufrufs), deshalb reicht eine zur Compilezeit abgerollte Folge von
+		   floor(n/2) Vertauschungen ohne Laufzeitschleife. S. Kopfkommentar
+		   bei tc_call/VAREVERSE in qcc.lextab fuer die Begruendung, warum
+		   das noetig ist (Layout, das slotAddress() fuer eine variadische
+		   Funktion erwartet). */
+		int n = number(insP->args[0], insP->line);
+		int vi;
+		for (vi = 0; vi < n / 2; vi++) {
+			int vj = n - 1 - vi;
+			fprintf(out, "\tmove.l\t%d(a7),d0\n\tmove.l\t%d(a7),d1\n\tmove.l\td0,%d(a7)\n\tmove.l\td1,%d(a7)\n",
+				vi * 4, vj * 4, vj * 4, vi * 4);
+		}
+	} else if (strcmp(op, "VASTART") == 0 && insP->argc == 2) {
+		/* va_start(ap, last): ap wird intern als SLOT-INDEX gefuehrt (nicht
+		   als Byteadresse) -- derselbe Slot-Index wie VAARG unten via
+		   slotAddress() in eine echte Adresse uebersetzt. "last" ist der
+		   letzte benannte Parameter (Slot last), der erste variadische Wert
+		   liegt dank VAREVERSE+slotAddress()-Umkehrung IMMER bei Slot
+		   last+1. Beide Werte (apSlot, lastSlot) sind literale Konstanten
+		   aus der IR. */
+		int apSlot = number(insP->args[0], insP->line);
+		int lastSlot = number(insP->args[1], insP->line);
+		slotAddress(addrBuf, apSlot, fn, insP->line);
+		fprintf(out, "\tmove.l\t#%d,%s\n", lastSlot + 1, addrBuf);
+	} else if (strcmp(op, "VAARG") == 0 && insP->argc == 2) {
+		/* va_arg(ap, type): d0 = aktueller Slot-Index aus ap, a0 = dessen
+		   ECHTE Adresse (8+4*Index(a6) -- exakt die Formel, die
+		   slotAddress() fuer eine variadische Funktion fuer Slots < nargs
+		   ansetzt, hier aber per LAUFZEIT-Register statt Literal, weil der
+		   Slot-Index selbst zur Laufzeit waechst). 'd' (double) braucht eine
+		   ZWEITE Indirektion: der Slot haelt nur die vom Aufrufer geboxte
+		   ADRESSE (dieselbe Konvention wie bei einem echten double-
+		   Parameter, s. tc_funcbodybegin/tc_arg) -- alle anderen Tags
+		   liegen direkt als 4-Byte-Wert im Slot. Danach ap um 1 (einen
+		   Slot, NICHT 4 Byte) weiterruecken. */
+		int apSlot = number(insP->args[0], insP->line);
+		char tag = insP->args[1][0];
+		slotAddress(addrBuf, apSlot, fn, insP->line);
+		fprintf(out, "\tmove.l\t%s,d0\n\tlea\t8(%s),a0\n\tlsl.l\t#2,d0\n\tadda.l\td0,a0\n",
+			addrBuf, framePtr());
+		if (tag == 'd') {
+			fprintf(out, "\tmove.l\t(a0),a0\n\tfmove.d\t(a0),fp0\n\tfmove.d\tfp0,-(a7)\n");
+		} else {
+			fprintf(out, "\tmove.l\t(a0),-(a7)\n");
+		}
+		fprintf(out, "\tmove.l\t%s,d0\n\taddq.l\t#1,d0\n\tmove.l\td0,%s\n", addrBuf, addrBuf);
 	} else if (strcmp(op, "LARRAY") == 0 && insP->argc == 3) {
 		/* frame layout only, no code */
 	} else if (strcmp(op, "PUSHADDR") == 0 && insP->argc == 2) {
@@ -1798,7 +1864,9 @@ static void emitIR(FILE* out) {
 						         number(px->args[0], px->line) == pslot) usedAsShort = 1;
 					}
 				}
-				off = 8 + 4 * (fn->nargs - 1 - pslot);
+				/* s. slotAddress()/Function.isVariadic fuer die Begruendung der
+				   umgekehrten Richtung bei einer variadischen Funktion. */
+				off = fn->isVariadic ? 8 + 4 * pslot : 8 + 4 * (fn->nargs - 1 - pslot);
 				if (usedAsChar) fprintf(out, "\tmove.b\t%d(%s),%d(%s)\n", off + 3, framePtr(), off, framePtr());
 				else if (usedAsShort) fprintf(out, "\tmove.w\t%d(%s),%d(%s)\n", off + 2, framePtr(), off, framePtr());
 			}
