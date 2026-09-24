@@ -99,6 +99,17 @@ defmodulUnknown   = ident .
 defosDecl = "#defos" defosArg .
 defosArg  = ident .
 
+/* Calling-Convention-Praefix fuer Funktionen (Phase 5, Branch QCC-DEFMODUL,
+   siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 4). Vier Conventions plus
+   Syscall-Deklaration, alle unter dem einzigen Schluesselwort "modul",
+   um Namensraum-Kollisionen mit gewoehnlichen Bezeichnern zu vermeiden
+   (z.B. eine normale Funktion "int driver();" bleibt unberuehrt).
+   Das Keyword steht nach static/extern (falls vorhanden), vor dem Rueckgabetyp. */
+modulKw = "modul" ( modulConvention | modulSyscall ) .
+modulConvention = "driver" | "interrupt" | "trap" | "naked" .
+modulSyscall = "syscall" "(" defmodulNumber "," syscallArchetype ")" .
+syscallArchetype = "CALL_D" | "CALL_DA" | "CALL_FORK" .
+
 /* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
    Signatur. Parameter brauchen keinen Namen (nur Typen fuer die Aufrufpruefung).
@@ -368,7 +379,7 @@ protoEnd      = ";" .
    die tcPendingConst setzt -- das Flag wird erst beim naechsten Parameter
    oder Lokalen konsumiert und wuerde dort faelschlich Konstantheit
    erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
-funcHead  = [ staticKw ] [ retConstKw ] type pointerDecl defName funcParams .
+funcHead  = [ staticKw ] [ modulKw ] [ retConstKw ] type pointerDecl defName funcParams .
 retConstKw = "const" .
 /* K&R-Definitionen (C89 6.7.1, "alte" Form):  int f(a, b) int a; char *b; { }
    Dritte Alternative NEBEN voidParams/normalParams -- also genau dort, wo das
