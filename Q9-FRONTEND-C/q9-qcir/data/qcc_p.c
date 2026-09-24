@@ -8809,24 +8809,28 @@ static int p_modulConvention(void) {
 	ws();
 	if (strncmp(p, "driver", 6) != 0) goto L74;
 	if (idch((unsigned char)p[6])) goto L74;
+	tc_modulconvention(p, p + 6);  /* Phase 5: ACTION für driver */
 	p += 6;
 	goto L73;
 L74:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
 	if (strncmp(p, "interrupt", 9) != 0) goto L75;
 	if (idch((unsigned char)p[9])) goto L75;
+	tc_modulconvention(p, p + 9);  /* Phase 5: ACTION für interrupt */
 	p += 9;
 	goto L73;
 L75:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
 	if (strncmp(p, "trap", 4) != 0) goto L76;
 	if (idch((unsigned char)p[4])) goto L76;
+	tc_modulconvention(p, p + 4);  /* Phase 5: ACTION für trap */
 	p += 4;
 	goto L73;
 L76:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
 	if (strncmp(p, "naked", 5) != 0) goto L77;
 	if (idch((unsigned char)p[5])) goto L77;
+	tc_modulconvention(p, p + 5);  /* Phase 5: ACTION für naked */
 	p += 5;
 	goto L73;
 L77:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L72;
