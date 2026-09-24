@@ -106,7 +106,11 @@ defosArg  = ident .
    (z.B. eine normale Funktion "int driver();" bleibt unberuehrt).
    Das Keyword steht nach static/extern (falls vorhanden), vor dem Rueckgabetyp. */
 modulKw = "modul" ( modulConvention | modulSyscall ) .
-modulConvention = ( "driver" | "interrupt" | "trap" | "naked" ) ACTION AFTER modulConvention CALL tc_modulconvention .
+modulConvention = modulConvKw .
+modulConvKw = "driver" ACTION AFTER modulConvKw CALL tc_modulconvention
+            | "interrupt" ACTION AFTER modulConvKw CALL tc_modulconvention
+            | "trap" ACTION AFTER modulConvKw CALL tc_modulconvention
+            | "naked" ACTION AFTER modulConvKw CALL tc_modulconvention .
 modulSyscall = "syscall" "(" defmodulNumber "," syscallArchetype ")" .
 syscallArchetype = "CALL_D" | "CALL_DA" | "CALL_FORK" .
 
