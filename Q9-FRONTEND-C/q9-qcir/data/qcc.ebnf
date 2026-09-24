@@ -6,7 +6,7 @@
    funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
    plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
    faellt korrekt hierher zurueck. */
-program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl | defmodulDecl } .
+program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl | defmodulEntryDecl | defmodulDecl } .
 
 /* Moduldefinition (siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 2/3,
    Branch QCC-DEFMODUL). Dieser Schritt deckt nur NAME/EDITION/STACK/ATTR
@@ -17,6 +17,14 @@ program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | ext
    Regel, ein #DEFMODUL mit einem dieser Subkommandos scheitert also noch
    mit FAIL, wie jedes andere noch nicht angebundene Subkommando auch. */
 defmodulDecl    = "#defmodul" ( defmodulName | defmodulEdition | defmodulStack | defmodulAttr | defmodulType | defmodulNotImpl | defmodulUnknown ) .
+
+/* Dispatch-Eintrag bewusst als eigene Direktive mit genau zwei Pflicht-
+   Bezeichnern: die scannerlose Grammatik kennt keine Zeilengrenzen, daher
+   darf hier keine optionale oder wiederholte Bezeichnerliste stehen. Die
+   Form ist für DRIVER, MANAGER und TRAPHANDLER identisch und wird später
+   anhand des Modultyps in DISPATCHTAB umgesetzt. */
+defmodulEntryDecl = "#defmodul" "ENTRY" ident defmodulEntryTarget .
+defmodulEntryTarget = ident | defmodulNumber .
 
 defmodulName    = "NAME" defmodulNameArg .
 defmodulNameArg = ident .
@@ -55,11 +63,14 @@ defmodulAttrArg = defmodulNumber .
    siehe Notiz in STATUS_DEFMODUL.md. Betrifft KUENFTIG auch die
    Dispatch-Einsprunglisten aus Phase 4 (DRIVER/MANAGER/TRAPHANDLER),
    dort staerker (wiederholte Liste statt einzelner optionaler Wert). */
-defmodulType      = defmodulTypeKw ( defmodulTypeProg | defmodulTypeSystem | defmodulTypeNoos ) .
+defmodulType      = defmodulTypeKw ( defmodulTypeProg | defmodulTypeSystem | defmodulTypeNoos | defmodulTypeDriver | defmodulTypeManager | defmodulTypeTraphandler ) .
 defmodulTypeKw    = "TYPE" .
 defmodulTypeProg  = "PROG" defmodulEntryArg .
 defmodulTypeSystem = "SYSTEM" .
 defmodulTypeNoos  = ( "NOOS" | "BAREMETAL" ) defmodulEntryArg .
+defmodulTypeDriver = "DRIVER" ident .
+defmodulTypeManager = "MANAGER" ident .
+defmodulTypeTraphandler = "TRAPHANDLER" ident .
 defmodulEntryArg  = ident .
 
 /* IR-Validierung (22.09.2026, STATUS_DEFMODUL.md Testsatz-Punkte 7/9):

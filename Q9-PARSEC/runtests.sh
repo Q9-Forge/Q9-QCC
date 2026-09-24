@@ -4849,6 +4849,50 @@ int main(void){ return 0; }' 2>&1)
 	else
 		echo "ok    qcc-defmodul 17l: doppeltes #DEFMODUL TYPE liefert klares SEMERR"
 	fi
+
+	# 17m) DRIVER ohne explizite ENTRY-Zeilen bekommt die sieben normierten
+	# Dispatch-Slots, inklusive des TRAP-Slots.
+	out=$(build/qcc_p_dm '#defmodul NAME cfide
+#defmodul TYPE DRIVER rbf
+int drv_init(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER name=cfide type=DRIVER subtype=rbf attr=0x8000 edition=1 stack=0$'; then
+		echo "FAIL  qcc-defmodul 17m: DRIVER-MODHEADER fehlt oder ist falsch"; dmfail=1
+	elif ! echo "$out" | grep -q '^DISPATCHTAB drv_init drv_read drv_write drv_getstat drv_setstat drv_term drv_trap$'; then
+		echo "FAIL  qcc-defmodul 17m: sieben DRIVER-Dispatch-Slots fehlen"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17m: DRIVER defaultet die sieben Dispatch-Slots"
+	fi
+
+	# 17n) MANAGER/TRAPHANDLER verwenden explizite ENTRY-Zeilen. Jede Zeile
+	# verbraucht genau Slot und Ziel; dadurch bleibt die Grammatik zeilenrobust.
+	out=$(build/qcc_p_dm '#defmodul NAME fscs
+#defmodul TYPE MANAGER fscs
+#defmodul ENTRY open mgr_open
+#defmodul ENTRY read mgr_read
+int mgr_open(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER name=fscs type=MANAGER subtype=fscs attr=0x8000 edition=1 stack=4096$'; then
+		echo "FAIL  qcc-defmodul 17n: MANAGER-MODHEADER fehlt oder ist falsch"; dmfail=1
+	elif ! echo "$out" | grep -q '^DISPATCHTAB open=mgr_open read=mgr_read$'; then
+		echo "FAIL  qcc-defmodul 17n: explizite MANAGER-ENTRYs fehlen"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17n: MANAGER-ENTRYs werden in DISPATCHTAB uebernommen"
+	fi
+
+	# 17o) Der reservierte TRAP-Slot darf explizit auf 0 zeigen.
+	out=$(build/qcc_p_dm '#defmodul TYPE DRIVER rbf
+#defmodul ENTRY init drv_init
+#defmodul ENTRY read drv_read
+#defmodul ENTRY write drv_write
+#defmodul ENTRY getstat drv_getstat
+#defmodul ENTRY setstat drv_setstat
+#defmodul ENTRY term drv_term
+#defmodul ENTRY trap 0
+int drv_init(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^DISPATCHTAB init=drv_init read=drv_read write=drv_write getstat=drv_getstat setstat=drv_setstat term=drv_term trap=0$'; then
+		echo "FAIL  qcc-defmodul 17o: expliziter trap-0-Slot fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17o: expliziter DRIVER-trap-0-Slot wird akzeptiert"
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
