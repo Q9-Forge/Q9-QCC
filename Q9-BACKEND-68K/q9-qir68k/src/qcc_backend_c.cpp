@@ -91,6 +91,9 @@ typedef struct {
 	   r68/l68 have no visibility concept, so mangling is the only way for two
 	   files to use the same private helper name without a duplicate symbol. */
 	int declOnly, isStatic;
+	/* Phase 5 (2026-09-24): calling convention from FUNC IR fourth argument
+	   (driver/interrupt/trap/naked). Empty string = standard driver convention. */
+	char convention[64];
 } Function;
 
 typedef struct {
@@ -846,6 +849,33 @@ static void collectGlobals(void) {
 	}
 }
 
+/* Phase 5 (2026-09-24): Emit function prolog based on calling convention */
+static void emitPrologByConvention(FILE* out, const char* asmName, const char* convention,
+                                   int frameBytes, const char* framePtrReg) {
+	if (convention[0] == '\0' || strcmp(convention, "driver") == 0) {
+		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtrReg, -frameBytes);
+	} else if (strcmp(convention, "interrupt") == 0) {
+		fprintf(out, "%s:\tmovem.l\td0-d7/a0-a6,-(a7)\n", asmName);
+		fprintf(out, "\tlink\t%s,#%d\n", framePtrReg, -frameBytes);
+	} else if (strcmp(convention, "trap") == 0) {
+		fprintf(out, "%s:\tmovem.l\td0-d7/a0-a6,-(a7)\n", asmName);
+		fprintf(out, "\tlink\t%s,#%d\n", framePtrReg, -frameBytes);
+	} else if (strcmp(convention, "naked") == 0) {
+		fprintf(out, "%s:\n", asmName);
+	}
+}
+
+/* Phase 5 (2026-09-24): Emit function epilog based on calling convention */
+static void emitEpilogByConvention(FILE* out, const char* convention, const char* framePtrReg) {
+	if (convention[0] == '\0' || strcmp(convention, "driver") == 0) {
+		fprintf(out, "\tunlk\t%s\n\trts\n", framePtrReg);
+	} else if (strcmp(convention, "interrupt") == 0) {
+		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
+	} else if (strcmp(convention, "trap") == 0) {
+		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
+	}
+}
+
 static void collectFunctions(void) {
 	int i, open = 0, seenFunction = 0;
 	Function current;
@@ -880,14 +910,21 @@ static void collectFunctions(void) {
 			   (s. STATUS_DEFMODUL.md Phase 3). Echte Verarbeitung folgt separat. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
 			/* Third argument (2026-07-25): optional isstatic flag (name mangling in
-			   emitIR; see mangledName()). r68/l68 have no visibility concept. */
-			if (open || (insP->argc != 2 && insP->argc != 3)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
+			   emitIR; see mangledName()). r68/l68 have no visibility concept.
+			   Fourth argument (Phase 5, 2026-09-24): optional calling convention
+			   (driver/interrupt/trap/naked). */
+			if (open || (insP->argc < 2 || insP->argc > 4)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
 			current.nargs = number(insP->args[1], insP->line);
 			current.first = i + 1;
 			current.last = -1;
 			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
+			if (insP->argc >= 4) {
+				strncpy(current.convention, insP->args[3], sizeof(current.convention) - 1);
+			} else {
+				current.convention[0] = '\0';
+			}
 			open = 1;
 			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {
@@ -1721,7 +1758,7 @@ static void emitIR(FILE* out) {
 			}
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
-		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
+		emitPrologByConvention(out, asmName, fn->convention, fn->frameBytes, framePtr());
 		if (largeDataMode && os9Mode && strcmp(fn->name, "main") == 0) {
 			/* OS-9 cstart enters main directly; establish the one shared table
 			   basis before any QCC-internal call is made. */
@@ -2140,7 +2177,16 @@ static void emitIR(FILE* out) {
 				if (stackBytes) fprintf(out, "\tlea\t%d(a7),a7\n", stackBytes);
 				fputs("\tmove.l\td0,-(a7)\n", out);
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
+				if (fn->convention[0] == '\0' || strcmp(fn->convention, "driver") == 0) {
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
+				} else if (strcmp(fn->convention, "interrupt") == 0) {
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtr());
+				} else if (strcmp(fn->convention, "trap") == 0) {
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtr());
+				} else if (strcmp(fn->convention, "naked") == 0) {
+					/* Naked function: developer provides return via #ASM */
+					/* No implicit epilog */
+				}
 			} else if (strcmp(op, "DROP") == 0) {
 				fputs("\taddq.l\t#4,a7\n", out);
 			} else if (strcmp(op, "PRINT") == 0) {
