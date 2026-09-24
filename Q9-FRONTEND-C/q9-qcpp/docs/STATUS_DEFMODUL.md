@@ -2,7 +2,7 @@
 
 Status-Übersicht und Arbeitsplan für die Implementierung nativer OS-9 Modulartefakte (`#DEFMODUL`, Dispatch-Tabellen, Calling-Conventions, `#ASM`) in Q9-QCC.
 
-Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste durch den Phasenplan aus den Reviews von Codex und Claude (`PLAN_REVIEW_DEFMODUL.md`/`PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md`, beide nach vollständiger Einarbeitung gelöscht, s. Abschnitt "Quellen") und trägt deren Ergebnisse konkret ein.
+Stand: 2026-09-23. Diese Fassung ersetzt die ursprüngliche flache Paketliste durch den Phasenplan aus den Reviews von Codex und Claude (`PLAN_REVIEW_DEFMODUL.md`/`PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md`, beide nach vollständiger Einarbeitung gelöscht, s. Abschnitt "Quellen") und trägt deren Ergebnisse konkret ein.
 
 **Leitsatz aus beiden Reviews, unverändert übernommen:** erst ABI und IR verbindlich machen, dann ein kleines `PROG`-/`DRIVER`-MVP durch die komplette Pipeline bringen, danach erst `modul syscall`, Adressplatzierung und Inline-Assembler ergänzen.
 
@@ -25,9 +25,9 @@ Stand: 2026-09-22. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🟢 | Alle fünf Komponenten gebaut+gehasht, `smoke.c`-Golden-Test durch die Kette, Header-/CRC-Tests gesammelt, `gdp.a` als Referenztreiber gefunden |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
-| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | `MODHEADER`/`ENTRY` vollständig (Emission, Defaults, alle Backend-Ziele, IR-Diagnose, Duplikat-Erkennung; 12 Regressionstests `17a`–`17l`). Architekturfund: echter Modulkopf kommt von `q9_cstart.a`. **Noch offen (ursprünglicher Phase-2-Scope):** `DISPATCHTAB` (braucht Phase 4) und `FUNC ... [convention]` (braucht Phase 5) |
+| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | `MODHEADER`/`ENTRY` vollständig; `DRIVER`/`MANAGER`/`TRAPHANDLER` und `DISPATCHTAB` jetzt im Frontend (Regressionstests `17a`–`17n`). `FUNC ... [convention]` bleibt offen. Architekturfund: echter Modulkopf kommt von `q9_cstart.a`. |
 | **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
-| **4. Minimaler `DRIVER`-Pfad** | Ein Treibertyp, explizite Dispatch-Tabelle | 🔴 | Keine automatische Default-Magie im ersten Schritt |
+| **4. Minimaler `DRIVER`-/Manager-Pfad** | Modulmetadaten und Dispatch-Tabelle | 🟡 | Frontend-Metadatenpfad steht; 68k-Layout, ABI und Linker-Anbindung sind offen |
 | **5. Weitere Calling-Conventions** | `interrupt`, `trap`, `naked` | 🔴 | In dieser Reihenfolge, je eigener Prolog-/Epilog-Test |
 | **6. Adressplatzierung** | `ALIGN`, `SECTION`, `ORG`, `NOOS` | 🟡 | Scanner-Passthrough für `#ORG`/`#SECTION` existiert; Semantik/Backend offen |
 | **7. `modul syscall`** | Wenige konkrete Syscalls zuerst | 🔴 | Pro Syscall eigene Registrierung statt Archetyp allein; Syntax entschieden 22.09. (s. `OS9_SYSTEM_INTERFACE.md` Abschnitt 5) |
@@ -178,17 +178,19 @@ Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTA
 | Scanner-Erkennung `#DEFMODUL` in `q9-qcpp` | 🟢 | Bereits vorhanden (`edcd65a`), reines Passthrough |
 | Scanner-Erkennung `#DEFOS` in `q9-qcpp` | 🟢 | Erledigt 22.09.2026 (`62d2544`), reines Passthrough wie `#DEFMODUL` |
 | `#DEFOS` im C-Frontend/`q9-qcir` geparst und registriert | 🟢 | Erledigt 22.09.2026 (`7e76535`), Name in `tcDefOsName` abgelegt, noch keine IR-Emission |
-| `#DEFMODUL` im C-Frontend/`q9-qcir` geparst und registriert | 🟡 | `NAME`/`EDITION`/`STACK`/`ATTR`/`TYPE PROG`\|`SYSTEM`\|`NOOS` erledigt (Werte in `tcDefModul*`-Variablen, noch keine IR-Emission); `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` und `ORG`/`ALIGN` bewusst noch offen (Phase 4/6) — s. Architekturfund unten |
+| `#DEFMODUL` im C-Frontend/`q9-qcir` geparst und registriert | 🟢 für Modulmetadaten | `NAME`/`EDITION`/`STACK`/`ATTR`, `TYPE PROG`/`SYSTEM`/`NOOS` sowie `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` mit Subtyp und expliziten `ENTRY`-Zeilen werden registriert; `ORG`/`ALIGN` bleiben Phase 6. |
 | IR-Validierung (Pflichtfelder, unbekannte Metadaten, Kollision mit bestehendem `FUNC`-Format) | 🟢 | Unbekannte/noch-nicht-implementierte Subkommandos (argumentlose Faelle) und doppelte Angaben liefern SEMERR mit Klartext statt bloszem FAIL -- s. Testsatz Punkte 7/8/9. Pflichtfelder entfallen (alle #DEFMODUL-Subkommandos sind optional mit Defaults); Kollision mit FUNC-Format nicht aufgetreten (eigener Namensraum, keine Ueberschneidung gefunden). |
 | `MODHEADER`/`ENTRY`-IR-Emission im Frontend (Defaults gemäß Spec, gekoppelt an tatsächliches Vorkommen) | 🟢 | Erledigt 22.09.2026 (`73d0c66`) |
 | QCCVM: `MODHEADER`/`ENTRY` ignorieren, Funktionsrumpf normal interpretieren | 🟢 | **Kein Code nötig** — geprüft 22.09.2026: die bestehende Zwei-Pass-Architektur (`tools/qccvm.py`) überspringt beide Opcodes in der ersten Deklarations-Sammelschleife bereits stillschweigend (kein `else`-Fehlerzweig dort), die zweite Ausführungsschleife beginnt erst bei `FUNC main` und erreicht sie nie. Empirisch verifiziert (`PUSH 42` lief korrekt durch). |
 | 68k-Backend (`qir68k`): `MODHEADER`/`ENTRY` als gültige Top-Level-Opcodes anerkennen (ohne Absturz) | 🟢 | Erledigt 22.09.2026. **Wichtiger Architekturfund dabei:** der generierte Code trägt bereits den Kommentar *„No private tc_start bootstrap here: cstart.r (the real Microware C runtime) calls 'main' directly"* — der reale OS-9-Modulkopf für normale Programme kommt demnach schon heute von `runtime/os9/q9_cstart.a` beim Linken, **nicht** aus der hier emittierten `psect`-Zeile. Deren hartcodierte Felder (`%s,0,0,%d,0,0`) sind vermutlich nur ein generischer Platzhalter fürs Assemblieren/Linken, keine echten Modulkopf-Werte. Bewusst **nicht spekulativ verändert** — die Bedeutung dieser Zeile muss erst geklärt werden (vermutlich gegen `MWOS/DOC/PDF` oder durch Vergleich mit `q9_cstart.a`), bevor `name=`/`type=`/`attr=`/`edition=`/`stack=` aus `MODHEADER` sinnvoll eingebaut werden können. |
 | ARM64-Backend: klare „noch nicht implementiert"-Ablehnung | 🟢 | **Kein Code nötig** — geprüft 22.09.2026: Build-Pfad gefunden (`Q9-PARSEC/runtests.sh` baut `qcc_arm64_backend_c.cpp` direkt mit `cc`, kein eigenes Makefile in `q9-qirarm64` nötig). Empirisch getestet mit `MODHEADER`-haltiger IR: lehnt bereits klar und ohne Absturz ab (`"Opcode ausserhalb einer Funktion"`, `rc=1`) — Wortlaut nicht `#DEFMODUL`-spezifisch, aber funktional genau das gewollte Verhalten (kein Crash, kein stilles Verwerfen). |
 | „C-Backend" aus 1.d/2.4 | — | Kein eigenständiges Tool dieses Namens im Repo gefunden (nur `QIR68K_SRC`/`QIRARM64_SRC` in `Q9-PARSEC/runtests.sh` referenziert) — die Erwähnung in `IR_OPCODES_de.md`/1.d scheint ein Planungsziel zu sein, noch kein gebautes Werkzeug. Nichts zu tun, bis ein solches Backend tatsächlich existiert. |
-| `DISPATCHTAB`-IR-Emission | 🔴 | Setzt `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` voraus (Phase 4) — im ursprünglichen Phase-2-Scope genannt, aber ohne Treibertyp nichts zu emittieren |
+| `DISPATCHTAB`-IR-Emission | 🟡 Frontend | `DRIVER` defaultet sieben Slots (`INIT` bis `TRAP`), `MANAGER`/`TRAPHANDLER` übernehmen `#DEFMODUL ENTRY <slot> <funktion>`; Backend-Layout und ABI sind noch offen. |
 | `FUNC ... [convention]` (`modul driver`/`interrupt`/`trap`/`naked`/`syscall`-Grammatik) | 🔴 | Setzt die `modul`-Präfix-Grammatik voraus (Phase 5) — ebenfalls im ursprünglichen Phase-2-Scope genannt, noch nicht begonnen |
 
 **Verifiziert (22.09.2026):** volle `Q9-PARSEC/runtests.sh` weiterhin grün nach der `qir68k`-Änderung; kompletter End-to-End-Pfad `qcpp → qcir → qir68k -os9 → qr68k` mit echtem `#DEFMODUL`-Inhalt läuft bis zur assemblierten ROF-Datei durch (`deftest7.r`, 1.264 Byte).
+
+**Verifiziert (23.09.2026):** `TYPE DRIVER`/`MANAGER`/`TRAPHANDLER` werden mit Subtyp registriert. `DRIVER` erzeugt ohne Einträge sieben Slots (`drv_init` bis `drv_trap`), explizite `ENTRY`-Zeilen erzeugen Schlüssel-Ziel-Paare, und `trap 0` bleibt als gültiger Null-Eintrag erhalten. Die Fälle sind als `17m`–`17o` in `Q9-PARSEC/runtests.sh` verankert. Der vollständige 68k-Modulheader, echte relative Dispatch-Offets und die ABI-Codegen-Anbindung bleiben Phase-4-Arbeit.
 
 **Abnahmekriterium:** eine minimale IR mit Modulheader und einer Funktion wird akzeptiert; dieselbe IR ohne Pflichtargumente wird verständlich abgelehnt.
 
@@ -262,9 +264,9 @@ guter erster Test).
 
 ---
 
-## Phase 4 — Minimaler `DRIVER`-Pfad
+## Phase 4 — Minimaler `DRIVER`-/Manager-Pfad
 
-Erster Schritt bewusst ohne automatische Default-Einsprünge (Codex' Empfehlung, übernommen) — explizite Zuordnung, korrigiert um den fehlenden `trap`-Slot aus 1.b. Die Ein-Zeile-pro-`ENTRY`-Form ist seit dem Architekturfund in Phase 2 (s. o.) nicht mehr nur eine Stilentscheidung, sondern vermeidet aktiv das dort gemessene Zeilengrenzen-Problem (je Zeile genau zwei Pflicht-Bezeichner, keine offene/optionale Liste) — bei der Umsetzung so beibehalten:
+Der Frontend-Metadatenanteil ist umgesetzt: explizite Zuordnung für Manager/Trap-Handler sowie die sieben normierten Treiber-Slots mit `trap`. Die Ein-Zeile-pro-`ENTRY`-Form ist seit dem Architekturfund in Phase 2 (s. o.) nicht mehr nur eine Stilentscheidung, sondern vermeidet aktiv das dort gemessene Zeilengrenzen-Problem (je Zeile genau zwei Pflicht-Bezeichner, keine offene/optionale Liste) — bei der Backend-Umsetzung beibehalten:
 
 ```c
 #DEFMODUL TYPE DRIVER rbf
@@ -281,13 +283,14 @@ Erster Schritt bewusst ohne automatische Default-Einsprünge (Codex' Empfehlung,
 
 | Teilschritt | Status |
 |---|:---:|
-| Dispatch-Reihenfolge, 7 relative Offsets inkl. `trap` | 🔴 |
+| Frontend-`DISPATCHTAB` mit 7 Slots bzw. expliziten `ENTRY`s | 🟢 (`17m`/`17n`) |
+| Dispatch-Reihenfolge als echte relative Offsets im 68k-Modul | 🔴 |
 | Treiber-Prolog mit korrigierter Register-ABI (`a1`=Path-Desc, `a2`=Static-Storage) | 🔴 |
 | Rückgabe/Carry-Konvention | 🔴 |
 | PC-relative Zwangsadressierung für Globals in Treiberfunktionen (aus 1.c) | 🔴 |
 | Kein versehentliches `cstart.r` | 🔴 |
 | Linker-Layout für Treibermodule (`isDrvr`-Zweig in `ql68k`) | 🔴 |
-| Automatische Default-Einsprünge (Komfortsyntax aus ursprünglicher Spec §2.1) | 🔴 — bewusst erst NACH Phase 4 nachziehen |
+| Automatische Default-Einsprünge (Komfortsyntax aus ursprünglicher Spec §2.1) | 🟢 für den Frontend-IR-Pfad; Backend-Verifikation offen |
 
 **Abnahmekriterium:** ein Referenztreiber hat die erwartete 7-Wort-Dispatch-Tabelle, korrekte Headerwerte und eine gültige OS-9-Prüfsumme.
 
