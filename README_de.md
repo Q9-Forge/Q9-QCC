@@ -7,7 +7,7 @@
 *English version: [README.md](README.md)*
 
 Der gemeinsame projektübergreifende Kontext und die verbindlichen Namen
-stehen in [Q9Forge/AI_CONTEXT.md](../Q9Forge/AI_CONTEXT.md).
+stehen in [Q9-OS-Research/AI_CONTEXT.md](../Q9-OS-Research/from-Q9-Boot/AI_CONTEXT.md).
 
 QCC-Toolchain für Q9 (C-Sprachkern, IR, 68000-/ARM64-Backends).
 Extrahiert aus dem ehemaligen `ebnf`-Repo (2026-07-31, volle Historie
