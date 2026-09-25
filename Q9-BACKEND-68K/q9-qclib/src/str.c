@@ -349,8 +349,8 @@ int qs_tol(int *a)
 	   No change to pointer reported here. */
 	if (endp != 0) {
 		char *q = p;
-		if (*q != 0 && (((*q >= "a" && *q <= "z") || (*q >= "A" && *q <= "Z")))) {
-			while (*q != 0 && (((*q >= "a" && *q <= "z") || (*q >= "A" && *q <= "Z"))))
+		if (*q != 0 && (((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z')))) {
+			while (*q != 0 && (((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z'))))
 				q++;
 			*endp = q;
 		} else {
