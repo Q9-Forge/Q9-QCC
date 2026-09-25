@@ -1,16 +1,20 @@
 * qclib supports the C locale only. setlocale returns the active locale
 * name for queries and accepts "C"/""; all other locale names fail.
 *
-* 2026-09-23 (vsect-Adressierungs-Audit nach dem atexit-Fund, `c342e53`):
+* 2026-09-23 (vsect-Adressierungsaudit nach dem atexit-Fund, `c342e53`):
 * lc_name lag in einem separaten "vsect"-Block und wurde als BARE
 * absolutes Label referenziert -- dieselbe Signatur wie bei
 * extra_atexit.a. Fix nach demselben Muster: das Feld liegt jetzt direkt
-* im psect, gelesen ueber PC-relative Adressierung. ZUSAETZLICH als
-* numerische Byteliste statt Quoted-String deklariert (s. den
-* ausfuehrlichen Kommentar in extra_strerror.a): "dc.b 'Text',0" liess
-* "lea label(pc)" bei qr68k auf Adresse+(Laenge-1) statt die Startadresse
-* aufloesen -- bei "C" (ein Zeichen) war das zufaellig unsichtbar
-* (Laenge-1 = 0), deshalb hier vorsichtshalber ebenfalls umgestellt.
+* im psect, gelesen ueber PC-relative Adressierung.
+*
+* ZWEITER FUND, KEIN qr68k-BUG (Korrektur einer eigenen Fehldiagnose,
+* s. den ausfuehrlichen Kommentar in extra_strerror.a): einfache
+* Anfuehrungszeichen ("dc.b 'C',0") sind in diesem Assembler-Dialekt
+* eine gepackte Zahlenkonstante, kein Stringliteral -- bei "C" (ein
+* Zeichen) blieb das zufaellig unsichtbar, weil Packung und Byte fuer
+* ein einzelnes Zeichen identisch sind. Fix: doppelte Anfuehrungszeichen
+* (die bereits etablierte Konvention fuer echte Stringliterale, s.
+* Q9-QCC/runtime/os9/q9_cstart.a).
          psect qlocale,0,0,0,0,0
 setlocale:
          tst.l d1
@@ -31,6 +35,5 @@ lc_fail
          rts
 
          align 4
-* "C",0
-lc_name:	dc.b 67,0
+lc_name:	dc.b "C",0
          ends

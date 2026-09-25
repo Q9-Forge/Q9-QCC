@@ -2236,6 +2236,18 @@ L243:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	addq.l	#4,a7
 	bra	L243
 L244:	move.l	(a7)+,a0	; Wiederholung beendet
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	ws
+	cmpi.b	#$2C,(a0)	; ','
+	bne	L245
+	addq.l	#1,a0
+	bsr	p_funcEllipsis
+	tst.b	d0
+	beq	L245
+	addq.l	#4,a7
+	bra	L246
+L245:	move.l	(a7)+,a0	; Option uebersprungen
+L246:
 	addq.l	#4,a7
 	bra	L242
 L241:	move.l	(a7)+,a0	; Option uebersprungen
@@ -2248,66 +2260,85 @@ L240:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
+; Regel: funcEllipsis
+p_funcEllipsis:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$2E,(a0)	; '.'
+	bne	L247
+	cmpi.b	#$2E,1(a0)	; '.'
+	bne	L247
+	cmpi.b	#$2E,2(a0)	; '.'
+	bne	L247
+	addq.l	#3,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L247:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
 ; Regel: param
 p_param:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_fnPtrParam
 	tst.b	d0
-	beq	L247
-	bra	L246
-L247:	move.l	(a7),a0	; naechste Alternative
+	beq	L250
+	bra	L249
+L250:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_ptrArrayParam
 	tst.b	d0
-	beq	L248
-	bra	L246
-L248:	move.l	(a7),a0	; naechste Alternative
+	beq	L251
+	bra	L249
+L251:	move.l	(a7),a0	; naechste Alternative
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_registerKw
 	tst.b	d0
-	beq	L250
+	beq	L253
 	addq.l	#4,a7
-	bra	L251
-L250:	move.l	(a7)+,a0	; Option uebersprungen
-L251:
+	bra	L254
+L253:	move.l	(a7)+,a0	; Option uebersprungen
+L254:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_constKw
 	tst.b	d0
-	beq	L252
+	beq	L255
 	addq.l	#4,a7
-	bra	L253
-L252:	move.l	(a7)+,a0	; Option uebersprungen
-L253:
+	bra	L256
+L255:	move.l	(a7)+,a0	; Option uebersprungen
+L256:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_volatileKw
 	tst.b	d0
-	beq	L254
+	beq	L257
 	addq.l	#4,a7
-	bra	L255
-L254:	move.l	(a7)+,a0	; Option uebersprungen
-L255:
+	bra	L258
+L257:	move.l	(a7)+,a0	; Option uebersprungen
+L258:
 	bsr	p_type
 	tst.b	d0
-	beq	L249
+	beq	L252
 	bsr	p_pointerDecl
 	tst.b	d0
-	beq	L249
+	beq	L252
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_paramDecl
 	tst.b	d0
-	beq	L256
+	beq	L259
 	addq.l	#4,a7
-	bra	L257
-L256:	move.l	(a7)+,a0	; Option uebersprungen
-L257:
-	bra	L246
-L249:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L245
-L246:	addq.l	#4,a7
+	bra	L260
+L259:	move.l	(a7)+,a0	; Option uebersprungen
+L260:
+	bra	L249
+L252:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L248
+L249:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L245:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L248:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2317,40 +2348,40 @@ p_ptrArrayParam:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_type
 	tst.b	d0
-	beq	L258
+	beq	L261
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L258
+	bne	L261
 	addq.l	#1,a0
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L258
+	bne	L261
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L259
-	bra	L258	; kuerzeres Operator-Token ablehnen
-L259:
+	bne	L262
+	bra	L261	; kuerzeres Operator-Token ablehnen
+L262:
 	addq.l	#1,a0
 	bsr	p_fnPtrParamName
 	tst.b	d0
-	beq	L258
+	beq	L261
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L258
+	bne	L261
 	addq.l	#1,a0
 	bsr	p_arraySizeN
 	tst.b	d0
-	beq	L258
-L260:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L261
+L263:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_arraySizeN
 	tst.b	d0
-	beq	L261
+	beq	L264
 	addq.l	#4,a7
-	bra	L260
-L261:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L263
+L264:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L258:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L261:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2360,42 +2391,42 @@ p_fnPtrParam:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_type
 	tst.b	d0
-	beq	L262
+	beq	L265
 	bsr	p_pointerDecl
 	tst.b	d0
-	beq	L262
+	beq	L265
 	bsr	p_fnPtrOpen
 	tst.b	d0
-	beq	L262
+	beq	L265
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L262
+	bne	L265
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L263
-	bra	L262	; kuerzeres Operator-Token ablehnen
-L263:
+	bne	L266
+	bra	L265	; kuerzeres Operator-Token ablehnen
+L266:
 	addq.l	#1,a0
-L264:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L267:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_pointerStar
 	tst.b	d0
-	beq	L265
+	beq	L268
 	addq.l	#4,a7
-	bra	L264
-L265:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L267
+L268:	move.l	(a7)+,a0	; Wiederholung beendet
 	bsr	p_fnPtrParamName
 	tst.b	d0
-	beq	L262
+	beq	L265
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L262
+	bne	L265
 	addq.l	#1,a0
 	bsr	p_fnPtrParams
 	tst.b	d0
-	beq	L262
+	beq	L265
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L262:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L265:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2406,11 +2437,11 @@ p_fnPtrParamName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L266
+	beq	L269
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L266:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L269:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2420,19 +2451,19 @@ p_paramDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_paramName
 	tst.b	d0
-	beq	L267
+	beq	L270
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_paramArray
 	tst.b	d0
-	beq	L268
+	beq	L271
 	addq.l	#4,a7
-	bra	L269
-L268:	move.l	(a7)+,a0	; Option uebersprungen
-L269:
+	bra	L272
+L271:	move.l	(a7)+,a0	; Option uebersprungen
+L272:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L267:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L270:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2442,31 +2473,31 @@ p_paramArray:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$5B,(a0)	; '['
-	bne	L270
+	bne	L273
 	addq.l	#1,a0
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_constSize
 	tst.b	d0
-	beq	L271
-	addq.l	#4,a7
-	bra	L272
-L271:	move.l	(a7)+,a0	; Option uebersprungen
-L272:
-	bsr	ws
-	cmpi.b	#$5D,(a0)	; ']'
-	bne	L270
-	addq.l	#1,a0
-L273:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_paramArrayN
-	tst.b	d0
 	beq	L274
 	addq.l	#4,a7
-	bra	L273
-L274:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L275
+L274:	move.l	(a7)+,a0	; Option uebersprungen
+L275:
+	bsr	ws
+	cmpi.b	#$5D,(a0)	; ']'
+	bne	L273
+	addq.l	#1,a0
+L276:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_paramArrayN
+	tst.b	d0
+	beq	L277
+	addq.l	#4,a7
+	bra	L276
+L277:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L270:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L273:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2476,43 +2507,18 @@ p_paramArrayN:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$5B,(a0)	; '['
-	bne	L275
+	bne	L278
 	addq.l	#1,a0
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_constSize
 	tst.b	d0
-	beq	L276
+	beq	L279
 	addq.l	#4,a7
-	bra	L277
-L276:	move.l	(a7)+,a0	; Option uebersprungen
-L277:
+	bra	L280
+L279:	move.l	(a7)+,a0	; Option uebersprungen
+L280:
 	bsr	ws
 	cmpi.b	#$5D,(a0)	; ']'
-	bne	L275
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L275:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: block
-p_block:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_blockOpen
-	tst.b	d0
-	beq	L278
-L279:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_statement
-	tst.b	d0
-	beq	L280
-	addq.l	#4,a7
-	bra	L279
-L280:	move.l	(a7)+,a0	; Wiederholung beendet
-	bsr	ws
-	cmpi.b	#$7D,(a0)	; '}'
 	bne	L278
 	addq.l	#1,a0
 	addq.l	#4,a7
@@ -2523,11 +2529,21 @@ L278:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: blockOpen
-p_blockOpen:
+; Regel: block
+p_block:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_blockOpen
+	tst.b	d0
+	beq	L281
+L282:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_statement
+	tst.b	d0
+	beq	L283
+	addq.l	#4,a7
+	bra	L282
+L283:	move.l	(a7)+,a0	; Wiederholung beendet
 	bsr	ws
-	cmpi.b	#$7B,(a0)	; '{'
+	cmpi.b	#$7D,(a0)	; '}'
 	bne	L281
 	addq.l	#1,a0
 	addq.l	#4,a7
@@ -2538,26 +2554,41 @@ L281:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
+; Regel: blockOpen
+p_blockOpen:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$7B,(a0)	; '{'
+	bne	L284
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L284:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
 ; Regel: statement
 p_statement:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_labelStmt
 	tst.b	d0
-	beq	L284
-	bra	L283
-L284:	move.l	(a7),a0	; naechste Alternative
+	beq	L287
+	bra	L286
+L287:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_unlabeledStmt
 	tst.b	d0
-	beq	L285
-	bra	L283
-L285:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L282
-L283:	addq.l	#4,a7
+	beq	L288
+	bra	L286
+L288:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L285
+L286:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L282:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L285:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2568,100 +2599,105 @@ p_unlabeledStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_ifStmt
 	tst.b	d0
-	beq	L288
-	bra	L287
-L288:	move.l	(a7),a0	; naechste Alternative
+	beq	L291
+	bra	L290
+L291:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_whileStmt
 	tst.b	d0
-	beq	L289
-	bra	L287
-L289:	move.l	(a7),a0	; naechste Alternative
+	beq	L292
+	bra	L290
+L292:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_forStmt
 	tst.b	d0
-	beq	L290
-	bra	L287
-L290:	move.l	(a7),a0	; naechste Alternative
+	beq	L293
+	bra	L290
+L293:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_doStmt
 	tst.b	d0
-	beq	L291
-	bra	L287
-L291:	move.l	(a7),a0	; naechste Alternative
+	beq	L294
+	bra	L290
+L294:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_switchStmt
 	tst.b	d0
-	beq	L292
-	bra	L287
-L292:	move.l	(a7),a0	; naechste Alternative
+	beq	L295
+	bra	L290
+L295:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_breakStmt
 	tst.b	d0
-	beq	L293
-	bra	L287
-L293:	move.l	(a7),a0	; naechste Alternative
+	beq	L296
+	bra	L290
+L296:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_continueStmt
 	tst.b	d0
-	beq	L294
-	bra	L287
-L294:	move.l	(a7),a0	; naechste Alternative
+	beq	L297
+	bra	L290
+L297:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_gotoStmt
 	tst.b	d0
-	beq	L295
-	bra	L287
-L295:	move.l	(a7),a0	; naechste Alternative
+	beq	L298
+	bra	L290
+L298:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_returnStmt
 	tst.b	d0
-	beq	L296
-	bra	L287
-L296:	move.l	(a7),a0	; naechste Alternative
+	beq	L299
+	bra	L290
+L299:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_block
 	tst.b	d0
-	beq	L297
-	bra	L287
-L297:	move.l	(a7),a0	; naechste Alternative
+	beq	L300
+	bra	L290
+L300:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_emptyStmt
 	tst.b	d0
-	beq	L298
-	bra	L287
-L298:	move.l	(a7),a0	; naechste Alternative
+	beq	L301
+	bra	L290
+L301:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_voidCastStmt
 	tst.b	d0
-	beq	L299
-	bra	L287
-L299:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_callStmt
-	tst.b	d0
-	beq	L300
-	bra	L287
-L300:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_incDecStmt
-	tst.b	d0
-	beq	L301
-	bra	L287
-L301:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_assignStmt
-	tst.b	d0
 	beq	L302
-	bra	L287
+	bra	L290
 L302:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_fnPtrVarDecl
+	bsr	p_vaStmt
 	tst.b	d0
 	beq	L303
-	bra	L287
+	bra	L290
 L303:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_staticVarDecl
+	bsr	p_callStmt
 	tst.b	d0
 	beq	L304
-	bra	L287
+	bra	L290
 L304:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_varDecl
+	bsr	p_incDecStmt
 	tst.b	d0
 	beq	L305
-	bra	L287
-L305:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L286
-L287:	addq.l	#4,a7
+	bra	L290
+L305:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_assignStmt
+	tst.b	d0
+	beq	L306
+	bra	L290
+L306:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_fnPtrVarDecl
+	tst.b	d0
+	beq	L307
+	bra	L290
+L307:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_staticVarDecl
+	tst.b	d0
+	beq	L308
+	bra	L290
+L308:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_varDecl
+	tst.b	d0
+	beq	L309
+	bra	L290
+L309:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L289
+L290:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L286:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L289:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2671,46 +2707,46 @@ p_fnPtrVarDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_type
 	tst.b	d0
-	beq	L306
+	beq	L310
 	bsr	p_pointerDecl
 	tst.b	d0
-	beq	L306
+	beq	L310
 	bsr	p_fnPtrOpen
 	tst.b	d0
-	beq	L306
+	beq	L310
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L306
+	bne	L310
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L307
-	bra	L306	; kuerzeres Operator-Token ablehnen
-L307:
+	bne	L311
+	bra	L310	; kuerzeres Operator-Token ablehnen
+L311:
 	addq.l	#1,a0
-L308:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L312:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_pointerStar
 	tst.b	d0
-	beq	L309
+	beq	L313
 	addq.l	#4,a7
-	bra	L308
-L309:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L312
+L313:	move.l	(a7)+,a0	; Wiederholung beendet
 	bsr	p_fnPtrVarName
 	tst.b	d0
-	beq	L306
+	beq	L310
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L306
+	bne	L310
 	addq.l	#1,a0
 	bsr	p_fnPtrParams
 	tst.b	d0
-	beq	L306
+	beq	L310
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L306
+	bne	L310
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L306:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L310:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2721,11 +2757,11 @@ p_fnPtrVarName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L310
+	beq	L314
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L310:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L314:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2735,34 +2771,9 @@ p_staticVarDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_staticKw
 	tst.b	d0
-	beq	L311
+	beq	L315
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_constKw
-	tst.b	d0
-	beq	L312
-	addq.l	#4,a7
-	bra	L313
-L312:	move.l	(a7)+,a0	; Option uebersprungen
-L313:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_volatileKw
-	tst.b	d0
-	beq	L314
-	addq.l	#4,a7
-	bra	L315
-L314:	move.l	(a7)+,a0	; Option uebersprungen
-L315:
-	bsr	p_type
-	tst.b	d0
-	beq	L311
-	bsr	p_pointerDecl
-	tst.b	d0
-	beq	L311
-	bsr	p_staticLocalName
-	tst.b	d0
-	beq	L311
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_staticArrayDim
 	tst.b	d0
 	beq	L316
 	addq.l	#4,a7
@@ -2770,29 +2781,54 @@ L315:
 L316:	move.l	(a7)+,a0	; Option uebersprungen
 L317:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	ws
-	cmpi.b	#$3D,(a0)	; '='
-	bne	L318
-	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L320
-	bra	L318	; kuerzeres Operator-Token ablehnen
-L320:
-	addq.l	#1,a0
-	bsr	p_staticInit
+	bsr	p_volatileKw
 	tst.b	d0
 	beq	L318
 	addq.l	#4,a7
 	bra	L319
 L318:	move.l	(a7)+,a0	; Option uebersprungen
 L319:
+	bsr	p_type
+	tst.b	d0
+	beq	L315
+	bsr	p_pointerDecl
+	tst.b	d0
+	beq	L315
+	bsr	p_staticLocalName
+	tst.b	d0
+	beq	L315
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_staticArrayDim
+	tst.b	d0
+	beq	L320
+	addq.l	#4,a7
+	bra	L321
+L320:	move.l	(a7)+,a0	; Option uebersprungen
+L321:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	ws
+	cmpi.b	#$3D,(a0)	; '='
+	bne	L322
+	cmpi.b	#$3D,1(a0)	; Longest-Match '='
+	bne	L324
+	bra	L322	; kuerzeres Operator-Token ablehnen
+L324:
+	addq.l	#1,a0
+	bsr	p_staticInit
+	tst.b	d0
+	beq	L322
+	addq.l	#4,a7
+	bra	L323
+L322:	move.l	(a7)+,a0	; Option uebersprungen
+L323:
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L311
+	bne	L315
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L311:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L315:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2803,11 +2839,11 @@ p_staticLocalName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L321
+	beq	L325
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L321:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L325:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2817,19 +2853,19 @@ p_staticArrayDim:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$5B,(a0)	; '['
-	bne	L322
+	bne	L326
 	addq.l	#1,a0
 	bsr	p_initNumber
 	tst.b	d0
-	beq	L322
+	beq	L326
 	bsr	ws
 	cmpi.b	#$5D,(a0)	; ']'
-	bne	L322
+	bne	L326
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L322:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L326:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2840,20 +2876,20 @@ p_staticInit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_globalValue
 	tst.b	d0
-	beq	L325
-	bra	L324
-L325:	move.l	(a7),a0	; naechste Alternative
+	beq	L329
+	bra	L328
+L329:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_staticRuntimeInit
 	tst.b	d0
-	beq	L326
-	bra	L324
-L326:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L323
-L324:	addq.l	#4,a7
+	beq	L330
+	bra	L328
+L330:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L327
+L328:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L323:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L327:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2863,11 +2899,11 @@ p_staticRuntimeInit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_expr
 	tst.b	d0
-	beq	L327
+	beq	L331
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L327:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L331:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2877,44 +2913,44 @@ p_switchStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_switchKw
 	tst.b	d0
-	beq	L328
+	beq	L332
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L328
+	bne	L332
 	addq.l	#1,a0
 	bsr	p_switchCond
 	tst.b	d0
-	beq	L328
+	beq	L332
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L328
+	bne	L332
 	addq.l	#1,a0
 	bsr	ws
 	cmpi.b	#$7B,(a0)	; '{'
-	bne	L328
+	bne	L332
 	addq.l	#1,a0
-L329:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L333:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_caseGroup
 	tst.b	d0
-	beq	L330
+	beq	L334
 	addq.l	#4,a7
-	bra	L329
-L330:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L333
+L334:	move.l	(a7)+,a0	; Wiederholung beendet
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_defaultGroup
 	tst.b	d0
-	beq	L331
+	beq	L335
 	addq.l	#4,a7
-	bra	L332
-L331:	move.l	(a7)+,a0	; Option uebersprungen
-L332:
+	bra	L336
+L335:	move.l	(a7)+,a0	; Option uebersprungen
+L336:
 	bsr	p_switchClose
 	tst.b	d0
-	beq	L328
+	beq	L332
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L328:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L332:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2924,26 +2960,26 @@ p_switchKw:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$73,(a0)	; 's'
-	bne	L333
+	bne	L337
 	cmpi.b	#$77,1(a0)	; 'w'
-	bne	L333
+	bne	L337
 	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L333
+	bne	L337
 	cmpi.b	#$74,3(a0)	; 't'
-	bne	L333
+	bne	L337
 	cmpi.b	#$63,4(a0)	; 'c'
-	bne	L333
+	bne	L337
 	cmpi.b	#$68,5(a0)	; 'h'
-	bne	L333
+	bne	L337
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L333	; Wortgrenze verletzt
+	bne	L337	; Wortgrenze verletzt
 	addq.l	#6,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L333:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L337:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2953,11 +2989,11 @@ p_switchCond:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_expr
 	tst.b	d0
-	beq	L334
+	beq	L338
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L334:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L338:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2967,12 +3003,12 @@ p_switchClose:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$7D,(a0)	; '}'
-	bne	L335
+	bne	L339
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L335:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L339:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2982,14 +3018,14 @@ p_caseGroup:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_caseLabelRun
 	tst.b	d0
-	beq	L336
+	beq	L340
 	bsr	p_caseBody
 	tst.b	d0
-	beq	L336
+	beq	L340
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L336:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L340:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -2999,18 +3035,18 @@ p_caseLabelRun:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_caseLabel
 	tst.b	d0
-	beq	L337
-L338:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L341
+L342:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_caseLabel
 	tst.b	d0
-	beq	L339
+	beq	L343
 	addq.l	#4,a7
-	bra	L338
-L339:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L342
+L343:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L337:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L341:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3020,29 +3056,29 @@ p_caseLabel:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$63,(a0)	; 'c'
-	bne	L340
+	bne	L344
 	cmpi.b	#$61,1(a0)	; 'a'
-	bne	L340
+	bne	L344
 	cmpi.b	#$73,2(a0)	; 's'
-	bne	L340
+	bne	L344
 	cmpi.b	#$65,3(a0)	; 'e'
-	bne	L340
+	bne	L344
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L340	; Wortgrenze verletzt
+	bne	L344	; Wortgrenze verletzt
 	addq.l	#4,a0
 	bsr	p_caseValue
 	tst.b	d0
-	beq	L340
+	beq	L344
 	bsr	ws
 	cmpi.b	#$3A,(a0)	; ':'
-	bne	L340
+	bne	L344
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L340:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L344:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3054,25 +3090,25 @@ p_caseValue:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L343
-	bra	L342
-L343:	move.l	(a7),a0	; naechste Alternative
+	beq	L347
+	bra	L346
+L347:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_caseNeg
 	tst.b	d0
-	beq	L344
-	bra	L342
-L344:	move.l	(a7),a0	; naechste Alternative
+	beq	L348
+	bra	L346
+L348:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_caseNumber
 	tst.b	d0
-	beq	L345
-	bra	L342
-L345:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L341
-L342:	addq.l	#4,a7
+	beq	L349
+	bra	L346
+L349:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L345
+L346:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L341:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L345:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3082,27 +3118,27 @@ p_caseNeg:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$2D,(a0)	; '-'
-	bne	L346
+	bne	L350
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L347
-	bra	L346	; kuerzeres Operator-Token ablehnen
-L347:
+	bne	L351
+	bra	L350	; kuerzeres Operator-Token ablehnen
+L351:
 	cmpi.b	#$2D,1(a0)	; Longest-Match '-'
-	bne	L348
-	bra	L346	; kuerzeres Operator-Token ablehnen
-L348:
+	bne	L352
+	bra	L350	; kuerzeres Operator-Token ablehnen
+L352:
 	cmpi.b	#$3E,1(a0)	; Longest-Match '>'
-	bne	L349
-	bra	L346	; kuerzeres Operator-Token ablehnen
-L349:
+	bne	L353
+	bra	L350	; kuerzeres Operator-Token ablehnen
+L353:
 	addq.l	#1,a0
 	bsr	p_caseNumber
 	tst.b	d0
-	beq	L346
+	beq	L350
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L346:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L350:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3113,19 +3149,19 @@ p_caseNumber:
 	bsr	ws
 	bsr	p_digit
 	tst.b	d0
-	beq	L350
-L351:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L354
+L355:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	ws
 	bsr	p_digit
 	tst.b	d0
-	beq	L352
+	beq	L356
 	addq.l	#4,a7
-	bra	L351
-L352:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L355
+L356:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L350:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L354:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3133,17 +3169,17 @@ L350:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: caseBody
 p_caseBody:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-L354:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L358:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_unlabeledStmt
 	tst.b	d0
-	beq	L355
+	beq	L359
 	addq.l	#4,a7
-	bra	L354
-L355:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L358
+L359:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L353:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L357:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3153,14 +3189,14 @@ p_defaultGroup:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_defaultLabel
 	tst.b	d0
-	beq	L356
+	beq	L360
 	bsr	p_caseBody
 	tst.b	d0
-	beq	L356
+	beq	L360
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L356:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L360:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3170,32 +3206,32 @@ p_defaultLabel:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$64,(a0)	; 'd'
-	bne	L357
+	bne	L361
 	cmpi.b	#$65,1(a0)	; 'e'
-	bne	L357
+	bne	L361
 	cmpi.b	#$66,2(a0)	; 'f'
-	bne	L357
+	bne	L361
 	cmpi.b	#$61,3(a0)	; 'a'
-	bne	L357
+	bne	L361
 	cmpi.b	#$75,4(a0)	; 'u'
-	bne	L357
+	bne	L361
 	cmpi.b	#$6C,5(a0)	; 'l'
-	bne	L357
+	bne	L361
 	cmpi.b	#$74,6(a0)	; 't'
-	bne	L357
+	bne	L361
 	move.b	7(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L357	; Wortgrenze verletzt
+	bne	L361	; Wortgrenze verletzt
 	addq.l	#7,a0
 	bsr	ws
 	cmpi.b	#$3A,(a0)	; ':'
-	bne	L357
+	bne	L361
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L357:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L361:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3206,52 +3242,52 @@ p_varDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_registerKw
 	tst.b	d0
-	beq	L359
-	addq.l	#4,a7
-	bra	L360
-L359:	move.l	(a7)+,a0	; Option uebersprungen
-L360:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_constKw
-	tst.b	d0
-	beq	L361
-	addq.l	#4,a7
-	bra	L362
-L361:	move.l	(a7)+,a0	; Option uebersprungen
-L362:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_volatileKw
-	tst.b	d0
 	beq	L363
 	addq.l	#4,a7
 	bra	L364
 L363:	move.l	(a7)+,a0	; Option uebersprungen
 L364:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_constKw
+	tst.b	d0
+	beq	L365
+	addq.l	#4,a7
+	bra	L366
+L365:	move.l	(a7)+,a0	; Option uebersprungen
+L366:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_volatileKw
+	tst.b	d0
+	beq	L367
+	addq.l	#4,a7
+	bra	L368
+L367:	move.l	(a7)+,a0	; Option uebersprungen
+L368:
 	bsr	p_type
 	tst.b	d0
-	beq	L358
+	beq	L362
 	bsr	p_varDeclarator
 	tst.b	d0
-	beq	L358
-L365:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L362
+L369:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	ws
 	cmpi.b	#$2C,(a0)	; ','
-	bne	L366
+	bne	L370
 	addq.l	#1,a0
 	bsr	p_varDeclarator
 	tst.b	d0
-	beq	L366
+	beq	L370
 	addq.l	#4,a7
-	bra	L365
-L366:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L369
+L370:	move.l	(a7)+,a0	; Wiederholung beendet
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L358
+	bne	L362
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L358:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L362:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3261,30 +3297,30 @@ p_registerKw:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$72,(a0)	; 'r'
-	bne	L367
+	bne	L371
 	cmpi.b	#$65,1(a0)	; 'e'
-	bne	L367
+	bne	L371
 	cmpi.b	#$67,2(a0)	; 'g'
-	bne	L367
+	bne	L371
 	cmpi.b	#$69,3(a0)	; 'i'
-	bne	L367
+	bne	L371
 	cmpi.b	#$73,4(a0)	; 's'
-	bne	L367
+	bne	L371
 	cmpi.b	#$74,5(a0)	; 't'
-	bne	L367
+	bne	L371
 	cmpi.b	#$65,6(a0)	; 'e'
-	bne	L367
+	bne	L371
 	cmpi.b	#$72,7(a0)	; 'r'
-	bne	L367
+	bne	L371
 	move.b	8(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L367	; Wortgrenze verletzt
+	bne	L371	; Wortgrenze verletzt
 	addq.l	#8,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L367:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L371:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3295,20 +3331,20 @@ p_varDeclarator:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_ptrArrayDecl
 	tst.b	d0
-	beq	L370
-	bra	L369
-L370:	move.l	(a7),a0	; naechste Alternative
+	beq	L374
+	bra	L373
+L374:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_plainVarDeclarator
 	tst.b	d0
-	beq	L371
-	bra	L369
-L371:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L368
-L369:	addq.l	#4,a7
+	beq	L375
+	bra	L373
+L375:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L372
+L373:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L368:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L372:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3318,30 +3354,30 @@ p_plainVarDeclarator:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_pointerDecl
 	tst.b	d0
-	beq	L372
+	beq	L376
 	bsr	p_localDecl
 	tst.b	d0
-	beq	L372
+	beq	L376
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	ws
 	cmpi.b	#$3D,(a0)	; '='
-	bne	L373
+	bne	L377
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L375
-	bra	L373	; kuerzeres Operator-Token ablehnen
-L375:
+	bne	L379
+	bra	L377	; kuerzeres Operator-Token ablehnen
+L379:
 	addq.l	#1,a0
 	bsr	p_varInit
 	tst.b	d0
-	beq	L373
+	beq	L377
 	addq.l	#4,a7
-	bra	L374
-L373:	move.l	(a7)+,a0	; Option uebersprungen
-L374:
+	bra	L378
+L377:	move.l	(a7)+,a0	; Option uebersprungen
+L378:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L372:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L376:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3351,37 +3387,37 @@ p_ptrArrayDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L376
+	bne	L380
 	addq.l	#1,a0
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L376
+	bne	L380
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L377
-	bra	L376	; kuerzeres Operator-Token ablehnen
-L377:
+	bne	L381
+	bra	L380	; kuerzeres Operator-Token ablehnen
+L381:
 	addq.l	#1,a0
 	bsr	p_localName
 	tst.b	d0
-	beq	L376
+	beq	L380
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L376
+	bne	L380
 	addq.l	#1,a0
 	bsr	p_arraySizeN
 	tst.b	d0
-	beq	L376
-L378:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L380
+L382:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_arraySizeN
 	tst.b	d0
-	beq	L379
+	beq	L383
 	addq.l	#4,a7
-	bra	L378
-L379:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L382
+L383:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L376:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L380:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3391,26 +3427,26 @@ p_localDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_localName
 	tst.b	d0
-	beq	L380
+	beq	L384
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_arraySize
 	tst.b	d0
-	beq	L381
-L383:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L385
+L387:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_arraySizeN
 	tst.b	d0
-	beq	L384
+	beq	L388
 	addq.l	#4,a7
-	bra	L383
-L384:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L387
+L388:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L382
-L381:	move.l	(a7)+,a0	; Option uebersprungen
-L382:
+	bra	L386
+L385:	move.l	(a7)+,a0	; Option uebersprungen
+L386:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L380:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L384:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3421,25 +3457,25 @@ p_varInit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_arrayStringInit
 	tst.b	d0
-	beq	L387
-	bra	L386
-L387:	move.l	(a7),a0	; naechste Alternative
+	beq	L391
+	bra	L390
+L391:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_expr
 	tst.b	d0
-	beq	L388
-	bra	L386
-L388:	move.l	(a7),a0	; naechste Alternative
+	beq	L392
+	bra	L390
+L392:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initList
 	tst.b	d0
-	beq	L389
-	bra	L386
-L389:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L385
-L386:	addq.l	#4,a7
+	beq	L393
+	bra	L390
+L393:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L389
+L390:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L385:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L389:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3450,11 +3486,11 @@ p_arrayStringInit:
 	bsr	ws
 	bsr	p_stringLit
 	tst.b	d0
-	beq	L390
+	beq	L394
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L390:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L394:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3464,35 +3500,35 @@ p_initList:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$7B,(a0)	; '{'
-	bne	L391
+	bne	L395
 	addq.l	#1,a0
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_initValue
 	tst.b	d0
-	beq	L392
-L394:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L396
+L398:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	ws
 	cmpi.b	#$2C,(a0)	; ','
-	bne	L395
+	bne	L399
 	addq.l	#1,a0
 	bsr	p_initValue
 	tst.b	d0
-	beq	L395
+	beq	L399
 	addq.l	#4,a7
-	bra	L394
-L395:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L398
+L399:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L393
-L392:	move.l	(a7)+,a0	; Option uebersprungen
-L393:
+	bra	L397
+L396:	move.l	(a7)+,a0	; Option uebersprungen
+L397:
 	bsr	ws
 	cmpi.b	#$7D,(a0)	; '}'
-	bne	L391
+	bne	L395
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L391:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L395:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3503,40 +3539,40 @@ p_initValue:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_initFloat
 	tst.b	d0
-	beq	L398
-	bra	L397
-L398:	move.l	(a7),a0	; naechste Alternative
+	beq	L402
+	bra	L401
+L402:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initNumber
 	tst.b	d0
-	beq	L399
-	bra	L397
-L399:	move.l	(a7),a0	; naechste Alternative
+	beq	L403
+	bra	L401
+L403:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initNeg
 	tst.b	d0
-	beq	L400
-	bra	L397
-L400:	move.l	(a7),a0	; naechste Alternative
+	beq	L404
+	bra	L401
+L404:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initBool
 	tst.b	d0
-	beq	L401
-	bra	L397
-L401:	move.l	(a7),a0	; naechste Alternative
+	beq	L405
+	bra	L401
+L405:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initString
 	tst.b	d0
-	beq	L402
-	bra	L397
-L402:	move.l	(a7),a0	; naechste Alternative
+	beq	L406
+	bra	L401
+L406:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initList
 	tst.b	d0
-	beq	L403
-	bra	L397
-L403:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L396
-L397:	addq.l	#4,a7
+	beq	L407
+	bra	L401
+L407:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L400
+L401:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L396:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L400:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3546,24 +3582,24 @@ p_initString:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$22,(a0)	; '"'
-	bne	L404
+	bne	L408
 	addq.l	#1,a0
-L405:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L409:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	ws
 	bsr	p_character
 	tst.b	d0
-	beq	L406
+	beq	L410
 	addq.l	#4,a7
-	bra	L405
-L406:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L409
+L410:	move.l	(a7)+,a0	; Wiederholung beendet
 	bsr	ws
 	cmpi.b	#$22,(a0)	; '"'
-	bne	L404
+	bne	L408
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L404:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L408:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3574,44 +3610,44 @@ p_initBool:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$74,(a0)	; 't'
-	bne	L409
+	bne	L413
 	cmpi.b	#$72,1(a0)	; 'r'
-	bne	L409
+	bne	L413
 	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L409
+	bne	L413
 	cmpi.b	#$65,3(a0)	; 'e'
-	bne	L409
+	bne	L413
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L409	; Wortgrenze verletzt
+	bne	L413	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L408
-L409:	move.l	(a7),a0	; naechste Alternative
+	bra	L412
+L413:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$66,(a0)	; 'f'
-	bne	L410
+	bne	L414
 	cmpi.b	#$61,1(a0)	; 'a'
-	bne	L410
+	bne	L414
 	cmpi.b	#$6C,2(a0)	; 'l'
-	bne	L410
+	bne	L414
 	cmpi.b	#$73,3(a0)	; 's'
-	bne	L410
+	bne	L414
 	cmpi.b	#$65,4(a0)	; 'e'
-	bne	L410
+	bne	L414
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L410	; Wortgrenze verletzt
+	bne	L414	; Wortgrenze verletzt
 	addq.l	#5,a0
-	bra	L408
-L410:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L407
-L408:	addq.l	#4,a7
+	bra	L412
+L414:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L411
+L412:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L407:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L411:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3621,37 +3657,37 @@ p_initNeg:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$2D,(a0)	; '-'
-	bne	L411
+	bne	L415
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L412
-	bra	L411	; kuerzeres Operator-Token ablehnen
-L412:
+	bne	L416
+	bra	L415	; kuerzeres Operator-Token ablehnen
+L416:
 	cmpi.b	#$2D,1(a0)	; Longest-Match '-'
-	bne	L413
-	bra	L411	; kuerzeres Operator-Token ablehnen
-L413:
+	bne	L417
+	bra	L415	; kuerzeres Operator-Token ablehnen
+L417:
 	cmpi.b	#$3E,1(a0)	; Longest-Match '>'
-	bne	L414
-	bra	L411	; kuerzeres Operator-Token ablehnen
-L414:
+	bne	L418
+	bra	L415	; kuerzeres Operator-Token ablehnen
+L418:
 	addq.l	#1,a0
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_initFloat
 	tst.b	d0
-	beq	L416
-	bra	L415
-L416:	move.l	(a7),a0	; naechste Alternative
+	beq	L420
+	bra	L419
+L420:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_initNumber
 	tst.b	d0
-	beq	L417
+	beq	L421
+	bra	L419
+L421:	move.l	(a7)+,a0	; Auswahl gescheitert
 	bra	L415
-L417:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L411
-L415:	addq.l	#4,a7
+L419:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L411:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L415:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3662,23 +3698,23 @@ p_initFloat:
 	bsr	ws
 	bsr	p_digit
 	tst.b	d0
-	beq	L418
-L419:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L422
+L423:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	ws
 	bsr	p_digit
 	tst.b	d0
-	beq	L420
+	beq	L424
 	addq.l	#4,a7
-	bra	L419
-L420:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L423
+L424:	move.l	(a7)+,a0	; Wiederholung beendet
 	bsr	ws
 	bsr	p_floatTail
 	tst.b	d0
-	beq	L418
+	beq	L422
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L418:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L422:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3690,30 +3726,30 @@ p_initNumber:
 	bsr	ws
 	bsr	p_hexNumber
 	tst.b	d0
-	beq	L423
-	bra	L422
-L423:	move.l	(a7),a0	; naechste Alternative
+	beq	L427
+	bra	L426
+L427:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	bsr	p_decNumber
 	tst.b	d0
-	beq	L424
-	bra	L422
-L424:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L421
-L422:	addq.l	#4,a7
+	beq	L428
+	bra	L426
+L428:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L425
+L426:	addq.l	#4,a7
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	ws
 	bsr	p_integerSuffix
 	tst.b	d0
-	beq	L425
+	beq	L429
 	addq.l	#4,a7
-	bra	L426
-L425:	move.l	(a7)+,a0	; Option uebersprungen
-L426:
+	bra	L430
+L429:	move.l	(a7)+,a0	; Option uebersprungen
+L430:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L421:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L425:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3724,30 +3760,30 @@ p_assignStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_chainAssign
 	tst.b	d0
-	beq	L429
-	bra	L428
-L429:	move.l	(a7),a0	; naechste Alternative
+	beq	L433
+	bra	L432
+L433:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_target
 	tst.b	d0
-	beq	L430
+	beq	L434
 	bsr	p_assignop
 	tst.b	d0
-	beq	L430
+	beq	L434
 	bsr	p_expr
 	tst.b	d0
-	beq	L430
+	beq	L434
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L430
+	bne	L434
 	addq.l	#1,a0
-	bra	L428
-L430:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L427
-L428:	addq.l	#4,a7
+	bra	L432
+L434:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L431
+L432:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L427:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L431:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3757,27 +3793,27 @@ p_chainAssign:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_target
 	tst.b	d0
-	beq	L431
+	beq	L435
 	bsr	p_assignop
 	tst.b	d0
-	beq	L431
+	beq	L435
 	bsr	p_target
 	tst.b	d0
-	beq	L431
+	beq	L435
 	bsr	p_assignop
 	tst.b	d0
-	beq	L431
+	beq	L435
 	bsr	p_expr
 	tst.b	d0
-	beq	L431
+	beq	L435
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L431
+	bne	L435
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L431:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L435:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3788,104 +3824,104 @@ p_assignop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$3D,(a0)	; '='
-	bne	L434
+	bne	L438
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L435
-	bra	L434	; kuerzeres Operator-Token ablehnen
-L435:
+	bne	L439
+	bra	L438	; kuerzeres Operator-Token ablehnen
+L439:
 	addq.l	#1,a0
-	bra	L433
-L434:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$2B,(a0)	; '+'
-	bne	L436
-	cmpi.b	#$3D,1(a0)	; '='
-	bne	L436
-	addq.l	#2,a0
-	bra	L433
-L436:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$2D,(a0)	; '-'
-	bne	L437
-	cmpi.b	#$3D,1(a0)	; '='
-	bne	L437
-	addq.l	#2,a0
-	bra	L433
-L437:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$2A,(a0)	; '*'
-	bne	L438
-	cmpi.b	#$3D,1(a0)	; '='
-	bne	L438
-	addq.l	#2,a0
-	bra	L433
+	bra	L437
 L438:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
-	cmpi.b	#$2F,(a0)	; '/'
-	bne	L439
-	cmpi.b	#$3D,1(a0)	; '='
-	bne	L439
-	addq.l	#2,a0
-	bra	L433
-L439:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$25,(a0)	; '%'
+	cmpi.b	#$2B,(a0)	; '+'
 	bne	L440
 	cmpi.b	#$3D,1(a0)	; '='
 	bne	L440
 	addq.l	#2,a0
-	bra	L433
+	bra	L437
 L440:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
-	cmpi.b	#$3C,(a0)	; '<'
+	cmpi.b	#$2D,(a0)	; '-'
 	bne	L441
-	cmpi.b	#$3C,1(a0)	; '<'
+	cmpi.b	#$3D,1(a0)	; '='
 	bne	L441
-	cmpi.b	#$3D,2(a0)	; '='
-	bne	L441
-	addq.l	#3,a0
-	bra	L433
+	addq.l	#2,a0
+	bra	L437
 L441:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
-	cmpi.b	#$3E,(a0)	; '>'
+	cmpi.b	#$2A,(a0)	; '*'
 	bne	L442
-	cmpi.b	#$3E,1(a0)	; '>'
+	cmpi.b	#$3D,1(a0)	; '='
 	bne	L442
-	cmpi.b	#$3D,2(a0)	; '='
-	bne	L442
-	addq.l	#3,a0
-	bra	L433
+	addq.l	#2,a0
+	bra	L437
 L442:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
-	cmpi.b	#$26,(a0)	; '&'
+	cmpi.b	#$2F,(a0)	; '/'
 	bne	L443
 	cmpi.b	#$3D,1(a0)	; '='
 	bne	L443
 	addq.l	#2,a0
-	bra	L433
+	bra	L437
 L443:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
-	cmpi.b	#$5E,(a0)	; '^'
+	cmpi.b	#$25,(a0)	; '%'
 	bne	L444
 	cmpi.b	#$3D,1(a0)	; '='
 	bne	L444
 	addq.l	#2,a0
-	bra	L433
+	bra	L437
 L444:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
-	cmpi.b	#$7C,(a0)	; '|'
+	cmpi.b	#$3C,(a0)	; '<'
 	bne	L445
+	cmpi.b	#$3C,1(a0)	; '<'
+	bne	L445
+	cmpi.b	#$3D,2(a0)	; '='
+	bne	L445
+	addq.l	#3,a0
+	bra	L437
+L445:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$3E,(a0)	; '>'
+	bne	L446
+	cmpi.b	#$3E,1(a0)	; '>'
+	bne	L446
+	cmpi.b	#$3D,2(a0)	; '='
+	bne	L446
+	addq.l	#3,a0
+	bra	L437
+L446:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$26,(a0)	; '&'
+	bne	L447
 	cmpi.b	#$3D,1(a0)	; '='
-	bne	L445
+	bne	L447
 	addq.l	#2,a0
-	bra	L433
-L445:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L432
-L433:	addq.l	#4,a7
+	bra	L437
+L447:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$5E,(a0)	; '^'
+	bne	L448
+	cmpi.b	#$3D,1(a0)	; '='
+	bne	L448
+	addq.l	#2,a0
+	bra	L437
+L448:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$7C,(a0)	; '|'
+	bne	L449
+	cmpi.b	#$3D,1(a0)	; '='
+	bne	L449
+	addq.l	#2,a0
+	bra	L437
+L449:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L436
+L437:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L432:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L436:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3896,28 +3932,231 @@ p_callStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_call
 	tst.b	d0
-	beq	L448
+	beq	L452
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L448
+	bne	L452
 	addq.l	#1,a0
-	bra	L447
-L448:	move.l	(a7),a0	; naechste Alternative
+	bra	L451
+L452:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_indirectCall
 	tst.b	d0
-	beq	L449
+	beq	L453
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L449
+	bne	L453
 	addq.l	#1,a0
-	bra	L447
-L449:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L446
-L447:	addq.l	#4,a7
+	bra	L451
+L453:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L450
+L451:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L446:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L450:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: vaStmt
+p_vaStmt:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_vaStartCall
+	tst.b	d0
+	beq	L456
+	bsr	ws
+	cmpi.b	#$3B,(a0)	; ';'
+	bne	L456
+	addq.l	#1,a0
+	bra	L455
+L456:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_vaEndCall
+	tst.b	d0
+	beq	L457
+	bsr	ws
+	cmpi.b	#$3B,(a0)	; ';'
+	bne	L457
+	addq.l	#1,a0
+	bra	L455
+L457:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L454
+L455:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L454:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: vaStartCall
+p_vaStartCall:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$76,(a0)	; 'v'
+	bne	L458
+	cmpi.b	#$61,1(a0)	; 'a'
+	bne	L458
+	cmpi.b	#$5F,2(a0)	; '_'
+	bne	L458
+	cmpi.b	#$73,3(a0)	; 's'
+	bne	L458
+	cmpi.b	#$74,4(a0)	; 't'
+	bne	L458
+	cmpi.b	#$61,5(a0)	; 'a'
+	bne	L458
+	cmpi.b	#$72,6(a0)	; 'r'
+	bne	L458
+	cmpi.b	#$74,7(a0)	; 't'
+	bne	L458
+	move.b	8(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L458	; Wortgrenze verletzt
+	addq.l	#8,a0
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L458
+	addq.l	#1,a0
+	bsr	p_vaApRef
+	tst.b	d0
+	beq	L458
+	bsr	ws
+	cmpi.b	#$2C,(a0)	; ','
+	bne	L458
+	addq.l	#1,a0
+	bsr	p_vaLastName
+	tst.b	d0
+	beq	L458
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L458
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L458:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: vaEndCall
+p_vaEndCall:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$76,(a0)	; 'v'
+	bne	L459
+	cmpi.b	#$61,1(a0)	; 'a'
+	bne	L459
+	cmpi.b	#$5F,2(a0)	; '_'
+	bne	L459
+	cmpi.b	#$65,3(a0)	; 'e'
+	bne	L459
+	cmpi.b	#$6E,4(a0)	; 'n'
+	bne	L459
+	cmpi.b	#$64,5(a0)	; 'd'
+	bne	L459
+	move.b	6(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L459	; Wortgrenze verletzt
+	addq.l	#6,a0
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L459
+	addq.l	#1,a0
+	bsr	p_vaApRef
+	tst.b	d0
+	beq	L459
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L459
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L459:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: vaApRef
+p_vaApRef:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L460
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L460:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: vaLastName
+p_vaLastName:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L461
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L461:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: vaArgExpr
+p_vaArgExpr:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$76,(a0)	; 'v'
+	bne	L462
+	cmpi.b	#$61,1(a0)	; 'a'
+	bne	L462
+	cmpi.b	#$5F,2(a0)	; '_'
+	bne	L462
+	cmpi.b	#$61,3(a0)	; 'a'
+	bne	L462
+	cmpi.b	#$72,4(a0)	; 'r'
+	bne	L462
+	cmpi.b	#$67,5(a0)	; 'g'
+	bne	L462
+	move.b	6(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L462	; Wortgrenze verletzt
+	addq.l	#6,a0
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L462
+	addq.l	#1,a0
+	bsr	p_vaApRef
+	tst.b	d0
+	beq	L462
+	bsr	ws
+	cmpi.b	#$2C,(a0)	; ','
+	bne	L462
+	addq.l	#1,a0
+	bsr	p_type
+	tst.b	d0
+	beq	L462
+	bsr	p_pointerDecl
+	tst.b	d0
+	beq	L462
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L462
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L462:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3927,12 +4166,12 @@ p_emptyStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L450
+	bne	L463
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L450:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L463:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3942,18 +4181,18 @@ p_voidCastStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_voidCastOpen
 	tst.b	d0
-	beq	L451
+	beq	L464
 	bsr	p_expr
 	tst.b	d0
-	beq	L451
+	beq	L464
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L451
+	bne	L464
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L451:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L464:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3963,30 +4202,30 @@ p_voidCastOpen:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L452
+	bne	L465
 	addq.l	#1,a0
 	bsr	ws
 	cmpi.b	#$76,(a0)	; 'v'
-	bne	L452
+	bne	L465
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L452
+	bne	L465
 	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L452
+	bne	L465
 	cmpi.b	#$64,3(a0)	; 'd'
-	bne	L452
+	bne	L465
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L452	; Wortgrenze verletzt
+	bne	L465	; Wortgrenze verletzt
 	addq.l	#4,a0
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L452
+	bne	L465
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L452:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L465:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -3996,230 +4235,34 @@ p_returnStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$72,(a0)	; 'r'
-	bne	L453
+	bne	L466
 	cmpi.b	#$65,1(a0)	; 'e'
-	bne	L453
+	bne	L466
 	cmpi.b	#$74,2(a0)	; 't'
-	bne	L453
+	bne	L466
 	cmpi.b	#$75,3(a0)	; 'u'
-	bne	L453
+	bne	L466
 	cmpi.b	#$72,4(a0)	; 'r'
-	bne	L453
+	bne	L466
 	cmpi.b	#$6E,5(a0)	; 'n'
-	bne	L453
+	bne	L466
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L453	; Wortgrenze verletzt
+	bne	L466	; Wortgrenze verletzt
 	addq.l	#6,a0
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_retVal
 	tst.b	d0
-	beq	L454
+	beq	L467
 	addq.l	#4,a7
-	bra	L455
-L454:	move.l	(a7)+,a0	; Option uebersprungen
-L455:
+	bra	L468
+L467:	move.l	(a7)+,a0	; Option uebersprungen
+L468:
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L453
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L453:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: retVal
-p_retVal:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_expr
-	tst.b	d0
-	beq	L456
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L456:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: ifStmt
-p_ifStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_ifKw
-	tst.b	d0
-	beq	L457
-	bsr	ws
-	cmpi.b	#$28,(a0)	; '('
-	bne	L457
-	addq.l	#1,a0
-	bsr	p_ifCond
-	tst.b	d0
-	beq	L457
-	bsr	ws
-	cmpi.b	#$29,(a0)	; ')'
-	bne	L457
-	addq.l	#1,a0
-	bsr	p_thenPart
-	tst.b	d0
-	beq	L457
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_elseKw
-	tst.b	d0
-	beq	L458
-	bsr	p_elsePart
-	tst.b	d0
-	beq	L458
-	addq.l	#4,a7
-	bra	L459
-L458:	move.l	(a7)+,a0	; Option uebersprungen
-L459:
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L457:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: ifKw
-p_ifKw:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$69,(a0)	; 'i'
-	bne	L460
-	cmpi.b	#$66,1(a0)	; 'f'
-	bne	L460
-	move.b	2(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L460	; Wortgrenze verletzt
-	addq.l	#2,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L460:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: elseKw
-p_elseKw:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$65,(a0)	; 'e'
-	bne	L461
-	cmpi.b	#$6C,1(a0)	; 'l'
-	bne	L461
-	cmpi.b	#$73,2(a0)	; 's'
-	bne	L461
-	cmpi.b	#$65,3(a0)	; 'e'
-	bne	L461
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L461	; Wortgrenze verletzt
-	addq.l	#4,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L461:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: ifCond
-p_ifCond:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_expr
-	tst.b	d0
-	beq	L462
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L462:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: thenPart
-p_thenPart:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_statement
-	tst.b	d0
-	beq	L463
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L463:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: elsePart
-p_elsePart:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_statement
-	tst.b	d0
-	beq	L464
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L464:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: whileStmt
-p_whileStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_whileKw
-	tst.b	d0
-	beq	L465
-	bsr	ws
-	cmpi.b	#$28,(a0)	; '('
-	bne	L465
-	addq.l	#1,a0
-	bsr	p_whileCond
-	tst.b	d0
-	beq	L465
-	bsr	ws
-	cmpi.b	#$29,(a0)	; ')'
-	bne	L465
-	addq.l	#1,a0
-	bsr	p_whileBody
-	tst.b	d0
-	beq	L465
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L465:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: whileKw
-p_whileKw:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$77,(a0)	; 'w'
 	bne	L466
-	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L466
-	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L466
-	cmpi.b	#$6C,3(a0)	; 'l'
-	bne	L466
-	cmpi.b	#$65,4(a0)	; 'e'
-	bne	L466
-	move.b	5(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L466	; Wortgrenze verletzt
-	addq.l	#5,a0
+	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -4228,78 +4271,10 @@ L466:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: whileCond
-p_whileCond:
+; Regel: retVal
+p_retVal:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_expr
-	tst.b	d0
-	beq	L467
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L467:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: whileBody
-p_whileBody:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_statement
-	tst.b	d0
-	beq	L468
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L468:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: forStmt
-p_forStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_forKw
-	tst.b	d0
-	beq	L469
-	bsr	ws
-	cmpi.b	#$28,(a0)	; '('
-	bne	L469
-	addq.l	#1,a0
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_forInit
-	tst.b	d0
-	beq	L470
-	addq.l	#4,a7
-	bra	L471
-L470:	move.l	(a7)+,a0	; Option uebersprungen
-L471:
-	bsr	p_forSep1
-	tst.b	d0
-	beq	L469
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_forCond
-	tst.b	d0
-	beq	L472
-	addq.l	#4,a7
-	bra	L473
-L472:	move.l	(a7)+,a0	; Option uebersprungen
-L473:
-	bsr	p_forSep2
-	tst.b	d0
-	beq	L469
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_forStep
-	tst.b	d0
-	beq	L474
-	addq.l	#4,a7
-	bra	L475
-L474:	move.l	(a7)+,a0	; Option uebersprungen
-L475:
-	bsr	p_forClose
-	tst.b	d0
-	beq	L469
-	bsr	p_forBody
 	tst.b	d0
 	beq	L469
 	addq.l	#4,a7
@@ -4310,25 +4285,289 @@ L469:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
+; Regel: ifStmt
+p_ifStmt:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_ifKw
+	tst.b	d0
+	beq	L470
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L470
+	addq.l	#1,a0
+	bsr	p_ifCond
+	tst.b	d0
+	beq	L470
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L470
+	addq.l	#1,a0
+	bsr	p_thenPart
+	tst.b	d0
+	beq	L470
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_elseKw
+	tst.b	d0
+	beq	L471
+	bsr	p_elsePart
+	tst.b	d0
+	beq	L471
+	addq.l	#4,a7
+	bra	L472
+L471:	move.l	(a7)+,a0	; Option uebersprungen
+L472:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L470:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: ifKw
+p_ifKw:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$69,(a0)	; 'i'
+	bne	L473
+	cmpi.b	#$66,1(a0)	; 'f'
+	bne	L473
+	move.b	2(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L473	; Wortgrenze verletzt
+	addq.l	#2,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L473:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: elseKw
+p_elseKw:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$65,(a0)	; 'e'
+	bne	L474
+	cmpi.b	#$6C,1(a0)	; 'l'
+	bne	L474
+	cmpi.b	#$73,2(a0)	; 's'
+	bne	L474
+	cmpi.b	#$65,3(a0)	; 'e'
+	bne	L474
+	move.b	4(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L474	; Wortgrenze verletzt
+	addq.l	#4,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L474:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: ifCond
+p_ifCond:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_expr
+	tst.b	d0
+	beq	L475
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L475:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: thenPart
+p_thenPart:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_statement
+	tst.b	d0
+	beq	L476
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L476:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: elsePart
+p_elsePart:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_statement
+	tst.b	d0
+	beq	L477
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L477:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: whileStmt
+p_whileStmt:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_whileKw
+	tst.b	d0
+	beq	L478
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L478
+	addq.l	#1,a0
+	bsr	p_whileCond
+	tst.b	d0
+	beq	L478
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L478
+	addq.l	#1,a0
+	bsr	p_whileBody
+	tst.b	d0
+	beq	L478
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L478:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: whileKw
+p_whileKw:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$77,(a0)	; 'w'
+	bne	L479
+	cmpi.b	#$68,1(a0)	; 'h'
+	bne	L479
+	cmpi.b	#$69,2(a0)	; 'i'
+	bne	L479
+	cmpi.b	#$6C,3(a0)	; 'l'
+	bne	L479
+	cmpi.b	#$65,4(a0)	; 'e'
+	bne	L479
+	move.b	5(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L479	; Wortgrenze verletzt
+	addq.l	#5,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L479:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: whileCond
+p_whileCond:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_expr
+	tst.b	d0
+	beq	L480
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L480:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: whileBody
+p_whileBody:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_statement
+	tst.b	d0
+	beq	L481
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L481:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: forStmt
+p_forStmt:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_forKw
+	tst.b	d0
+	beq	L482
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L482
+	addq.l	#1,a0
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_forInit
+	tst.b	d0
+	beq	L483
+	addq.l	#4,a7
+	bra	L484
+L483:	move.l	(a7)+,a0	; Option uebersprungen
+L484:
+	bsr	p_forSep1
+	tst.b	d0
+	beq	L482
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_forCond
+	tst.b	d0
+	beq	L485
+	addq.l	#4,a7
+	bra	L486
+L485:	move.l	(a7)+,a0	; Option uebersprungen
+L486:
+	bsr	p_forSep2
+	tst.b	d0
+	beq	L482
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_forStep
+	tst.b	d0
+	beq	L487
+	addq.l	#4,a7
+	bra	L488
+L487:	move.l	(a7)+,a0	; Option uebersprungen
+L488:
+	bsr	p_forClose
+	tst.b	d0
+	beq	L482
+	bsr	p_forBody
+	tst.b	d0
+	beq	L482
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L482:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
 ; Regel: forKw
 p_forKw:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$66,(a0)	; 'f'
-	bne	L476
+	bne	L489
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L476
+	bne	L489
 	cmpi.b	#$72,2(a0)	; 'r'
-	bne	L476
+	bne	L489
 	move.b	3(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L476	; Wortgrenze verletzt
+	bne	L489	; Wortgrenze verletzt
 	addq.l	#3,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L476:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L489:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4338,12 +4577,12 @@ p_forSep1:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L477
+	bne	L490
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L477:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L490:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4353,12 +4592,12 @@ p_forSep2:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L478
+	bne	L491
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L478:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L491:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4368,12 +4607,12 @@ p_forClose:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L479
+	bne	L492
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L479:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L492:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4383,21 +4622,21 @@ p_forInit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_forInitItem
 	tst.b	d0
-	beq	L480
-L481:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L493
+L494:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_forComma
 	tst.b	d0
-	beq	L482
+	beq	L495
 	bsr	p_forInitItem
 	tst.b	d0
-	beq	L482
+	beq	L495
 	addq.l	#4,a7
-	bra	L481
-L482:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L494
+L495:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L480:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L493:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4407,17 +4646,17 @@ p_forInitItem:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_target
 	tst.b	d0
-	beq	L483
+	beq	L496
 	bsr	p_assignop
 	tst.b	d0
-	beq	L483
+	beq	L496
 	bsr	p_expr
 	tst.b	d0
-	beq	L483
+	beq	L496
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L483:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L496:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4427,177 +4666,8 @@ p_forComma:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$2C,(a0)	; ','
-	bne	L484
+	bne	L497
 	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L484:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: forCond
-p_forCond:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_expr
-	tst.b	d0
-	beq	L485
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L485:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: forStep
-p_forStep:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_forStepItem
-	tst.b	d0
-	beq	L486
-L487:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_forComma
-	tst.b	d0
-	beq	L488
-	bsr	p_forStepItem
-	tst.b	d0
-	beq	L488
-	addq.l	#4,a7
-	bra	L487
-L488:	move.l	(a7)+,a0	; Wiederholung beendet
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L486:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: forStepItem
-p_forStepItem:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_target
-	tst.b	d0
-	beq	L491
-	bsr	p_assignop
-	tst.b	d0
-	beq	L491
-	bsr	p_expr
-	tst.b	d0
-	beq	L491
-	bra	L490
-L491:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_postIncDec
-	tst.b	d0
-	beq	L492
-	bra	L490
-L492:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_preIncDec
-	tst.b	d0
-	beq	L493
-	bra	L490
-L493:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L489
-L490:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L489:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: forBody
-p_forBody:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_statement
-	tst.b	d0
-	beq	L494
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L494:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: doStmt
-p_doStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_doKw
-	tst.b	d0
-	beq	L495
-	bsr	p_doBody
-	tst.b	d0
-	beq	L495
-	bsr	p_doWhileTok
-	tst.b	d0
-	beq	L495
-	bsr	ws
-	cmpi.b	#$28,(a0)	; '('
-	bne	L495
-	addq.l	#1,a0
-	bsr	p_doCond
-	tst.b	d0
-	beq	L495
-	bsr	ws
-	cmpi.b	#$29,(a0)	; ')'
-	bne	L495
-	addq.l	#1,a0
-	bsr	p_doClose
-	tst.b	d0
-	beq	L495
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L495:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: doKw
-p_doKw:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$64,(a0)	; 'd'
-	bne	L496
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L496
-	move.b	2(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L496	; Wortgrenze verletzt
-	addq.l	#2,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L496:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: doWhileTok
-p_doWhileTok:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$77,(a0)	; 'w'
-	bne	L497
-	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L497
-	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L497
-	cmpi.b	#$6C,3(a0)	; 'l'
-	bne	L497
-	cmpi.b	#$65,4(a0)	; 'e'
-	bne	L497
-	move.b	5(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L497	; Wortgrenze verletzt
-	addq.l	#5,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -4606,8 +4676,8 @@ L497:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: doCond
-p_doCond:
+; Regel: forCond
+p_forCond:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_expr
 	tst.b	d0
@@ -4620,17 +4690,186 @@ L498:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
+; Regel: forStep
+p_forStep:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_forStepItem
+	tst.b	d0
+	beq	L499
+L500:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_forComma
+	tst.b	d0
+	beq	L501
+	bsr	p_forStepItem
+	tst.b	d0
+	beq	L501
+	addq.l	#4,a7
+	bra	L500
+L501:	move.l	(a7)+,a0	; Wiederholung beendet
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L499:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: forStepItem
+p_forStepItem:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_target
+	tst.b	d0
+	beq	L504
+	bsr	p_assignop
+	tst.b	d0
+	beq	L504
+	bsr	p_expr
+	tst.b	d0
+	beq	L504
+	bra	L503
+L504:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_postIncDec
+	tst.b	d0
+	beq	L505
+	bra	L503
+L505:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_preIncDec
+	tst.b	d0
+	beq	L506
+	bra	L503
+L506:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L502
+L503:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L502:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: forBody
+p_forBody:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_statement
+	tst.b	d0
+	beq	L507
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L507:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: doStmt
+p_doStmt:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_doKw
+	tst.b	d0
+	beq	L508
+	bsr	p_doBody
+	tst.b	d0
+	beq	L508
+	bsr	p_doWhileTok
+	tst.b	d0
+	beq	L508
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L508
+	addq.l	#1,a0
+	bsr	p_doCond
+	tst.b	d0
+	beq	L508
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L508
+	addq.l	#1,a0
+	bsr	p_doClose
+	tst.b	d0
+	beq	L508
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L508:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: doKw
+p_doKw:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$64,(a0)	; 'd'
+	bne	L509
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L509
+	move.b	2(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L509	; Wortgrenze verletzt
+	addq.l	#2,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L509:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: doWhileTok
+p_doWhileTok:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$77,(a0)	; 'w'
+	bne	L510
+	cmpi.b	#$68,1(a0)	; 'h'
+	bne	L510
+	cmpi.b	#$69,2(a0)	; 'i'
+	bne	L510
+	cmpi.b	#$6C,3(a0)	; 'l'
+	bne	L510
+	cmpi.b	#$65,4(a0)	; 'e'
+	bne	L510
+	move.b	5(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L510	; Wortgrenze verletzt
+	addq.l	#5,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L510:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: doCond
+p_doCond:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_expr
+	tst.b	d0
+	beq	L511
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L511:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
 ; Regel: doClose
 p_doClose:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L499
+	bne	L512
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L499:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L512:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4640,11 +4879,11 @@ p_doBody:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_statement
 	tst.b	d0
-	beq	L500
+	beq	L513
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L500:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L513:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -4654,225 +4893,22 @@ p_breakStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$62,(a0)	; 'b'
-	bne	L501
+	bne	L514
 	cmpi.b	#$72,1(a0)	; 'r'
-	bne	L501
+	bne	L514
 	cmpi.b	#$65,2(a0)	; 'e'
-	bne	L501
+	bne	L514
 	cmpi.b	#$61,3(a0)	; 'a'
-	bne	L501
+	bne	L514
 	cmpi.b	#$6B,4(a0)	; 'k'
-	bne	L501
+	bne	L514
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L501	; Wortgrenze verletzt
+	bne	L514	; Wortgrenze verletzt
 	addq.l	#5,a0
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L501
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L501:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: continueStmt
-p_continueStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$63,(a0)	; 'c'
-	bne	L502
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L502
-	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L502
-	cmpi.b	#$74,3(a0)	; 't'
-	bne	L502
-	cmpi.b	#$69,4(a0)	; 'i'
-	bne	L502
-	cmpi.b	#$6E,5(a0)	; 'n'
-	bne	L502
-	cmpi.b	#$75,6(a0)	; 'u'
-	bne	L502
-	cmpi.b	#$65,7(a0)	; 'e'
-	bne	L502
-	move.b	8(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L502	; Wortgrenze verletzt
-	addq.l	#8,a0
-	bsr	ws
-	cmpi.b	#$3B,(a0)	; ';'
-	bne	L502
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L502:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: gotoStmt
-p_gotoStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$67,(a0)	; 'g'
-	bne	L503
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L503
-	cmpi.b	#$74,2(a0)	; 't'
-	bne	L503
-	cmpi.b	#$6F,3(a0)	; 'o'
-	bne	L503
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L503	; Wortgrenze verletzt
-	addq.l	#4,a0
-	bsr	ws
-	bsr	p_ident
-	tst.b	d0
-	beq	L503
-	bsr	ws
-	cmpi.b	#$3B,(a0)	; ';'
-	bne	L503
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L503:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: labelStmt
-p_labelStmt:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	bsr	p_ident
-	tst.b	d0
-	beq	L504
-	bsr	ws
-	cmpi.b	#$3A,(a0)	; ':'
-	bne	L504
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L504:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: expr
-p_expr:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_conditionalExpr
-	tst.b	d0
-	beq	L505
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L505:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: conditionalExpr
-p_conditionalExpr:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_orExpr
-	tst.b	d0
-	beq	L506
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_qmark
-	tst.b	d0
-	beq	L507
-	bsr	p_conditionalTrue
-	tst.b	d0
-	beq	L507
-	bsr	p_colon
-	tst.b	d0
-	beq	L507
-	bsr	p_conditionalFalse
-	tst.b	d0
-	beq	L507
-	addq.l	#4,a7
-	bra	L508
-L507:	move.l	(a7)+,a0	; Option uebersprungen
-L508:
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L506:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: parenOpen
-p_parenOpen:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$28,(a0)	; '('
-	bne	L509
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L509:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: parenClose
-p_parenClose:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$29,(a0)	; ')'
-	bne	L510
-	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L510:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: commaExpr
-p_commaExpr:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_commaItem
-	tst.b	d0
-	beq	L511
-L512:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_commaTok
-	tst.b	d0
-	beq	L513
-	bsr	p_commaItem
-	tst.b	d0
-	beq	L513
-	addq.l	#4,a7
-	bra	L512
-L513:	move.l	(a7)+,a0	; Wiederholung beendet
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L511:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: commaTok
-p_commaTok:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$2C,(a0)	; ','
 	bne	L514
 	addq.l	#1,a0
 	addq.l	#4,a7
@@ -4883,22 +4919,35 @@ L514:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: commaItem
-p_commaItem:
+; Regel: continueStmt
+p_continueStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_commaAssign
+	bsr	ws
+	cmpi.b	#$63,(a0)	; 'c'
+	bne	L515
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L515
+	cmpi.b	#$6E,2(a0)	; 'n'
+	bne	L515
+	cmpi.b	#$74,3(a0)	; 't'
+	bne	L515
+	cmpi.b	#$69,4(a0)	; 'i'
+	bne	L515
+	cmpi.b	#$6E,5(a0)	; 'n'
+	bne	L515
+	cmpi.b	#$75,6(a0)	; 'u'
+	bne	L515
+	cmpi.b	#$65,7(a0)	; 'e'
+	bne	L515
+	move.b	8(a0),d1
+	bsr	idch
 	tst.b	d0
-	beq	L517
-	bra	L516
-L517:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_commaValue
-	tst.b	d0
-	beq	L518
-	bra	L516
-L518:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L515
-L516:	addq.l	#4,a7
+	bne	L515	; Wortgrenze verletzt
+	addq.l	#8,a0
+	bsr	ws
+	cmpi.b	#$3B,(a0)	; ';'
+	bne	L515
+	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -4907,18 +4956,95 @@ L515:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: commaAssign
-p_commaAssign:
+; Regel: gotoStmt
+p_gotoStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_target
+	bsr	ws
+	cmpi.b	#$67,(a0)	; 'g'
+	bne	L516
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L516
+	cmpi.b	#$74,2(a0)	; 't'
+	bne	L516
+	cmpi.b	#$6F,3(a0)	; 'o'
+	bne	L516
+	move.b	4(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L516	; Wortgrenze verletzt
+	addq.l	#4,a0
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L516
+	bsr	ws
+	cmpi.b	#$3B,(a0)	; ';'
+	bne	L516
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L516:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: labelStmt
+p_labelStmt:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L517
+	bsr	ws
+	cmpi.b	#$3A,(a0)	; ':'
+	bne	L517
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L517:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: expr
+p_expr:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_conditionalExpr
+	tst.b	d0
+	beq	L518
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L518:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: conditionalExpr
+p_conditionalExpr:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_orExpr
 	tst.b	d0
 	beq	L519
-	bsr	p_assignop
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_qmark
 	tst.b	d0
-	beq	L519
-	bsr	p_expr
+	beq	L520
+	bsr	p_conditionalTrue
 	tst.b	d0
-	beq	L519
+	beq	L520
+	bsr	p_colon
+	tst.b	d0
+	beq	L520
+	bsr	p_conditionalFalse
+	tst.b	d0
+	beq	L520
+	addq.l	#4,a7
+	bra	L521
+L520:	move.l	(a7)+,a0	; Option uebersprungen
+L521:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -4927,41 +5053,13 @@ L519:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: commaValue
-p_commaValue:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_expr
-	tst.b	d0
-	beq	L520
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L520:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: qmark
-p_qmark:
+; Regel: parenOpen
+p_parenOpen:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
-	cmpi.b	#$3F,(a0)	; '?'
-	bne	L521
+	cmpi.b	#$28,(a0)	; '('
+	bne	L522
 	addq.l	#1,a0
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L521:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: conditionalTrue
-p_conditionalTrue:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_expr
-	tst.b	d0
-	beq	L522
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -4970,11 +5068,11 @@ L522:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: colon
-p_colon:
+; Regel: parenClose
+p_parenClose:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
-	cmpi.b	#$3A,(a0)	; ':'
+	cmpi.b	#$29,(a0)	; ')'
 	bne	L523
 	addq.l	#1,a0
 	addq.l	#4,a7
@@ -4985,12 +5083,22 @@ L523:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: conditionalFalse
-p_conditionalFalse:
+; Regel: commaExpr
+p_commaExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_conditionalExpr
+	bsr	p_commaItem
 	tst.b	d0
 	beq	L524
+L525:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_commaTok
+	tst.b	d0
+	beq	L526
+	bsr	p_commaItem
+	tst.b	d0
+	beq	L526
+	addq.l	#4,a7
+	bra	L525
+L526:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -4999,40 +5107,37 @@ L524:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: orExpr
-p_orExpr:
+; Regel: commaTok
+p_commaTok:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_andExpr
-	tst.b	d0
-	beq	L525
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_orop
-	tst.b	d0
-	beq	L526
-	bsr	p_orExpr
-	tst.b	d0
-	beq	L526
-	addq.l	#4,a7
-	bra	L527
-L526:	move.l	(a7)+,a0	; Option uebersprungen
-L527:
+	bsr	ws
+	cmpi.b	#$2C,(a0)	; ','
+	bne	L527
+	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L525:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L527:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: orop
-p_orop:
+; Regel: commaItem
+p_commaItem:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$7C,(a0)	; '|'
-	bne	L528
-	cmpi.b	#$7C,1(a0)	; '|'
-	bne	L528
-	addq.l	#2,a0
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_commaAssign
+	tst.b	d0
+	beq	L530
+	bra	L529
+L530:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_commaValue
+	tst.b	d0
+	beq	L531
+	bra	L529
+L531:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L528
+L529:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -5041,40 +5146,18 @@ L528:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: andExpr
-p_andExpr:
+; Regel: commaAssign
+p_commaAssign:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_bitOrExpr
+	bsr	p_target
 	tst.b	d0
-	beq	L529
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_andop
+	beq	L532
+	bsr	p_assignop
 	tst.b	d0
-	beq	L530
-	bsr	p_andExpr
+	beq	L532
+	bsr	p_expr
 	tst.b	d0
-	beq	L530
-	addq.l	#4,a7
-	bra	L531
-L530:	move.l	(a7)+,a0	; Option uebersprungen
-L531:
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L529:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: andop
-p_andop:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$26,(a0)	; '&'
-	bne	L532
-	cmpi.b	#$26,1(a0)	; '&'
-	bne	L532
-	addq.l	#2,a0
+	beq	L532
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -5083,23 +5166,12 @@ L532:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: bitOrExpr
-p_bitOrExpr:
+; Regel: commaValue
+p_commaValue:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_bitXorExpr
+	bsr	p_expr
 	tst.b	d0
 	beq	L533
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_bitorop
-	tst.b	d0
-	beq	L534
-	bsr	p_bitOrExpr
-	tst.b	d0
-	beq	L534
-	addq.l	#4,a7
-	bra	L535
-L534:	move.l	(a7)+,a0	; Option uebersprungen
-L535:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -5108,20 +5180,41 @@ L533:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: bitorop
-p_bitorop:
+; Regel: qmark
+p_qmark:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
-	cmpi.b	#$7C,(a0)	; '|'
+	cmpi.b	#$3F,(a0)	; '?'
+	bne	L534
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L534:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: conditionalTrue
+p_conditionalTrue:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_expr
+	tst.b	d0
+	beq	L535
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L535:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: colon
+p_colon:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$3A,(a0)	; ':'
 	bne	L536
-	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L537
-	bra	L536	; kuerzeres Operator-Token ablehnen
-L537:
-	cmpi.b	#$7C,1(a0)	; Longest-Match '|'
-	bne	L538
-	bra	L536	; kuerzeres Operator-Token ablehnen
-L538:
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
@@ -5131,27 +5224,173 @@ L536:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
+; Regel: conditionalFalse
+p_conditionalFalse:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_conditionalExpr
+	tst.b	d0
+	beq	L537
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L537:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: orExpr
+p_orExpr:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_andExpr
+	tst.b	d0
+	beq	L538
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_orop
+	tst.b	d0
+	beq	L539
+	bsr	p_orExpr
+	tst.b	d0
+	beq	L539
+	addq.l	#4,a7
+	bra	L540
+L539:	move.l	(a7)+,a0	; Option uebersprungen
+L540:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L538:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: orop
+p_orop:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$7C,(a0)	; '|'
+	bne	L541
+	cmpi.b	#$7C,1(a0)	; '|'
+	bne	L541
+	addq.l	#2,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L541:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: andExpr
+p_andExpr:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_bitOrExpr
+	tst.b	d0
+	beq	L542
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_andop
+	tst.b	d0
+	beq	L543
+	bsr	p_andExpr
+	tst.b	d0
+	beq	L543
+	addq.l	#4,a7
+	bra	L544
+L543:	move.l	(a7)+,a0	; Option uebersprungen
+L544:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L542:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: andop
+p_andop:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$26,(a0)	; '&'
+	bne	L545
+	cmpi.b	#$26,1(a0)	; '&'
+	bne	L545
+	addq.l	#2,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L545:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: bitOrExpr
+p_bitOrExpr:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_bitXorExpr
+	tst.b	d0
+	beq	L546
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_bitorop
+	tst.b	d0
+	beq	L547
+	bsr	p_bitOrExpr
+	tst.b	d0
+	beq	L547
+	addq.l	#4,a7
+	bra	L548
+L547:	move.l	(a7)+,a0	; Option uebersprungen
+L548:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L546:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: bitorop
+p_bitorop:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$7C,(a0)	; '|'
+	bne	L549
+	cmpi.b	#$3D,1(a0)	; Longest-Match '='
+	bne	L550
+	bra	L549	; kuerzeres Operator-Token ablehnen
+L550:
+	cmpi.b	#$7C,1(a0)	; Longest-Match '|'
+	bne	L551
+	bra	L549	; kuerzeres Operator-Token ablehnen
+L551:
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L549:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
 ; Regel: bitXorExpr
 p_bitXorExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_bitAndExpr
 	tst.b	d0
-	beq	L539
+	beq	L552
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_bitxorop
 	tst.b	d0
-	beq	L540
+	beq	L553
 	bsr	p_bitXorExpr
 	tst.b	d0
-	beq	L540
+	beq	L553
 	addq.l	#4,a7
-	bra	L541
-L540:	move.l	(a7)+,a0	; Option uebersprungen
-L541:
+	bra	L554
+L553:	move.l	(a7)+,a0	; Option uebersprungen
+L554:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L539:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L552:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5161,16 +5400,16 @@ p_bitxorop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$5E,(a0)	; '^'
-	bne	L542
+	bne	L555
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L543
-	bra	L542	; kuerzeres Operator-Token ablehnen
-L543:
+	bne	L556
+	bra	L555	; kuerzeres Operator-Token ablehnen
+L556:
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L542:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L555:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5180,22 +5419,22 @@ p_bitAndExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_comparison
 	tst.b	d0
-	beq	L544
+	beq	L557
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_bitandop
 	tst.b	d0
-	beq	L545
+	beq	L558
 	bsr	p_bitAndExpr
 	tst.b	d0
-	beq	L545
+	beq	L558
 	addq.l	#4,a7
-	bra	L546
-L545:	move.l	(a7)+,a0	; Option uebersprungen
-L546:
+	bra	L559
+L558:	move.l	(a7)+,a0	; Option uebersprungen
+L559:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L544:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L557:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5205,20 +5444,20 @@ p_bitandop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$26,(a0)	; '&'
-	bne	L547
+	bne	L560
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L548
-	bra	L547	; kuerzeres Operator-Token ablehnen
-L548:
+	bne	L561
+	bra	L560	; kuerzeres Operator-Token ablehnen
+L561:
 	cmpi.b	#$26,1(a0)	; Longest-Match '&'
-	bne	L549
-	bra	L547	; kuerzeres Operator-Token ablehnen
-L549:
+	bne	L562
+	bra	L560	; kuerzeres Operator-Token ablehnen
+L562:
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L547:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L560:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5228,22 +5467,22 @@ p_comparison:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_shiftExpr
 	tst.b	d0
-	beq	L550
+	beq	L563
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_relop
 	tst.b	d0
-	beq	L551
+	beq	L564
 	bsr	p_shiftExpr
 	tst.b	d0
-	beq	L551
+	beq	L564
 	addq.l	#4,a7
-	bra	L552
-L551:	move.l	(a7)+,a0	; Option uebersprungen
-L552:
+	bra	L565
+L564:	move.l	(a7)+,a0	; Option uebersprungen
+L565:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L550:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L563:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5253,21 +5492,21 @@ p_shiftExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_addExpr
 	tst.b	d0
-	beq	L553
-L554:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L566
+L567:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_shiftop
 	tst.b	d0
-	beq	L555
+	beq	L568
 	bsr	p_shiftRhs
 	tst.b	d0
-	beq	L555
+	beq	L568
 	addq.l	#4,a7
-	bra	L554
-L555:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L567
+L568:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L553:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L566:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5277,11 +5516,11 @@ p_shiftRhs:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_addExpr
 	tst.b	d0
-	beq	L556
+	beq	L569
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L556:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L569:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5292,34 +5531,34 @@ p_shiftop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$3C,(a0)	; '<'
-	bne	L559
+	bne	L572
 	cmpi.b	#$3C,1(a0)	; '<'
-	bne	L559
+	bne	L572
 	cmpi.b	#$3D,2(a0)	; Longest-Match '='
-	bne	L560
-	bra	L559	; kuerzeres Operator-Token ablehnen
-L560:
+	bne	L573
+	bra	L572	; kuerzeres Operator-Token ablehnen
+L573:
 	addq.l	#2,a0
-	bra	L558
-L559:	move.l	(a7),a0	; naechste Alternative
+	bra	L571
+L572:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$3E,(a0)	; '>'
-	bne	L561
+	bne	L574
 	cmpi.b	#$3E,1(a0)	; '>'
-	bne	L561
+	bne	L574
 	cmpi.b	#$3D,2(a0)	; Longest-Match '='
-	bne	L562
-	bra	L561	; kuerzeres Operator-Token ablehnen
-L562:
+	bne	L575
+	bra	L574	; kuerzeres Operator-Token ablehnen
+L575:
 	addq.l	#2,a0
-	bra	L558
-L561:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L557
-L558:	addq.l	#4,a7
+	bra	L571
+L574:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L570
+L571:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L557:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L570:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5330,82 +5569,82 @@ p_relop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$3C,(a0)	; '<'
-	bne	L565
+	bne	L578
 	cmpi.b	#$3D,1(a0)	; '='
-	bne	L565
+	bne	L578
 	addq.l	#2,a0
-	bra	L564
-L565:	move.l	(a7),a0	; naechste Alternative
+	bra	L577
+L578:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$3E,(a0)	; '>'
-	bne	L566
+	bne	L579
 	cmpi.b	#$3D,1(a0)	; '='
-	bne	L566
+	bne	L579
 	addq.l	#2,a0
-	bra	L564
-L566:	move.l	(a7),a0	; naechste Alternative
+	bra	L577
+L579:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$3D,(a0)	; '='
-	bne	L567
+	bne	L580
 	cmpi.b	#$3D,1(a0)	; '='
-	bne	L567
+	bne	L580
 	addq.l	#2,a0
-	bra	L564
-L567:	move.l	(a7),a0	; naechste Alternative
+	bra	L577
+L580:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$21,(a0)	; '!'
-	bne	L568
+	bne	L581
 	cmpi.b	#$3D,1(a0)	; '='
-	bne	L568
+	bne	L581
 	addq.l	#2,a0
-	bra	L564
-L568:	move.l	(a7),a0	; naechste Alternative
+	bra	L577
+L581:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$3C,(a0)	; '<'
-	bne	L569
+	bne	L582
 	cmpi.b	#$3C,1(a0)	; Longest-Match '<'
-	bne	L570
+	bne	L583
 	cmpi.b	#$3D,2(a0)	; Longest-Match '='
-	bne	L570
-	bra	L569	; kuerzeres Operator-Token ablehnen
-L570:
+	bne	L583
+	bra	L582	; kuerzeres Operator-Token ablehnen
+L583:
 	cmpi.b	#$3C,1(a0)	; Longest-Match '<'
-	bne	L571
-	bra	L569	; kuerzeres Operator-Token ablehnen
-L571:
+	bne	L584
+	bra	L582	; kuerzeres Operator-Token ablehnen
+L584:
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L572
-	bra	L569	; kuerzeres Operator-Token ablehnen
-L572:
+	bne	L585
+	bra	L582	; kuerzeres Operator-Token ablehnen
+L585:
 	addq.l	#1,a0
-	bra	L564
-L569:	move.l	(a7),a0	; naechste Alternative
+	bra	L577
+L582:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$3E,(a0)	; '>'
-	bne	L573
+	bne	L586
 	cmpi.b	#$3E,1(a0)	; Longest-Match '>'
-	bne	L574
+	bne	L587
 	cmpi.b	#$3D,2(a0)	; Longest-Match '='
-	bne	L574
-	bra	L573	; kuerzeres Operator-Token ablehnen
-L574:
+	bne	L587
+	bra	L586	; kuerzeres Operator-Token ablehnen
+L587:
 	cmpi.b	#$3E,1(a0)	; Longest-Match '>'
-	bne	L575
-	bra	L573	; kuerzeres Operator-Token ablehnen
-L575:
+	bne	L588
+	bra	L586	; kuerzeres Operator-Token ablehnen
+L588:
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L576
-	bra	L573	; kuerzeres Operator-Token ablehnen
-L576:
+	bne	L589
+	bra	L586	; kuerzeres Operator-Token ablehnen
+L589:
 	addq.l	#1,a0
-	bra	L564
-L573:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L563
-L564:	addq.l	#4,a7
+	bra	L577
+L586:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L576
+L577:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L563:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L576:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5415,21 +5654,21 @@ p_addExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_term
 	tst.b	d0
-	beq	L577
-L578:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L590
+L591:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_addop
 	tst.b	d0
-	beq	L579
+	beq	L592
 	bsr	p_term
 	tst.b	d0
-	beq	L579
+	beq	L592
 	addq.l	#4,a7
-	bra	L578
-L579:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L591
+L592:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L577:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L590:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5440,42 +5679,42 @@ p_addop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$2B,(a0)	; '+'
-	bne	L582
+	bne	L595
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L583
-	bra	L582	; kuerzeres Operator-Token ablehnen
-L583:
+	bne	L596
+	bra	L595	; kuerzeres Operator-Token ablehnen
+L596:
 	cmpi.b	#$2B,1(a0)	; Longest-Match '+'
-	bne	L584
-	bra	L582	; kuerzeres Operator-Token ablehnen
-L584:
+	bne	L597
+	bra	L595	; kuerzeres Operator-Token ablehnen
+L597:
 	addq.l	#1,a0
-	bra	L581
-L582:	move.l	(a7),a0	; naechste Alternative
+	bra	L594
+L595:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$2D,(a0)	; '-'
-	bne	L585
+	bne	L598
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L586
-	bra	L585	; kuerzeres Operator-Token ablehnen
-L586:
+	bne	L599
+	bra	L598	; kuerzeres Operator-Token ablehnen
+L599:
 	cmpi.b	#$2D,1(a0)	; Longest-Match '-'
-	bne	L587
-	bra	L585	; kuerzeres Operator-Token ablehnen
-L587:
+	bne	L600
+	bra	L598	; kuerzeres Operator-Token ablehnen
+L600:
 	cmpi.b	#$3E,1(a0)	; Longest-Match '>'
-	bne	L588
-	bra	L585	; kuerzeres Operator-Token ablehnen
-L588:
+	bne	L601
+	bra	L598	; kuerzeres Operator-Token ablehnen
+L601:
 	addq.l	#1,a0
-	bra	L581
-L585:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L580
-L581:	addq.l	#4,a7
+	bra	L594
+L598:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L593
+L594:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L580:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L593:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5485,21 +5724,21 @@ p_term:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_factor
 	tst.b	d0
-	beq	L589
-L590:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L602
+L603:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_mulop
 	tst.b	d0
-	beq	L591
+	beq	L604
 	bsr	p_factor
 	tst.b	d0
-	beq	L591
+	beq	L604
 	addq.l	#4,a7
-	bra	L590
-L591:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L603
+L604:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L589:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L602:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5510,40 +5749,40 @@ p_mulop:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L594
+	bne	L607
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L595
-	bra	L594	; kuerzeres Operator-Token ablehnen
-L595:
+	bne	L608
+	bra	L607	; kuerzeres Operator-Token ablehnen
+L608:
 	addq.l	#1,a0
-	bra	L593
-L594:	move.l	(a7),a0	; naechste Alternative
+	bra	L606
+L607:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$2F,(a0)	; '/'
-	bne	L596
+	bne	L609
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L597
-	bra	L596	; kuerzeres Operator-Token ablehnen
-L597:
+	bne	L610
+	bra	L609	; kuerzeres Operator-Token ablehnen
+L610:
 	addq.l	#1,a0
-	bra	L593
-L596:	move.l	(a7),a0	; naechste Alternative
+	bra	L606
+L609:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$25,(a0)	; '%'
-	bne	L598
+	bne	L611
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L599
-	bra	L598	; kuerzeres Operator-Token ablehnen
-L599:
+	bne	L612
+	bra	L611	; kuerzeres Operator-Token ablehnen
+L612:
 	addq.l	#1,a0
-	bra	L593
-L598:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L592
-L593:	addq.l	#4,a7
+	bra	L606
+L611:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L605
+L606:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L592:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L605:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5554,124 +5793,134 @@ p_factor:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_sizeofExpr
 	tst.b	d0
-	beq	L602
-	bra	L601
-L602:	move.l	(a7),a0	; naechste Alternative
+	beq	L615
+	bra	L614
+L615:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_vaArgExpr
+	tst.b	d0
+	beq	L616
+	bra	L614
+L616:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_castExpr
 	tst.b	d0
-	beq	L603
-	bra	L601
-L603:	move.l	(a7),a0	; naechste Alternative
+	beq	L617
+	bra	L614
+L617:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_preIncDec
 	tst.b	d0
-	beq	L604
-	bra	L601
-L604:	move.l	(a7),a0	; naechste Alternative
+	beq	L618
+	bra	L614
+L618:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_postIncDec
 	tst.b	d0
-	beq	L605
-	bra	L601
-L605:	move.l	(a7),a0	; naechste Alternative
+	beq	L619
+	bra	L614
+L619:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_parenOpen
 	tst.b	d0
-	beq	L606
+	beq	L620
 	bsr	p_commaExpr
 	tst.b	d0
-	beq	L606
+	beq	L620
 	bsr	p_parenClose
 	tst.b	d0
-	beq	L606
-	bra	L601
-L606:	move.l	(a7),a0	; naechste Alternative
+	beq	L620
+	bra	L614
+L620:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_call
 	tst.b	d0
-	beq	L607
+	beq	L621
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_postfixIndex
 	tst.b	d0
-	beq	L608
+	beq	L622
 	addq.l	#4,a7
-	bra	L609
-L608:	move.l	(a7)+,a0	; Option uebersprungen
-L609:
+	bra	L623
+L622:	move.l	(a7)+,a0	; Option uebersprungen
+L623:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_callMember
 	tst.b	d0
-	beq	L610
+	beq	L624
 	addq.l	#4,a7
-	bra	L611
-L610:	move.l	(a7)+,a0	; Option uebersprungen
-L611:
-	bra	L601
-L607:	move.l	(a7),a0	; naechste Alternative
+	bra	L625
+L624:	move.l	(a7)+,a0	; Option uebersprungen
+L625:
+	bra	L614
+L621:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_indirectCall
 	tst.b	d0
-	beq	L612
-	bra	L601
-L612:	move.l	(a7),a0	; naechste Alternative
+	beq	L626
+	bra	L614
+L626:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_boolLit
 	tst.b	d0
-	beq	L613
-	bra	L601
-L613:	move.l	(a7),a0	; naechste Alternative
+	beq	L627
+	bra	L614
+L627:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_addressRef
 	tst.b	d0
-	beq	L614
-	bra	L601
-L614:	move.l	(a7),a0	; naechste Alternative
+	beq	L628
+	bra	L614
+L628:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_derefRef
 	tst.b	d0
-	beq	L615
-	bra	L601
-L615:	move.l	(a7),a0	; naechste Alternative
+	beq	L629
+	bra	L614
+L629:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_varRef
 	tst.b	d0
-	beq	L616
-	bra	L601
-L616:	move.l	(a7),a0	; naechste Alternative
+	beq	L630
+	bra	L614
+L630:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	bsr	p_charLit
 	tst.b	d0
-	beq	L617
-	bra	L601
-L617:	move.l	(a7),a0	; naechste Alternative
+	beq	L631
+	bra	L614
+L631:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	bsr	p_floatLit
 	tst.b	d0
-	beq	L618
-	bra	L601
-L618:	move.l	(a7),a0	; naechste Alternative
+	beq	L632
+	bra	L614
+L632:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	bsr	p_number
 	tst.b	d0
-	beq	L619
-	bra	L601
-L619:	move.l	(a7),a0	; naechste Alternative
+	beq	L633
+	bra	L614
+L633:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	bsr	p_stringLit
 	tst.b	d0
-	beq	L620
+	beq	L634
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_postfixIndex
 	tst.b	d0
-	beq	L621
+	beq	L635
 	addq.l	#4,a7
-	bra	L622
-L621:	move.l	(a7)+,a0	; Option uebersprungen
-L622:
-	bra	L601
-L620:	move.l	(a7),a0	; naechste Alternative
+	bra	L636
+L635:	move.l	(a7)+,a0	; Option uebersprungen
+L636:
+	bra	L614
+L634:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_posFactor
+	tst.b	d0
+	beq	L637
+	bra	L614
+L637:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_negFactor
 	tst.b	d0
-	beq	L623
-	bra	L601
-L623:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L600
-L601:	addq.l	#4,a7
+	beq	L638
+	bra	L614
+L638:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L613
+L614:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L600:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L613:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5681,11 +5930,11 @@ p_postfixIndex:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_index
 	tst.b	d0
-	beq	L624
+	beq	L639
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L624:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L639:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5695,21 +5944,21 @@ p_stringLit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_stringPiece
 	tst.b	d0
-	beq	L625
-L626:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L640
+L641:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_stringSep
 	tst.b	d0
-	beq	L627
+	beq	L642
 	bsr	p_stringPiece
 	tst.b	d0
-	beq	L627
+	beq	L642
 	addq.l	#4,a7
-	bra	L626
-L627:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L641
+L642:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L625:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L640:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5718,22 +5967,22 @@ L625:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 p_stringPiece:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	cmpi.b	#$22,(a0)	; '"'
-	bne	L628
+	bne	L643
 	addq.l	#1,a0
-L629:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L644:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_character
 	tst.b	d0
-	beq	L630
+	beq	L645
 	addq.l	#4,a7
-	bra	L629
-L630:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L644
+L645:	move.l	(a7)+,a0	; Wiederholung beendet
 	cmpi.b	#$22,(a0)	; '"'
-	bne	L628
+	bne	L643
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L628:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L643:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5741,17 +5990,17 @@ L628:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: stringSep (lexikalisch)
 p_stringSep:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-L632:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L647:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_stringSpace
 	tst.b	d0
-	beq	L633
+	beq	L648
 	addq.l	#4,a7
-	bra	L632
-L633:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L647
+L648:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L631:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L646:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5761,31 +6010,31 @@ p_stringSpace:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	cmpi.b	#$20,(a0)	; ' '
-	bne	L636
+	bne	L651
 	addq.l	#1,a0
-	bra	L635
-L636:	move.l	(a7),a0	; naechste Alternative
+	bra	L650
+L651:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$09,(a0)	; 0x09
-	bne	L637
+	bne	L652
 	addq.l	#1,a0
-	bra	L635
-L637:	move.l	(a7),a0	; naechste Alternative
+	bra	L650
+L652:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$0D,(a0)	; 0x0D
-	bne	L638
+	bne	L653
 	addq.l	#1,a0
-	bra	L635
-L638:	move.l	(a7),a0	; naechste Alternative
+	bra	L650
+L653:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$0A,(a0)	; 0x0A
-	bne	L639
+	bne	L654
 	addq.l	#1,a0
-	bra	L635
-L639:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L634
-L635:	addq.l	#4,a7
+	bra	L650
+L654:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L649
+L650:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L634:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L649:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5794,18 +6043,18 @@ L634:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 p_charLit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	cmpi.b	#$27,(a0)	; '''
-	bne	L640
+	bne	L655
 	addq.l	#1,a0
 	bsr	p_charLitBody
 	tst.b	d0
-	beq	L640
+	beq	L655
 	cmpi.b	#$27,(a0)	; '''
-	bne	L640
+	bne	L655
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L640:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L655:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5816,20 +6065,20 @@ p_charLitBody:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_charLitEscape
 	tst.b	d0
-	beq	L643
-	bra	L642
-L643:	move.l	(a7),a0	; naechste Alternative
+	beq	L658
+	bra	L657
+L658:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_charLitPlain
 	tst.b	d0
-	beq	L644
-	bra	L642
-L644:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L641
-L642:	addq.l	#4,a7
+	beq	L659
+	bra	L657
+L659:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L656
+L657:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L641:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L656:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5838,15 +6087,15 @@ L641:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 p_charLitEscape:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	cmpi.b	#$5C,(a0)	; '\'
-	bne	L645
+	bne	L660
 	addq.l	#1,a0
 	bsr	p_charLitEscChar
 	tst.b	d0
-	beq	L645
+	beq	L660
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L645:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L660:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5856,36 +6105,36 @@ p_charLitEscChar:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	cmpi.b	#$6E,(a0)	; 'n'
-	bne	L648
+	bne	L663
 	addq.l	#1,a0
-	bra	L647
-L648:	move.l	(a7),a0	; naechste Alternative
+	bra	L662
+L663:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$74,(a0)	; 't'
-	bne	L649
+	bne	L664
 	addq.l	#1,a0
-	bra	L647
-L649:	move.l	(a7),a0	; naechste Alternative
+	bra	L662
+L664:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$72,(a0)	; 'r'
-	bne	L650
+	bne	L665
 	addq.l	#1,a0
-	bra	L647
-L650:	move.l	(a7),a0	; naechste Alternative
+	bra	L662
+L665:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$30,(a0)	; '0'
-	bne	L651
+	bne	L666
 	addq.l	#1,a0
-	bra	L647
-L651:	move.l	(a7),a0	; naechste Alternative
+	bra	L662
+L666:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$5C,(a0)	; '\'
-	bne	L652
+	bne	L667
 	addq.l	#1,a0
-	bra	L647
-L652:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L646
-L647:	addq.l	#4,a7
+	bra	L662
+L667:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L661
+L662:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L646:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L661:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5896,34 +6145,34 @@ p_charLitPlain:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	move.b	(a0),d1
 	cmpi.b	#$20,d1	; ' '
-	blo	L655
+	blo	L670
 	cmpi.b	#$26,d1	; '&'
-	bhi	L655
+	bhi	L670
 	addq.l	#1,a0
-	bra	L654
-L655:	move.l	(a7),a0	; naechste Alternative
+	bra	L669
+L670:	move.l	(a7),a0	; naechste Alternative
 	move.b	(a0),d1
 	cmpi.b	#$28,d1	; '('
-	blo	L656
+	blo	L671
 	cmpi.b	#$5B,d1	; '['
-	bhi	L656
+	bhi	L671
 	addq.l	#1,a0
-	bra	L654
-L656:	move.l	(a7),a0	; naechste Alternative
+	bra	L669
+L671:	move.l	(a7),a0	; naechste Alternative
 	move.b	(a0),d1
 	cmpi.b	#$5D,d1	; ']'
-	blo	L657
+	blo	L672
 	cmpi.b	#$7E,d1	; '~'
-	bhi	L657
+	bhi	L672
 	addq.l	#1,a0
-	bra	L654
-L657:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L653
-L654:	addq.l	#4,a7
+	bra	L669
+L672:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L668
+L669:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L653:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L668:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5934,31 +6183,31 @@ p_character:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_strEscape
 	tst.b	d0
-	beq	L660
-	bra	L659
-L660:	move.l	(a7),a0	; naechste Alternative
+	beq	L675
+	bra	L674
+L675:	move.l	(a7),a0	; naechste Alternative
 	move.b	(a0),d1
 	cmpi.b	#$20,d1	; ' '
-	blo	L661
+	blo	L676
 	cmpi.b	#$21,d1	; '!'
-	bhi	L661
+	bhi	L676
 	addq.l	#1,a0
-	bra	L659
-L661:	move.l	(a7),a0	; naechste Alternative
+	bra	L674
+L676:	move.l	(a7),a0	; naechste Alternative
 	move.b	(a0),d1
 	cmpi.b	#$23,d1	; '#'
-	blo	L662
+	blo	L677
 	cmpi.b	#$7E,d1	; '~'
-	bhi	L662
+	bhi	L677
 	addq.l	#1,a0
-	bra	L659
-L662:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L658
-L659:	addq.l	#4,a7
+	bra	L674
+L677:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L673
+L674:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L658:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L673:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5967,15 +6216,15 @@ L658:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 p_strEscape:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	cmpi.b	#$5C,(a0)	; '\'
-	bne	L663
+	bne	L678
 	addq.l	#1,a0
 	bsr	p_strEscChar
 	tst.b	d0
-	beq	L663
+	beq	L678
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L663:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L678:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -5985,14 +6234,14 @@ p_strEscChar:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.b	(a0),d1
 	cmpi.b	#$20,d1	; ' '
-	blo	L664
+	blo	L679
 	cmpi.b	#$7E,d1	; '~'
-	bhi	L664
+	bhi	L679
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L664:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L679:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6003,47 +6252,73 @@ p_negFactor:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$2D,(a0)	; '-'
-	bne	L667
+	bne	L682
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L668
-	bra	L667	; kuerzeres Operator-Token ablehnen
-L668:
+	bne	L683
+	bra	L682	; kuerzeres Operator-Token ablehnen
+L683:
 	cmpi.b	#$2D,1(a0)	; Longest-Match '-'
-	bne	L669
-	bra	L667	; kuerzeres Operator-Token ablehnen
-L669:
+	bne	L684
+	bra	L682	; kuerzeres Operator-Token ablehnen
+L684:
 	cmpi.b	#$3E,1(a0)	; Longest-Match '>'
-	bne	L670
-	bra	L667	; kuerzeres Operator-Token ablehnen
-L670:
+	bne	L685
+	bra	L682	; kuerzeres Operator-Token ablehnen
+L685:
 	addq.l	#1,a0
-	bra	L666
-L667:	move.l	(a7),a0	; naechste Alternative
+	bra	L681
+L682:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$21,(a0)	; '!'
-	bne	L671
+	bne	L686
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L672
-	bra	L671	; kuerzeres Operator-Token ablehnen
-L672:
+	bne	L687
+	bra	L686	; kuerzeres Operator-Token ablehnen
+L687:
 	addq.l	#1,a0
-	bra	L666
-L671:	move.l	(a7),a0	; naechste Alternative
+	bra	L681
+L686:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$7E,(a0)	; '~'
-	bne	L673
+	bne	L688
 	addq.l	#1,a0
-	bra	L666
-L673:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L665
-L666:	addq.l	#4,a7
+	bra	L681
+L688:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L680
+L681:	addq.l	#4,a7
 	bsr	p_factor
 	tst.b	d0
-	beq	L665
+	beq	L680
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L665:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L680:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: posFactor
+p_posFactor:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$2B,(a0)	; '+'
+	bne	L689
+	cmpi.b	#$3D,1(a0)	; Longest-Match '='
+	bne	L690
+	bra	L689	; kuerzeres Operator-Token ablehnen
+L690:
+	cmpi.b	#$2B,1(a0)	; Longest-Match '+'
+	bne	L691
+	bra	L689	; kuerzeres Operator-Token ablehnen
+L691:
+	addq.l	#1,a0
+	bsr	p_factor
+	tst.b	d0
+	beq	L689
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L689:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6053,32 +6328,32 @@ p_addressRef:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$26,(a0)	; '&'
-	bne	L674
+	bne	L692
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L675
-	bra	L674	; kuerzeres Operator-Token ablehnen
-L675:
+	bne	L693
+	bra	L692	; kuerzeres Operator-Token ablehnen
+L693:
 	cmpi.b	#$26,1(a0)	; Longest-Match '&'
-	bne	L676
-	bra	L674	; kuerzeres Operator-Token ablehnen
-L676:
+	bne	L694
+	bra	L692	; kuerzeres Operator-Token ablehnen
+L694:
 	addq.l	#1,a0
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L674
+	beq	L692
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L677
+	beq	L695
 	addq.l	#4,a7
-	bra	L678
-L677:	move.l	(a7)+,a0	; Option uebersprungen
-L678:
+	bra	L696
+L695:	move.l	(a7)+,a0	; Option uebersprungen
+L696:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L674:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L692:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6088,47 +6363,47 @@ p_sizeofExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$73,(a0)	; 's'
-	bne	L679
+	bne	L697
 	cmpi.b	#$69,1(a0)	; 'i'
-	bne	L679
+	bne	L697
 	cmpi.b	#$7A,2(a0)	; 'z'
-	bne	L679
+	bne	L697
 	cmpi.b	#$65,3(a0)	; 'e'
-	bne	L679
+	bne	L697
 	cmpi.b	#$6F,4(a0)	; 'o'
-	bne	L679
+	bne	L697
 	cmpi.b	#$66,5(a0)	; 'f'
-	bne	L679
+	bne	L697
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L679	; Wortgrenze verletzt
+	bne	L697	; Wortgrenze verletzt
 	addq.l	#6,a0
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L681
+	bne	L699
 	addq.l	#1,a0
 	bsr	p_sizeofArg
 	tst.b	d0
-	beq	L681
+	beq	L699
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L681
+	bne	L699
 	addq.l	#1,a0
-	bra	L680
-L681:	move.l	(a7),a0	; naechste Alternative
+	bra	L698
+L699:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_sizeofVarName
 	tst.b	d0
-	beq	L682
-	bra	L680
-L682:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L679
-L680:	addq.l	#4,a7
+	beq	L700
+	bra	L698
+L700:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L697
+L698:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L679:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L697:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6139,20 +6414,20 @@ p_sizeofArg:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_sizeofType
 	tst.b	d0
-	beq	L685
-	bra	L684
-L685:	move.l	(a7),a0	; naechste Alternative
+	beq	L703
+	bra	L702
+L703:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_sizeofVarName
 	tst.b	d0
-	beq	L686
-	bra	L684
-L686:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L683
-L684:	addq.l	#4,a7
+	beq	L704
+	bra	L702
+L704:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L701
+L702:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L683:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L701:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6162,317 +6437,8 @@ p_sizeofType:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_sizeofBaseType
 	tst.b	d0
-	beq	L687
+	beq	L705
 	bsr	p_pointerDecl
-	tst.b	d0
-	beq	L687
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L687:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: sizeofBaseType
-p_sizeofBaseType:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	ws
-	cmpi.b	#$75,(a0)	; 'u'
-	bne	L690
-	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L690
-	cmpi.b	#$73,2(a0)	; 's'
-	bne	L690
-	cmpi.b	#$69,3(a0)	; 'i'
-	bne	L690
-	cmpi.b	#$67,4(a0)	; 'g'
-	bne	L690
-	cmpi.b	#$6E,5(a0)	; 'n'
-	bne	L690
-	cmpi.b	#$65,6(a0)	; 'e'
-	bne	L690
-	cmpi.b	#$64,7(a0)	; 'd'
-	bne	L690
-	move.b	8(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L690	; Wortgrenze verletzt
-	addq.l	#8,a0
-	bsr	p_unsignedInt
-	tst.b	d0
-	beq	L690
-	bra	L689
-L690:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$69,(a0)	; 'i'
-	bne	L691
-	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L691
-	cmpi.b	#$74,2(a0)	; 't'
-	bne	L691
-	move.b	3(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L691	; Wortgrenze verletzt
-	addq.l	#3,a0
-	bra	L689
-L691:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L692
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L692
-	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L692
-	cmpi.b	#$67,3(a0)	; 'g'
-	bne	L692
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L692	; Wortgrenze verletzt
-	addq.l	#4,a0
-	bra	L689
-L692:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$63,(a0)	; 'c'
-	bne	L693
-	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L693
-	cmpi.b	#$61,2(a0)	; 'a'
-	bne	L693
-	cmpi.b	#$72,3(a0)	; 'r'
-	bne	L693
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L693	; Wortgrenze verletzt
-	addq.l	#4,a0
-	bra	L689
-L693:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$73,(a0)	; 's'
-	bne	L694
-	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L694
-	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L694
-	cmpi.b	#$72,3(a0)	; 'r'
-	bne	L694
-	cmpi.b	#$74,4(a0)	; 't'
-	bne	L694
-	move.b	5(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L694	; Wortgrenze verletzt
-	addq.l	#5,a0
-	bra	L689
-L694:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$62,(a0)	; 'b'
-	bne	L695
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L695
-	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L695
-	cmpi.b	#$6C,3(a0)	; 'l'
-	bne	L695
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L695	; Wortgrenze verletzt
-	addq.l	#4,a0
-	bra	L689
-L695:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$64,(a0)	; 'd'
-	bne	L696
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L696
-	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L696
-	cmpi.b	#$62,3(a0)	; 'b'
-	bne	L696
-	cmpi.b	#$6C,4(a0)	; 'l'
-	bne	L696
-	cmpi.b	#$65,5(a0)	; 'e'
-	bne	L696
-	move.b	6(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L696	; Wortgrenze verletzt
-	addq.l	#6,a0
-	bra	L689
-L696:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$66,(a0)	; 'f'
-	bne	L697
-	cmpi.b	#$6C,1(a0)	; 'l'
-	bne	L697
-	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L697
-	cmpi.b	#$61,3(a0)	; 'a'
-	bne	L697
-	cmpi.b	#$74,4(a0)	; 't'
-	bne	L697
-	move.b	5(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L697	; Wortgrenze verletzt
-	addq.l	#5,a0
-	bra	L689
-L697:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$73,(a0)	; 's'
-	bne	L698
-	cmpi.b	#$74,1(a0)	; 't'
-	bne	L698
-	cmpi.b	#$72,2(a0)	; 'r'
-	bne	L698
-	cmpi.b	#$75,3(a0)	; 'u'
-	bne	L698
-	cmpi.b	#$63,4(a0)	; 'c'
-	bne	L698
-	cmpi.b	#$74,5(a0)	; 't'
-	bne	L698
-	move.b	6(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L698	; Wortgrenze verletzt
-	addq.l	#6,a0
-	bsr	p_structTypeRef
-	tst.b	d0
-	beq	L698
-	bra	L689
-L698:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$75,(a0)	; 'u'
-	bne	L699
-	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L699
-	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L699
-	cmpi.b	#$6F,3(a0)	; 'o'
-	bne	L699
-	cmpi.b	#$6E,4(a0)	; 'n'
-	bne	L699
-	move.b	5(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L699	; Wortgrenze verletzt
-	addq.l	#5,a0
-	bsr	p_unionTypeRef
-	tst.b	d0
-	beq	L699
-	bra	L689
-L699:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$65,(a0)	; 'e'
-	bne	L700
-	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L700
-	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L700
-	cmpi.b	#$6D,3(a0)	; 'm'
-	bne	L700
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L700	; Wortgrenze verletzt
-	addq.l	#4,a0
-	bsr	p_enumTypeRef
-	tst.b	d0
-	beq	L700
-	bra	L689
-L700:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$76,(a0)	; 'v'
-	bne	L701
-	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L701
-	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L701
-	cmpi.b	#$64,3(a0)	; 'd'
-	bne	L701
-	move.b	4(a0),d1
-	bsr	idch
-	tst.b	d0
-	bne	L701	; Wortgrenze verletzt
-	addq.l	#4,a0
-	bra	L689
-L701:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L688
-L689:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L688:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: sizeofVarName
-p_sizeofVarName:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	bsr	p_ident
-	tst.b	d0
-	beq	L702
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L702:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: castExpr
-p_castExpr:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	cmpi.b	#$28,(a0)	; '('
-	bne	L703
-	addq.l	#1,a0
-	bsr	p_castType
-	tst.b	d0
-	beq	L703
-	bsr	ws
-	cmpi.b	#$29,(a0)	; ')'
-	bne	L703
-	addq.l	#1,a0
-	bsr	p_castOperand
-	tst.b	d0
-	beq	L703
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L703:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: castType
-p_castType:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_type
-	tst.b	d0
-	beq	L704
-	bsr	p_pointerDecl
-	tst.b	d0
-	beq	L704
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L704:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: castOperand
-p_castOperand:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_factor
 	tst.b	d0
 	beq	L705
 	addq.l	#4,a7
@@ -6483,43 +6449,239 @@ L705:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: preIncDec
-p_preIncDec:
+; Regel: sizeofBaseType
+p_sizeofBaseType:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_incdecOp
+	bsr	ws
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L708
+	cmpi.b	#$6E,1(a0)	; 'n'
+	bne	L708
+	cmpi.b	#$73,2(a0)	; 's'
+	bne	L708
+	cmpi.b	#$69,3(a0)	; 'i'
+	bne	L708
+	cmpi.b	#$67,4(a0)	; 'g'
+	bne	L708
+	cmpi.b	#$6E,5(a0)	; 'n'
+	bne	L708
+	cmpi.b	#$65,6(a0)	; 'e'
+	bne	L708
+	cmpi.b	#$64,7(a0)	; 'd'
+	bne	L708
+	move.b	8(a0),d1
+	bsr	idch
 	tst.b	d0
-	beq	L708
-	bsr	p_derefIncTarget
+	bne	L708	; Wortgrenze verletzt
+	addq.l	#8,a0
+	bsr	p_unsignedInt
 	tst.b	d0
 	beq	L708
 	bra	L707
 L708:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_incdecOp
+	bsr	ws
+	cmpi.b	#$69,(a0)	; 'i'
+	bne	L709
+	cmpi.b	#$6E,1(a0)	; 'n'
+	bne	L709
+	cmpi.b	#$74,2(a0)	; 't'
+	bne	L709
+	move.b	3(a0),d1
+	bsr	idch
 	tst.b	d0
-	beq	L709
-	bsr	p_memberIncTarget
-	tst.b	d0
-	beq	L709
+	bne	L709	; Wortgrenze verletzt
+	addq.l	#3,a0
 	bra	L707
 L709:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_incdecOp
-	tst.b	d0
-	beq	L710
-	bsr	p_indexIncTarget
+	bsr	p_longLongType
 	tst.b	d0
 	beq	L710
 	bra	L707
 L710:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_incdecOp
-	tst.b	d0
-	beq	L711
 	bsr	ws
-	bsr	p_ident
+	cmpi.b	#$6C,(a0)	; 'l'
+	bne	L711
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L711
+	cmpi.b	#$6E,2(a0)	; 'n'
+	bne	L711
+	cmpi.b	#$67,3(a0)	; 'g'
+	bne	L711
+	move.b	4(a0),d1
+	bsr	idch
 	tst.b	d0
-	beq	L711
+	bne	L711	; Wortgrenze verletzt
+	addq.l	#4,a0
 	bra	L707
-L711:	move.l	(a7)+,a0	; Auswahl gescheitert
+L711:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$63,(a0)	; 'c'
+	bne	L712
+	cmpi.b	#$68,1(a0)	; 'h'
+	bne	L712
+	cmpi.b	#$61,2(a0)	; 'a'
+	bne	L712
+	cmpi.b	#$72,3(a0)	; 'r'
+	bne	L712
+	move.b	4(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L712	; Wortgrenze verletzt
+	addq.l	#4,a0
+	bra	L707
+L712:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$73,(a0)	; 's'
+	bne	L713
+	cmpi.b	#$68,1(a0)	; 'h'
+	bne	L713
+	cmpi.b	#$6F,2(a0)	; 'o'
+	bne	L713
+	cmpi.b	#$72,3(a0)	; 'r'
+	bne	L713
+	cmpi.b	#$74,4(a0)	; 't'
+	bne	L713
+	move.b	5(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L713	; Wortgrenze verletzt
+	addq.l	#5,a0
+	bra	L707
+L713:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$62,(a0)	; 'b'
+	bne	L714
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L714
+	cmpi.b	#$6F,2(a0)	; 'o'
+	bne	L714
+	cmpi.b	#$6C,3(a0)	; 'l'
+	bne	L714
+	move.b	4(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L714	; Wortgrenze verletzt
+	addq.l	#4,a0
+	bra	L707
+L714:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$64,(a0)	; 'd'
+	bne	L715
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L715
+	cmpi.b	#$75,2(a0)	; 'u'
+	bne	L715
+	cmpi.b	#$62,3(a0)	; 'b'
+	bne	L715
+	cmpi.b	#$6C,4(a0)	; 'l'
+	bne	L715
+	cmpi.b	#$65,5(a0)	; 'e'
+	bne	L715
+	move.b	6(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L715	; Wortgrenze verletzt
+	addq.l	#6,a0
+	bra	L707
+L715:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$66,(a0)	; 'f'
+	bne	L716
+	cmpi.b	#$6C,1(a0)	; 'l'
+	bne	L716
+	cmpi.b	#$6F,2(a0)	; 'o'
+	bne	L716
+	cmpi.b	#$61,3(a0)	; 'a'
+	bne	L716
+	cmpi.b	#$74,4(a0)	; 't'
+	bne	L716
+	move.b	5(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L716	; Wortgrenze verletzt
+	addq.l	#5,a0
+	bra	L707
+L716:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$73,(a0)	; 's'
+	bne	L717
+	cmpi.b	#$74,1(a0)	; 't'
+	bne	L717
+	cmpi.b	#$72,2(a0)	; 'r'
+	bne	L717
+	cmpi.b	#$75,3(a0)	; 'u'
+	bne	L717
+	cmpi.b	#$63,4(a0)	; 'c'
+	bne	L717
+	cmpi.b	#$74,5(a0)	; 't'
+	bne	L717
+	move.b	6(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L717	; Wortgrenze verletzt
+	addq.l	#6,a0
+	bsr	p_structTypeRef
+	tst.b	d0
+	beq	L717
+	bra	L707
+L717:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L718
+	cmpi.b	#$6E,1(a0)	; 'n'
+	bne	L718
+	cmpi.b	#$69,2(a0)	; 'i'
+	bne	L718
+	cmpi.b	#$6F,3(a0)	; 'o'
+	bne	L718
+	cmpi.b	#$6E,4(a0)	; 'n'
+	bne	L718
+	move.b	5(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L718	; Wortgrenze verletzt
+	addq.l	#5,a0
+	bsr	p_unionTypeRef
+	tst.b	d0
+	beq	L718
+	bra	L707
+L718:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$65,(a0)	; 'e'
+	bne	L719
+	cmpi.b	#$6E,1(a0)	; 'n'
+	bne	L719
+	cmpi.b	#$75,2(a0)	; 'u'
+	bne	L719
+	cmpi.b	#$6D,3(a0)	; 'm'
+	bne	L719
+	move.b	4(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L719	; Wortgrenze verletzt
+	addq.l	#4,a0
+	bsr	p_enumTypeRef
+	tst.b	d0
+	beq	L719
+	bra	L707
+L719:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$76,(a0)	; 'v'
+	bne	L720
+	cmpi.b	#$6F,1(a0)	; 'o'
+	bne	L720
+	cmpi.b	#$69,2(a0)	; 'i'
+	bne	L720
+	cmpi.b	#$64,3(a0)	; 'd'
+	bne	L720
+	move.b	4(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L720	; Wortgrenze verletzt
+	addq.l	#4,a0
+	bra	L707
+L720:	move.l	(a7)+,a0	; Auswahl gescheitert
 	bra	L706
 L707:	addq.l	#4,a7
 	addq.l	#4,a7
@@ -6530,87 +6692,11 @@ L706:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: postIncDec
-p_postIncDec:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_derefIncTarget
-	tst.b	d0
-	beq	L714
-	bsr	p_incdecOp
-	tst.b	d0
-	beq	L714
-	bra	L713
-L714:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_memberIncTarget
-	tst.b	d0
-	beq	L715
-	bsr	p_incdecOp
-	tst.b	d0
-	beq	L715
-	bra	L713
-L715:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_indexIncTarget
-	tst.b	d0
-	beq	L716
-	bsr	p_incdecOp
-	tst.b	d0
-	beq	L716
-	bra	L713
-L716:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	bsr	p_ident
-	tst.b	d0
-	beq	L717
-	bsr	p_incdecOp
-	tst.b	d0
-	beq	L717
-	bra	L713
-L717:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L712
-L713:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L712:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: memberIncTarget
-p_memberIncTarget:
+; Regel: sizeofVarName
+p_sizeofVarName:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	bsr	p_ident
-	tst.b	d0
-	beq	L718
-	bsr	p_member
-	tst.b	d0
-	beq	L718
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_index
-	tst.b	d0
-	beq	L719
-	addq.l	#4,a7
-	bra	L720
-L719:	move.l	(a7)+,a0	; Option uebersprungen
-L720:
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L718:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: indexIncTarget
-p_indexIncTarget:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	ws
-	bsr	p_ident
-	tst.b	d0
-	beq	L721
-	bsr	p_index
 	tst.b	d0
 	beq	L721
 	addq.l	#4,a7
@@ -6621,29 +6707,23 @@ L721:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: derefIncTarget
-p_derefIncTarget:
+; Regel: castExpr
+p_castExpr:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
 	bne	L722
 	addq.l	#1,a0
-	bsr	ws
-	cmpi.b	#$2A,(a0)	; '*'
-	bne	L722
-	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L723
-	bra	L722	; kuerzeres Operator-Token ablehnen
-L723:
-	addq.l	#1,a0
-	bsr	ws
-	bsr	p_ident
+	bsr	p_castType
 	tst.b	d0
 	beq	L722
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
 	bne	L722
 	addq.l	#1,a0
+	bsr	p_castOperand
+	tst.b	d0
+	beq	L722
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
@@ -6652,26 +6732,146 @@ L722:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: incdecOp
-p_incdecOp:
+; Regel: castType
+p_castType:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_type
+	tst.b	d0
+	beq	L723
+	bsr	p_pointerDecl
+	tst.b	d0
+	beq	L723
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L723:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: castOperand
+p_castOperand:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	ws
-	cmpi.b	#$2B,(a0)	; '+'
-	bne	L726
-	cmpi.b	#$2B,1(a0)	; '+'
-	bne	L726
-	addq.l	#2,a0
+	bsr	p_sizeofExpr
+	tst.b	d0
+	beq	L726
 	bra	L725
 L726:	move.l	(a7),a0	; naechste Alternative
-	bsr	ws
-	cmpi.b	#$2D,(a0)	; '-'
-	bne	L727
-	cmpi.b	#$2D,1(a0)	; '-'
-	bne	L727
-	addq.l	#2,a0
+	bsr	p_vaArgExpr
+	tst.b	d0
+	beq	L727
 	bra	L725
-L727:	move.l	(a7)+,a0	; Auswahl gescheitert
+L727:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_castExpr
+	tst.b	d0
+	beq	L728
+	bra	L725
+L728:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_preIncDec
+	tst.b	d0
+	beq	L729
+	bra	L725
+L729:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_postIncDec
+	tst.b	d0
+	beq	L730
+	bra	L725
+L730:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_parenOpen
+	tst.b	d0
+	beq	L731
+	bsr	p_commaExpr
+	tst.b	d0
+	beq	L731
+	bsr	p_parenClose
+	tst.b	d0
+	beq	L731
+	bra	L725
+L731:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_call
+	tst.b	d0
+	beq	L732
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_postfixIndex
+	tst.b	d0
+	beq	L733
+	addq.l	#4,a7
+	bra	L734
+L733:	move.l	(a7)+,a0	; Option uebersprungen
+L734:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_callMember
+	tst.b	d0
+	beq	L735
+	addq.l	#4,a7
+	bra	L736
+L735:	move.l	(a7)+,a0	; Option uebersprungen
+L736:
+	bra	L725
+L732:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_indirectCall
+	tst.b	d0
+	beq	L737
+	bra	L725
+L737:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_boolLit
+	tst.b	d0
+	beq	L738
+	bra	L725
+L738:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_addressRef
+	tst.b	d0
+	beq	L739
+	bra	L725
+L739:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_derefRef
+	tst.b	d0
+	beq	L740
+	bra	L725
+L740:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_varRef
+	tst.b	d0
+	beq	L741
+	bra	L725
+L741:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	bsr	p_charLit
+	tst.b	d0
+	beq	L742
+	bra	L725
+L742:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	bsr	p_floatLit
+	tst.b	d0
+	beq	L743
+	bra	L725
+L743:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	bsr	p_number
+	tst.b	d0
+	beq	L744
+	bra	L725
+L744:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	bsr	p_stringLit
+	tst.b	d0
+	beq	L745
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_postfixIndex
+	tst.b	d0
+	beq	L746
+	addq.l	#4,a7
+	bra	L747
+L746:	move.l	(a7)+,a0	; Option uebersprungen
+L747:
+	bra	L725
+L745:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_negFactor
+	tst.b	d0
+	beq	L748
+	bra	L725
+L748:	move.l	(a7)+,a0	; Auswahl gescheitert
 	bra	L724
 L725:	addq.l	#4,a7
 	addq.l	#4,a7
@@ -6682,34 +6882,233 @@ L724:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
+; Regel: preIncDec
+p_preIncDec:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L751
+	bsr	p_derefIncTarget
+	tst.b	d0
+	beq	L751
+	bra	L750
+L751:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L752
+	bsr	p_memberIncTarget
+	tst.b	d0
+	beq	L752
+	bra	L750
+L752:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L753
+	bsr	p_indexIncTarget
+	tst.b	d0
+	beq	L753
+	bra	L750
+L753:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L754
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L754
+	bra	L750
+L754:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L749
+L750:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L749:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: postIncDec
+p_postIncDec:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_derefIncTarget
+	tst.b	d0
+	beq	L757
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L757
+	bra	L756
+L757:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_memberIncTarget
+	tst.b	d0
+	beq	L758
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L758
+	bra	L756
+L758:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_indexIncTarget
+	tst.b	d0
+	beq	L759
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L759
+	bra	L756
+L759:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L760
+	bsr	p_incdecOp
+	tst.b	d0
+	beq	L760
+	bra	L756
+L760:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L755
+L756:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L755:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: memberIncTarget
+p_memberIncTarget:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L761
+	bsr	p_member
+	tst.b	d0
+	beq	L761
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_index
+	tst.b	d0
+	beq	L762
+	addq.l	#4,a7
+	bra	L763
+L762:	move.l	(a7)+,a0	; Option uebersprungen
+L763:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L761:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: indexIncTarget
+p_indexIncTarget:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L764
+	bsr	p_index
+	tst.b	d0
+	beq	L764
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L764:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: derefIncTarget
+p_derefIncTarget:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	ws
+	cmpi.b	#$28,(a0)	; '('
+	bne	L765
+	addq.l	#1,a0
+	bsr	ws
+	cmpi.b	#$2A,(a0)	; '*'
+	bne	L765
+	cmpi.b	#$3D,1(a0)	; Longest-Match '='
+	bne	L766
+	bra	L765	; kuerzeres Operator-Token ablehnen
+L766:
+	addq.l	#1,a0
+	bsr	ws
+	bsr	p_ident
+	tst.b	d0
+	beq	L765
+	bsr	ws
+	cmpi.b	#$29,(a0)	; ')'
+	bne	L765
+	addq.l	#1,a0
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L765:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: incdecOp
+p_incdecOp:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	ws
+	cmpi.b	#$2B,(a0)	; '+'
+	bne	L769
+	cmpi.b	#$2B,1(a0)	; '+'
+	bne	L769
+	addq.l	#2,a0
+	bra	L768
+L769:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$2D,(a0)	; '-'
+	bne	L770
+	cmpi.b	#$2D,1(a0)	; '-'
+	bne	L770
+	addq.l	#2,a0
+	bra	L768
+L770:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L767
+L768:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L767:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
 ; Regel: incDecStmt
 p_incDecStmt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_preIncDec
 	tst.b	d0
-	beq	L730
+	beq	L773
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L730
+	bne	L773
 	addq.l	#1,a0
-	bra	L729
-L730:	move.l	(a7),a0	; naechste Alternative
+	bra	L772
+L773:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_postIncDec
 	tst.b	d0
-	beq	L731
+	beq	L774
 	bsr	ws
 	cmpi.b	#$3B,(a0)	; ';'
-	bne	L731
+	bne	L774
 	addq.l	#1,a0
-	bra	L729
-L731:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L728
-L729:	addq.l	#4,a7
+	bra	L772
+L774:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L771
+L772:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L728:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L771:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6719,19 +7118,19 @@ p_derefRef:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L732
+	bne	L775
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L733
-	bra	L732	; kuerzeres Operator-Token ablehnen
-L733:
+	bne	L776
+	bra	L775	; kuerzeres Operator-Token ablehnen
+L776:
 	addq.l	#1,a0
 	bsr	p_factor
 	tst.b	d0
-	beq	L732
+	beq	L775
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L732:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L775:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6741,22 +7140,22 @@ p_call:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_funcName
 	tst.b	d0
-	beq	L734
+	beq	L777
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L734
+	bne	L777
 	addq.l	#1,a0
 	bsr	p_argList
 	tst.b	d0
-	beq	L734
+	beq	L777
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L734
+	bne	L777
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L734:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L777:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6766,19 +7165,19 @@ p_callMember:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_member
 	tst.b	d0
-	beq	L735
+	beq	L778
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L736
+	beq	L779
 	addq.l	#4,a7
-	bra	L737
-L736:	move.l	(a7)+,a0	; Option uebersprungen
-L737:
+	bra	L780
+L779:	move.l	(a7)+,a0	; Option uebersprungen
+L780:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L735:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L778:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6788,21 +7187,21 @@ p_indirectCall:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_varRef
 	tst.b	d0
-	beq	L738
+	beq	L781
 	bsr	p_indCallOpen
 	tst.b	d0
-	beq	L738
+	beq	L781
 	bsr	p_argList
 	tst.b	d0
-	beq	L738
+	beq	L781
 	bsr	ws
 	cmpi.b	#$29,(a0)	; ')'
-	bne	L738
+	bne	L781
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L738:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L781:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6812,12 +7211,12 @@ p_indCallOpen:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$28,(a0)	; '('
-	bne	L739
+	bne	L782
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L739:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L782:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6828,26 +7227,26 @@ p_argList:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_arg
 	tst.b	d0
-	beq	L741
-L743:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L784
+L786:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	ws
 	cmpi.b	#$2C,(a0)	; ','
-	bne	L744
+	bne	L787
 	addq.l	#1,a0
 	bsr	p_arg
 	tst.b	d0
-	beq	L744
+	beq	L787
 	addq.l	#4,a7
-	bra	L743
-L744:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L786
+L787:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L742
-L741:	move.l	(a7)+,a0	; Option uebersprungen
-L742:
+	bra	L785
+L784:	move.l	(a7)+,a0	; Option uebersprungen
+L785:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L740:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L783:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6857,11 +7256,11 @@ p_arg:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_expr
 	tst.b	d0
-	beq	L745
+	beq	L788
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L745:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L788:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6872,20 +7271,20 @@ p_target:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	p_directTarget
 	tst.b	d0
-	beq	L748
-	bra	L747
-L748:	move.l	(a7),a0	; naechste Alternative
+	beq	L791
+	bra	L790
+L791:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_indirectTarget
 	tst.b	d0
-	beq	L749
-	bra	L747
-L749:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L746
-L747:	addq.l	#4,a7
+	beq	L792
+	bra	L790
+L792:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L789
+L790:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L746:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L789:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6896,71 +7295,71 @@ p_directTarget:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L750
+	beq	L793
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L751
-L753:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L794
+L796:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_index
 	tst.b	d0
-	beq	L754
+	beq	L797
 	addq.l	#4,a7
-	bra	L753
-L754:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L796
+L797:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L752
-L751:	move.l	(a7)+,a0	; Option uebersprungen
-L752:
+	bra	L795
+L794:	move.l	(a7)+,a0	; Option uebersprungen
+L795:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_member
 	tst.b	d0
-	beq	L755
+	beq	L798
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L757
-L759:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L800
+L802:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_index
 	tst.b	d0
-	beq	L760
+	beq	L803
 	addq.l	#4,a7
-	bra	L759
-L760:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L802
+L803:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L758
-L757:	move.l	(a7)+,a0	; Option uebersprungen
-L758:
-L761:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bra	L801
+L800:	move.l	(a7)+,a0	; Option uebersprungen
+L801:
+L804:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_member
 	tst.b	d0
-	beq	L762
+	beq	L805
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L763
-L765:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L806
+L808:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_index
 	tst.b	d0
-	beq	L766
+	beq	L809
 	addq.l	#4,a7
-	bra	L765
-L766:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L808
+L809:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L764
-L763:	move.l	(a7)+,a0	; Option uebersprungen
-L764:
+	bra	L807
+L806:	move.l	(a7)+,a0	; Option uebersprungen
+L807:
 	addq.l	#4,a7
-	bra	L761
-L762:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L804
+L805:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L756
-L755:	move.l	(a7)+,a0	; Option uebersprungen
-L756:
+	bra	L799
+L798:	move.l	(a7)+,a0	; Option uebersprungen
+L799:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L750:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L793:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6970,19 +7369,19 @@ p_indirectTarget:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L767
+	bne	L810
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L768
-	bra	L767	; kuerzeres Operator-Token ablehnen
-L768:
+	bne	L811
+	bra	L810	; kuerzeres Operator-Token ablehnen
+L811:
 	addq.l	#1,a0
 	bsr	p_factor
 	tst.b	d0
-	beq	L767
+	beq	L810
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L767:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L810:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -6993,71 +7392,71 @@ p_varRef:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L769
+	beq	L812
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L770
-L772:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L813
+L815:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_index
 	tst.b	d0
-	beq	L773
+	beq	L816
 	addq.l	#4,a7
-	bra	L772
-L773:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L815
+L816:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L771
-L770:	move.l	(a7)+,a0	; Option uebersprungen
-L771:
+	bra	L814
+L813:	move.l	(a7)+,a0	; Option uebersprungen
+L814:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_member
 	tst.b	d0
-	beq	L774
+	beq	L817
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L776
-L778:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L819
+L821:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_index
 	tst.b	d0
-	beq	L779
+	beq	L822
 	addq.l	#4,a7
-	bra	L778
-L779:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L821
+L822:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L777
-L776:	move.l	(a7)+,a0	; Option uebersprungen
-L777:
-L780:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bra	L820
+L819:	move.l	(a7)+,a0	; Option uebersprungen
+L820:
+L823:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_member
 	tst.b	d0
-	beq	L781
+	beq	L824
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_index
 	tst.b	d0
-	beq	L782
-L784:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L825
+L827:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_index
 	tst.b	d0
-	beq	L785
+	beq	L828
 	addq.l	#4,a7
-	bra	L784
-L785:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L827
+L828:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L783
-L782:	move.l	(a7)+,a0	; Option uebersprungen
-L783:
+	bra	L826
+L825:	move.l	(a7)+,a0	; Option uebersprungen
+L826:
 	addq.l	#4,a7
-	bra	L780
-L781:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L823
+L824:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
-	bra	L775
-L774:	move.l	(a7)+,a0	; Option uebersprungen
-L775:
+	bra	L818
+L817:	move.l	(a7)+,a0	; Option uebersprungen
+L818:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L769:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L812:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7067,18 +7466,18 @@ p_index:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	p_indexOpen
 	tst.b	d0
-	beq	L786
+	beq	L829
 	bsr	p_expr
 	tst.b	d0
-	beq	L786
+	beq	L829
 	bsr	ws
 	cmpi.b	#$5D,(a0)	; ']'
-	bne	L786
+	bne	L829
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L786:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L829:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7088,12 +7487,12 @@ p_indexOpen:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$5B,(a0)	; '['
-	bne	L787
+	bne	L830
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L787:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L830:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7104,36 +7503,36 @@ p_member:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$2E,(a0)	; '.'
-	bne	L790
+	bne	L833
 	cmpi.b	#$2E,1(a0)	; Longest-Match '.'
-	bne	L791
+	bne	L834
 	cmpi.b	#$2E,2(a0)	; Longest-Match '.'
-	bne	L791
-	bra	L790	; kuerzeres Operator-Token ablehnen
-L791:
+	bne	L834
+	bra	L833	; kuerzeres Operator-Token ablehnen
+L834:
 	addq.l	#1,a0
 	bsr	p_fieldName
 	tst.b	d0
-	beq	L790
-	bra	L789
-L790:	move.l	(a7),a0	; naechste Alternative
+	beq	L833
+	bra	L832
+L833:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$2D,(a0)	; '-'
-	bne	L792
+	bne	L835
 	cmpi.b	#$3E,1(a0)	; '>'
-	bne	L792
+	bne	L835
 	addq.l	#2,a0
 	bsr	p_fieldName
 	tst.b	d0
-	beq	L792
-	bra	L789
-L792:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L788
-L789:	addq.l	#4,a7
+	beq	L835
+	bra	L832
+L835:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L831
+L832:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L788:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L831:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7144,11 +7543,11 @@ p_defName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L793
+	beq	L836
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L793:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L836:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7159,11 +7558,11 @@ p_paramName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L794
+	beq	L837
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L794:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L837:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7174,11 +7573,11 @@ p_localName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L795
+	beq	L838
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L795:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L838:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7189,11 +7588,11 @@ p_globalName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L796
+	beq	L839
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L796:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L839:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7204,11 +7603,11 @@ p_funcName:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L797
+	beq	L840
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L797:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L840:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7219,272 +7618,294 @@ p_type:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$75,(a0)	; 'u'
-	bne	L800
+	bne	L843
 	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L800
+	bne	L843
 	cmpi.b	#$73,2(a0)	; 's'
-	bne	L800
+	bne	L843
 	cmpi.b	#$69,3(a0)	; 'i'
-	bne	L800
+	bne	L843
 	cmpi.b	#$67,4(a0)	; 'g'
-	bne	L800
+	bne	L843
 	cmpi.b	#$6E,5(a0)	; 'n'
-	bne	L800
+	bne	L843
 	cmpi.b	#$65,6(a0)	; 'e'
-	bne	L800
+	bne	L843
 	cmpi.b	#$64,7(a0)	; 'd'
-	bne	L800
+	bne	L843
 	move.b	8(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L800	; Wortgrenze verletzt
+	bne	L843	; Wortgrenze verletzt
 	addq.l	#8,a0
 	bsr	p_unsignedInt
 	tst.b	d0
-	beq	L800
-	bra	L799
-L800:	move.l	(a7),a0	; naechste Alternative
+	beq	L843
+	bra	L842
+L843:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$73,(a0)	; 's'
-	bne	L801
+	bne	L844
 	cmpi.b	#$69,1(a0)	; 'i'
-	bne	L801
+	bne	L844
 	cmpi.b	#$67,2(a0)	; 'g'
-	bne	L801
+	bne	L844
 	cmpi.b	#$6E,3(a0)	; 'n'
-	bne	L801
+	bne	L844
 	cmpi.b	#$65,4(a0)	; 'e'
-	bne	L801
+	bne	L844
 	cmpi.b	#$64,5(a0)	; 'd'
-	bne	L801
+	bne	L844
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L801	; Wortgrenze verletzt
+	bne	L844	; Wortgrenze verletzt
 	addq.l	#6,a0
 	bsr	p_unsignedInt
 	tst.b	d0
-	beq	L801
-	bra	L799
-L801:	move.l	(a7),a0	; naechste Alternative
+	beq	L844
+	bra	L842
+L844:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$69,(a0)	; 'i'
-	bne	L802
+	bne	L845
 	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L802
+	bne	L845
 	cmpi.b	#$74,2(a0)	; 't'
-	bne	L802
+	bne	L845
 	move.b	3(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L802	; Wortgrenze verletzt
+	bne	L845	; Wortgrenze verletzt
 	addq.l	#3,a0
-	bra	L799
-L802:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L845:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_longLongType
 	tst.b	d0
-	beq	L803
-	bra	L799
-L803:	move.l	(a7),a0	; naechste Alternative
+	beq	L846
+	bra	L842
+L846:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_longDoubleType
 	tst.b	d0
-	beq	L804
-	bra	L799
-L804:	move.l	(a7),a0	; naechste Alternative
+	beq	L847
+	bra	L842
+L847:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L805
+	bne	L848
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L805
+	bne	L848
 	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L805
+	bne	L848
 	cmpi.b	#$67,3(a0)	; 'g'
-	bne	L805
+	bne	L848
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L805	; Wortgrenze verletzt
+	bne	L848	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L799
-L805:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L848:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$73,(a0)	; 's'
-	bne	L806
+	bne	L849
 	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L806
+	bne	L849
 	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L806
+	bne	L849
 	cmpi.b	#$72,3(a0)	; 'r'
-	bne	L806
+	bne	L849
 	cmpi.b	#$74,4(a0)	; 't'
-	bne	L806
+	bne	L849
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L806	; Wortgrenze verletzt
+	bne	L849	; Wortgrenze verletzt
 	addq.l	#5,a0
-	bra	L799
-L806:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L849:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$63,(a0)	; 'c'
-	bne	L807
+	bne	L850
 	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L807
+	bne	L850
 	cmpi.b	#$61,2(a0)	; 'a'
-	bne	L807
+	bne	L850
 	cmpi.b	#$72,3(a0)	; 'r'
-	bne	L807
+	bne	L850
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L807	; Wortgrenze verletzt
+	bne	L850	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L799
-L807:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L850:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$62,(a0)	; 'b'
-	bne	L808
+	bne	L851
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L808
+	bne	L851
 	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L808
+	bne	L851
 	cmpi.b	#$6C,3(a0)	; 'l'
-	bne	L808
+	bne	L851
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L808	; Wortgrenze verletzt
+	bne	L851	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L799
-L808:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L851:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$64,(a0)	; 'd'
-	bne	L809
+	bne	L852
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L809
+	bne	L852
 	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L809
+	bne	L852
 	cmpi.b	#$62,3(a0)	; 'b'
-	bne	L809
+	bne	L852
 	cmpi.b	#$6C,4(a0)	; 'l'
-	bne	L809
+	bne	L852
 	cmpi.b	#$65,5(a0)	; 'e'
-	bne	L809
+	bne	L852
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L809	; Wortgrenze verletzt
+	bne	L852	; Wortgrenze verletzt
 	addq.l	#6,a0
-	bra	L799
-L809:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L852:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$66,(a0)	; 'f'
-	bne	L810
+	bne	L853
 	cmpi.b	#$6C,1(a0)	; 'l'
-	bne	L810
+	bne	L853
 	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L810
+	bne	L853
 	cmpi.b	#$61,3(a0)	; 'a'
-	bne	L810
+	bne	L853
 	cmpi.b	#$74,4(a0)	; 't'
-	bne	L810
+	bne	L853
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L810	; Wortgrenze verletzt
+	bne	L853	; Wortgrenze verletzt
 	addq.l	#5,a0
-	bra	L799
-L810:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L853:	move.l	(a7),a0	; naechste Alternative
+	bsr	ws
+	cmpi.b	#$76,(a0)	; 'v'
+	bne	L854
+	cmpi.b	#$61,1(a0)	; 'a'
+	bne	L854
+	cmpi.b	#$5F,2(a0)	; '_'
+	bne	L854
+	cmpi.b	#$6C,3(a0)	; 'l'
+	bne	L854
+	cmpi.b	#$69,4(a0)	; 'i'
+	bne	L854
+	cmpi.b	#$73,5(a0)	; 's'
+	bne	L854
+	cmpi.b	#$74,6(a0)	; 't'
+	bne	L854
+	move.b	7(a0),d1
+	bsr	idch
+	tst.b	d0
+	bne	L854	; Wortgrenze verletzt
+	addq.l	#7,a0
+	bra	L842
+L854:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$73,(a0)	; 's'
-	bne	L811
+	bne	L855
 	cmpi.b	#$74,1(a0)	; 't'
-	bne	L811
+	bne	L855
 	cmpi.b	#$72,2(a0)	; 'r'
-	bne	L811
+	bne	L855
 	cmpi.b	#$75,3(a0)	; 'u'
-	bne	L811
+	bne	L855
 	cmpi.b	#$63,4(a0)	; 'c'
-	bne	L811
+	bne	L855
 	cmpi.b	#$74,5(a0)	; 't'
-	bne	L811
+	bne	L855
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L811	; Wortgrenze verletzt
+	bne	L855	; Wortgrenze verletzt
 	addq.l	#6,a0
 	bsr	p_structTypeRef
 	tst.b	d0
-	beq	L811
-	bra	L799
-L811:	move.l	(a7),a0	; naechste Alternative
+	beq	L855
+	bra	L842
+L855:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$75,(a0)	; 'u'
-	bne	L812
+	bne	L856
 	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L812
+	bne	L856
 	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L812
+	bne	L856
 	cmpi.b	#$6F,3(a0)	; 'o'
-	bne	L812
+	bne	L856
 	cmpi.b	#$6E,4(a0)	; 'n'
-	bne	L812
+	bne	L856
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L812	; Wortgrenze verletzt
+	bne	L856	; Wortgrenze verletzt
 	addq.l	#5,a0
 	bsr	p_unionTypeRef
 	tst.b	d0
-	beq	L812
-	bra	L799
-L812:	move.l	(a7),a0	; naechste Alternative
+	beq	L856
+	bra	L842
+L856:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$65,(a0)	; 'e'
-	bne	L813
+	bne	L857
 	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L813
+	bne	L857
 	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L813
+	bne	L857
 	cmpi.b	#$6D,3(a0)	; 'm'
-	bne	L813
+	bne	L857
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L813	; Wortgrenze verletzt
+	bne	L857	; Wortgrenze verletzt
 	addq.l	#4,a0
 	bsr	p_enumTypeRef
 	tst.b	d0
-	beq	L813
-	bra	L799
-L813:	move.l	(a7),a0	; naechste Alternative
+	beq	L857
+	bra	L842
+L857:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$76,(a0)	; 'v'
-	bne	L814
+	bne	L858
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L814
+	bne	L858
 	cmpi.b	#$69,2(a0)	; 'i'
-	bne	L814
+	bne	L858
 	cmpi.b	#$64,3(a0)	; 'd'
-	bne	L814
+	bne	L858
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L814	; Wortgrenze verletzt
+	bne	L858	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L799
-L814:	move.l	(a7),a0	; naechste Alternative
+	bra	L842
+L858:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_typedefRef
 	tst.b	d0
-	beq	L815
-	bra	L799
-L815:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L798
-L799:	addq.l	#4,a7
+	beq	L859
+	bra	L842
+L859:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L841
+L842:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L798:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L841:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7494,40 +7915,40 @@ p_longDoubleType:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L816
+	bne	L860
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L816
+	bne	L860
 	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L816
+	bne	L860
 	cmpi.b	#$67,3(a0)	; 'g'
-	bne	L816
+	bne	L860
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L816	; Wortgrenze verletzt
+	bne	L860	; Wortgrenze verletzt
 	addq.l	#4,a0
 	bsr	ws
 	cmpi.b	#$64,(a0)	; 'd'
-	bne	L816
+	bne	L860
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L816
+	bne	L860
 	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L816
+	bne	L860
 	cmpi.b	#$62,3(a0)	; 'b'
-	bne	L816
+	bne	L860
 	cmpi.b	#$6C,4(a0)	; 'l'
-	bne	L816
+	bne	L860
 	cmpi.b	#$65,5(a0)	; 'e'
-	bne	L816
+	bne	L860
 	move.b	6(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L816	; Wortgrenze verletzt
+	bne	L860	; Wortgrenze verletzt
 	addq.l	#6,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L816:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L860:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7537,36 +7958,36 @@ p_longLongType:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L817
+	bne	L861
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L817
+	bne	L861
 	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L817
+	bne	L861
 	cmpi.b	#$67,3(a0)	; 'g'
-	bne	L817
+	bne	L861
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L817	; Wortgrenze verletzt
+	bne	L861	; Wortgrenze verletzt
 	addq.l	#4,a0
 	bsr	ws
 	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L817
+	bne	L861
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L817
+	bne	L861
 	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L817
+	bne	L861
 	cmpi.b	#$67,3(a0)	; 'g'
-	bne	L817
+	bne	L861
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L817	; Wortgrenze verletzt
+	bne	L861	; Wortgrenze verletzt
 	addq.l	#4,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L817:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L861:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7577,11 +7998,11 @@ p_unionTypeRef:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L818
+	beq	L862
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L818:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L862:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7592,11 +8013,11 @@ p_structTypeRef:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L819
+	beq	L863
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L819:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L863:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7607,11 +8028,11 @@ p_enumTypeRef:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L820
+	beq	L864
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L820:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L864:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7622,11 +8043,11 @@ p_typedefRef:
 	bsr	ws
 	bsr	p_ident
 	tst.b	d0
-	beq	L821
+	beq	L865
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L821:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L865:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7634,17 +8055,17 @@ L821:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 ; Regel: pointerDecl
 p_pointerDecl:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-L823:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+L867:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_pointerStar
 	tst.b	d0
-	beq	L824
+	beq	L868
 	addq.l	#4,a7
-	bra	L823
-L824:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L867
+L868:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L822:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L866:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7654,16 +8075,16 @@ p_pointerStar:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	bsr	ws
 	cmpi.b	#$2A,(a0)	; '*'
-	bne	L825
+	bne	L869
 	cmpi.b	#$3D,1(a0)	; Longest-Match '='
-	bne	L826
-	bra	L825	; kuerzeres Operator-Token ablehnen
-L826:
+	bne	L870
+	bra	L869	; kuerzeres Operator-Token ablehnen
+L870:
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L825:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L869:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7674,74 +8095,74 @@ p_unsignedInt:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$69,(a0)	; 'i'
-	bne	L829
+	bne	L873
 	cmpi.b	#$6E,1(a0)	; 'n'
-	bne	L829
+	bne	L873
 	cmpi.b	#$74,2(a0)	; 't'
-	bne	L829
+	bne	L873
 	move.b	3(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L829	; Wortgrenze verletzt
+	bne	L873	; Wortgrenze verletzt
 	addq.l	#3,a0
-	bra	L828
-L829:	move.l	(a7),a0	; naechste Alternative
+	bra	L872
+L873:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$63,(a0)	; 'c'
-	bne	L830
+	bne	L874
 	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L830
+	bne	L874
 	cmpi.b	#$61,2(a0)	; 'a'
-	bne	L830
+	bne	L874
 	cmpi.b	#$72,3(a0)	; 'r'
-	bne	L830
+	bne	L874
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L830	; Wortgrenze verletzt
+	bne	L874	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L828
-L830:	move.l	(a7),a0	; naechste Alternative
+	bra	L872
+L874:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L831
+	bne	L875
 	cmpi.b	#$6F,1(a0)	; 'o'
-	bne	L831
+	bne	L875
 	cmpi.b	#$6E,2(a0)	; 'n'
-	bne	L831
+	bne	L875
 	cmpi.b	#$67,3(a0)	; 'g'
-	bne	L831
+	bne	L875
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L831	; Wortgrenze verletzt
+	bne	L875	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L828
-L831:	move.l	(a7),a0	; naechste Alternative
+	bra	L872
+L875:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$73,(a0)	; 's'
-	bne	L832
+	bne	L876
 	cmpi.b	#$68,1(a0)	; 'h'
-	bne	L832
+	bne	L876
 	cmpi.b	#$6F,2(a0)	; 'o'
-	bne	L832
+	bne	L876
 	cmpi.b	#$72,3(a0)	; 'r'
-	bne	L832
+	bne	L876
 	cmpi.b	#$74,4(a0)	; 't'
-	bne	L832
+	bne	L876
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L832	; Wortgrenze verletzt
+	bne	L876	; Wortgrenze verletzt
 	addq.l	#5,a0
-	bra	L828
-L832:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L827
-L828:	addq.l	#4,a7
+	bra	L872
+L876:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L871
+L872:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L827:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L871:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -7752,320 +8173,36 @@ p_boolLit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	bsr	ws
 	cmpi.b	#$74,(a0)	; 't'
-	bne	L835
+	bne	L879
 	cmpi.b	#$72,1(a0)	; 'r'
-	bne	L835
+	bne	L879
 	cmpi.b	#$75,2(a0)	; 'u'
-	bne	L835
+	bne	L879
 	cmpi.b	#$65,3(a0)	; 'e'
-	bne	L835
+	bne	L879
 	move.b	4(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L835	; Wortgrenze verletzt
+	bne	L879	; Wortgrenze verletzt
 	addq.l	#4,a0
-	bra	L834
-L835:	move.l	(a7),a0	; naechste Alternative
+	bra	L878
+L879:	move.l	(a7),a0	; naechste Alternative
 	bsr	ws
 	cmpi.b	#$66,(a0)	; 'f'
-	bne	L836
+	bne	L880
 	cmpi.b	#$61,1(a0)	; 'a'
-	bne	L836
+	bne	L880
 	cmpi.b	#$6C,2(a0)	; 'l'
-	bne	L836
+	bne	L880
 	cmpi.b	#$73,3(a0)	; 's'
-	bne	L836
+	bne	L880
 	cmpi.b	#$65,4(a0)	; 'e'
-	bne	L836
+	bne	L880
 	move.b	5(a0),d1
 	bsr	idch
 	tst.b	d0
-	bne	L836	; Wortgrenze verletzt
+	bne	L880	; Wortgrenze verletzt
 	addq.l	#5,a0
-	bra	L834
-L836:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L833
-L834:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L833:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: ident (lexikalisch)
-p_ident:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_letter
-	tst.b	d0
-	beq	L837
-L838:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_letter
-	tst.b	d0
-	beq	L841
-	bra	L840
-L841:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_digit
-	tst.b	d0
-	beq	L842
-	bra	L840
-L842:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L839
-L840:	addq.l	#4,a7
-	addq.l	#4,a7
-	bra	L838
-L839:	move.l	(a7)+,a0	; Wiederholung beendet
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L837:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: number (lexikalisch)
-p_number:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_hexNumber
-	tst.b	d0
-	beq	L845
-	bra	L844
-L845:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_decNumber
-	tst.b	d0
-	beq	L846
-	bra	L844
-L846:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L843
-L844:	addq.l	#4,a7
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_integerSuffix
-	tst.b	d0
-	beq	L847
-	addq.l	#4,a7
-	bra	L848
-L847:	move.l	(a7)+,a0	; Option uebersprungen
-L848:
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L843:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: integerSuffix (lexikalisch)
-p_integerSuffix:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	cmpi.b	#$75,(a0)	; 'u'
-	bne	L851
-	addq.l	#1,a0
-	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L851
-	addq.l	#1,a0
-	bra	L850
-L851:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$55,(a0)	; 'U'
-	bne	L852
-	addq.l	#1,a0
-	cmpi.b	#$4C,(a0)	; 'L'
-	bne	L852
-	addq.l	#1,a0
-	bra	L850
-L852:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L853
-	addq.l	#1,a0
-	cmpi.b	#$75,(a0)	; 'u'
-	bne	L853
-	addq.l	#1,a0
-	bra	L850
-L853:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$4C,(a0)	; 'L'
-	bne	L854
-	addq.l	#1,a0
-	cmpi.b	#$55,(a0)	; 'U'
-	bne	L854
-	addq.l	#1,a0
-	bra	L850
-L854:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$75,(a0)	; 'u'
-	bne	L855
-	addq.l	#1,a0
-	bra	L850
-L855:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$55,(a0)	; 'U'
-	bne	L856
-	addq.l	#1,a0
-	bra	L850
-L856:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$6C,(a0)	; 'l'
-	bne	L857
-	addq.l	#1,a0
-	bra	L850
-L857:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$4C,(a0)	; 'L'
-	bne	L858
-	addq.l	#1,a0
-	bra	L850
-L858:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L849
-L850:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L849:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: hexNumber (lexikalisch)
-p_hexNumber:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	cmpi.b	#$30,(a0)	; '0'
-	bne	L859
-	addq.l	#1,a0
-	bsr	p_hexMark
-	tst.b	d0
-	beq	L859
-	bsr	p_hexDigit
-	tst.b	d0
-	beq	L859
-L860:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_hexDigit
-	tst.b	d0
-	beq	L861
-	addq.l	#4,a7
-	bra	L860
-L861:	move.l	(a7)+,a0	; Wiederholung beendet
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L859:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: hexMark (lexikalisch)
-p_hexMark:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	cmpi.b	#$78,(a0)	; 'x'
-	bne	L864
-	addq.l	#1,a0
-	bra	L863
-L864:	move.l	(a7),a0	; naechste Alternative
-	cmpi.b	#$58,(a0)	; 'X'
-	bne	L865
-	addq.l	#1,a0
-	bra	L863
-L865:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L862
-L863:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L862:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: hexDigit (lexikalisch)
-p_hexDigit:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_digit
-	tst.b	d0
-	beq	L868
-	bra	L867
-L868:	move.l	(a7),a0	; naechste Alternative
-	move.b	(a0),d1
-	cmpi.b	#$61,d1	; 'a'
-	blo	L869
-	cmpi.b	#$66,d1	; 'f'
-	bhi	L869
-	addq.l	#1,a0
-	bra	L867
-L869:	move.l	(a7),a0	; naechste Alternative
-	move.b	(a0),d1
-	cmpi.b	#$41,d1	; 'A'
-	blo	L870
-	cmpi.b	#$46,d1	; 'F'
-	bhi	L870
-	addq.l	#1,a0
-	bra	L867
-L870:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L866
-L867:	addq.l	#4,a7
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L866:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: decNumber (lexikalisch)
-p_decNumber:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_digit
-	tst.b	d0
-	beq	L871
-L872:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_digit
-	tst.b	d0
-	beq	L873
-	addq.l	#4,a7
-	bra	L872
-L873:	move.l	(a7)+,a0	; Wiederholung beendet
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L871:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: floatLit (lexikalisch)
-p_floatLit:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	bsr	p_digit
-	tst.b	d0
-	beq	L874
-L875:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
-	bsr	p_digit
-	tst.b	d0
-	beq	L876
-	addq.l	#4,a7
-	bra	L875
-L876:	move.l	(a7)+,a0	; Wiederholung beendet
-	bsr	p_floatTail
-	tst.b	d0
-	beq	L874
-	addq.l	#4,a7
-	moveq	#1,d0
-	rts
-L874:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
-	moveq	#0,d0
-	rts
-
-;---------------------------------------------------------------------------
-; Regel: floatTail (lexikalisch)
-p_floatTail:
-	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
-	bsr	p_floatDotTail
-	tst.b	d0
-	beq	L879
-	bra	L878
-L879:	move.l	(a7),a0	; naechste Alternative
-	bsr	p_floatExp
-	tst.b	d0
-	beq	L880
 	bra	L878
 L880:	move.l	(a7)+,a0	; Auswahl gescheitert
 	bra	L877
@@ -8078,31 +8215,315 @@ L877:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	rts
 
 ;---------------------------------------------------------------------------
-; Regel: floatDotTail (lexikalisch)
-p_floatDotTail:
+; Regel: ident (lexikalisch)
+p_ident:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
-	cmpi.b	#$2E,(a0)	; '.'
-	bne	L881
-	addq.l	#1,a0
+	bsr	p_letter
+	tst.b	d0
+	beq	L881
 L882:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_letter
+	tst.b	d0
+	beq	L885
+	bra	L884
+L885:	move.l	(a7),a0	; naechste Alternative
 	bsr	p_digit
 	tst.b	d0
-	beq	L883
+	beq	L886
+	bra	L884
+L886:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L883
+L884:	addq.l	#4,a7
 	addq.l	#4,a7
 	bra	L882
 L883:	move.l	(a7)+,a0	; Wiederholung beendet
-	move.l	a0,-(a7)	; Ruecksetzpunkt Option
-	bsr	p_floatExp
-	tst.b	d0
-	beq	L884
-	addq.l	#4,a7
-	bra	L885
-L884:	move.l	(a7)+,a0	; Option uebersprungen
-L885:
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
 L881:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: number (lexikalisch)
+p_number:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_hexNumber
+	tst.b	d0
+	beq	L889
+	bra	L888
+L889:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_decNumber
+	tst.b	d0
+	beq	L890
+	bra	L888
+L890:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L887
+L888:	addq.l	#4,a7
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_integerSuffix
+	tst.b	d0
+	beq	L891
+	addq.l	#4,a7
+	bra	L892
+L891:	move.l	(a7)+,a0	; Option uebersprungen
+L892:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L887:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: integerSuffix (lexikalisch)
+p_integerSuffix:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L895
+	addq.l	#1,a0
+	cmpi.b	#$6C,(a0)	; 'l'
+	bne	L895
+	addq.l	#1,a0
+	bra	L894
+L895:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$55,(a0)	; 'U'
+	bne	L896
+	addq.l	#1,a0
+	cmpi.b	#$4C,(a0)	; 'L'
+	bne	L896
+	addq.l	#1,a0
+	bra	L894
+L896:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$6C,(a0)	; 'l'
+	bne	L897
+	addq.l	#1,a0
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L897
+	addq.l	#1,a0
+	bra	L894
+L897:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$4C,(a0)	; 'L'
+	bne	L898
+	addq.l	#1,a0
+	cmpi.b	#$55,(a0)	; 'U'
+	bne	L898
+	addq.l	#1,a0
+	bra	L894
+L898:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$75,(a0)	; 'u'
+	bne	L899
+	addq.l	#1,a0
+	bra	L894
+L899:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$55,(a0)	; 'U'
+	bne	L900
+	addq.l	#1,a0
+	bra	L894
+L900:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$6C,(a0)	; 'l'
+	bne	L901
+	addq.l	#1,a0
+	bra	L894
+L901:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$4C,(a0)	; 'L'
+	bne	L902
+	addq.l	#1,a0
+	bra	L894
+L902:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L893
+L894:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L893:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: hexNumber (lexikalisch)
+p_hexNumber:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	cmpi.b	#$30,(a0)	; '0'
+	bne	L903
+	addq.l	#1,a0
+	bsr	p_hexMark
+	tst.b	d0
+	beq	L903
+	bsr	p_hexDigit
+	tst.b	d0
+	beq	L903
+L904:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_hexDigit
+	tst.b	d0
+	beq	L905
+	addq.l	#4,a7
+	bra	L904
+L905:	move.l	(a7)+,a0	; Wiederholung beendet
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L903:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: hexMark (lexikalisch)
+p_hexMark:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	cmpi.b	#$78,(a0)	; 'x'
+	bne	L908
+	addq.l	#1,a0
+	bra	L907
+L908:	move.l	(a7),a0	; naechste Alternative
+	cmpi.b	#$58,(a0)	; 'X'
+	bne	L909
+	addq.l	#1,a0
+	bra	L907
+L909:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L906
+L907:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L906:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: hexDigit (lexikalisch)
+p_hexDigit:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_digit
+	tst.b	d0
+	beq	L912
+	bra	L911
+L912:	move.l	(a7),a0	; naechste Alternative
+	move.b	(a0),d1
+	cmpi.b	#$61,d1	; 'a'
+	blo	L913
+	cmpi.b	#$66,d1	; 'f'
+	bhi	L913
+	addq.l	#1,a0
+	bra	L911
+L913:	move.l	(a7),a0	; naechste Alternative
+	move.b	(a0),d1
+	cmpi.b	#$41,d1	; 'A'
+	blo	L914
+	cmpi.b	#$46,d1	; 'F'
+	bhi	L914
+	addq.l	#1,a0
+	bra	L911
+L914:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L910
+L911:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L910:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: decNumber (lexikalisch)
+p_decNumber:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_digit
+	tst.b	d0
+	beq	L915
+L916:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_digit
+	tst.b	d0
+	beq	L917
+	addq.l	#4,a7
+	bra	L916
+L917:	move.l	(a7)+,a0	; Wiederholung beendet
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L915:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: floatLit (lexikalisch)
+p_floatLit:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	bsr	p_digit
+	tst.b	d0
+	beq	L918
+L919:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_digit
+	tst.b	d0
+	beq	L920
+	addq.l	#4,a7
+	bra	L919
+L920:	move.l	(a7)+,a0	; Wiederholung beendet
+	bsr	p_floatTail
+	tst.b	d0
+	beq	L918
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L918:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: floatTail (lexikalisch)
+p_floatTail:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
+	bsr	p_floatDotTail
+	tst.b	d0
+	beq	L923
+	bra	L922
+L923:	move.l	(a7),a0	; naechste Alternative
+	bsr	p_floatExp
+	tst.b	d0
+	beq	L924
+	bra	L922
+L924:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L921
+L922:	addq.l	#4,a7
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L921:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+	moveq	#0,d0
+	rts
+
+;---------------------------------------------------------------------------
+; Regel: floatDotTail (lexikalisch)
+p_floatDotTail:
+	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
+	cmpi.b	#$2E,(a0)	; '.'
+	bne	L925
+	addq.l	#1,a0
+L926:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	bsr	p_digit
+	tst.b	d0
+	beq	L927
+	addq.l	#4,a7
+	bra	L926
+L927:	move.l	(a7)+,a0	; Wiederholung beendet
+	move.l	a0,-(a7)	; Ruecksetzpunkt Option
+	bsr	p_floatExp
+	tst.b	d0
+	beq	L928
+	addq.l	#4,a7
+	bra	L929
+L928:	move.l	(a7)+,a0	; Option uebersprungen
+L929:
+	addq.l	#4,a7
+	moveq	#1,d0
+	rts
+L925:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -8112,39 +8533,39 @@ p_floatExp:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	cmpi.b	#$65,(a0)	; 'e'
-	bne	L888
+	bne	L932
 	addq.l	#1,a0
-	bra	L887
-L888:	move.l	(a7),a0	; naechste Alternative
+	bra	L931
+L932:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$45,(a0)	; 'E'
-	bne	L889
+	bne	L933
 	addq.l	#1,a0
-	bra	L887
-L889:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L886
-L887:	addq.l	#4,a7
+	bra	L931
+L933:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L930
+L931:	addq.l	#4,a7
 	move.l	a0,-(a7)	; Ruecksetzpunkt Option
 	bsr	p_floatExpSign
 	tst.b	d0
-	beq	L890
+	beq	L934
 	addq.l	#4,a7
-	bra	L891
-L890:	move.l	(a7)+,a0	; Option uebersprungen
-L891:
+	bra	L935
+L934:	move.l	(a7)+,a0	; Option uebersprungen
+L935:
 	bsr	p_digit
 	tst.b	d0
-	beq	L886
-L892:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
+	beq	L930
+L936:	move.l	a0,-(a7)	; Ruecksetzpunkt Wiederholung
 	bsr	p_digit
 	tst.b	d0
-	beq	L893
+	beq	L937
 	addq.l	#4,a7
-	bra	L892
-L893:	move.l	(a7)+,a0	; Wiederholung beendet
+	bra	L936
+L937:	move.l	(a7)+,a0	; Wiederholung beendet
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L886:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L930:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -8154,21 +8575,21 @@ p_floatExpSign:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	cmpi.b	#$2B,(a0)	; '+'
-	bne	L896
+	bne	L940
 	addq.l	#1,a0
-	bra	L895
-L896:	move.l	(a7),a0	; naechste Alternative
+	bra	L939
+L940:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$2D,(a0)	; '-'
-	bne	L897
+	bne	L941
 	addq.l	#1,a0
-	bra	L895
-L897:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L894
-L895:	addq.l	#4,a7
+	bra	L939
+L941:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L938
+L939:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L894:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L938:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -8179,31 +8600,31 @@ p_letter:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Auswahl
 	move.b	(a0),d1
 	cmpi.b	#$61,d1	; 'a'
-	blo	L900
+	blo	L944
 	cmpi.b	#$7A,d1	; 'z'
-	bhi	L900
+	bhi	L944
 	addq.l	#1,a0
-	bra	L899
-L900:	move.l	(a7),a0	; naechste Alternative
+	bra	L943
+L944:	move.l	(a7),a0	; naechste Alternative
 	move.b	(a0),d1
 	cmpi.b	#$41,d1	; 'A'
-	blo	L901
+	blo	L945
 	cmpi.b	#$5A,d1	; 'Z'
-	bhi	L901
+	bhi	L945
 	addq.l	#1,a0
-	bra	L899
-L901:	move.l	(a7),a0	; naechste Alternative
+	bra	L943
+L945:	move.l	(a7),a0	; naechste Alternative
 	cmpi.b	#$5F,(a0)	; '_'
-	bne	L902
+	bne	L946
 	addq.l	#1,a0
-	bra	L899
-L902:	move.l	(a7)+,a0	; Auswahl gescheitert
-	bra	L898
-L899:	addq.l	#4,a7
+	bra	L943
+L946:	move.l	(a7)+,a0	; Auswahl gescheitert
+	bra	L942
+L943:	addq.l	#4,a7
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L898:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L942:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 
@@ -8213,14 +8634,14 @@ p_digit:
 	move.l	a0,-(a7)	; Ruecksetzpunkt Regel
 	move.b	(a0),d1
 	cmpi.b	#$30,d1	; '0'
-	blo	L903
+	blo	L947
 	cmpi.b	#$39,d1	; '9'
-	bhi	L903
+	bhi	L947
 	addq.l	#1,a0
 	addq.l	#4,a7
 	moveq	#1,d0
 	rts
-L903:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
+L947:	move.l	(a7)+,a0	; Regel gescheitert, Position zurueck
 	moveq	#0,d0
 	rts
 

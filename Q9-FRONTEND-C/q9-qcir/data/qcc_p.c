@@ -6196,7 +6196,7 @@ void tc_call(const char* start, const char* end) {
 			   nach d0/d1 (genau wie bei einem nicht-variadischen Aufruf), der variadische
 			   Rest IMMER auf den Stack -- unabhaengig davon, WIEVIELE feste Parameter es
 			   gibt (bei printf(fmt, x) liegt fmt selbst in d0, nur x auf dem Stack). */
-			printf("%s %s %d %d ", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLEXTP" : "CALLEXT",
+			printf("%s %s %d %d ", tcIsPointer(tcFunctionReturnTypes[f]) ? "CALLEXTP" : (tcIsDouble(tcFunctionReturnTypes[f]) ? "CALLEXTD" : "CALLEXT"),
 				tcCallName[frame], tcCallArgCount[frame], tcFunctionNargs[f]);
 			/* Viertes Feld (2026-09-17): die Breitenliste aus tcCallArgWidth,
 			   ein Zeichen 4/8 je Argument in Aufrufreihenfolge -- das

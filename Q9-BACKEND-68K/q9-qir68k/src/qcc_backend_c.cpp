@@ -1025,7 +1025,7 @@ static void collectExterns(void) {
 	int i;
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
-		if ((strcmp(insP->op, "CALLEXT") == 0 || strcmp(insP->op, "CALLEXTP") == 0) && (insP->argc == 3 || insP->argc == 4)) {
+		if ((strcmp(insP->op, "CALLEXT") == 0 || strcmp(insP->op, "CALLEXTP") == 0 || strcmp(insP->op, "CALLEXTD") == 0) && (insP->argc == 3 || insP->argc == 4)) {
 			registerExtern(insP->args[0]);
 		}
 	}
@@ -1869,6 +1869,23 @@ static void emitIR(FILE* out) {
 	   Backend-Opcodes lesen den Wert erst NACH einem STORE hierher). */
 	emitAlign(out);
 	fputs(os9Mode ? "tc_extcall_tmp:\tdc.l\t0,0,0,0,0,0,0,0\n" : "tc_extcall_tmp:\tds.l\t8\n", out);
+	/* Scratch field for CALLEXTD (2026-09-24, found live while auditing
+	   qclib vsect bugs): a CALLEXTD call is a CALLEXT/CALLEXTP whose
+	   external function returns "double". The real (Microware) callee
+	   returns the value directly in d0:d1 (documented byte-offset model,
+	   s. o.) -- but QCCs OWN operand-stack convention for a double
+	   crossing any call boundary is a BOXED 4-byte address (s. tc_return()/
+	   __dblRet im Frontend fuer den internen Fall: dort wird der Wert in
+	   einen globalen Puffer geschrieben und dessen ADRESSE zurueckgegeben,
+	   weil acht Byte nicht durch d0 passen). Ohne dieses Boxing haette der
+	   Aufrufer d0 als Adresse eines Achtbyte-Werts behandelt
+	   (fmove.d (a0),fp0), obwohl d0 nur die halbe Mantisse trug -- live
+	   reproduziert: floor(2.5) lieferte 0 statt 2 ueber echten C-Code, mit
+	   einem eigenen Assembler-Treiber (der die Konvention direkt bediente)
+	   aber korrekt bestaetigt. Ein Puffer fuer das ganze Programm reicht
+	   (frei, bevor der naechste CALLEXTD-Aufruf ihn braucht) -- derselbe
+	   Ansatz wie bei __dblRet/__llRet im Frontend. */
+	fputs(os9Mode ? "tc_extretd_tmp:\tdc.l\t0,0\n" : "tc_extretd_tmp:\tds.l\t2\n", out);
 	if (os9Mode) {
 		/* tc_io_buf: digit buffer for tc_putint/tc_putuint (maximum
 		   "-2147483648\r" = 12 bytes, filled backwards) and single-byte buffer
@@ -2403,7 +2420,7 @@ static void emitIR(FILE* out) {
 				}
 				fprintf(out, "\tlea\t%d(a7),a7\n", (nargsI + 1) * 4);
 				fputs("\tmove.l\td0,-(a7)\n", out);
-			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) && (insP->argc == 3 || insP->argc == 4)) {
+			} else if ((strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0 || strcmp(op, "CALLEXTD") == 0) && (insP->argc == 3 || insP->argc == 4)) {
 				/* Call an external function not defined in this IR, such as an OS-9/
 				   Microware clib function (strcmp, printf, malloc, ...). Use the
 				   documented Microware 68k C/C++ ABI instead of QCC's internal stack ABI.
@@ -2532,7 +2549,16 @@ static void emitIR(FILE* out) {
 					fprintf(out, "\t%s\t%s\n", os9Mode ? "bsr" : "jsr", insP->args[0]);
 				}
 				if (stackBytes) fprintf(out, "\tlea\t%d(a7),a7\n", stackBytes);
-				fputs("\tmove.l\td0,-(a7)\n", out);
+				if (strcmp(op, "CALLEXTD") == 0) {
+					/* Box d0:d1 (the real return value, per the Microware ABI) into
+					   tc_extretd_tmp and push its ADDRESS instead -- matches what a
+					   "double" value on the operand stack means everywhere else (see
+					   the tc_extretd_tmp declaration comment). a0 is free scratch here,
+					   like everywhere else in this backend. */
+					fputs("\tlea\ttc_extretd_tmp(pc),a0\n\tmove.l\td0,(a0)\n\tmove.l\td1,4(a0)\n\tmove.l\ta0,-(a7)\n", out);
+				} else {
+					fputs("\tmove.l\td0,-(a7)\n", out);
+				}
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
 				fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
 			} else if (strcmp(op, "DROP") == 0) {
