@@ -1,18 +1,31 @@
 * strerror for the OS-9 error values used by qclib, with a stable fallback.
 *
-* 2026-09-23 (vsect-Adressierungs-Audit nach dem atexit-Fund, `c342e53`):
+* 2026-09-23 (vsect-Adressierungsaudit nach dem atexit-Fund, `c342e53`):
 * die vier Fehlertexte lagen in einem separaten "vsect"-Block und wurden
 * als BARE absolute Labels referenziert -- dieselbe Signatur wie bei
-* extra_atexit.a. Erster Fix (psect + PC-relative "lea label(pc)") zeigte
-* live einen ZWEITEN, unabhaengigen Fund: "lea label(pc),aN" auf ein per
-* "dc.b 'Text',0" (Quoted-String) deklariertes Label loeste bei qr68k auf
-* "Adresse + (Textlaenge-1)" auf statt auf die Startadresse -- bestaetigt
-* per Minimalreproduktion (dc.b 'Hello',0 lieferte den letzten Buchstaben
-* 'o' statt 'H'). Bei extra_locale.a blieb das unsichtbar, weil "C" nur
-* EIN Zeichen lang ist (Laenge-1 = 0, kein Unterschied). Workaround (die
-* eigentliche qr68k-Assemblerkorrektur ist ausserhalb dieses Fundes):
-* die Zeichenketten als NUMERISCHE Byteliste statt als Quoted-String
-* deklarieren -- das umgeht die fehlerhafte qr68k-Stelle nachweislich.
+* extra_atexit.a. Fix nach demselben Muster: die Texte liegen jetzt
+* direkt im psect, referenziert ueber PC-relative Adressierung.
+*
+* ZWEITER FUND, KEIN qr68k-BUG (Korrektur einer eigenen Fehldiagnose):
+* die urspruengliche (schon VOR diesem Fund bestehende) Quelle schrieb
+* die Fehlertexte mit EINFACHEN Anfuehrungszeichen ("dc.b 'No error',0").
+* In diesem Assembler-Dialekt sind einfache Anfuehrungszeichen aber KEIN
+* Stringliteral, sondern eine GEPACKTE Zahlenkonstante (wie ein
+* Multi-Char-Literal in C, s. der ausfuehrliche Kommentar bei doDc() in
+* qr68.c: 'ab' -> $6162 usw.) -- bei mehr als vier Zeichen laeuft die
+* Packung ueber 32 Bit hinaus, "dc.b" schneidet auf ein BYTE herunter,
+* und das verbleibende Byte ist durch die Multiplikationsreihenfolge der
+* Packung zufaellig genau das LETZTE Zeichen. Live reproduziert mit
+* "dc.b 'Hello',0": ergab EIN Byte ('o'=$6F), nicht fuenf. Ein zuerst
+* vermuteter qr68k-Bug ("lea label(pc) loest auf Adresse+Laenge-1 auf")
+* war also keiner -- die einfachen Anfuehrungszeichen erzeugten schlicht
+* nur je EIN Byte, nicht die ganze Zeichenkette. Die eigentliche,
+* bereits im Code etablierte Konvention fuer echte Stringliterale sind
+* DOPPELTE Anfuehrungszeichen (s. Q9-QCC/runtime/os9/q9_cstart.a:
+* "dc.b "**** Stack Overflow ****",CR,0" -- funktioniert bereits seit
+* jeher korrekt, sowie q9-qr68k/tests/mac.a, KETTE-Makro). Fix: doppelte
+* Anfuehrungszeichen statt einfacher; der vorherige Workaround
+* (numerische Byteliste) ist damit nicht mehr noetig.
          psect qstrerror,0,0,0,0,0
 strerror:
          cmpi.l #211,d0
@@ -38,12 +51,8 @@ se_nomem
          rts
 
          align 4
-* "No error",0
-se_noerror:    dc.b 78,111,32,101,114,114,111,114,0
-* "End of file",0
-se_eof_text:   dc.b 69,110,100,32,111,102,32,102,105,108,101,0
-* "Out of memory",0
-se_nomem_text: dc.b 79,117,116,32,111,102,32,109,101,109,111,114,121,0
-* "Unknown error",0
-se_unknown:    dc.b 85,110,107,110,111,119,110,32,101,114,114,111,114,0
+se_noerror:    dc.b "No error",0
+se_eof_text:   dc.b "End of file",0
+se_nomem_text: dc.b "Out of memory",0
+se_unknown:    dc.b "Unknown error",0
          ends
