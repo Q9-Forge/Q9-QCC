@@ -4193,7 +4193,7 @@ static TCType tcBadType(void) { return tcMakeType('?', 0); }
 /* base=='F' (Funktionszeiger) traegt wie 's' eine Id in structId -- zwei
    Funktionszeiger sind nur bei GLEICHER Signatur derselbe Typ. */
 static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers &&
-	(a.base == 'F' ? tcFnSigSame((int)a.structId - 1, (int)b.structId - 1) : (a.base != 's' || a.structId == b.structId)); }
+	(a.base == 'F' ? tcFnSigSame((int)a.structId - 1, (int)b.structId - 1) != 0 : (a.base != 's' || a.structId == b.structId)); }
 static int tcIsPointer(TCType t) { return t.pointers != 0; }
 /* EINE STRUCT IST KEIN REGISTERWERT. Jede Stelle, die aus einer Adresse einen
    Wert laedt, muss fuer eine GANZE Struct die Adresse stehen lassen --
@@ -6190,7 +6190,7 @@ ROUTINE C tc_krarray
 void tc_krarray(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (tcKrDeclCount > 0 && tcKrDeclType[tcKrDeclCount-1].pointers < 255)
-		tcKrDeclType[tcKrDeclCount-1].pointers++;
+		tcKrDeclType[tcKrDeclCount-1].pointers = tcKrDeclType[tcKrDeclCount-1].pointers + 1;  /* kein ++ auf ein Feld eines Array-Elements: das versteht qcir selbst nicht (Selbstuebersetzung) */
 }
 END
 ROUTINE C tc_krend

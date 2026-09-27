@@ -17,6 +17,8 @@ static void qccOutputString(const char* s) { while (*s) qccOutputChar(*s++); }
 static void qccOutputLong(long v) { unsigned long u; char digits[16]; int n = 0; if (v < 0) { qccOutputChar('-'); u = (unsigned long)(-(v + 1)); u++; } else u = (unsigned long)v; do { digits[n++] = (char)('0' + (u % 10)); u /= 10; } while (u); while (n) qccOutputChar(digits[--n]); }
 static int qccPrintf(const char* fmt, ...) { va_list ap; int longArg; va_start(ap, fmt); while (*fmt) { if (*fmt != '%') { qccOutputChar(*fmt++); continue; } fmt++; longArg = 0; if (*fmt == 'l') { longArg = 1; fmt++; } if (*fmt == 's') qccOutputString(va_arg(ap, const char*)); else if (*fmt == 'c') qccOutputChar(va_arg(ap, int)); else if (*fmt == 'd') qccOutputLong(longArg ? va_arg(ap, long) : (long)va_arg(ap, int)); else if (*fmt == '%') qccOutputChar('%'); if (*fmt) fmt++; } va_end(ap); return 0; }
 #define printf qccPrintf
+#undef putchar
+#define putchar(c) qccOutputChar(c)
 #define QCC_OUTPUT_FLUSH() qccOutputFlush()
 #else
 #define QCC_OUTPUT_FLUSH() (void)0
@@ -854,7 +856,7 @@ static TCType tcBadType(void) { return tcMakeType('?', 0); }
 /* base=='F' (Funktionszeiger) traegt wie 's' eine Id in structId -- zwei
    Funktionszeiger sind nur bei GLEICHER Signatur derselbe Typ. */
 static int tcSameType(TCType a, TCType b) { return a.base == b.base && a.pointers == b.pointers &&
-	(a.base == 'F' ? tcFnSigSame((int)a.structId - 1, (int)b.structId - 1) : (a.base != 's' || a.structId == b.structId)); }
+	(a.base == 'F' ? tcFnSigSame((int)a.structId - 1, (int)b.structId - 1) != 0 : (a.base != 's' || a.structId == b.structId)); }
 static int tcIsPointer(TCType t) { return t.pointers != 0; }
 /* EINE STRUCT IST KEIN REGISTERWERT. Jede Stelle, die aus einer Adresse einen
    Wert laedt, muss fuer eine GANZE Struct die Adresse stehen lassen --
@@ -2818,7 +2820,7 @@ void tc_krdeclname(const char* start, const char* end) {
 void tc_krarray(const char* start, const char* end) {
 	(void)start; (void)end;
 	if (tcKrDeclCount > 0 && tcKrDeclType[tcKrDeclCount-1].pointers < 255)
-		tcKrDeclType[tcKrDeclCount-1].pointers++;
+		tcKrDeclType[tcKrDeclCount-1].pointers = tcKrDeclType[tcKrDeclCount-1].pointers + 1;  /* kein ++ auf ein Feld eines Array-Elements: das versteht qcir selbst nicht (Selbstuebersetzung) */
 }
 
 /* Fuehrt beide Puffer zusammen und legt die Parameter an -- in der

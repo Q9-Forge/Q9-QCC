@@ -14,7 +14,10 @@
 
 extern void exit(int);
 extern void abort(void);
-extern int atexit(void (*)(void));
+/* qcir kennt keinen Funktionszeiger als Parameter eines extern-Prototyps --
+   deshalb wie bei qsort ueber einen typedef (2026-09-27). */
+typedef void (*atexit_fn)(void);
+extern int atexit(atexit_fn);
 extern long strtol(const char*, char**, int);
 extern char* realloc(char*, int);
 extern char* getenv(const char*);
@@ -31,15 +34,13 @@ extern int mbstowcs(int*, const char*, int);
 extern int wcstombs(char*, const int*, int);
 extern double atof(const char*);
 extern double strtod(const char*, char**);
-extern void* bsearch(const void*, const void*, int, int, int (*)(const void*, const void*));
+typedef int (*bsearch_cmp)(const void*, const void*);
+extern void* bsearch(const void*, const void*, int, int, bsearch_cmp);
 typedef int (*qsort_cmp)(const void*, const void*);
 extern void qsort(void*, int, int, qsort_cmp);
 extern int div(int, int);
 extern long ldiv(long, long);
 extern int rand(void);
 extern void srand(unsigned int);
-
-/* Added 2026-09-18 for the qclib STATUS.md gap-closing test. */
-extern void abort(void);
 
 #endif

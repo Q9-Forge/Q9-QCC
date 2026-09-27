@@ -16,6 +16,7 @@
 #define OP_LEN          24
 #define ARG_LEN         64
 #define NAME_LEN        64
+#define CONV_LEN        64  /* Function.convention -- QCC kennt kein sizeof auf ein Feld */
 #define LINE_LEN        512
 #define MAX_ARGS        6
 /* 2026-07-25: increased from 8192; the -largedata function-call mode
@@ -35,7 +36,12 @@
    larger literal: the 101 read sites use ir[i] and would not change if
    ir became a pointer grown with realloc, exactly as the parser already
    does for its action log. */
-#define MAX_IR_LINES    131072
+/* 2026-09-27 von 131072 auf 163840 angehoben: die Selbstuebersetzung von
+   qcc_p.c braucht inzwischen 133889 IR-Zeilen (gemessen, tools/test_selfhost_build.sh).
+   Tabelle jetzt 163840 * 56 Byte = 8,75 MB auf dem 68k (vorher 7,0 MB) bei gut 14 MB
+   freiem RAM im Q9 -- beim naechsten Mal wirklich auf ein mit realloc wachsendes
+   ir[] umstellen (s. o.). */
+#define MAX_IR_LINES    163840
 /* 2026-08-10 increased from 256 to 1024: Data/qcc_p.c alone has 354
    functions, so self-hosting reached this limit. */
 #define MAX_FUNCS       1024
@@ -93,7 +99,7 @@ typedef struct {
 	int declOnly, isStatic;
 	/* Phase 5 (2026-09-24): calling convention from FUNC IR fourth argument
 	   (driver/interrupt/trap/naked). Empty string = standard driver convention. */
-	char convention[64];
+	char convention[CONV_LEN];
 } Function;
 
 typedef struct {
@@ -921,7 +927,7 @@ static void collectFunctions(void) {
 			current.last = -1;
 			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
 			if (insP->argc >= 4) {
-				strncpy(current.convention, insP->args[3], sizeof(current.convention) - 1);
+				strncpy(current.convention, insP->args[3], CONV_LEN - 1);
 			} else {
 				current.convention[0] = '\0';
 			}

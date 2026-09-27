@@ -1068,7 +1068,9 @@ int genParserC(const char* path) {
 	   aeusseren Klammern tragen dort also nichts. Damit kann QCC den
 	   erzeugten Parser ohne jede Nachbearbeitung lesen, s.
 	   Q9-QCC/q9-cpp/tools/bootstrap.sh. */
-	fprintf(fp, "#define printf qccPrintf\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() (void)0\n#endif\n\n");
+	/* 2026-09-27: auch putchar umlenken -- Aktionscode (z.B. die CALLEXT-Breitenliste in qcc.lextab)
+	   schrieb per putchar am Puffer vorbei, die Zeichen landeten im xcc-Bau vor dem gepufferten Rest. */
+	fprintf(fp, "#define printf qccPrintf\n#undef putchar\n#define putchar(c) qccOutputChar(c)\n#define QCC_OUTPUT_FLUSH() qccOutputFlush()\n#else\n#define QCC_OUTPUT_FLUSH() (void)0\n#endif\n\n");
 	fprintf(fp, "static const char* p;\n");
 	/* Anker fuer Positionsangaben im Nutzercode (2026-09-01): der Zeiger p
 	   wandert waehrend des Parsens, der Anfang der Eingabe bleibt stehen. Aus

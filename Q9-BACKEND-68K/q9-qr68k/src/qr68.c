@@ -106,8 +106,10 @@ extern void exit(int code);
    produces a 20.7 MiB assembly source (277,744 lines), the largest source
    currently passed through qr68. Target sizes below remain unchanged. */
 #define QR_SRC   33554432
-#define QR_SYM      16384
-#define QR_SYMHASH   4096
+/* 2026-09-27 von 16384 auf 32768 angehoben: die Selbstuebersetzung von qcir
+   (qcc_p.c) braucht 21399 Symbole (tools/test_selfhost_build.sh). Nur Host. */
+#define QR_SYM      32768
+#define QR_SYMHASH   8192
 #define QR_CODE  16777216
 #define QR_IDATA  8388608
 #define QR_REF      65536
