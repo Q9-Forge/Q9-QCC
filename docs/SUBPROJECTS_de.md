@@ -102,8 +102,10 @@ Geplante Stufen:
 
 ## Eigenes Teilprojekt: Optimierer
 
-Der Optimierer arbeitet auf einer stabilen IR und wird erst begonnen, wenn die
-Semantiktests des Sprachkerns breit genug sind. Mögliche erste Pässe sind:
+Der backend-neutrale Stack-IR-Optimierer wird als `qost` unter
+`Q9-OPTIMIZER/q9-qost/` eingeführt. Sein erster Pass faltet sichere konstante
+Ganzzahlausdrücke; das Werkzeug ist separat baubar und getestet, aber noch
+nicht in den Standardlauf von `qcc` eingebunden. Weitere mögliche Pässe sind:
 
 - konstante Faltung
 - Entfernen unerreichbarer Sprünge

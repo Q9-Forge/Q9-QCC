@@ -20,6 +20,7 @@ Q9-QCC/
 ├── Q9-FRONTEND-C/
 │   ├── q9-qcpp/            C preprocessor: qcpp
 │   └── q9-qcir/            C frontend and IR generator: qcir
+├── Q9-OPTIMIZER/           backend-neutral Stack-IR optimizer: qost
 ├── Q9-BACKEND-68K/         68k compiler toolchain
 ├── Q9-BACKEND-x86/         x86 toolchain area
 └── Q9-BACKEND-ARM64/       ARM64 toolchain area
@@ -27,6 +28,9 @@ Q9-QCC/
 
 The 68k path is currently the most complete. The x86 and ARM64 areas are
 under development.
+
+The initial Stack-IR optimizer is `Q9-OPTIMIZER/q9-qost/`. It is built and
+tested independently; the `qcc` driver does not invoke it yet.
 
 ## Parser generation
 

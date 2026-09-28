@@ -70,10 +70,15 @@ Q9-QCC/
 ├── Q9-PARSEC/              Parsergenerator: qparsec
 ├── Q9-RUN/                 Stack-IR-Interpreter: qrun
 ├── Q9-FRONTEND-C/          qcpp und qcir
+├── Q9-OPTIMIZER/           backend-neutraler Stack-IR-Optimizer: qost
 ├── Q9-BACKEND-68K/         qir68k, qo68k, q9-qclib, q9-devs
 ├── Q9-BACKEND-x86/         x86-Werkzeugkette
 └── Q9-BACKEND-ARM64/       ARM64-Werkzeugkette
 ```
+
+Der erste backend-neutrale IR-Optimizer `qost` liegt unter
+`Q9-OPTIMIZER/q9-qost/`. Er ist zunächst separat aufrufbar und noch nicht in
+den `qcc`-Standardlauf eingebunden.
 
 Jedes Teilprojekt verwendet bei Bedarf `src/`, `include/`, `data/`, `tests/`,
 `tools/`, `docs/` und `build/`. `build/` enthält nur lokale Bauartefakte.
