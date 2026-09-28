@@ -14,8 +14,10 @@
 
 extern void exit(int);
 extern void abort(void);
-typedef void (*atexit_cb)(void);
-extern int atexit(atexit_cb);
+/* qcir kennt keinen Funktionszeiger als Parameter eines extern-Prototyps --
+   deshalb wie bei qsort ueber einen typedef (2026-09-27). */
+typedef void (*atexit_fn)(void);
+extern int atexit(atexit_fn);
 extern long strtol(const char*, char**, int);
 extern char* realloc(char*, int);
 extern char* getenv(const char*);

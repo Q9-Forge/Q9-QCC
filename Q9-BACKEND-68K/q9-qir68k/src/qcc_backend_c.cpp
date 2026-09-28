@@ -16,6 +16,12 @@
 #define OP_LEN          24
 #define ARG_LEN         64
 #define NAME_LEN        64
+#define CONV_LEN        64  /* Function.convention -- QCC kennt kein sizeof auf ein Feld */
+#define FUNC_ATTR_VARIADIC 1
+#define FUNC_ATTR_CONV_MASK 6
+#define FUNC_ATTR_CONV_INTERRUPT 2
+#define FUNC_ATTR_CONV_TRAP 4
+#define FUNC_ATTR_CONV_NAKED 6
 #define LINE_LEN        512
 #define MAX_ARGS        6
 /* 2026-07-25: increased from 8192; the -largedata function-call mode
@@ -35,7 +41,12 @@
    larger literal: the 101 read sites use ir[i] and would not change if
    ir became a pointer grown with realloc, exactly as the parser already
    does for its action log. */
-#define MAX_IR_LINES    131072
+/* 2026-09-27 von 131072 auf 163840 angehoben: die Selbstuebersetzung von
+   qcc_p.c braucht inzwischen 133889 IR-Zeilen (gemessen, tools/test_selfhost_build.sh).
+   Tabelle jetzt 163840 * 56 Byte = 8,75 MB auf dem 68k (vorher 7,0 MB) bei gut 14 MB
+   freiem RAM im Q9 -- beim naechsten Mal wirklich auf ein mit realloc wachsendes
+   ir[] umstellen (s. o.). */
+#define MAX_IR_LINES    163840
 /* 2026-08-10 increased from 256 to 1024: Data/qcc_p.c alone has 354
    functions, so self-hosting reached this limit. */
 #define MAX_FUNCS       1024
@@ -98,6 +109,7 @@ typedef struct {
 	   weil sie sonst von der (variablen) Gesamtzahl der Argumente abhaengt;
 	   der Aufrufer gleicht das mit VAREVERSE aus (s. tc_call in qcc.lextab). */
 	int isVariadic;
+	char convention[CONV_LEN];
 } Function;
 
 typedef struct {
@@ -893,6 +905,33 @@ static void collectGlobals(void) {
 	}
 }
 
+/* Phase 5 (2026-09-24): Emit function prolog based on calling convention */
+static void emitPrologByConvention(FILE* out, const char* asmName, const char* convention,
+                                   int frameBytes, const char* framePtrReg) {
+	if (convention[0] == '\0' || strcmp(convention, "driver") == 0) {
+		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtrReg, -frameBytes);
+	} else if (strcmp(convention, "interrupt") == 0) {
+		fprintf(out, "%s:\tmovem.l\td0-d7/a0-a6,-(a7)\n", asmName);
+		fprintf(out, "\tlink\t%s,#%d\n", framePtrReg, -frameBytes);
+	} else if (strcmp(convention, "trap") == 0) {
+		fprintf(out, "%s:\tmovem.l\td0-d7/a0-a6,-(a7)\n", asmName);
+		fprintf(out, "\tlink\t%s,#%d\n", framePtrReg, -frameBytes);
+	} else if (strcmp(convention, "naked") == 0) {
+		fprintf(out, "%s:\n", asmName);
+	}
+}
+
+/* Phase 5 (2026-09-24): Emit function epilog based on calling convention */
+static void emitEpilogByConvention(FILE* out, const char* convention, const char* framePtrReg) {
+	if (convention[0] == '\0' || strcmp(convention, "driver") == 0) {
+		fprintf(out, "\tunlk\t%s\n\trts\n", framePtrReg);
+	} else if (strcmp(convention, "interrupt") == 0) {
+		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
+	} else if (strcmp(convention, "trap") == 0) {
+		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
+	}
+}
+
 static void collectFunctions(void) {
 	int i, open = 0, seenFunction = 0;
 	Function current;
@@ -914,19 +953,43 @@ static void collectFunctions(void) {
 			/* Multi-file translation (2026-07-25): "exists but is not defined here"
 			   is allowed outside every FUNC span, like GLOBAL/GARRAY. FUNCDECL is
 			   registered in a separate pass because it opens no FUNC/ENDFUNC span. */
+		} else if (strcmp(insP->op, "MODHEADER") == 0 || strcmp(insP->op, "ENTRY") == 0) {
+			/* QCC-DEFMODUL (Phase 2, 2026-09-22): nur als gueltig anerkennen, damit
+			   das Frontend #DEFMODUL bereits jetzt verwenden kann, ohne dieses
+			   Backend abstuerzen zu lassen ("Opcode ausserhalb einer Funktion").
+			   Die Felder (name=/type=/attr=/edition=/stack=, Einsprungname) werden
+			   hier NOCH NICHT ausgewertet -- die bestehende os9Mode-psect-Zeile
+			   weiter unten (feste Werte "%s,0,0,%d,0,0") ist ungeklaert, ob sie
+			   ueberhaupt reale OS-9-Modulkopf-Felder traegt oder nur ein
+			   Platzhalter ist, den q9_cstart.a beim Linken ueberschreibt/ergaenzt
+			   -- absichtlich nicht spekulativ veraendert, bevor das geklaert ist
+			   (s. STATUS_DEFMODUL.md Phase 3). Echte Verarbeitung folgt separat. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
-			/* Third argument (2026-07-25): optional isstatic flag (name mangling in
-			   emitIR; see mangledName()). r68/l68 have no visibility concept.
-			   Viertes Argument (2026-09-23): optionales isVariadic-Flag, s.
-			   Kopfkommentar bei Function.isVariadic. */
-			if (open || (insP->argc != 2 && insP->argc != 3 && insP->argc != 4)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
+			/* Third argument is isStatic; fourth is the attribute word. Legacy
+			   textual calling-convention values are still accepted for old IR. */
+			if (open || insP->argc < 2 || insP->argc > 4) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
 			current.nargs = number(insP->args[1], insP->line);
 			current.first = i + 1;
 			current.last = -1;
 			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
-			current.isVariadic = insP->argc >= 4 && number(insP->args[3], insP->line) != 0;
+			if (insP->argc >= 4) {
+				const char* attr = insP->args[3];
+				int attrs = 0, conv = 0;
+				if (strcmp(attr, "interrupt") == 0) conv = FUNC_ATTR_CONV_INTERRUPT;
+				else if (strcmp(attr, "trap") == 0) conv = FUNC_ATTR_CONV_TRAP;
+				else if (strcmp(attr, "naked") == 0) conv = FUNC_ATTR_CONV_NAKED;
+				else if (strcmp(attr, "driver") != 0) {
+					attrs = number(attr, insP->line);
+					if (attrs < 0 || attrs > 7) fatal("ungueltige FUNC-Attribute");
+					conv = attrs & FUNC_ATTR_CONV_MASK;
+					current.isVariadic = (attrs & FUNC_ATTR_VARIADIC) != 0;
+				}
+				if (conv == FUNC_ATTR_CONV_INTERRUPT) strcpy(current.convention, "interrupt");
+				else if (conv == FUNC_ATTR_CONV_TRAP) strcpy(current.convention, "trap");
+				else if (conv == FUNC_ATTR_CONV_NAKED) strcpy(current.convention, "naked");
+			}
 			open = 1;
 			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {
@@ -988,7 +1051,8 @@ static void collectFunctions(void) {
 			if ((strcmp(x->op, "LOADL") == 0 || strcmp(x->op, "STOREL") == 0 || strcmp(x->op, "LOADC") == 0 ||
 				strcmp(x->op, "STOREC") == 0 || strcmp(x->op, "LOADLH") == 0 || strcmp(x->op, "STORELH") == 0 ||
 				strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
-				strcmp(x->op, "ADDRL") == 0 || strcmp(x->op, "LARRAY") == 0) && x->argc > 0) {
+				strcmp(x->op, "ADDRL") == 0 || strcmp(x->op, "LARRAY") == 0 ||
+				strcmp(x->op, "VASTART") == 0 || strcmp(x->op, "VAARG") == 0) && x->argc > 0) {
 				int slotN = number(x->args[0], x->line);
 				if (slotN < 0) { sprintf(msg, "IR Zeile %d: negativer lokaler Slot", x->line); fatal(msg); }
 				if (slotN > highest) highest = slotN;
@@ -1944,7 +2008,7 @@ static void emitIR(FILE* out) {
 			}
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
-		fprintf(out, "%s:\tlink\t%s,#%d\n", asmName, framePtr(), -fn->frameBytes);
+		emitPrologByConvention(out, asmName, fn->convention, fn->frameBytes, framePtr());
 		if (largeDataMode && os9Mode && strcmp(fn->name, "main") == 0) {
 			/* OS-9 cstart enters main directly; establish the one shared table
 			   basis before any QCC-internal call is made. */
@@ -2560,7 +2624,16 @@ static void emitIR(FILE* out) {
 					fputs("\tmove.l\td0,-(a7)\n", out);
 				}
 			} else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
-				fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
+				if (fn->convention[0] == '\0' || strcmp(fn->convention, "driver") == 0) {
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\trts\n", framePtr());
+				} else if (strcmp(fn->convention, "interrupt") == 0) {
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtr());
+				} else if (strcmp(fn->convention, "trap") == 0) {
+					fprintf(out, "\tmove.l\t(a7)+,d0\n\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtr());
+				} else if (strcmp(fn->convention, "naked") == 0) {
+					/* Naked function: developer provides return via #ASM */
+					/* No implicit epilog */
+				}
 			} else if (strcmp(op, "DROP") == 0) {
 				fputs("\taddq.l\t#4,a7\n", out);
 			} else if (strcmp(op, "PRINT") == 0) {

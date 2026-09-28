@@ -37,19 +37,11 @@ section 10 (10.5 shows the same opcode set more compactly).
 | `GLOBAL <name> [init]` | — | global scalar variable, optional initial value |
 | `GARRAY <name> <typetag> <len>` | — | global array of fixed length |
 | `GINIT <name> <idx> <value>` | — | initial value for an array element (multiple per array) |
-| `FUNC <name> <nargs> [isStatic] [attrs]` | — | start of function; slots `0..nargs-1` = parameters. Optional `attrs` bitfield carries variadic and calling-convention attributes. |
+| `FUNC <name> <nargs>` | — | start of function; slots `0..nargs-1` = parameters |
 | `ENDFUNC` | — | end of function (frame size = highest slot+1, determined by the backend) |
 | `LABEL <L>` | — | defines jump target `L` |
 | `FUNCDECL <name> <argc> [static]` | — | forward declaration without a body (multi-file/mutual recursion); backend-only. `static=1` preserves private-name mangling when one source unit is deliberately split into backend parts. |
 | `GLOBALDECL <name> <type> [static]` | — | `extern` variable, no allocation of its own; backend-only. The optional flag has the same artificial-split meaning as for `FUNCDECL`. |
-
-The optional fourth `FUNC` field (`attrs`, after `isStatic`) is a bitfield:
-bit 0 (`1`) marks a variadic function; bits 1–2 select the calling convention
-(`0` default/driver, `2` interrupt, `4` trap, `6` naked). Calling conventions
-are mutually exclusive, while variadic may combine with one. For example,
-`FUNC log 1 0 3` is variadic and uses the interrupt convention. Legacy two- and
-three-field records remain valid. The 68k backend temporarily accepts the old
-textual fourth field as well; newly generated IR always uses the bitfield.
 
 ## Loading/storing values
 

@@ -88,16 +88,21 @@ extern void exit(int code);
    limited to 64 KiB through d16(a6). These sizes cover hand-written OS-9
    sources; the Q9-OS kernel uses 232 symbols and the largest Referenz-Toolchain driver 1428. */
 #ifdef _Q9OS
-#define QR_POOL     65536
-#define QR_POOLHASH  1024
-#define QR_PENT      8192
-#define QR_SRC     262144
-#define QR_SYM       4096
-#define QR_SYMHASH   1024
-#define QR_CODE    131072
-#define QR_IDATA    32768
-#define QR_REF       8192
-#define QR_MACTEXT  32768
+/* 2026-09-27 angehoben (Q9 mit 64 MB RAM): gross genug, damit qr68k auf dem Ziel die
+   Werkzeuge der Kette selbst assemblieren kann -- Massstab qcir: 6,0 MB Quelle, 21399
+   Symbole, 1,5 MB ROF (gemessen, tools/test_selfhost_build.sh). Die Felder liegen mit
+   -remotedata im entfernten Datenbereich, die Moduldatei waechst dadurch nicht; der
+   Speicherbedarf beim Lauf steigt auf rund 16 MB. Vorher: 256 KB Quelle, 4096 Symbole. */
+#define QR_POOL   1048576
+#define QR_POOLHASH  8192
+#define QR_PENT     65536
+#define QR_SRC    8388608
+#define QR_SYM      32768
+#define QR_SYMHASH   8192
+#define QR_CODE   2097152
+#define QR_IDATA  2097152
+#define QR_REF      65536
+#define QR_MACTEXT 131072
 #else
 #define QR_POOL    524288
 #define QR_POOLHASH  4096
@@ -106,8 +111,10 @@ extern void exit(int code);
    produces a 20.7 MiB assembly source (277,744 lines), the largest source
    currently passed through qr68. Target sizes below remain unchanged. */
 #define QR_SRC   33554432
-#define QR_SYM      16384
-#define QR_SYMHASH   4096
+/* 2026-09-27 von 16384 auf 32768 angehoben: die Selbstuebersetzung von qcir
+   (qcc_p.c) braucht 21399 Symbole (tools/test_selfhost_build.sh). Nur Host. */
+#define QR_SYM      32768
+#define QR_SYMHASH   8192
 #define QR_CODE  16777216
 #define QR_IDATA  8388608
 #define QR_REF      65536
@@ -150,6 +157,9 @@ static int flN;
 
 /* Symbols */
 static int SYM_MAX = QR_SYM;
+/* 2026-09-27: Merkfeld der alphabetischen Globalen-Ausgabe (war lokal: bei QR_SYM=32768
+   128 KB Stapelrahmen, mehr als ein 16-Bit-Displacement adressiert). */
+static int marked[QR_SYM];
 static int symName[QR_SYM];
 static int symValue[QR_SYM];
 static int symSect[QR_SYM];     /* See SECT_* constants. */
@@ -6064,7 +6074,6 @@ static void writeRof(void)
 	{
 		int done;
 		int best;
-		int marked[QR_SYM];
 
 		for (i = 0; i < symN; i++)
 			marked[i] = 0;

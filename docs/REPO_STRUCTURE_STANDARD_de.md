@@ -78,6 +78,7 @@ Das erlaubt Cross-Compilation von jedem unterstützten Host aus.
 | `q9-cpp/` | `src/qcpp/` | Präprozessor als Q9-QCC-Unterprojekt |
 | `Q9-qcc/` | `Q9-QCC/src/` | universeller Treiber; bisherige Planung wird überführt |
 | `qo68/` | `Q9-BACKEND-68K/q9-qo68k/src/` | 68k-Peephole-Optimierer |
+| Stack-IR-Optimierer | `Q9-OPTIMIZER/q9-qost/src/` | backend-neutraler IR-Pass |
 | `qcc_arm64_backend*.cpp` | `Q9-BACKEND-ARM64/q9-qirarm64/src/` | ARM64-Backend |
 
 Die Zuordnung wird erst nach einer vollständigen Referenz- und Bootstrap-

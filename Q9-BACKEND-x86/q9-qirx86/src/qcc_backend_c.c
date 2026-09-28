@@ -285,7 +285,7 @@ static void collectFunctions(void) {
 				sprintf(msg, "line %d: nested FUNC", insP->line);
 				fatal(msg);
 			}
-			if (insP->argc != 2 && insP->argc != 3) {
+			if (insP->argc < 2 || insP->argc > 4) {
 				sprintf(msg, "line %d: invalid FUNC", insP->line);
 				fatal(msg);
 			}
@@ -296,6 +296,11 @@ static void collectFunctions(void) {
 			current.first = i + 1;
 			current.last = -1;
 			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
+			if (insP->argc == 4) {
+				int attrs = number(insP->args[3], insP->line);
+				if (attrs < 0 || attrs > 7) fatal("invalid FUNC attributes");
+				if (attrs != 0) fatal("FUNC attributes not supported on x86");
+			}
 			open = 1;
 		} 
 		else if (strcmp(insP->op, "ENDFUNC") == 0) {

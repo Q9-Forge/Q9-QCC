@@ -61,7 +61,7 @@ extern int remove(const char*);
 extern int rename(const char*, const char*);
 extern void perror(const char*);
 
-#endif
-
 /* C89 formatted input; implemented by the target runtime. */
 extern int sscanf(const char*, const char*, ...);
+
+#endif

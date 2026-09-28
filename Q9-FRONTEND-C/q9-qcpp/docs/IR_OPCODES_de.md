@@ -6,8 +6,8 @@ Stand: **2026-09-22**
 
 Ausführliches Referenzdokument zur Text-IR, die zwischen dem generierten
 QCC-Frontend-Parser und den Backends (QCCVM, 68000, ARM64, C) steht.
-Kurzfassung mit Einbettung in den Gesamtkontext: `docs/ARCHITEKTUR.md`
-Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
+(Toter Verweis auf `docs/ARCHITEKTUR.md` entfernt 2026-09-22 — diese Datei
+existiert in Q9-QCC nicht, nur in Q9-PARSEC/Q9-RUN/Q9-FRONTEND-Quant.)
 
 ## Modell
 
@@ -29,7 +29,18 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
   ausführbar: `CALLEXT`/`CALLEXTP` (echte `extern`-Aufrufe gegen Microware-
   `clib.l`, nur 68k), `FUNCDECL`/`GLOBALDECL` (Mehrdatei-Vorwärts-
   deklarationen ohne Rumpf — reine Backend-/Linker-Information) und
-  die Modul-/System-Opcodes `MODHEADER`, `DISPATCHTAB`, `INLINEASM`.
+  die Modul-/System-Opcodes `MODHEADER`, `ENTRY`, `DISPATCHTAB`, `INLINEASM`.
+  **Entschieden 2026-09-22 (Branch `QCC-DEFMODUL`):** QCCVM verwirft diese
+  drei Opcodes nicht als Fehler, sondern ignoriert nur die Modul-/
+  Dispatch-Metadaten selbst (keine Simulation von Calling-Convention-
+  Semantik wie Registern/Carry-Flag) und interpretiert den reinen
+  Funktionsrumpf ganz normal weiter — damit bleibt die C-Logik einer
+  Treiberfunktion vorab am Orakel testbar, auch ohne dass QCCVM ein
+  OS-9-Modul simuliert. ARM64- und C-Backend lehnen diese drei Opcodes
+  dagegen mit klarer Fehlermeldung ab — als „noch nicht implementiert",
+  nicht als grundsätzlich ausgeschlossen: ein künftiges `#DEFOS Q9` auf
+  ARM64 (z. B. bare-metal) soll dieselbe IR irgendwann genauso verarbeiten
+  können wie heute der 68k.
 
 ## Programmstruktur / Deklarationen
 
@@ -39,30 +50,30 @@ Abschnitt 10 (10.5 zeigt denselben Opcode-Satz kompakter).
 | `GARRAY <name> <typtag> <len>` | — | globales Array fester Länge |
 | `GINIT <name> <idx> <wert>` | — | Initialwert für ein Array-Element (mehrfach pro Array) |
 | `GINITD <name> <idx> <hi> <lo>` | — | Initialwert eines globalen `double`, als zwei 32-Bit-Hälften (hi zuerst) — wie `PUSHD`. **Welche Hälfte zuerst im Speicher landet, entscheidet das Backend**: der 68k schreibt zwei `dc.l` (big-endian), ARM64 ein `.quad` (little-endian). Deshalb ein eigener Opcode statt zweier `GINIT` |
-| `FUNC <name> <nargs> [isStatic] [attrs]` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter. `attrs` ist ein Bitfeld für Variadizität und Calling-Convention; siehe unten. Alte Zeilen ohne `attrs` bleiben gültig. |
+| `FUNC <name> <nargs> [isStatic] [attrs]` | — | Funktionsbeginn; Slots `0..nargs-1` = Parameter. `attrs` ist ein Bitfeld für Variadizität und Calling-Convention; siehe die zentrale IR-Referenz. |
 | `ENDFUNC` | — | Funktionsende (Rahmengröße = höchster Slot+1, vom Backend ermittelt) |
 | `LABEL <L>` | — | definiert Sprungziel `L` |
 | `FUNCDECL <name> <argc> [static]` | — | Vorwärtsdeklaration ohne Rumpf (Mehrdatei/gegenseitige Rekursion); backend-only. `static=1` erhält die private Namensverfremdung, wenn eine Übersetzungseinheit gezielt in Backend-Teile zerlegt wird. |
 | `GLOBALDECL <name> <typ> [static]` | — | `extern`-Variable ohne eigene Allokation; backend-only. Das optionale Flag hat dieselbe Bedeutung wie bei `FUNCDECL`. |
 
-Das optionale vierte `FUNC`-Feld (`attrs`, nach `isStatic`) kodiert unabhängige
-Funktionsattribute: Bit 0 (`1`) bedeutet variadisch; Bits 1–2 kodieren die
-Calling-Convention (`0` Standard/driver, `2` interrupt, `4` trap, `6` naked).
-Die Convention-Werte sind gegenseitig ausschließend; Variadizität lässt sich
-mit einer Convention kombinieren. Beispiele: `FUNC f 1 0 1` ist variadisch,
-`FUNC irq 0 0 2` ist ein Interrupt-Handler, `FUNC log 1 0 3` ist beides.
-Ältere IR mit nur zwei oder drei Feldern bleibt gültig. Als Übergangsformat
-akzeptiert das 68k-Backend außerdem das alte vierte Textfeld `driver`,
-`interrupt`, `trap` oder `naked`; neu erzeugte IR verwendet stets das Bitfeld.
-
 ## Modul-Header & System-Schnittstellen (OS-9 / Native)
 
 Diese Opcodes transportieren Metadaten für native Betriebssystemmodule (z. B. OS-9 Treiber, File-Manager, Trap-Handler, Kernel). Sie stehen typischerweise ganz am Anfang des `.qir`-Streams noch vor den Deklarationen.
 
+**`MODHEADER` verwendet Schlüssel-Wert-Paare** (`schlüssel=wert`) statt
+fester Positionen — Entscheidung vom 2026-09-22 (Branch `QCC-DEFMODUL`,
+siehe `STATUS_DEFMODUL.md` Abschnitt 1.d): die Reihenfolge der Paare ist
+beliebig, jedes Feld ist über seinen Namen eindeutig statt über seine
+Position. `DISPATCHTAB` bleibt davon bewusst unberührt positional — diese
+Reihenfolge entspricht den physischen Offsets der echten OS-9-Sprung-
+tabelle im Modulkopf und ist Teil des Binärformats, nicht der IR-Notation.
+
 | Opcode | Stack-Effekt | Beschreibung |
 |---|---|---|
-| `MODHEADER <name> <type> <subtype> <attr> <edition> <stack>` | — | Definiert Zielmodul-Metadaten für das Backend (`type`: `prog`, `driver`, `manager`, `system`, `noos`/`baremetal`, `traphandler`). Das Backend generiert daraus das Wurzel-`psect` samt Modul-Header bzw. ein Flat-Binary bei `noos`. |
-| `DISPATCHTAB <sym1> <sym2> ...` | — | Emittiert am Modulkopf eine geordnete Sprungverteiler-Tabelle (z. B. relative Word-Offsets für OS-9 Treiber-Einsprünge `init`, `read`, `write`, `getstat`, `putstat`, `term`). |
+| `MODHEADER name=<name> type=<type> subtype=<subtype> attr=<attr> edition=<edition> stack=<stack>` | — | Definiert Zielmodul-Metadaten für das Backend (`type`: `prog`, `driver`, `manager`, `system`, `noos`/`baremetal`, `traphandler`). Reihenfolge der Schlüssel-Wert-Paare beliebig. Das Backend generiert daraus das Wurzel-`psect` samt Modul-Header bzw. ein Flat-Binary bei `noos`. |
+| `ENTRY <sym>` | — | Primärer Einstiegspunkt des Moduls (bei `prog`/`noos`). Bei `driver`/`manager`/`traphandler` ergibt sich der Einstieg implizit aus dem ersten `DISPATCHTAB`-Eintrag; `ENTRY` ist dort optional/informativ. |
+| `DISPATCHTAB <sym1> <sym2> ...` | — | Emittiert am Modulkopf eine geordnete Sprungverteiler-Tabelle. Reihenfolge FEST, nicht vertauschbar. Für OS-9-Treiber (RBF) 7 Einträge: `init`, `read`, `write`, `getstat`, `setstat`, `term`, `trap` — der siebte (`trap`) darf laut Microware-Handbuch auf 0 zeigen, muss als Tabellenslot aber vorhanden sein ("branch table with seven entries"). |
+| `ALIGN <grenze>` | — | Richtet die nachfolgende Ausgabe auf eine Byte-Grenze aus (z. B. `4096` für eine 4-KB-Seite), stammt von `#DEFMODUL ALIGN` (`OS9_SYSTEM_INTERFACE.md` §2). Ergänzt 22.09.2026, bisher nur als Quelldirektive dokumentiert, noch kein eigener IR-Opcode-Eintrag gewesen. |
 | `ORG <adresse>` | — | Setzt die absolute Basisadresse bzw. füllt den Raum bis zur Zieladresse auf (für Flat-Binaries / ROM-Images). |
 | `SECTION <name> [adresse]` | — | Wechselt in ein benanntes `psect` mit optionaler Zieladresse (für Multi-Regionen wie ROM und Fast-RAM). |
 | `INLINEASM "<assembler-zeile>"` | — | Reicht hardwarenahe CPU-Assemblerzeilen transparent durch das Backend in die Ziel-Assemblerausgabe. |
@@ -187,9 +198,7 @@ Alle Vergleiche: `a, b → 0|1`.
 
 ## Siehe auch
 
-- `docs/ARCHITEKTUR.md` Abschnitt 10 — Entstehung der IR, Emissions-Muster
-  (wie Parser-Aktionen die IR erzeugen), Funktions-ABI (Slots/Frames).
-- `docs/OS9_SYSTEM_INTERFACE.md` — OS-9 Modul-Definition (`#DEFMODUL`), Calling-Conventions (`driver`, `interrupt`, `trap`), Syscall-Archetypen und Inline-Assembler.
+- `docs/OS9_SYSTEM_INTERFACE.md` — Ziel-Betriebssystem (`#DEFOS`), Modul-Definition (`#DEFMODUL`), Calling-Conventions (`modul driver`/`interrupt`/`trap`/`naked`), Syscall-Archetypen (`modul syscall`) und Inline-Assembler.
 - `tools/qccvm.py` — Referenzinterpreter, gleichzeitig Test-Orakel für
   alle Backends.
 - `docs/SELFHOSTING_GAP_LIST_de.md` / `[[qcc-vollport-status]]` (Memory)

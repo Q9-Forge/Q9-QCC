@@ -24,6 +24,9 @@ test: $(TARGET)
 	@grep -q '^FUNC main' $(BUILD)/typedef-struct.ir
 	@$(TARGET) 'enum Color { RED, GREEN, BLUE }; int main(){ enum Color c; c=GREEN; return c; }' > $(BUILD)/enum.ir
 	@grep -q '^PUSH 1$$' $(BUILD)/enum.ir
+	@$(TARGET) 'modul interrupt int f(int n, ...){ return n; } int main(){ return f(1,2); }' > $(BUILD)/func-attrs.ir
+	@grep -q '^FUNC f 1 0 3$$' $(BUILD)/func-attrs.ir
+	@grep -q '^FUNC main 0 0 0$$' $(BUILD)/func-attrs.ir
 	@echo 'qcir smoke test: OK'
 
 clean:

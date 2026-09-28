@@ -104,8 +104,10 @@ Planned stages:
 
 ## Own subproject: optimizer
 
-The optimizer operates on a stable IR and only starts once the language
-core's semantic tests are broad enough. Possible first passes are:
+The backend-neutral Stack-IR optimizer is being introduced as `qost` in
+`Q9-OPTIMIZER/q9-qost/`. Its initial pass folds safe constant integer
+expressions; the command is independently testable and is not yet part of the
+`qcc` default pipeline. Next passes may include:
 
 - constant folding
 - removal of unreachable jumps

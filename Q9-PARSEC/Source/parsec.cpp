@@ -479,7 +479,7 @@ void printLexTab() {
 //------------------------------------------------------------------------------------------------
 // Regel-Adressaufloesung (Regelname -> Startzeile)
 //------------------------------------------------------------------------------------------------
-#define MAX_RULES 256
+#define MAX_RULES 512
 typedef struct {
 	char name[IDENT_LEN + 1];
 	int addr;
@@ -2149,4 +2149,3 @@ char* getAktLine() {
 	}
 	return readPtr;
 }
-

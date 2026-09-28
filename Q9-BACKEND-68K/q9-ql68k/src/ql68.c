@@ -35,8 +35,10 @@ extern int fwrite(const char *buf, int size, int n, char *fp);
    builds must keep zero-initialized global buffers small because they become
    part of the module's initialized data area. */
 #ifdef _Q9OS
-#define QL_IN       524288            /* Inputs and libraries. */
-#define QL_OUT      524288            /* Output buffer. */
+/* 2026-09-27 angehoben (Q9 mit 64 MB RAM): qcir bindet 1,5 MB ROF + qclib zu einem
+   910-KB-Modul (gemessen). Vorher je 512 KB. */
+#define QL_IN      4194304            /* Inputs and libraries. */
+#define QL_OUT     2097152            /* Output buffer. */
 #else
 #define QL_IN     33554432            /* Inputs and libraries. */
 #define QL_OUT    33554432            /* Output buffer. */
@@ -124,8 +126,8 @@ static int irefDataN;
    for the QCC self-hosting objects; target builds retain smaller limits
    because every zero-initialized field increases the module data area. */
 #ifdef _Q9OS
-#define QL_SYM    8192
-#define QL_POOL   262144
+#define QL_SYM    32768             /* 2026-09-27: wie Host (qcir: 21399 Symbole) */
+#define QL_POOL  1048576
 #else
 #define QL_SYM    32768
 #define QL_POOL  1048576

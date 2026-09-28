@@ -78,44 +78,120 @@
  * silently.
  *================================================================================*/
 
-#define PH_MAX_LINES  100000
-#define PH_TEXT_BYTES 2097152   /* 2 MB, ~35% headroom over qr68 (1.59 MB) */
-#define PH_SYNTH_BYTES PH_TEXT_BYTES /* A replacement is never longer than
-                                        the two original lines combined, so
-                                        all replacements fit within the same
-                                        bound as the original text. */
+#define PH_READ_BYTES 8192
+#define PH_SYNTH_BLOCK_BYTES 65536
 
-static char phText[PH_TEXT_BYTES];
-static const char* phLines[PH_MAX_LINES];
-static int phRemoved[PH_MAX_LINES];
+static char* phText;
+static int phTextUsed;
+static int phTextCapacity;
+static const char** phLines;
+static unsigned char* phRemoved;
 static int phLineCount = 0;
 
-static char phSynth[PH_SYNTH_BYTES];
+static char* phSynth;
 static int phSynthUsed = 0;
+static int phSynthCapacity = 0;
+static char phEol[2] = { '\n', 0 };
+static int phEolLength = 1;
+
+/* Keep the input buffer as the only allocation while reading, then allocate
+ * the line tables. Synthesized lines use stable blocks: a realloc that moves
+ * a block would invalidate line pointers already stored in phLines. */
+static void phEnsureText(int extra) {
+	int needed, capacity;
+	char* grown;
+	if (extra > 2147483647 - phTextUsed - 1)
+		fatal("peephole: Eingabedatei ist zu gross");
+	needed = phTextUsed + extra + 1;
+	if (needed <= phTextCapacity) return;
+	capacity = phTextCapacity;
+	if (capacity == 0) capacity = PH_READ_BYTES;
+	while (capacity < needed) {
+		if (capacity > 1073741823) { capacity = needed; break; }
+		capacity *= 2;
+	}
+	grown = realloc(phText, capacity);
+	if (grown == 0) fatal("peephole: nicht genug Speicher fuer Assemblertext");
+	phText = grown;
+	phTextCapacity = capacity;
+}
+
+static void phEnsureSynth(int extra) {
+	int capacity;
+	char* grown;
+	if (extra > 2147483647 - 1)
+		fatal("peephole: Synthesetext ist zu gross");
+	if (phSynth != 0 && phSynthUsed <= 2147483647 - extra - 1 &&
+	    phSynthUsed + extra + 1 <= phSynthCapacity) return;
+	capacity = PH_SYNTH_BLOCK_BYTES;
+	while (capacity < extra + 1) {
+		if (capacity > 1073741823) { capacity = extra + 1; break; }
+		capacity *= 2;
+	}
+	/* Allocate a fresh block instead of moving an old one; old blocks remain
+	 * reachable through phLines and are reclaimed when this process exits. */
+	grown = realloc(0, capacity);
+	if (grown == 0) fatal("peephole: nicht genug Speicher fuer Synthesetext");
+	phSynth = grown;
+	phSynthUsed = 0;
+	phSynthCapacity = capacity;
+}
 
 static void phLoad(const char* path) {
 	FILE* fp;
-	int size, got, i;
+	char chunk[PH_READ_BYTES];
+	int got, i, lines, paired;
 	fp = fopen(path, "r");
 	if (!fp) fatal("peephole: kann Assemblerdatei nicht lesen");
-	size = 0;
 	for (;;) {
-		got = fread(phText + size, 1, PH_TEXT_BYTES - 1 - size, fp);
+		got = (int)fread(chunk, 1, sizeof chunk, fp);
 		if (got <= 0) break;
-		size += got;
-		if (size >= PH_TEXT_BYTES - 1) fatal("peephole: Assemblerausgabe zu gross fuer PH_TEXT_BYTES");
+		phEnsureText(got);
+		memcpy(phText + phTextUsed, chunk, got);
+		phTextUsed += got;
 	}
+	phEnsureText(0);
 	fclose(fp);
-	phText[size] = 0;
+	phText[phTextUsed] = 0;
+	/* OS-9 text files commonly use CR-only endings; host files may use LF or
+	 * CRLF. Remember the input convention and split all three correctly. */
+	phEol[0] = '\n';
+	phEol[1] = 0;
+	phEolLength = 1;
+	for (i = 0; i < phTextUsed; i++) {
+		if (phText[i] == '\r' || phText[i] == '\n') {
+			phEol[0] = phText[i];
+			phEolLength = 1;
+			if (phText[i] == '\r' && i + 1 < phTextUsed && phText[i + 1] == '\n') {
+				phEol[1] = '\n';
+				phEolLength = 2;
+			}
+			break;
+		}
+	}
+	lines = 1;
+	for (i = 0; i < phTextUsed; i++) {
+		if (phText[i] != '\r' && phText[i] != '\n') continue;
+		paired = phText[i] == '\r' && i + 1 < phTextUsed && phText[i + 1] == '\n';
+		if (paired) i++;
+		if (i + 1 < phTextUsed) lines++;
+	}
+	if (lines > 2147483647 / (int)sizeof(char*) ||
+	    lines > 2147483647 / (int)sizeof(unsigned char))
+		fatal("peephole: zu viele Assemblerzeilen");
+	phLines = (const char**)realloc(0, lines * (int)sizeof(char*));
+	phRemoved = (unsigned char*)realloc(0, lines * (int)sizeof(unsigned char));
+	if (phLines == 0 || phRemoved == 0)
+		fatal("peephole: nicht genug Speicher fuer Zeilentabelle");
 	phLineCount = 0;
 	phLines[phLineCount++] = phText;
-	for (i = 0; i < size; i++) {
-		if (phText[i] != '\n') continue;
+	for (i = 0; i < phTextUsed; i++) {
+		if (phText[i] != '\r' && phText[i] != '\n') continue;
+		paired = phText[i] == '\r' && i + 1 < phTextUsed && phText[i + 1] == '\n';
 		phText[i] = 0;
-		if (i + 1 < size) {
-			if (phLineCount >= PH_MAX_LINES) fatal("peephole: zu viele Zeilen fuer PH_MAX_LINES");
+		if (paired) { phText[i + 1] = 0; i++; }
+		if (i + 1 < phTextUsed)
 			phLines[phLineCount++] = &phText[i + 1];
-		}
 	}
 	for (i = 0; i < phLineCount; i++) phRemoved[i] = 0;
 }
@@ -172,14 +248,16 @@ static int phSameText(const char* a, int aLen, const char* b) {
 
 static const char* phEmitFused(const char* labelStart, int labelLen,
                                 const char* srcStart, int srcLen, const char* dst) {
-	char* p = phSynth + phSynthUsed;
-	int n;
+	char* p;
+	int n, need;
+	need = (labelLen > 0 ? labelLen + 2 : 0) + 8 + srcLen + 1 + (int)strlen(dst);
+	phEnsureSynth(need);
+	p = phSynth + phSynthUsed;
 	if (labelLen > 0)
 		n = sprintf(p, "%.*s:\tmove.l\t%.*s,%s", labelLen, labelStart, srcLen, srcStart, dst);
 	else
 		n = sprintf(p, "\tmove.l\t%.*s,%s", srcLen, srcStart, dst);
 	phSynthUsed += n + 1;
-	if (phSynthUsed >= PH_SYNTH_BYTES) fatal("peephole: Synthesepuffer zu klein");
 	return p;
 }
 
@@ -415,16 +493,18 @@ static int phFoldMoveq(void) {
 		int labelLen, value;
 		char reg;
 		char* p;
+		char replacement[128];
 		int n;
 		if (phRemoved[i]) continue;
 		if (!phMatchMoveqCandidate(phLines[i], &labelStart, &labelLen, &value, &reg)) continue;
-		p = phSynth + phSynthUsed;
 		if (labelLen > 0)
-			n = sprintf(p, "%.*s:\tmoveq\t#%d,d%c", labelLen, labelStart, value, reg);
+			n = sprintf(replacement, "%.*s:\tmoveq\t#%d,d%c", labelLen, labelStart, value, reg);
 		else
-			n = sprintf(p, "\tmoveq\t#%d,d%c", value, reg);
+			n = sprintf(replacement, "\tmoveq\t#%d,d%c", value, reg);
+		phEnsureSynth(n);
+		p = phSynth + phSynthUsed;
+		strcpy(p, replacement);
 		phSynthUsed += n + 1;
-		if (phSynthUsed >= PH_SYNTH_BYTES) fatal("peephole: Synthesepuffer zu klein");
 		phLines[i] = p;
 		folded++;
 	}
@@ -439,7 +519,8 @@ static void phWrite(const char* path) {
 	for (i = 0; i < phLineCount; i++) {
 		if (phRemoved[i]) continue;
 		fputs(phLines[i], fp);
-		fputc('\n', fp);
+		fputc(phEol[0], fp);
+		if (phEolLength == 2) fputc(phEol[1], fp);
 	}
 	if (ferror(fp)) fatal("peephole: Schreibfehler");
 	fclose(fp);

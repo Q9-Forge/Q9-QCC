@@ -733,13 +733,17 @@ static void collectFunctions(void) {
 			/* 3. Argument (2026-07-25): optionales isstatic-Flag (Namensverfremdung
 			   in emitIR, siehe mangledName() -- r68/l68 kennen kein Sichtbarkeits-
 			   konzept, siehe docs/STATUS.md). */
-			if (open || (insP->argc != 2 && insP->argc != 3)) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
+			if (open || insP->argc < 2 || insP->argc > 4) { sprintf(msg, "IR Zeile %d: ungueltiges FUNC", insP->line); fatal(msg); }
 			memset(&current, 0, sizeof(current));
 			strncpy(current.name, insP->args[0], NAME_LEN - 1);
 			current.nargs = number(insP->args[1], insP->line);
 			current.first = i + 1;
 			current.last = -1;
 			current.isStatic = insP->argc >= 3 && number(insP->args[2], insP->line) != 0;
+			if (insP->argc == 4) {
+				int attrs = number(insP->args[3], insP->line);
+				if (attrs < 0 || attrs > 7) fatal("ungueltige FUNC-Attribute");
+			}
 			open = 1;
 			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {

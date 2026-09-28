@@ -6,7 +6,111 @@
    funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
    plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
    faellt korrekt hierher zurueck. */
-program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef } .
+program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl | defmodulEntryDecl | defmodulDecl } .
+
+/* Moduldefinition (siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 2/3,
+   Branch QCC-DEFMODUL). Dieser Schritt deckt nur NAME/EDITION/STACK/ATTR
+   und TYPE PROG/SYSTEM/NOOS ab -- reines Registrieren wie bei defosDecl,
+   noch keine MODHEADER-IR-Emission. TYPE DRIVER/MANAGER/TRAPHANDLER (mit
+   variabler Einsprungliste, braucht DISPATCHTAB) kommt separat mit
+   Phase 4, ebenso ORG/ALIGN (Phase 6) -- absichtlich nicht Teil dieser
+   Regel, ein #DEFMODUL mit einem dieser Subkommandos scheitert also noch
+   mit FAIL, wie jedes andere noch nicht angebundene Subkommando auch. */
+defmodulDecl    = "#defmodul" ( defmodulName | defmodulEdition | defmodulStack | defmodulAttr | defmodulType | defmodulNotImpl | defmodulUnknown ) .
+
+/* Dispatch-Eintrag bewusst als eigene Direktive mit genau zwei Pflicht-
+   Bezeichnern: die scannerlose Grammatik kennt keine Zeilengrenzen, daher
+   darf hier keine optionale oder wiederholte Bezeichnerliste stehen. Die
+   Form ist für DRIVER, MANAGER und TRAPHANDLER identisch und wird später
+   anhand des Modultyps in DISPATCHTAB umgesetzt. */
+defmodulEntryDecl = "#defmodul" "ENTRY" ident defmodulEntryTarget .
+defmodulEntryTarget = ident | defmodulNumber .
+
+defmodulName    = "NAME" defmodulNameArg .
+defmodulNameArg = ident .
+
+/* EIGENE Zahl-Regel statt der bestehenden "number" -- number traegt
+   schon "ACTION AFTER number CALL tc_number" fuer echte Ausdruecke
+   (emittiert PUSH <wert>). Ein Direktiv-Argument ist kein Ausdruck, das
+   wuerde ungewollten IR-Code erzeugen (gemessen: "#defmodul EDITION 55"
+   emittierte vor der Korrektur ein PUSH 55 mitten im IR-Strom). hexNumber/
+   decNumber/integerSuffix selbst tragen KEINE eigene ACTION. */
+defmodulNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
+
+defmodulEdition    = "EDITION" defmodulEditionArg .
+defmodulEditionArg = defmodulNumber .
+
+defmodulStack    = "STACK" defmodulStackArg .
+defmodulStackArg = defmodulNumber .
+
+defmodulAttr    = "ATTR" defmodulAttrArg .
+defmodulAttrArg = defmodulNumber .
+
+/* defmodulTypeKw als eigene Regel, NUR damit sie eine eigene ACTION tragen
+   kann (ein Literal allein traegt keine ACTION, gleiches Muster wie
+   funcBodyOpen/blockOpen) -- die Regel feuert VOR PROG/SYSTEM/NOOS.
+   WICHTIG (gemessen, nicht nur vermutet): der Einsprungname ist hier
+   bewusst NICHT optional, anders als in der urspruenglichen Spec
+   ("PROG [entry]"). Diese Grammatik kennt keine Zeilengrenzen -- ws()
+   behandelt Zeilenumbrueche wie gewoehnlichen Leerraum. Ein optionaler
+   Einsprung wuerde bei "#DEFMODUL TYPE PROG" (ohne Namen), gefolgt von
+   "int main(void)...", GIERIG das naechste echte Token "int" als
+   vermeintlichen Einsprungnamen verschlucken -- der Rest der Datei
+   scheitert dann mit FAIL, ohne erkennbaren Grund. Reproduziert und
+   verifiziert vor dieser Korrektur. Die "Default main, wenn weggelassen"-
+   Regel aus der Spec muss auf Ebene der spaeteren Default-Anwendung
+   (MODHEADER-Emission) geloest werden, nicht hier auf Grammatikebene --
+   siehe Notiz in STATUS_DEFMODUL.md. Betrifft KUENFTIG auch die
+   Dispatch-Einsprunglisten aus Phase 4 (DRIVER/MANAGER/TRAPHANDLER),
+   dort staerker (wiederholte Liste statt einzelner optionaler Wert). */
+defmodulType      = defmodulTypeKw ( defmodulTypeProg | defmodulTypeSystem | defmodulTypeNoos | defmodulTypeDriver | defmodulTypeManager | defmodulTypeTraphandler ) .
+defmodulTypeKw    = "TYPE" .
+defmodulTypeProg  = "PROG" defmodulEntryArg .
+defmodulTypeSystem = "SYSTEM" .
+defmodulTypeNoos  = ( "NOOS" | "BAREMETAL" ) defmodulEntryArg .
+defmodulTypeDriver = "DRIVER" ident .
+defmodulTypeManager = "MANAGER" ident .
+defmodulTypeTraphandler = "TRAPHANDLER" ident .
+defmodulEntryArg  = ident .
+
+/* IR-Validierung (22.09.2026, STATUS_DEFMODUL.md Testsatz-Punkte 7/9):
+   zwei Auffangregeln, MUESSEN in der program-Alternation nach defmodulDecl
+   in dieser Reihenfolge geprueft werden (geordnete Auswahl -- erst die
+   bekannten Subkommandos oben, dann "bekannt aber noch nicht
+   implementiert", zuletzt "wirklich unbekannt"). Ohne diese Regeln
+   scheitert #DEFMODUL mit einem falschen Subkommando nur am generischen
+   FAIL der ganzen Datei, ohne Diagnose (gemessen an "TYPE PROG" ohne
+   Einsprungnamen, s. Testfall 17e in Q9-PARSEC/runtests.sh) -- diese
+   beiden Regeln machen den Zeichenstrom-Parser an dieser einen Stelle
+   diagnosefaehig, indem sie selbst erfolgreich matchen (also kein FAIL
+   der Gesamtdatei mehr ausloesen) und ihre ACTION dann gezielt SEMERR
+   meldet (actionErrors++), statt eines harten Parserfehlers. */
+defmodulNotImpl   = ( "ORG" | "ALIGN" ) defmodulNumber .
+defmodulUnknown   = ident .
+
+/* Ziel-Betriebssystem-Direktive (siehe docs/OS9_SYSTEM_INTERFACE.md
+   Abschnitt 2, Branch QCC-DEFMODUL). Q9-QCC-eigene Erweiterung, kein
+   C89-Standardkonstrukt -- deshalb "#defos" als eigenes Literal statt einer
+   echten Praeprozessor-Direktive (dieselbe Microware-Tradition wie #asm).
+   Erster Ausbauschritt: nur registrieren (ACTION legt den Namen ab), noch
+   keine IR-Emission -- die folgt zusammen mit #defmodul in einem spaeteren
+   Schritt. Kein Terminator noetig, ws() behandelt den Zeilenumbruch wie
+   gewoehnlichen Leerraum, genau wie qcpp es beim Durchreichen schon tut. */
+defosDecl = "#defos" defosArg .
+defosArg  = ident .
+
+/* Calling-Convention-Praefix fuer Funktionen (Phase 5, Branch QCC-DEFMODUL,
+   siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 4). Vier Conventions plus
+   Syscall-Deklaration, alle unter dem einzigen Schluesselwort "modul",
+   um Namensraum-Kollisionen mit gewoehnlichen Bezeichnern zu vermeiden
+   (z.B. eine normale Funktion "int driver();" bleibt unberuehrt).
+   Das Keyword steht nach static/extern (falls vorhanden), vor dem Rueckgabetyp. */
+modulKw = "modul" moduleKind .
+moduleKind = modulConvention | modulSyscall .
+modulConvention = "driver" | "interrupt" | "trap" | "naked" .
+
+modulSyscall = "syscall" "(" defmodulNumber "," syscallArchetype ")" .
+syscallArchetype = "CALL_D" | "CALL_DA" | "CALL_FORK" .
 
 /* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
    OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
@@ -277,7 +381,7 @@ protoEnd      = ";" .
    die tcPendingConst setzt -- das Flag wird erst beim naechsten Parameter
    oder Lokalen konsumiert und wuerde dort faelschlich Konstantheit
    erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
-funcHead  = [ staticKw ] [ retConstKw ] type pointerDecl defName funcParams .
+funcHead  = [ staticKw ] [ modulKw ] [ retConstKw ] type pointerDecl defName funcParams .
 retConstKw = "const" .
 /* K&R-Definitionen (C89 6.7.1, "alte" Form):  int f(a, b) int a; char *b; { }
    Dritte Alternative NEBEN voidParams/normalParams -- also genau dort, wo das

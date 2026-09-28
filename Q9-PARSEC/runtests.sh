@@ -2486,6 +2486,19 @@ if [ -x tools/vasmm68k_mot ]; then
 		echo "FAIL  qcc M4a: IR->68k-Backend oder vasm fehlgeschlagen"; fail=1
 	fi
 
+	# FUNC-Attribute: Variadizitaet und Calling-Convention muessen denselben
+	# Attributwert unabhaengig belegen koennen. Gleichzeitig stellt VASTART/VAARG
+	# sicher, dass die lokale va_list-Zelle in die Backend-Framegroesse eingeht.
+	if build/qcc_p 'modul interrupt int f(int n, ...){ va_list ap; va_start(ap,n); return va_arg(ap,int); } int main(){ return f(1,2); }' > build/qcc_funcattrs.ir && \
+		grep -q '^FUNC f 1 0 3$' build/qcc_funcattrs.ir && \
+		build/qcc_backend build/qcc_funcattrs.ir build/qcc_funcattrs.s68 && \
+		grep -q '^tc_f:.*movem.l' build/qcc_funcattrs.s68 && grep -q $'rte' build/qcc_funcattrs.s68 && \
+		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_funcattrs.bin build/qcc_funcattrs.s68 2>/dev/null; then
+		echo "ok    qcc FUNC-Attribute: variadic|interrupt (3), VASTART-Frame und RTE"
+	else
+		echo "FAIL  qcc FUNC-Attribute: Attributkodierung/68k-Prolog/VAARG-Frame"; fail=1
+	fi
+
 	# M4a-oob) 2026-08-11: globales Array LAENGER als MAX_ARRAY_LEN mit mindestens
 	# einem GINIT. Bis dahin lief die Ausgabeschleife bis g->length, der
 	# Initialisierer-Puffer fasste aber nur MAX_ARRAY_LEN Elemente -- ab Index
@@ -4774,6 +4787,222 @@ else
 	echo "warn  qcc Selfhosting L2 Vollport (ebnfMain/main, voller Link): Backend, Wine/MWOS oder cstart.r/clib.l/os_lib.l/sys.l nicht verfuegbar -- uebersprungen"
 fi
 
+
+# ---------------------------------------------------------------------------
+# 17) QCC-DEFMODUL (2026-09-22, Branch QCC-DEFMODUL): #DEFOS/#DEFMODUL
+#
+# Verankert die Faelle, die beim Aufbau der Grammatikregeln und der
+# MODHEADER/ENTRY-Emission (siehe docs/STATUS_DEFMODUL.md Phase 2) manuell
+# verifiziert wurden, als echte Regressionstests -- vor allem Faell 1
+# (Regressionssicherheit fuer ALLE bestehenden Programme ohne #DEFMODUL)
+# ist kritisch: eine fruehere Fassung emittierte MODHEADER bedingungslos
+# und brach dadurch mehrere Selbsthosting-Tests in dieser Suite (siehe
+# Commit 73d0c66).
+# ---------------------------------------------------------------------------
+dmfail=0
+
+if cc -std=c11 -Wall -Wextra -x c -o build/qcc_p_dm data/qcc_p.c 2>/dev/null; then
+	# 17a) OHNE jede #DEFOS-/#DEFMODUL-Zeile: exakt das alte Verhalten, kein MODHEADER.
+	out=$(build/qcc_p_dm 'int main(void){ return 0; }' 2>&1)
+	if echo "$out" | grep -q '^MODHEADER'; then
+		echo "FAIL  qcc-defmodul 17a: MODHEADER ohne jede Direktive emittiert (Regression)"; dmfail=1
+	elif ! echo "$out" | tail -1 | grep -q '^OK$'; then
+		echo "FAIL  qcc-defmodul 17a: normales Programm nicht mehr OK"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17a: ohne #DEFMODUL bleibt alles unveraendert (kein MODHEADER)"
+	fi
+
+	# 17b) #DEFOS allein registriert sich, keine IR-Wirkung noetig, muss durchlaufen.
+	out=$(build/qcc_p_dm '#defos Q9
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -1 | grep -q '^OK$'; then
+		echo "FAIL  qcc-defmodul 17b: #defos allein schlaegt fehl"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17b: #defos allein wird akzeptiert"
+	fi
+
+	# 17c) Voller #DEFMODUL-Satz: MODHEADER mit allen angegebenen Werten, ENTRY main.
+	out=$(build/qcc_p_dm '#defmodul NAME cfide
+#defmodul EDITION 3
+#defmodul STACK 4096
+#defmodul ATTR 0x8000
+#defmodul TYPE PROG main
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER name=cfide type=PROG attr=0x8000 edition=3 stack=4096$'; then
+		echo "FAIL  qcc-defmodul 17c: MODHEADER-Zeile nicht wie erwartet"; dmfail=1
+	elif ! echo "$out" | grep -q '^ENTRY main$'; then
+		echo "FAIL  qcc-defmodul 17c: ENTRY-Zeile fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17c: voller #DEFMODUL-Satz erzeugt korrektes MODHEADER+ENTRY"
+	fi
+
+	# 17d) #DEFOS ALLEIN (kein einziges #DEFMODUL) signalisiert schon "das soll
+	# ein Modul werden" und defaultet komplett auf TYPE PROG, ENTRY main --
+	# genau die Faelle, die #DEFOS von einem reinen #DEFMODUL-Subkommando
+	# unterscheiden (s. STATUS_DEFMODUL.md Abschnitt 1.e).
+	out=$(build/qcc_p_dm '#defos Q9
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER type=PROG attr=0x8000 edition=1 stack=4096$'; then
+		echo "FAIL  qcc-defmodul 17d: #defos allein haette auf TYPE PROG/main defaulten muessen"; dmfail=1
+	elif ! echo "$out" | grep -q '^ENTRY main$'; then
+		echo "FAIL  qcc-defmodul 17d: #defos allein: ENTRY main fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17d: #defos allein defaultet korrekt auf TYPE PROG, ENTRY main"
+	fi
+
+	# 17e) TYPE PROG OHNE Einsprungnamen muss FAIL liefern (Architekturfund,
+	# s. STATUS_DEFMODUL.md Phase 2 -- keine stille Fehlinterpretation des
+	# naechsten Tokens als Einsprungname).
+	out=$(build/qcc_p_dm '#defmodul TYPE PROG
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -1 | grep -q '^FAIL$'; then
+		echo "FAIL  qcc-defmodul 17e: TYPE PROG ohne Einsprung haette FAIL liefern muessen"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17e: TYPE PROG ohne Einsprungnamen liefert korrekt FAIL"
+	fi
+
+	# 17f) Kompletter End-to-End-Pfad bis zum 68k-Backend: MODHEADER/ENTRY
+	# duerfen dort nicht mehr "Opcode ausserhalb einer Funktion" ausloesen.
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
+		build/qcc_p_dm '#defmodul NAME cfide
+#defmodul TYPE PROG main
+int main(void){ return 0; }' > build/qcc_dm.ir 2>/dev/null
+		if build/qcc_backend_dm build/qcc_dm.ir build/qcc_dm.s68 -os9 >/dev/null 2>&1; then
+			echo "ok    qcc-defmodul 17f: MODHEADER/ENTRY werden vom 68k-Backend ohne Absturz verarbeitet"
+		else
+			echo "FAIL  qcc-defmodul 17f: 68k-Backend scheitert an MODHEADER/ENTRY"; dmfail=1
+		fi
+	else
+		echo "FAIL  qcc-defmodul 17f: qcc_backend_dm baut nicht"; dmfail=1
+	fi
+	# 17g) QCCVM: MODHEADER/ENTRY ignorieren, Funktionsrumpf normal ausfuehren
+	# (Entscheidung 1.d -- kein eigener Code noetig, die bestehende Zwei-Pass-
+	# Architektur ueberspringt beide Opcodes schon in der ersten Sammelschleife).
+	build/qcc_p_dm '#defmodul TYPE PROG main
+int main(void){ putint(42); }' > build/qcc_dm_vm.ir 2>/dev/null
+	if command -v python3 >/dev/null 2>&1; then
+		vmout=$(python3 tools/qccvm.py build/qcc_dm_vm.ir 2>&1)
+		if [ "$vmout" = "42" ]; then
+			echo "ok    qcc-defmodul 17g: QCCVM ignoriert MODHEADER/ENTRY, fuehrt main() korrekt aus"
+		else
+			echo "FAIL  qcc-defmodul 17g: QCCVM-Ausgabe erwartet 42, war: $vmout"; dmfail=1
+		fi
+	else
+		echo "warn  qcc-defmodul 17g: python3 fehlt, uebersprungen"
+	fi
+
+	# 17h) ARM64-Backend: klare Ablehnung statt Absturz (Entscheidung 1.d).
+	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_arm64_backend_dm "$QIRARM64_SRC" 2>/dev/null; then
+		if build/qcc_arm64_backend_dm build/qcc_dm_vm.ir build/qcc_dm_vm_arm64.s >/dev/null 2>&1; then
+			echo "FAIL  qcc-defmodul 17h: ARM64-Backend haette MODHEADER ablehnen sollen"; dmfail=1
+		else
+			echo "ok    qcc-defmodul 17h: ARM64-Backend lehnt MODHEADER/ENTRY klar ab (kein Absturz)"
+		fi
+	else
+		echo "warn  qcc-defmodul 17h: qcc_arm64_backend_dm baut nicht, uebersprungen"
+	fi
+
+	# 17i) unbekanntes Subkommando OHNE Argument: klares SEMERR statt bloszem
+	# FAIL (IR-Validierung, Testsatz-Punkt 9). Bekannte Einschraenkung: MIT
+	# einem Argument bleibt es beim generischen FAIL, weil der uebrige Text
+	# dann unverbraucht bleibt und die Aktionswiedergabe (die die Diagnose
+	# ausgibt) nur bei VOLLSTAENDIG konsumierter Datei laeuft -- s.
+	# STATUS_DEFMODUL.md.
+	out=$(build/qcc_p_dm '#defmodul FOO
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17i: unbekanntes Subkommando haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "unbekanntes Subkommando 'FOO'"; then
+		echo "FAIL  qcc-defmodul 17i: Diagnosetext fehlt oder falsch"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17i: unbekanntes Subkommando (ohne Argument) liefert klares SEMERR"
+	fi
+
+	# 17j) dokumentiertes, aber noch nicht implementiertes Subkommando (ORG):
+	# eigene, unterscheidbare Diagnose statt "unbekanntes Subkommando".
+	out=$(build/qcc_p_dm '#defmodul ORG 0xFFF80000
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17j: #defmodul ORG haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "noch nicht implementiert"; then
+		echo "FAIL  qcc-defmodul 17j: Diagnosetext fuer ORG fehlt oder falsch"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17j: #defmodul ORG liefert eigene 'noch nicht implementiert'-Diagnose"
+	fi
+
+	# 17k) doppelte #DEFMODUL NAME-Angabe: SEMERR statt stillschweigendem
+	# Ueberschreiben (Testsatz-Punkt 8).
+	out=$(build/qcc_p_dm '#defmodul NAME cfide
+#defmodul NAME andere
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17k: doppeltes NAME haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "NAME: doppelte Angabe"; then
+		echo "FAIL  qcc-defmodul 17k: Diagnosetext fuer doppeltes NAME fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17k: doppeltes #DEFMODUL NAME liefert klares SEMERR"
+	fi
+
+	# 17l) doppelte #DEFMODUL TYPE-Angabe: SEMERR, gleiches Muster.
+	out=$(build/qcc_p_dm '#defmodul TYPE PROG main
+#defmodul TYPE SYSTEM
+int main(void){ return 0; }' 2>&1)
+	if ! echo "$out" | tail -2 | grep -q '^SEMERR$'; then
+		echo "FAIL  qcc-defmodul 17l: doppeltes TYPE haette SEMERR liefern sollen"; dmfail=1
+	elif ! echo "$out" | grep -q "TYPE: doppelte Angabe"; then
+		echo "FAIL  qcc-defmodul 17l: Diagnosetext fuer doppeltes TYPE fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17l: doppeltes #DEFMODUL TYPE liefert klares SEMERR"
+	fi
+
+	# 17m) DRIVER ohne explizite ENTRY-Zeilen bekommt die sieben normierten
+	# Dispatch-Slots, inklusive des TRAP-Slots.
+	out=$(build/qcc_p_dm '#defmodul NAME cfide
+#defmodul TYPE DRIVER rbf
+int drv_init(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER name=cfide type=DRIVER subtype=rbf attr=0x8000 edition=1 stack=0$'; then
+		echo "FAIL  qcc-defmodul 17m: DRIVER-MODHEADER fehlt oder ist falsch"; dmfail=1
+	elif ! echo "$out" | grep -q '^DISPATCHTAB drv_init drv_read drv_write drv_getstat drv_setstat drv_term drv_trap$'; then
+		echo "FAIL  qcc-defmodul 17m: sieben DRIVER-Dispatch-Slots fehlen"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17m: DRIVER defaultet die sieben Dispatch-Slots"
+	fi
+
+	# 17n) MANAGER/TRAPHANDLER verwenden explizite ENTRY-Zeilen. Jede Zeile
+	# verbraucht genau Slot und Ziel; dadurch bleibt die Grammatik zeilenrobust.
+	out=$(build/qcc_p_dm '#defmodul NAME fscs
+#defmodul TYPE MANAGER fscs
+#defmodul ENTRY open mgr_open
+#defmodul ENTRY read mgr_read
+int mgr_open(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^MODHEADER name=fscs type=MANAGER subtype=fscs attr=0x8000 edition=1 stack=4096$'; then
+		echo "FAIL  qcc-defmodul 17n: MANAGER-MODHEADER fehlt oder ist falsch"; dmfail=1
+	elif ! echo "$out" | grep -q '^DISPATCHTAB open=mgr_open read=mgr_read$'; then
+		echo "FAIL  qcc-defmodul 17n: explizite MANAGER-ENTRYs fehlen"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17n: MANAGER-ENTRYs werden in DISPATCHTAB uebernommen"
+	fi
+
+	# 17o) Der reservierte TRAP-Slot darf explizit auf 0 zeigen.
+	out=$(build/qcc_p_dm '#defmodul TYPE DRIVER rbf
+#defmodul ENTRY init drv_init
+#defmodul ENTRY read drv_read
+#defmodul ENTRY write drv_write
+#defmodul ENTRY getstat drv_getstat
+#defmodul ENTRY setstat drv_setstat
+#defmodul ENTRY term drv_term
+#defmodul ENTRY trap 0
+int drv_init(void){ return 0; }' 2>&1)
+	if ! echo "$out" | grep -q '^DISPATCHTAB init=drv_init read=drv_read write=drv_write getstat=drv_getstat setstat=drv_setstat term=drv_term trap=0$'; then
+		echo "FAIL  qcc-defmodul 17o: expliziter trap-0-Slot fehlt"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17o: expliziter DRIVER-trap-0-Slot wird akzeptiert"
+	fi
+else
+	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
+fi
+
+[ $dmfail -eq 0 ] || fail=1
 # ---------------------------------------------------------------------------
 # -peephole (2026-09-14 erstmals automatisiert)
 #
