@@ -717,6 +717,7 @@ static void collectGlobals(void) {
 			if (insP->argc != 3) fatal("ungueltiges GINIT");
 			for (gi = 0; gi < globalCount; gi++) {
 				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+					int* initP;
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
 					/* 2026-07-25: MAX_ARRAY_LEN now limits only indices assigned by
@@ -735,7 +736,7 @@ static void collectGlobals(void) {
 					   (2026-09-07): nested indexing through a pointer field is outside
 					   the supported subset. The intermediate pointer is the idiom used
 					   throughout this file. */
-					int* initP = globals[gi].init;
+					initP = globals[gi].init;
 					initP[idx] = number(insP->args[2], insP->line);
 					if (globals[gi].elemSize == 1) initP[idx] &= 255;
 					else if (globals[gi].elemSize == 2) initP[idx] &= 65535;
@@ -1982,9 +1983,10 @@ static void emitIR(FILE* out) {
 		for (fi = 0; fi < funcCount; fi++) order[fi] = fi;
 	}
 	for (oi = 0; oi < funcCount; oi++) {
-		fi = order[oi];
-		Function* fn = &funcs[fi];
+		Function* fn;
 		char asmName[NAME_LEN + 40];
+		fi = order[oi];
+		fn = &funcs[fi];
 		if (fn->declOnly) continue; /* defined in ANOTHER file; no body here */
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
@@ -2461,6 +2463,21 @@ static void emitIR(FILE* out) {
 				} else {
 					fprintf(out, "\tlea\t%s(pc),a0\n\tmove.l\ta0,-(a7)\n", asmName);
 				}
+			} else if (strcmp(op, "PUSHFNEXT") == 0 && insP->argc == 1) {
+				/* 2026-09-27: Adresse einer EXTERNEN (Microware-ABI) Funktion als
+				 * Wert -- z.B. "os9exec(os9forkc, ...)" in Q9-QCC/src/qcc.c, wo
+				 * os9forkc nie direkt gerufen, nur als Zeiger uebergeben wird.
+				 * KEIN PC-relatives lea wie bei PUSHFN (die Funktion liegt in
+				 * einer ANDEREN, hier unbekannten Datei/Bibliothek -- ein
+				 * berechenbarer Offset existiert erst beim Linken). Stattdessen
+				 * eine absolute 32-Bit-Adresse laden; qr68k behandelt den noch
+				 * unbekannten Namen als externe Referenz mit Relokation, exakt
+				 * wie bei "bsr <name>"/"jsr <name>" auf einen externen Aufruf.
+				 * KEIN extwrap-Stub: der wuerde nach der Rueckkehr a3/a4
+				 * auffrischen, aber os9forkc kehrt in einem neu geforkten
+				 * Prozess nie im normalen Sinn "zurueck" -- die rohe
+				 * Systemadresse ist hier die einzig richtige. */
+				fprintf(out, "\tmovea.l\t#%s,a0\n\tmove.l\ta0,-(a7)\n", insP->args[0]);
 			} else if ((strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) && insP->argc == 1) {
 				/* Indirect call through a function pointer. At entry, the stack layout
 				   Eintritt (von UNTEN nach oben): zuerst der Zeiger, darueber

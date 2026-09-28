@@ -2,7 +2,19 @@
 
 Status-Übersicht und Arbeitsplan für die Implementierung nativer OS-9 Modulartefakte (`#DEFMODUL`, Dispatch-Tabellen, Calling-Conventions, `#ASM`) in Q9-QCC.
 
-Stand: 2026-09-23. Diese Fassung ersetzt die ursprüngliche flache Paketliste durch den Phasenplan aus den Reviews von Codex und Claude (`PLAN_REVIEW_DEFMODUL.md`/`PLAN_REVIEW_ERGAENZUNG_DEFMODUL.md`, beide nach vollständiger Einarbeitung gelöscht, s. Abschnitt "Quellen") und trägt deren Ergebnisse konkret ein.
+**Aktueller Stand: 2026-09-28.** Calling-Convention-
+und Variadic-Attribute laufen inzwischen durch Frontend und 68k-
+Funktionscodegen. Das ist noch keine vollständige native Treiber-/Manager-
+Unterstützung: `MODHEADER`/`ENTRY` werden im 68k-Backend derzeit nur als
+gültige Metadaten akzeptiert; `DISPATCHTAB` wird noch nicht in ein OS-9-
+Modullayout umgesetzt. `modul syscall` hat noch keinen vollständigen IR- und
+Codegen-Pfad. Tests belegen Komponentenverhalten, aber keinen Live-Ladetest
+eines neu erzeugten Treibers.
+
+Der folgende Detailplan wurde zuletzt am 2026-09-23 redaktionell überarbeitet.
+Für den heutigen Implementierungsstand ist das Dashboard oben maßgeblich;
+historische Beschreibungen und alte Testmeilensteine darunter werden nicht
+automatisch als aktueller Implementierungsnachweis verstanden.
 
 **Leitsatz aus beiden Reviews, unverändert übernommen:** erst ABI und IR verbindlich machen, dann ein kleines `PROG`-/`DRIVER`-MVP durch die komplette Pipeline bringen, danach erst `modul syscall`, Adressplatzierung und Inline-Assembler ergänzen.
 
@@ -15,7 +27,10 @@ Stand: 2026-09-23. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 
 ## Ausgangslage
 
-`q9-qcpp` erkennt `#DEFMODUL`, `#ORG`, `#SECTION` sowie `#ASM`/`#ENDASM` in Groß- und Kleinschreibung bereits auf Scanner-Ebene und reicht sie unverändert als Text durch (Commit `edcd65a`) — dasselbe Marker-Muster wie das seit längerem bestehende `#asm`/`#endasm`. Das ist reines Passthrough ohne Semantik und blockiert Phase 1 nicht; alles Weitere (Frontend-Semantik, IR-Emission, Backend-Codegen, Linker) ist noch nicht begonnen.
+Historische Ausgangslage (vor der Frontend- und Calling-Convention-Arbeit):
+`q9-qcpp` reichte die Direktiven zunächst nur durch. Inzwischen verarbeitet
+`qcir` Modulmetadaten und emittiert `MODHEADER`, `ENTRY` und `DISPATCHTAB`;
+das 68k-Backend verarbeitet diese Metadaten jedoch noch nicht vollständig.
 
 ---
 
@@ -25,13 +40,13 @@ Stand: 2026-09-23. Diese Fassung ersetzt die ursprüngliche flache Paketliste du
 |---|---|:---:|---|
 | **0. Baseline** | Reproduzierbare Ausgangsbasis | 🟢 | Alle fünf Komponenten gebaut+gehasht, `smoke.c`-Golden-Test durch die Kette, Header-/CRC-Tests gesammelt, `gdp.a` als Referenztreiber gefunden |
 | **1. ABI & IR-Entscheidungen** | Keine Backend-Arbeit auf Annahmen | 🟢 | Register-ABI, Dispatch-Tabelle, IR-Syntaxform, Keyword-Namensraum, `#DEFOS` und Backend-Abdeckung entschieden (s. u.) |
-| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | `MODHEADER`/`ENTRY` vollständig; `DRIVER`/`MANAGER`/`TRAPHANDLER` und `DISPATCHTAB` jetzt im Frontend (Regressionstests `17a`–`17n`). `FUNC ... [convention]` bleibt offen. Architekturfund: echter Modulkopf kommt von `q9_cstart.a`. |
-| **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Referenz-MVP, danach erst Treiber |
-| **4. Minimaler `DRIVER`-/Manager-Pfad** | Modulmetadaten und Dispatch-Tabelle | 🟡 | Frontend-Metadatenpfad steht; 68k-Layout, ABI und Linker-Anbindung sind offen |
-| **5. Weitere Calling-Conventions** | `interrupt`, `trap`, `naked` | 🔴 | In dieser Reihenfolge, je eigener Prolog-/Epilog-Test |
-| **6. Adressplatzierung** | `ALIGN`, `SECTION`, `ORG`, `NOOS` | 🟡 | Scanner-Passthrough für `#ORG`/`#SECTION` existiert; Semantik/Backend offen |
-| **7. `modul syscall`** | Wenige konkrete Syscalls zuerst | 🔴 | Pro Syscall eigene Registrierung statt Archetyp allein; Syntax entschieden 22.09. (s. `OS9_SYSTEM_INTERFACE.md` Abschnitt 5) |
-| **8. Inline-Assembler** | `#ASM`/`#ENDASM` → `INLINEASM` | 🟡 | Präprozessor-Marker existiert bereits 🟢; `qcir`-Parser & IR-Emission offen 🔴 |
+| **2. Minimaler IR-Metadatenpfad** | Metadaten sicher bis zum 68k-Backend | 🟡 | Frontend emittiert `MODHEADER`/`ENTRY`/`DISPATCHTAB`; Backend akzeptiert `MODHEADER`/`ENTRY`, wertet sie aber nicht aus. Dispatch-Layout bleibt offen. `FUNC`-Attribute für Variadizität/Conventions sind implementiert. |
+| **3. Einfaches `PROG`-Modul** | Einfachster Modultyp ohne Treiber-ABI | 🔴 | Kein vollständiger, durch Modulkopf und Zielsystem verifizierter `PROG`-Modulpfad. |
+| **4. Minimaler `DRIVER`-/Manager-Pfad** | Modulmetadaten und Dispatch-Tabelle | 🟡 | Frontend-Metadaten stehen; Backend-Dispatch, OS-9-Layout und Live-Verifikation offen. |
+| **5. Calling-Conventions** | `driver`, `interrupt`, `trap`, `naked` | 🟡 | Numerische IR-Attribute und 68k-Prolog/Epilog-Pfade vorhanden; Variadic-`interrupt`-Regression grün. Vollständige ABI- und Zielsystemtests für alle Conventions offen. |
+| **6. Adressplatzierung** | `ALIGN`, `SECTION`, `ORG`, `NOOS` | 🟡 | Scanner-Passthrough bzw. Erkennung vorhanden; Semantik und Backend-Layout offen. `ORG`/`ALIGN` melden derzeit „noch nicht implementiert“. |
+| **7. `modul syscall`** | Konkrete Syscalls zuerst | 🔴 | Syntax beschrieben, aber IR-Emission und Syscall-Codegen fehlen. |
+| **8. Inline-Assembler** | `#ASM`/`#ENDASM` → `INLINEASM` | 🔴 | Marker-Passthrough vorhanden; `qcir`-Parser und IR-/Backend-Ausgabe fehlen. |
 
 ---
 
@@ -186,7 +201,8 @@ Nur implementieren: `MODHEADER`, Entry-Zuordnung (Form gemäß 1.d), `DISPATCHTA
 | ARM64-Backend: klare „noch nicht implementiert"-Ablehnung | 🟢 | **Kein Code nötig** — geprüft 22.09.2026: Build-Pfad gefunden (`Q9-PARSEC/runtests.sh` baut `qcc_arm64_backend_c.cpp` direkt mit `cc`, kein eigenes Makefile in `q9-qirarm64` nötig). Empirisch getestet mit `MODHEADER`-haltiger IR: lehnt bereits klar und ohne Absturz ab (`"Opcode ausserhalb einer Funktion"`, `rc=1`) — Wortlaut nicht `#DEFMODUL`-spezifisch, aber funktional genau das gewollte Verhalten (kein Crash, kein stilles Verwerfen). |
 | „C-Backend" aus 1.d/2.4 | — | Kein eigenständiges Tool dieses Namens im Repo gefunden (nur `QIR68K_SRC`/`QIRARM64_SRC` in `Q9-PARSEC/runtests.sh` referenziert) — die Erwähnung in `IR_OPCODES_de.md`/1.d scheint ein Planungsziel zu sein, noch kein gebautes Werkzeug. Nichts zu tun, bis ein solches Backend tatsächlich existiert. |
 | `DISPATCHTAB`-IR-Emission | 🟡 Frontend | `DRIVER` defaultet sieben Slots (`INIT` bis `TRAP`), `MANAGER`/`TRAPHANDLER` übernehmen `#DEFMODUL ENTRY <slot> <funktion>`; Backend-Layout und ABI sind noch offen. |
-| `FUNC ... [convention]` (`modul driver`/`interrupt`/`trap`/`naked`/`syscall`-Grammatik) | 🔴 | Setzt die `modul`-Präfix-Grammatik voraus (Phase 5) — ebenfalls im ursprünglichen Phase-2-Scope genannt, noch nicht begonnen |
+| `FUNC`-Attribute für Variadizität/Calling-Convention | 🟢 | Numerisches Attributfeld in der IR; 68k-Backend wertet Variadic-Bit und Convention-Bits aus. Interrupt/variadic Regression ist Teil der Suite. |
+| `modul syscall`-IR und Codegen | 🔴 | Syntax beschrieben; vollständige Emission und Syscall-Aufrufsgenerierung fehlen weiterhin. |
 
 **Verifiziert (22.09.2026):** volle `Q9-PARSEC/runtests.sh` weiterhin grün nach der `qir68k`-Änderung; kompletter End-to-End-Pfad `qcpp → qcir → qir68k -os9 → qr68k` mit echtem `#DEFMODUL`-Inhalt läuft bis zur assemblierten ROF-Datei durch (`deftest7.r`, 1.264 Byte).
 

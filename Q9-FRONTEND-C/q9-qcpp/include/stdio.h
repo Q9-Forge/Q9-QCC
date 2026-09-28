@@ -18,6 +18,19 @@ typedef int FILE;
    auf einen echten Strom (dafuer gibt es weiterhin
    ../tools/bootstrap_prepare.py --diag). */
 static FILE* stderr;
+/* 2026-09-27: dieselbe Art Platzhalter wie stderr oben, aus demselben Grund
+ * (kein linkbares Microware-Objekt in dieser Teilmenge) -- ergaenzt, weil
+ * Q9-QCC/src/qcc.c selbst (Selfhosting-Versuch) stdout aktiv per
+ * freopen()/fclose() umleitet; das Frontend kannte den Namen bisher gar
+ * nicht ("unknown variable 'stdout'"). Ob eine echte Umleitung zur Konsole
+ * beim SPAETEREN Linken gegen qclib tatsaechlich funktioniert, ist davon
+ * unabhaengig -- hier geht es nur um die Typpruefung. */
+static FILE* stdout;
+/* 2026-09-27: dieselbe Art Platzhalter wie stderr/stdout oben -- ergaenzt,
+ * weil mehrere Q9-Tools/System-Quellen (attr/chown/copy/deiniz u.a.)
+ * "stdin" in Vergleichen/Zuweisungen benutzen ("list==stdin"), das Frontend
+ * kannte den Namen bisher gar nicht ("unknown variable 'stdin'"). */
+static FILE* stdin;
 
 extern FILE* fopen(const char*, const char*);
 extern size_t fread(void*, size_t, size_t, FILE*);

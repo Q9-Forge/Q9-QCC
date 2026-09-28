@@ -14,6 +14,19 @@ Extrahiert aus dem ehemaligen `ebnf`-Repo (2026-07-31, volle Historie
 erhalten), das jetzt als [Q9-Parsec](https://github.com/Q9-Forge/Q9-Parsec)
 weiterlebt.
 
+**Aktueller Stand (2026-09-28):** `main` enthält die Arbeit aus
+`QCC-DEFMODUL`. Variadizität und Calling-Conventions werden im numerischen
+`FUNC`-Attributfeld der IR transportiert; der 68k-Interruptpfad hat einen
+Regressionstest. Der eigenständige Stack-IR-Optimizer `qost` baut und besteht
+seine Tests, ist aber noch nicht in den `qcc`-Standardlauf eingebunden. Die
+Verarbeitung echter OS-9-Modulköpfe und Dispatch-Tabellen im Backend ist noch
+unvollständig; x86 und ARM64 bleiben Entwicklungsziele.
+
+Siehe [STATUS.md](STATUS.md) für den Projektüberblick,
+[Modulstatus](Q9-FRONTEND-C/q9-qcpp/docs/STATUS_DEFMODUL.md) für den
+Modul-Fahrplan und [detaillierte Compiler-Historie](docs/STATUS_de.md) für
+frühere Bootstrap-Befunde und Testprotokolle.
+
 ## Abhängigkeit zu Q9-Parsec
 
 Der C-Frontend-Parser `Q9-FRONTEND-C/q9-qcir/data/qcc_p.c` wird vom
@@ -73,7 +86,8 @@ Q9-QCC/
 ├── Q9-OPTIMIZER/           backend-neutraler Stack-IR-Optimizer: qost
 ├── Q9-BACKEND-68K/         qir68k, qo68k, q9-qclib, q9-devs
 ├── Q9-BACKEND-x86/         x86-Werkzeugkette
-└── Q9-BACKEND-ARM64/       ARM64-Werkzeugkette
+├── Q9-BACKEND-ARM64/       ARM64-Werkzeugkette
+└── Q9-BACKEND-riscv/       RISC-V-Werkzeugkette
 ```
 
 Der erste backend-neutrale IR-Optimizer `qost` liegt unter

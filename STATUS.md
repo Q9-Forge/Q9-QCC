@@ -1,94 +1,49 @@
-# Q9 MODUL Erweiterung
+# Q9-QCC project status
 
-Status-Übersicht und Arbeitsplan für die Implementierung nativer OS-9 Modulartefakte (`#DEFMODUL`, Dispatch-Tabellen, Calling-Conventions, `#ASM`) in Q9-QCC.
+**Snapshot: 2026-09-28.** This is the
+current top-level summary. Older chronological compiler notes are retained in
+[`docs/STATUS.md`](docs/STATUS.md) and its
+[German version](docs/STATUS_de.md).
 
-**Legende:**
-- 🔴 Offen / Noch nicht begonnen
-- 🟡 In Arbeit / In Prüfung
-- 🟢 Abgeschlossen / Verifiziert
+## Current state
 
----
+| Area | Status | Current boundary |
+|---|---|---|
+| C frontend (`qcpp`/`qcir`) | 🟡 Active | C subset and Stack-IR generation are under active development; generated parser and grammar artifacts must stay synchronized. |
+| Stack IR / calling-convention metadata | 🟢 Implemented for current path | `FUNC <name> <nargs> <isStatic> <attrs>` carries variadic and calling-convention bits. Legacy shorter `FUNC` records remain accepted. |
+| 68k backend (`qir68k`) | 🟡 Active | Supports variadic functions and the implemented convention prolog/epilog paths; interrupt/variadic regression is covered. It does not yet turn module metadata and dispatch tables into a complete native OS-9 driver/module layout. |
+| Linker (`ql68k`) | 🟡 Active | Links the project's ROF sequence and supports its current module workflow. Microware libgen archives are not yet supported. |
+| IR optimizer (`qost`) | 🟡 Initial pass | Standalone constant-folding pass, not yet invoked by `qcc`; tracked regression fixtures pass. |
+| Other backends (ARM64, x86, RISC-V) | 🟡/🔴 Development | Buildable components exist, but feature coverage and target-specific execution are incomplete. |
+| Self-hosting / OS-9 end-to-end | 🟡 In progress | Compiler stages and large-input limits continue to be verified; a complete, repeatable self-hosted OS-9 toolchain is not yet declared done. |
 
-## Schnellübersicht (Dashboard)
+## Verification recorded for this snapshot
 
-| Paket | Aufgabe | Status | Beschreibung |
-|---|---|:---:|---|
-| **1. Spezifikation & IR** | 1.1 IR-Opcodes formal festlegen | 🟢 | `MODHEADER`, `DISPATCHTAB`, `ORG`, `SECTION`, `INLINEASM`, `FUNC ... [conv]` |
-| | 1.2 Doku `IR_OPCODES_de.md` aktualisieren | 🟢 | Opcodes in Referenzdokumentation aufgenommen |
-| | 1.3 `OS9_SYSTEM_INTERFACE.md` abgleichen | 🟢 | Architektur, `#DEFMODUL`-Syntax, Calling-Conventions (`driver`, `interrupt`, `trap`, `naked`) & Multi-Regionen spezifiziert |
-| **2. Frontend (`q9-qcpp` / `qcir`)** | 2.1 `#DEFMODUL` Parser im Präprozessor | 🟢 | Syntax `#DEFMODUL <KEYWORD> ...` (NAME, EDITION, STACK, ATTR, ORG, ALIGN, TYPE) sowie `#ORG`, `#SECTION` & `#ASM/#ENDASM` im Präprozessor implementiert |
-| | 2.2 Calling-Convention Keywords (`driver`, `interrupt`, `trap`, `naked`) | 🔴 | ABI-Modifikatoren auf `static`-Ebene parsen |
-| | 2.3 Syscall-Intrinsics (`__syscall`) | 🔴 | 3 Archetypen (`CALL_D`, `CALL_DA`, `CALL_FORK`) unterstützen |
-| | 2.4 IR-Emission von Modul- und Funktions-Metadaten | 🔴 | `MODHEADER`, `DISPATCHTAB`, `FUNC ... [conv]` im `.qir`-Stream |
-| | 2.5 `#ASM ... #ENDASM` Parser & IR-Emission | 🟡 | Präprozessor fertig 🟢; `qcir`-Parser & `INLINEASM`-Emission offen 🔴 |
-| **3. Backend 68k (`q9-qir68k`)** | 3.1 Handler für `MODHEADER` | 🔴 | Generierung von `psect`, Typ/Sprache, Attr/Rev |
-| | 3.2 Handler für `DISPATCHTAB` | 🔴 | Relative Offset-Tabelle zu den C-Funktionen emittieren |
-| | 3.3 Codegen für `driver` Calling-Convention | 🔴 | Register-Prolog (`a1`/`a2`) & Carry-Flag Epilog + `rts` |
-| | 3.4 Codegen für `interrupt` Calling-Convention | 🔴 | `movem.l` Registerrettung & Beendigung mit `rte` |
-| | 3.5 Handler für `INLINEASM` | 🔴 | 1:1 Ausgabe in die `.s68`-Assemblerdatei |
-| **4. Linker & Prüfsumme (`q9-ql68k`)** | 4.1 Modul-Header Offset-Berechnung | 🔴 | Verifikation Name- und Execution-Offsets (`isDrvr`) |
-| | 4.2 24-Bit OS-9 CRC-Prüfsumme | 🔴 | Sicherstellen der korrekten CRC-Generierung ($800063) |
-| **5. Test & Verifikation** | 5.1 Test-Suite für Programm (`test_prog.c`) | 🔴 | End-to-End: C -> IR -> ASM -> ROF -> Binär |
-| | 5.2 Test-Suite für Treiber (`test_driver.c`) | 🔴 | RBF-Treiber mit 6 Funktionen verifizieren |
-| | 5.3 Test-Suite für Inline-ASM (`test_asm.c`) | 🔴 | Hardwarenahe Registerzugriffe testen |
-| | 5.4 Test auf Q9-Emulator / Zielsystem | 🔴 | OS-9 `load` / Ausführungstest |
+- `Q9-PARSEC/runtests.sh`: complete suite passed, including the variadic
+  interrupt regression and parser-generation consistency checks.
+- `make -C Q9-FRONTEND-C/q9-qcir test`: passed.
+- `make -C Q9-OPTIMIZER/q9-qost test`: passed with the tracked IR fixtures.
+- 68k, ARM64, x86, and RISC-V backend build checks passed in the integration
+  worktree; this is build coverage, not a claim of equal runtime support.
 
----
+These checks verify compiler components and generated output. They do not
+constitute a full driver load test on a live OS-9/Q9 system.
 
-## Detaillierte Arbeitsschritte
+## Near-term work
 
-### 1. Spezifikation & Zwischenschicht (Stack-IR)
-*Ziel: Vollständige Plattformunabhängigkeit zwischen C-Frontend und Code-Backends.*
-- **1.1 & 1.2 IR-Opcodes:**
-  - `MODHEADER <name> <type> <subtype> <attr> <edition> <stack>`: Legt Metadaten des Zielmoduls fest.
-  - `DISPATCHTAB <sym1> <sym2> ...`: Gibt die geordnete Liste aller Einsprung-Symbole an.
-  - `FUNC <name> <nargs> [convention]`: Erweitert `FUNC` um ABI-Informationen (`driver`, `interrupt`, `trap`).
-  - `INLINEASM "<assembler-zeile>"`: Reicht maschinenspezifischen Assemblercode transparent durch.
-- **1.3 Dokumentation:**
-  - Spezifikation in `docs/OS9_SYSTEM_INTERFACE.md` und `docs/IR_OPCODES_de.md` ist vollständig ausgearbeitet und synchronisiert.
+1. Complete backend handling and end-to-end verification for `MODHEADER`,
+   `ENTRY`, and `DISPATCHTAB` before claiming native manager/driver modules.
+2. Continue syscall and inline-assembler support according to the
+   [module roadmap](Q9-FRONTEND-C/q9-qcpp/docs/STATUS_DEFMODUL.md).
+3. Expand qost beyond its initial local constant-folding pass, then decide
+   when it is safe to add to the `qcc` pipeline.
+4. Continue linker compatibility work for Microware libgen archives.
+5. Re-run target-side memory and self-hosting tests before raising assembler
+   limits or declaring the OS-9 pipeline complete.
 
-### 2. Frontend & Präprozessor (`Q9-FRONTEND-C`)
-*Ziel: C-Quelldateien einlesen und reinen Stack-IR-Code erzeugen.*
-- **2.1 `#DEFMODUL` Erkennung:**
-  - Der Präprozessor/Scanner (`qcpp`) erkennt Direktiven am Kopf der Datei im Subkommando-Format:
-    - `#DEFMODUL NAME <name>` (Default: Basisdateiname)
-    - `#DEFMODUL EDITION <num>` (Default: 1)
-    - `#DEFMODUL STACK <bytes>` (Default: 4096 bei PROG, 0 bei DRIVER)
-    - `#DEFMODUL ATTR <hex>` (Default: 0x8000 = Reentrant)
-    - `#DEFMODUL TYPE PROG [entry]` (Default: main)
-    - `#DEFMODUL TYPE DRIVER <subsystem> [entries...]` (Default-Einsprünge: `drv_init`, `drv_read`, `drv_write`, `drv_getstat`, `drv_putstat`, `drv_term`)
-    - `#DEFMODUL TYPE MANAGER <subsystem> [entries...]`
-    - `#DEFMODUL TYPE SYSTEM`
-    - `#DEFMODUL TYPE NOOS [entry]` (Flat Binary / Bare-Metal BIOS)
-    - `#DEFMODUL TYPE TRAPHANDLER <subsystem> [entries...]`
-- **2.2 Calling-Convention Keywords:**
-  - Parsing von `driver`, `interrupt`, `trap` als Speicherklassen/Funktionsmodifikatoren.
-- **2.3 Inline-Syscalls:**
-  - Parsing von `__syscall(id, archetype)` zur direkten Generierung von TRAP-Calls ohne Wrapper.
-- **2.4 & 2.5 IR-Emission & Inline-ASM:**
-  - Ausgabe der Metadaten in `.qir` und Kapselung von `#ASM ... #ENDASM` in `INLINEASM`.
+## Detailed status files
 
-### 3. Backend 68k (`Q9-BACKEND-68K/q9-qir68k`)
-*Ziel: Generierung von OS-9-kompatiblem Assembler.*
-- **3.1 `MODHEADER` Umsetzung:**
-  - Erzeugt das Wurzel-`psect` mit den korrekten OS-9 Parametern (Name, Typ/Sprache wie `$0E01` für RBF, Attribute `$8000`, Stackgröße).
-- **3.2 Dispatch-Tabelle:**
-  - Erzeugt am Modulanfang die relative Sprungtabelle (z. B. 6 Worte `dc.w drv_init-dispatch_entry` für RBF-Treiber).
-- **3.3 & 3.4 Calling-Convention Codegen:**
-  - `driver`: Parameter-Slots aus `a1` (Storage) und `a2` (Path) belegen; Epilog prüft `d0`, setzt/löscht Carry-Flag und meldet `d1`.
-  - `interrupt`: Generiert `movem.l` Prolog/Epilog und schließt mit **`rte`** ab.
-- **3.5 `INLINEASM` Ausgabe:**
-  - Direkte Übergabe der Assemblerzeilen in die `.s68`-Ausgabe.
-
-### 4. Linker & OS-9 CRC (`Q9-BACKEND-68K/q9-ql68k`)
-*Ziel: Valide Binärmodule erzeugen.*
-- **4.1 Header-Offsets:**
-  - Prüfung, ob `ql68k` alle Offsets (Name, Exception, Execution) konform zum OS-9 Standard setzt (Zweig `isDrvr`).
-- **4.2 24-Bit CRC:**
-  - Verifikation, dass der OS-9 CRC-Algorithmus (Polynom `$800063`) am Dateiende korrekt berechnet wird.
-
-### 5. Test & Verifikation
-*Ziel: Qualitätsnachweis der gesamten Kette.*
-- Aufbau automatisierter Tests in `tests/`:
-  - Übersetzungskette `.c` -> `.qir` -> `.s68` -> `.r68` -> Binärmodul.
-  - Inspektion der Header-Bytes (`$4AFB`) und Tabellenstruktur.
+- [Compiler/bootstrap history](docs/STATUS.md) ·
+  [German](docs/STATUS_de.md)
+- [Q9 module implementation roadmap](Q9-FRONTEND-C/q9-qcpp/docs/STATUS_DEFMODUL.md)
+- [qclib symbol and behavior status](Q9-BACKEND-68K/q9-qclib/STATUS.md)

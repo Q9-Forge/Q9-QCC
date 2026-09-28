@@ -256,7 +256,7 @@ fnPtrName    = ident .
 /* pointerDecl steht NICHT mehr hier (s. NACHTRAG oben bei typedefDecl),
    sondern in typedefDeclarator -- sonst wuerde ein Zeigergrad hier UND
    dort gleichzeitig gezaehlt. */
-typedefType = anonStructType | anonEnumType | type .
+typedefType = anonStructType | anonUnionType | anonEnumType | type .
 /* "typedef enum { A, B } Flags;" -- und mit Tag, der wie beim struct
    GEPARST UND VERWORFEN wird (enumTagName ist aktionslos): als interner
    Name dient der typedef-Zielname. Ein enum ist in QCC ein int, die
@@ -273,6 +273,11 @@ anonEnumOpen = "{" .
 anonStructType = "struct" [ structTagName ] anonStructOpen structField { structField } "}" .
 structTagName = ident .
 anonStructOpen = "{" .
+/* Anonyme union-Typen benoetigen denselben Aufbaupfad wie anonyme structs;
+   nur tc_anonunionbegin setzt das gemeinsame Layout-Flag auf Union. */
+anonUnionType = "union" [ unionTagName ] anonUnionOpen structField { structField } "}" .
+unionTagName = ident .
+anonUnionOpen = "{" .
 typedefTargetName = ident .
 
 /* beliebig viele weitere Dimensionen (2026-07-24) NUR bei globalDecl/localDecl
@@ -817,7 +822,7 @@ factor    = sizeofExpr
           | castExpr
           | preIncDec
           | postIncDec
-          | parenOpen commaExpr parenClose
+          | parenOpen commaExpr parenClose [ postfixIndex ]
           | call [ postfixIndex ] [ callMember ]
           | indirectCall
           | boolLit
@@ -882,7 +887,9 @@ stringSpace = "\040" | "\011" | "\015" | "\012" .
 charLit       = "\047" charLitBody "\047" .
 charLitBody   = charLitEscape | charLitPlain .
 charLitEscape = "\134" charLitEscChar .
-charLitEscChar = "n" | "t" | "r" | "0" | "\134" .
+charLitEscChar = octEscape | hexEscape | "n" | "t" | "r" | "\134" .
+octEscape = ("0"~"7") [ ("0"~"7") [ ("0"~"7") ] ] .
+hexEscape = ("x" | "X") ("0"~"9" | "a"~"f" | "A"~"F") [ ("0"~"9" | "a"~"f" | "A"~"F") ] .
 charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
 /* strEscape steht VORNE, damit ein Backslash mitsamt dem Folgezeichen als
    EINHEIT konsumiert wird -- sonst beendet das "\\\"" das Literal vorzeitig.
@@ -955,7 +962,7 @@ sizeofVarName = ident .
 castExpr   = "(" castType ")" castOperand .
 /* Ein Cast verwendet dieselbe Typgrammatik wie eine Deklaration. Damit sind
    typedef-Namen und beliebig viele Zeigersterne moeglich, z.B. (ActionFn*)p. */
-castType   = type pointerDecl .
+castType   = [ retConstKw ] type pointerDecl .
 /* castOperand ist BEWUSST eine eigene Kopie der alten factor-Liste, KEIN
    Verweis auf factor selbst -- s. ausfuehrliche Begruendung beim
    posFactor-Kommentar oben (negFactor). Wird factor spaeter um eine

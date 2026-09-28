@@ -657,12 +657,19 @@ ein 32-MB-Puffer wäre also ein 32-MB-Modul.
 
 ## Was als Nächstes ansteht
 
-1. **`-a` und die Bibliothekssuche stehen** (Abschnitte oben). Offen
-   bleibt am Binder nur das **libgen-Archivformat**: `clib.l` und
-   `os_lib.l` sind libgen-Archive (Format 1.1) und für `ql68` unlesbar.
-   Das erledigt sich mit `Q9-qclib` — es entsteht als schlichte ROF-Folge
-   und bringt die Systemaufrufe selbst mit.
-2. **Die Schalter sind abgearbeitet** — gegen `l68 -?` durchgezählt,
+1. **`-a` und die Bibliothekssuche stehen** (Abschnitte oben). Als
+   Kompatibilitätserweiterung soll `ql68` künftig Microware-libgen-Archive
+   (Format 1.1) lesen und daraus bei Bedarf Module für noch offene Symbole
+   auswählen können. Die bestehende schlichte ROF-Folge (`qclib.l`) bleibt
+   weiterhin unterstützt. Anlass ist unter anderem, dass `sys_clib.l`
+   Funktionen wie `os9exec`/`os9forkc`/`wait` enthält, die `qclib` derzeit
+   nicht bereitstellt; `ql68` kann das Archivformat momentan nicht einlesen.
+2. **Nice to have:** ein eigenständiges Q9-Werkzeug zum Anzeigen und
+   Bearbeiten kompatibler libgen-Archive — mindestens Module und exportierte
+   Symbole auflisten, außerdem Archive erstellen/aktualisieren und bei Bedarf
+   einzelne ROFs daraus ausgeben. Das ist ein separates Werkzeugvorhaben und
+   keine Voraussetzung für die Linker-Unterstützung.
+3. **Die Schalter sind abgearbeitet** — gegen `l68 -?` durchgezählt,
    gegen den Korpus gemessen. Bewusst offen bleiben genau zwei Dinge:
    die Sprungtabelle von `-a` (kommt im Korpus nirgends vor) und `-z`
    ohne `=` von der Standardeingabe (setzt `stdin` voraus, das `ql68`

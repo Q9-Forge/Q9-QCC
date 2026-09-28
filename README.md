@@ -23,7 +23,8 @@ Q9-QCC/
 ├── Q9-OPTIMIZER/           backend-neutral Stack-IR optimizer: qost
 ├── Q9-BACKEND-68K/         68k compiler toolchain
 ├── Q9-BACKEND-x86/         x86 toolchain area
-└── Q9-BACKEND-ARM64/       ARM64 toolchain area
+├── Q9-BACKEND-ARM64/       ARM64 toolchain area
+└── Q9-BACKEND-riscv/       RISC-V toolchain area
 ```
 
 The 68k path is currently the most complete. The x86 and ARM64 areas are
@@ -53,9 +54,18 @@ individual tools can be developed and tested independently.
 
 ## Status
 
-Q9-QCC is an active development project. The 68k compiler route and the IR
-interpreter are working development components; other targets remain
-experimental.
+**Updated 2026-09-28:** the `main` branch includes the `QCC-DEFMODUL` work.
+The C frontend and 68k backend now carry variadic and calling-convention
+attributes through the numeric `FUNC` IR field; the 68k interrupt path has a
+regression test. The standalone `qost` Stack-IR optimizer builds and passes
+its tests, but is not yet part of the `qcc` driver pipeline. Native OS-9
+module-header and dispatch-table handling is still incomplete; x86, ARM64 and
+RISC-V remain development targets.
+
+See [STATUS.md](STATUS.md) for the current project snapshot,
+[Q9 module status](Q9-FRONTEND-C/q9-qcpp/docs/STATUS_DEFMODUL.md) for the
+module roadmap, and [detailed compiler history](docs/STATUS.md) for prior
+bootstrap findings and verification records.
 
 ## License and contributions
 

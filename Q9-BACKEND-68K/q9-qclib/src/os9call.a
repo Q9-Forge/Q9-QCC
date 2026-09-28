@@ -33,9 +33,15 @@ Q9I_Open       equ     $84                      * I$Open, Datei oeffnen
 Q9I_Read       equ     $89                      * I$Read, Daten lesen
 Q9I_Write      equ     $8a                      * I$Write, Daten schreiben
 Q9I_Close      equ     $8f                      * I$Close, Pfad schliessen
+Q9I_Dup        equ     $82                      * I$Dup, Pfad duplizieren
 Q9F_Exit       equ     $06                      * F$Exit, Prozess beenden
 Q9F_SRqMem     equ     $28                      * F$SRqMem, Speicher holen
 Q9F_SRtMem     equ     $29                      * F$SRtMem, Speicher zurueck
+Q9F_SysDbg     equ     $52                      * F$SysDbg, Systemdebugger aufrufen
+Q9F_GPrDBT     equ     $1f                      * F$GPrDBT, Prozessdeskriptor-Basistabelle kopieren
+Q9F_Event      equ     $53                      * F$Event, benanntes Event anlegen/verwalten
+Q9F_Link       equ     $00                      * F$Link, an geladenes Modul anhaengen
+Q9F_GPrDsc     equ     $18                      * F$GPrDsc, EINEN Prozessdeskriptor kopieren
 
          psect   qos9,0,0,0,0,0
 
@@ -280,6 +286,183 @@ st_err
          moveq   #0,d0
          move.w  d1,d0                           * Fehlercode zurueckgeben
          movea.l (a7)+,a2
+         rts
+
+* int _os_dup(path_id path) -- d0 traegt den zu duplizierenden Pfad schon.
+* Liefert die NEUE Pfadnummer (>= 0) oder -1 bei Fehler. OS-9 vergibt dabei
+* stets die niedrigste freie Nummer -- zusammen mit _os_close reicht das,
+* um einen Pfad "an eine feste Stelle zurueckzuklappen" (dup, close,
+* dup): erst den Originalpfad duplizieren, dann Pfad 1 schliessen und neu
+* oeffnen, und am Ende per zweitem _os_dup auf das gemerkte Duplikat die
+* Originalnummer zurueckbekommen, weil sie inzwischen wieder frei ist.
+
+* Function: _os_dup
+* Duplicates an OS-9 path.
+* Parameters: d0 path number.
+* Returns: New path number in d0, or -1 on error.
+_os_dup:
+         trap    #0
+         dc.w    Q9I_Dup
+         bcs.s   od_err
+         andi.l  #$0000ffff,d0                    * nur die Pfadnummer
+         rts
+od_err
+         moveq   #-1,d0
+         rts
+
+
+* error_code _os_sysdbg(void *, void *)
+*
+* F$SysDbg (Servicewort $52) kennt KEIN Eingaberegister und liefert auch
+* keins zurueck (68k_tech.pdf, "OS-9 for 68K Processors Technical Manual"
+* V3.3, S.517-519) -- die zwei void*-Parameter unseres Prototyps haben
+* also keine ABI-Bedeutung, sie werden einfach nicht angefasst.
+
+* Function: _os_sysdbg
+* Invokes the system-level debugger.
+* Parameters: none (the two C arguments carry no register meaning).
+* Returns: OS-9 error code in d0.
+_os_sysdbg:
+         trap    #0
+         dc.w    Q9F_SysDbg
+         bcs.s   osd_err
+         moveq   #0,d0
+         rts
+osd_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_get_prtbl(void *buffer, u_int32 *count)
+*
+* F$GPrDBT (Servicewort $1f): (a0) = Puffer, d1.l EIN = max. Byteanzahl,
+* d1.l AUS = tatsaechlich kopierte Byteanzahl -- dasselbe Register fuer
+* beide Richtungen (68k_tech.pdf S.439). d0 traegt den Puffer schon (erstes
+* CALLEXT-Register), d1 den &count-Zeiger (zweites Register); der
+* gewuenschte Hoechstwert wird vor dem Trap aus *count geladen.
+
+* Function: _os_get_prtbl
+* Copies the process descriptor base table.
+* Parameters: d0 buffer, d1 pointer to max/actual byte count (in/out).
+* Returns: OS-9 error code in d0.
+_os_get_prtbl:
+         movea.l d0,a0                           * Puffer
+         movea.l d1,a1                           * &count
+         move.l  (a1),d1                         * max. Byteanzahl (Eingabe)
+         trap    #0
+         dc.w    Q9F_GPrDBT
+         bcs.s   ogp_err
+         move.l  d1,(a1)                         * tatsaechliche Byteanzahl
+         moveq   #0,d0
+         rts
+ogp_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_ev_delete(const char *name)
+*
+* F$Event (Servicewort $53) ist eine Sammelfunktion, die Unterfunktion
+* steht in d1.w -- Ev$Delet ist Nummer 3 (
+* Ev$Link=0, Ev$UnLnk=1, Ev$Creat=2, Ev$Delet=3, ...). (a0) traegt den
+* Eventnamen (68k_tech.pdf S.411). d0 traegt den Namenszeiger schon
+* (einziges CALLEXT-Argument).
+
+* Function: _os_ev_delete
+* Deletes a named OS-9 event.
+* Parameters: d0 event name pointer.
+* Returns: OS-9 error code in d0.
+_os_ev_delete:
+         movea.l d0,a0                           * Eventname
+         moveq   #3,d1                           * Ev$Delet-Unterfunktion
+         trap    #0
+         dc.w    Q9F_Event
+         bcs.s   oed_err
+         moveq   #0,d0
+         rts
+oed_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_link(char **name, mh_com **header, void **data,
+*                     u_int16 *type_lang, u_int16 *attr_rev)
+*
+* F$Link (Servicewort $00): d0.w EIN = gewuenschter Typ/Sprache (0 =
+* beliebig), (a0) = Modulname. AUS: d0.w = tatsaechlicher Typ/Sprache,
+* d1.w = Attribute/Revision, a1 = Ausfuehrungseinsprung, a2 = Modulkopf-
+* Zeiger (68k_tech.pdf S.460-461). Der Kernel liefert KEINEN eigenen
+* "Datenbereich"-Zeiger zurueck -- *data bekommt deshalb hier bewusst 0
+* (kein Feld in unserem eigenen mh_exec-Layout haengt direkt daran, und
+* keine unserer Quellen liest *data ueberhaupt aus, siehe link.c).
+*
+* CALLEXT-Register: d0 = &name (Zeiger auf den Namenszeiger, dereferenziert
+* nach a0), d1 = &header, Stapel (VOR jedem eigenen Push) 4(a7) = &data,
+* 8(a7) = &type_lang, 12(a7) = &attr_rev. a2 wird vom Kernel benutzt und
+* darum wie bei _os_srqmem gerettet; d2 haelt &header ueber den Trap
+* hinweg (a1 traegt danach den Ausfuehrungseinsprung, nicht mehr &header).
+
+* Function: _os_link
+* Links to (registers with) an already-loaded OS-9 module by name.
+* Parameters: d0 &name, d1 &header, stack pointers to &data/&type_lang/&attr_rev.
+* Returns: OS-9 error code in d0.
+_os_link:
+         move.l  a2,-(a7)                        * a2 retten (Kernel liefert Modulkopf darin)
+         move.l  d2,-(a7)                        * d2 als Zwischenspeicher fuer &header
+         movea.l d0,a1                           * &name
+         movea.l (a1),a0                         * tatsaechlicher Modulname nach a0
+         movea.l d1,d2                           * &header ueber den Trap hinweg merken
+         moveq   #0,d0                           * gewuenschter Typ/Sprache: beliebig
+         trap    #0
+         dc.w    Q9F_Link
+         bcs.s   ol_err
+         movea.l d2,a1
+         move.l  a2,(a1)                         * Modulkopf-Zeiger speichern
+         movea.l 12(a7),a1                       * &data (4(a7) + zwei gerettete Langworte)
+         clr.l   (a1)                            * kein eigener Datenzeiger vom Kernel -- 0
+         movea.l 16(a7),a1                       * &type_lang
+         move.w  d0,(a1)
+         movea.l 20(a7),a1                       * &attr_rev
+         move.w  d1,(a1)
+         moveq   #0,d0
+         move.l  (a7)+,d2
+         movea.l (a7)+,a2
+         rts
+ol_err
+         moveq   #0,d0
+         move.w  d1,d0
+         move.l  (a7)+,d2
+         movea.l (a7)+,a2
+         rts
+
+
+* error_code _os_gprdsc(process_id pid, void *buffer, u_int32 *count)
+*
+* F$GPrDsc (Servicewort $18, 68k_tech.pdf S.440): d0.w = Prozess-ID,
+* d1.w = Byteanzahl, (a0) = Puffer -- KEIN Ausgaberegister (anders als
+* F$GPrDBT liefert der Kernel die tatsaechlich kopierte Anzahl nicht
+* zurueck). *count bleibt deshalb nach dem Aufruf unveraendert, es
+* traegt nur die vom Aufrufer gewuenschte Hoechstgrenze hinein.
+*
+* CALLEXT-Register: d0 = pid (bleibt fuer den Trap unangetastet), d1 =
+* Puffer (nach a0 verschoben), 4(a7) = &count.
+
+* Function: _os_gprdsc
+* Copies a single process descriptor by process ID.
+* Parameters: d0 process id, d1 buffer, stack argument points to max byte count.
+* Returns: OS-9 error code in d0.
+_os_gprdsc:
+         movea.l d1,a0                           * Puffer
+         movea.l 4(a7),a1                        * &count
+         move.l  (a1),d1                         * gewuenschte Byteanzahl (Eingabe)
+         trap    #0
+         dc.w    Q9F_GPrDsc
+         bcs.s   ogd_err
+         moveq   #0,d0
+         rts
+ogd_err
+         moveq   #0,d0
+         move.w  d1,d0
          rts
 
          ends

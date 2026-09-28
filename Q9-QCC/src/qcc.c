@@ -19,7 +19,12 @@
  * needed by the pipeline.  Keep this translation at the driver boundary so
  * the compiler stages themselves remain platform-neutral. */
 #if defined(_Q9OS) || defined(_OSK)
-#define QCC_MKDIR "makdir -e"
+/* 2026-09-27: das echte OS-9-"makdir" kennt KEINE Option "-e" (nur -p/-q/-x/-z, per
+ * "makdir --help" am echten Q9SYS-Emulator verifiziert) -- "-e" fuehrte zu "unknown
+ * option 'e'" und liess q9_system() jeden Aufruf mit einem generischen E$FNA scheitern,
+ * noch bevor qcc ueberhaupt sein Tempoverzeichnis anlegen konnte. "-p" (wie beim
+ * Host-Pendant "mkdir -p") existiert wirklich und hat dieselbe Bedeutung. */
+#define QCC_MKDIR "makdir -p"
 #define QCC_COPY  "copy"
 #define QCC_REMOVE "del"
 #else
@@ -62,52 +67,94 @@ static int q9_system(const char *command)
 	return system(command);
 }
 #if defined(_Q9OS) || defined(_OSK)
-#include <process.h>
-#include <modes.h>
-extern int os9exec();
-extern int os9forkc();
-extern int wait();
-extern char **_environ;
+/* 2026-09-27: process.h/modes.h waren Ueberbleibsel des fruehen, seither
+ * entfernten creat()-Codes -- nichts hier braucht heute noch etwas aus
+ * ihnen (modes.h-Konstanten wie S_IREAD kommen nirgends mehr vor). Beide
+ * ziehen bei einer Uebersetzung mit dem PROJEKTEIGENEN qcpp einen Berg
+ * echter Microware-OS9000-Header nach (procid.h, types.h, ...), die dort
+ * gar nicht vorhanden sind ("qcpp: #include: Datei nicht gefunden:
+ * process.h") -- die drei folgenden extern-Deklarationen reichen. */
+extern int q9_os9exec(const char *module, char **argv, char **environment);
+extern int q9_os9exec_stdout(const char *module, char **argv,
+			     char **environment, const char *path);
+static char *q9_os9_path_env[2];
+static char q9_os9_path[] = "PATH=/dd/CMDS_XCC";
+static char **_environ;
 
 /* Execute one OS-9 module with an explicit argument vector. */
 static int q9_exec_argv(const char *module, char **argv)
 {
-	int pid;
-	unsigned int child_status;
-	int status;
-	child_status = 0;
-	pid = os9exec(os9forkc, module, argv, _environ, 0, 0, 3);
-	if (pid < 0) return -1;
-	status = wait(&child_status);
-	if (status < 0) return status;
-	/* OS-9 reports a normal child exit as 0x0100 | exit-code. */
-	if ((child_status & 0xFF00U) == 0x0100U)
-		return (int)(child_status & 0x00FFU);
-	return (int)child_status;
+	return q9_os9exec(module, argv, _environ);
 }
 
-/* Run a child with its standard output connected to an OS-9 file. */
+/* Run a child with its standard output connected to an OS-9 file.
+ *
+ * 2026-09-27: die urspruengliche Fassung benutzte rohes creat()/dup()/close() --
+ * am echten Q9-Emulator liefert creat() dort zuverlaessig -1 (mit einem winzigen,
+ * isolierten Testprogramm einzeln nachgestellt: "creat: -1"), obwohl dieselbe
+ * Datei ueber die hoehere stdio-Ebene (fopen()/freopen()) klaglos funktioniert
+ * (ebenfalls isoliert bestaetigt: "freopen ergab: 1", Inhalt danach lesbar). qcir
+ * (Q9-FRONTEND-C/q9-qcir/data/qcc_p.c) kennt kein eigenes "-o" und schreibt IMMER
+ * auf stdout -- deshalb muss stdout selbst umgeleitet werden, jetzt per
+ * freopen(), nicht per Descriptor-Verbiegen. os9exec()/os9forkc() vererben dem
+ * Kind den zum Zeitpunkt des Forks bereits umgebogenen Pfad 1 (dasselbe Prinzip,
+ * nach dem die OS-9-Shell selbst "cmd >datei" umsetzt -- erst umlenken, dann
+ * forken), das genuegt hier.
+ *
+ * Bekannte, akzeptierte Einschraenkung: stdout wird NICHT zurueck auf die
+ * Konsole umgebogen (der urspruengliche Pfad ist nach freopen() geschlossen,
+ * ohne dessen Namen zu kennen liesse er sich nicht zurueckholen) -- fuer die
+ * Pipeline unschaedlich, da nach diesem einen Aufruf keine weitere Stufe mehr
+ * auf stdout schreibt (Erfolg bleibt wie bei den meisten Compilern stumm,
+ * Fehler laufen ohnehin ueber stderr). */
 static int q9_exec_stdout(const char *module, char **argv, const char *path)
 {
-	int saved;
-	int out;
-	int result;
-	saved = dup(1);
-	if (saved < 0) return -1;
-	creat(path, S_IREAD | S_IWRITE | S_IOREAD | S_IOWRITE);
-	out = creat(path, S_IREAD | S_IWRITE | S_IOREAD | S_IOWRITE);
-	if (out < 0) { close(saved); return -1; }
-	close(1);
-	if (dup(out) != 1) { close(out); close(saved); return -1; }
-	close(out);
-	result = q9_exec_argv(module, argv);
-	close(1);
-	dup(saved);
-	close(saved);
-	return result;
+	return q9_os9exec_stdout(module, argv, _environ, path);
+}
+
+/* Remove up to 5 temp files via os9exec/os9forkc instead of q9_system()'s
+ * system() call.
+ *
+ * 2026-09-27: the "del a b c d e" cleanup at pipeline end failed with a
+ * generic E$FNA through q9_system() ("File not accessible" -- one of the
+ * arguments is legitimately missing whenever an earlier stage was skipped,
+ * e.g. output.opt.s68k without --optimizer), the same class of problem the
+ * makdir/qcpp/qcir/backend calls already had before they moved to
+ * q9_exec_argv(). This uses the same, already-proven mechanism, and drops
+ * any argument that is NULL so a skipped stage's missing file is never
+ * passed to "del" in the first place. */
+static void q9_remove_files(const char *f1, const char *f2, const char *f3, const char *f4, const char *f5)
+{
+	char *del_argv[7];
+	const char *files[5];
+	int i;
+	int n;
+	files[0] = f1; files[1] = f2; files[2] = f3; files[3] = f4; files[4] = f5;
+	del_argv[0] = "del";
+	n = 1;
+	for (i = 0; i < 5; i++) {
+		if (files[i] != NULL)
+			del_argv[n++] = (char *)files[i];
+	}
+	del_argv[n] = NULL;
+	if (n > 1)
+		q9_exec_argv("del", del_argv);
+}
+
+/* Use direct module launch for file copies too. system("copy ...") fails to
+ * open otherwise-readable ROFs from this driver's OS-9 process context. */
+static int q9_copy_file(const char *source, const char *destination)
+{
+	char *copy_argv[4];
+	copy_argv[0] = "copy";
+	copy_argv[1] = (char *)source;
+	copy_argv[2] = (char *)destination;
+	copy_argv[3] = NULL;
+	return q9_exec_argv("copy", copy_argv);
 }
 #endif
 static int keep_files;
+static int large_data;
 static char tmpdir[TEXT] = "build/qcc-tmp";
 static char output[TEXT] = "";
 static int tmpdir_set;
@@ -200,6 +247,11 @@ static void show_config(void)
 int main(int argc, char **argv)
 {
 	int i, inputs = 0;
+	#if defined(_Q9OS) || defined(_OSK)
+	q9_os9_path_env[0] = q9_os9_path;
+	q9_os9_path_env[1] = NULL;
+	_environ = q9_os9_path_env;
+	#endif
 	load_config();
 	for (i = 1; i < argc; ++i) {
 		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(argv[0]); return 0; }
@@ -211,6 +263,12 @@ int main(int argc, char **argv)
 		if (strcmp(argv[i], "-c") == 0) { object_only = 1; continue; }
 		if (strcmp(argv[i], "--no-optimizer") == 0) { optimizer[0] = '\0'; continue; }
 		if (strcmp(argv[i], "--keep") == 0) { keep_files = 1; continue; }
+		/* 2026-09-27: qir68k warnt selbst ab einer gewissen Groesse globaler
+		 * Daten ("value out of range" droht bei r68) und schlaegt "-largedata"
+		 * vor -- bislang gab es keinen Weg, das durchzureichen. Bewusst kein
+		 * automatisches Umschalten: -largedata aendert das Codegen-Modell
+		 * (zusaetzliche Indirektionstabelle je Modul), also nur auf Wunsch. */
+		if (strcmp(argv[i], "--largedata") == 0) { large_data = 1; continue; }
 		if (strcmp(argv[i], "--print-config") == 0) { print_config = 1; continue; }
 		if (strcmp(argv[i], "--tmpdir") == 0 || strcmp(argv[i], "-o") == 0) {
 			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
@@ -247,20 +305,63 @@ int main(int argc, char **argv)
 		char command[512];
 		const char *input = argv[argc - 1];
 		if (strcmp(tmpdir, "/dd") != 0 && strcmp(tmpdir, "/dd/CMDS") != 0 && strcmp(tmpdir, ".") != 0) {
+			/* 2026-09-27: auf OS-9 scheiterte "makdir -p <dir>" ueber q9_system()/system()
+			 * am echten Q9-Emulator mit einem generischen E$FNA, obwohl "makdir -p <dir>"
+			 * von Hand in derselben Shell klaglos funktioniert -- system()s eigener Shell-
+			 * Fork scheint in dieser Umgebung nicht zuverlaessig zu sein. Der Rest der
+			 * Pipeline (qcpp/qcir/...) benutzt dafuer bereits q9_exec_argv() (os9exec/
+			 * os9forkc, direkter Fork+Load ohne Shell) -- denselben, bereits bewiesenen
+			 * Mechanismus jetzt auch hier statt q9_system(). */
+			#if defined(_Q9OS) || defined(_OSK)
+			{
+				/* 2026-09-27: dieses echte "makdir -p" bricht ab, wenn <dir> schon
+				 * existiert -- "-p" unterdrueckt hier nur Fehler ueber fehlende
+				 * Elternverzeichnisse, nicht "existiert bereits" (an diesem Emulator
+				 * mit "makdir -p /r0/qcctest; makdir -p /r0/qcctest" nachgestellt:
+				 * der zweite Aufruf meldet "can't make"). Das trifft jeden zweiten
+				 * Pipeline-Lauf mit demselben Tmpdir, seit "del" (s.o.) die Dateien
+				 * darin zuverlaessig aufraeumt und das Verzeichnis selbst bestehen
+				 * bleibt. Ein fehlgeschlagenes makdir hier ist deshalb kein
+				 * verlaesslicher Fehlerindikator mehr -- nicht fatal behandeln; ein
+				 * WIRKLICH fehlendes/unschreibbares Tmpdir faellt beim naechsten
+				 * Schritt (qcpp kann input.i nicht anlegen) ohnehin klar auf. */
+				char *mkdir_argv[4];
+				mkdir_argv[0] = "makdir";
+				mkdir_argv[1] = "-p";
+				mkdir_argv[2] = (char *)tmpdir;
+				mkdir_argv[3] = 0;
+				q9_exec_argv("makdir", mkdir_argv);
+			}
+			#else
 			sprintf(command, "%s %s", QCC_MKDIR, tmpdir);
 			if (q9_system(command) != 0) return 4;
+			#endif
 		}
 		#if defined(_Q9OS) || defined(_OSK)
 		{
-			char *qcpp_argv[5];
+			char *qcpp_argv[6];
 			char qcpp_output[TEXT];
+			char qcpp_include[TEXT];
 			const char *qcpp_module = qcpp;
+			const char *inc_base;
+			/* 2026-09-27: der OS-9-Zweig rief qcpp bisher OHNE jeden Include-Pfad auf
+			 * (der Host-Zweig unten hat "-I../Q9-FRONTEND-C/q9-qcpp/include" fest dabei) --
+			 * jede #include-Datei (auch stdio.h) schlug deshalb fehl. QCC_INCLUDE
+			 * (Umgebungsvariable, wie schon TMP/TEMP fuer tmpdir) erlaubt eine andere
+			 * Ablage. 2026-09-27 (spaeter am selben Tag): Standardpfad auf die neue,
+			 * projektunabhaengige SDK-Ablage "/dd/DEFS/Q9" umgestellt (Nutzerwunsch) --
+			 * vorher zeigte er auf die tief verschachtelte Q9-FORGE-Projektkopie. */
+			inc_base = getenv("QCC_INCLUDE");
+			if (inc_base == NULL || inc_base[0] == '\0')
+				inc_base = "/dd/DEFS/Q9";
+			sprintf(qcpp_include, "-I%s", inc_base);
 			sprintf(qcpp_output, "%s/input.i", tmpdir);
 			qcpp_argv[0] = (char *)qcpp_module;
 			qcpp_argv[1] = "-v";
-			qcpp_argv[2] = (char *)input;
-			qcpp_argv[3] = qcpp_output;
-			qcpp_argv[4] = NULL;
+			qcpp_argv[2] = qcpp_include;
+			qcpp_argv[3] = (char *)input;
+			qcpp_argv[4] = qcpp_output;
+			qcpp_argv[5] = NULL;
 			if (q9_exec_argv(qcpp_module, qcpp_argv) != 0) {
 				fprintf(stderr, "qcc: qcpp fehlgeschlagen\n");
 				return 4;
@@ -274,31 +375,58 @@ int main(int argc, char **argv)
 		#endif
 		if (preprocess_only) {
 			if (output[0] != '\0') {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char copy_source[TEXT];
+					sprintf(copy_source, "%s/input.i", tmpdir);
+					if (q9_copy_file(copy_source, output) != 0) return 4;
+				}
+				#else
 				sprintf(command, "%s %s/input.i %s", QCC_COPY, tmpdir, output);
 				if (q9_system(command) != 0) return 4;
+				#endif
 				printf("%s\n", output);
 			} else printf("%s/input.i\n", tmpdir);
-			if (!keep_files) { sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command); }
+			if (!keep_files) {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char input_i[TEXT];
+					sprintf(input_i, "%s/input.i", tmpdir);
+					q9_remove_files(input_i, NULL, NULL, NULL, NULL);
+				}
+				#else
+				sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command);
+				#endif
+			}
 			return 0;
 		}
 		#if defined(_Q9OS) || defined(_OSK)
 		{
-			char *qcir_argv[5];
+			char *qcir_argv[3];
 			char qcir_input[TEXT];
 			char qcir_response[TEXT];
-			char qcir_output_arg[TEXT];
 			char qcir_output[TEXT];
 			sprintf(qcir_input, "%s/input.i", tmpdir);
 			sprintf(qcir_response, "@%s", qcir_input);
-			if (output[0] != '\0') sprintf(qcir_output, "%s", output);
+			if (emit_ir && output[0] != '\0') sprintf(qcir_output, "%s", output);
 			else sprintf(qcir_output, "%s/output.ir", tmpdir);
-			sprintf(qcir_output_arg, "%s", qcir_output);
-			qcir_argv[0] = "/dd/CMDS/qcir";
+			/* 2026-09-27: zwei Bugs auf einmal. (1) "/dd/CMDS/qcir" stand fest verdrahtet,
+			 * existiert in dieser Ablage nicht -- wie beim qcpp-Aufruf oben die
+			 * konfigurierbare Variable `qcir` benutzen (os9exec loest sie per PATH-Suche
+			 * auf). (2) qcir (Q9-FRONTEND-C/q9-qcir/data/qcc_p.c, main()) liest NUR
+			 * argv[1] und schreibt IMMER auf stdout -- kennt gar kein "-o"; der bisherige
+			 * dritte/vierte Argv-Eintrag wurde von qcir schlicht ignoriert, und die
+			 * anschliessend erwartete Ausgabedatei existierte nie. qir68k meldete deshalb
+			 * zu Recht "kann IR nicht lesen" -- kein Bug in qir68k selbst. Fix: stdout
+			 * wie beim schon vorhandenen (bisher nie genutzten) q9_exec_stdout() in die
+			 * Zieldatei umleiten, statt eine erfundene Option zu uebergeben. Auch der
+			 * `output`-Name gehoert nur bei --emit-ir zur IR-Datei -- sonst wuerde sie
+			 * beim finalen ql68k-Schritt spaeter denselben Namen wie das fertige Modul
+			 * benutzen und ueberschrieben werden. */
+			qcir_argv[0] = (char *)qcir;
 			qcir_argv[1] = qcir_response;
-			qcir_argv[2] = "-o";
-			qcir_argv[3] = qcir_output_arg;
-			qcir_argv[4] = NULL;
-			if (q9_exec_argv("/dd/CMDS/qcir", qcir_argv) != 0) {
+			qcir_argv[2] = NULL;
+			if (q9_exec_stdout(qcir, qcir_argv, qcir_output) != 0) {
 				fprintf(stderr, "qcc: qcir fehlgeschlagen\n");
 				return 4;
 			}
@@ -312,26 +440,44 @@ int main(int argc, char **argv)
 		if (emit_ir) {
 			if (output[0] != '\0') {
 				#if defined(_Q9OS) || defined(_OSK)
-				printf("%s\n", output);
+				{
+					char copy_source[TEXT];
+					sprintf(copy_source, "%s/output.ir", tmpdir);
+					if (q9_copy_file(copy_source, output) != 0) return 4;
+				}
 				#else
 				sprintf(command, "%s %s/output.ir %s", QCC_COPY, tmpdir, output);
 				if (q9_system(command) != 0) return 4;
-				printf("%s\n", output);
 				#endif
+				printf("%s\n", output);
 			} else printf("%s/output.ir\n", tmpdir);
-			if (!keep_files) { sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command); }
+			if (!keep_files) {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char input_i[TEXT];
+					sprintf(input_i, "%s/input.i", tmpdir);
+					q9_remove_files(input_i, NULL, NULL, NULL, NULL);
+				}
+				#else
+				sprintf(command, "%s %s/input.i", QCC_REMOVE, tmpdir); q9_system(command);
+				#endif
+			}
 			return 0;
 		}
 		if (assembly_only || object_only) {
 			#if defined(_Q9OS) || defined(_OSK)
 			{
-				char *stage_argv[5];
+				char *stage_argv[6];
 				char stage_in[TEXT]; char stage_out[TEXT];
+				int sa;
 				sprintf(stage_in, "%s/output.ir", tmpdir);
 				sprintf(stage_out, "%s/output.s68k", tmpdir);
-				stage_argv[0] = "/dd/CMDS/qir68k"; stage_argv[1] = stage_in;
-				stage_argv[2] = stage_out; stage_argv[3] = "-os9"; stage_argv[4] = NULL;
-				if (q9_exec_argv("/dd/CMDS/qir68k", stage_argv) != 0) return 4;
+				stage_argv[0] = (char *)backend; stage_argv[1] = stage_in;
+				stage_argv[2] = stage_out; stage_argv[3] = "-os9";
+				sa = 4;
+				if (large_data) stage_argv[sa++] = "-largedata";
+				stage_argv[sa] = NULL;
+				if (q9_exec_argv(backend, stage_argv) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
 			}
 			#else
 			sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
@@ -344,9 +490,9 @@ int main(int argc, char **argv)
 					char stage_in[TEXT]; char stage_out[TEXT];
 					sprintf(stage_in, "%s/output.s68k", tmpdir);
 					sprintf(stage_out, "%s/output.opt.s68k", tmpdir);
-					stage_argv[0] = "/dd/CMDS/qo68k"; stage_argv[1] = stage_in;
+					stage_argv[0] = (char *)optimizer; stage_argv[1] = stage_in;
 					stage_argv[2] = stage_out; stage_argv[3] = NULL;
-					if (q9_exec_argv("/dd/CMDS/qo68k", stage_argv) != 0) return 4;
+					if (q9_exec_argv(optimizer, stage_argv) != 0) { fprintf(stderr, "qcc: qo68k fehlgeschlagen\n"); return 4; }
 				}
 				#else
 				sprintf(command, "../Q9-BACKEND-68K/q9-qo68k/build/qo68k %s/output.s68k %s/output.opt.s68k", tmpdir, tmpdir);
@@ -360,9 +506,9 @@ int main(int argc, char **argv)
 					char stage_in[TEXT]; char stage_out[TEXT];
 					sprintf(stage_in, "%s/%s", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k");
 					sprintf(stage_out, "%s/output.r", tmpdir);
-					stage_argv[0] = "/dd/CMDS/qr68k"; stage_argv[1] = stage_in;
+					stage_argv[0] = (char *)assembler; stage_argv[1] = stage_in;
 					stage_argv[2] = stage_out; stage_argv[3] = NULL;
-					if (q9_exec_argv("/dd/CMDS/qr68k", stage_argv) != 0) return 4;
+					if (q9_exec_argv(assembler, stage_argv) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
 				}
 				#else
 				sprintf(command, "../Q9-BACKEND-68K/q9-qr68k/build/qr68k %s/%s %s/output.r", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);
@@ -370,19 +516,43 @@ int main(int argc, char **argv)
 				#endif
 			}
 			if (output[0] != '\0') {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char copy_source[TEXT];
+					sprintf(copy_source, "%s/%s", tmpdir,
+						object_only ? "output.r" : (optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"));
+					if (q9_copy_file(copy_source, output) != 0) return 4;
+				}
+				#else
 				sprintf(command, "%s %s/%s %s", QCC_COPY, tmpdir, object_only ? "output.r" : (optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"), output);
 				if (q9_system(command) != 0) return 4;
+				#endif
 			}
-			if (!keep_files) { sprintf(command, "%s %s/input.i %s/output.ir", QCC_REMOVE, tmpdir, tmpdir); q9_system(command); }
+			if (!keep_files) {
+				#if defined(_Q9OS) || defined(_OSK)
+				{
+					char input_i[TEXT]; char output_ir[TEXT];
+					sprintf(input_i, "%s/input.i", tmpdir);
+					sprintf(output_ir, "%s/output.ir", tmpdir);
+					q9_remove_files(input_i, output_ir, NULL, NULL, NULL);
+				}
+				#else
+				sprintf(command, "%s %s/input.i %s/output.ir", QCC_REMOVE, tmpdir, tmpdir); q9_system(command);
+				#endif
+			}
 			return 0;
 		}
 		/* Complete default pipeline: backend, optimizer, assembler, linker. */
 		#if defined(_Q9OS) || defined(_OSK)
 		{
-			char *stage_argv[5]; char stage_in[TEXT]; char stage_out[TEXT];
+			char *stage_argv[6]; char stage_in[TEXT]; char stage_out[TEXT];
+			int sa;
 			sprintf(stage_in, "%s/output.ir", tmpdir); sprintf(stage_out, "%s/output.s68k", tmpdir);
-			stage_argv[0] = "/dd/CMDS/qir68k"; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = "-os9"; stage_argv[4] = NULL;
-			if (q9_exec_argv("/dd/CMDS/qir68k", stage_argv) != 0) return 4;
+			stage_argv[0] = (char *)backend; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = "-os9";
+			sa = 4;
+			if (large_data) stage_argv[sa++] = "-largedata";
+			stage_argv[sa] = NULL;
+			if (q9_exec_argv(backend, stage_argv) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
 		}
 		#else
 		sprintf(command, "../Q9-BACKEND-68K/q9-qir68k/build/qir68k %s/output.ir %s/output.s68k -os9", tmpdir, tmpdir);
@@ -393,8 +563,8 @@ int main(int argc, char **argv)
 			{
 				char *stage_argv[4]; char stage_in[TEXT]; char stage_out[TEXT];
 				sprintf(stage_in, "%s/output.s68k", tmpdir); sprintf(stage_out, "%s/output.opt.s68k", tmpdir);
-				stage_argv[0] = "/dd/CMDS/qo68k"; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = NULL;
-				if (q9_exec_argv("/dd/CMDS/qo68k", stage_argv) != 0) return 4;
+				stage_argv[0] = (char *)optimizer; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = NULL;
+				if (q9_exec_argv(optimizer, stage_argv) != 0) { fprintf(stderr, "qcc: qo68k fehlgeschlagen\n"); return 4; }
 			}
 			#else
 			sprintf(command, "../Q9-BACKEND-68K/q9-qo68k/build/qo68k %s/output.s68k %s/output.opt.s68k", tmpdir, tmpdir);
@@ -405,8 +575,8 @@ int main(int argc, char **argv)
 		{
 			char *stage_argv[4]; char stage_in[TEXT]; char stage_out[TEXT];
 			sprintf(stage_in, "%s/%s", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k"); sprintf(stage_out, "%s/output.r", tmpdir);
-			stage_argv[0] = "/dd/CMDS/qr68k"; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = NULL;
-			if (q9_exec_argv("/dd/CMDS/qr68k", stage_argv) != 0) return 4;
+			stage_argv[0] = (char *)assembler; stage_argv[1] = stage_in; stage_argv[2] = stage_out; stage_argv[3] = NULL;
+			if (q9_exec_argv(assembler, stage_argv) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
 		}
 		#else
 		sprintf(command, "../Q9-BACKEND-68K/q9-qr68k/build/qr68k %s/%s %s/output.r", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);
@@ -414,21 +584,73 @@ int main(int argc, char **argv)
 		#endif
 		#if defined(_Q9OS) || defined(_OSK)
 		{
-			char *stage_argv[7]; char stage_in[TEXT]; char stage_out[TEXT];
+			/* 2026-09-27: dieselbe Klasse Fehler wie qcir/qir68k/qo68k/qr68k oben --
+			 * "/dd/CMDS/{ql68k,q9_cstart.r,qclib.l,output.mod}" existieren dort nicht.
+			 * `linker` ist bereits die konfigurierbare Variable (Default "ql68k") und wird
+			 * ueber os9exec's eigene Modulsuche (PATH/chx) gefunden -- das funktioniert nur
+			 * fuer AUSFUEHRBARE Module. q9_cstart.r und qclib.l sind aber reine Daten-
+			 * dateien, die ql68k selbst per fopen() oeffnet; fopen() loest bare/relative
+			 * Namen gegen das aktuelle DATENverzeichnis (chd) auf, nicht gegen die Exec-
+			 * Liste -- als bare Namen fanden sie sich dort so gut wie nie, und ql68k schlug
+			 * (bislang unsichtbar, siehe q9_exec_stdout-Kommentar bei qcir) fehl, ohne dass
+			 * "output.mod" je entstand. Fix: beide ueber QCC_LIBDIR zu absoluten Pfaden
+			 * machen, analog zu QCC_INCLUDE oben bei qcpp. 2026-09-27 (spaeter am
+			 * selben Tag): Standardpfad auf die neue, projektunabhaengige SDK-Ablage
+			 * "/dd/LIBS/Q9" umgestellt (Nutzerwunsch), vorher "/dd/CMDS_XCC" (dort
+			 * lagen Werkzeuge und Bibliotheken gemischt durcheinander). */
+			char *stage_argv[8]; char stage_in[TEXT]; char stage_out[TEXT];
+			char cstart_path[TEXT]; char qclib_arg[TEXT];
+			const char *libdir;
+			libdir = getenv("QCC_LIBDIR");
+			if (libdir == NULL || libdir[0] == '\0') libdir = "/dd/LIBS/Q9";
+			sprintf(cstart_path, "%s/q9_cstart.r", libdir);
+			sprintf(qclib_arg, "-l=%s/qclib.l", libdir);
 			sprintf(stage_in, "%s/output.r", tmpdir);
-			sprintf(stage_out, "-O=%s", output[0] != '\0' ? output : "/dd/CMDS/output.mod");
-			stage_argv[0] = "/dd/CMDS/ql68k"; stage_argv[1] = "/dd/CMDS/q9_cstart.r";
-			stage_argv[2] = stage_in; stage_argv[3] = "-l=/dd/CMDS/qclib.l";
-			stage_argv[4] = stage_out; stage_argv[5] = NULL; stage_argv[6] = NULL;
-			if (q9_exec_argv("/dd/CMDS/ql68k", stage_argv) != 0) return 4;
+			sprintf(stage_out, "-O=%s", output[0] != '\0' ? output : "output.mod");
+			stage_argv[0] = (char *)linker; stage_argv[1] = cstart_path;
+			stage_argv[2] = stage_in; stage_argv[3] = qclib_arg;
+			stage_argv[4] = stage_out;
+			/* 2026-09-27: "ql68: Bezug zu weit fuer ein Wort, l68 braucht dafuer
+			 * -a: tc_div_i32" -- sobald ein Programm gross genug wird (gemessen an
+			 * q9-qclib/tests/hello.c), reicht ein 16-Bit-Wort fuer den BSR zu den
+			 * qir68k-eigenen Laufzeithelfern (tc_div_i32 & Co.) nicht mehr. -a
+			 * schaltet ql68ks Sprungtabelle fuer genau diesen Fall ein (s. ql68
+			 * -help) -- ohne erkennbaren Nachteil fuer kleine Module, also immer
+			 * mitgeben statt erst ab einer gemessenen Groesse. */
+			stage_argv[5] = "-a";
+			stage_argv[6] = NULL; stage_argv[7] = NULL;
+			if (q9_exec_argv(linker, stage_argv) != 0) {
+				fprintf(stderr, "qcc: ql68k fehlgeschlagen\n");
+				return 4;
+			}
 		}
 		#else
 		sprintf(command, "../Q9-BACKEND-68K/q9-ql68k/build/ql68k ../Q9-BACKEND-68K/q9-qclib/build/q9_cstart.r %s/output.r -l=../Q9-BACKEND-68K/q9-qclib/build/qclib.l -O=%s", tmpdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
 		#endif
 		if (!keep_files) {
+			#if defined(_Q9OS) || defined(_OSK)
+			{
+				char input_i[TEXT]; char output_ir[TEXT]; char output_s68k[TEXT];
+				char output_opt[TEXT]; char output_r[TEXT];
+				sprintf(input_i, "%s/input.i", tmpdir);
+				sprintf(output_ir, "%s/output.ir", tmpdir);
+				sprintf(output_s68k, "%s/output.s68k", tmpdir);
+				sprintf(output_r, "%s/output.r", tmpdir);
+				/* output.opt.s68k only exists when the optimizer actually ran;
+				 * passing a nonexistent name to "del" is what produced the E$FNA
+				 * seen at every pipeline run regardless of --no-optimizer. */
+				if (optimizer[0] != '\0') {
+					sprintf(output_opt, "%s/output.opt.s68k", tmpdir);
+					q9_remove_files(input_i, output_ir, output_s68k, output_opt, output_r);
+				} else {
+					q9_remove_files(input_i, output_ir, output_s68k, output_r, NULL);
+				}
+			}
+			#else
 			sprintf(command, "%s %s/input.i %s/output.ir %s/output.s68k %s/output.opt.s68k %s/output.r", QCC_REMOVE, tmpdir, tmpdir, tmpdir, tmpdir, tmpdir);
 			q9_system(command);
+			#endif
 		}
 		if (output[0] != '\0') {
 			printf("%s\n", output);

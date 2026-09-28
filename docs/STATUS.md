@@ -2,10 +2,25 @@
 
 *German version: [STATUS_de.md](STATUS_de.md)*
 
-Status: **2026-08-13 -- Q9 runtime and bootstrap pipeline verified. Memory hurdle cleared, both
-targets now fit into the Q9's 16 MB. The XCC-built parser already runs in the
-emulator; the remaining work is semantic self-compilation. See "Bootstrap
-preparation" directly below.**
+## Current snapshot (2026-09-28)
+
+The repository-level status is maintained in [`../STATUS.md`](../STATUS.md).
+Since the historical bootstrap work below, `main` has gained the `QCC-DEFMODUL`
+integration, a numeric `FUNC` attribute field for variadic/calling-convention
+metadata, and the initial standalone `qost` optimizer. The complete ParseC
+regression suite and qcir tests passed on the reviewed working tree. qost's
+tracked IR regression fixtures are present and its test target passed.
+Native OS-9 module-header/dispatch handling and full live self-hosting remain
+open; component test success is not a live driver/module verification.
+
+The sections below are chronological investigation notes, not a current
+feature checklist. Their original status text is retained as a record of the
+state at the time each experiment was performed.
+
+Historical snapshot (2026-08-13): Q9 runtime and bootstrap pipeline verified;
+memory hurdle cleared for the two measured bootstrap targets. The XCC-built
+parser ran in the emulator; semantic self-compilation remained open at that
+time.
 
 ## Block scopes for local variables (2026-08-20) -- root cause of the PMMU fault
 

@@ -748,6 +748,12 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: 0.1 ergibt nicht 0x3FB999999999999A"; tcfail=1; fail=1
 		fi
+		if cc -w -DQCC_BUFFERED_OUTPUT -o build/qcc_p_buffered data/qcc_p.c 2>/dev/null && \
+		   build/qcc_p_buffered 'double f(){ return 1.5; } int main(){ return 0; }' 2>/dev/null | grep -qF 'PUSHD 1073217536 0'; then
+			echo "ok    qcc: gepufferte Parserausgabe formatiert %lu-Werte korrekt"
+		else
+			echo "FAIL  qcc: gepufferte Parserausgabe verliert %lu-Operanden"; tcfail=1; fail=1
+		fi
 		# Rechnen, Variablen, Vergleiche -- geprueft ueber das VM-Orakel.
 		tc_check 'int main(){ double x; x = 1.5; putint((int)x); }' '1'
 		tc_check 'int main(){ putint((int)(1.5+2.0)); }' '3'
@@ -1886,6 +1892,11 @@ if command -v python3 >/dev/null 2>&1; then
 		# sauber ab statt es stillschweigend falsch zu behandeln).
 		tc_check 'extern int strcmp(const char *a, const char *b); int main(){ putint(1); }' '1'
 		tc_check 'extern int getval(); int main(){ putint(1); }' '1'
+		if [ "$(build/qcc_p 'extern int f(); int main(){ f(7); putint(1); }' 2>&1 | tail -1)" = OK ]; then
+			echo "ok    qcc: extern int f() erlaubt Argumente ohne Prototyp"
+		else
+			echo "FAIL  qcc: extern int f() behandelt leere Parameterliste faelschlich als void-Prototyp"; tcfail=1; fail=1
+		fi
 		if build/qcc_p 'extern int f(int a); extern int f(int a); int main(){ putint(1); }' 2>&1 | grep -q 'duplicate function'; then
 			echo "ok    qcc: doppelte extern-Deklaration wird diagnostiziert"
 		else
@@ -1950,6 +1961,9 @@ if command -v python3 >/dev/null 2>&1; then
 		else
 			echo "FAIL  qcc: Diagnose fuer anonymes-struct-typedef-Namenskollision fehlt"; tcfail=1; fail=1
 		fi
+		tc_check 'typedef union { int i; char c; } U; int main(){ U u; u.i=65; putint(u.i); }' '65'
+		tc_check 'int main(){ char *a; char **p; a="AB"; p=&a; putchar((*p)[1]); }' 'B'
+		tc_check "int main(){ putint('\\101'); putint('\\x41'); }" '65\n65'
 		if build/qcc_p 'int main(){ break; }' 2>&1 | grep -q 'break outside loop' && \
 		   build/qcc_p 'int main(){ continue; }' 2>&1 | grep -q 'continue outside loop'; then
 			echo "ok    qcc: break/continue ausserhalb Schleife werden diagnostiziert"

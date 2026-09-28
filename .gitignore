@@ -15,6 +15,7 @@
 
 # Generierte bzw. temporäre Compilerstufen
 *.ir
+!Q9-OPTIMIZER/q9-qost/tests/*.ir
 *.s68
 *.s68k
 *.sx86

@@ -2,10 +2,26 @@
 
 *English version: [STATUS.md](STATUS.md)*
 
-Stand: **2026-08-13 -- Q9-Runtime und Bootstrap-Pipeline verifiziert. Die Speicherhürde ist
-genommen, beide Ziele passen jetzt in die 16 MB des Q9. Im Frontend bleiben
-vier Sprachlücken, alle dasselbe Konstrukt. Siehe "Bootstrap-Vorbereitung"
-direkt unten.**
+## Aktueller Überblick (2026-09-28)
+
+Der aktuelle Projektstatus steht zentral in [`../STATUS.md`](../STATUS.md).
+Seit den historischen Bootstrap-Arbeiten unten enthält `main` die Integration
+von `QCC-DEFMODUL`, ein numerisches `FUNC`-Attributfeld für Variadizität und
+Calling-Conventions sowie den ersten eigenständigen `qost`-Optimierungspass.
+Die vollständige ParseC-Regressionssuite und die qcir-Tests liefen im
+geprüften Arbeitsstand erfolgreich. Die benötigten qost-IR-Testdateien sind
+versioniert und der Testlauf war erfolgreich.
+Native OS-9-Modulkopf-/Dispatch-Verarbeitung
+und vollständiges Live-Selfhosting bleiben offen; bestandene Komponententests
+sind kein Live-Nachweis für Treiber oder Manager.
+
+Die folgenden Abschnitte sind chronologische Untersuchungsnotizen und keine
+aktuelle Feature-Checkliste. Der ursprüngliche Text bleibt als damaliges
+Protokoll erhalten.
+
+Historischer Stand (2026-08-13): Q9-Runtime und Bootstrap-Pipeline waren für
+die damals gemessenen Ziele verifiziert; der XCC-gebaute Parser lief im
+Emulator, semantisches Selfhosting blieb noch offen.
 
 ## Blockgueltigkeitsbereiche lokaler Variablen (2026-08-20) -- Ursache des PMMU-Abbruchs
 
