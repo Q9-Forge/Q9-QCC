@@ -41,7 +41,11 @@ Q9F_SysDbg     equ     $52                      * F$SysDbg, Systemdebugger aufru
 Q9F_GPrDBT     equ     $1f                      * F$GPrDBT, Prozessdeskriptor-Basistabelle kopieren
 Q9F_Event      equ     $53                      * F$Event, benanntes Event anlegen/verwalten
 Q9F_Link       equ     $00                      * F$Link, an geladenes Modul anhaengen
+Q9F_Load       equ     $01                      * F$Load, Modul ueber den IOMan laden
 Q9F_GPrDsc     equ     $18                      * F$GPrDsc, EINEN Prozessdeskriptor kopieren
+Q9F_UnLink     equ     $02                      * F$UnLink, Modullink freigeben
+Q9F_Fork       equ     $03                      * F$Fork, Kindprozess starten
+Q9F_Wait       equ     $04                      * F$Wait, auf Kindprozess warten
 
          psect   qos9,0,0,0,0,0
 
@@ -193,6 +197,84 @@ _os_rename:
 oren_err
          moveq   #0,d0
          move.w  d1,d0
+         rts
+
+* int _os_load(const char *name, int mode, int color, void **module)
+*
+* F$Load (Servicewort $01): d0.w = Zugriffsmodus (1 = Read), d1.l = Farbe,
+* a0 = Pfadname; bei Erfolg liefert a2 den Modulkopf. Der Q9-Kernel leitet
+* diesen Call an den IOMan weiter, der die Datei liest und validiert.
+_os_load:
+         move.l  a2,-(a7)
+         movea.l d0,a0
+         move.l  d1,d0
+         move.l  8(a7),d1                       * Farbe (3. C-Argument)
+         move.w  d0,d2                          * Zugriffsmodus kurz sichern
+         move.w  d2,d0
+         trap    #0
+         dc.w    Q9F_Load
+         bcs.s   old_err
+         movea.l 12(a7),a1                      * &module (4. C-Argument)
+         move.l  a2,(a1)
+         moveq   #0,d0
+         movea.l (a7)+,a2
+         rts
+old_err
+         moveq   #0,d0
+         move.w  d1,d0
+         movea.l (a7)+,a2
+         rts
+
+* int _os_unlink(void *module)
+* F$UnLink receives the resident module header in a2.
+_os_unlink:
+         movea.l d0,a2
+         trap    #0
+         dc.w    Q9F_UnLink
+         bcs.s   ounl_err
+         moveq   #0,d0
+         rts
+ounl_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* int _os_fork(int typelang, long addmem, long paramsize, int numpaths,
+*              int priority, const char *name, const char *params)
+*
+* QCC ABI: first two args in d0/d1; remaining args follow the return PC on
+* the stack. F$Fork uses d0-d4 and a0-a1 exactly as laid out below.
+_os_fork:
+	 move.l  4(a7),d2                       * parameter size
+	 move.l  8(a7),d3                       * number of paths to inherit
+	 move.l  12(a7),d4                      * priority
+         movea.l 16(a7),a0                      * module name
+         movea.l 20(a7),a1                      * parameter string
+         trap    #0
+         dc.w    Q9F_Fork
+         bcs.s   ofork_err
+         andi.l  #$0000ffff,d0
+         rts
+ofork_err
+         moveq   #-1,d0
+         rts
+
+* int _os_wait(int *status)
+* F$Wait returns child PID in d0.w and child exit status in d1.w.
+_os_wait:
+         movea.l d0,a0
+         move.l  a0,-(a7)
+         trap    #0
+         dc.w    Q9F_Wait
+         bcs.s   owai_err
+         movea.l (a7)+,a0
+         clr.l   (a0)
+         move.w  d1,(a0)
+         andi.l  #$0000ffff,d0
+         rts
+owai_err
+         addq.l  #4,a7
+         moveq   #-1,d0
          rts
 
 _os_create:

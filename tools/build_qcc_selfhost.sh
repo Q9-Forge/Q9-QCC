@@ -35,7 +35,11 @@ if ! arch -x86_64 "$WINE_APP" cmd /c "$cmd" >"$STAGE/xcc-bridge.log" 2>&1 || [ !
 	exit 1
 fi
 
-cmd="Z: && cd \\tmp && set PATH=M:\\MWOS\\DOS\\BIN;%PATH% && M:\\MWOS\\DOS\\BIN\\l68.exe -a -M=512 M:\\MWOS\\OS9\\68000\\LIB\\ansi_cstart.r $STAGE_WIN\\qcc.r $STAGE_WIN\\qcc_os9_bridge.r -l=M:\\MWOS\\OS9\\68020\\LIB\\clib.l -l=M:\\MWOS\\OS9\\68020\\LIB\\os_lib.l -l=M:\\MWOS\\OS9\\68000\\LIB\\sys.l -l=M:\\MWOS\\OS9\\68020\\LIB\\sys_clib.l -gu=0.0 -p=577 -O=$STAGE_WIN\\qcc"
+# l68 resolves libraries in command-line order.  sys_clib pulls in routines
+# such as os9forkc/munlink and modloadp, which themselves reference F$Fork,
+# F$UnLink, F$Wait, and _os_loadp.  Put the providers (os_lib/sys.l) after
+# sys_clib so l68's one-pass archive scan can resolve those references.
+cmd="Z: && cd \\tmp && set PATH=M:\\MWOS\\DOS\\BIN;%PATH% && M:\\MWOS\\DOS\\BIN\\l68.exe -a -M=512 M:\\MWOS\\OS9\\68000\\LIB\\ansi_cstart.r $STAGE_WIN\\qcc.r $STAGE_WIN\\qcc_os9_bridge.r -l=M:\\MWOS\\OS9\\68020\\LIB\\clib.l -l=M:\\MWOS\\OS9\\68020\\LIB\\sys_clib.l -l=M:\\MWOS\\OS9\\68020\\LIB\\os_lib.l -l=M:\\MWOS\\OS9\\68000\\LIB\\sys.l -gu=0.0 -p=577 -O=$STAGE_WIN\\qcc"
 if ! arch -x86_64 "$WINE_APP" cmd /c "$cmd" >"$STAGE/l68.log" 2>&1 || [ ! -s "$STAGE/qcc" ]; then
 	echo "MWOS l68 failed to link the QCC-generated driver:" >&2
 	tail -60 "$STAGE/l68.log" >&2

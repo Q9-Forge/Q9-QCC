@@ -22,6 +22,8 @@ test: $(TARGET)
 	@$(TARGET) --help | grep -q 'Usage:'
 	@$(TARGET) --dry-run main.c | grep -q 'qcpp -> .i'
 	@$(TARGET) --print-config | grep -q '^backend=.*qir68k$$'
+	@QCC_CONFIG=tests/config_parser.conf $(TARGET) --print-config | grep -q '^backend=config-test-backend$$'
+	@QCC_CONFIG=tests/config_parser.conf $(TARGET) --print-config | grep -q '^libraries=config-test.l$$'
 	@$(TARGET) --emit-ir --tmpdir build/qcc-tmp tests/smoke.c >/dev/null
 	@grep -q '^FUNC main' build/qcc-tmp/output.ir
 	@$(TARGET) --emit-ir --tmpdir build/qcc-test -o build/qcc-test/result.ir tests/smoke.c >/dev/null

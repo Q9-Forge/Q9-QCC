@@ -56,8 +56,10 @@ static int preprocess_only;
 static int assembly_only;
 static int object_only;
 
-/* Platform abstraction: the host currently uses the C89 system() function.
- * The OS-9 runtime can later replace q9_system with F$Fork/F$Load. */
+#if !defined(_Q9OS) && !defined(_OSK)
+/* The host uses the native C89 system() function.  The OS-9 driver launches
+ * tools directly via q9_os9exec/q9_os9exec_stdout below and must not retain a
+ * link-time dependency on qclib's placeholder system(). */
 /* Function: q9_system
  * Executes one configured pipeline command.
  * Parameters: command Shell command line.
@@ -66,6 +68,7 @@ static int q9_system(const char *command)
 {
 	return system(command);
 }
+#endif
 #if defined(_Q9OS) || defined(_OSK)
 /* 2026-09-27: process.h/modes.h waren Ueberbleibsel des fruehen, seither
  * entfernten creat()-Codes -- nichts hier braucht heute noch etwas aus
@@ -74,12 +77,20 @@ static int q9_system(const char *command)
  * echter Microware-OS9000-Header nach (procid.h, types.h, ...), die dort
  * gar nicht vorhanden sind ("qcpp: #include: Datei nicht gefunden:
  * process.h") -- die drei folgenden extern-Deklarationen reichen. */
+#ifndef QCC_NATIVE_BRIDGE
 extern int q9_os9exec(const char *module, char **argv, char **environment);
 extern int q9_os9exec_stdout(const char *module, char **argv,
 			     char **environment, const char *path);
+#endif
 static char *q9_os9_path_env[2];
 static char q9_os9_path[] = "PATH=/dd/CMDS_QCC";
 static char **_environ;
+
+/* The native driver currently supplies only PATH to child modules.  Until
+ * environment import is implemented, its configuration and SDK locations
+ * come from /dd/SYS and the documented OS-9 defaults.  Avoid qclib's getenv
+ * stub (which always reports "not found") in the Q9 executable. */
+#define qcc_getenv(name) 0
 
 /* Execute one OS-9 module with an explicit argument vector. */
 static int q9_exec_argv(const char *module, char **argv)
@@ -152,6 +163,12 @@ static int q9_copy_file(const char *source, const char *destination)
 	copy_argv[3] = NULL;
 	return q9_exec_argv("copy", copy_argv);
 }
+#else
+/* The host driver delegates environment lookup to its native C runtime. */
+static char *qcc_getenv(const char *name)
+{
+	return getenv(name);
+}
 #endif
 static int keep_files;
 static int large_data;
@@ -183,6 +200,14 @@ static void usage(const char *name)
 	printf("  --no-optimizer   Optimierer ueberspringen\n");
 	printf("  --help, --version\n");
 }
+/* Function: config_space
+ * Identifies whitespace accepted around configuration syntax.
+ * Parameters: c Character to inspect.
+ * Returns: Non-zero for space, tab, CR or LF. */
+static int config_space(char c)
+{
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
 /* Function: config_line
  * Parses one configuration line and updates the active target settings.
  * Parameters: line Mutable configuration line.
@@ -190,8 +215,36 @@ static void usage(const char *name)
 static void config_line(char *line)
 {
 	char key[TEXT], value[TEXT], section[TEXT];
-	if (sscanf(line, "[%127[^]]", section) == 1) { copy_text(config_section, section); return; }
-	if (sscanf(line, "%127[^=]=%127s", key, value) != 2) return;
+	char *p;
+	int n;
+
+	p = line;
+	while (config_space(*p)) ++p;
+	if (*p == '\0' || *p == '#' || *p == ';') return;
+	if (*p == '[') {
+		++p;
+		n = 0;
+		while (*p != '\0' && *p != ']' && n < TEXT - 1)
+			section[n++] = *p++;
+		if (*p != ']') return;
+		section[n] = '\0';
+		copy_text(config_section, section);
+		return;
+	}
+
+	n = 0;
+	while (*p != '\0' && *p != '=' && !config_space(*p) && n < TEXT - 1)
+		key[n++] = *p++;
+	key[n] = '\0';
+	while (config_space(*p)) ++p;
+	if (*p != '=') return;
+	++p;
+	while (config_space(*p)) ++p;
+	n = 0;
+	while (*p != '\0' && !config_space(*p) && *p != '#' && n < TEXT - 1)
+		value[n++] = *p++;
+	value[n] = '\0';
+	if (key[0] == '\0' || value[0] == '\0') return;
 	if (strcmp(config_section, "global") != 0 && strcmp(config_section, "target.OS9-68K") != 0) return;
 	if (strcmp(key, "target") == 0) copy_text(target, value);
 	else if (strcmp(key, "frontend") == 0) copy_text(frontend, value);
@@ -216,11 +269,11 @@ static void load_config(void)
 	const char *config_env;
 	const char *sdk_env;
 	f = NULL;
-	config_env = getenv("QCC_CONFIG");
+	config_env = qcc_getenv("QCC_CONFIG");
 	if (config_env != NULL && config_env[0] != '\0')
 		f = fopen(config_env, "r");
 	if (f == NULL) {
-		sdk_env = getenv("Q9SDK");
+		sdk_env = qcc_getenv("Q9SDK");
 		if (sdk_env != NULL && sdk_env[0] != '\0' &&
 		    strlen(sdk_env) + 18 <= 512) {
 			sprintf(config_path, "%s/Mac/SYS/qcc.conf", sdk_env);
@@ -242,8 +295,8 @@ static void resolve_tmpdir(void)
 {
 	const char *base;
 	if (tmpdir_set) return;
-	base = getenv("TMP");
-	if (base == NULL || base[0] == '\0') base = getenv("TEMP");
+	base = qcc_getenv("TMP");
+	if (base == NULL || base[0] == '\0') base = qcc_getenv("TEMP");
 	if (base != NULL && base[0] != '\0') {
 		sprintf(tmpdir, "%s/qcc", base);
 	}
@@ -373,7 +426,7 @@ int main(int argc, char **argv)
 			 * Ablage. 2026-09-27 (spaeter am selben Tag): Standardpfad auf die neue,
 			 * projektunabhaengige SDK-Ablage "/dd/DEFS/Q9" umgestellt (Nutzerwunsch) --
 			 * vorher zeigte er auf die tief verschachtelte Q9-FORGE-Projektkopie. */
-			inc_base = getenv("QCC_INCLUDE");
+			inc_base = qcc_getenv("QCC_INCLUDE");
 			if (inc_base == NULL || inc_base[0] == '\0')
 				inc_base = "/dd/DEFS/Q9";
 			sprintf(qcpp_include, "-I%s", inc_base);
@@ -394,9 +447,9 @@ int main(int argc, char **argv)
 			const char *inc_base;
 			const char *sdk_base;
 			char include_arg[TEXT * 2];
-			inc_base = getenv("QCC_INCLUDE");
+				inc_base = qcc_getenv("QCC_INCLUDE");
 			if (inc_base == NULL || inc_base[0] == '\0') {
-				sdk_base = getenv("Q9SDK");
+				sdk_base = qcc_getenv("Q9SDK");
 				if (sdk_base != NULL && sdk_base[0] != '\0') {
 					sprintf(include_arg, "%s/Q9/68k/DEFS", sdk_base);
 					inc_base = include_arg;
@@ -642,7 +695,7 @@ int main(int argc, char **argv)
 			char *stage_argv[8]; char stage_in[TEXT]; char stage_out[TEXT]; char stack_arg[TEXT];
 			char cstart_path[TEXT]; char qclib_arg[TEXT];
 			const char *libdir;
-			libdir = getenv("QCC_LIBDIR");
+			libdir = qcc_getenv("QCC_LIBDIR");
 			if (libdir == NULL || libdir[0] == '\0') libdir = "/dd/LIBS/Q9";
 			sprintf(cstart_path, "%s/q9_cstart.r", libdir);
 			sprintf(qclib_arg, "-l=%s/qclib.l", libdir);
@@ -676,9 +729,9 @@ int main(int argc, char **argv)
 			const char *libdir;
 			const char *sdk_base;
 			char libdir_default[TEXT * 2];
-			libdir = getenv("QCC_LIBDIR");
+			libdir = qcc_getenv("QCC_LIBDIR");
 			if (libdir == NULL || libdir[0] == '\0') {
-				sdk_base = getenv("Q9SDK");
+				sdk_base = qcc_getenv("Q9SDK");
 				if (sdk_base != NULL && sdk_base[0] != '\0') {
 					sprintf(libdir_default, "%s/Q9/68k/LIBS", sdk_base);
 					libdir = libdir_default;
