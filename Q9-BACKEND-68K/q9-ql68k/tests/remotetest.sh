@@ -23,7 +23,7 @@ REPO="$PWD"
 : "${FORGE:=$(cd .. && pwd)}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 QR68="${QR68:-$FORGE/Q9-qr68/build/qr68}"
-QL68="${QL68:-$REPO/build/ql68}"
+QL68="${QL68:-$REPO/build/ql68k}"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -x "$QR68" ] || die "qr68 fehlt: $QR68"

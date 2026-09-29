@@ -4,6 +4,8 @@
 
 #include <stddef.h>
 
+#define EOF (-1)
+
 /* FILE remains opaque: the subset never accesses its fields, and QCC can read
    typedef int FILE. On 68k, FILE* is therefore a 32-bit pointer like Microware's. */
 typedef int FILE;

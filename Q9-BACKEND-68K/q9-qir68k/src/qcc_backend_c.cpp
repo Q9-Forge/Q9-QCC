@@ -11,6 +11,7 @@
 //=============================================================================
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 #define OP_LEN          24
@@ -1427,7 +1428,8 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 		   liegen direkt als 4-Byte-Wert im Slot. Danach ap um 1 (einen
 		   Slot, NICHT 4 Byte) weiterruecken. */
 		int apSlot = number(insP->args[0], insP->line);
-		char tag = insP->args[1][0];
+		const char* argTag = insP->args[1];
+		char tag = argTag[0];
 		slotAddress(addrBuf, apSlot, fn, insP->line);
 		fprintf(out, "\tmove.l\t%s,d0\n\tlea\t8(%s),a0\n\tlsl.l\t#2,d0\n\tadda.l\td0,a0\n",
 			addrBuf, framePtr());

@@ -1,0 +1,64 @@
+# Build and stage the native macOS toolchain into Q9SDK/Mac/CMDS.
+# Invoke from this repository root with -C Q9-Make/toolchains.
+
+[mac-clang]
+all: qmake qcc qcpp qcir qir68k qo68k qost qr68k ql68k
+
+qmake: Q9-Make/src/qmake.c Q9-Make/src/platform_posix.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) -std=c89 -O2 -Wall -Wextra -IQ9-Make/src -o "$(Q9SDK)/Mac/CMDS/qmake" Q9-Make/src/qmake.c Q9-Make/src/platform_posix.c
+
+qcc: Q9-QCC/src/qcc.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qcc" Q9-QCC/src/qcc.c
+
+qcpp: Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/Mac/CMDS/qcpp" Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+
+qcir: Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qcir" Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
+
+qir68k: Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) -x c -std=c11 -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qir68k" Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
+
+qo68k: Q9-BACKEND-68K/q9-qo68k/src/main.c Q9-BACKEND-68K/q9-qo68k/src/qo68.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qo68k" Q9-BACKEND-68K/q9-qo68k/src/main.c
+
+qost: Q9-OPTIMIZER/q9-qost/src/qost.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Werror -o "$(Q9SDK)/Mac/CMDS/qost" Q9-OPTIMIZER/q9-qost/src/qost.c
+
+qr68k: Q9-BACKEND-68K/q9-qr68k/src/qr68.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/Mac/CMDS/qr68k" Q9-BACKEND-68K/q9-qr68k/src/qr68.c
+
+ql68k: Q9-BACKEND-68K/q9-ql68k/src/ql68.c
+	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/Mac/CMDS/ql68k" Q9-BACKEND-68K/q9-ql68k/src/ql68.c
+
+sdk-support: Q9-QCC/config/qcc-macos-sdk.conf Q9-QCC/tools/stage_macos_sdk.sh
+	Q9SDK="$(Q9SDK)" ./Q9-QCC/tools/stage_macos_sdk.sh
+
+qcc-qcpp: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qcpp" Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+
+qcc-qost: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qost" Q9-OPTIMIZER/q9-qost/src/qost.c
+
+qcc-qcir: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qcir" Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
+
+qcc-qir68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qir68k" Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
+
+qcc-qo68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qo68k" Q9-BACKEND-68K/q9-qo68k/src/main.c
+
+qcc-ql68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/ql68k" Q9-BACKEND-68K/q9-ql68k/src/ql68.c
+
+qcc-qr68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
+	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qr68k" Q9-BACKEND-68K/q9-qr68k/src/qr68.c
+
+qcc-selfhost: qcc qcpp qcir qir68k qo68k qost qr68k ql68k sdk-support
+	Q9SDK="$(Q9SDK)" bash ./tools/build_qcc_selfhost.sh
+
+all-qcc: qcc-qcpp qcc-qcir qcc-qir68k qcc-qo68k qcc-qost qcc-ql68k qcc-qr68k qcc-selfhost
+
+all-xqcc: sdk-support
+	Q9SDK="$(Q9SDK)" bash ./tools/build_xcc_sdk.sh

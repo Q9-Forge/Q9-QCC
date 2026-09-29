@@ -5,7 +5,7 @@ BUILD ?= build
 .PHONY: all clean
 all: $(BUILD)/qir68k
 
-$(BUILD)/qir68k: src/qcc_backend_c.cpp
+$(BUILD)/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
 	@mkdir -p $(BUILD)
 	$(CC) -x c $(CFLAGS) -o $@ $<
 

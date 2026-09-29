@@ -17,10 +17,10 @@ QCC / qcpp  →  .a  →  qr68  →  .r (ROF)  →  ql68  →  OS-9-Modul
 
 ## Methode
 
-Dieselbe wie bei [`Q9-qr68`](../Q9-qr68/): **`l68` ist das Orakel.** Jede
+Dieselbe wie bei [`q9-qr68k`](../q9-qr68k/): **`l68` ist das Orakel.** Jede
 Formatfrage wird an einer kleinen Probe gemessen und byteweise verglichen,
 nicht aus Dokumentation abgeleitet. Was Microware selbst beschreibt, steht
-in `../Q9-qr68/docs/ROF_UND_LINKER_QUELLEN.md` — es gibt die Struktur vor,
+in `../q9-qr68k/docs/ROF_UND_LINKER_QUELLEN.md` — es gibt die Struktur vor,
 die Messung die Bytes.
 
 **`l68` ist byteweise reproduzierbar** — und zwar ohne jede Ausnahme.
@@ -254,7 +254,7 @@ statt nur einen Offset zu zeigen.
 ## Der Referenz-Toolchain-Korpus
 
 `./test/sdkdiff.sh` holt die `l68`-Kommandozeilen aus den Referenz-Toolchain-Makefiles
-selbst — derselbe Hebel wie bei `Q9-qr68`:
+selbst — derselbe Hebel wie bei `q9-qr68k`:
 
 ```
 MWMAKEOPTS=-u  os9make -nn -u

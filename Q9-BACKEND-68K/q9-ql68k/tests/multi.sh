@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Differenztest fuer MEHRERE psects in einem Modul: die Quellen unter
-# test/multi/ werden gemeinsam gebunden -- mmain.a ist der Wurzel-psect,
+# tests/multi/ werden gemeinsam gebunden -- mmain.a ist der Wurzel-psect,
 # msub.a ein Unterprogramm mit eigenen Daten und einem globalen Namen.
 #
-# Sie liegen bewusst nicht in test/, weil difftest.sh dort jede Datei
+# Sie liegen bewusst nicht in tests/, weil difftest.sh dort jede Datei
 # EINZELN bindet -- msub.a hat keinen Wurzel-psect und mmain.a allein
 # einen unaufgeloesten Namen.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QL68="$PWD/build/ql68"
-[ -x "$QL68" ] || { echo "FEHLER: build/ql68 fehlt -- vorher 'make'"; exit 2; }
+QL68="$PWD/build/ql68k"
+[ -x "$QL68" ] || { echo "FEHLER: build/ql68k fehlt -- vorher 'make'"; exit 2; }
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [ -d "$MWOS/OS9" ] || { echo "uebersprungen: $MWOS fehlt"; exit 0; }
@@ -29,9 +29,9 @@ export WINEPREFIX="$HOME/.wine" WINEDEBUG=-all
 TMPWIN="Z:$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 wrun() { arch -x86_64 "$WINE_BIN" cmd /c "Z: && cd ${TMPWIN#*:} && set PATH=M:\\DOS\\BIN;%PATH% && $*" 2>&1 | tr -d '\r'; }
 
-cp test/multi/*.a "$TMP/"
+cp tests/multi/*.a "$TMP/"
 rofs=()
-for f in test/multi/*.a; do
+for f in tests/multi/*.a; do
 	b="$(basename "$f" .a)"
 	wrun "M:\\DOS\\BIN\\r68.exe $b.a -o=$b.r -q" >/dev/null
 	[ -s "$TMP/$b.r" ] || { echo "  r68 kommt bei $b nicht durch"; exit 1; }

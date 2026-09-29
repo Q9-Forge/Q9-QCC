@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Differenztest fuer die ROHE Binaerausgabe (-r=<basis>).
 #
-# Die Proben unter test/raw/ werden mit beiden Bindern uebersetzt und
+# Die Proben unter tests/raw/ werden mit beiden Bindern uebersetzt und
 # byteweise verglichen. Sie decken die Faelle ab, an denen die Zeigerlisten
 # haengen: keine Zeiger, nur Code-, nur Daten-, beide Arten, ein bis drei
 # Stueck -- und die Basis einmal 0 und einmal $1000, damit sichtbar wird,
@@ -9,8 +9,8 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QL68="$PWD/build/ql68"
-[ -x "$QL68" ] || { echo "FEHLER: build/ql68 fehlt -- vorher 'make'"; exit 2; }
+QL68="$PWD/build/ql68k"
+[ -x "$QL68" ] || { echo "FEHLER: build/ql68k fehlt -- vorher 'make'"; exit 2; }
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [ -d "$MWOS/OS9" ] || { echo "uebersprungen: $MWOS fehlt"; exit 0; }
@@ -32,7 +32,7 @@ wrun() { arch -x86_64 "$WINE_BIN" cmd /c "Z: && cd ${TMPWIN#*:} && set PATH=M:\\
 echo "=== ql68 gegen l68, rohe Binaerausgabe ==="
 ok=0
 bad=0
-for f in test/raw/*.a; do
+for f in tests/raw/*.a; do
 	b="$(basename "$f" .a)"
 	cp "$f" "$TMP/"
 	wrun "M:\\DOS\\BIN\\r68.exe $b.a -o=$b.r -q" >/dev/null

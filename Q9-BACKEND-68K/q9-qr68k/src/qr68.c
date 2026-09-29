@@ -93,7 +93,7 @@ extern void exit(int code);
    Symbole, 1,5 MB ROF (gemessen, tools/test_selfhost_build.sh). Die Felder liegen mit
    -remotedata im entfernten Datenbereich, die Moduldatei waechst dadurch nicht; der
    Speicherbedarf beim Lauf steigt auf rund 16 MB. Vorher: 256 KB Quelle, 4096 Symbole. */
-#define QR_POOL   1048576
+#define QR_POOL   2097152
 #define QR_POOLHASH  8192
 #define QR_PENT     65536
 #define QR_SRC    8388608
@@ -104,7 +104,7 @@ extern void exit(int code);
 #define QR_REF      65536
 #define QR_MACTEXT 131072
 #else
-#define QR_POOL    524288
+#define QR_POOL   2097152
 #define QR_POOLHASH  4096
 #define QR_PENT     32768
 /* Increased from 16 to 32 MiB on 2026-09-07: building QCC as a 68k module

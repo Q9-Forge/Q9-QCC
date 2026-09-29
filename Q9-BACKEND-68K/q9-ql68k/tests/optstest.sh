@@ -10,7 +10,7 @@
 # in Wahrheit ungeprueft ist. Solche Faelle meldet das Skript als "ohne
 # Wirkung" und zaehlt sie getrennt.
 #
-# Die Proben unter test/opt/ haben bewusst KRUMME Datengroessen (oa: 6
+# Die Proben unter tests/opt/ haben bewusst KRUMME Datengroessen (oa: 6
 # Byte dc / 5 Byte ds, ob: 6/1), damit -b= sichtbar wird; oc hat gar keine
 # Daten -- daran zeigt sich, ob ein leerer Block trotzdem auf die Grenze
 # rueckt.
@@ -22,8 +22,8 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QL68="$PWD/build/ql68"
-[ -x "$QL68" ] || { echo "FEHLER: build/ql68 fehlt -- vorher 'make'"; exit 2; }
+QL68="$PWD/build/ql68k"
+[ -x "$QL68" ] || { echo "FEHLER: build/ql68k fehlt -- vorher 'make'"; exit 2; }
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [ -d "$MWOS/OS9" ] || { echo "uebersprungen: $MWOS fehlt"; exit 0; }
@@ -43,7 +43,7 @@ TMPWIN="Z:$(printf '%s' "$TMP" | sed 's#/#\\#g')"
 wrun() { arch -x86_64 "$WINE_BIN" cmd /c "Z: && cd ${TMPWIN#*:} && set PATH=M:\\DOS\\BIN;%PATH% && $*" 2>&1 | tr -d '\r'; }
 
 # --- Die Proben einmal assemblieren. ---
-for f in test/opt/*.a; do
+for f in tests/opt/*.a; do
 	b="$(basename "$f" .a)"
 	cp "$f" "$TMP/"
 	wrun "M:\\DOS\\BIN\\r68.exe $b.a -o=$b.r -q" >/dev/null
@@ -51,7 +51,7 @@ for f in test/opt/*.a; do
 done
 
 # --- Die Faelle: <Eingaben>|<Schalter> ---
-# Die Eingaben sind Namen aus test/opt/ ohne Endung; oa traegt den
+# Die Eingaben sind Namen aus tests/opt/ ohne Endung; oa traegt den
 # Wurzel-psect und muss deshalb immer vorne stehen.
 CASES="
 od|

@@ -8,9 +8,9 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QL68="$PWD/build/ql68"
+QL68="$PWD/build/ql68k"
 TOOLS="$PWD/tools"
-[ -x "$QL68" ] || { echo "FEHLER: build/ql68 fehlt -- vorher 'make'"; exit 2; }
+[ -x "$QL68" ] || { echo "FEHLER: build/ql68k fehlt -- vorher 'make'"; exit 2; }
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 : "${PORTDIR:=$MWOS/OS9/68060/PORTS/MVME172/SCF}"

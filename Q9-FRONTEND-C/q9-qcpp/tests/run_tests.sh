@@ -10,7 +10,7 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QCPP=build/qcpp
+QCPP=${QCPP:-build/qcpp}
 [ -x "$QCPP" ] || { echo "FEHLER: $QCPP fehlt -- vorher 'make'"; exit 2; }
 
 TMP="$(mktemp -d /tmp/qcpp-test.XXXXXX)"

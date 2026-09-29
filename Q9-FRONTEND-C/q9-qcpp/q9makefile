@@ -1,0 +1,17 @@
+# qmake project description for qcpp.
+# The ordinary Makefile remains available for the existing host workflow.
+
+[mac-clang]
+all: build/mac/qcpp
+
+build/mac/qcpp: src/qcpp.c
+	mkdir -p build/mac
+	$(HOST_CC) $(HOST_CFLAGS) -o build/mac/qcpp src/qcpp.c
+
+test: build/mac/qcpp
+	QCPP=build/mac/qcpp ./tests/run_tests.sh
+
+# Copy into the host SDK selected by Q9SDK, or ~/Q9SDK by default.
+# Refuse to replace an existing SDK command until the user removes it.
+copy-sdk: build/mac/qcpp
+	./tools/copy_sdk.sh build/mac/qcpp

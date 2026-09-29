@@ -27,6 +27,9 @@ test: $(TARGET)
 	@$(TARGET) 'modul interrupt int f(int n, ...){ return n; } int main(){ return f(1,2); }' > $(BUILD)/func-attrs.ir
 	@grep -q '^FUNC f 1 0 3$$' $(BUILD)/func-attrs.ir
 	@grep -q '^FUNC main 0 0 0$$' $(BUILD)/func-attrs.ir
+	@if $(TARGET) 'int main(){ return (1; }' > $(BUILD)/invalid.ir 2> $(BUILD)/invalid.err; then exit 1; fi
+	@grep -q '^FAIL$$' $(BUILD)/invalid.ir
+	@grep -q 'syntax error near' $(BUILD)/invalid.err
 	@echo 'qcir smoke test: OK'
 
 clean:

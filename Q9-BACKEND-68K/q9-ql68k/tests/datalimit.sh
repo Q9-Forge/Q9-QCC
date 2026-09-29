@@ -22,15 +22,16 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
 : "${FORGE:=$(cd .. && pwd)}"
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
-QR68="${QR68:-$FORGE/Q9-qr68/build/qr68}"
-QL68="${QL68:-$REPO/build/ql68}"
+QR68="${QR68:-$REPO/../q9-qr68k/build/qr68k}"
+QL68="${QL68:-$REPO/build/ql68k}"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -x "$QR68" ] || die "qr68 fehlt: $QR68"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 
-WORK=/tmp/ql68-datalimit
-rm -rf "$WORK"; mkdir -p "$WORK/l" "$WORK/q"
+WORK="$(mktemp -d /tmp/ql68-datalimit.XXXXXX)"
+trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/l" "$WORK/q"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091

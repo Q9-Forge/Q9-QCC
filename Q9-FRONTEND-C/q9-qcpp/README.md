@@ -202,6 +202,21 @@ Formatierung: zwei normgerechte Präprozessoren dürfen anders umbrechen.
 Abweichungen, die nur die Abstände betreffen, werden getrennt gezählt und
 gemeldet, gelten aber nicht als Fehler.
 
+Für einen nativen macOS-Build mit getrenntem Ausgabepfad kann das gemeinsame
+qmake verwendet werden:
+
+```
+../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P mac-clang all
+../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P mac-clang test
+../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P mac-clang copy-sdk
+```
+
+Das erzeugt `build/mac/qcpp`. Die Quelle benötigt derzeit keine
+plattformabhängigen `#ifdef`s; der bestehende `make`-Weg bleibt als einfacher
+Bootstrap erhalten. `copy-sdk` legt `qcpp` unter `$Q9SDK/Mac/CMDS/` ab,
+standardmäßig unter `~/Q9SDK/Mac/CMDS/`, falls `Q9SDK` nicht gesetzt ist. Ein
+bereits vorhandenes Ziel wird nicht überschrieben.
+
 Der Differenztest bindet jeden Header **zweimal** ein. Das ist keine
 Kosmetik: vorher band er ihn genau einmal ein und konnte damit strukturell
 nicht sehen, dass `#pragma once` nicht beachtet wurde — der Fehler saß hinter

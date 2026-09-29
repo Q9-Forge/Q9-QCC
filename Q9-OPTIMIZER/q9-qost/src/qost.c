@@ -247,7 +247,8 @@ static int optimize(void)
 				k = next_live(j);
 				if (k >= 0 && binary_result(trim(line_text(k)), a, b, &result)) {
 					set_push(i, result);
-					lines[j].removed = lines[k].removed = 1;
+					lines[j].removed = 1;
+					lines[k].removed = 1;
 					++optimizations; changed = 1;
 					--i;
 				}

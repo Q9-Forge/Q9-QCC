@@ -30,8 +30,9 @@ cd "$REPO"
 : "${Q9FLUX:=/Volumes/SSD1TB/projects/Q9-Forge/Q9-Flux/Q9-Flux-68k}"
 : "${BASE:=$Q9FLUX/local_images/OS9SYS.hda}"
 
-IMAGE_NAME=OS9SYS.qcpp-test.hda
+IMAGE_NAME="${IMAGE_NAME:-OS9SYS.qcpp-test.hda}"
 IMAGE="$Q9FLUX/local_images/$IMAGE_NAME"
+QCPP_MODULE="${QCPP_MODULE:-build/qcpp.68k}"
 
 [ -x "$Q9FLUX/build/macos/q9.exe" ] || {
 	echo "FEHLER: $Q9FLUX/build/macos/q9.exe fehlt (in Q9-Flux: make host)"
@@ -46,24 +47,24 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh"
 OS9="$MWOS_TOOLSHED_OS9"
 
 echo "== 1/5 OS-9-Modul bauen =="
-[ -f build/qcpp.68k ] || ./tools/build_os9.sh
-"$OS9" ident build/qcpp.68k | grep -E "Module size|Data size|Stack size"
+[ -f "$QCPP_MODULE" ] || ./tools/build_os9.sh
+"$OS9" ident "$QCPP_MODULE" | grep -E "Module size|Data size|Stack size"
 
 echo "== 2/5 Hostlauf als Referenz =="
 make -s build/qcpp
-./build/qcpp test/qcpptest.c build/qcpptest.host.i
+./build/qcpp tests/qcpptest.c build/qcpptest.host.i
 echo "  $(wc -c < build/qcpptest.host.i | tr -d ' ') Byte"
 
 echo "== 3/5 Image klonen und bestuecken =="
 cp -c "$BASE" "$IMAGE"
-"$OS9" copy -r build/qcpp.68k "$IMAGE,/CMDS/qcpp"
+"$OS9" copy -r "$QCPP_MODULE" "$IMAGE,/CMDS/qcpp"
 "$OS9" attr -e -w -r -pe -pr "$IMAGE,/CMDS/qcpp" > /dev/null
-"$OS9" copy -l -r test/qcpptest.c "$IMAGE,/qcpptest.c"
+"$OS9" copy -l -r tests/qcpptest.c "$IMAGE,/qcpptest.c"
 echo "  $IMAGE_NAME fertig"
 
 echo "== 4/5 Emulatorlauf =="
 Q9FLUX="$Q9FLUX" QCPP_IMAGE="local_images/$IMAGE_NAME" MWOS="$MWOS_UNIX" \
-	expect -f "$REPO/test/run_68k.exp" > build/run_68k.log 2>&1 || {
+	expect -f "$REPO/tests/run_68k.exp" > build/run_68k.log 2>&1 || {
 		echo "FEHLGESCHLAGEN -- letzte Zeilen des Protokolls:"
 		tail -25 build/run_68k.log
 		exit 1

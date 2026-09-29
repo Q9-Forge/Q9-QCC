@@ -91,7 +91,9 @@ static int phLineCount = 0;
 static char* phSynth;
 static int phSynthUsed = 0;
 static int phSynthCapacity = 0;
-static char phEol[2] = { '\n', 0 };
+/* Numeric form avoids the QCC frontend's current restriction on character
+ * constants inside initialized global arrays. */
+static char phEol[2] = { 10, 0 };
 static int phEolLength = 1;
 
 /* Keep the input buffer as the only allocation while reading, then allocate

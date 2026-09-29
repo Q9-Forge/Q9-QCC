@@ -15846,6 +15846,11 @@ int main(int argc, char** argv) {
 	} else p = argv[1];
 	parserInputStart = p;
 	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); QCC_OUTPUT_FLUSH(); return 1; } printf("OK\n"); QCC_OUTPUT_FLUSH(); return 0; } }
+	/* Preserve the compact machine-readable FAIL marker on stdout, but report
+	 * the unconsumed token on stderr. This makes unsupported syntax actionable
+	 * for the driver without changing successful IR output. */
+	tcErrAt(p);
+	fprintf(stderr, "syntax error near '%.48s'\n", p);
 	printf("FAIL\n"); QCC_OUTPUT_FLUSH();
 	return 1;
 }

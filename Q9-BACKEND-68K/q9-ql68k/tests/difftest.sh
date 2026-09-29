@@ -8,13 +8,13 @@
 # ACHTUNG: der Modulname kommt aus dem AUSGABENAMEN. Beide Seiten muessen
 # denselben benutzen, sonst unterscheiden sich Name und CRC.
 #
-#   ./test/difftest.sh                -- alle Proben in test/
+#   ./tests/difftest.sh               -- alle Proben in tests/
 #   ./test/difftest.sh probe.a ...    -- bestimmte
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-QL68="$PWD/build/ql68"
-[ -x "$QL68" ] || { echo "FEHLER: build/ql68 fehlt -- vorher 'make'"; exit 2; }
+QL68="$PWD/build/ql68k"
+[ -x "$QL68" ] || { echo "FEHLER: build/ql68k fehlt -- vorher 'make'"; exit 2; }
 
 : "${MWOS:=/Volumes/SSD1TB/projects/MWOS}"
 [ -d "$MWOS/OS9" ] || { echo "uebersprungen: $MWOS fehlt"; exit 0; }
@@ -38,7 +38,7 @@ wrun() {
 }
 
 files=("$@")
-[ ${#files[@]} -gt 0 ] || files=(test/*.a)
+[ ${#files[@]} -gt 0 ] || files=(tests/*.a)
 
 echo "=== ql68 gegen l68 (${#files[@]} Proben) ==="
 ok=0
