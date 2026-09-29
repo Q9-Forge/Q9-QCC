@@ -14,8 +14,9 @@ its own binary.
   do not scatter operating-system tests through the build engine.
 - Keep host and target builds separate. A selected target/toolchain profile
   supplies CPU, ABI, compiler generation, tool paths, and output directory.
-- Keep compiler, assembler, optimizer, linker, startup object, paths, and flags
-  in external toolchain profiles selected by the project or environment.
+- Give each host/compiler/target combination a named configuration (for
+  example `mac-clang`, `mac-xcc-68k`, `q9-qcc-68k`) with its own external
+  profile and isolated makefile section.
 - Use an extensionless `q9makefile` by default. A directory's unrelated
   `Makefile` remains available to another Make implementation.
 - Traverse only explicitly listed subdirectories. Parent builds process
@@ -52,28 +53,50 @@ Q9SDK/Q9/68k/CMDS/     # binaries that run on Q9/68k
 ```
 
 Host tools belong below the matching host directory; target profiles and target
-binaries belong below `Q9/<architecture>`. For a host build, if `TARGET_ARCH`
-is set in `q9makefile` or the environment and `TOOLCHAIN_FILE` is not, qmake
-checks `$Q9SDK/Q9/<TARGET_ARCH>/SYS/qmake.conf`; if `Q9SDK` is unset it checks
-`$HOME/Q9SDK/Q9/<TARGET_ARCH>/SYS/qmake.conf` (Windows uses `USERPROFILE`, then
-`HOME`). The Q9 emulator adapter is not implemented yet; its agreed default is
+binaries belong below `Q9/<architecture>`. All toolchain profiles live in one
+sectioned `qmake.conf`: the `[global]` section holds shared defaults and a
+section named `NAME` holds that compiler/target combination. qmake loads
+`toolchains/qmake.conf` locally, or `$Q9SDK/Q9/<TARGET_ARCH>/SYS/qmake.conf`
+(falling back to `$HOME/Q9SDK/...`) when the selected section sets
+`TARGET_ARCH`. `-C DIR` loads `DIR/qmake.conf`; `TOOLCHAIN_FILE` is available
+only when a project needs to point at a nonstandard profile file. The Q9
+emulator adapter is not implemented yet; its agreed configuration directory is
 `/dd/SYS`, without host-SDK discovery.
 
-Select a profile in `q9makefile`, or set `TOOLCHAIN_FILE` in the environment.
-An explicit file path is relative to the current directory unless
-`-C`/`--config-dir` is supplied; then relative profile names are resolved in
-that directory. With
-`-C` and no explicit profile, qmake loads `qmake.conf` from that directory.
-Without either, the host SDK lookup above is used. For example:
+Use one named section per host/compiler/target combination. Shared variables
+belong in `[global]`; each build configuration gets its own section and may
+define the same goals independently. For example:
 
 ```text
-TOOLCHAIN_FILE = q9-68k.conf
+[global]
+DEFS = /dd/DEFS/Q9
+
+[mac-clang]
+HOST_CC = clang
+all:
+	clang -c src.c -o build/mac-clang/src.o
+all_mac:
+	qmake -P mac-clang all
+
+[q9-qcc-68k]
+TARGET_CC = qcc
+TARGET_CFLAGS = --no-optimizer
+all:
+	qcc -c -o build/q9-qcc-68k/src.r src.c
+all_q9:
+	qmake -P q9-qcc-68k all
 ```
 
-or invoke `qmake -C /path/to/Q9SDK/Q9/68k/SYS`.
+With no `-P`, qmake builds the requested target in every configuration section
+that defines it; thus `qmake all` builds each section's `all`, while
+`qmake all_q9` only builds sections that define `all_q9`. Use `-P NAME` to run
+one configuration, or `--list-configs` to list available names. Each section
+is loaded with fresh variables, so compiler settings cannot leak between
+configurations. Give each section
+distinct output paths when the same source is built by multiple toolchains.
 
 The profile uses the same simple `NAME = value` syntax and is loaded before the
-project file. It can define `TARGET_CC`, `TARGET_CPPFLAGS`, `TARGET_CFLAGS`,
+makefile's global and selected-section values. It can define `TARGET_CC`, `TARGET_CPPFLAGS`, `TARGET_CFLAGS`,
 `TARGET_OPT`/`TARGET_OPTFLAGS`, `TARGET_AS`/`TARGET_ASFLAGS`, `TARGET_LD`,
 `TARGET_LDFLAGS`, `TARGET_ARCH`, `TARGET_CPU`, `TARGET_ABI`, `DEFS`, `LIBS`,
 and `STARTUP`. These values are available to explicit
@@ -86,13 +109,15 @@ with `C_TO_R_COMMAND` and `ASM_TO_R_COMMAND`. These command templates support
 example, an XCC profile may define `C_TO_R_COMMAND` with its own `-o` and
 preprocessor/compile flags; without a template qmake uses the portable default
 shown above.
-Project assignments override profile defaults; environment variables override
-both, and `-DNAME=value` has highest priority. Setting `TOOLCHAIN_FILE` in the
-environment or with `-D` selects a profile without adding that choice to every
-project file. Relative profile paths are resolved against `-C` when provided,
-otherwise against the current directory.
+Section assignments in `q9makefile` override the matching profile section;
+environment variables override both, and `-DNAME=value` has highest priority.
 [`toolchains/example.conf`](toolchains/example.conf) lists the available
 settings without assuming unverified compiler-specific flags.
+[`toolchains/qmake.conf`](toolchains/qmake.conf) contains the initial native
+sections `[mac-clang]`, `[linux-gcc]`, `[windows-clang]`, and `[q9-qcc-68k]`.
+The XCC sections await verification of the host executable and invocation.
+Install the shared file as `/dd/SYS/qmake.conf` and select the Q9 profile with
+`qmake -C /dd/SYS -P q9-qcc-68k`.
 
 ## Initial platform scope
 
@@ -123,9 +148,9 @@ repository `Makefile` is only the bootstrap makefile; Q9-Make itself reads the
 extensionless `q9makefile`.
 
 This is deliberately an early prototype, not yet the agreed complete system:
-variables expand only inside recipes; toolchain profiles currently provide
-variables, not named sections or arbitrary format-transition pipelines. There
-is no OS-9 adapter or image deployment. `SUBDIRS` entries must
+variables expand only inside recipes; configurations are selected by named
+sections and use fixed implicit format rules, not arbitrary format-transition
+pipelines. There is no OS-9 adapter or image deployment. `SUBDIRS` entries must
 be simple direct-child names, and recursion is limited to 16 levels. qmake
 reads but does not modify the process environment. See
 [`STATUS.md`](STATUS.md) for verified versus pending work.

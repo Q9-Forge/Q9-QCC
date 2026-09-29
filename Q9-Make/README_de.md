@@ -80,27 +80,56 @@ aufgelöst. Ohne diese Vorlagen gelten die obigen Standardbefehle.
 Das SDK trennt Entwicklungsplattform und Q9-Zielarchitektur: Host-Programme
 liegen beispielsweise in `Q9SDK/Mac/CMDS`, `Q9SDK/Linux/CMDS` und
 `Q9SDK/Windows/CMDS`. Q9-Zielprofile und Zielprogramme liegen unter
-`Q9SDK/Q9/68k/SYS` beziehungsweise `Q9SDK/Q9/68k/CMDS`. Ist `TARGET_ARCH`
-gesetzt (im `q9makefile` oder Environment) und kein `TOOLCHAIN_FILE` angegeben,
-sucht der Host-Prototyp
-`$Q9SDK/Q9/<TARGET_ARCH>/SYS/qmake.conf`, sonst `$HOME/Q9SDK/...` (Windows:
-`USERPROFILE`, dann `HOME`). `-C`/`--config-dir` ueberschreibt den Suchordner.
-Der Q9-Emulatoradapter fehlt noch; dessen vereinbarter Standard ist `/dd/SYS`
-ohne Suche im Host-SDK.
+`Q9SDK/Q9/68k/SYS` beziehungsweise `Q9SDK/Q9/68k/CMDS`. Der Q9-Emulatoradapter
+fehlt noch; sein vereinbarter Konfigurationsordner ist `/dd/SYS`.
 
-Ein Projekt kann mit `TOOLCHAIN_FILE = q9-68k.conf` ein externes Profil
-auswaehlen; alternativ laedt `qmake -C /pfad/zum/SYS` dort `qmake.conf`.
-Dieses verwendet dieselbe `NAME = value` Syntax und wird vor
-dem Projekt-`q9makefile` geladen. Compiler, Praeprozessor-Flags, Assembler,
-Linker, CPU, `DEFS`, `LIBS` und `STARTUP` koennen dort zentral stehen; Werte im
-Projekt ueberschreiben Profilwerte. Environment und `-DNAME=value` haben
-weiterhin Vorrang. Linkrezepte bleiben explizit und koennen diese Variablen
-verwenden. Profile sind derzeit Variablen-Dateien, noch keine benannten
-Abschnitte oder frei definierbaren Format-Uebergangsketten. OS-9-Adapter und
-Image-Deployment fehlen noch. Details in [`STATUS.md`](STATUS.md).
+Je Host/Compiler/Target-Kombination wird in **einer** `qmake.conf` ein benannter
+Abschnitt angelegt, z. B. `[mac-clang]`, `[mac-xcc-68k]` oder `[q9-qcc-68k]`.
+Gemeinsame Toolchainwerte stehen in `[global]`; jeder Konfigurationsabschnitt
+enthaelt seine eigenen Compiler-/Target-Werte. Das Projekt-`q9makefile` hat
+dieselben Abschnittsnamen fuer seine Regeln. Ist `TARGET_ARCH` gesetzt, sucht
+qmake `qmake.conf` unter `$Q9SDK/Q9/<arch>/SYS` (sonst `$HOME/Q9SDK/...`), mit
+`-C /dd/SYS` direkt unter `/dd/SYS/qmake.conf`; ohne `-P` baut qmake ein Ziel in
+allen Abschnitten, die dieses Ziel definieren. So kann `all` mehrfach vorkommen,
+waehrend etwa `all_q9` nur in Q9-Abschnitten steht. `-P <name>` waehlt einen
+einzelnen Abschnitt, `--list-configs` zeigt die Namen. Die Variablen bleiben je
+Aufruf getrennt; Ausgabepfade sollten daher pro Konfiguration eindeutig sein.
+Environment und `-DNAME=value` haben weiterhin Vorrang vor Projekt-/Profilwerten.
+Linkrezepte bleiben explizit. OS-9-Adapter und Image-Deployment fehlen noch.
+Details in [`STATUS.md`](STATUS.md).
 
-Ohne Zielargument nimmt `qmake` die erste Regel. Ein erstes `help:`-Ziel kann
-also eine Hilfe ausgeben. Erzeugt sein Rezept keine gleichnamige Datei, wird es
-bei jedem Aufruf ausgefuehrt. Fuer abgeschlossene Buildschritte koennen Rezepte
-eine Markerdatei (z. B. mit `touch .built`) erstellen; deren Zeitstempel wird
-bei Folgelaeufen fuer die Aktualitaetspruefung verwendet.
+Beispiel: dieselben Labelnamen duerfen pro Konfiguration eigene Regeln haben;
+die Ausgabepfade sind absichtlich verschieden:
+
+```text
+[global]
+DEFS = /dd/DEFS/Q9
+
+[mac-clang]
+all:
+	clang -c src.c -o build/mac-clang/src.o
+all_mac:
+	qmake -P mac-clang all
+
+[q9-qcc-68k]
+all:
+	qcc --no-optimizer -c -o build/q9-qcc-68k/src.r src.c
+all_q9:
+	qmake -P q9-qcc-68k all
+```
+
+`qmake all` baut beide `all`-Regeln; `qmake all_q9` nur die Q9-Regel.
+
+Das gemeinsame Profil liegt unter [`toolchains/qmake.conf`](toolchains/qmake.conf)
+und enthaelt die Abschnitte `[mac-clang]`, `[linux-gcc]`, `[windows-clang]`
+und `[q9-qcc-68k]`. Die XCC-Profile folgen, sobald Programmname und
+Aufrufsyntax pro Host verifiziert sind. Dieselbe Datei liegt auf dem Q9-System
+unter `/dd/SYS/qmake.conf`; dort waehlt `qmake -C /dd/SYS -P q9-qcc-68k` den
+Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
+
+Ohne Zielargument nimmt `qmake` in jedem Konfigurationsabschnitt dessen erste
+lokale Regel. Ein erstes `help:`-Ziel kann also je Konfiguration eine Hilfe
+ausgeben. Erzeugt das Rezept keine gleichnamige Datei, wird es bei jedem Aufruf
+ausgefuehrt. Fuer abgeschlossene Buildschritte koennen Rezepte eine Markerdatei
+(z. B. mit `touch .built`) erstellen; deren Zeitstempel wird bei Folgelaeufen
+fuer die Aktualitaetspruefung verwendet.

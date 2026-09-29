@@ -13,6 +13,7 @@
 #define MAX_VAR_NAME 64
 #define MAX_SUBDIRS 16
 #define MAX_DEPTH 16
+#define MAX_CONFIGS 16
 
 typedef struct Variable Variable;
 struct Variable { char name[MAX_VAR_NAME]; char value[MAX_COMMAND]; int command_line; };
@@ -22,7 +23,7 @@ struct Rule {
     char target[MAX_NAME];
     char deps[MAX_DEPS][MAX_NAME];
     char commands[MAX_RECIPES][MAX_COMMAND];
-    int dep_count, command_count, state;
+    int dep_count, command_count, state, global_rule;
 };
 
 static Rule rules[MAX_RULES];
@@ -33,16 +34,67 @@ static Variable overrides[MAX_VARS];
 static int override_count;
 static char config_dir_override[MAX_COMMAND];
 static int config_dir_is_set;
+static char active_section[MAX_NAME] = "global";
+static char selected_section[MAX_NAME];
+static char configuration_names[MAX_CONFIGS][MAX_NAME];
+static int configuration_count;
+static int section_matched_target;
 
 static int implicit_object(const char *target);
 static int run_command(const char *raw_command, const char *target);
 static int load_project_description(void);
 static void reset_description(void);
+static int valid_path_component(const char *component);
+static char *trim(char *s);
 
 static void usage(const char *program)
 {
-    printf("Usage: %s [-n] [-v|-vv] [-C config-dir] [-DNAME=value] [target]\n", program);
-    printf("Build targets described by ./q9makefile (C89 prototype).\n");
+    printf("Usage: %s [-n] [-v|-vv] [-C profile-dir] [-P configuration] [-DNAME=value] [target]\n", program);
+    printf("Build the selected target in matching configurations from ./q9makefile.\n");
+    printf("Use --list-configs to list configuration sections.\n");
+}
+
+static int section_matches(const char *name)
+{
+    return strcmp(name, "global") == 0 || strcmp(name, active_section) == 0;
+}
+
+static int add_configuration(const char *name)
+{
+    int i;
+    if (!valid_path_component(name) || strlen(name) >= MAX_NAME) return 0;
+    for (i = 0; i < configuration_count; ++i)
+        if (strcmp(configuration_names[i], name) == 0) return 1;
+    if (configuration_count >= MAX_CONFIGS) return 0;
+    strcpy(configuration_names[configuration_count++], name);
+    return 1;
+}
+
+static int discover_configurations(void)
+{
+    FILE *file;
+    char line[MAX_LINE];
+    configuration_count = 0;
+    if (!add_configuration("global")) return 0;
+    file = fopen("q9makefile", "r");
+    if (file == (FILE *)0) {
+        fprintf(stderr, "qmake: cannot open q9makefile\n");
+        return 0;
+    }
+    while (fgets(line, sizeof(line), file) != (char *)0) {
+        char *p = trim(line);
+        size_t length = strlen(p);
+        if (length >= 3 && p[0] == '[' && p[length - 1] == ']') {
+            p[length - 1] = '\0';
+            if (!add_configuration(p + 1)) {
+                fprintf(stderr, "qmake: invalid or too many configuration sections\n");
+                fclose(file);
+                return 0;
+            }
+        }
+    }
+    fclose(file);
+    return 1;
 }
 
 static char *trim(char *s)
@@ -226,6 +278,7 @@ static int load_description(const char *path)
 {
     FILE *file;
     char line[MAX_LINE];
+    char file_section[MAX_NAME] = "global";
     Rule *current = (Rule *)0;
     int line_number = 0;
     file = fopen(path, "r");
@@ -236,8 +289,33 @@ static int load_description(const char *path)
     while (fgets(line, sizeof(line), file) != (char *)0) {
         char *p, *colon, *equal;
         ++line_number;
+        p = trim(line);
+        if (*p == '[') {
+            size_t length = strlen(p);
+            if (length < 3 || p[length - 1] != ']') {
+                fprintf(stderr, "qmake: malformed configuration section at %s:%d\n",
+                        path, line_number);
+                ++errors;
+                current = (Rule *)0;
+                continue;
+            }
+            p[length - 1] = '\0';
+            if (!valid_path_component(p + 1)) {
+                fprintf(stderr, "qmake: invalid configuration name at %s:%d\n",
+                        path, line_number);
+                ++errors;
+                current = (Rule *)0;
+                continue;
+            }
+            strcpy(file_section, p + 1);
+            current = (Rule *)0;
+            continue;
+        }
+        if (!section_matches(file_section)) {
+            current = (Rule *)0;
+            continue;
+        }
         if (line[0] == '\t' || line[0] == ' ') {
-            p = trim(line);
             if (*p == '\0' || *p == '#') continue;
             if (current == (Rule *)0 || current->command_count >= MAX_RECIPES ||
                 strlen(p) >= MAX_COMMAND) {
@@ -248,7 +326,6 @@ static int load_description(const char *path)
             strcpy(current->commands[current->command_count++], p);
             continue;
         }
-        p = trim(line);
         if (*p == '\0' || *p == '#') continue;
         equal = strchr(p, '=');
         colon = strchr(p, ':');
@@ -295,6 +372,7 @@ static int load_description(const char *path)
         current = &rules[rule_count++];
         memset(current, 0, sizeof(*current));
         strcpy(current->target, p);
+        current->global_rule = strcmp(file_section, "global") == 0;
         while (*colon != '\0') {
             char *end;
             while (*colon == ' ' || *colon == '\t') ++colon;
@@ -351,6 +429,28 @@ static int load_project_description(void)
                 return 0;
             }
             strcpy(toolchain_file, expanded);
+        }
+    } else if (strcmp(active_section, "global") != 0) {
+        if (config_dir_is_set) {
+            if (strlen(config_dir_override) + sizeof("/qmake.conf") >
+                sizeof(toolchain_file)) {
+                fprintf(stderr, "qmake: configuration profile path too long\n");
+                return 0;
+            }
+            sprintf(toolchain_file, "%s/qmake.conf", config_dir_override);
+        } else {
+            target_arch = variable_value("TARGET_ARCH");
+            if (target_arch[0] != '\0' && valid_path_component(target_arch) &&
+                qmake_default_config_dir(target_arch, config_dir, sizeof(config_dir)) &&
+                strlen(config_dir) + sizeof("/qmake.conf") <= sizeof(toolchain_file)) {
+                sprintf(toolchain_file, "%s/qmake.conf", config_dir);
+            } else {
+                toolchain_file[0] = '\0';
+            }
+            if (toolchain_file[0] == '\0' ||
+                !qmake_file_info(toolchain_file, &ignored_time)) {
+                strcpy(toolchain_file, "toolchains/qmake.conf");
+            }
         }
     } else {
         if (config_dir_is_set) {
@@ -531,12 +631,33 @@ static int implicit_object(const char *target)
     return run_command(command, target) ? 1 : -1;
 }
 
+static int implicit_source_exists(const char *target)
+{
+    const char *suffix = strrchr(target, '.');
+    char source[MAX_NAME];
+    size_t stem_length;
+    long ignored_time;
+    if (suffix == (const char *)0 ||
+        (strcmp(suffix, ".o") != 0 && strcmp(suffix, ".r") != 0)) return 0;
+    stem_length = (size_t)(suffix - target);
+    if (stem_length + 3 >= sizeof(source)) return 0;
+    memcpy(source, target, stem_length);
+    source[stem_length] = '\0';
+    strcat(source, ".c");
+    if (qmake_file_info(source, &ignored_time)) return 1;
+    if (strcmp(suffix, ".r") != 0) return 0;
+    source[stem_length] = '\0';
+    strcat(source, ".a");
+    return qmake_file_info(source, &ignored_time);
+}
+
 static int process_directory(const char *requested_target, int depth)
 {
     char target[MAX_NAME];
     char subdirs[MAX_COMMAND];
     char *cursor;
     Variable *subdir_var;
+    long ignored_time;
     int has_target = requested_target != (const char *)0;
     if (depth >= MAX_DEPTH) {
         fprintf(stderr, "qmake: subdirectory nesting exceeds %d\n", MAX_DEPTH);
@@ -594,10 +715,28 @@ static int process_directory(const char *requested_target, int depth)
     if (!load_project_description()) return 0;
     if (!has_target) {
         if (rule_count == 0) {
-            fprintf(stderr, "qmake: no default target in q9makefile\n");
+            if (section_matched_target) return 1;
+            if (depth > 0) return 1;
+            fprintf(stderr, "qmake: no default target in configuration '%s'\n",
+                    active_section);
             return 0;
         }
-        strcpy(target, rules[0].target);
+        {
+            int i, selected = 0;
+            for (i = 0; i < rule_count; ++i) {
+                if (!rules[i].global_rule) {
+                    selected = i;
+                    break;
+                }
+            }
+            strcpy(target, rules[selected].target);
+        }
+        section_matched_target = 1;
+    }
+    if (has_target) {
+        if (find_rule(target) != (Rule *)0 || implicit_source_exists(target) ||
+            qmake_file_info(target, &ignored_time)) section_matched_target = 1;
+        else return 1;
     }
     return build(target);
 }
@@ -605,7 +744,7 @@ static int process_directory(const char *requested_target, int depth)
 int main(int argc, char **argv)
 {
     const char *target = (const char *)0;
-    int i;
+    int i, list_configs = 0, attempted = 0, succeeded = 1;
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             usage(argv[0]); return 0;
@@ -620,6 +759,16 @@ int main(int argc, char **argv)
             strcpy(config_dir_override, argv[++i]);
             config_dir_is_set = 1;
         }
+        else if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--profile") == 0) {
+            if (i + 1 >= argc || !valid_path_component(argv[i + 1]) ||
+                strlen(argv[i + 1]) >= sizeof(selected_section)) {
+                fprintf(stderr, "qmake: %s requires a valid configuration section\n", argv[i]);
+                return 2;
+            }
+            strcpy(selected_section, argv[i + 1]);
+            ++i;
+        }
+        else if (strcmp(argv[i], "--list-configs") == 0) list_configs = 1;
         else if (strcmp(argv[i], "-v") == 0) verbosity = 1;
         else if (strcmp(argv[i], "-vv") == 0) verbosity = 2;
         else if (strncmp(argv[i], "-D", 2) == 0) {
@@ -644,5 +793,44 @@ int main(int argc, char **argv)
         } else if (target == (const char *)0) target = argv[i];
         else { fprintf(stderr, "qmake: only one target is supported in this version\n"); return 2; }
     }
-    return process_directory(target, 0) ? 0 : 1;
+    if (!discover_configurations()) return 1;
+    if (list_configs) {
+        for (i = 0; i < configuration_count; ++i)
+            printf("%s\n", configuration_names[i]);
+        return 0;
+    }
+    if (selected_section[0] != '\0') {
+        int found = 0;
+        for (i = 0; i < configuration_count; ++i)
+            if (strcmp(configuration_names[i], selected_section) == 0) found = 1;
+        if (!found) {
+            fprintf(stderr, "qmake: unknown configuration '%s'\n", selected_section);
+            return 2;
+        }
+        active_section[0] = '\0';
+        strcpy(active_section, selected_section);
+        section_matched_target = 0;
+        if (!process_directory(target, 0)) return 1;
+        if (!section_matched_target) {
+            fprintf(stderr, "qmake: target '%s' is not defined in configuration '%s'\n",
+                    target == (const char *)0 ? "(default)" : target, active_section);
+            return 1;
+        }
+        return 0;
+    }
+    for (i = 0; i < configuration_count; ++i) {
+        if (configuration_count > 1 && strcmp(configuration_names[i], "global") == 0)
+            continue;
+        strcpy(active_section, configuration_names[i]);
+        section_matched_target = 0;
+        if (!process_directory(target, 0)) succeeded = 0;
+        else if (section_matched_target) ++attempted;
+    }
+    if (!succeeded) return 1;
+    if (attempted == 0) {
+        fprintf(stderr, "qmake: target '%s' is not defined by any configuration\n",
+                target == (const char *)0 ? "(default)" : target);
+        return 1;
+    }
+    return 0;
 }

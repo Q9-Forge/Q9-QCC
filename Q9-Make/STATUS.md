@@ -1,15 +1,15 @@
 # Q9-Make Status
 
-**Phase:** Minimaler C89-Hostprototyp implementiert; QCC- und Zielsystemnachweis offen.
+**Phase:** C89-Prototyp mit benannten Host/Compiler/Target-Konfigurationsabschnitten implementiert; QCC-qmake-Build und Zielsystemnachweis offen.
 
 | Bereich | Status | Nächster Nachweis |
 |---|---|---|
 | C-Sprachbaseline | 🟡 | Host-Build mit strengem C89 erfolgreich; QCC-Probe/Binary fehlt in diesem Checkout |
-| Makefile-Syntax | 🟡 | Regeln, Rezepte, Variablen, `SUBDIRS`, Toolchainprofile und konfigurierbare Befehlsvorlagen per Smoke-Test abgedeckt; Q9-Gastlauf offen |
+| Makefile-Syntax | ✅ | `[global]` und benannte Host/Compiler/Target-Abschnitte, wiederholte Ziele, `-P`-Auswahl, SDK-/`-C`-Profile und `--list-configs` per Smoke-Test abgedeckt; Gastprüfung separat offen |
 | Buildgraph | ✅ | Abhängigkeiten, Zyklen, Zeitstempel/`touch`-Marker, Kind-vor-Eltern-Rekursion und Erstziel-ohne-Argument getestet |
 | Native Hosts | 🟡 | POSIX/macOS-Adapter samt Q9SDK/HOME-Profilauflösung getestet; Windows-Adapter geschrieben, Windows-Test offen |
 | OS-9/68k | 🔴 | Plattformadapter fehlt; `/dd/SYS`-Standard, Prozessstart und Dateisystemzugriff im Emulator umsetzen/verifizieren |
-| Toolchainprofile | 🟡 | Externe Profile, `-C`, Host-SDK-Suche und eigene `.c`/`.a`-Befehlsvorlagen implementiert; qmake-Profil mit echtem XCC/QCC noch zu verifizieren |
+| Toolchainprofile | 🟡 | Eine zentrale `toolchains/qmake.conf` mit Mac-Clang, Linux-GCC, Windows-Clang und Q9-QCC/68k-Abschnitten; XCC-Konfigurationen und Windows-Lauftest offen; Q9-SYS-Datei vorhanden, Laden durch qmake im Emulator offen |
 | Implizite Regeln | 🟡 | `.c`→`.o` via HOST_CC sowie `.c`/`.a`→`.r` via TARGET_CC/TARGET_AS; Standard und XCC-artige Befehlsvorlagen mit Fake-Tools getestet; qmake im Emulator offen |
 | Diagnose | 🟡 | `-v`, `-vv`, `--dry-run`, `-C`/`--config-dir` implementiert; `--show-config`/Abfragen offen |
 | Arbeitsimage-Deploy | 🔴 | Explizites, nicht-destruktives Installziel für benannte Arbeitsimageprofile entwerfen |
@@ -19,7 +19,11 @@
 
 - Feste Kapazitaeten: 32 Regeln, 12 Abhaengigkeiten und 8 Rezepte je Regel,
   32 Variablen; Namen max. 127 und Rezeptzeilen max. 255 Zeichen.
-- Genau ein Zielargument; Standardziel ist die erste Regel.
+- Genau ein Zielargument; ohne `-P` wird es in allen Abschnitten ausgefuehrt,
+  die es definieren. Ohne Ziel gilt die erste lokale Regel jedes Abschnitts.
+- Maximal 16 Konfigurationsabschnitte pro `q9makefile`; `[global]`-Werte und
+  Regeln gelten in jedem Abschnitt. Konfigurationswerte stehen im passenden
+  Abschnitt von `toolchains/qmake.conf` oder einer Datei aus `-C`.
 - `q9makefile` wird aus dem aktuellen Arbeitsverzeichnis gelesen.
 - Rezepte laufen ueber die Shell des Hostsystems; portable Rezeptsyntax ist
   damit noch nicht definiert.

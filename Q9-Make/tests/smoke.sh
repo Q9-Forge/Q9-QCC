@@ -190,6 +190,22 @@ printf 'sample: rts\n' > asm.a
 grep -q 'fake-as.sh --assembler-checked "asm.a" "asm.r"' template-asm.out
 ./qmake asm.r
 test "$(cat asm.r)" = 'assembly object'
+cp "$source_root/toolchains/qmake.conf" toolchains/qmake.conf
+cat > q9makefile <<'EOF'
+[mac-clang]
+[linux-gcc]
+[windows-clang]
+[q9-qcc-68k]
+EOF
+rm code.r
+./qmake -n -P q9-qcc-68k code.r > q9-profile.out
+grep -q 'qcc .*--no-optimizer -c -o "code.r" "code.c"' q9-profile.out
+./qmake -n -P mac-clang code.o > mac-profile.out
+grep -q 'clang -std=c89 -c -o "code.o" "code.c"' mac-profile.out
+./qmake -n -P linux-gcc code.o > linux-profile.out
+grep -q 'gcc -std=c89 -c -o "code.o" "code.c"' linux-profile.out
+./qmake -n -P windows-clang code.o > windows-profile.out
+grep -q 'clang -std=c89 -c -o "code.o" "code.c"' windows-profile.out
 cat > q9makefile <<'EOF'
 TOOLCHAIN_FILE = toolchains/test.conf
 HOST_CC = sh fake-cc.sh
@@ -218,4 +234,65 @@ if ./qmake -DTARGET_CC= plain.r > no-target-compiler.out 2>&1; then
 fi
 grep -q 'TARGET_CC is not configured' no-target-compiler.out
 test ! -e plain.r
+cat > toolchains/qmake.conf <<'EOF'
+[global]
+CONFIG_MARK = from-mac-profile
+[mac-clang]
+CONFIG_MARK = from-mac-profile
+[q9-qcc-68k]
+CONFIG_MARK = from-q9-profile
+EOF
+mkdir profile-dir
+cat > profile-dir/qmake.conf <<'EOF'
+[q9-qcc-68k]
+CONFIG_MARK = from-config-dir
+EOF
+cat > sdk/Q9/68k/SYS/qmake.conf <<'EOF'
+[global]
+TARGET_CC = sh fake-cc.sh
+TARGET_CPPFLAGS = -I$(DEFS)
+TARGET_CFLAGS = --sdk-default
+DEFS = /sdk/defs
+[q9-qcc-68k]
+CONFIG_MARK = from-sdk-profile
+EOF
+cat > q9makefile <<'EOF'
+[global]
+COMMON_MARK = common
+[mac-clang]
+CONFIG_MARK = from-mac-section
+all:
+	echo $(COMMON_MARK)-$(CONFIG_MARK) > mac.out
+all_mac:
+	echo mac-only > mac-only.out
+[q9-qcc-68k]
+TARGET_ARCH = 68k
+all:
+	echo $(COMMON_MARK)-$(CONFIG_MARK) > q9.out
+all_q9:
+	echo q9-only > q9-only.out
+EOF
+./qmake --list-configs > configs.out
+grep -q '^mac-clang$' configs.out
+grep -q '^q9-qcc-68k$' configs.out
+if ./qmake -P unknown-config all > unknown-config.out 2>&1; then
+    echo 'unknown configuration was not rejected' >&2
+    exit 1
+fi
+grep -q 'unknown configuration' unknown-config.out
+./qmake -n all > configs-dry-run.out
+test ! -e mac.out
+test ! -e q9.out
+Q9SDK="$test_root/sdk" ./qmake all
+test "$(cat mac.out)" = common-from-mac-section
+test "$(cat q9.out)" = common-from-sdk-profile
+./qmake all_mac
+test -e mac-only.out
+test ! -e q9-only.out
+./qmake all_q9
+test -e q9-only.out
+Q9SDK="$test_root/sdk" ./qmake -P q9-qcc-68k all
+test "$(cat q9.out)" = common-from-sdk-profile
+./qmake -C profile-dir -P q9-qcc-68k all
+test "$(cat q9.out)" = common-from-config-dir
 echo 'qmake smoke test: OK'
