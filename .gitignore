@@ -5,6 +5,7 @@
 *.o
 *.a
 !Q9-BACKEND-68K/q9-qclib/src/*.a
+!Q9-BACKEND-68K/q9-qclib/startup/*.a
 *.so
 *.dylib
 *.exe
