@@ -42,3 +42,23 @@ Die Liste steht am Ende der jeweiligen Abschnitte in `q9sys.d`.
 ## Benutzen
 
     use q9sys.d      * relativ zum Arbeitsverzeichnis; im Makefile nach build/ kopieren
+
+## include/ -- eigene C-Systemheader
+
+Header fuer die Tool-Quellen (Q9-Tools: System, Network), 32 Dateien. Der Bedarf
+wurde aus den Verbraucherprogrammen ermittelt (`NEEDS.md`: was wirklich gebraucht
+wird), die Werte und Layouts stammen aus der Herstellerdokumentation bzw.
+oeffentlichen Standards (BSD/POSIX). Definitionen ohne belegten Wert sind NICHT
+definiert, sondern am Dateiende jedes Headers als "not defined" aufgelistet;
+abgeleitete Definitionen tragen den Kommentar `derived:`.
+
+Stand und Restfehler: `include/STATUS.md`. Pruefen:
+
+    gen/chk_headers.sh <Verzeichnis mit den Tool-Quellen>
+
+Bei der letzten Pruefung uebersetzen 60 von 81 Quelldateien im Nur-Syntax-Modus;
+die Restfehler gehen auf offene Bestandteile zurueck (z. B. Prozessdeskriptor,
+`S_I*`-Modusbits, `struct ifreq`, `enum clnt_stat`); drei Dateien
+(`kr2iso`, `iso2kr`, `mbr`) waren nicht Teil der Bedarfsermittlung.
+Die Dateinamen mit `os9` (z. B. `UNIX/os9def.h`) sind Namen, die die Verbraucher
+per `#include` erwarten.
