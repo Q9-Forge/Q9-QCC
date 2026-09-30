@@ -86,12 +86,8 @@
 
 MINSTK   equ     1024                   * reserve below the vectors
 NAMEBUF  equ     68                     * room for name + NUL (multiple of 4)
-* Names of our own definition scheme:  Q$xxx = system calls (function codes),
-* IQ$xxx = I/O calls, EQ$xxx = error codes, QM$xxx = module header fields.
-Q$Exit    equ     $06                   * terminate the process (D1.w = status)
-EQ$MemFul equ     $00cf                 * memory full
-QM$Name   equ     $0c                   * module header: offset of the name
-QM$IData  equ     $40                   * module header: offset of the init data
+* System definition names (Q$xxx, IQ$xxx, EQ$xxx, QM$xxx) come from our own file.
+         use     q9sys.d
 
          psect   q9_start,$0101,$8000,0,0,q9_entry
 

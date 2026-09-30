@@ -57,8 +57,9 @@ build/q9_cstart.r: $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d | 
 	cd build && $(abspath $(QR68)) q9_cstart.a -o=q9_cstart.r
 
 # Eigener C-Startcode (startup/README.md); ersetzt q9_cstart.r schrittweise.
-build/q9_start.r: startup/q9_start.a | build
-	$(QR68) $< -o=$@
+build/q9_start.r: startup/q9_start.a $(QCC)/Q9DEFS/q9sys.d | build
+	cp startup/q9_start.a $(QCC)/Q9DEFS/q9sys.d build/
+	cd build && $(abspath $(QR68)) q9_start.a -o=q9_start.r
 
 build:
 	mkdir -p build
