@@ -1,0 +1,373 @@
+* q9_start.a -- C startup for 68000 process programs (qr68 syntax)
+*
+* ORIGIN
+*   Written from SPEC.md (derived from the vendor manual) and from the qclib
+*   interface (README.md, src/iob.a, src/os9call.a, src/extra_atexit.a and
+*   the code that QCC generates for "main").  No template was used.
+*   Second round (replacing the old startup in the whole toolchain): the
+*   process globals in "process globals (vsect)" below were added because
+*   the linker reported them as unresolved when a program is linked against
+*   the reference C library (evidence listed there).  Linking against qclib alone
+*   never needed them.
+*   Two facts were measured with our own tools (qr68 + ql68):
+*     - data layout produced by ql68 (see "DATA AREA" below)
+*     - the "main" wrapper that QCC emits (see "MAIN CALL" below)
+*
+* ENTRY (kernel state after the fork call, SPEC section 1)
+*   a3 = primary module     a5 = a7 = parameter area, d5.l = its length
+*   a6 = data base + $8000  a1 = top of memory
+*   Only a3, a5, a6 and d5 are used; everything else is ignored.
+*
+* DATA AREA  (measured with ql68 on a test module)
+*   The kernel copies the initialised data and relocates references, but
+*   the manual does not promise zeroed memory, so this code zeroes the
+*   uninitialised parts itself.  ql68 produces ONE init block:
+*     QM$IData ($40 in the module header) -> [offset.l][count.l][bytes...]
+*     data offset 0 .. offset-1          uninitialised (vsect ds.b)
+*     offset .. offset+count-1           initialised (copied by kernel)
+*     offset+count .. end-1              uninitialised (vsect remote ds.b)
+*   The symbol "end" set by the linker is the data size, expressed like
+*   every data reference (size - $8000, i.e. relative to a6).  Therefore:
+*     data base = a6 - $8000      data end = a6 + #end
+*   The two uninitialised gaps are zeroed.  If QM$IData is 0 the whole
+*   area is zeroed.  ASSUMPTION: only one init block exists (if a later
+*   linker emits several, the space between them would be treated wrongly).
+*
+* COMMAND LINE  (SPEC section 3; the tokenising rules are our own design)
+*   Input: parameter area, at most d5.l bytes, ended by CR ($0D) or NUL,
+*   whichever comes first (or by the length if neither appears).
+*   - separators: space, TAB, LF ($0A); runs of them count as one
+*   - '...' and "..." group text; the quotes are removed; the other quote
+*     kind inside is literal; adjacent pieces join into one argument
+*     (a"b c"d -> "ab cd"); "" gives an empty argument
+*   - NO escape character: a backslash is an ordinary character
+*   - an unterminated quote runs to the end of the line
+*   - argv[0] = module name (a3 + QM$Name, $0C); the system stores the last
+*     character with bit 7 set, so the name is copied to the stack,
+*     unmarked and NUL terminated (at most 63 characters)
+*   - argv[argc] = NULL; strings are copied (the parameter area is not
+*     modified); all pieces (name, strings, argv, envp slot) live on the
+*     stack below the parameter area, sized from the line length:
+*       max. arguments = (len+1)/2 + argv[0]
+*   - envp: the system provides no environment vector; an envp with a single NULL
+*     entry is provided (qclib's getenv also always answers "unset")
+*
+* MAIN CALL  (measured: what QCC's "main" wrapper reads)
+*   d0 = argc, d1 = argv (register convention of the reference C ABI); the compiler's
+*   wrapper "main:" pushes them itself and supplies envp = 0 to tc_main,
+*   so the envp pushed here (4(a7) at entry, caller cleans up) is only
+*   for hand-written mains.  main's result arrives in d0.
+*
+* END
+*   After main: bsr exit (qclib: atexit handlers, then _os_exit).  If that
+*   ever returns, Q$Exit is called directly with the same status
+*   (d1.w).  Non-returning path only; the status is d0's low word.
+*
+* ERROR PATHS
+*   Not enough room between data end and parameter area for the argument
+*   vectors plus a reserve of MINSTK bytes: Q$Exit with EQ$MemFul
+*   ($00CF).  Nothing was started, no output is produced.
+*   Q$Exit itself cannot fail.
+*
+* OPEN POINTS
+*   - The size of the stack reserve (MINSTK) is a guess; real programs
+*     get their stack from the -M option of the linker.
+*   - _initarg is called as a hook after tokenising (d0=argc, d1=argv,
+*     stack: argv, scratch pointer, envp).  With the reference library the 2nd stack slot
+*     must be a writable pointer (see "_initarg call"); what the library stores
+*     there is unknown, and with qclib the hook is empty.
+*   - No stack check, no Q$Icpt/Q$STrap (SPEC: not required).
+*   - Signals other than the default (kill) are not handled.
+*   - Tested only with ql68 layouts (see test notes in the report).
+*
+* Registers inside the startup:  a4 = parameter start, d5 = line length,
+* d6 = envp, d7 = name buffer.  Called routines are assumed to preserve
+* nothing, so all results are kept on the stack across calls.
+
+MINSTK   equ     1024                   * reserve below the vectors
+NAMEBUF  equ     68                     * room for name + NUL (multiple of 4)
+* Names of our own definition scheme:  Q$xxx = system calls (function codes),
+* IQ$xxx = I/O calls, EQ$xxx = error codes, QM$xxx = module header fields.
+Q$Exit    equ     $06                   * terminate the process (D1.w = status)
+EQ$MemFul equ     $00cf                 * memory full
+QM$Name   equ     $0c                   * module header: offset of the name
+QM$IData  equ     $40                   * module header: offset of the init data
+
+         psect   q9_start,$0101,$8000,0,0,q9_entry
+
+* ------------------------------------------------ process globals (vsect)
+* Measured need: linking a program against the reference C library (test
+* vsclib.sh, l68) reports these names as unresolved when the startup does
+* not provide them (referrers in the linker message):
+*   _modname (initarg)          _mtop (initarg, stack)
+*   _stbot (initarg, stack)     _modhead (iobinit, _tidyup)
+*   _sysglob (iobinit)          errno (fclose, memory, fflush, fopen,
+*                                      vprintf, fwrite, ftell, fread,
+*                                      _filbuf, strtol)
+*   _maxstack, _stklimit, _sttop (stack)
+* Meaning (vendor library documentation "Program Globals" and processor
+* documentation "Stack Checking", 68K), and how this startup fills them:
+*   errno      last error code (int); starts at 0
+*   _sysglob   kernel globals pointer, only for system-state processes,
+*              otherwise NULL -> stays 0
+*   _modhead   primary module header  -> a3 at entry
+*   _modname   module name string     -> our unmarked NUL-ended copy
+*   _sttop     stack top at start     -> initial a7 (below the vectors)
+*   _stbot     deepest stack point so far -> initial a7
+*   _mtop      overflow point of the stack (lowest legal address) -> data end
+*   _stklimit  bytes that may still be consumed before a check is needed;
+*              a large positive value means "checking is off" -> $7fffffff
+*   _maxstack  max stack consumed so far; only meaningful with checking on
+*              -> stays 0
+*   _environ   (second measurement round, linking probe.c and locale.c that
+*              call getenv/system against the reference library: "_environ unresolved,
+*              referenced by _getenv.c / system.c")
+*              vendor library documentation: char **_environ, the environment
+*              strings pointer.  The system has no environment vector here, so it
+*              points to the one-entry NULL-terminated envp built below.
+* qclib and the QCC-generated code do not reference any of them.
+*
+* _initarg call  (measured with the same link against the reference library)
+*   The reference library's _initarg, when handed our argc in the second stack slot
+*   (4(a7) at the call, i.e. its 2nd argument) faults: PMMU read fault at
+*   VA=$00000001, instruction "move.l d0,(a0)" -- it treats that slot as a
+*   POINTER to writable memory and stores through it.  With a pointer to
+*   32 bytes of scratch (ia_scr) there in the 2nd slot the program runs and
+*   prints exactly what it prints with the old startup.  The meaning of the
+*   stored value is not known; the scratch area only absorbs it.  qclib's
+*   own _initarg is an empty hook and ignores all of this.  Skipping the
+*   call altogether also works for hello.c (measured), but then the library would
+*   miss whatever its _initarg initialises.
+         vsect
+errno:     ds.l 1
+_sysglob:  ds.l 1
+_modhead:  ds.l 1
+_modname:  ds.l 1
+_maxstack: ds.l 1
+_mtop:     ds.l 1
+_sttop:    ds.l 1
+_stbot:    ds.l 1
+_stklimit: ds.l 1
+_environ:  ds.l 1
+ia_scr:    ds.l 8                * see "_initarg call" below
+         ends
+
+* ---------------------------------------------------------------- entry
+q9_entry:
+         movea.l a5,a4                  * a4 = parameter start
+* -- 1. zero the uninitialised data ------------------------------------
+         movea.l a6,a0
+         suba.l  #$8000,a0              * a0 = data base
+         movea.l a6,a2
+         adda.l  #end,a2                * a2 = data end
+         move.l  QM$IData(a3),d0        * init-data block offset
+         bne.s   zd_have
+         movea.l a2,a1                  * no init data: clear everything
+         bsr     q9_zero
+         bra.s   zd_done
+zd_have:
+         movea.l a3,a1
+         adda.l  d0,a1                  * a1 -> init block
+         move.l  (a1),d4                * offset of the init block
+         move.l  4(a1),d7               * length of the init block
+         movea.l a0,a1
+         adda.l  d4,a1                  * a1 = block start (address)
+         cmpa.l  a2,a1
+         bls.s   zd_lo
+         movea.l a2,a1                  * clamp to the data end
+zd_lo:
+         movea.l a1,a5                  * remember the block start
+         bsr     q9_zero                * clear [base, block start)
+         movea.l a5,a0
+         adda.l  d7,a0                  * a0 = block end
+         movea.l a2,a1
+         bsr     q9_zero                * clear [block end, data end)
+zd_done:
+* -- 2. length of the command line (up to CR / NUL / d5) -------------------
+         moveq   #0,d2
+sl_loop:
+         cmp.l   d5,d2
+         bhs.s   sl_end
+         move.b  0(a4,d2.l),d1
+         beq.s   sl_end
+         cmpi.b  #$0d,d1
+         beq.s   sl_end
+         addq.l  #1,d2
+         bra.s   sl_loop
+sl_end:
+         move.l  d2,d5                  * d5 = effective length L
+* -- 3. sizes and memory check ---------------------------------------
+         move.l  d5,d3
+         addq.l  #5,d3
+         andi.l  #-4,d3                 * d3 = string buffer (L+2, rounded)
+         move.l  d5,d4
+         addq.l  #1,d4
+         lsr.l   #1,d4
+         addq.l  #2,d4
+         lsl.l   #2,d4                  * d4 = argv array ((L+1)/2 + 2) * 4
+         move.l  d3,d0
+         add.l   d4,d0
+         add.l   #NAMEBUF+4+MINSTK+4,d0 * + name, envp slot, reserve, slack
+         move.l  a4,d1
+         move.l  a2,d2
+         sub.l   d2,d1                  * d1 = room above the data
+         bcs     q9_nomem
+         cmp.l   d1,d5
+         bhs     q9_nomem
+         cmp.l   d0,d1
+         blo     q9_nomem
+* -- 4. carve the buffers from the top (all 4-aligned) -------------------
+         move.l  a4,d0
+         andi.l  #-4,d0
+         movea.l d0,a0                  * a0 = aligned top
+         clr.l   -(a0)                  * envp[0] = NULL
+         move.l  a0,d6                  * d6 = envp
+         lea     -NAMEBUF(a0),a0
+         move.l  a0,d7                  * d7 = name buffer
+         suba.l  d3,a0
+         movea.l a0,a5                  * a5 = string buffer
+         suba.l  d4,a0                  * a0 = argv array
+         movea.l a0,a7                  * stack now lies below everything
+         move.l  a2,_mtop(a6)           * lowest legal stack address = data end
+         move.l  a7,_sttop(a6)          * stack top at program start
+         move.l  a7,_stbot(a6)          * deepest point so far = the start
+         move.l  #$7fffffff,_stklimit(a6) * no stack checking is done here
+         move.l  a3,_modhead(a6)        * primary module header
+         move.l  d6,_environ(a6)        * envp: a single NULL entry
+* -- 5. argv[0] = module name -----------------------------------------
+         movea.l d7,a1
+         move.l  QM$Name(a3),d0         * name (offset from module start)
+         adda.l  d0,a3                  * a3 -> name
+         moveq   #62,d1
+nm_loop:
+         move.b  (a3)+,d0
+         bmi.s   nm_last                * bit 7 marks the last character
+         move.b  d0,(a1)+
+         dbra    d1,nm_loop
+         bra.s   nm_end
+nm_last:
+         andi.b  #$7f,d0
+         move.b  d0,(a1)+
+nm_end:
+         clr.b   (a1)
+         move.l  d7,_modname(a6)        * unmarked copy of the module name
+         movea.l a0,a3                  * a3 = write cursor in argv
+         move.l  d7,(a3)+               * argv[0]
+         moveq   #1,d2                  * d2 = argc
+* -- 6. tokeniser -----------------------------------------------------
+         movea.l a5,a1                  * a1 = string write pointer
+         movea.l a4,a2
+         adda.l  d5,a2                  * a2 = end of the line
+tk_skip:
+         cmpa.l  a2,a4
+         bhs.s   tk_done
+         move.b  (a4),d0
+         cmpi.b  #$20,d0
+         beq.s   tk_ws
+         cmpi.b  #$09,d0
+         beq.s   tk_ws
+         cmpi.b  #$0a,d0
+         bne.s   tk_start
+tk_ws:
+         addq.l  #1,a4
+         bra.s   tk_skip
+tk_start:
+         move.l  a1,(a3)+               * new argument
+         addq.l  #1,d2
+         moveq   #0,d4                  * d4 = active quote character (0 = none)
+tk_char:
+         cmpa.l  a2,a4
+         bhs.s   tk_end
+         move.b  (a4)+,d0
+         tst.b   d4
+         bne.s   tk_inq
+         cmpi.b  #$22,d0
+         beq.s   tk_openq
+         cmpi.b  #$27,d0
+         beq.s   tk_openq
+         cmpi.b  #$20,d0
+         beq.s   tk_end
+         cmpi.b  #$09,d0
+         beq.s   tk_end
+         cmpi.b  #$0a,d0
+         beq.s   tk_end
+         move.b  d0,(a1)+
+         bra.s   tk_char
+tk_openq:
+         move.b  d0,d4
+         bra.s   tk_char
+tk_inq:
+         cmp.b   d4,d0
+         bne.s   tk_lit
+         moveq   #0,d4                  * closing quote
+         bra.s   tk_char
+tk_lit:
+         move.b  d0,(a1)+
+         bra.s   tk_char
+tk_end:
+         clr.b   (a1)+                  * terminate the argument
+         bra.s   tk_skip
+tk_done:
+         clr.l   (a3)                   * argv[argc] = NULL
+* -- 7. stdio / hooks, then main ---------------------------------------
+         move.l  d2,-(a7)               * 12(a7) = argc (private copy)
+         move.l  d6,-(a7)               *  8(a7) = envp
+         lea     ia_scr(a6),a1
+         move.l  a1,-(a7)               *  4(a7) = pointer to scratch words
+         move.l  a0,-(a7)               *   (a7) = argv
+         bsr     _iobinit
+         bsr     _utinit
+         move.l  12(a7),d0
+         move.l  (a7),d1
+         bsr     _initarg
+         move.l  12(a7),d0              * d0 = argc
+         move.l  (a7),d1                * d1 = argv
+         move.l  8(a7),-(a7)            * stack argument: envp
+         bsr     main
+         addq.l  #4,a7
+* -- 8. leave with main's status ----------------------------------------
+         bsr     exit                   * d0 = status; does not come back
+         move.l  d0,d1                  * safety net: leave directly
+         trap    #0
+         dc.w    Q$Exit
+
+* -------------------------------------------------------------- errors
+q9_nomem:
+         move.w  #EQ$MemFul,d1
+         trap    #0
+         dc.w    Q$Exit
+         bra.s   q9_nomem
+
+* ------------------------------------------------------------- helpers
+* q9_zero: a0 = start, a1 = end (exclusive).  Clears [a0, a1).
+*          Clobbers d0, d1, a0.  Nothing happens if a0 >= a1.
+q9_zero:
+         cmpa.l  a1,a0
+         bhs.s   zr_done
+         move.l  a0,d0
+         btst    #0,d0
+         beq.s   zr_even
+         clr.b   (a0)+                  * bring a0 to an even address
+         bra.s   q9_zero
+zr_even:
+         move.l  a1,d0
+         move.l  a0,d1
+         sub.l   d1,d0                  * d0 = bytes left
+         move.l  d0,d1
+         lsr.l   #2,d1                  * d1 = longwords
+         beq.s   zr_tail
+zr_long:
+         clr.l   (a0)+
+         subq.l  #1,d1
+         bne.s   zr_long
+zr_tail:
+         andi.l  #3,d0
+         beq.s   zr_done
+zr_byte:
+         clr.b   (a0)+
+         subq.l  #1,d0
+         bne.s   zr_byte
+zr_done:
+         rts
+
+         ends

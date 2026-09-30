@@ -29,7 +29,7 @@ ROFS = $(patsubst src/extra_%.a,build/extra_%.r,$(sort $(wildcard src/extra_*.a)
        build/mem.r build/mem_c.r \
        build/iob.r build/os9call.r
 
-all: build/qclib.l build/q9_cstart.r
+all: build/qclib.l build/q9_cstart.r build/q9_start.r
 
 build/qclib.l: $(ROFS)
 	cat $(ROFS) > $@
@@ -55,6 +55,10 @@ build/%.r: src/%.a | build
 build/q9_cstart.r: $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d | build
 	cp $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d build/
 	cd build && $(abspath $(QR68)) q9_cstart.a -o=q9_cstart.r
+
+# Eigener C-Startcode (startup/README.md); ersetzt q9_cstart.r schrittweise.
+build/q9_start.r: startup/q9_start.a | build
+	$(QR68) $< -o=$@
 
 build:
 	mkdir -p build
