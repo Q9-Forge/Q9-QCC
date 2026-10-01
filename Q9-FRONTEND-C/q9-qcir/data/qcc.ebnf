@@ -934,7 +934,7 @@ sizeofExpr = "sizeof" ( "(" sizeofArg ")" | sizeofVarName ) .
 /* "sizeof x" OHNE Klammern (2026-09-16) ist in C89 gueltig und scheiterte
    stumm. Nur die Variablenform -- "sizeof int" ohne Klammern gibt es in C
    nicht, ein Typname braucht sie immer. */
-sizeofArg  = sizeofType | sizeofVarName .
+sizeofArg  = sizeofType | sizeofVarName | sizeofStringLit .
 /* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gemessen): sizeofType lief frueher
    ueber die volle Typregel `type`, und die endet auf `typedefRef = ident`.
    Damit matchte der TYPZWEIG JEDEN BEZEICHNER und gewann die geordnete Auswahl
@@ -958,6 +958,10 @@ sizeofType = sizeofBaseType pointerDecl .
    double-Einbau ("der Typtext wird an mehreren Stellen gelesen"). */
 sizeofBaseType = "unsigned" unsignedInt | "int" | longLongType | "long" | "char" | "short" | "bool" | "double" | "float" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
 sizeofVarName = ident .
+/* sizeof auf einem Stringliteral ist ein konstanter char-Arrayumfang inklusive
+   abschliessendem Nullbyte. Eigene aktionstragende Regel statt stringLit:
+   dessen Aktion wuerde im sizeof-Kontext unnoetig ein globales Array emittieren. */
+sizeofStringLit = stringPiece { stringSep stringPiece } .
 
 castExpr   = "(" castType ")" castOperand .
 /* Ein Cast verwendet dieselbe Typgrammatik wie eine Deklaration. Damit sind

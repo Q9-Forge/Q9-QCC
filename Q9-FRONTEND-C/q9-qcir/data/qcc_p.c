@@ -63,7 +63,7 @@ static void actionLogReplay(void) {
 	for (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);
 }
 
-/* ACTION routines from [USER-CODE] (copied verbatim) */
+/* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */
 /* ---- QCC Frontend: globaler Zustand + Helfer (ARCHITEKTUR.md Kap.10) ---- */
 typedef struct TCType {
 	char base;                    /* i=int32, u=uint32, c=char, b=bool, z=Nullkonstante, s=struct */
@@ -7878,6 +7878,15 @@ void tc_enumdecl(const char* start, const char* end) {
 	tcParseEnumBody(p, end);
 }
 
+void tc_sizeofstring(const char* start, const char* end) {
+	unsigned char bytes[256];
+	int length;
+	/* C counts the terminating null byte, after concatenating adjacent literals. */
+	length = tcDecodeStringLit(start, end, bytes, 256);
+	printf("PUSH %d\n", length + 1);
+	tcTypePush(tcMakeType('i', 0));
+}
+
 void tc_sizeof(const char* start, const char* end) {
 	int size;
 	int sizeN = 0;   /* Zeigeranteil der Groesse, s. tcEmitNum */
@@ -8488,31 +8497,32 @@ static void actionLogDispatch(int id, const char* start, const char* end) {
 	if (id == 248) { tc_addressref(start, end); return; }
 	if (id == 251) { tc_sizeof(start, end); return; }
 	if (id == 253) { tc_sizeofvar(start, end); return; }
-	if (id == 254) { tc_cast(start, end); return; }
-	if (id == 255) { tc_castcapture(start, end); return; }
-	if (id == 257) { tc_preincdec(start, end); return; }
-	if (id == 258) { tc_postincdec(start, end); return; }
-	if (id == 263) { tc_incdecstmt(start, end); return; }
-	if (id == 264) { tc_derefref(start, end); return; }
-	if (id == 265) { tc_call(start, end); return; }
-	if (id == 266) { tc_callmember(start, end); return; }
-	if (id == 267) { tc_indcall(start, end); return; }
-	if (id == 268) { tc_indcallbegin(start, end); return; }
-	if (id == 270) { tc_arg(start, end); return; }
-	if (id == 272) { tc_target(start, end); return; }
-	if (id == 273) { tc_indirecttarget(start, end); return; }
-	if (id == 274) { tc_varref(start, end); return; }
-	if (id == 275) { tc_arg(start, end); return; }
-	if (id == 276) { tc_callname(start, end); return; }
-	if (id == 278) { tc_defname(start, end); return; }
-	if (id == 280) { tc_local(start, end); return; }
-	if (id == 282) { tc_callname(start, end); return; }
-	if (id == 283) { tc_type(start, end); return; }
-	if (id == 285) { tc_longlong(start, end); return; }
-	if (id == 290) { tc_pointerdecl(start, end); return; }
-	if (id == 293) { tc_number(start, end); return; }
-	if (id == 295) { tc_number(start, end); return; }
-	if (id == 301) { tc_floatlit(start, end); return; }
+	if (id == 254) { tc_sizeofstring(start, end); return; }
+	if (id == 255) { tc_cast(start, end); return; }
+	if (id == 256) { tc_castcapture(start, end); return; }
+	if (id == 258) { tc_preincdec(start, end); return; }
+	if (id == 259) { tc_postincdec(start, end); return; }
+	if (id == 264) { tc_incdecstmt(start, end); return; }
+	if (id == 265) { tc_derefref(start, end); return; }
+	if (id == 266) { tc_call(start, end); return; }
+	if (id == 267) { tc_callmember(start, end); return; }
+	if (id == 268) { tc_indcall(start, end); return; }
+	if (id == 269) { tc_indcallbegin(start, end); return; }
+	if (id == 271) { tc_arg(start, end); return; }
+	if (id == 273) { tc_target(start, end); return; }
+	if (id == 274) { tc_indirecttarget(start, end); return; }
+	if (id == 275) { tc_varref(start, end); return; }
+	if (id == 276) { tc_arg(start, end); return; }
+	if (id == 277) { tc_callname(start, end); return; }
+	if (id == 279) { tc_defname(start, end); return; }
+	if (id == 281) { tc_local(start, end); return; }
+	if (id == 283) { tc_callname(start, end); return; }
+	if (id == 284) { tc_type(start, end); return; }
+	if (id == 286) { tc_longlong(start, end); return; }
+	if (id == 291) { tc_pointerdecl(start, end); return; }
+	if (id == 294) { tc_number(start, end); return; }
+	if (id == 296) { tc_number(start, end); return; }
+	if (id == 302) { tc_floatlit(start, end); return; }
 	actionErrors++;
 }
 
@@ -8770,6 +8780,7 @@ static int p_sizeofArg(void);
 static int p_sizeofType(void);
 static int p_sizeofBaseType(void);
 static int p_sizeofVarName(void);
+static int p_sizeofStringLit(void);
 static int p_castExpr(void);
 static int p_castType(void);
 static int p_castOperand(void);
@@ -14356,7 +14367,11 @@ static int p_sizeofArg(void) {
 L742:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	if (!p_sizeofVarName()) goto L743;
 	goto L741;
-L743:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L740;
+L743:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (!p_sizeofStringLit()) goto L744;
+	goto L741;
+L744:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L740;
 L741:	sp--;
 	return 1;
 L740:	p = entry; actionLogLen = entryLog;
@@ -14370,11 +14385,11 @@ static int p_sizeofType(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_sizeofBaseType()) goto L744;
-	if (!p_pointerDecl()) goto L744;
+	if (!p_sizeofBaseType()) goto L745;
+	if (!p_pointerDecl()) goto L745;
 	actionLogPush(251, entry, p);	/* ACTION AFTER sizeofType */
 	return 1;
-L744:	p = entry; actionLogLen = entryLog;
+L745:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14387,87 +14402,87 @@ static int p_sizeofBaseType(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, "unsigned", 8) != 0) goto L747;
-	if (idch((unsigned char)p[8])) goto L747;
+	if (strncmp(p, "unsigned", 8) != 0) goto L748;
+	if (idch((unsigned char)p[8])) goto L748;
 	p += 8;
-	if (!p_unsignedInt()) goto L747;
-	goto L746;
-L747:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (strncmp(p, "int", 3) != 0) goto L748;
-	if (idch((unsigned char)p[3])) goto L748;
-	p += 3;
-	goto L746;
+	if (!p_unsignedInt()) goto L748;
+	goto L747;
 L748:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_longLongType()) goto L749;
-	goto L746;
-L749:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "long", 4) != 0) goto L750;
-	if (idch((unsigned char)p[4])) goto L750;
-	p += 4;
-	goto L746;
+	if (strncmp(p, "int", 3) != 0) goto L749;
+	if (idch((unsigned char)p[3])) goto L749;
+	p += 3;
+	goto L747;
+L749:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_longLongType()) goto L750;
+	goto L747;
 L750:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "char", 4) != 0) goto L751;
+	if (strncmp(p, "long", 4) != 0) goto L751;
 	if (idch((unsigned char)p[4])) goto L751;
 	p += 4;
-	goto L746;
+	goto L747;
 L751:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "short", 5) != 0) goto L752;
-	if (idch((unsigned char)p[5])) goto L752;
-	p += 5;
-	goto L746;
+	if (strncmp(p, "char", 4) != 0) goto L752;
+	if (idch((unsigned char)p[4])) goto L752;
+	p += 4;
+	goto L747;
 L752:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "bool", 4) != 0) goto L753;
-	if (idch((unsigned char)p[4])) goto L753;
-	p += 4;
-	goto L746;
+	if (strncmp(p, "short", 5) != 0) goto L753;
+	if (idch((unsigned char)p[5])) goto L753;
+	p += 5;
+	goto L747;
 L753:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "double", 6) != 0) goto L754;
-	if (idch((unsigned char)p[6])) goto L754;
-	p += 6;
-	goto L746;
+	if (strncmp(p, "bool", 4) != 0) goto L754;
+	if (idch((unsigned char)p[4])) goto L754;
+	p += 4;
+	goto L747;
 L754:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "float", 5) != 0) goto L755;
-	if (idch((unsigned char)p[5])) goto L755;
-	p += 5;
-	goto L746;
+	if (strncmp(p, "double", 6) != 0) goto L755;
+	if (idch((unsigned char)p[6])) goto L755;
+	p += 6;
+	goto L747;
 L755:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "struct", 6) != 0) goto L756;
-	if (idch((unsigned char)p[6])) goto L756;
-	p += 6;
-	if (!p_structTypeRef()) goto L756;
-	goto L746;
+	if (strncmp(p, "float", 5) != 0) goto L756;
+	if (idch((unsigned char)p[5])) goto L756;
+	p += 5;
+	goto L747;
 L756:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "union", 5) != 0) goto L757;
-	if (idch((unsigned char)p[5])) goto L757;
-	p += 5;
-	if (!p_unionTypeRef()) goto L757;
-	goto L746;
+	if (strncmp(p, "struct", 6) != 0) goto L757;
+	if (idch((unsigned char)p[6])) goto L757;
+	p += 6;
+	if (!p_structTypeRef()) goto L757;
+	goto L747;
 L757:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "enum", 4) != 0) goto L758;
-	if (idch((unsigned char)p[4])) goto L758;
-	p += 4;
-	if (!p_enumTypeRef()) goto L758;
-	goto L746;
+	if (strncmp(p, "union", 5) != 0) goto L758;
+	if (idch((unsigned char)p[5])) goto L758;
+	p += 5;
+	if (!p_unionTypeRef()) goto L758;
+	goto L747;
 L758:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "void", 4) != 0) goto L759;
+	if (strncmp(p, "enum", 4) != 0) goto L759;
 	if (idch((unsigned char)p[4])) goto L759;
 	p += 4;
-	goto L746;
-L759:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L745;
-L746:	sp--;
+	if (!p_enumTypeRef()) goto L759;
+	goto L747;
+L759:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (strncmp(p, "void", 4) != 0) goto L760;
+	if (idch((unsigned char)p[4])) goto L760;
+	p += 4;
+	goto L747;
+L760:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L746;
+L747:	sp--;
 	return 1;
-L745:	p = entry; actionLogLen = entryLog;
+L746:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14479,10 +14494,28 @@ static int p_sizeofVarName(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L760;
+	if (!p_ident()) goto L761;
 	actionLogPush(253, entry, p);	/* ACTION AFTER sizeofVarName */
 	return 1;
-L760:	p = entry; actionLogLen = entryLog;
+L761:	p = entry; actionLogLen = entryLog;
+	return 0;
+}
+
+/* sizeofStringLit (lexikalisch) */
+static int p_sizeofStringLit(void) {
+	const char* sv[64]; int svLog[64]; int sp;
+	const char* entry; int entryLog;
+	sp = 0; entry = p; entryLog = actionLogLen;
+	(void)sv; (void)svLog; (void)sp; (void)entryLog;
+	if (!p_stringPiece()) goto L762;
+L763:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_stringSep()) goto L764;
+	if (!p_stringPiece()) goto L764;
+	sp--; goto L763;
+L764:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	actionLogPush(254, entry, p);	/* ACTION AFTER sizeofStringLit */
+	return 1;
+L762:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14494,16 +14527,16 @@ static int p_castExpr(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "(", 1) != 0) goto L761;
+	if (strncmp(p, "(", 1) != 0) goto L765;
 	p += 1;
-	if (!p_castType()) goto L761;
+	if (!p_castType()) goto L765;
 	ws();
-	if (strncmp(p, ")", 1) != 0) goto L761;
+	if (strncmp(p, ")", 1) != 0) goto L765;
 	p += 1;
-	if (!p_castOperand()) goto L761;
-	actionLogPush(254, entry, p);	/* ACTION AFTER castExpr */
+	if (!p_castOperand()) goto L765;
+	actionLogPush(255, entry, p);	/* ACTION AFTER castExpr */
 	return 1;
-L761:	p = entry; actionLogLen = entryLog;
+L765:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14515,15 +14548,15 @@ static int p_castType(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_retConstKw()) goto L763;
-	sp--; goto L764;
-L763:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L764:	;
-	if (!p_type()) goto L762;
-	if (!p_pointerDecl()) goto L762;
-	actionLogPush(255, entry, p);	/* ACTION AFTER castType */
+	if (!p_retConstKw()) goto L767;
+	sp--; goto L768;
+L767:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L768:	;
+	if (!p_type()) goto L766;
+	if (!p_pointerDecl()) goto L766;
+	actionLogPush(256, entry, p);	/* ACTION AFTER castType */
 	return 1;
-L762:	p = entry; actionLogLen = entryLog;
+L766:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14535,81 +14568,81 @@ static int p_castOperand(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_sizeofExpr()) goto L767;
-	goto L766;
-L767:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_vaArgExpr()) goto L768;
-	goto L766;
-L768:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_castExpr()) goto L769;
-	goto L766;
-L769:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_preIncDec()) goto L770;
-	goto L766;
-L770:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_postIncDec()) goto L771;
-	goto L766;
+	if (!p_sizeofExpr()) goto L771;
+	goto L770;
 L771:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_parenOpen()) goto L772;
-	if (!p_commaExpr()) goto L772;
-	if (!p_parenClose()) goto L772;
-	goto L766;
+	if (!p_vaArgExpr()) goto L772;
+	goto L770;
 L772:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_call()) goto L773;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_postfixIndex()) goto L774;
-	sp--; goto L775;
-L774:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L775:	;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_callMember()) goto L776;
-	sp--; goto L777;
-L776:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L777:	;
-	goto L766;
+	if (!p_castExpr()) goto L773;
+	goto L770;
 L773:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_indirectCall()) goto L778;
-	goto L766;
-L778:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_boolLit()) goto L779;
-	goto L766;
-L779:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_addressRef()) goto L780;
-	goto L766;
-L780:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_derefRef()) goto L781;
-	goto L766;
-L781:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_varRef()) goto L782;
-	goto L766;
-L782:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (!p_charLit()) goto L783;
-	goto L766;
-L783:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (!p_floatLit()) goto L784;
-	goto L766;
-L784:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (!p_number()) goto L785;
-	goto L766;
-L785:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (!p_stringLit()) goto L786;
+	if (!p_preIncDec()) goto L774;
+	goto L770;
+L774:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_postIncDec()) goto L775;
+	goto L770;
+L775:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_parenOpen()) goto L776;
+	if (!p_commaExpr()) goto L776;
+	if (!p_parenClose()) goto L776;
+	goto L770;
+L776:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_call()) goto L777;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_postfixIndex()) goto L787;
-	sp--; goto L788;
-L787:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L788:	;
-	goto L766;
+	if (!p_postfixIndex()) goto L778;
+	sp--; goto L779;
+L778:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L779:	;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_callMember()) goto L780;
+	sp--; goto L781;
+L780:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L781:	;
+	goto L770;
+L777:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_indirectCall()) goto L782;
+	goto L770;
+L782:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_boolLit()) goto L783;
+	goto L770;
+L783:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_addressRef()) goto L784;
+	goto L770;
+L784:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_derefRef()) goto L785;
+	goto L770;
+L785:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_varRef()) goto L786;
+	goto L770;
 L786:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_negFactor()) goto L789;
-	goto L766;
-L789:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L765;
-L766:	sp--;
+	ws();
+	if (!p_charLit()) goto L787;
+	goto L770;
+L787:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (!p_floatLit()) goto L788;
+	goto L770;
+L788:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (!p_number()) goto L789;
+	goto L770;
+L789:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (!p_stringLit()) goto L790;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_postfixIndex()) goto L791;
+	sp--; goto L792;
+L791:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L792:	;
+	goto L770;
+L790:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_negFactor()) goto L793;
+	goto L770;
+L793:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L769;
+L770:	sp--;
 	return 1;
-L765:	p = entry; actionLogLen = entryLog;
+L769:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14621,27 +14654,27 @@ static int p_preIncDec(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_incdecOp()) goto L792;
-	if (!p_derefIncTarget()) goto L792;
-	goto L791;
-L792:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_incdecOp()) goto L793;
-	if (!p_memberIncTarget()) goto L793;
-	goto L791;
-L793:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_incdecOp()) goto L794;
-	if (!p_indexIncTarget()) goto L794;
-	goto L791;
-L794:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_incdecOp()) goto L795;
+	if (!p_incdecOp()) goto L796;
+	if (!p_derefIncTarget()) goto L796;
+	goto L795;
+L796:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_incdecOp()) goto L797;
+	if (!p_memberIncTarget()) goto L797;
+	goto L795;
+L797:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_incdecOp()) goto L798;
+	if (!p_indexIncTarget()) goto L798;
+	goto L795;
+L798:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_incdecOp()) goto L799;
 	ws();
-	if (!p_ident()) goto L795;
-	goto L791;
-L795:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L790;
-L791:	sp--;
-	actionLogPush(257, entry, p);	/* ACTION AFTER preIncDec */
+	if (!p_ident()) goto L799;
+	goto L795;
+L799:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L794;
+L795:	sp--;
+	actionLogPush(258, entry, p);	/* ACTION AFTER preIncDec */
 	return 1;
-L790:	p = entry; actionLogLen = entryLog;
+L794:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14653,27 +14686,27 @@ static int p_postIncDec(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_derefIncTarget()) goto L798;
-	if (!p_incdecOp()) goto L798;
-	goto L797;
-L798:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_memberIncTarget()) goto L799;
-	if (!p_incdecOp()) goto L799;
-	goto L797;
-L799:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_indexIncTarget()) goto L800;
-	if (!p_incdecOp()) goto L800;
-	goto L797;
-L800:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_derefIncTarget()) goto L802;
+	if (!p_incdecOp()) goto L802;
+	goto L801;
+L802:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_memberIncTarget()) goto L803;
+	if (!p_incdecOp()) goto L803;
+	goto L801;
+L803:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_indexIncTarget()) goto L804;
+	if (!p_incdecOp()) goto L804;
+	goto L801;
+L804:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (!p_ident()) goto L801;
-	if (!p_incdecOp()) goto L801;
-	goto L797;
-L801:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L796;
-L797:	sp--;
-	actionLogPush(258, entry, p);	/* ACTION AFTER postIncDec */
+	if (!p_ident()) goto L805;
+	if (!p_incdecOp()) goto L805;
+	goto L801;
+L805:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L800;
+L801:	sp--;
+	actionLogPush(259, entry, p);	/* ACTION AFTER postIncDec */
 	return 1;
-L796:	p = entry; actionLogLen = entryLog;
+L800:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14685,15 +14718,15 @@ static int p_memberIncTarget(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L802;
-	if (!p_member()) goto L802;
+	if (!p_ident()) goto L806;
+	if (!p_member()) goto L806;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L803;
-	sp--; goto L804;
-L803:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L804:	;
+	if (!p_index()) goto L807;
+	sp--; goto L808;
+L807:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L808:	;
 	return 1;
-L802:	p = entry; actionLogLen = entryLog;
+L806:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14705,10 +14738,10 @@ static int p_indexIncTarget(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L805;
-	if (!p_index()) goto L805;
+	if (!p_ident()) goto L809;
+	if (!p_index()) goto L809;
 	return 1;
-L805:	p = entry; actionLogLen = entryLog;
+L809:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14720,19 +14753,19 @@ static int p_derefIncTarget(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "(", 1) != 0) goto L806;
+	if (strncmp(p, "(", 1) != 0) goto L810;
 	p += 1;
 	ws();
-	if (strncmp(p, "*", 1) != 0) goto L806;
-	if (strncmp(p, "*=", 2) == 0) goto L806;	/* Longest-Match */
+	if (strncmp(p, "*", 1) != 0) goto L810;
+	if (strncmp(p, "*=", 2) == 0) goto L810;	/* Longest-Match */
 	p += 1;
 	ws();
-	if (!p_ident()) goto L806;
+	if (!p_ident()) goto L810;
 	ws();
-	if (strncmp(p, ")", 1) != 0) goto L806;
+	if (strncmp(p, ")", 1) != 0) goto L810;
 	p += 1;
 	return 1;
-L806:	p = entry; actionLogLen = entryLog;
+L810:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14745,18 +14778,18 @@ static int p_incdecOp(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, "++", 2) != 0) goto L809;
+	if (strncmp(p, "++", 2) != 0) goto L813;
 	p += 2;
-	goto L808;
-L809:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	goto L812;
+L813:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "--", 2) != 0) goto L810;
+	if (strncmp(p, "--", 2) != 0) goto L814;
 	p += 2;
-	goto L808;
-L810:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L807;
-L808:	sp--;
+	goto L812;
+L814:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L811;
+L812:	sp--;
 	return 1;
-L807:	p = entry; actionLogLen = entryLog;
+L811:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14768,22 +14801,22 @@ static int p_incDecStmt(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_preIncDec()) goto L813;
+	if (!p_preIncDec()) goto L817;
 	ws();
-	if (strncmp(p, ";", 1) != 0) goto L813;
+	if (strncmp(p, ";", 1) != 0) goto L817;
 	p += 1;
-	goto L812;
-L813:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_postIncDec()) goto L814;
+	goto L816;
+L817:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_postIncDec()) goto L818;
 	ws();
-	if (strncmp(p, ";", 1) != 0) goto L814;
+	if (strncmp(p, ";", 1) != 0) goto L818;
 	p += 1;
-	goto L812;
-L814:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L811;
-L812:	sp--;
-	actionLogPush(263, entry, p);	/* ACTION AFTER incDecStmt */
+	goto L816;
+L818:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L815;
+L816:	sp--;
+	actionLogPush(264, entry, p);	/* ACTION AFTER incDecStmt */
 	return 1;
-L811:	p = entry; actionLogLen = entryLog;
+L815:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14795,13 +14828,13 @@ static int p_derefRef(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "*", 1) != 0) goto L815;
-	if (strncmp(p, "*=", 2) == 0) goto L815;	/* Longest-Match */
+	if (strncmp(p, "*", 1) != 0) goto L819;
+	if (strncmp(p, "*=", 2) == 0) goto L819;	/* Longest-Match */
 	p += 1;
-	if (!p_factor()) goto L815;
-	actionLogPush(264, entry, p);	/* ACTION AFTER derefRef */
+	if (!p_factor()) goto L819;
+	actionLogPush(265, entry, p);	/* ACTION AFTER derefRef */
 	return 1;
-L815:	p = entry; actionLogLen = entryLog;
+L819:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14812,17 +14845,17 @@ static int p_call(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_funcName()) goto L816;
+	if (!p_funcName()) goto L820;
 	ws();
-	if (strncmp(p, "(", 1) != 0) goto L816;
+	if (strncmp(p, "(", 1) != 0) goto L820;
 	p += 1;
-	if (!p_argList()) goto L816;
+	if (!p_argList()) goto L820;
 	ws();
-	if (strncmp(p, ")", 1) != 0) goto L816;
+	if (strncmp(p, ")", 1) != 0) goto L820;
 	p += 1;
-	actionLogPush(265, entry, p);	/* ACTION AFTER call */
+	actionLogPush(266, entry, p);	/* ACTION AFTER call */
 	return 1;
-L816:	p = entry; actionLogLen = entryLog;
+L820:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14833,15 +14866,15 @@ static int p_callMember(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_member()) goto L817;
+	if (!p_member()) goto L821;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L818;
-	sp--; goto L819;
-L818:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L819:	;
-	actionLogPush(266, entry, p);	/* ACTION AFTER callMember */
+	if (!p_index()) goto L822;
+	sp--; goto L823;
+L822:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L823:	;
+	actionLogPush(267, entry, p);	/* ACTION AFTER callMember */
 	return 1;
-L817:	p = entry; actionLogLen = entryLog;
+L821:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14852,15 +14885,15 @@ static int p_indirectCall(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_varRef()) goto L820;
-	if (!p_indCallOpen()) goto L820;
-	if (!p_argList()) goto L820;
+	if (!p_varRef()) goto L824;
+	if (!p_indCallOpen()) goto L824;
+	if (!p_argList()) goto L824;
 	ws();
-	if (strncmp(p, ")", 1) != 0) goto L820;
+	if (strncmp(p, ")", 1) != 0) goto L824;
 	p += 1;
-	actionLogPush(267, entry, p);	/* ACTION AFTER indirectCall */
+	actionLogPush(268, entry, p);	/* ACTION AFTER indirectCall */
 	return 1;
-L820:	p = entry; actionLogLen = entryLog;
+L824:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14872,11 +14905,11 @@ static int p_indCallOpen(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "(", 1) != 0) goto L821;
+	if (strncmp(p, "(", 1) != 0) goto L825;
 	p += 1;
-	actionLogPush(268, entry, p);	/* ACTION AFTER indCallOpen */
+	actionLogPush(269, entry, p);	/* ACTION AFTER indCallOpen */
 	return 1;
-L821:	p = entry; actionLogLen = entryLog;
+L825:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14888,19 +14921,19 @@ static int p_argList(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_arg()) goto L823;
-L825:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_arg()) goto L827;
+L829:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, ",", 1) != 0) goto L826;
+	if (strncmp(p, ",", 1) != 0) goto L830;
 	p += 1;
-	if (!p_arg()) goto L826;
-	sp--; goto L825;
-L826:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L824;
-L823:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L824:	;
+	if (!p_arg()) goto L830;
+	sp--; goto L829;
+L830:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L828;
+L827:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L828:	;
 	return 1;
-L822:	p = entry; actionLogLen = entryLog;
+L826:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14911,10 +14944,10 @@ static int p_arg(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_expr()) goto L827;
-	actionLogPush(270, entry, p);	/* ACTION AFTER arg */
+	if (!p_expr()) goto L831;
+	actionLogPush(271, entry, p);	/* ACTION AFTER arg */
 	return 1;
-L827:	p = entry; actionLogLen = entryLog;
+L831:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14926,15 +14959,15 @@ static int p_target(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_directTarget()) goto L830;
-	goto L829;
-L830:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_indirectTarget()) goto L831;
-	goto L829;
-L831:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L828;
-L829:	sp--;
+	if (!p_directTarget()) goto L834;
+	goto L833;
+L834:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_indirectTarget()) goto L835;
+	goto L833;
+L835:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L832;
+L833:	sp--;
 	return 1;
-L828:	p = entry; actionLogLen = entryLog;
+L832:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14946,46 +14979,46 @@ static int p_directTarget(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L832;
+	if (!p_ident()) goto L836;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L833;
-L835:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L836;
-	sp--; goto L835;
-L836:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L834;
-L833:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L834:	;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_member()) goto L837;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L839;
-L841:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L842;
-	sp--; goto L841;
-L842:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L840;
-L839:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L840:	;
-L843:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_member()) goto L844;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L845;
-L847:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L848;
-	sp--; goto L847;
-L848:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L846;
-L845:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L846:	;
-	sp--; goto L843;
-L844:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_index()) goto L837;
+L839:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L840;
+	sp--; goto L839;
+L840:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	sp--; goto L838;
 L837:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L838:	;
-	actionLogPush(272, entry, p);	/* ACTION AFTER directTarget */
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_member()) goto L841;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L843;
+L845:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L846;
+	sp--; goto L845;
+L846:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L844;
+L843:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L844:	;
+L847:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_member()) goto L848;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L849;
+L851:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L852;
+	sp--; goto L851;
+L852:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L850;
+L849:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L850:	;
+	sp--; goto L847;
+L848:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L842;
+L841:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L842:	;
+	actionLogPush(273, entry, p);	/* ACTION AFTER directTarget */
 	return 1;
-L832:	p = entry; actionLogLen = entryLog;
+L836:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -14997,13 +15030,13 @@ static int p_indirectTarget(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "*", 1) != 0) goto L849;
-	if (strncmp(p, "*=", 2) == 0) goto L849;	/* Longest-Match */
+	if (strncmp(p, "*", 1) != 0) goto L853;
+	if (strncmp(p, "*=", 2) == 0) goto L853;	/* Longest-Match */
 	p += 1;
-	if (!p_factor()) goto L849;
-	actionLogPush(273, entry, p);	/* ACTION AFTER indirectTarget */
+	if (!p_factor()) goto L853;
+	actionLogPush(274, entry, p);	/* ACTION AFTER indirectTarget */
 	return 1;
-L849:	p = entry; actionLogLen = entryLog;
+L853:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15015,46 +15048,46 @@ static int p_varRef(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L850;
+	if (!p_ident()) goto L854;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L851;
-L853:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L854;
-	sp--; goto L853;
-L854:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L852;
-L851:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L852:	;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_member()) goto L855;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L857;
-L859:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L860;
-	sp--; goto L859;
-L860:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L858;
-L857:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L858:	;
-L861:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_member()) goto L862;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L863;
-L865:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_index()) goto L866;
-	sp--; goto L865;
-L866:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	sp--; goto L864;
-L863:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L864:	;
-	sp--; goto L861;
-L862:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_index()) goto L855;
+L857:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L858;
+	sp--; goto L857;
+L858:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	sp--; goto L856;
 L855:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 L856:	;
-	actionLogPush(274, entry, p);	/* ACTION AFTER varRef */
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_member()) goto L859;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L861;
+L863:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L864;
+	sp--; goto L863;
+L864:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L862;
+L861:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L862:	;
+L865:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_member()) goto L866;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L867;
+L869:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_index()) goto L870;
+	sp--; goto L869;
+L870:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L868;
+L867:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L868:	;
+	sp--; goto L865;
+L866:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	sp--; goto L860;
+L859:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L860:	;
+	actionLogPush(275, entry, p);	/* ACTION AFTER varRef */
 	return 1;
-L850:	p = entry; actionLogLen = entryLog;
+L854:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15065,14 +15098,14 @@ static int p_index(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_indexOpen()) goto L867;
-	if (!p_expr()) goto L867;
+	if (!p_indexOpen()) goto L871;
+	if (!p_expr()) goto L871;
 	ws();
-	if (strncmp(p, "]", 1) != 0) goto L867;
+	if (strncmp(p, "]", 1) != 0) goto L871;
 	p += 1;
-	actionLogPush(275, entry, p);	/* ACTION AFTER index */
+	actionLogPush(276, entry, p);	/* ACTION AFTER index */
 	return 1;
-L867:	p = entry; actionLogLen = entryLog;
+L871:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15084,11 +15117,11 @@ static int p_indexOpen(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "[", 1) != 0) goto L868;
+	if (strncmp(p, "[", 1) != 0) goto L872;
 	p += 1;
-	actionLogPush(276, entry, p);	/* ACTION AFTER indexOpen */
+	actionLogPush(277, entry, p);	/* ACTION AFTER indexOpen */
 	return 1;
-L868:	p = entry; actionLogLen = entryLog;
+L872:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15101,21 +15134,21 @@ static int p_member(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, ".", 1) != 0) goto L871;
-	if (strncmp(p, "...", 3) == 0) goto L871;	/* Longest-Match */
+	if (strncmp(p, ".", 1) != 0) goto L875;
+	if (strncmp(p, "...", 3) == 0) goto L875;	/* Longest-Match */
 	p += 1;
-	if (!p_fieldName()) goto L871;
-	goto L870;
-L871:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_fieldName()) goto L875;
+	goto L874;
+L875:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "->", 2) != 0) goto L872;
+	if (strncmp(p, "->", 2) != 0) goto L876;
 	p += 2;
-	if (!p_fieldName()) goto L872;
-	goto L870;
-L872:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L869;
-L870:	sp--;
+	if (!p_fieldName()) goto L876;
+	goto L874;
+L876:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L873;
+L874:	sp--;
 	return 1;
-L869:	p = entry; actionLogLen = entryLog;
+L873:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15127,10 +15160,10 @@ static int p_defName(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L873;
-	actionLogPush(278, entry, p);	/* ACTION AFTER defName */
+	if (!p_ident()) goto L877;
+	actionLogPush(279, entry, p);	/* ACTION AFTER defName */
 	return 1;
-L873:	p = entry; actionLogLen = entryLog;
+L877:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15142,9 +15175,9 @@ static int p_paramName(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L874;
+	if (!p_ident()) goto L878;
 	return 1;
-L874:	p = entry; actionLogLen = entryLog;
+L878:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15156,10 +15189,10 @@ static int p_localName(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L875;
-	actionLogPush(280, entry, p);	/* ACTION AFTER localName */
+	if (!p_ident()) goto L879;
+	actionLogPush(281, entry, p);	/* ACTION AFTER localName */
 	return 1;
-L875:	p = entry; actionLogLen = entryLog;
+L879:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15171,9 +15204,9 @@ static int p_globalName(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L876;
+	if (!p_ident()) goto L880;
 	return 1;
-L876:	p = entry; actionLogLen = entryLog;
+L880:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15185,10 +15218,10 @@ static int p_funcName(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L877;
-	actionLogPush(282, entry, p);	/* ACTION AFTER funcName */
+	if (!p_ident()) goto L881;
+	actionLogPush(283, entry, p);	/* ACTION AFTER funcName */
 	return 1;
-L877:	p = entry; actionLogLen = entryLog;
+L881:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15201,107 +15234,107 @@ static int p_type(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, "unsigned", 8) != 0) goto L880;
-	if (idch((unsigned char)p[8])) goto L880;
+	if (strncmp(p, "unsigned", 8) != 0) goto L884;
+	if (idch((unsigned char)p[8])) goto L884;
 	p += 8;
-	if (!p_unsignedInt()) goto L880;
-	goto L879;
-L880:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (strncmp(p, "signed", 6) != 0) goto L881;
-	if (idch((unsigned char)p[6])) goto L881;
-	p += 6;
-	if (!p_unsignedInt()) goto L881;
-	goto L879;
-L881:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (strncmp(p, "int", 3) != 0) goto L882;
-	if (idch((unsigned char)p[3])) goto L882;
-	p += 3;
-	goto L879;
-L882:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_longLongType()) goto L883;
-	goto L879;
-L883:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_longDoubleType()) goto L884;
-	goto L879;
+	if (!p_unsignedInt()) goto L884;
+	goto L883;
 L884:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "long", 4) != 0) goto L885;
-	if (idch((unsigned char)p[4])) goto L885;
-	p += 4;
-	goto L879;
+	if (strncmp(p, "signed", 6) != 0) goto L885;
+	if (idch((unsigned char)p[6])) goto L885;
+	p += 6;
+	if (!p_unsignedInt()) goto L885;
+	goto L883;
 L885:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "short", 5) != 0) goto L886;
-	if (idch((unsigned char)p[5])) goto L886;
-	p += 5;
-	goto L879;
+	if (strncmp(p, "int", 3) != 0) goto L886;
+	if (idch((unsigned char)p[3])) goto L886;
+	p += 3;
+	goto L883;
 L886:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (strncmp(p, "char", 4) != 0) goto L887;
-	if (idch((unsigned char)p[4])) goto L887;
-	p += 4;
-	goto L879;
+	if (!p_longLongType()) goto L887;
+	goto L883;
 L887:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	ws();
-	if (strncmp(p, "bool", 4) != 0) goto L888;
-	if (idch((unsigned char)p[4])) goto L888;
-	p += 4;
-	goto L879;
+	if (!p_longDoubleType()) goto L888;
+	goto L883;
 L888:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "double", 6) != 0) goto L889;
-	if (idch((unsigned char)p[6])) goto L889;
-	p += 6;
-	goto L879;
+	if (strncmp(p, "long", 4) != 0) goto L889;
+	if (idch((unsigned char)p[4])) goto L889;
+	p += 4;
+	goto L883;
 L889:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "float", 5) != 0) goto L890;
+	if (strncmp(p, "short", 5) != 0) goto L890;
 	if (idch((unsigned char)p[5])) goto L890;
 	p += 5;
-	goto L879;
+	goto L883;
 L890:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "va_list", 7) != 0) goto L891;
-	if (idch((unsigned char)p[7])) goto L891;
-	p += 7;
-	goto L879;
+	if (strncmp(p, "char", 4) != 0) goto L891;
+	if (idch((unsigned char)p[4])) goto L891;
+	p += 4;
+	goto L883;
 L891:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "struct", 6) != 0) goto L892;
-	if (idch((unsigned char)p[6])) goto L892;
-	p += 6;
-	if (!p_structTypeRef()) goto L892;
-	goto L879;
+	if (strncmp(p, "bool", 4) != 0) goto L892;
+	if (idch((unsigned char)p[4])) goto L892;
+	p += 4;
+	goto L883;
 L892:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "union", 5) != 0) goto L893;
-	if (idch((unsigned char)p[5])) goto L893;
-	p += 5;
-	if (!p_unionTypeRef()) goto L893;
-	goto L879;
+	if (strncmp(p, "double", 6) != 0) goto L893;
+	if (idch((unsigned char)p[6])) goto L893;
+	p += 6;
+	goto L883;
 L893:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "enum", 4) != 0) goto L894;
-	if (idch((unsigned char)p[4])) goto L894;
-	p += 4;
-	if (!p_enumTypeRef()) goto L894;
-	goto L879;
+	if (strncmp(p, "float", 5) != 0) goto L894;
+	if (idch((unsigned char)p[5])) goto L894;
+	p += 5;
+	goto L883;
 L894:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "void", 4) != 0) goto L895;
-	if (idch((unsigned char)p[4])) goto L895;
-	p += 4;
-	goto L879;
+	if (strncmp(p, "va_list", 7) != 0) goto L895;
+	if (idch((unsigned char)p[7])) goto L895;
+	p += 7;
+	goto L883;
 L895:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_typedefRef()) goto L896;
-	goto L879;
-L896:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L878;
-L879:	sp--;
-	actionLogPush(283, entry, p);	/* ACTION AFTER type */
+	ws();
+	if (strncmp(p, "struct", 6) != 0) goto L896;
+	if (idch((unsigned char)p[6])) goto L896;
+	p += 6;
+	if (!p_structTypeRef()) goto L896;
+	goto L883;
+L896:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (strncmp(p, "union", 5) != 0) goto L897;
+	if (idch((unsigned char)p[5])) goto L897;
+	p += 5;
+	if (!p_unionTypeRef()) goto L897;
+	goto L883;
+L897:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (strncmp(p, "enum", 4) != 0) goto L898;
+	if (idch((unsigned char)p[4])) goto L898;
+	p += 4;
+	if (!p_enumTypeRef()) goto L898;
+	goto L883;
+L898:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	ws();
+	if (strncmp(p, "void", 4) != 0) goto L899;
+	if (idch((unsigned char)p[4])) goto L899;
+	p += 4;
+	goto L883;
+L899:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_typedefRef()) goto L900;
+	goto L883;
+L900:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L882;
+L883:	sp--;
+	actionLogPush(284, entry, p);	/* ACTION AFTER type */
 	return 1;
-L878:	p = entry; actionLogLen = entryLog;
+L882:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15313,15 +15346,15 @@ static int p_longDoubleType(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "long", 4) != 0) goto L897;
-	if (idch((unsigned char)p[4])) goto L897;
+	if (strncmp(p, "long", 4) != 0) goto L901;
+	if (idch((unsigned char)p[4])) goto L901;
 	p += 4;
 	ws();
-	if (strncmp(p, "double", 6) != 0) goto L897;
-	if (idch((unsigned char)p[6])) goto L897;
+	if (strncmp(p, "double", 6) != 0) goto L901;
+	if (idch((unsigned char)p[6])) goto L901;
 	p += 6;
 	return 1;
-L897:	p = entry; actionLogLen = entryLog;
+L901:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15333,16 +15366,16 @@ static int p_longLongType(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "long", 4) != 0) goto L898;
-	if (idch((unsigned char)p[4])) goto L898;
+	if (strncmp(p, "long", 4) != 0) goto L902;
+	if (idch((unsigned char)p[4])) goto L902;
 	p += 4;
 	ws();
-	if (strncmp(p, "long", 4) != 0) goto L898;
-	if (idch((unsigned char)p[4])) goto L898;
+	if (strncmp(p, "long", 4) != 0) goto L902;
+	if (idch((unsigned char)p[4])) goto L902;
 	p += 4;
-	actionLogPush(285, entry, p);	/* ACTION AFTER longLongType */
+	actionLogPush(286, entry, p);	/* ACTION AFTER longLongType */
 	return 1;
-L898:	p = entry; actionLogLen = entryLog;
+L902:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15354,9 +15387,9 @@ static int p_unionTypeRef(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L899;
+	if (!p_ident()) goto L903;
 	return 1;
-L899:	p = entry; actionLogLen = entryLog;
+L903:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15368,9 +15401,9 @@ static int p_structTypeRef(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L900;
+	if (!p_ident()) goto L904;
 	return 1;
-L900:	p = entry; actionLogLen = entryLog;
+L904:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15382,9 +15415,9 @@ static int p_enumTypeRef(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L901;
+	if (!p_ident()) goto L905;
 	return 1;
-L901:	p = entry; actionLogLen = entryLog;
+L905:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15396,9 +15429,9 @@ static int p_typedefRef(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (!p_ident()) goto L902;
+	if (!p_ident()) goto L906;
 	return 1;
-L902:	p = entry; actionLogLen = entryLog;
+L906:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15409,13 +15442,13 @@ static int p_pointerDecl(void) {
 	ws();
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-L904:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_pointerStar()) goto L905;
-	sp--; goto L904;
-L905:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	actionLogPush(290, entry, p);	/* ACTION AFTER pointerDecl */
+L908:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_pointerStar()) goto L909;
+	sp--; goto L908;
+L909:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	actionLogPush(291, entry, p);	/* ACTION AFTER pointerDecl */
 	return 1;
-L903:	p = entry; actionLogLen = entryLog;
+L907:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15427,11 +15460,11 @@ static int p_pointerStar(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	ws();
-	if (strncmp(p, "*", 1) != 0) goto L906;
-	if (strncmp(p, "*=", 2) == 0) goto L906;	/* Longest-Match */
+	if (strncmp(p, "*", 1) != 0) goto L910;
+	if (strncmp(p, "*=", 2) == 0) goto L910;	/* Longest-Match */
 	p += 1;
 	return 1;
-L906:	p = entry; actionLogLen = entryLog;
+L910:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15444,32 +15477,32 @@ static int p_unsignedInt(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, "int", 3) != 0) goto L909;
-	if (idch((unsigned char)p[3])) goto L909;
+	if (strncmp(p, "int", 3) != 0) goto L913;
+	if (idch((unsigned char)p[3])) goto L913;
 	p += 3;
-	goto L908;
-L909:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	goto L912;
+L913:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "char", 4) != 0) goto L910;
-	if (idch((unsigned char)p[4])) goto L910;
+	if (strncmp(p, "char", 4) != 0) goto L914;
+	if (idch((unsigned char)p[4])) goto L914;
 	p += 4;
-	goto L908;
-L910:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	goto L912;
+L914:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "long", 4) != 0) goto L911;
-	if (idch((unsigned char)p[4])) goto L911;
+	if (strncmp(p, "long", 4) != 0) goto L915;
+	if (idch((unsigned char)p[4])) goto L915;
 	p += 4;
-	goto L908;
-L911:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	goto L912;
+L915:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "short", 5) != 0) goto L912;
-	if (idch((unsigned char)p[5])) goto L912;
+	if (strncmp(p, "short", 5) != 0) goto L916;
+	if (idch((unsigned char)p[5])) goto L916;
 	p += 5;
-	goto L908;
-L912:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L907;
-L908:	sp--;
+	goto L912;
+L916:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L911;
+L912:	sp--;
 	return 1;
-L907:	p = entry; actionLogLen = entryLog;
+L911:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15482,21 +15515,21 @@ static int p_boolLit(void) {
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	ws();
-	if (strncmp(p, "true", 4) != 0) goto L915;
-	if (idch((unsigned char)p[4])) goto L915;
+	if (strncmp(p, "true", 4) != 0) goto L919;
+	if (idch((unsigned char)p[4])) goto L919;
 	p += 4;
-	goto L914;
-L915:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	goto L918;
+L919:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	ws();
-	if (strncmp(p, "false", 5) != 0) goto L916;
-	if (idch((unsigned char)p[5])) goto L916;
+	if (strncmp(p, "false", 5) != 0) goto L920;
+	if (idch((unsigned char)p[5])) goto L920;
 	p += 5;
-	goto L914;
-L916:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L913;
-L914:	sp--;
-	actionLogPush(293, entry, p);	/* ACTION AFTER boolLit */
+	goto L918;
+L920:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L917;
+L918:	sp--;
+	actionLogPush(294, entry, p);	/* ACTION AFTER boolLit */
 	return 1;
-L913:	p = entry; actionLogLen = entryLog;
+L917:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15506,20 +15539,20 @@ static int p_ident(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_letter()) goto L917;
-L918:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
 	if (!p_letter()) goto L921;
-	goto L920;
-L921:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_digit()) goto L922;
-	goto L920;
-L922:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L919;
-L920:	sp--;
-	sp--; goto L918;
-L919:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L922:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_letter()) goto L925;
+	goto L924;
+L925:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_digit()) goto L926;
+	goto L924;
+L926:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L923;
+L924:	sp--;
+	sp--; goto L922;
+L923:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	return 1;
-L917:	p = entry; actionLogLen = entryLog;
+L921:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15530,21 +15563,21 @@ static int p_number(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_hexNumber()) goto L925;
-	goto L924;
-L925:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_decNumber()) goto L926;
-	goto L924;
-L926:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L923;
-L924:	sp--;
+	if (!p_hexNumber()) goto L929;
+	goto L928;
+L929:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_decNumber()) goto L930;
+	goto L928;
+L930:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L927;
+L928:	sp--;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_integerSuffix()) goto L927;
-	sp--; goto L928;
-L927:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L928:	;
-	actionLogPush(295, entry, p);	/* ACTION AFTER number */
+	if (!p_integerSuffix()) goto L931;
+	sp--; goto L932;
+L931:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L932:	;
+	actionLogPush(296, entry, p);	/* ACTION AFTER number */
 	return 1;
-L923:	p = entry; actionLogLen = entryLog;
+L927:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15555,49 +15588,49 @@ static int p_integerSuffix(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "u", 1) != 0) goto L931;
-	p += 1;
-	if (strncmp(p, "l", 1) != 0) goto L931;
-	p += 1;
-	goto L930;
-L931:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "U", 1) != 0) goto L932;
-	p += 1;
-	if (strncmp(p, "L", 1) != 0) goto L932;
-	p += 1;
-	goto L930;
-L932:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "l", 1) != 0) goto L933;
-	p += 1;
-	if (strncmp(p, "u", 1) != 0) goto L933;
-	p += 1;
-	goto L930;
-L933:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "L", 1) != 0) goto L934;
-	p += 1;
-	if (strncmp(p, "U", 1) != 0) goto L934;
-	p += 1;
-	goto L930;
-L934:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	if (strncmp(p, "u", 1) != 0) goto L935;
 	p += 1;
-	goto L930;
+	if (strncmp(p, "l", 1) != 0) goto L935;
+	p += 1;
+	goto L934;
 L935:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	if (strncmp(p, "U", 1) != 0) goto L936;
 	p += 1;
-	goto L930;
+	if (strncmp(p, "L", 1) != 0) goto L936;
+	p += 1;
+	goto L934;
 L936:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	if (strncmp(p, "l", 1) != 0) goto L937;
 	p += 1;
-	goto L930;
+	if (strncmp(p, "u", 1) != 0) goto L937;
+	p += 1;
+	goto L934;
 L937:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
 	if (strncmp(p, "L", 1) != 0) goto L938;
 	p += 1;
-	goto L930;
-L938:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L929;
-L930:	sp--;
+	if (strncmp(p, "U", 1) != 0) goto L938;
+	p += 1;
+	goto L934;
+L938:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "u", 1) != 0) goto L939;
+	p += 1;
+	goto L934;
+L939:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "U", 1) != 0) goto L940;
+	p += 1;
+	goto L934;
+L940:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "l", 1) != 0) goto L941;
+	p += 1;
+	goto L934;
+L941:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "L", 1) != 0) goto L942;
+	p += 1;
+	goto L934;
+L942:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L933;
+L934:	sp--;
 	return 1;
-L929:	p = entry; actionLogLen = entryLog;
+L933:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15607,16 +15640,16 @@ static int p_hexNumber(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (strncmp(p, "0", 1) != 0) goto L939;
+	if (strncmp(p, "0", 1) != 0) goto L943;
 	p += 1;
-	if (!p_hexMark()) goto L939;
-	if (!p_hexDigit()) goto L939;
-L940:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_hexDigit()) goto L941;
-	sp--; goto L940;
-L941:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_hexMark()) goto L943;
+	if (!p_hexDigit()) goto L943;
+L944:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_hexDigit()) goto L945;
+	sp--; goto L944;
+L945:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	return 1;
-L939:	p = entry; actionLogLen = entryLog;
+L943:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15627,17 +15660,17 @@ static int p_hexMark(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "x", 1) != 0) goto L944;
+	if (strncmp(p, "x", 1) != 0) goto L948;
 	p += 1;
-	goto L943;
-L944:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "X", 1) != 0) goto L945;
+	goto L947;
+L948:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "X", 1) != 0) goto L949;
 	p += 1;
-	goto L943;
-L945:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L942;
-L943:	sp--;
+	goto L947;
+L949:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L946;
+L947:	sp--;
 	return 1;
-L942:	p = entry; actionLogLen = entryLog;
+L946:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15648,20 +15681,20 @@ static int p_hexDigit(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L948;
-	goto L947;
-L948:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x66) goto L949;
+	if (!p_digit()) goto L952;
+	goto L951;
+L952:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x66) goto L953;
 	p++;
-	goto L947;
-L949:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x46) goto L950;
+	goto L951;
+L953:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x46) goto L954;
 	p++;
-	goto L947;
-L950:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L946;
-L947:	sp--;
+	goto L951;
+L954:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L950;
+L951:	sp--;
 	return 1;
-L946:	p = entry; actionLogLen = entryLog;
+L950:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15671,13 +15704,13 @@ static int p_decNumber(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_digit()) goto L951;
-L952:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L953;
-	sp--; goto L952;
-L953:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_digit()) goto L955;
+L956:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L957;
+	sp--; goto L956;
+L957:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	return 1;
-L951:	p = entry; actionLogLen = entryLog;
+L955:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15687,15 +15720,15 @@ static int p_floatLit(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (!p_digit()) goto L954;
-L955:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L956;
-	sp--; goto L955;
-L956:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-	if (!p_floatTail()) goto L954;
-	actionLogPush(301, entry, p);	/* ACTION AFTER floatLit */
+	if (!p_digit()) goto L958;
+L959:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L960;
+	sp--; goto L959;
+L960:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_floatTail()) goto L958;
+	actionLogPush(302, entry, p);	/* ACTION AFTER floatLit */
 	return 1;
-L954:	p = entry; actionLogLen = entryLog;
+L958:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15706,15 +15739,15 @@ static int p_floatTail(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_floatDotTail()) goto L959;
-	goto L958;
-L959:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (!p_floatExp()) goto L960;
-	goto L958;
-L960:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L957;
-L958:	sp--;
+	if (!p_floatDotTail()) goto L963;
+	goto L962;
+L963:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (!p_floatExp()) goto L964;
+	goto L962;
+L964:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L961;
+L962:	sp--;
 	return 1;
-L957:	p = entry; actionLogLen = entryLog;
+L961:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15724,19 +15757,19 @@ static int p_floatDotTail(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if (strncmp(p, ".", 1) != 0) goto L961;
+	if (strncmp(p, ".", 1) != 0) goto L965;
 	p += 1;
-L962:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L963;
-	sp--; goto L962;
-L963:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L966:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L967;
+	sp--; goto L966;
+L967:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_floatExp()) goto L964;
-	sp--; goto L965;
-L964:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L965:	;
+	if (!p_floatExp()) goto L968;
+	sp--; goto L969;
+L968:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L969:	;
 	return 1;
-L961:	p = entry; actionLogLen = entryLog;
+L965:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15747,27 +15780,27 @@ static int p_floatExp(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "e", 1) != 0) goto L968;
+	if (strncmp(p, "e", 1) != 0) goto L972;
 	p += 1;
-	goto L967;
-L968:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "E", 1) != 0) goto L969;
+	goto L971;
+L972:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "E", 1) != 0) goto L973;
 	p += 1;
-	goto L967;
-L969:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L966;
-L967:	sp--;
+	goto L971;
+L973:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L970;
+L971:	sp--;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_floatExpSign()) goto L970;
-	sp--; goto L971;
-L970:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
-L971:	;
-	if (!p_digit()) goto L966;
-L972:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (!p_digit()) goto L973;
-	sp--; goto L972;
-L973:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+	if (!p_floatExpSign()) goto L974;
+	sp--; goto L975;
+L974:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
+L975:	;
+	if (!p_digit()) goto L970;
+L976:	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
+	if (!p_digit()) goto L977;
+	sp--; goto L976;
+L977:	sp--; p = sv[sp]; actionLogLen = svLog[sp];
 	return 1;
-L966:	p = entry; actionLogLen = entryLog;
+L970:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15778,17 +15811,17 @@ static int p_floatExpSign(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if (strncmp(p, "+", 1) != 0) goto L976;
+	if (strncmp(p, "+", 1) != 0) goto L980;
 	p += 1;
-	goto L975;
-L976:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "-", 1) != 0) goto L977;
+	goto L979;
+L980:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "-", 1) != 0) goto L981;
 	p += 1;
-	goto L975;
-L977:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L974;
-L975:	sp--;
+	goto L979;
+L981:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L978;
+L979:	sp--;
 	return 1;
-L974:	p = entry; actionLogLen = entryLog;
+L978:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15799,21 +15832,21 @@ static int p_letter(void) {
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
 	sv[sp] = p; svLog[sp] = actionLogLen; sp++;
-	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x7A) goto L980;
+	if ((unsigned char)*p < 0x61 || (unsigned char)*p > 0x7A) goto L984;
 	p++;
-	goto L979;
-L980:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x5A) goto L981;
+	goto L983;
+L984:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if ((unsigned char)*p < 0x41 || (unsigned char)*p > 0x5A) goto L985;
 	p++;
-	goto L979;
-L981:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
-	if (strncmp(p, "_", 1) != 0) goto L982;
+	goto L983;
+L985:	p = sv[sp-1]; actionLogLen = svLog[sp-1];
+	if (strncmp(p, "_", 1) != 0) goto L986;
 	p += 1;
-	goto L979;
-L982:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L978;
-L979:	sp--;
+	goto L983;
+L986:	sp--; p = sv[sp]; actionLogLen = svLog[sp]; goto L982;
+L983:	sp--;
 	return 1;
-L978:	p = entry; actionLogLen = entryLog;
+L982:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15823,10 +15856,10 @@ static int p_digit(void) {
 	const char* entry; int entryLog;
 	sp = 0; entry = p; entryLog = actionLogLen;
 	(void)sv; (void)svLog; (void)sp; (void)entryLog;
-	if ((unsigned char)*p < 0x30 || (unsigned char)*p > 0x39) goto L983;
+	if ((unsigned char)*p < 0x30 || (unsigned char)*p > 0x39) goto L987;
 	p++;
 	return 1;
-L983:	p = entry; actionLogLen = entryLog;
+L987:	p = entry; actionLogLen = entryLog;
 	return 0;
 }
 
@@ -15846,11 +15879,6 @@ int main(int argc, char** argv) {
 	} else p = argv[1];
 	parserInputStart = p;
 	if (p_program()) { ws(); if (*p == '\0') { actionLogReplay(); if (actionErrors != 0) { printf("SEMERR\n"); QCC_OUTPUT_FLUSH(); return 1; } printf("OK\n"); QCC_OUTPUT_FLUSH(); return 0; } }
-	/* Preserve the compact machine-readable FAIL marker on stdout, but report
-	 * the unconsumed token on stderr. This makes unsupported syntax actionable
-	 * for the driver without changing successful IR output. */
-	tcErrAt(p);
-	fprintf(stderr, "syntax error near '%.48s'\n", p);
 	printf("FAIL\n"); QCC_OUTPUT_FLUSH();
 	return 1;
 }

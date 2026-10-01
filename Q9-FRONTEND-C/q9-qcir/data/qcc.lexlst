@@ -1,32 +1,32 @@
- <program>                        = { <globalDecl> 
-                                  | <structDecl> 
-                                  | <unionDecl> 
-                                  | <typedefDecl> 
-                                  | <enumDecl> 
-                                  | <externDecl> 
-                                  | <funcdef> 
-                                  | <defosDecl> 
-                                  | <defmodulEntryDecl> 
+ <program>                        = { <globalDecl>
+                                  | <structDecl>
+                                  | <unionDecl>
+                                  | <typedefDecl>
+                                  | <enumDecl>
+                                  | <externDecl>
+                                  | <funcdef>
+                                  | <defosDecl>
+                                  | <defmodulEntryDecl>
                                   | <defmodulDecl> } .
 
- <defmodulDecl>                   = "#defmodul" ( <defmodulName> 
-                                  | <defmodulEdition> 
-                                  | <defmodulStack> 
-                                  | <defmodulAttr> 
-                                  | <defmodulType> 
-                                  | <defmodulNotImpl> 
+ <defmodulDecl>                   = "#defmodul" ( <defmodulName>
+                                  | <defmodulEdition>
+                                  | <defmodulStack>
+                                  | <defmodulAttr>
+                                  | <defmodulType>
+                                  | <defmodulNotImpl>
                                   | <defmodulUnknown> ) .
 
  <defmodulEntryDecl>              = "#defmodul" "ENTRY" <ident> <defmodulEntryTarget> .
 
- <defmodulEntryTarget>            = <ident> 
+ <defmodulEntryTarget>            = <ident>
                                   | <defmodulNumber> .
 
  <defmodulName>                   = "NAME" <defmodulNameArg> .
 
  <defmodulNameArg>                = <ident> .
 
- <defmodulNumber>                 = ( <hexNumber> 
+ <defmodulNumber>                 = ( <hexNumber>
                                   | <decNumber> ) [ <integerSuffix> ] .
 
  <defmodulEdition>                = "EDITION" <defmodulEditionArg> .
@@ -41,11 +41,11 @@
 
  <defmodulAttrArg>                = <defmodulNumber> .
 
- <defmodulType>                   = <defmodulTypeKw> ( <defmodulTypeProg> 
-                                  | <defmodulTypeSystem> 
-                                  | <defmodulTypeNoos> 
-                                  | <defmodulTypeDriver> 
-                                  | <defmodulTypeManager> 
+ <defmodulType>                   = <defmodulTypeKw> ( <defmodulTypeProg>
+                                  | <defmodulTypeSystem>
+                                  | <defmodulTypeNoos>
+                                  | <defmodulTypeDriver>
+                                  | <defmodulTypeManager>
                                   | <defmodulTypeTraphandler> ) .
 
  <defmodulTypeKw>                 = "TYPE" .
@@ -54,7 +54,7 @@
 
  <defmodulTypeSystem>             = "SYSTEM" .
 
- <defmodulTypeNoos>               = ( "NOOS" 
+ <defmodulTypeNoos>               = ( "NOOS"
                                   | "BAREMETAL" ) <defmodulEntryArg> .
 
  <defmodulTypeDriver>             = "DRIVER" <ident> .
@@ -65,7 +65,7 @@
 
  <defmodulEntryArg>               = <ident> .
 
- <defmodulNotImpl>                = ( "ORG" 
+ <defmodulNotImpl>                = ( "ORG"
                                   | "ALIGN" ) <defmodulNumber> .
 
  <defmodulUnknown>                = <ident> .
@@ -76,25 +76,25 @@
 
  <modulKw>                        = "modul" <moduleKind> .
 
- <moduleKind>                     = <modulConvention> 
+ <moduleKind>                     = <modulConvention>
                                   | <modulSyscall> .
 
- <modulConvention>                = "driver" 
-                                  | "interrupt" 
-                                  | "trap" 
+ <modulConvention>                = "driver"
+                                  | "interrupt"
+                                  | "trap"
                                   | "naked" .
 
  <modulSyscall>                   = "syscall" "(" <defmodulNumber> "," <syscallArchetype> ")" .
 
- <syscallArchetype>               = "CALL_D" 
-                                  | "CALL_DA" 
+ <syscallArchetype>               = "CALL_D"
+                                  | "CALL_DA"
                                   | "CALL_FORK" .
 
  <externDecl>                     = "extern" <type> <pointerDecl> <externName> <externParams> ";" .
 
  <externName>                     = <ident> .
 
- <externParams>                   = <voidParams> 
+ <externParams>                   = <voidParams>
                                   | <externRealParams> .
 
  <externRealParams>               = "(" <externParamList> ")" .
@@ -109,12 +109,12 @@
 
  <enumItem>                       = <ident> [ "=" <enumValue> ] .
 
- <enumValue>                      = <globalNeg> 
+ <enumValue>                      = <globalNeg>
                                   | <globalNumber> .
 
  <structDecl>                     = "struct" <structName> <structTail> .
 
- <structTail>                     = <structBodyOpen> <structField> { <structField> } "}" ";" 
+ <structTail>                     = <structBodyOpen> <structField> { <structField> } "}" ";"
                                   | ";" .
 
  <structBodyOpen>                 = "{" .
@@ -135,23 +135,23 @@
 
  <fieldName>                      = <ident> .
 
- <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";" 
+ <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";"
                                   | <fnPtrTypedef> .
 
  <typedefDeclarator>              = <pointerDecl> <typedefTargetName> .
 
  <fnPtrTypedef>                   = "typedef" <type> <pointerDecl> <fnPtrOpen> "*" { <pointerStar> } <fnPtrName> ")" <fnPtrParams> ";" .
 
- <fnPtrParams>                    = <voidParams> 
+ <fnPtrParams>                    = <voidParams>
                                   | <externRealParams> .
 
  <fnPtrOpen>                      = "(" .
 
  <fnPtrName>                      = <ident> .
 
- <typedefType>                    = <anonStructType> 
-                                  | <anonUnionType> 
-                                  | <anonEnumType> 
+ <typedefType>                    = <anonStructType>
+                                  | <anonUnionType>
+                                  | <anonEnumType>
                                   | <type> .
 
  <anonEnumType>                   = "enum" [ <enumTagName> ] <anonEnumOpen> <enumItem> { "," <enumItem> } "}" .
@@ -174,7 +174,7 @@
 
  <typedefTargetName>              = <ident> .
 
- <globalDecl>                     = <externGlobalDecl> 
+ <globalDecl>                     = <externGlobalDecl>
                                   | <plainGlobalDecl> .
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
@@ -189,8 +189,8 @@
 
  <staticKw>                       = "static" .
 
- <globalInit>                     = <globalValue> 
-                                  | <initList> 
+ <globalInit>                     = <globalValue>
+                                  | <initList>
                                   | <globalStringInit> .
 
  <globalStringInit>               = "\042" { <character> } "\042" .
@@ -201,27 +201,27 @@
 
  <constSize>                      = <globalNumber> { <constSizeOp> <globalNumber> } .
 
- <constSizeOp>                    = "+" 
-                                  | "-" 
+ <constSizeOp>                    = "+"
+                                  | "-"
                                   | "*" .
 
- <globalValue>                    = <globalFloat> 
-                                  | <globalNumber> 
-                                  | <globalNeg> 
+ <globalValue>                    = <globalFloat>
+                                  | <globalNumber>
+                                  | <globalNeg>
                                   | <globalBool> .
 
  <globalFloat>                    = <digit> { <digit> } <floatTail> .
 
- <globalBool>                     = "true" 
+ <globalBool>                     = "true"
                                   | "false" .
 
- <globalNeg>                      = "-" ( <globalFloat> 
+ <globalNeg>                      = "-" ( <globalFloat>
                                   | <globalNumber> ) .
 
- <globalNumber>                   = ( <hexNumber> 
+ <globalNumber>                   = ( <hexNumber>
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <funcdef>                        = <funcHead> ( <funcBody> 
+ <funcdef>                        = <funcHead> ( <funcBody>
                                   | <protoEnd> ) .
 
  <funcBody>                       = <funcBodyOpen> { <statement> } "}" .
@@ -234,8 +234,8 @@
 
  <retConstKw>                     = "const" .
 
- <funcParams>                     = <voidParams> 
-                                  | <krParams> 
+ <funcParams>                     = <voidParams>
+                                  | <krParams>
                                   | <normalParams> .
 
  <krParams>                       = <krOpen> <krName> { "," <krName> } ")" <krDecl> { <krDecl> } .
@@ -260,8 +260,8 @@
 
  <funcEllipsis>                   = "..." .
 
- <param>                          = <fnPtrParam> 
-                                  | <ptrArrayParam> 
+ <param>                          = <fnPtrParam>
+                                  | <ptrArrayParam>
                                   | [ <registerKw> ] [ <constKw> ] [ <volatileKw> ] <type> <pointerDecl> [ <paramDecl> ] .
 
  <ptrArrayParam>                  = <type> "(" "*" <fnPtrParamName> ")" <arraySizeN> { <arraySizeN> } .
@@ -280,27 +280,27 @@
 
  <blockOpen>                      = "{" .
 
- <statement>                      = <labelStmt> 
+ <statement>                      = <labelStmt>
                                   | <unlabeledStmt> .
 
- <unlabeledStmt>                  = <ifStmt> 
-                                  | <whileStmt> 
-                                  | <forStmt> 
-                                  | <doStmt> 
-                                  | <switchStmt> 
-                                  | <breakStmt> 
-                                  | <continueStmt> 
-                                  | <gotoStmt> 
-                                  | <returnStmt> 
-                                  | <block> 
-                                  | <emptyStmt> 
-                                  | <voidCastStmt> 
-                                  | <vaStmt> 
-                                  | <callStmt> 
-                                  | <incDecStmt> 
-                                  | <assignStmt> 
-                                  | <fnPtrVarDecl> 
-                                  | <staticVarDecl> 
+ <unlabeledStmt>                  = <ifStmt>
+                                  | <whileStmt>
+                                  | <forStmt>
+                                  | <doStmt>
+                                  | <switchStmt>
+                                  | <breakStmt>
+                                  | <continueStmt>
+                                  | <gotoStmt>
+                                  | <returnStmt>
+                                  | <block>
+                                  | <emptyStmt>
+                                  | <voidCastStmt>
+                                  | <vaStmt>
+                                  | <callStmt>
+                                  | <incDecStmt>
+                                  | <assignStmt>
+                                  | <fnPtrVarDecl>
+                                  | <staticVarDecl>
                                   | <varDecl> .
 
  <fnPtrVarDecl>                   = <type> <pointerDecl> <fnPtrOpen> "*" { <pointerStar> } <fnPtrVarName> ")" <fnPtrParams> ";" .
@@ -313,7 +313,7 @@
 
  <staticArrayDim>                 = "[" <initNumber> "]" .
 
- <staticInit>                     = <globalValue> 
+ <staticInit>                     = <globalValue>
                                   | <staticRuntimeInit> .
 
  <staticRuntimeInit>              = <expr> .
@@ -332,8 +332,8 @@
 
  <caseLabel>                      = "case" <caseValue> ":" .
 
- <caseValue>                      = <ident> 
-                                  | <caseNeg> 
+ <caseValue>                      = <ident>
+                                  | <caseNeg>
                                   | <caseNumber> .
 
  <caseNeg>                        = "-" <caseNumber> .
@@ -350,7 +350,7 @@
 
  <registerKw>                     = "register" .
 
- <varDeclarator>                  = <ptrArrayDecl> 
+ <varDeclarator>                  = <ptrArrayDecl>
                                   | <plainVarDeclarator> .
 
  <plainVarDeclarator>             = <pointerDecl> <localDecl> [ "=" <varInit> ] .
@@ -359,55 +359,55 @@
 
  <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
- <varInit>                        = <arrayStringInit> 
-                                  | <expr> 
+ <varInit>                        = <arrayStringInit>
+                                  | <expr>
                                   | <initList> .
 
  <arrayStringInit>                = <stringLit> .
 
  <initList>                       = "{" [ <initValue> { "," <initValue> } ] "}" .
 
- <initValue>                      = <initFloat> 
-                                  | <initNumber> 
-                                  | <initNeg> 
-                                  | <initBool> 
-                                  | <initString> 
+ <initValue>                      = <initFloat>
+                                  | <initNumber>
+                                  | <initNeg>
+                                  | <initBool>
+                                  | <initString>
                                   | <initList> .
 
  <initString>                     = "\042" { <character> } "\042" .
 
- <initBool>                       = "true" 
+ <initBool>                       = "true"
                                   | "false" .
 
- <initNeg>                        = "-" ( <initFloat> 
+ <initNeg>                        = "-" ( <initFloat>
                                   | <initNumber> ) .
 
  <initFloat>                      = <digit> { <digit> } <floatTail> .
 
- <initNumber>                     = ( <hexNumber> 
+ <initNumber>                     = ( <hexNumber>
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <assignStmt>                     = <chainAssign> 
+ <assignStmt>                     = <chainAssign>
                                   | <target> <assignop> <expr> ";" .
 
  <chainAssign>                    = <target> <assignop> <target> <assignop> <expr> ";" .
 
- <assignop>                       = "=" 
-                                  | "+=" 
-                                  | "-=" 
-                                  | "*=" 
-                                  | "/=" 
-                                  | "%=" 
-                                  | "<<=" 
-                                  | ">>=" 
-                                  | "&=" 
-                                  | "^=" 
+ <assignop>                       = "="
+                                  | "+="
+                                  | "-="
+                                  | "*="
+                                  | "/="
+                                  | "%="
+                                  | "<<="
+                                  | ">>="
+                                  | "&="
+                                  | "^="
                                   | "|=" .
 
- <callStmt>                       = <call> ";" 
+ <callStmt>                       = <call> ";"
                                   | <indirectCall> ";" .
 
- <vaStmt>                         = <vaStartCall> ";" 
+ <vaStmt>                         = <vaStartCall> ";"
                                   | <vaEndCall> ";" .
 
  <vaStartCall>                    = "va_start" "(" <vaApRef> "," <vaLastName> ")" .
@@ -470,8 +470,8 @@
 
  <forStep>                        = <forStepItem> { <forComma> <forStepItem> } .
 
- <forStepItem>                    = <target> <assignop> <expr> 
-                                  | <postIncDec> 
+ <forStepItem>                    = <target> <assignop> <expr>
+                                  | <postIncDec>
                                   | <preIncDec> .
 
  <forBody>                        = <statement> .
@@ -508,7 +508,7 @@
 
  <commaTok>                       = "," .
 
- <commaItem>                      = <commaAssign> 
+ <commaItem>                      = <commaAssign>
                                   | <commaValue> .
 
  <commaAssign>                    = <target> <assignop> <expr> .
@@ -549,44 +549,44 @@
 
  <shiftRhs>                       = <addExpr> .
 
- <shiftop>                        = "<<" 
+ <shiftop>                        = "<<"
                                   | ">>" .
 
- <relop>                          = "<=" 
-                                  | ">=" 
-                                  | "==" 
-                                  | "!=" 
-                                  | "<" 
+ <relop>                          = "<="
+                                  | ">="
+                                  | "=="
+                                  | "!="
+                                  | "<"
                                   | ">" .
 
  <addExpr>                        = <term> { <addop> <term> } .
 
- <addop>                          = "+" 
+ <addop>                          = "+"
                                   | "-" .
 
  <term>                           = <factor> { <mulop> <factor> } .
 
- <mulop>                          = "*" 
-                                  | "/" 
+ <mulop>                          = "*"
+                                  | "/"
                                   | "%" .
 
- <factor>                         = <sizeofExpr> 
-                                  | <vaArgExpr> 
-                                  | <castExpr> 
-                                  | <preIncDec> 
-                                  | <postIncDec> 
-                                  | <parenOpen> <commaExpr> <parenClose> [ <postfixIndex> ] 
-                                  | <call> [ <postfixIndex> ] [ <callMember> ] 
-                                  | <indirectCall> 
-                                  | <boolLit> 
-                                  | <addressRef> 
-                                  | <derefRef> 
-                                  | <varRef> 
-                                  | <charLit> 
-                                  | <floatLit> 
-                                  | <number> 
-                                  | <stringLit> [ <postfixIndex> ] 
-                                  | <posFactor> 
+ <factor>                         = <sizeofExpr>
+                                  | <vaArgExpr>
+                                  | <castExpr>
+                                  | <preIncDec>
+                                  | <postIncDec>
+                                  | <parenOpen> <commaExpr> <parenClose> [ <postfixIndex> ]
+                                  | <call> [ <postfixIndex> ] [ <callMember> ]
+                                  | <indirectCall>
+                                  | <boolLit>
+                                  | <addressRef>
+                                  | <derefRef>
+                                  | <varRef>
+                                  | <charLit>
+                                  | <floatLit>
+                                  | <number>
+                                  | <stringLit> [ <postfixIndex> ]
+                                  | <posFactor>
                                   | <negFactor> .
 
  <postfixIndex>                   = <index> .
@@ -597,108 +597,111 @@
 
  <stringSep>                      = { <stringSpace> } .
 
- <stringSpace>                    = "\040" 
-                                  | "\011" 
-                                  | "\015" 
+ <stringSpace>                    = "\040"
+                                  | "\011"
+                                  | "\015"
                                   | "\012" .
 
  <charLit>                        = "\047" <charLitBody> "\047" .
 
- <charLitBody>                    = <charLitEscape> 
+ <charLitBody>                    = <charLitEscape>
                                   | <charLitPlain> .
 
  <charLitEscape>                  = "\134" <charLitEscChar> .
 
- <charLitEscChar>                 = <octEscape> 
-                                  | <hexEscape> 
-                                  | "n" 
-                                  | "t" 
-                                  | "r" 
+ <charLitEscChar>                 = <octEscape>
+                                  | <hexEscape>
+                                  | "n"
+                                  | "t"
+                                  | "r"
                                   | "\134" .
 
  <octEscape>                      = ( "0"~"7" ) [ ( "0"~"7" ) [ ( "0"~"7" ) ] ] .
 
- <hexEscape>                      = ( "x" 
-                                  | "X" ) ( "0"~"9" 
-                                  | "a"~"f" 
-                                  | "A"~"F" ) [ ( "0"~"9" 
-                                  | "a"~"f" 
+ <hexEscape>                      = ( "x"
+                                  | "X" ) ( "0"~"9"
+                                  | "a"~"f"
+                                  | "A"~"F" ) [ ( "0"~"9"
+                                  | "a"~"f"
                                   | "A"~"F" ) ] .
 
- <charLitPlain>                   = " "~"&" 
-                                  | "("~"[" 
+ <charLitPlain>                   = " "~"&"
+                                  | "("~"["
                                   | "]"~"~" .
 
- <character>                      = <strEscape> 
-                                  | " "~"!" 
+ <character>                      = <strEscape>
+                                  | " "~"!"
                                   | "#"~"~" .
 
  <strEscape>                      = "\134" <strEscChar> .
 
  <strEscChar>                     = " "~"~" .
 
- <negFactor>                      = ( "-" 
-                                  | "!" 
+ <negFactor>                      = ( "-"
+                                  | "!"
                                   | "~" ) <factor> .
 
  <posFactor>                      = "+" <factor> .
 
  <addressRef>                     = "&" <ident> [ <index> ] .
 
- <sizeofExpr>                     = "sizeof" ( "(" <sizeofArg> ")" 
+ <sizeofExpr>                     = "sizeof" ( "(" <sizeofArg> ")"
                                   | <sizeofVarName> ) .
 
- <sizeofArg>                      = <sizeofType> 
-                                  | <sizeofVarName> .
+ <sizeofArg>                      = <sizeofType>
+                                  | <sizeofVarName>
+                                  | <sizeofStringLit> .
 
  <sizeofType>                     = <sizeofBaseType> <pointerDecl> .
 
- <sizeofBaseType>                 = "unsigned" <unsignedInt> 
-                                  | "int" 
-                                  | <longLongType> 
-                                  | "long" 
-                                  | "char" 
-                                  | "short" 
-                                  | "bool" 
-                                  | "double" 
-                                  | "float" 
-                                  | "struct" <structTypeRef> 
-                                  | "union" <unionTypeRef> 
-                                  | "enum" <enumTypeRef> 
+ <sizeofBaseType>                 = "unsigned" <unsignedInt>
+                                  | "int"
+                                  | <longLongType>
+                                  | "long"
+                                  | "char"
+                                  | "short"
+                                  | "bool"
+                                  | "double"
+                                  | "float"
+                                  | "struct" <structTypeRef>
+                                  | "union" <unionTypeRef>
+                                  | "enum" <enumTypeRef>
                                   | "void" .
 
  <sizeofVarName>                  = <ident> .
+
+ <sizeofStringLit>                = <stringPiece> { <stringSep> <stringPiece> } .
 
  <castExpr>                       = "(" <castType> ")" <castOperand> .
 
  <castType>                       = [ <retConstKw> ] <type> <pointerDecl> .
 
- <castOperand>                    = <sizeofExpr> 
-                                  | <vaArgExpr> 
-                                  | <castExpr> 
-                                  | <preIncDec> 
-                                  | <postIncDec> 
-                                  | <parenOpen> <commaExpr> <parenClose> 
-                                  | <call> [ <postfixIndex> ] [ <callMember> ] 
-                                  | <indirectCall> 
-                                  | <boolLit> 
-                                  | <addressRef> 
-                                  | <derefRef> 
-                                  | <varRef> 
-                                  | <charLit> 
-                                  | <floatLit> 
-                                  | <number> 
-                                  | <stringLit> [ <postfixIndex> ] 
+ <castOperand>                    = <sizeofExpr>
+                                  | <vaArgExpr>
+                                  | <castExpr>
+                                  | <preIncDec>
+                                  | <postIncDec>
+                                  | <parenOpen> <commaExpr> <parenClose>
+                                  | <call> [ <postfixIndex> ] [ <callMember> ]
+                                  | <indirectCall>
+                                  | <boolLit>
+                                  | <addressRef>
+                                  | <derefRef>
+                                  | <varRef>
+                                  | <charLit>
+                                  | <floatLit>
+                                  | <number>
+                                  | <stringLit> [ <postfixIndex> ]
                                   | <negFactor> .
 
- <preIncDec>                      = <incdecOp> <derefIncTarget> 
-                                  | <incdecOp> <memberIncTarget> 
-                                  | <incdecOp> <indexIncTarget> 
+ <preIncDec>                      = <incdecOp> <derefIncTarget>
+                                  | <incdecOp> <memberIncTarget>
+                                  | <incdecOp> <indexIncTarget>
                                   | <incdecOp> <ident> .
 
- <postIncDec>                     = <derefIncTarget> <incdecOp> 
-                                  | <memberIncTarget> <incdecOp> 
-                                  | <indexIncTarget> <incdecOp> 
+ <postIncDec>                     = <derefIncTarget> <incdecOp>
+                                  | <memberIncTarget> <incdecOp>
+                                  | <indexIncTarget> <incdecOp>
                                   | <ident> <incdecOp> .
 
  <memberIncTarget>                = <ident> <member> [ <index> ] .
@@ -707,10 +710,10 @@
 
  <derefIncTarget>                 = "(" "*" <ident> ")" .
 
- <incdecOp>                       = "++" 
+ <incdecOp>                       = "++"
                                   | "--" .
 
- <incDecStmt>                     = <preIncDec> ";" 
+ <incDecStmt>                     = <preIncDec> ";"
                                   | <postIncDec> ";" .
 
  <derefRef>                       = "*" <factor> .
@@ -727,7 +730,7 @@
 
  <arg>                            = <expr> .
 
- <target>                         = <directTarget> 
+ <target>                         = <directTarget>
                                   | <indirectTarget> .
 
  <directTarget>                   = <ident> [ <index> { <index> } ] [ <member> [ <index> { <index> } ] { <member> [ <index> { <index> } ] } ] .
@@ -740,7 +743,7 @@
 
  <indexOpen>                      = "[" .
 
- <member>                         = "." <fieldName> 
+ <member>                         = "." <fieldName>
                                   | "->" <fieldName> .
 
  <defName>                        = <ident> .
@@ -753,22 +756,22 @@
 
  <funcName>                       = <ident> .
 
- <type>                           = "unsigned" <unsignedInt> 
-                                  | "signed" <unsignedInt> 
-                                  | "int" 
-                                  | <longLongType> 
-                                  | <longDoubleType> 
-                                  | "long" 
-                                  | "short" 
-                                  | "char" 
-                                  | "bool" 
-                                  | "double" 
-                                  | "float" 
-                                  | "va_list" 
-                                  | "struct" <structTypeRef> 
-                                  | "union" <unionTypeRef> 
-                                  | "enum" <enumTypeRef> 
-                                  | "void" 
+ <type>                           = "unsigned" <unsignedInt>
+                                  | "signed" <unsignedInt>
+                                  | "int"
+                                  | <longLongType>
+                                  | <longDoubleType>
+                                  | "long"
+                                  | "short"
+                                  | "char"
+                                  | "bool"
+                                  | "double"
+                                  | "float"
+                                  | "va_list"
+                                  | "struct" <structTypeRef>
+                                  | "union" <unionTypeRef>
+                                  | "enum" <enumTypeRef>
+                                  | "void"
                                   | <typedefRef> .
 
  <longDoubleType>                 = "long" "double" .
@@ -787,55 +790,55 @@
 
  <pointerStar>                    = "*" .
 
- <unsignedInt>                    = "int" 
-                                  | "char" 
-                                  | "long" 
+ <unsignedInt>                    = "int"
+                                  | "char"
+                                  | "long"
                                   | "short" .
 
- <boolLit>                        = "true" 
+ <boolLit>                        = "true"
                                   | "false" .
 
- <ident>                          = <letter> { <letter> 
+ <ident>                          = <letter> { <letter>
                                   | <digit> } .
 
- <number>                         = ( <hexNumber> 
+ <number>                         = ( <hexNumber>
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <integerSuffix>                  = "u" "l" 
-                                  | "U" "L" 
-                                  | "l" "u" 
-                                  | "L" "U" 
-                                  | "u" 
-                                  | "U" 
-                                  | "l" 
+ <integerSuffix>                  = "u" "l"
+                                  | "U" "L"
+                                  | "l" "u"
+                                  | "L" "U"
+                                  | "u"
+                                  | "U"
+                                  | "l"
                                   | "L" .
 
  <hexNumber>                      = "0" <hexMark> <hexDigit> { <hexDigit> } .
 
- <hexMark>                        = "x" 
+ <hexMark>                        = "x"
                                   | "X" .
 
- <hexDigit>                       = <digit> 
-                                  | "a"~"f" 
+ <hexDigit>                       = <digit>
+                                  | "a"~"f"
                                   | "A"~"F" .
 
  <decNumber>                      = <digit> { <digit> } .
 
  <floatLit>                       = <digit> { <digit> } <floatTail> .
 
- <floatTail>                      = <floatDotTail> 
+ <floatTail>                      = <floatDotTail>
                                   | <floatExp> .
 
  <floatDotTail>                   = "." { <digit> } [ <floatExp> ] .
 
- <floatExp>                       = ( "e" 
+ <floatExp>                       = ( "e"
                                   | "E" ) [ <floatExpSign> ] <digit> { <digit> } .
 
- <floatExpSign>                   = "+" 
+ <floatExpSign>                   = "+"
                                   | "-" .
 
- <letter>                         = "a"~"z" 
-                                  | "A"~"Z" 
+ <letter>                         = "a"~"z"
+                                  | "A"~"Z"
                                   | "_" .
 
  <digit>                          = "0"~"9" .
@@ -865,20 +868,20 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 18  | <defmodulEntryDecl>             | TS  | "#defmodul"                     | -    | 19 | F  |
 | 19  |                                 | TS  | "ENTRY"                         | -    | 20 | E  |
-| 20  |                                 | NTS | <ident>                         | 936  | 21 | E  |
+| 20  |                                 | NTS | <ident>                         | 940  | 21 | E  |
 | 21  |                                 | NTS | <defmodulEntryTarget>           | 22   | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 22  | <defmodulEntryTarget>           | NTS | <ident>                         | 936  | T  | 23 |
+| 22  | <defmodulEntryTarget>           | NTS | <ident>                         | 940  | T  | 23 |
 | 23  |                                 | NTS | <defmodulNumber>                | 27   | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 24  | <defmodulName>                  | TS  | "NAME"                          | -    | 25 | F  |
 | 25  |                                 | NTS | <defmodulNameArg>               | 26   | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 26  | <defmodulNameArg>               | NTS | <ident>                         | 936  | T  | F  |
+| 26  | <defmodulNameArg>               | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 27  | <defmodulNumber>                | NTS | <hexNumber>                     | 954  | 29 | 28 |
-| 28  |                                 | NTS | <decNumber>                     | 963  | 29 | F  |
-| 29  |                                 | NTS | <integerSuffix>                 | 942  | T  | T  |
+| 27  | <defmodulNumber>                | NTS | <hexNumber>                     | 958  | 29 | 28 |
+| 28  |                                 | NTS | <decNumber>                     | 967  | 29 | F  |
+| 29  |                                 | NTS | <integerSuffix>                 | 946  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 30  | <defmodulEdition>               | TS  | "EDITION"                       | -    | 31 | F  |
 | 31  |                                 | NTS | <defmodulEditionArg>            | 32   | T  | E  |
@@ -915,26 +918,26 @@
 | 52  |                                 | NTS | <defmodulEntryArg>              | 59   | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 53  | <defmodulTypeDriver>            | TS  | "DRIVER"                        | -    | 54 | F  |
-| 54  |                                 | NTS | <ident>                         | 936  | T  | E  |
+| 54  |                                 | NTS | <ident>                         | 940  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 55  | <defmodulTypeManager>           | TS  | "MANAGER"                       | -    | 56 | F  |
-| 56  |                                 | NTS | <ident>                         | 936  | T  | E  |
+| 56  |                                 | NTS | <ident>                         | 940  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 57  | <defmodulTypeTraphandler>       | TS  | "TRAPHANDLER"                   | -    | 58 | F  |
-| 58  |                                 | NTS | <ident>                         | 936  | T  | E  |
+| 58  |                                 | NTS | <ident>                         | 940  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 59  | <defmodulEntryArg>              | NTS | <ident>                         | 936  | T  | F  |
+| 59  | <defmodulEntryArg>              | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 60  | <defmodulNotImpl>               | TS  | "ORG"                           | -    | 62 | 61 |
 | 61  |                                 | TS  | "ALIGN"                         | -    | 62 | F  |
 | 62  |                                 | NTS | <defmodulNumber>                | 27   | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 63  | <defmodulUnknown>               | NTS | <ident>                         | 936  | T  | F  |
+| 63  | <defmodulUnknown>               | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 64  | <defosDecl>                     | TS  | "#defos"                        | -    | 65 | F  |
 | 65  |                                 | NTS | <defosArg>                      | 66   | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 66  | <defosArg>                      | NTS | <ident>                         | 936  | T  | F  |
+| 66  | <defosArg>                      | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 67  | <modulKw>                       | TS  | "modul"                         | -    | 68 | F  |
 | 68  |                                 | NTS | <moduleKind>                    | 69   | T  | E  |
@@ -959,13 +962,13 @@
 | 83  |                                 | TS  | "CALL_FORK"                     | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 84  | <externDecl>                    | TS  | "extern"                        | -    | 85 | F  |
-| 85  |                                 | NTS | <type>                          | 898  | 86 | E  |
-| 86  |                                 | NTS | <pointerDecl>                   | 928  | 87 | E  |
+| 85  |                                 | NTS | <type>                          | 902  | 86 | E  |
+| 86  |                                 | NTS | <pointerDecl>                   | 932  | 87 | E  |
 | 87  |                                 | NTS | <externName>                    | 90   | 88 | E  |
 | 88  |                                 | NTS | <externParams>                  | 91   | 89 | E  |
 | 89  |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 90  | <externName>                    | NTS | <ident>                         | 936  | T  | F  |
+| 90  | <externName>                    | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 91  | <externParams>                  | NTS | <voidParams>                    | 302  | T  | 92 |
 | 92  |                                 | NTS | <externRealParams>              | 93   | T  | F  |
@@ -982,14 +985,14 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 101 | <externParam>                   | NTS | <constKw>                       | 225  | 102| 102|
 | 102 |                                 | NTS | <volatileKw>                    | 226  | 103| 103|
-| 103 |                                 | NTS | <type>                          | 898  | 104| F  |
-| 104 |                                 | NTS | <pointerDecl>                   | 928  | 105| E  |
-| 105 |                                 | NTS | <ident>                         | 936  | T  | T  |
+| 103 |                                 | NTS | <type>                          | 902  | 104| F  |
+| 104 |                                 | NTS | <pointerDecl>                   | 932  | 105| E  |
+| 105 |                                 | NTS | <ident>                         | 940  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 106 | <ellipsisTok>                   | TS  | "..."                           | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 107 | <enumDecl>                      | TS  | "enum"                          | -    | 108| F  |
-| 108 |                                 | NTS | <ident>                         | 936  | 109| E  |
+| 108 |                                 | NTS | <ident>                         | 940  | 109| E  |
 | 109 |                                 | TS  | "{"                             | -    | 110| E  |
 | 110 |                                 | NTS | <enumItem>                      | 115  | 111| E  |
 | 111 |                                 | TS  | ","                             | -    | 112| 113|
@@ -997,7 +1000,7 @@
 | 113 |                                 | TS  | "}"                             | -    | 114| E  |
 | 114 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 115 | <enumItem>                      | NTS | <ident>                         | 936  | 116| F  |
+| 115 | <enumItem>                      | NTS | <ident>                         | 940  | 116| F  |
 | 116 |                                 | TS  | "="                             | -    | 117| T  |
 | 117 |                                 | NTS | <enumValue>                     | 118  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1021,13 +1024,13 @@
 | 131 |                                 | NTS | <unionName>                     | 133  | 132| E  |
 | 132 |                                 | NTS | <structTail>                    | 123  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 133 | <unionName>                     | NTS | <ident>                         | 936  | T  | F  |
+| 133 | <unionName>                     | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 134 | <structName>                    | NTS | <ident>                         | 936  | T  | F  |
+| 134 | <structName>                    | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 135 | <structField>                   | NTS | <fieldConstKw>                  | 142  | 136| 136|
 | 136 |                                 | NTS | <volatileKw>                    | 226  | 137| 137|
-| 137 |                                 | NTS | <type>                          | 898  | 138| F  |
+| 137 |                                 | NTS | <type>                          | 902  | 138| F  |
 | 138 |                                 | NTS | <structDeclarator>              | 143  | 139| E  |
 | 139 |                                 | TS  | ","                             | -    | 140| 141|
 | 140 |                                 | NTS | <structDeclarator>              | 143  | 139| E  |
@@ -1035,7 +1038,7 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 142 | <fieldConstKw>                  | TS  | "const"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 143 | <structDeclarator>              | NTS | <pointerDecl>                   | 928  | 144| F  |
+| 143 | <structDeclarator>              | NTS | <pointerDecl>                   | 932  | 144| F  |
 | 144 |                                 | NTS | <fieldName>                     | 150  | 145| E  |
 | 145 |                                 | NTS | <bitFieldWidth>                 | 148  | 146| 146|
 | 146 |                                 | NTS | <arraySize>                     | 234  | 147| T  |
@@ -1044,7 +1047,7 @@
 | 148 | <bitFieldWidth>                 | TS  | ":"                             | -    | 149| F  |
 | 149 |                                 | NTS | <globalNumber>                  | 258  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 150 | <fieldName>                     | NTS | <ident>                         | 936  | T  | F  |
+| 150 | <fieldName>                     | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 151 | <typedefDecl>                   | TS  | "typedef"                       | -    | 152| 157|
 | 152 |                                 | NTS | <typedefType>                   | 174  | 153| E  |
@@ -1054,15 +1057,15 @@
 | 156 |                                 | TS  | ";"                             | -    | T  | E  |
 | 157 |                                 | NTS | <fnPtrTypedef>                  | 160  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 158 | <typedefDeclarator>             | NTS | <pointerDecl>                   | 928  | 159| F  |
+| 158 | <typedefDeclarator>             | NTS | <pointerDecl>                   | 932  | 159| F  |
 | 159 |                                 | NTS | <typedefTargetName>             | 203  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 160 | <fnPtrTypedef>                  | TS  | "typedef"                       | -    | 161| F  |
-| 161 |                                 | NTS | <type>                          | 898  | 162| E  |
-| 162 |                                 | NTS | <pointerDecl>                   | 928  | 163| E  |
+| 161 |                                 | NTS | <type>                          | 902  | 162| E  |
+| 162 |                                 | NTS | <pointerDecl>                   | 932  | 163| E  |
 | 163 |                                 | NTS | <fnPtrOpen>                     | 172  | 164| E  |
 | 164 |                                 | TS  | "*"                             | -    | 165| E  |
-| 165 |                                 | NTS | <pointerStar>                   | 929  | 165| 166|
+| 165 |                                 | NTS | <pointerStar>                   | 933  | 165| 166|
 | 166 |                                 | NTS | <fnPtrName>                     | 173  | 167| E  |
 | 167 |                                 | TS  | ")"                             | -    | 168| E  |
 | 168 |                                 | NTS | <fnPtrParams>                   | 170  | 169| E  |
@@ -1073,12 +1076,12 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 172 | <fnPtrOpen>                     | TS  | "("                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 173 | <fnPtrName>                     | NTS | <ident>                         | 936  | T  | F  |
+| 173 | <fnPtrName>                     | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 174 | <typedefType>                   | NTS | <anonStructType>                | 187  | T  | 175|
 | 175 |                                 | NTS | <anonUnionType>                 | 195  | T  | 176|
 | 176 |                                 | NTS | <anonEnumType>                  | 178  | T  | 177|
-| 177 |                                 | NTS | <type>                          | 898  | T  | F  |
+| 177 |                                 | NTS | <type>                          | 902  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 178 | <anonEnumType>                  | TS  | "enum"                          | -    | 179| F  |
 | 179 |                                 | NTS | <enumTagName>                   | 185  | 180| 180|
@@ -1088,7 +1091,7 @@
 | 183 |                                 | NTS | <enumItem>                      | 115  | 182| E  |
 | 184 |                                 | TS  | "}"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 185 | <enumTagName>                   | NTS | <ident>                         | 936  | T  | F  |
+| 185 | <enumTagName>                   | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 186 | <anonEnumOpen>                  | TS  | "{"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1099,7 +1102,7 @@
 | 191 |                                 | NTS | <structField>                   | 135  | 191| 192|
 | 192 |                                 | TS  | "}"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 193 | <structTagName>                 | NTS | <ident>                         | 936  | T  | F  |
+| 193 | <structTagName>                 | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 194 | <anonStructOpen>                | TS  | "{"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1110,32 +1113,32 @@
 | 199 |                                 | NTS | <structField>                   | 135  | 199| 200|
 | 200 |                                 | TS  | "}"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 201 | <unionTagName>                  | NTS | <ident>                         | 936  | T  | F  |
+| 201 | <unionTagName>                  | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 202 | <anonUnionOpen>                 | TS  | "{"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 203 | <typedefTargetName>             | NTS | <ident>                         | 936  | T  | F  |
+| 203 | <typedefTargetName>             | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 204 | <globalDecl>                    | NTS | <externGlobalDecl>              | 206  | T  | 205|
 | 205 |                                 | NTS | <plainGlobalDecl>               | 211  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 206 | <externGlobalDecl>              | TS  | "extern"                        | -    | 207| F  |
-| 207 |                                 | NTS | <type>                          | 898  | 208| E  |
-| 208 |                                 | NTS | <pointerDecl>                   | 928  | 209| E  |
-| 209 |                                 | NTS | <globalName>                    | 896  | 210| E  |
+| 207 |                                 | NTS | <type>                          | 902  | 208| E  |
+| 208 |                                 | NTS | <pointerDecl>                   | 932  | 209| E  |
+| 209 |                                 | NTS | <globalName>                    | 900  | 210| E  |
 | 210 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 211 | <plainGlobalDecl>               | NTS | <staticKw>                      | 227  | 212| 212|
 | 212 |                                 | NTS | <constKw>                       | 225  | 213| 213|
 | 213 |                                 | NTS | <volatileKw>                    | 226  | 214| 214|
-| 214 |                                 | NTS | <type>                          | 898  | 215| F  |
+| 214 |                                 | NTS | <type>                          | 902  | 215| F  |
 | 215 |                                 | NTS | <globalDeclarator>              | 219  | 216| E  |
 | 216 |                                 | TS  | ","                             | -    | 217| 218|
 | 217 |                                 | NTS | <globalDeclarator>              | 219  | 216| E  |
 | 218 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 219 | <globalDeclarator>              | NTS | <pointerDecl>                   | 928  | 220| F  |
-| 220 |                                 | NTS | <globalName>                    | 896  | 221| E  |
+| 219 | <globalDeclarator>              | NTS | <pointerDecl>                   | 932  | 220| F  |
+| 220 |                                 | NTS | <globalName>                    | 900  | 221| E  |
 | 221 |                                 | NTS | <arraySize>                     | 234  | 222| 223|
 | 222 |                                 | NTS | <arraySizeN>                    | 237  | 222| 223|
 | 223 |                                 | TS  | "="                             | -    | 224| T  |
@@ -1176,9 +1179,9 @@
 | 248 |                                 | NTS | <globalNeg>                     | 255  | T  | 249|
 | 249 |                                 | NTS | <globalBool>                    | 253  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 250 | <globalFloat>                   | NTS | <digit>                         | 983  | 251| F  |
-| 251 |                                 | NTS | <digit>                         | 983  | 251| 252|
-| 252 |                                 | NTS | <floatTail>                     | 968  | T  | E  |
+| 250 | <globalFloat>                   | NTS | <digit>                         | 987  | 251| F  |
+| 251 |                                 | NTS | <digit>                         | 987  | 251| 252|
+| 252 |                                 | NTS | <floatTail>                     | 972  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 253 | <globalBool>                    | TS  | "true"                          | -    | T  | 254|
 | 254 |                                 | TS  | "false"                         | -    | T  | F  |
@@ -1187,9 +1190,9 @@
 | 256 |                                 | NTS | <globalFloat>                   | 250  | T  | 257|
 | 257 |                                 | NTS | <globalNumber>                  | 258  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 258 | <globalNumber>                  | NTS | <hexNumber>                     | 954  | 260| 259|
-| 259 |                                 | NTS | <decNumber>                     | 963  | 260| F  |
-| 260 |                                 | NTS | <integerSuffix>                 | 942  | T  | T  |
+| 258 | <globalNumber>                  | NTS | <hexNumber>                     | 958  | 260| 259|
+| 259 |                                 | NTS | <decNumber>                     | 967  | 260| F  |
+| 260 |                                 | NTS | <integerSuffix>                 | 946  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 261 | <funcdef>                       | NTS | <funcHead>                      | 269  | 262| F  |
 | 262 |                                 | NTS | <funcBody>                      | 264  | T  | 263|
@@ -1206,9 +1209,9 @@
 | 269 | <funcHead>                      | NTS | <staticKw>                      | 227  | 270| 270|
 | 270 |                                 | NTS | <modulKw>                       | 67   | 271| 271|
 | 271 |                                 | NTS | <retConstKw>                    | 276  | 272| 272|
-| 272 |                                 | NTS | <type>                          | 898  | 273| F  |
-| 273 |                                 | NTS | <pointerDecl>                   | 928  | 274| E  |
-| 274 |                                 | NTS | <defName>                       | 893  | 275| E  |
+| 272 |                                 | NTS | <type>                          | 902  | 273| F  |
+| 273 |                                 | NTS | <pointerDecl>                   | 932  | 274| E  |
+| 274 |                                 | NTS | <defName>                       | 897  | 275| E  |
 | 275 |                                 | NTS | <funcParams>                    | 277  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 276 | <retConstKw>                    | TS  | "const"                         | -    | T  | F  |
@@ -1227,21 +1230,21 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 287 | <krOpen>                        | TS  | "("                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 288 | <krName>                        | NTS | <ident>                         | 936  | T  | F  |
+| 288 | <krName>                        | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 289 | <krDecl>                        | NTS | <registerKw>                    | 437  | 290| 290|
 | 290 |                                 | NTS | <constKw>                       | 225  | 291| 291|
-| 291 |                                 | NTS | <type>                          | 898  | 292| F  |
+| 291 |                                 | NTS | <type>                          | 902  | 292| F  |
 | 292 |                                 | NTS | <krDeclarator>                  | 296  | 293| E  |
 | 293 |                                 | TS  | ","                             | -    | 294| 295|
 | 294 |                                 | NTS | <krDeclarator>                  | 296  | 293| E  |
 | 295 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 296 | <krDeclarator>                  | NTS | <pointerDecl>                   | 928  | 297| F  |
+| 296 | <krDeclarator>                  | NTS | <pointerDecl>                   | 932  | 297| F  |
 | 297 |                                 | NTS | <krDeclName>                    | 299  | 298| E  |
 | 298 |                                 | NTS | <krArray>                       | 300  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 299 | <krDeclName>                    | NTS | <ident>                         | 936  | T  | F  |
+| 299 | <krDeclName>                    | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 300 | <krArray>                       | TS  | "["                             | -    | 301| F  |
 | 301 |                                 | TS  | "]"                             | -    | T  | E  |
@@ -1267,11 +1270,11 @@
 | 316 |                                 | NTS | <registerKw>                    | 437  | 317| 317|
 | 317 |                                 | NTS | <constKw>                       | 225  | 318| 318|
 | 318 |                                 | NTS | <volatileKw>                    | 226  | 319| 319|
-| 319 |                                 | NTS | <type>                          | 898  | 320| F  |
-| 320 |                                 | NTS | <pointerDecl>                   | 928  | 321| E  |
+| 319 |                                 | NTS | <type>                          | 902  | 320| F  |
+| 320 |                                 | NTS | <pointerDecl>                   | 932  | 321| E  |
 | 321 |                                 | NTS | <paramDecl>                     | 338  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 322 | <ptrArrayParam>                 | NTS | <type>                          | 898  | 323| F  |
+| 322 | <ptrArrayParam>                 | NTS | <type>                          | 902  | 323| F  |
 | 323 |                                 | TS  | "("                             | -    | 324| E  |
 | 324 |                                 | TS  | "*"                             | -    | 325| E  |
 | 325 |                                 | NTS | <fnPtrParamName>                | 337  | 326| E  |
@@ -1279,18 +1282,18 @@
 | 327 |                                 | NTS | <arraySizeN>                    | 237  | 328| E  |
 | 328 |                                 | NTS | <arraySizeN>                    | 237  | 328| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 329 | <fnPtrParam>                    | NTS | <type>                          | 898  | 330| F  |
-| 330 |                                 | NTS | <pointerDecl>                   | 928  | 331| E  |
+| 329 | <fnPtrParam>                    | NTS | <type>                          | 902  | 330| F  |
+| 330 |                                 | NTS | <pointerDecl>                   | 932  | 331| E  |
 | 331 |                                 | NTS | <fnPtrOpen>                     | 172  | 332| E  |
 | 332 |                                 | TS  | "*"                             | -    | 333| E  |
-| 333 |                                 | NTS | <pointerStar>                   | 929  | 333| 334|
+| 333 |                                 | NTS | <pointerStar>                   | 933  | 333| 334|
 | 334 |                                 | NTS | <fnPtrParamName>                | 337  | 335| E  |
 | 335 |                                 | TS  | ")"                             | -    | 336| E  |
 | 336 |                                 | NTS | <fnPtrParams>                   | 170  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 337 | <fnPtrParamName>                | NTS | <ident>                         | 936  | T  | F  |
+| 337 | <fnPtrParamName>                | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 338 | <paramDecl>                     | NTS | <paramName>                     | 894  | 339| F  |
+| 338 | <paramDecl>                     | NTS | <paramName>                     | 898  | 339| F  |
 | 339 |                                 | NTS | <paramArray>                    | 340  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 340 | <paramArray>                    | TS  | "["                             | -    | 341| F  |
@@ -1325,36 +1328,36 @@
 | 364 |                                 | NTS | <voidCastStmt>                  | 532  | T  | 365|
 | 365 |                                 | NTS | <vaStmt>                        | 508  | T  | 366|
 | 366 |                                 | NTS | <callStmt>                      | 504  | T  | 367|
-| 367 |                                 | NTS | <incDecStmt>                    | 842  | T  | 368|
+| 367 |                                 | NTS | <incDecStmt>                    | 846  | T  | 368|
 | 368 |                                 | NTS | <assignStmt>                    | 482  | T  | 369|
 | 369 |                                 | NTS | <fnPtrVarDecl>                  | 372  | T  | 370|
 | 370 |                                 | NTS | <staticVarDecl>                 | 382  | T  | 371|
 | 371 |                                 | NTS | <varDecl>                       | 429  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 372 | <fnPtrVarDecl>                  | NTS | <type>                          | 898  | 373| F  |
-| 373 |                                 | NTS | <pointerDecl>                   | 928  | 374| E  |
+| 372 | <fnPtrVarDecl>                  | NTS | <type>                          | 902  | 373| F  |
+| 373 |                                 | NTS | <pointerDecl>                   | 932  | 374| E  |
 | 374 |                                 | NTS | <fnPtrOpen>                     | 172  | 375| E  |
 | 375 |                                 | TS  | "*"                             | -    | 376| E  |
-| 376 |                                 | NTS | <pointerStar>                   | 929  | 376| 377|
+| 376 |                                 | NTS | <pointerStar>                   | 933  | 376| 377|
 | 377 |                                 | NTS | <fnPtrVarName>                  | 381  | 378| E  |
 | 378 |                                 | TS  | ")"                             | -    | 379| E  |
 | 379 |                                 | NTS | <fnPtrParams>                   | 170  | 380| E  |
 | 380 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 381 | <fnPtrVarName>                  | NTS | <ident>                         | 936  | T  | F  |
+| 381 | <fnPtrVarName>                  | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 382 | <staticVarDecl>                 | NTS | <staticKw>                      | 227  | 383| F  |
 | 383 |                                 | NTS | <constKw>                       | 225  | 384| 384|
 | 384 |                                 | NTS | <volatileKw>                    | 226  | 385| 385|
-| 385 |                                 | NTS | <type>                          | 898  | 386| E  |
-| 386 |                                 | NTS | <pointerDecl>                   | 928  | 387| E  |
+| 385 |                                 | NTS | <type>                          | 902  | 386| E  |
+| 386 |                                 | NTS | <pointerDecl>                   | 932  | 387| E  |
 | 387 |                                 | NTS | <staticLocalName>               | 392  | 388| E  |
 | 388 |                                 | NTS | <staticArrayDim>                | 393  | 389| 389|
 | 389 |                                 | TS  | "="                             | -    | 390| 391|
 | 390 |                                 | NTS | <staticInit>                    | 396  | 391| E  |
 | 391 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 392 | <staticLocalName>               | NTS | <ident>                         | 936  | T  | F  |
+| 392 | <staticLocalName>               | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 393 | <staticArrayDim>                | TS  | "["                             | -    | 394| F  |
 | 394 |                                 | NTS | <initNumber>                    | 479  | 395| E  |
@@ -1390,15 +1393,15 @@
 | 415 |                                 | NTS | <caseValue>                     | 417  | 416| E  |
 | 416 |                                 | TS  | ":"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 417 | <caseValue>                     | NTS | <ident>                         | 936  | T  | 418|
+| 417 | <caseValue>                     | NTS | <ident>                         | 940  | T  | 418|
 | 418 |                                 | NTS | <caseNeg>                       | 420  | T  | 419|
 | 419 |                                 | NTS | <caseNumber>                    | 422  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 420 | <caseNeg>                       | TS  | "-"                             | -    | 421| F  |
 | 421 |                                 | NTS | <caseNumber>                    | 422  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 422 | <caseNumber>                    | NTS | <digit>                         | 983  | 423| F  |
-| 423 |                                 | NTS | <digit>                         | 983  | 423| T  |
+| 422 | <caseNumber>                    | NTS | <digit>                         | 987  | 423| F  |
+| 423 |                                 | NTS | <digit>                         | 987  | 423| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 424 | <caseBody>                      | NTS | <unlabeledStmt>                 | 353  | 424| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1411,7 +1414,7 @@
 | 429 | <varDecl>                       | NTS | <registerKw>                    | 437  | 430| 430|
 | 430 |                                 | NTS | <constKw>                       | 225  | 431| 431|
 | 431 |                                 | NTS | <volatileKw>                    | 226  | 432| 432|
-| 432 |                                 | NTS | <type>                          | 898  | 433| F  |
+| 432 |                                 | NTS | <type>                          | 902  | 433| F  |
 | 433 |                                 | NTS | <varDeclarator>                 | 438  | 434| E  |
 | 434 |                                 | TS  | ","                             | -    | 435| 436|
 | 435 |                                 | NTS | <varDeclarator>                 | 438  | 434| E  |
@@ -1422,19 +1425,19 @@
 | 438 | <varDeclarator>                 | NTS | <ptrArrayDecl>                  | 444  | T  | 439|
 | 439 |                                 | NTS | <plainVarDeclarator>            | 440  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 440 | <plainVarDeclarator>            | NTS | <pointerDecl>                   | 928  | 441| F  |
+| 440 | <plainVarDeclarator>            | NTS | <pointerDecl>                   | 932  | 441| F  |
 | 441 |                                 | NTS | <localDecl>                     | 450  | 442| E  |
 | 442 |                                 | TS  | "="                             | -    | 443| T  |
 | 443 |                                 | NTS | <varInit>                       | 453  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 444 | <ptrArrayDecl>                  | TS  | "("                             | -    | 445| F  |
 | 445 |                                 | TS  | "*"                             | -    | 446| E  |
-| 446 |                                 | NTS | <localName>                     | 895  | 447| E  |
+| 446 |                                 | NTS | <localName>                     | 899  | 447| E  |
 | 447 |                                 | TS  | ")"                             | -    | 448| E  |
 | 448 |                                 | NTS | <arraySizeN>                    | 237  | 449| E  |
 | 449 |                                 | NTS | <arraySizeN>                    | 237  | 449| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 450 | <localDecl>                     | NTS | <localName>                     | 895  | 451| F  |
+| 450 | <localDecl>                     | NTS | <localName>                     | 899  | 451| F  |
 | 451 |                                 | NTS | <arraySize>                     | 234  | 452| T  |
 | 452 |                                 | NTS | <arraySizeN>                    | 237  | 452| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1468,23 +1471,23 @@
 | 474 |                                 | NTS | <initFloat>                     | 476  | T  | 475|
 | 475 |                                 | NTS | <initNumber>                    | 479  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 476 | <initFloat>                     | NTS | <digit>                         | 983  | 477| F  |
-| 477 |                                 | NTS | <digit>                         | 983  | 477| 478|
-| 478 |                                 | NTS | <floatTail>                     | 968  | T  | E  |
+| 476 | <initFloat>                     | NTS | <digit>                         | 987  | 477| F  |
+| 477 |                                 | NTS | <digit>                         | 987  | 477| 478|
+| 478 |                                 | NTS | <floatTail>                     | 972  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 479 | <initNumber>                    | NTS | <hexNumber>                     | 954  | 481| 480|
-| 480 |                                 | NTS | <decNumber>                     | 963  | 481| F  |
-| 481 |                                 | NTS | <integerSuffix>                 | 942  | T  | T  |
+| 479 | <initNumber>                    | NTS | <hexNumber>                     | 958  | 481| 480|
+| 480 |                                 | NTS | <decNumber>                     | 967  | 481| F  |
+| 481 |                                 | NTS | <integerSuffix>                 | 946  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 482 | <assignStmt>                    | NTS | <chainAssign>                   | 487  | T  | 483|
-| 483 |                                 | NTS | <target>                        | 863  | 484| F  |
+| 483 |                                 | NTS | <target>                        | 867  | 484| F  |
 | 484 |                                 | NTS | <assignop>                      | 493  | 485| E  |
 | 485 |                                 | NTS | <expr>                          | 613  | 486| E  |
 | 486 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 487 | <chainAssign>                   | NTS | <target>                        | 863  | 488| F  |
+| 487 | <chainAssign>                   | NTS | <target>                        | 867  | 488| F  |
 | 488 |                                 | NTS | <assignop>                      | 493  | 489| E  |
-| 489 |                                 | NTS | <target>                        | 863  | 490| E  |
+| 489 |                                 | NTS | <target>                        | 867  | 490| E  |
 | 490 |                                 | NTS | <assignop>                      | 493  | 491| E  |
 | 491 |                                 | NTS | <expr>                          | 613  | 492| E  |
 | 492 |                                 | TS  | ";"                             | -    | T  | E  |
@@ -1501,9 +1504,9 @@
 | 502 |                                 | TS  | "^="                            | -    | T  | 503|
 | 503 |                                 | TS  | "|="                            | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 504 | <callStmt>                      | NTS | <call>                          | 848  | 505| 506|
+| 504 | <callStmt>                      | NTS | <call>                          | 852  | 505| 506|
 | 505 |                                 | TS  | ";"                             | -    | T  | E  |
-| 506 |                                 | NTS | <indirectCall>                  | 854  | 507| F  |
+| 506 |                                 | NTS | <indirectCall>                  | 858  | 507| F  |
 | 507 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 508 | <vaStmt>                        | NTS | <vaStartCall>                   | 512  | 509| 510|
@@ -1523,16 +1526,16 @@
 | 520 |                                 | NTS | <vaApRef>                       | 522  | 521| E  |
 | 521 |                                 | TS  | ")"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 522 | <vaApRef>                       | NTS | <ident>                         | 936  | T  | F  |
+| 522 | <vaApRef>                       | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 523 | <vaLastName>                    | NTS | <ident>                         | 936  | T  | F  |
+| 523 | <vaLastName>                    | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 524 | <vaArgExpr>                     | TS  | "va_arg"                        | -    | 525| F  |
 | 525 |                                 | TS  | "("                             | -    | 526| E  |
 | 526 |                                 | NTS | <vaApRef>                       | 522  | 527| E  |
 | 527 |                                 | TS  | ","                             | -    | 528| E  |
-| 528 |                                 | NTS | <type>                          | 898  | 529| E  |
-| 529 |                                 | NTS | <pointerDecl>                   | 928  | 530| E  |
+| 528 |                                 | NTS | <type>                          | 902  | 529| E  |
+| 529 |                                 | NTS | <pointerDecl>                   | 932  | 530| E  |
 | 530 |                                 | TS  | ")"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 531 | <emptyStmt>                     | TS  | ";"                             | -    | T  | F  |
@@ -1603,7 +1606,7 @@
 | 576 |                                 | NTS | <forComma>                      | 581  | 577| T  |
 | 577 |                                 | NTS | <forInitItem>                   | 578  | 576| E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 578 | <forInitItem>                   | NTS | <target>                        | 863  | 579| F  |
+| 578 | <forInitItem>                   | NTS | <target>                        | 867  | 579| F  |
 | 579 |                                 | NTS | <assignop>                      | 493  | 580| E  |
 | 580 |                                 | NTS | <expr>                          | 613  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1615,11 +1618,11 @@
 | 584 |                                 | NTS | <forComma>                      | 581  | 585| T  |
 | 585 |                                 | NTS | <forStepItem>                   | 586  | 584| E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 586 | <forStepItem>                   | NTS | <target>                        | 863  | 587| 589|
+| 586 | <forStepItem>                   | NTS | <target>                        | 867  | 587| 589|
 | 587 |                                 | NTS | <assignop>                      | 493  | 588| E  |
 | 588 |                                 | NTS | <expr>                          | 613  | T  | E  |
-| 589 |                                 | NTS | <postIncDec>                    | 823  | T  | 590|
-| 590 |                                 | NTS | <preIncDec>                     | 815  | T  | F  |
+| 589 |                                 | NTS | <postIncDec>                    | 827  | T  | 590|
+| 590 |                                 | NTS | <preIncDec>                     | 819  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 591 | <forBody>                       | NTS | <statement>                     | 351  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1648,10 +1651,10 @@
 | 607 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 608 | <gotoStmt>                      | TS  | "goto"                          | -    | 609| F  |
-| 609 |                                 | NTS | <ident>                         | 936  | 610| E  |
+| 609 |                                 | NTS | <ident>                         | 940  | 610| E  |
 | 610 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 611 | <labelStmt>                     | NTS | <ident>                         | 936  | 612| F  |
+| 611 | <labelStmt>                     | NTS | <ident>                         | 940  | 612| F  |
 | 612 |                                 | TS  | ":"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 613 | <expr>                          | NTS | <conditionalExpr>               | 614  | T  | F  |
@@ -1675,7 +1678,7 @@
 | 625 | <commaItem>                     | NTS | <commaAssign>                   | 627  | T  | 626|
 | 626 |                                 | NTS | <commaValue>                    | 630  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 627 | <commaAssign>                   | NTS | <target>                        | 863  | 628| F  |
+| 627 | <commaAssign>                   | NTS | <target>                        | 867  | 628| F  |
 | 628 |                                 | NTS | <assignop>                      | 493  | 629| E  |
 | 629 |                                 | NTS | <expr>                          | 613  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
@@ -1756,30 +1759,30 @@
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 681 | <factor>                        | NTS | <sizeofExpr>                    | 759  | T  | 682|
 | 682 |                                 | NTS | <vaArgExpr>                     | 524  | T  | 683|
-| 683 |                                 | NTS | <castExpr>                      | 786  | T  | 684|
-| 684 |                                 | NTS | <preIncDec>                     | 815  | T  | 685|
-| 685 |                                 | NTS | <postIncDec>                    | 823  | T  | 686|
+| 683 |                                 | NTS | <castExpr>                      | 790  | T  | 684|
+| 684 |                                 | NTS | <preIncDec>                     | 819  | T  | 685|
+| 685 |                                 | NTS | <postIncDec>                    | 827  | T  | 686|
 | 686 |                                 | NTS | <parenOpen>                     | 619  | 687| 690|
 | 687 |                                 | NTS | <commaExpr>                     | 621  | 688| E  |
 | 688 |                                 | NTS | <parenClose>                    | 620  | 689| E  |
 | 689 |                                 | NTS | <postfixIndex>                  | 705  | T  | 690|
-| 690 |                                 | NTS | <call>                          | 848  | 691| 693|
+| 690 |                                 | NTS | <call>                          | 852  | 691| 693|
 | 691 |                                 | NTS | <postfixIndex>                  | 705  | 692| 692|
-| 692 |                                 | NTS | <callMember>                    | 852  | T  | 693|
-| 693 |                                 | NTS | <indirectCall>                  | 854  | T  | 694|
-| 694 |                                 | NTS | <boolLit>                       | 934  | T  | 695|
+| 692 |                                 | NTS | <callMember>                    | 856  | T  | 693|
+| 693 |                                 | NTS | <indirectCall>                  | 858  | T  | 694|
+| 694 |                                 | NTS | <boolLit>                       | 938  | T  | 695|
 | 695 |                                 | NTS | <addressRef>                    | 756  | T  | 696|
-| 696 |                                 | NTS | <derefRef>                      | 846  | T  | 697|
-| 697 |                                 | NTS | <varRef>                        | 876  | T  | 698|
+| 696 |                                 | NTS | <derefRef>                      | 850  | T  | 697|
+| 697 |                                 | NTS | <varRef>                        | 880  | T  | 698|
 | 698 |                                 | NTS | <charLit>                       | 717  | T  | 699|
-| 699 |                                 | NTS | <floatLit>                      | 965  | T  | 700|
-| 700 |                                 | NTS | <number>                        | 939  | T  | 701|
+| 699 |                                 | NTS | <floatLit>                      | 969  | T  | 700|
+| 700 |                                 | NTS | <number>                        | 943  | T  | 701|
 | 701 |                                 | NTS | <stringLit>                     | 706  | 702| 703|
 | 702 |                                 | NTS | <postfixIndex>                  | 705  | T  | 703|
 | 703 |                                 | NTS | <posFactor>                     | 754  | T  | 704|
 | 704 |                                 | NTS | <negFactor>                     | 750  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 705 | <postfixIndex>                  | NTS | <index>                         | 885  | T  | F  |
+| 705 | <postfixIndex>                  | NTS | <index>                         | 889  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 706 | <stringLit>                     | NTS | <stringPiece>                   | 709  | 707| F  |
 | 707 |                                 | NTS | <stringSep>                     | 712  | 708| T  |
@@ -1849,290 +1852,295 @@
 | 755 |                                 | NTS | <factor>                        | 681  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 756 | <addressRef>                    | TS  | "&"                             | -    | 757| F  |
-| 757 |                                 | NTS | <ident>                         | 936  | 758| E  |
-| 758 |                                 | NTS | <index>                         | 885  | T  | T  |
+| 757 |                                 | NTS | <ident>                         | 940  | 758| E  |
+| 758 |                                 | NTS | <index>                         | 889  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
 | 759 | <sizeofExpr>                    | TS  | "sizeof"                        | -    | 760| F  |
 | 760 |                                 | TS  | "("                             | -    | 761| 763|
 | 761 |                                 | NTS | <sizeofArg>                     | 764  | 762| E  |
 | 762 |                                 | TS  | ")"                             | -    | T  | E  |
-| 763 |                                 | NTS | <sizeofVarName>                 | 785  | T  | E  |
+| 763 |                                 | NTS | <sizeofVarName>                 | 786  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 764 | <sizeofArg>                     | NTS | <sizeofType>                    | 766  | T  | 765|
-| 765 |                                 | NTS | <sizeofVarName>                 | 785  | T  | F  |
+| 764 | <sizeofArg>                     | NTS | <sizeofType>                    | 767  | T  | 765|
+| 765 |                                 | NTS | <sizeofVarName>                 | 786  | T  | 766|
+| 766 |                                 | NTS | <sizeofStringLit>               | 787  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 766 | <sizeofType>                    | NTS | <sizeofBaseType>                | 768  | 767| F  |
-| 767 |                                 | NTS | <pointerDecl>                   | 928  | T  | E  |
+| 767 | <sizeofType>                    | NTS | <sizeofBaseType>                | 769  | 768| F  |
+| 768 |                                 | NTS | <pointerDecl>                   | 932  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 768 | <sizeofBaseType>                | TS  | "unsigned"                      | -    | 769| 770|
-| 769 |                                 | NTS | <unsignedInt>                   | 930  | T  | E  |
-| 770 |                                 | TS  | "int"                           | -    | T  | 771|
-| 771 |                                 | NTS | <longLongType>                  | 922  | T  | 772|
-| 772 |                                 | TS  | "long"                          | -    | T  | 773|
-| 773 |                                 | TS  | "char"                          | -    | T  | 774|
-| 774 |                                 | TS  | "short"                         | -    | T  | 775|
-| 775 |                                 | TS  | "bool"                          | -    | T  | 776|
-| 776 |                                 | TS  | "double"                        | -    | T  | 777|
-| 777 |                                 | TS  | "float"                         | -    | T  | 778|
-| 778 |                                 | TS  | "struct"                        | -    | 779| 780|
-| 779 |                                 | NTS | <structTypeRef>                 | 925  | T  | E  |
-| 780 |                                 | TS  | "union"                         | -    | 781| 782|
-| 781 |                                 | NTS | <unionTypeRef>                  | 924  | T  | E  |
-| 782 |                                 | TS  | "enum"                          | -    | 783| 784|
-| 783 |                                 | NTS | <enumTypeRef>                   | 926  | T  | E  |
-| 784 |                                 | TS  | "void"                          | -    | T  | F  |
+| 769 | <sizeofBaseType>                | TS  | "unsigned"                      | -    | 770| 771|
+| 770 |                                 | NTS | <unsignedInt>                   | 934  | T  | E  |
+| 771 |                                 | TS  | "int"                           | -    | T  | 772|
+| 772 |                                 | NTS | <longLongType>                  | 926  | T  | 773|
+| 773 |                                 | TS  | "long"                          | -    | T  | 774|
+| 774 |                                 | TS  | "char"                          | -    | T  | 775|
+| 775 |                                 | TS  | "short"                         | -    | T  | 776|
+| 776 |                                 | TS  | "bool"                          | -    | T  | 777|
+| 777 |                                 | TS  | "double"                        | -    | T  | 778|
+| 778 |                                 | TS  | "float"                         | -    | T  | 779|
+| 779 |                                 | TS  | "struct"                        | -    | 780| 781|
+| 780 |                                 | NTS | <structTypeRef>                 | 929  | T  | E  |
+| 781 |                                 | TS  | "union"                         | -    | 782| 783|
+| 782 |                                 | NTS | <unionTypeRef>                  | 928  | T  | E  |
+| 783 |                                 | TS  | "enum"                          | -    | 784| 785|
+| 784 |                                 | NTS | <enumTypeRef>                   | 930  | T  | E  |
+| 785 |                                 | TS  | "void"                          | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 785 | <sizeofVarName>                 | NTS | <ident>                         | 936  | T  | F  |
+| 786 | <sizeofVarName>                 | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 786 | <castExpr>                      | TS  | "("                             | -    | 787| F  |
-| 787 |                                 | NTS | <castType>                      | 790  | 788| E  |
-| 788 |                                 | TS  | ")"                             | -    | 789| E  |
-| 789 |                                 | NTS | <castOperand>                   | 793  | T  | E  |
+| 787 | <sizeofStringLit>               | NTS | <stringPiece>                   | 709  | 788| F  |
+| 788 |                                 | NTS | <stringSep>                     | 712  | 789| T  |
+| 789 |                                 | NTS | <stringPiece>                   | 709  | 788| E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 790 | <castType>                      | NTS | <retConstKw>                    | 276  | 791| 791|
-| 791 |                                 | NTS | <type>                          | 898  | 792| F  |
-| 792 |                                 | NTS | <pointerDecl>                   | 928  | T  | E  |
+| 790 | <castExpr>                      | TS  | "("                             | -    | 791| F  |
+| 791 |                                 | NTS | <castType>                      | 794  | 792| E  |
+| 792 |                                 | TS  | ")"                             | -    | 793| E  |
+| 793 |                                 | NTS | <castOperand>                   | 797  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 793 | <castOperand>                   | NTS | <sizeofExpr>                    | 759  | T  | 794|
-| 794 |                                 | NTS | <vaArgExpr>                     | 524  | T  | 795|
-| 795 |                                 | NTS | <castExpr>                      | 786  | T  | 796|
-| 796 |                                 | NTS | <preIncDec>                     | 815  | T  | 797|
-| 797 |                                 | NTS | <postIncDec>                    | 823  | T  | 798|
-| 798 |                                 | NTS | <parenOpen>                     | 619  | 799| 801|
-| 799 |                                 | NTS | <commaExpr>                     | 621  | 800| E  |
-| 800 |                                 | NTS | <parenClose>                    | 620  | T  | E  |
-| 801 |                                 | NTS | <call>                          | 848  | 802| 804|
-| 802 |                                 | NTS | <postfixIndex>                  | 705  | 803| 803|
-| 803 |                                 | NTS | <callMember>                    | 852  | T  | 804|
-| 804 |                                 | NTS | <indirectCall>                  | 854  | T  | 805|
-| 805 |                                 | NTS | <boolLit>                       | 934  | T  | 806|
-| 806 |                                 | NTS | <addressRef>                    | 756  | T  | 807|
-| 807 |                                 | NTS | <derefRef>                      | 846  | T  | 808|
-| 808 |                                 | NTS | <varRef>                        | 876  | T  | 809|
-| 809 |                                 | NTS | <charLit>                       | 717  | T  | 810|
-| 810 |                                 | NTS | <floatLit>                      | 965  | T  | 811|
-| 811 |                                 | NTS | <number>                        | 939  | T  | 812|
-| 812 |                                 | NTS | <stringLit>                     | 706  | 813| 814|
-| 813 |                                 | NTS | <postfixIndex>                  | 705  | T  | 814|
-| 814 |                                 | NTS | <negFactor>                     | 750  | T  | F  |
+| 794 | <castType>                      | NTS | <retConstKw>                    | 276  | 795| 795|
+| 795 |                                 | NTS | <type>                          | 902  | 796| F  |
+| 796 |                                 | NTS | <pointerDecl>                   | 932  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 815 | <preIncDec>                     | NTS | <incdecOp>                      | 840  | 816| 817|
-| 816 |                                 | NTS | <derefIncTarget>                | 836  | T  | E  |
-| 817 |                                 | NTS | <incdecOp>                      | 840  | 818| 819|
-| 818 |                                 | NTS | <memberIncTarget>               | 831  | T  | E  |
-| 819 |                                 | NTS | <incdecOp>                      | 840  | 820| 821|
-| 820 |                                 | NTS | <indexIncTarget>                | 834  | T  | E  |
-| 821 |                                 | NTS | <incdecOp>                      | 840  | 822| F  |
-| 822 |                                 | NTS | <ident>                         | 936  | T  | E  |
+| 797 | <castOperand>                   | NTS | <sizeofExpr>                    | 759  | T  | 798|
+| 798 |                                 | NTS | <vaArgExpr>                     | 524  | T  | 799|
+| 799 |                                 | NTS | <castExpr>                      | 790  | T  | 800|
+| 800 |                                 | NTS | <preIncDec>                     | 819  | T  | 801|
+| 801 |                                 | NTS | <postIncDec>                    | 827  | T  | 802|
+| 802 |                                 | NTS | <parenOpen>                     | 619  | 803| 805|
+| 803 |                                 | NTS | <commaExpr>                     | 621  | 804| E  |
+| 804 |                                 | NTS | <parenClose>                    | 620  | T  | E  |
+| 805 |                                 | NTS | <call>                          | 852  | 806| 808|
+| 806 |                                 | NTS | <postfixIndex>                  | 705  | 807| 807|
+| 807 |                                 | NTS | <callMember>                    | 856  | T  | 808|
+| 808 |                                 | NTS | <indirectCall>                  | 858  | T  | 809|
+| 809 |                                 | NTS | <boolLit>                       | 938  | T  | 810|
+| 810 |                                 | NTS | <addressRef>                    | 756  | T  | 811|
+| 811 |                                 | NTS | <derefRef>                      | 850  | T  | 812|
+| 812 |                                 | NTS | <varRef>                        | 880  | T  | 813|
+| 813 |                                 | NTS | <charLit>                       | 717  | T  | 814|
+| 814 |                                 | NTS | <floatLit>                      | 969  | T  | 815|
+| 815 |                                 | NTS | <number>                        | 943  | T  | 816|
+| 816 |                                 | NTS | <stringLit>                     | 706  | 817| 818|
+| 817 |                                 | NTS | <postfixIndex>                  | 705  | T  | 818|
+| 818 |                                 | NTS | <negFactor>                     | 750  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 823 | <postIncDec>                    | NTS | <derefIncTarget>                | 836  | 824| 825|
-| 824 |                                 | NTS | <incdecOp>                      | 840  | T  | E  |
-| 825 |                                 | NTS | <memberIncTarget>               | 831  | 826| 827|
-| 826 |                                 | NTS | <incdecOp>                      | 840  | T  | E  |
-| 827 |                                 | NTS | <indexIncTarget>                | 834  | 828| 829|
-| 828 |                                 | NTS | <incdecOp>                      | 840  | T  | E  |
-| 829 |                                 | NTS | <ident>                         | 936  | 830| F  |
-| 830 |                                 | NTS | <incdecOp>                      | 840  | T  | E  |
+| 819 | <preIncDec>                     | NTS | <incdecOp>                      | 844  | 820| 821|
+| 820 |                                 | NTS | <derefIncTarget>                | 840  | T  | E  |
+| 821 |                                 | NTS | <incdecOp>                      | 844  | 822| 823|
+| 822 |                                 | NTS | <memberIncTarget>               | 835  | T  | E  |
+| 823 |                                 | NTS | <incdecOp>                      | 844  | 824| 825|
+| 824 |                                 | NTS | <indexIncTarget>                | 838  | T  | E  |
+| 825 |                                 | NTS | <incdecOp>                      | 844  | 826| F  |
+| 826 |                                 | NTS | <ident>                         | 940  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 831 | <memberIncTarget>               | NTS | <ident>                         | 936  | 832| F  |
-| 832 |                                 | NTS | <member>                        | 889  | 833| E  |
-| 833 |                                 | NTS | <index>                         | 885  | T  | T  |
+| 827 | <postIncDec>                    | NTS | <derefIncTarget>                | 840  | 828| 829|
+| 828 |                                 | NTS | <incdecOp>                      | 844  | T  | E  |
+| 829 |                                 | NTS | <memberIncTarget>               | 835  | 830| 831|
+| 830 |                                 | NTS | <incdecOp>                      | 844  | T  | E  |
+| 831 |                                 | NTS | <indexIncTarget>                | 838  | 832| 833|
+| 832 |                                 | NTS | <incdecOp>                      | 844  | T  | E  |
+| 833 |                                 | NTS | <ident>                         | 940  | 834| F  |
+| 834 |                                 | NTS | <incdecOp>                      | 844  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 834 | <indexIncTarget>                | NTS | <ident>                         | 936  | 835| F  |
-| 835 |                                 | NTS | <index>                         | 885  | T  | E  |
+| 835 | <memberIncTarget>               | NTS | <ident>                         | 940  | 836| F  |
+| 836 |                                 | NTS | <member>                        | 893  | 837| E  |
+| 837 |                                 | NTS | <index>                         | 889  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 836 | <derefIncTarget>                | TS  | "("                             | -    | 837| F  |
-| 837 |                                 | TS  | "*"                             | -    | 838| E  |
-| 838 |                                 | NTS | <ident>                         | 936  | 839| E  |
-| 839 |                                 | TS  | ")"                             | -    | T  | E  |
+| 838 | <indexIncTarget>                | NTS | <ident>                         | 940  | 839| F  |
+| 839 |                                 | NTS | <index>                         | 889  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 840 | <incdecOp>                      | TS  | "++"                            | -    | T  | 841|
-| 841 |                                 | TS  | "--"                            | -    | T  | F  |
+| 840 | <derefIncTarget>                | TS  | "("                             | -    | 841| F  |
+| 841 |                                 | TS  | "*"                             | -    | 842| E  |
+| 842 |                                 | NTS | <ident>                         | 940  | 843| E  |
+| 843 |                                 | TS  | ")"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 842 | <incDecStmt>                    | NTS | <preIncDec>                     | 815  | 843| 844|
-| 843 |                                 | TS  | ";"                             | -    | T  | E  |
-| 844 |                                 | NTS | <postIncDec>                    | 823  | 845| F  |
-| 845 |                                 | TS  | ";"                             | -    | T  | E  |
+| 844 | <incdecOp>                      | TS  | "++"                            | -    | T  | 845|
+| 845 |                                 | TS  | "--"                            | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 846 | <derefRef>                      | TS  | "*"                             | -    | 847| F  |
-| 847 |                                 | NTS | <factor>                        | 681  | T  | E  |
+| 846 | <incDecStmt>                    | NTS | <preIncDec>                     | 819  | 847| 848|
+| 847 |                                 | TS  | ";"                             | -    | T  | E  |
+| 848 |                                 | NTS | <postIncDec>                    | 827  | 849| F  |
+| 849 |                                 | TS  | ";"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 848 | <call>                          | NTS | <funcName>                      | 897  | 849| F  |
-| 849 |                                 | TS  | "("                             | -    | 850| E  |
-| 850 |                                 | NTS | <argList>                       | 859  | 851| E  |
-| 851 |                                 | TS  | ")"                             | -    | T  | E  |
+| 850 | <derefRef>                      | TS  | "*"                             | -    | 851| F  |
+| 851 |                                 | NTS | <factor>                        | 681  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 852 | <callMember>                    | NTS | <member>                        | 889  | 853| F  |
-| 853 |                                 | NTS | <index>                         | 885  | T  | T  |
+| 852 | <call>                          | NTS | <funcName>                      | 901  | 853| F  |
+| 853 |                                 | TS  | "("                             | -    | 854| E  |
+| 854 |                                 | NTS | <argList>                       | 863  | 855| E  |
+| 855 |                                 | TS  | ")"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 854 | <indirectCall>                  | NTS | <varRef>                        | 876  | 855| F  |
-| 855 |                                 | NTS | <indCallOpen>                   | 858  | 856| E  |
-| 856 |                                 | NTS | <argList>                       | 859  | 857| E  |
-| 857 |                                 | TS  | ")"                             | -    | T  | E  |
+| 856 | <callMember>                    | NTS | <member>                        | 893  | 857| F  |
+| 857 |                                 | NTS | <index>                         | 889  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 858 | <indCallOpen>                   | TS  | "("                             | -    | T  | F  |
+| 858 | <indirectCall>                  | NTS | <varRef>                        | 880  | 859| F  |
+| 859 |                                 | NTS | <indCallOpen>                   | 862  | 860| E  |
+| 860 |                                 | NTS | <argList>                       | 863  | 861| E  |
+| 861 |                                 | TS  | ")"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 859 | <argList>                       | NTS | <arg>                           | 862  | 860| T  |
-| 860 |                                 | TS  | ","                             | -    | 861| T  |
-| 861 |                                 | NTS | <arg>                           | 862  | 860| E  |
+| 862 | <indCallOpen>                   | TS  | "("                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 862 | <arg>                           | NTS | <expr>                          | 613  | T  | F  |
+| 863 | <argList>                       | NTS | <arg>                           | 866  | 864| T  |
+| 864 |                                 | TS  | ","                             | -    | 865| T  |
+| 865 |                                 | NTS | <arg>                           | 866  | 864| E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 863 | <target>                        | NTS | <directTarget>                  | 865  | T  | 864|
-| 864 |                                 | NTS | <indirectTarget>                | 874  | T  | F  |
+| 866 | <arg>                           | NTS | <expr>                          | 613  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 865 | <directTarget>                  | NTS | <ident>                         | 936  | 866| F  |
-| 866 |                                 | NTS | <index>                         | 885  | 867| 868|
-| 867 |                                 | NTS | <index>                         | 885  | 867| 868|
-| 868 |                                 | NTS | <member>                        | 889  | 869| T  |
-| 869 |                                 | NTS | <index>                         | 885  | 870| 871|
-| 870 |                                 | NTS | <index>                         | 885  | 870| 871|
-| 871 |                                 | NTS | <member>                        | 889  | 872| T  |
-| 872 |                                 | NTS | <index>                         | 885  | 873| T  |
-| 873 |                                 | NTS | <index>                         | 885  | 873| T  |
+| 867 | <target>                        | NTS | <directTarget>                  | 869  | T  | 868|
+| 868 |                                 | NTS | <indirectTarget>                | 878  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 874 | <indirectTarget>                | TS  | "*"                             | -    | 875| F  |
-| 875 |                                 | NTS | <factor>                        | 681  | T  | E  |
+| 869 | <directTarget>                  | NTS | <ident>                         | 940  | 870| F  |
+| 870 |                                 | NTS | <index>                         | 889  | 871| 872|
+| 871 |                                 | NTS | <index>                         | 889  | 871| 872|
+| 872 |                                 | NTS | <member>                        | 893  | 873| T  |
+| 873 |                                 | NTS | <index>                         | 889  | 874| 875|
+| 874 |                                 | NTS | <index>                         | 889  | 874| 875|
+| 875 |                                 | NTS | <member>                        | 893  | 876| T  |
+| 876 |                                 | NTS | <index>                         | 889  | 877| T  |
+| 877 |                                 | NTS | <index>                         | 889  | 877| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 876 | <varRef>                        | NTS | <ident>                         | 936  | 877| F  |
-| 877 |                                 | NTS | <index>                         | 885  | 878| 879|
-| 878 |                                 | NTS | <index>                         | 885  | 878| 879|
-| 879 |                                 | NTS | <member>                        | 889  | 880| T  |
-| 880 |                                 | NTS | <index>                         | 885  | 881| 882|
-| 881 |                                 | NTS | <index>                         | 885  | 881| 882|
-| 882 |                                 | NTS | <member>                        | 889  | 883| T  |
-| 883 |                                 | NTS | <index>                         | 885  | 884| T  |
-| 884 |                                 | NTS | <index>                         | 885  | 884| T  |
+| 878 | <indirectTarget>                | TS  | "*"                             | -    | 879| F  |
+| 879 |                                 | NTS | <factor>                        | 681  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 885 | <index>                         | NTS | <indexOpen>                     | 888  | 886| F  |
-| 886 |                                 | NTS | <expr>                          | 613  | 887| E  |
-| 887 |                                 | TS  | "]"                             | -    | T  | E  |
+| 880 | <varRef>                        | NTS | <ident>                         | 940  | 881| F  |
+| 881 |                                 | NTS | <index>                         | 889  | 882| 883|
+| 882 |                                 | NTS | <index>                         | 889  | 882| 883|
+| 883 |                                 | NTS | <member>                        | 893  | 884| T  |
+| 884 |                                 | NTS | <index>                         | 889  | 885| 886|
+| 885 |                                 | NTS | <index>                         | 889  | 885| 886|
+| 886 |                                 | NTS | <member>                        | 893  | 887| T  |
+| 887 |                                 | NTS | <index>                         | 889  | 888| T  |
+| 888 |                                 | NTS | <index>                         | 889  | 888| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 888 | <indexOpen>                     | TS  | "["                             | -    | T  | F  |
+| 889 | <index>                         | NTS | <indexOpen>                     | 892  | 890| F  |
+| 890 |                                 | NTS | <expr>                          | 613  | 891| E  |
+| 891 |                                 | TS  | "]"                             | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 889 | <member>                        | TS  | "."                             | -    | 890| 891|
-| 890 |                                 | NTS | <fieldName>                     | 150  | T  | E  |
-| 891 |                                 | TS  | "->"                            | -    | 892| F  |
-| 892 |                                 | NTS | <fieldName>                     | 150  | T  | E  |
+| 892 | <indexOpen>                     | TS  | "["                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 893 | <defName>                       | NTS | <ident>                         | 936  | T  | F  |
+| 893 | <member>                        | TS  | "."                             | -    | 894| 895|
+| 894 |                                 | NTS | <fieldName>                     | 150  | T  | E  |
+| 895 |                                 | TS  | "->"                            | -    | 896| F  |
+| 896 |                                 | NTS | <fieldName>                     | 150  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 894 | <paramName>                     | NTS | <ident>                         | 936  | T  | F  |
+| 897 | <defName>                       | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 895 | <localName>                     | NTS | <ident>                         | 936  | T  | F  |
+| 898 | <paramName>                     | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 896 | <globalName>                    | NTS | <ident>                         | 936  | T  | F  |
+| 899 | <localName>                     | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 897 | <funcName>                      | NTS | <ident>                         | 936  | T  | F  |
+| 900 | <globalName>                    | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 898 | <type>                          | TS  | "unsigned"                      | -    | 899| 900|
-| 899 |                                 | NTS | <unsignedInt>                   | 930  | T  | E  |
-| 900 |                                 | TS  | "signed"                        | -    | 901| 902|
-| 901 |                                 | NTS | <unsignedInt>                   | 930  | T  | E  |
-| 902 |                                 | TS  | "int"                           | -    | T  | 903|
-| 903 |                                 | NTS | <longLongType>                  | 922  | T  | 904|
-| 904 |                                 | NTS | <longDoubleType>                | 920  | T  | 905|
-| 905 |                                 | TS  | "long"                          | -    | T  | 906|
-| 906 |                                 | TS  | "short"                         | -    | T  | 907|
-| 907 |                                 | TS  | "char"                          | -    | T  | 908|
-| 908 |                                 | TS  | "bool"                          | -    | T  | 909|
-| 909 |                                 | TS  | "double"                        | -    | T  | 910|
-| 910 |                                 | TS  | "float"                         | -    | T  | 911|
-| 911 |                                 | TS  | "va_list"                       | -    | T  | 912|
-| 912 |                                 | TS  | "struct"                        | -    | 913| 914|
-| 913 |                                 | NTS | <structTypeRef>                 | 925  | T  | E  |
-| 914 |                                 | TS  | "union"                         | -    | 915| 916|
-| 915 |                                 | NTS | <unionTypeRef>                  | 924  | T  | E  |
-| 916 |                                 | TS  | "enum"                          | -    | 917| 918|
-| 917 |                                 | NTS | <enumTypeRef>                   | 926  | T  | E  |
-| 918 |                                 | TS  | "void"                          | -    | T  | 919|
-| 919 |                                 | NTS | <typedefRef>                    | 927  | T  | F  |
+| 901 | <funcName>                      | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 920 | <longDoubleType>                | TS  | "long"                          | -    | 921| F  |
-| 921 |                                 | TS  | "double"                        | -    | T  | E  |
+| 902 | <type>                          | TS  | "unsigned"                      | -    | 903| 904|
+| 903 |                                 | NTS | <unsignedInt>                   | 934  | T  | E  |
+| 904 |                                 | TS  | "signed"                        | -    | 905| 906|
+| 905 |                                 | NTS | <unsignedInt>                   | 934  | T  | E  |
+| 906 |                                 | TS  | "int"                           | -    | T  | 907|
+| 907 |                                 | NTS | <longLongType>                  | 926  | T  | 908|
+| 908 |                                 | NTS | <longDoubleType>                | 924  | T  | 909|
+| 909 |                                 | TS  | "long"                          | -    | T  | 910|
+| 910 |                                 | TS  | "short"                         | -    | T  | 911|
+| 911 |                                 | TS  | "char"                          | -    | T  | 912|
+| 912 |                                 | TS  | "bool"                          | -    | T  | 913|
+| 913 |                                 | TS  | "double"                        | -    | T  | 914|
+| 914 |                                 | TS  | "float"                         | -    | T  | 915|
+| 915 |                                 | TS  | "va_list"                       | -    | T  | 916|
+| 916 |                                 | TS  | "struct"                        | -    | 917| 918|
+| 917 |                                 | NTS | <structTypeRef>                 | 929  | T  | E  |
+| 918 |                                 | TS  | "union"                         | -    | 919| 920|
+| 919 |                                 | NTS | <unionTypeRef>                  | 928  | T  | E  |
+| 920 |                                 | TS  | "enum"                          | -    | 921| 922|
+| 921 |                                 | NTS | <enumTypeRef>                   | 930  | T  | E  |
+| 922 |                                 | TS  | "void"                          | -    | T  | 923|
+| 923 |                                 | NTS | <typedefRef>                    | 931  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 922 | <longLongType>                  | TS  | "long"                          | -    | 923| F  |
-| 923 |                                 | TS  | "long"                          | -    | T  | E  |
+| 924 | <longDoubleType>                | TS  | "long"                          | -    | 925| F  |
+| 925 |                                 | TS  | "double"                        | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 924 | <unionTypeRef>                  | NTS | <ident>                         | 936  | T  | F  |
+| 926 | <longLongType>                  | TS  | "long"                          | -    | 927| F  |
+| 927 |                                 | TS  | "long"                          | -    | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 925 | <structTypeRef>                 | NTS | <ident>                         | 936  | T  | F  |
+| 928 | <unionTypeRef>                  | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 926 | <enumTypeRef>                   | NTS | <ident>                         | 936  | T  | F  |
+| 929 | <structTypeRef>                 | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 927 | <typedefRef>                    | NTS | <ident>                         | 936  | T  | F  |
+| 930 | <enumTypeRef>                   | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 928 | <pointerDecl>                   | NTS | <pointerStar>                   | 929  | 928| T  |
+| 931 | <typedefRef>                    | NTS | <ident>                         | 940  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 929 | <pointerStar>                   | TS  | "*"                             | -    | T  | F  |
+| 932 | <pointerDecl>                   | NTS | <pointerStar>                   | 933  | 932| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 930 | <unsignedInt>                   | TS  | "int"                           | -    | T  | 931|
-| 931 |                                 | TS  | "char"                          | -    | T  | 932|
-| 932 |                                 | TS  | "long"                          | -    | T  | 933|
-| 933 |                                 | TS  | "short"                         | -    | T  | F  |
+| 933 | <pointerStar>                   | TS  | "*"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 934 | <boolLit>                       | TS  | "true"                          | -    | T  | 935|
-| 935 |                                 | TS  | "false"                         | -    | T  | F  |
+| 934 | <unsignedInt>                   | TS  | "int"                           | -    | T  | 935|
+| 935 |                                 | TS  | "char"                          | -    | T  | 936|
+| 936 |                                 | TS  | "long"                          | -    | T  | 937|
+| 937 |                                 | TS  | "short"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 936 | <ident>                         | NTS | <letter>                        | 980  | 937| F  |
-| 937 |                                 | NTS | <letter>                        | 980  | 937| 938|
-| 938 |                                 | NTS | <digit>                         | 983  | 937| T  |
+| 938 | <boolLit>                       | TS  | "true"                          | -    | T  | 939|
+| 939 |                                 | TS  | "false"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 939 | <number>                        | NTS | <hexNumber>                     | 954  | 941| 940|
-| 940 |                                 | NTS | <decNumber>                     | 963  | 941| F  |
-| 941 |                                 | NTS | <integerSuffix>                 | 942  | T  | T  |
+| 940 | <ident>                         | NTS | <letter>                        | 984  | 941| F  |
+| 941 |                                 | NTS | <letter>                        | 984  | 941| 942|
+| 942 |                                 | NTS | <digit>                         | 987  | 941| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 942 | <integerSuffix>                 | TS  | "u"                             | -    | 943| 944|
-| 943 |                                 | TS  | "l"                             | -    | T  | E  |
-| 944 |                                 | TS  | "U"                             | -    | 945| 946|
-| 945 |                                 | TS  | "L"                             | -    | T  | E  |
-| 946 |                                 | TS  | "l"                             | -    | 947| 948|
-| 947 |                                 | TS  | "u"                             | -    | T  | E  |
-| 948 |                                 | TS  | "L"                             | -    | 949| 950|
-| 949 |                                 | TS  | "U"                             | -    | T  | E  |
-| 950 |                                 | TS  | "u"                             | -    | T  | 951|
-| 951 |                                 | TS  | "U"                             | -    | T  | 952|
-| 952 |                                 | TS  | "l"                             | -    | T  | 953|
-| 953 |                                 | TS  | "L"                             | -    | T  | F  |
+| 943 | <number>                        | NTS | <hexNumber>                     | 958  | 945| 944|
+| 944 |                                 | NTS | <decNumber>                     | 967  | 945| F  |
+| 945 |                                 | NTS | <integerSuffix>                 | 946  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 954 | <hexNumber>                     | TS  | "0"                             | -    | 955| F  |
-| 955 |                                 | NTS | <hexMark>                       | 958  | 956| E  |
-| 956 |                                 | NTS | <hexDigit>                      | 960  | 957| E  |
-| 957 |                                 | NTS | <hexDigit>                      | 960  | 957| T  |
+| 946 | <integerSuffix>                 | TS  | "u"                             | -    | 947| 948|
+| 947 |                                 | TS  | "l"                             | -    | T  | E  |
+| 948 |                                 | TS  | "U"                             | -    | 949| 950|
+| 949 |                                 | TS  | "L"                             | -    | T  | E  |
+| 950 |                                 | TS  | "l"                             | -    | 951| 952|
+| 951 |                                 | TS  | "u"                             | -    | T  | E  |
+| 952 |                                 | TS  | "L"                             | -    | 953| 954|
+| 953 |                                 | TS  | "U"                             | -    | T  | E  |
+| 954 |                                 | TS  | "u"                             | -    | T  | 955|
+| 955 |                                 | TS  | "U"                             | -    | T  | 956|
+| 956 |                                 | TS  | "l"                             | -    | T  | 957|
+| 957 |                                 | TS  | "L"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 958 | <hexMark>                       | TS  | "x"                             | -    | T  | 959|
-| 959 |                                 | TS  | "X"                             | -    | T  | F  |
+| 958 | <hexNumber>                     | TS  | "0"                             | -    | 959| F  |
+| 959 |                                 | NTS | <hexMark>                       | 962  | 960| E  |
+| 960 |                                 | NTS | <hexDigit>                      | 964  | 961| E  |
+| 961 |                                 | NTS | <hexDigit>                      | 964  | 961| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 960 | <hexDigit>                      | NTS | <digit>                         | 983  | T  | 961|
-| 961 |                                 | RNG | "a"~"f"                         | -    | T  | 962|
-| 962 |                                 | RNG | "A"~"F"                         | -    | T  | F  |
+| 962 | <hexMark>                       | TS  | "x"                             | -    | T  | 963|
+| 963 |                                 | TS  | "X"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 963 | <decNumber>                     | NTS | <digit>                         | 983  | 964| F  |
-| 964 |                                 | NTS | <digit>                         | 983  | 964| T  |
+| 964 | <hexDigit>                      | NTS | <digit>                         | 987  | T  | 965|
+| 965 |                                 | RNG | "a"~"f"                         | -    | T  | 966|
+| 966 |                                 | RNG | "A"~"F"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 965 | <floatLit>                      | NTS | <digit>                         | 983  | 966| F  |
-| 966 |                                 | NTS | <digit>                         | 983  | 966| 967|
-| 967 |                                 | NTS | <floatTail>                     | 968  | T  | E  |
+| 967 | <decNumber>                     | NTS | <digit>                         | 987  | 968| F  |
+| 968 |                                 | NTS | <digit>                         | 987  | 968| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 968 | <floatTail>                     | NTS | <floatDotTail>                  | 970  | T  | 969|
-| 969 |                                 | NTS | <floatExp>                      | 973  | T  | F  |
+| 969 | <floatLit>                      | NTS | <digit>                         | 987  | 970| F  |
+| 970 |                                 | NTS | <digit>                         | 987  | 970| 971|
+| 971 |                                 | NTS | <floatTail>                     | 972  | T  | E  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 970 | <floatDotTail>                  | TS  | "."                             | -    | 971| F  |
-| 971 |                                 | NTS | <digit>                         | 983  | 971| 972|
-| 972 |                                 | NTS | <floatExp>                      | 973  | T  | T  |
+| 972 | <floatTail>                     | NTS | <floatDotTail>                  | 974  | T  | 973|
+| 973 |                                 | NTS | <floatExp>                      | 977  | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 973 | <floatExp>                      | TS  | "e"                             | -    | 975| 974|
-| 974 |                                 | TS  | "E"                             | -    | 975| F  |
-| 975 |                                 | NTS | <floatExpSign>                  | 978  | 976| 976|
-| 976 |                                 | NTS | <digit>                         | 983  | 977| E  |
-| 977 |                                 | NTS | <digit>                         | 983  | 977| T  |
+| 974 | <floatDotTail>                  | TS  | "."                             | -    | 975| F  |
+| 975 |                                 | NTS | <digit>                         | 987  | 975| 976|
+| 976 |                                 | NTS | <floatExp>                      | 977  | T  | T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 978 | <floatExpSign>                  | TS  | "+"                             | -    | T  | 979|
-| 979 |                                 | TS  | "-"                             | -    | T  | F  |
+| 977 | <floatExp>                      | TS  | "e"                             | -    | 979| 978|
+| 978 |                                 | TS  | "E"                             | -    | 979| F  |
+| 979 |                                 | NTS | <floatExpSign>                  | 982  | 980| 980|
+| 980 |                                 | NTS | <digit>                         | 987  | 981| E  |
+| 981 |                                 | NTS | <digit>                         | 987  | 981| T  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 980 | <letter>                        | RNG | "a"~"z"                         | -    | T  | 981|
-| 981 |                                 | RNG | "A"~"Z"                         | -    | T  | 982|
-| 982 |                                 | TS  | "_"                             | -    | T  | F  |
+| 982 | <floatExpSign>                  | TS  | "+"                             | -    | T  | 983|
+| 983 |                                 | TS  | "-"                             | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
-| 983 | <digit>                         | RNG | "0"~"9"                         | -    | T  | F  |
+| 984 | <letter>                        | RNG | "a"~"z"                         | -    | T  | 985|
+| 985 |                                 | RNG | "A"~"Z"                         | -    | T  | 986|
+| 986 |                                 | TS  | "_"                             | -    | T  | F  |
++-----+---------------------------------+-----+---------------------------------+------+----+----+
+| 987 | <digit>                         | RNG | "0"~"9"                         | -    | T  | F  |
 +-----+---------------------------------+-----+---------------------------------+------+----+----+
