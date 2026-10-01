@@ -256,7 +256,9 @@ _os_fork:
          andi.l  #$0000ffff,d0
          rts
 ofork_err
-         moveq   #-1,d0
+         moveq   #0,d0
+         move.w  d1,d0                           * Return -E$code for diagnostics
+         neg.l   d0
          rts
 
 * int _os_wait(int *status)
@@ -269,7 +271,7 @@ _os_wait:
          bcs.s   owai_err
          movea.l (a7)+,a0
          clr.l   (a0)
-         move.w  d1,(a0)
+         move.w  d1,2(a0)                       * C int: status in low word (68000 big-endian)
          andi.l  #$0000ffff,d0
          rts
 owai_err

@@ -1036,10 +1036,15 @@ Makefile geht es, und genau dort steckte dann auch ein Fehler.)
 
 ### Strukturelle Grenzen
 
-- **Die Quelle wird ganz in eine Arena gelesen** (Host 4 MB, Ziel 256 KB).
-  Die vom Backend erzeugten Dateien sind bis 18 MB — dafür bräuchte es einen
-  strömenden Leser. Das ist auch der Grund, warum `qr68` seine *eigene*
-  Modulquelle nur am Host assemblieren kann, nicht auf dem 68030.
+- **Die Quelle wird ganz in eine Arena gelesen** (Host 32 MB, Q9-Ziel 32 MB).
+  Die Q9-Arena wurde nach einem reproduzierbaren Selbstbaufehler von 8 auf
+  32 MiB erhöht: `qir68k` aus 137 KiB C-Quelle erzeugte 23 MiB Assemblertext;
+  `qr68k` brach vorher mit `Quelltextspeicher voll (SRC_MAX)` ab. Mit der
+  32-MiB-Arena assemblierte Q9 den großen Lauf erfolgreich; der 284.448-Byte-
+  ROF war byteidentisch zum Hostlauf (Zeitstempel ausgenommen). Das Q9-Modul
+  fordert dadurch rund 43,7 MiB Prozessdaten an und ist für ein 64-MiB-System
+  mit einem passenden zusammenhängenden RAM-Bereich ausgelegt. Quellen über
+  32 MiB benötigen weiterhin einen strömenden Leser.
   (Die Geschwindigkeit ist dagegen erledigt: mit Streutabellen für Namen und
   Symbole braucht eine 3,5-MB-Quelle **0,3 s** statt 8,3 s.)
 - **Kein Listing.** `-l`, `-s`, `-g` werden angenommen und übergangen;

@@ -21,8 +21,9 @@ fi
 TMP="$(mktemp -d /tmp/qr68-backend.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-# The small modules and one large module. Larger than SRC_MAX is not supported
-# yet: the 18 MB sources require a streaming reader.
+# The fast host differential suite stays below 4 MB per source. The 64-MiB Q9
+# target has separately been exercised with the 23-MiB qir68k self-build input;
+# sources above the configured 32-MiB SRC_MAX still require a streaming reader.
 files=()
 for f in "$QCC_BUILD"/os9_*.s68 "$QCC_BUILD"/qcc_fullprobe.s68; do
 	[ -f "$f" ] || continue

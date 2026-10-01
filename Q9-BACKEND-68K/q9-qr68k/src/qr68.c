@@ -88,15 +88,17 @@ extern void exit(int code);
    limited to 64 KiB through d16(a6). These sizes cover hand-written OS-9
    sources; the Q9-OS kernel uses 232 symbols and the largest Referenz-Toolchain driver 1428. */
 #ifdef _Q9OS
-/* 2026-09-27 angehoben (Q9 mit 64 MB RAM): gross genug, damit qr68k auf dem Ziel die
-   Werkzeuge der Kette selbst assemblieren kann -- Massstab qcir: 6,0 MB Quelle, 21399
-   Symbole, 1,5 MB ROF (gemessen, tools/test_selfhost_build.sh). Die Felder liegen mit
-   -remotedata im entfernten Datenbereich, die Moduldatei waechst dadurch nicht; der
-   Speicherbedarf beim Lauf steigt auf rund 16 MB. Vorher: 256 KB Quelle, 4096 Symbole. */
+/* 2026-09-30: 8 MiB waren zu klein, um qir68k selbst zu assemblieren: dessen
+   137 KiB C-Quelle erzeugt rund 22 MiB Assemblertext (gemessen im 64-MiB-Q9-
+   Emulator), worauf fileLoad() mit SRC_MAX abbrach. 32 MiB lassen Platz fuer
+   diese Selbstbuilds und weitere grosse Module. Zusammen mit den uebrigen
+   Arenen steigt M$Mem auf rund 42 MiB; das benoetigt ein 64-MiB-Ziel mit einem
+   ausreichend grossen zusammenhaengenden RAM-Segment. Die Felder liegen mit
+   -remotedata im entfernten Datenbereich, die Moduldatei selbst waechst kaum. */
 #define QR_POOL   2097152
 #define QR_POOLHASH  8192
 #define QR_PENT     65536
-#define QR_SRC    8388608
+#define QR_SRC   33554432
 #define QR_SYM      32768
 #define QR_SYMHASH   8192
 #define QR_CODE   2097152
@@ -137,10 +139,11 @@ static int pentOff[QR_PENT];
 static int pentNext[QR_PENT];
 static int pentN;
 
-/* Hand-written sources use less than a quarter of this arena, while QCC
-   backend output can reach 18 MiB. A streaming reader is still needed for
-   larger inputs. The arena size also affects the later OS-9 module because
-   zero-initialized tables become initialized data, so it cannot grow freely. */
+/* Hand-written sources use less than a quarter of this arena. A Q9 backend
+   self-build produced 23 MiB without -largedata, so the target's 32-MiB
+   source arena is intentionally sized for that case. Larger inputs still need
+   a streaming reader. The arena also increases the OS-9 process data request;
+   keep the target build within the documented 64-MiB memory budget. */
 static char srcArena[QR_SRC];
 static int SRC_MAX = QR_SRC;
 static int srcTop;

@@ -25,6 +25,20 @@ static int q9_append(char *dst, int used, const char *src)
 	return used;
 }
 
+/* q9_cstart's native argv layout is a string area followed by a table of
+ * 32-bit offsets (argv[1..n], argv[0] sentinel, envp sentinel, final
+ * sentinel).  Its startup code walks that table backwards and turns the
+ * offsets into argv pointers in place. */
+static int q9_append_offset(char *dst, int used, int offset)
+{
+	if (used > 508 || offset < 0 || offset > 65535) return -1;
+	dst[used++] = 0;
+	dst[used++] = 0;
+	dst[used++] = (char)((offset >> 8) & 255);
+	dst[used++] = (char)(offset & 255);
+	return used;
+}
+
 /* The Q9 kernel's F$Load service asks the IOMan to load/validate a module;
  * F$Fork then starts its resident module-directory entry. OS-9 command
  * parameters are a single blank-separated string, not a host argv vector.
@@ -32,14 +46,18 @@ static int q9_append(char *dst, int used, const char *src)
 int q9_os9exec(const char *module, char **argv, char **environment)
 {
 	char load_path[256];
-	char parameters[256];
+	char parameters[512];
+	int arg_offsets[32];
 	void *header;
 	int i;
+	int j;
+	int arg_count;
 	int used;
 	int param_size;
 	int pid;
 	int status;
 	int rc;
+	int legacy_params;
 	(void)environment;
 
 	if (module == 0 || argv == 0) return -1;
@@ -54,17 +72,32 @@ int q9_os9exec(const char *module, char **argv, char **environment)
 	load_path[used] = '\0';
 
 	used = 0;
+	arg_count = 0;
 	for (i = 1; argv[i] != 0; ++i) {
-		if (used != 0) {
-			if (used >= 254) return -1;
-			parameters[used++] = ' ';
+		if (arg_count >= 32 || used >= 480) return -1;
+		arg_offsets[arg_count++] = used;
+		for (j = 0; argv[i][j] != '\0'; ++j) {
+			if (used >= 480) return -1;
+			parameters[used++] = argv[i][j];
 		}
-		used = q9_append(parameters, used, argv[i]);
+		if (used >= 480) return -1;
+		parameters[used++] = '\0';
+	}
+	if (used & 1) parameters[used++] = '\0';
+	/* q9_cstart scans the environment terminator first, then walks the argv
+	 * offsets backwards.  Therefore argv's zero sentinel belongs before the
+	 * offsets in memory; the other two zero longwords follow them. */
+	if (used > 508) return -1;
+	for (j = 0; j < 4; ++j) parameters[used++] = '\0';
+	for (i = 0; i < arg_count; ++i) {
+		used = q9_append_offset(parameters, used, arg_offsets[i]);
 		if (used < 0) return -1;
 	}
-	parameters[used] = '\0';
-	param_size = used + 1;
+	if (used > 504) return -1;
+	for (i = 0; i < 8; ++i) parameters[used++] = '\0';
+	param_size = used;
 	header = 0;
+	legacy_params = 0;
 	rc = _os_load(load_path, 1, 0, &header);
 	if (rc != 0 || header == 0) {
 		/* Compiler stages live in CMDS_QCC; OS utilities such as makdir,
@@ -79,6 +112,25 @@ int q9_os9exec(const char *module, char **argv, char **environment)
 		header = 0;
 		rc = _os_load(load_path, 1, 0, &header);
 		if (rc != 0 || header == 0) return -1;
+		legacy_params = 1;
+	}
+	if (legacy_params) {
+		/* Traditional OS-9 system commands consume a CR-terminated raw
+		 * parameter line; unlike q9_cstart-based C tools they do not use
+		 * the structured argv table. */
+		used = 0;
+		for (i = 1; argv[i] != 0; ++i) {
+			if (i != 1) {
+				if (used >= 510) return -1;
+				parameters[used++] = ' ';
+			}
+			for (j = 0; argv[i][j] != '\0'; ++j) {
+				if (used >= 510) return -1;
+				parameters[used++] = argv[i][j];
+			}
+		}
+		parameters[used++] = 13;
+		param_size = used;
 	}
 
 	/* Fork's name lookup uses the resident module name, so pass the configured
@@ -87,7 +139,7 @@ int q9_os9exec(const char *module, char **argv, char **environment)
 		       parameters);
 	if (pid < 0) {
 		_os_unlink(header);
-		return -1;
+		return pid;
 	}
 	status = 0;
 	pid = _os_wait(&status);

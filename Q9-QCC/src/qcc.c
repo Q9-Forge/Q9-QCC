@@ -379,6 +379,22 @@ int main(int argc, char **argv)
 	{
 		char command[512];
 		const char *input = argv[argc - 1];
+		#if defined(_Q9OS) || defined(_OSK)
+		{
+			char input_i[TEXT]; char output_ir[TEXT];
+			char output_s[TEXT]; char output_opt[TEXT]; char output_r[TEXT];
+			/* I$Create/fopen("w") in the target runtime does not reliably
+			 * replace an existing file. Clear stale products first so a second
+			 * build in the same tmpdir behaves like the first. --keep preserves
+			 * this run's outputs; it must not make stale inputs observable. */
+			sprintf(input_i, "%s/input.i", tmpdir);
+			sprintf(output_ir, "%s/output.ir", tmpdir);
+			sprintf(output_s, "%s/output.s68k", tmpdir);
+			sprintf(output_opt, "%s/output.opt.s68k", tmpdir);
+			sprintf(output_r, "%s/output.r", tmpdir);
+			q9_remove_files(input_i, output_ir, output_s, output_opt, output_r);
+		}
+		#endif
 		if (strcmp(tmpdir, "/dd") != 0 && strcmp(tmpdir, "/dd/CMDS") != 0 && strcmp(tmpdir, ".") != 0) {
 			/* 2026-09-27: auf OS-9 scheiterte "makdir -p <dir>" ueber q9_system()/system()
 			 * am echten Q9-Emulator mit einem generischen E$FNA, obwohl "makdir -p <dir>"
@@ -595,11 +611,19 @@ int main(int argc, char **argv)
 				{
 					char *stage_argv[4];
 					char stage_in[TEXT]; char stage_out[TEXT];
+					int stage_status;
 					sprintf(stage_in, "%s/%s", tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k");
 					sprintf(stage_out, "%s/output.r", tmpdir);
 					stage_argv[0] = (char *)assembler; stage_argv[1] = stage_in;
 					stage_argv[2] = stage_out; stage_argv[3] = NULL;
-					if (q9_exec_argv(assembler, stage_argv) != 0) { fprintf(stderr, "qcc: qr68k fehlgeschlagen\n"); return 4; }
+					stage_status = q9_exec_argv(assembler, stage_argv);
+					if (stage_status != 0) {
+						if (stage_status < 0)
+							fprintf(stderr, "qcc: qr68k Fork fehlgeschlagen (E$%d)\n", -stage_status);
+						else
+							fprintf(stderr, "qcc: qr68k beendet mit Status %d\n", stage_status);
+						return 4;
+					}
 				}
 				#else
 				sprintf(command, "%s %s/%s %s/output.r", assembler, tmpdir, optimizer[0] != '\0' ? "output.opt.s68k" : "output.s68k", tmpdir);

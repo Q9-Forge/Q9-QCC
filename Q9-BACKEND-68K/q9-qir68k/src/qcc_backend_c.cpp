@@ -72,6 +72,7 @@
    Backend-Modul -- vertretbar neben den 16 MB des Q9, und weit entfernt von
    den 16,8 MB, an denen das alte init[]-im-Global-Feld gescheitert war. */
 #define MAX_GLOBALS     3072
+#define GLOBAL_HASH_SIZE 8192
 #define MAX_ARRAY_LEN   4096
 
 /* 2026-08-11: `args` used to be `char args[MAX_ARGS][ARG_LEN]`, or 6x64 = 384
@@ -172,6 +173,11 @@ static int funcCount = 0;
 
 static Global globals[MAX_GLOBALS];
 static int globalCount = 0;
+/* The backend resolves globals both while collecting thousands of GINIT
+   records and again while emitting instructions. A linear scan here made
+   large self-host inputs quadratic in (initializers x globals). Keep a small
+   open-addressed index; entry zero means empty, otherwise index+1. */
+static int globalHash[GLOBAL_HASH_SIZE];
 
 static void fatal(const char* msg); /* Defined below; forward declaration for registerExtern()/externTableOffset(). */
 
@@ -448,9 +454,37 @@ static int findFunction(const char* name) {
 }
 
 static int findGlobal(const char* name) {
+	unsigned int hash = 5381u;
+	unsigned int slot;
 	int i;
-	for (i = 0; i < globalCount; i++) if (strcmp(globals[i].name, name) == 0) return i;
+	for (i = 0; name[i] != '\0'; i++)
+		hash = ((hash << 5) + hash) ^ (unsigned char)name[i];
+	slot = hash & (GLOBAL_HASH_SIZE - 1);
+	for (i = 0; i < GLOBAL_HASH_SIZE; i++) {
+		int entry = globalHash[slot];
+		if (entry == 0) return -1;
+		if (strcmp(globals[entry - 1].name, name) == 0) return entry - 1;
+		slot = (slot + 1) & (GLOBAL_HASH_SIZE - 1);
+	}
 	return -1;
+}
+
+static void indexGlobal(int idx) {
+	unsigned int hash = 5381u;
+	unsigned int slot;
+	int i;
+	const char* name = globals[idx].name;
+	for (i = 0; name[i] != '\0'; i++)
+		hash = ((hash << 5) + hash) ^ (unsigned char)name[i];
+	slot = hash & (GLOBAL_HASH_SIZE - 1);
+	for (i = 0; i < GLOBAL_HASH_SIZE; i++) {
+		if (globalHash[slot] == 0) {
+			globalHash[slot] = idx + 1;
+			return;
+		}
+		slot = (slot + 1) & (GLOBAL_HASH_SIZE - 1);
+	}
+	fatal("interner Fehler: Global-Index voll");
 }
 
 /* -largedata (function-call part, 2026-07-25, requested as "automatically
@@ -690,13 +724,14 @@ static void collectGlobals(void) {
 	int i, gi, idx, len;
 	char msg[300];
 	globalCount = 0;
+	for (i = 0; i < GLOBAL_HASH_SIZE; i++) globalHash[i] = 0;
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
 		if (strcmp(insP->op, "GINITADDR") == 0) {
 			int found = 0;
 			if (insP->argc != 3) fatal("ungueltiges GINITADDR");
-			for (gi = 0; gi < globalCount; gi++) {
-				if (strcmp(globals[gi].name, insP->args[0]) == 0) {
+			gi = findGlobal(insP->args[0]);
+			if (gi >= 0) {
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || (globals[gi].isArray && idx >= globals[gi].length))
 						fatal("GINITADDR-Index ausserhalb Array");
@@ -707,8 +742,6 @@ static void collectGlobals(void) {
 					initAddrCount++;
 					globals[gi].hasInitAddr = 1;
 					found = 1;
-					break;
-				}
 			}
 			if (!found) fatal("GINITADDR fuer unbekannte globale Variable");
 			continue;
@@ -716,8 +749,8 @@ static void collectGlobals(void) {
 		if (strcmp(insP->op, "GINIT") == 0) {
 			int found = 0;
 			if (insP->argc != 3) fatal("ungueltiges GINIT");
-			for (gi = 0; gi < globalCount; gi++) {
-				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+			gi = findGlobal(insP->args[0]);
+			if (gi >= 0 && globals[gi].isArray) {
 					int* initP;
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINIT-Index ausserhalb Array");
@@ -743,8 +776,6 @@ static void collectGlobals(void) {
 					else if (globals[gi].elemSize == 2) initP[idx] &= 65535;
 					globals[gi].hasGinit = 1;
 					found = 1;
-					break;
-				}
 			}
 			if (!found) fatal("GINIT fuer unbekanntes Array");
 			continue;
@@ -757,8 +788,8 @@ static void collectGlobals(void) {
 			   den eigenen Opcode und nicht vier GINIT aus dem Frontend. */
 			int foundA = 0;
 			if (insP->argc != 4) fatal("ungueltiges GINITAT");
-			for (gi = 0; gi < globalCount; gi++) {
-				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+			gi = findGlobal(insP->args[0]);
+			if (gi >= 0 && globals[gi].isArray) {
 					int* initA;
 					int fsz = tagSize(insP->args[2]);
 					int val = number(insP->args[3], insP->line);
@@ -776,8 +807,6 @@ static void collectGlobals(void) {
 						initA[idx + b] = (int)(((unsigned int)val >> (8 * (fsz - 1 - b))) & 0xffu);
 					globals[gi].hasGinit = 1;
 					foundA = 1;
-					break;
-				}
 			}
 			if (!foundA) fatal("GINITAT fuer unbekanntes Objekt");
 			continue;
@@ -789,8 +818,8 @@ static void collectGlobals(void) {
 			   length*2 alloziert und ueber 2*idx indiziert. */
 			int foundD = 0;
 			if (insP->argc != 4) fatal("ungueltiges GINITD");
-			for (gi = 0; gi < globalCount; gi++) {
-				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+			gi = findGlobal(insP->args[0]);
+			if (gi >= 0 && globals[gi].isArray) {
 					int* initD;
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINITD-Index ausserhalb Array");
@@ -805,8 +834,6 @@ static void collectGlobals(void) {
 					initD[2 * idx + 1] = numberU(insP->args[3], insP->line);
 					globals[gi].hasGinit = 1;
 					foundD = 1;
-					break;
-				}
 			}
 			if (!foundD) fatal("GINITD fuer unbekanntes Array");
 			continue;
@@ -819,8 +846,8 @@ static void collectGlobals(void) {
 			   werden. */
 			int foundQ = 0;
 			if (insP->argc != 4) fatal("ungueltiges GINITQ");
-			for (gi = 0; gi < globalCount; gi++) {
-				if (strcmp(globals[gi].name, insP->args[0]) == 0 && globals[gi].isArray) {
+			gi = findGlobal(insP->args[0]);
+			if (gi >= 0 && globals[gi].isArray) {
 					int* initQ;
 					idx = number(insP->args[1], insP->line);
 					if (idx < 0 || idx >= globals[gi].length) fatal("GINITQ-Index ausserhalb Array");
@@ -835,8 +862,6 @@ static void collectGlobals(void) {
 					initQ[2 * idx + 1] = numberU(insP->args[3], insP->line);
 					globals[gi].hasGinit = 1;
 					foundQ = 1;
-					break;
-				}
 			}
 			if (!foundQ) fatal("GINITQ fuer unbekanntes Array");
 			continue;
@@ -857,6 +882,7 @@ static void collectGlobals(void) {
 			gi = globalCount++;
 			memset(&globals[gi], 0, sizeof(Global));
 			strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
+			indexGlobal(gi);
 			globals[gi].elemSize = tagSize(insP->args[1]);
 			globals[gi].isArray = 1;
 			globals[gi].length = len;
@@ -881,6 +907,7 @@ static void collectGlobals(void) {
 		gi = globalCount++;
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
+		indexGlobal(gi);
 		globals[gi].initialValue = insP->argc >= 2 ? number(insP->args[1], insP->line) : 0;
 		globals[gi].elemSize = insP->argc >= 3 ? tagSize(insP->args[2]) : 4;
 		globals[gi].isArray = 0;
@@ -901,6 +928,7 @@ static void collectGlobals(void) {
 		gi = globalCount++;
 		memset(&globals[gi], 0, sizeof(Global));
 		strncpy(globals[gi].name, insP->args[0], NAME_LEN - 1);
+		indexGlobal(gi);
 		globals[gi].elemSize = tagSize(insP->args[1]);
 		globals[gi].isStatic = insP->argc == 3 && number(insP->args[2], insP->line) != 0;
 		globals[gi].declOnly = 1;
