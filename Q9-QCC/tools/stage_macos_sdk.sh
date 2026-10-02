@@ -6,11 +6,17 @@ repo=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 sdk=${Q9SDK:?set Q9SDK to the SDK root}
 target="$sdk/Q9/68k"
 
-mkdir -p "$sdk/macOS/ARM64/SYS" "$sdk/macOS/ARM64/CMDS" "$target/SYS" \
+mkdir -p "$sdk/macOS/ARM64/SYS" "$sdk/macOS/ARM64/CMDS" \
+	"$sdk/macOS/x86_64/SYS" "$sdk/macOS/x86_64/CMDS" "$target/SYS" \
 	"$target/DEFS" "$target/LIBS" "$target/CMDS" "$target/CMDS_CC" \
 	"$target/CMDS_QCC" "$target/CMDS_XQCC" "$target/CMDS_XCC"
 cp "$repo/Q9-QCC/config/qcc-macos-sdk.conf" "$sdk/macOS/ARM64/SYS/qcc.conf"
 cp "$repo/Q9-QCC/config/qcc-macos-sdk.conf" "$target/SYS/qcc.conf"
+# qmake looks up its own host profile under macOS/<arch>/SYS/qmake.conf before
+# falling back to a project's TOOLCHAIN_FILE; keep the staged copy in sync
+# with the source so renamed or edited sections take effect immediately.
+cp "$repo/Q9-Make/toolchains/qmake.conf" "$sdk/macOS/ARM64/SYS/qmake.conf"
+cp "$repo/Q9-Make/toolchains/qmake.conf" "$sdk/macOS/x86_64/SYS/qmake.conf"
 cp "$repo/Q9-FRONTEND-C/q9-qcpp/include/"*.h "$target/DEFS/"
 cp "$repo/Q9-BACKEND-68K/q9-qclib/build/q9_start.r" \
 	"$repo/Q9-BACKEND-68K/q9-qclib/build/qclib.l" "$target/LIBS/"

@@ -15,32 +15,32 @@ help:
 	echo "  test    run frontend test suites"
 	echo "  clean   clean all frontend builds\n"
 
-[mac-clang]
+[ACA]
 all:
 macCla:
 test:
 clean:
 
-[mac-clang-x86_64]
+[ACI]
 all: macX64
 macX64:
 
-[mac-xcc-68k]
+[AXQ]
 all:
 macXCC:
 clean:
 
-[mac-xqcc-68k]
+[AQQ]
 all:
 macQCC:
 clean:
 
-[q9-qcc-68k]
+[QQQ]
 all:
 q9QCC:
 clean:
 
-[q9-microware-cc-68k]
+[QMQ]
 all:
 q9CC:
 clean:

@@ -2,7 +2,7 @@
 [global]
 TOOLCHAIN_FILE = ../../Q9-Make/toolchains/qmake.conf
 
-[mac-clang]
+[ACA]
 all: macCla
 macCla: mac
 mac: $(Q9SDK)/macOS/ARM64/CMDS/qr68k
@@ -11,7 +11,7 @@ $(Q9SDK)/macOS/ARM64/CMDS/qr68k: src/qr68.c
 clean:
 	rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qr68k"
 
-[mac-xcc-68k]
+[AXQ]
 all: macXCC
 macXCC: mac-qcpp-host xcc
 xcc: $(Q9SDK)/Q9/68k/CMDS_XCC/qr68k
@@ -25,7 +25,7 @@ $(Q9SDK)/Q9/68k/CMDS_XCC/qr68k: src/qr68.c ../../tools/build_xcc_sdk.sh
 clean:
 	rm -f "$(Q9SDK)/Q9/68k/CMDS_XCC/qr68k"
 
-[mac-xqcc-68k]
+[AQQ]
 all: macQCC
 macQCC: mac-qcpp-host xqcc $(HOST_OUTPUT_DIR)/qcc
 xqcc: $(Q9SDK)/Q9/68k/CMDS_XQCC/qr68k
@@ -39,7 +39,7 @@ $(HOST_OUTPUT_DIR)/qcpp: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
 clean:
 	rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qr68k"
 
-[q9-qcc-68k]
+[QQQ]
 all: q9QCC
 q9QCC: q9
 q9: /dd/CMDS_QCC/qr68k
@@ -48,7 +48,7 @@ q9: /dd/CMDS_QCC/qr68k
 clean:
 	rm -f /dd/CMDS_QCC/qr68k
 
-[mac-clang-x86_64]
+[ACI]
 all: macX64
 macX64: $(Q9SDK)/macOS/x86_64/CMDS/qr68k
 $(Q9SDK)/macOS/x86_64/CMDS/qr68k: src/qr68.c

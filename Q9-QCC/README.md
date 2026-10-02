@@ -34,11 +34,11 @@ Im Repository-Root baut und staged qmake die Mac-Werkzeuge sowie die derzeit
 QCC-selbsthostbaren Q9-Module:
 
 ```sh
-Q9-SDK/macOS/ARM64/CMDS/qmake -P mac-clang \
+Q9-SDK/macOS/ARM64/CMDS/qmake -P ACA \
   -DQ9SDK=/Volumes/SSD1TB/projects/Q9-Forge/Q9-SDK all
-Q9-SDK/macOS/ARM64/CMDS/qmake -P mac-clang \
+Q9-SDK/macOS/ARM64/CMDS/qmake -P ACA \
   -DQ9SDK=/Volumes/SSD1TB/projects/Q9-Forge/Q9-SDK all-qcc
-Q9-SDK/macOS/ARM64/CMDS/qmake -P mac-clang \
+Q9-SDK/macOS/ARM64/CMDS/qmake -P ACA \
   -DQ9SDK=/Volumes/SSD1TB/projects/Q9-Forge/Q9-SDK all-xqcc
 ```
 

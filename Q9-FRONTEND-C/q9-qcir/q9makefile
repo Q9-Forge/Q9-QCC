@@ -19,7 +19,7 @@ check-sdk:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }
 	test -d "$(Q9SDK)" || { echo "Q9SDK directory does not exist: $(Q9SDK)" >&2; exit 2; }
 
-[mac-clang]
+[ACA]
 all: macCla
 
 macCla: $(Q9SDK)/macOS/ARM64/CMDS/qcir
@@ -33,7 +33,7 @@ test: macCla
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qcir"
 
-[mac-clang-x86_64]
+[ACI]
 all: macX64
 macX64: $(Q9SDK)/macOS/x86_64/CMDS/qcir
 
@@ -43,7 +43,7 @@ $(Q9SDK)/macOS/x86_64/CMDS/qcir: check-sdk data/qcc_p.c
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qcir"
 
-[mac-xcc-68k]
+[AXQ]
 all: macXCC
 
 macXCC: mac-qcpp-host $(Q9SDK)/Q9/68k/CMDS_XCC/qcir
@@ -60,7 +60,7 @@ $(Q9SDK)/Q9/68k/CMDS_XCC/qcir: check-sdk data/qcc_p.c ../../tools/build_xcc_sdk.
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XCC/qcir"
 
-[mac-xqcc-68k]
+[AQQ]
 all: macQCC
 
 macQCC: mac-qcpp-host mac-qcir-host $(HOST_OUTPUT_DIR)/qcc $(Q9SDK)/Q9/68k/CMDS_XQCC/qcir
@@ -84,7 +84,7 @@ $(Q9SDK)/Q9/68k/CMDS_XQCC/qcir: check-sdk data/qcc_p.c $(TARGET_CC)
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcir"
 
-[q9-qcc-68k]
+[QQQ]
 all: q9QCC
 
 q9QCC: /dd/CMDS_QCC/qcir
@@ -95,7 +95,7 @@ q9QCC: /dd/CMDS_QCC/qcir
 clean:
 	rm -f /dd/CMDS_QCC/qcir
 
-[q9-microware-cc-68k]
+[QMQ]
 all: q9CC
 
 q9CC: mwcc-status

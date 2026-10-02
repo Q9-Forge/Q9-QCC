@@ -18,7 +18,7 @@ check-sdk:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }
 	test -d "$(Q9SDK)" || { echo "Q9SDK directory does not exist: $(Q9SDK)" >&2; exit 2; }
 
-[mac-clang]
+[ACA]
 all: macCla
 
 # Track the real SDK binary so unchanged sources are not rebuilt.
@@ -33,7 +33,7 @@ test: macCla
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qcpp"
 
-[mac-clang-x86_64]
+[ACI]
 all: macX64
 macX64: $(Q9SDK)/macOS/x86_64/CMDS/qcpp
 
@@ -43,7 +43,7 @@ $(Q9SDK)/macOS/x86_64/CMDS/qcpp: check-sdk src/qcpp.c
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qcpp"
 
-[mac-xcc-68k]
+[AXQ]
 all: macXCC
 
 # Track the staged module and build script to avoid rebuilding unchanged input.
@@ -61,7 +61,7 @@ $(Q9SDK)/Q9/68k/CMDS_XCC/qcpp: check-sdk src/qcpp.c ../../tools/build_xcc_sdk.sh
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XCC/qcpp"
 
-[mac-xqcc-68k]
+[AQQ]
 all: macQCC
 
 macQCC: mac-qcpp-host $(HOST_OUTPUT_DIR)/qcc $(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp
@@ -82,7 +82,7 @@ $(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp: check-sdk src/qcpp.c $(TARGET_CC)
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp"
 
-[q9-qcc-68k]
+[QQQ]
 all: q9QCC
 
 q9QCC: /dd/CMDS_QCC/qcpp
@@ -93,7 +93,7 @@ q9QCC: /dd/CMDS_QCC/qcpp
 clean:
 	rm -f /dd/CMDS_QCC/qcpp
 
-[q9-microware-cc-68k]
+[QMQ]
 MWCC_STATUS = requires a verified ISO-to-K&R converter on Q9
 
 mwcc-status:

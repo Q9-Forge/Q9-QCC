@@ -15,7 +15,7 @@ its own binary.
 - Keep host and target builds separate. A selected target/toolchain profile
   supplies CPU, ABI, compiler generation, tool paths, and output directory.
 - Give each host/compiler/target combination a named configuration (for
-  example `mac-clang`, `mac-xcc-68k`, `q9-qcc-68k`) with its own external
+  example `ACA`, `AXQ`, `QQQ`) with its own external
   profile and isolated makefile section.
 - Use an extensionless `q9makefile` by default; `-f FILE` / `--file FILE`
   selects another project description. A directory's unrelated
@@ -79,20 +79,20 @@ define the same goals independently. For example:
 [global]
 DEFS = /dd/DEFS/Q9
 
-[mac-clang]
+[ACA]
 HOST_CC = clang
 all:
-	clang -c src.c -o build/mac-clang/src.o
+	clang -c src.c -o build/ACA/src.o
 all_mac:
-	qmake -P mac-clang all
+	qmake -P ACA all
 
-[q9-qcc-68k]
+[QQQ]
 TARGET_CC = qcc
 TARGET_CFLAGS = --no-optimizer
 all:
-	qcc -c -o build/q9-qcc-68k/src.r src.c
+	qcc -c -o build/QQQ/src.r src.c
 all_q9:
-	qmake -P q9-qcc-68k all
+	qmake -P QQQ all
 ```
 
 With no `-P`, qmake builds the requested target in every configuration section
@@ -125,9 +125,9 @@ Section assignments in `q9makefile` override the matching profile section;
 environment variables override both, and `-DNAME=value` has highest priority.
 [`toolchains/example.conf`](toolchains/example.conf) lists the available
 settings without assuming unverified compiler-specific flags.
-[`toolchains/qmake.conf`](toolchains/qmake.conf) contains `[mac-clang]`,
-`[mac-clang-x86_64]`, `[mac-xcc-68k]`, `[linux-gcc]`, `[windows-clang]`,
-and `[q9-qcc-68k]`. Use `qmake macX64` to build the host tools as Intel
+[`toolchains/qmake.conf`](toolchains/qmake.conf) contains `[ACA]`,
+`[ACI]`, `[AXQ]`, `[LGL]`, `[WCW]`,
+and `[QQQ]`. Use `qmake macX64` to build the host tools as Intel
 x86_64 Mach-O binaries into `Q9SDK/macOS/x86_64/CMDS`; this profile
 sets a macOS 10.13 deployment target. The artifacts were built and launched
 under Rosetta on Apple Silicon; testing on physical Intel hardware remains
@@ -136,7 +136,7 @@ Each of the eight QCC command-line components has a local `q9makefile` with
 Mac-Clang and Mac/Wine-XCC sections. XCC builds were verified and stage to
 `Q9SDK/Q9/68k/CMDS_XCC`; see the German README for the component invocation.
 Install the shared file as `/dd/SYS/qmake.conf` and select the Q9 profile with
-`qmake -C /dd/SYS -P q9-qcc-68k`.
+`qmake -C /dd/SYS -P QQQ`.
 
 ## Initial platform scope
 
@@ -243,8 +243,14 @@ arm64, macOS x86_64, Windows), so they share one frontend and one set of
 diagnostics; GCC stays reserved for the Linux family (Debian and Raspberry
 OS), where it is the pre-installed default.
 
-As of 2026-10-02 the existing `qmake.conf`/`q9makefile` sections still use
-the earlier descriptive names (`mac-clang`, `mac-clang-x86_64`,
-`mac-xcc-68k`, `mac-xqcc-68k`, `q9-qcc-68k`, `linux-gcc`, `windows-clang`);
-migrating them to these three-letter codes is tracked as a separate,
-not yet completed step.
+As of 2026-10-02 `qmake.conf` and every `q9makefile` in this repository use
+these three-letter codes; the earlier descriptive names (`mac-clang`,
+`mac-clang-x86_64`, `mac-xcc-68k`, `mac-xqcc-68k`, `q9-qcc-68k`,
+`q9-microware-cc-68k`, `linux-gcc`, `windows-clang`) no longer appear.
+`ACA`, `AXQ`, `AQQ` and `QQQ` have been rebuilt from a clean tree and verified
+end to end on this machine; `LGL`, `WCW` and `QMQ` have a `qmake.conf` section
+but are still unverified (no Linux/Windows test host, and `QMQ` additionally
+needs a working ISO-to-K&R converter). `ICI` (a true native build on Intel
+Mac hardware, as opposed to `ACI`'s Apple-Silicon-hosted cross build) and the
+remaining matrix rows (`IQQ`, `IXQ`, `LQQ`, `LXQ`, `RGR`, `RQQ`, `RXQ`,
+`WXQ`, `WQQ`) are not defined as configuration sections yet.

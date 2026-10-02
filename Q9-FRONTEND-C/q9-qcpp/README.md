@@ -206,9 +206,9 @@ Für einen nativen macOS-Build mit getrenntem Ausgabepfad kann das gemeinsame
 qmake verwendet werden:
 
 ```
-../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P mac-clang all
-../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P mac-clang test
-../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P mac-clang copy-sdk
+../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P ACA all
+../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P ACA test
+../../Q9-Make/build/qmake -C ../../Q9-Make/toolchains -P ACA copy-sdk
 ```
 
 Das erzeugt `build/mac/qcpp`. Die Quelle benötigt derzeit keine

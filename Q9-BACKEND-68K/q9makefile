@@ -3,27 +3,27 @@
 TOOLCHAIN_FILE = ../Q9-Make/toolchains/qmake.conf
 SUBDIRS = q9-qir68k q9-qo68k q9-qr68k q9-ql68k q9-qclib
 
-[mac-clang]
+[ACA]
 all:
 macCla:
 clean:
 
-[mac-clang-x86_64]
+[ACI]
 all: macX64
 macX64:
 clean:
 
-[mac-xcc-68k]
+[AXQ]
 all:
 macXCC:
 clean:
 
-[mac-xqcc-68k]
+[AQQ]
 all:
 macQCC:
 clean:
 
-[q9-qcc-68k]
+[QQQ]
 all:
 q9QCC:
 clean:

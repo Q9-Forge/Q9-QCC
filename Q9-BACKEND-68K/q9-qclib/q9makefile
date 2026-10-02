@@ -18,13 +18,13 @@ help:
 	echo "  test    run target/emulator qclib regression tests"
 	echo "  clean   remove qclib build outputs\\n"
 
-[mac-clang]
+[ACA]
 Q9_TOOL_DIR = $(HOST_OUTPUT_DIR)
 BUILD_DIR = build/mac-clang
 all: build/mac-clang/qclib.l build/mac-clang/q9_start.r
 macCla: all
 
-[mac-clang-x86_64]
+[ACI]
 Q9_TOOL_DIR = $(HOST_OUTPUT_DIR)
 BUILD_DIR = build/mac-clang-x86_64
 all: build/mac-clang-x86_64/qclib.l build/mac-clang-x86_64/q9_start.r
@@ -206,14 +206,14 @@ $(BUILD_DIR)/fgtest.r: tests/fgtest.c q9makefile $(QCPP) $(QCIR) $(QCCB) $(QR68)
 	tail -1 "$(BUILD_DIR)/fgtest.ir" | grep -q '^OK$' || { head -5 "$(BUILD_DIR)/fgtest.err"; exit 1; }
 	"$(QCCB)" "$(BUILD_DIR)/fgtest.ir" "$(BUILD_DIR)/fgtest.s68" -os9 -largedata
 	"$(QR68)" "$(BUILD_DIR)/fgtest.s68" -o="$(BUILD_DIR)/fgtest.r"
-[mac-clang]
+[ACA]
 test: all $(BUILD_DIR)/hello.r
 	QCLIB_BUILD_DIR="$(BUILD_DIR)" ./tests/hello68k.sh
 	QCLIB_BUILD_DIR="$(BUILD_DIR)" ./tests/vsclib.sh
 clean:
 	rm -rf "$(BUILD_DIR)"
 
-[mac-clang-x86_64]
+[ACI]
 test: all $(BUILD_DIR)/hello.r
 	QCLIB_BUILD_DIR="$(BUILD_DIR)" ./tests/hello68k.sh
 	QCLIB_BUILD_DIR="$(BUILD_DIR)" ./tests/vsclib.sh

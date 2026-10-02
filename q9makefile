@@ -15,7 +15,7 @@ help:
 	echo "  test    run available component test suites"
 	echo "  clean   clean all builds\n"
 
-[mac-clang]
+[ACA]
 SUBDIRS = Q9-Make Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all:
 macCla:
@@ -80,25 +80,25 @@ all-qcc: qcc-qcpp qcc-qcir qcc-qir68k qcc-qo68k qcc-qost qcc-ql68k qcc-qr68k qcc
 all-xqcc: sdk-support
 	Q9SDK="$(Q9SDK)" bash ./tools/build_xcc_sdk.sh
 
-[mac-clang-x86_64]
+[ACI]
 SUBDIRS = Q9-Make Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all: macX64
 macX64:
 clean:
 
-[mac-xcc-68k]
+[AXQ]
 SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all:
 macXCC:
 clean:
 
-[mac-xqcc-68k]
+[AQQ]
 SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all:
 macQCC:
 clean:
 
-[q9-qcc-68k]
+[QQQ]
 SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all:
 q9QCC:

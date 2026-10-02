@@ -91,15 +91,15 @@ liegen beispielsweise in `Q9SDK/macOS/ARM64/CMDS`, `Q9SDK/macOS/x86_64/CMDS`, `Q
 Microware-Compiler reserviert. Der Q9-Emulatoradapter fehlt noch; sein vereinbarter
 Konfigurationsordner ist `/dd/SYS`.
 
-Fuer Intel-Macs gibt es zusaetzlich das Profil `[mac-clang-x86_64]` und das
+Fuer Intel-Macs gibt es zusaetzlich das Profil `[ACI]` und das
 Ziel `qmake macX64`. Es erzeugt x86_64-Mach-O-Hostwerkzeuge unter
 `Q9SDK/macOS/x86_64/CMDS` mit Mindestziel macOS 10.13. Die Binaries
 wurden auf Apple Silicon unter Rosetta gestartet; ein Test auf echter
 Intel-Hardware steht noch aus.
 
 Je Host/Compiler/Target-Kombination wird in **einer** `qmake.conf` ein benannter
-Abschnitt angelegt, z. B. `[mac-clang]`, `[mac-clang-x86_64]`,
-`[mac-xcc-68k]` oder `[q9-qcc-68k]`.
+Abschnitt angelegt, z. B. `[ACA]`, `[ACI]`,
+`[AXQ]` oder `[QQQ]`.
 Gemeinsame Toolchainwerte stehen in `[global]`; jeder Konfigurationsabschnitt
 enthaelt seine eigenen Compiler-/Target-Werte. Das Projekt-`q9makefile` hat
 dieselben Abschnittsnamen fuer seine Regeln. Ist `Q9SDK` gesetzt, sucht qmake
@@ -130,30 +130,30 @@ die Ausgabepfade sind absichtlich verschieden:
 [global]
 DEFS = /dd/DEFS/Q9
 
-[mac-clang]
+[ACA]
 all:
-	clang -c src.c -o build/mac-clang/src.o
+	clang -c src.c -o build/ACA/src.o
 all_mac:
-	qmake -P mac-clang all
+	qmake -P ACA all
 
-[q9-qcc-68k]
+[QQQ]
 all:
-	qcc --no-optimizer -c -o build/q9-qcc-68k/src.r src.c
+	qcc --no-optimizer -c -o build/QQQ/src.r src.c
 all_q9:
-	qmake -P q9-qcc-68k all
+	qmake -P QQQ all
 ```
 
 `qmake all` baut beide `all`-Regeln; `qmake all_q9` nur die Q9-Regel.
 
 Das gemeinsame Profil liegt unter [`toolchains/qmake.conf`](toolchains/qmake.conf)
-und enthaelt die Abschnitte `[mac-clang]`, `[mac-clang-x86_64]`, `[linux-gcc]`, `[windows-clang]`
-und `[q9-qcc-68k]` sowie `[mac-xcc-68k]`. Das XCC-Profil nutzt Wine auf dem
+und enthaelt die Abschnitte `[ACA]`, `[ACI]`, `[LGL]`, `[WCW]`
+und `[QQQ]` sowie `[AXQ]`. Das XCC-Profil nutzt Wine auf dem
 Mac. Die acht QCC-Werkzeuge `qcc`, `qcpp`, `qcir`, `qir68k`, `qo68k`, `qost`,
 `qr68k` und `ql68k` besitzen jeweils ein eigenes `q9makefile` mit Mac-Clang-
 und XCC-Abschnitt; `tools/build_xcc_sdk.sh <werkzeug>` baut einzelne
 Komponenten. Die XCC-Ausgaben werden lokal nach `Q9SDK/Q9/68k/CMDS_XCC` kopiert.
 Dieselbe Datei liegt auf dem Q9-System
-unter `/dd/SYS/qmake.conf`; dort waehlt `qmake -C /dd/SYS -P q9-qcc-68k` den
+unter `/dd/SYS/qmake.conf`; dort waehlt `qmake -C /dd/SYS -P QQQ` den
 Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
 
 Ohne Zielargument nimmt `qmake` in jedem Konfigurationsabschnitt dessen erste
@@ -227,8 +227,16 @@ ab (macOS arm64, macOS x86_64, Windows) und teilt sich damit ein Frontend und
 eine Diagnoseausgabe; GCC bleibt der Linux-Familie (Debian und Raspberry OS)
 vorbehalten, wo es bereits vorinstalliert ist.
 
-Stand 2026-10-02 verwenden die bestehenden `qmake.conf`/`q9makefile`-Abschnitte
-noch die urspruenglichen beschreibenden Namen (`mac-clang`, `mac-clang-x86_64`,
-`mac-xcc-68k`, `mac-xqcc-68k`, `q9-qcc-68k`, `linux-gcc`, `windows-clang`);
-die Umbenennung auf diese Dreibuchstaben-Codes ist ein eigener, noch nicht
-abgeschlossener Schritt.
+Stand 2026-10-02 verwenden `qmake.conf` und jedes `q9makefile` in diesem
+Repository diese Dreibuchstaben-Codes; die urspruenglichen beschreibenden
+Namen (`mac-clang`, `mac-clang-x86_64`, `mac-xcc-68k`, `mac-xqcc-68k`,
+`q9-qcc-68k`, `q9-microware-cc-68k`, `linux-gcc`, `windows-clang`) kommen
+nicht mehr vor. `ACA`, `AXQ`, `AQQ` und `QQQ` wurden auf diesem Rechner aus
+einem sauberen Baum neu gebaut und Ende-zu-Ende verifiziert; `LGL`, `WCW`
+und `QMQ` besitzen einen `qmake.conf`-Abschnitt, sind aber noch unverifiziert
+(kein Linux-/Windows-Testrechner, `QMQ` braucht zusaetzlich einen
+funktionierenden ISO-zu-K&R-Konverter). `ICI` (ein echter nativer Build auf
+Intel-Mac-Hardware, im Unterschied zum Apple-Silicon-gehosteten Cross-Build
+`ACI`) und die restlichen Matrixzeilen (`IQQ`, `IXQ`, `LQQ`, `LXQ`, `RGR`,
+`RQQ`, `RXQ`, `WXQ`, `WQQ`) sind noch nicht als Konfigurationsabschnitt
+angelegt.
