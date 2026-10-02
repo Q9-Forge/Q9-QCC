@@ -268,7 +268,7 @@ static void load_config(void)
 	char config_path[512];
 	const char *config_env;
 	const char *sdk_env;
-	const char *host_arch;
+	const char *host_dir;
 	f = NULL;
 	config_env = qcc_getenv("QCC_CONFIG");
 	if (config_env != NULL && config_env[0] != '\0')
@@ -276,11 +276,15 @@ static void load_config(void)
 	if (f == NULL) {
 		sdk_env = qcc_getenv("Q9SDK");
 #if defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))
-		host_arch = "ARM64";
+		host_dir = "macOS/ARM64";
 #elif defined(__APPLE__) && defined(__x86_64__)
-		host_arch = "x86_64";
+		host_dir = "macOS/x86_64";
+#elif defined(__linux__)
+		host_dir = "Linux";
+#elif defined(_WIN32) || defined(_WIN64)
+		host_dir = "Windows";
 #else
-		host_arch = NULL;
+		host_dir = NULL;
 #endif
 		/* 2026-10-02: Der Host-SDK-Pfad braucht den Architekturordner wie
 		 * bei qmake (macOS/ARM64/SYS bzw. macOS/x86_64/SYS) -- die alte
@@ -289,10 +293,15 @@ static void load_config(void)
 		 * Host IMMER auf die eingebauten relativen Entwicklungspfade
 		 * zurueck, sobald qcc nicht aus dem eigenen Quellverzeichnis heraus
 		 * gestartet wurde (SDK-Installation per CMDS-Verzeichnis, Aufruf
-		 * aus einem beliebigen Projektverzeichnis). */
-		if (sdk_env != NULL && sdk_env[0] != '\0' && host_arch != NULL &&
-		    strlen(sdk_env) + sizeof("/macOS//SYS/qcc.conf") + strlen(host_arch) <= sizeof(config_path)) {
-			sprintf(config_path, "%s/macOS/%s/SYS/qcc.conf", sdk_env, host_arch);
+		 * aus einem beliebigen Projektverzeichnis).
+		 * 2026-10-03: Zuerst nur fuer macOS gefixt, dann live unter WSL/
+		 * Linux (LQQ-Profil) reproduziert -- host_dir deckt jetzt auch
+		 * Linux und Windows ab (das Format Linux/SYS bzw. Windows/SYS
+		 * braucht anders als macOS keinen Architektur-Unterordner, da
+		 * $(Q9SDK)/Linux/CMDS flach ist). */
+		if (sdk_env != NULL && sdk_env[0] != '\0' && host_dir != NULL &&
+		    strlen(sdk_env) + sizeof("//SYS/qcc.conf") + strlen(host_dir) <= sizeof(config_path)) {
+			sprintf(config_path, "%s/%s/SYS/qcc.conf", sdk_env, host_dir);
 			f = fopen(config_path, "r");
 		}
 	}
