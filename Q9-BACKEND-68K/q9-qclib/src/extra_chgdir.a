@@ -1,0 +1,43 @@
+* error_code _os_chgdir(const char *path, u_int32 mode)
+*
+* I$ChgDir (Servicewort $86, 68k_tech.pdf S.566): d0.b = Modus (0 = die
+* Datenverzeichnis-Variante "chd"; Bit des Ausfuehrungsverzeichnisses wie
+* bei I$Open ungetestet -- dieser Wrapper deckt bislang nur chd ab), a0 =
+* Pfadname. qmake braucht nur das Datenverzeichnis, daher wird hier kein
+* zweiter Modus unterschieden.
+*
+* ACHTUNG: Q9DEFS/q9sys.d nennt denselben Servicewort-Wert ($86) auch
+* "IQ$ChgDir"; os9call.a (os9call.a:Q9I_Rename) definiert denselben Wert
+* ($86) separat unter dem Namen "Q9I_Rename" fuer _os_rename. Nach Abgleich
+* mit der Standard-I$-Tabelle (I$Attach $80 .. I$Close $8f, luecken- und
+* reihenfolgetreu) ist $86 tatsaechlich I$ChgDir, nicht I$Rename -- es gibt
+* im OS-9-Systemaufrufkatalog gar keinen "Rename"-Aufruf, Microware-"ren"
+* macht das ueber Kopieren+Loeschen. _os_rename in os9call.a ist damit
+* vermutlich seit seiner Einfuehrung falsch beschriftet und moeglicherweise
+* fehlerhaft (STATUS.md markiert "rename" entsprechend nur als unverifiziert,
+* nicht verifiziert) -- hier bewusst NICHT angefasst, eigene Baustelle.
+* Diese Datei definiert ihre eigene, unabhaengige Konstante und ruehrt
+* os9call.a nicht an.
+
+Q9I_ChgDir     equ     $86                      * I$ChgDir, Arbeitsverzeichnis wechseln
+
+         psect   qchgdir,0,0,0,0,0
+
+* Function: _os_chgdir
+* Changes the process' current data directory.
+* Parameters: d0 pathname, d1 mode (0 selects the data directory).
+* Returns: OS-9 error code in d0 (zero on success).
+_os_chgdir:
+         movea.l d0,a0                           * Pfadname nach a0
+         move.l  d1,d0                           * Modus nach d0
+         trap    #0
+         dc.w    Q9I_ChgDir
+         bcs.s   ocd_err
+         moveq   #0,d0
+         rts
+ocd_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+         ends

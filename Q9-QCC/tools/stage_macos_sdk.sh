@@ -18,6 +18,12 @@ cp "$repo/Q9-QCC/config/qcc-macos-sdk.conf" "$target/SYS/qcc.conf"
 cp "$repo/Q9-Make/toolchains/qmake.conf" "$sdk/macOS/ARM64/SYS/qmake.conf"
 cp "$repo/Q9-Make/toolchains/qmake.conf" "$sdk/macOS/x86_64/SYS/qmake.conf"
 cp "$repo/Q9-FRONTEND-C/q9-qcpp/include/"*.h "$target/DEFS/"
-cp "$repo/Q9-BACKEND-68K/q9-qclib/build/q9_start.r" \
-	"$repo/Q9-BACKEND-68K/q9-qclib/build/qclib.l" "$target/LIBS/"
+# q9-qclib's own q9makefile builds per host-architecture under
+# build/<config>/ (introduced when mac-clang-x86_64 was added); the flat
+# build/q9_start.r / build/qclib.l are a stale pre-restructuring layout
+# that stage_macos_sdk.sh kept copying from unnoticed. The 68k output is
+# identical regardless of which host architecture built it, so any one
+# config's build/ subdirectory is the correct, current source.
+cp "$repo/Q9-BACKEND-68K/q9-qclib/build/mac-clang/q9_start.r" \
+	"$repo/Q9-BACKEND-68K/q9-qclib/build/mac-clang/qclib.l" "$target/LIBS/"
 echo "QCC SDK support files staged in $target"

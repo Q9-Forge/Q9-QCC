@@ -48,14 +48,14 @@ $(BUILD_DIR)/rof-c.stamp: $(BUILD_DIR)/extra_remove.r $(BUILD_DIR)/extra_rename.
 	mkdir -p "$(BUILD_DIR)" && touch "$(BUILD_DIR)/rof-c.stamp"
 $(BUILD_DIR)/rof-d.stamp: $(BUILD_DIR)/extra_strxfrm.r $(BUILD_DIR)/extra_system.r $(BUILD_DIR)/extra_unavailable.r $(BUILD_DIR)/ctype_c.r $(BUILD_DIR)/extra_bsearch_c.r $(BUILD_DIR)/extra_file_c.r $(BUILD_DIR)/extra_qsort_c.r $(BUILD_DIR)/file_c.r $(BUILD_DIR)/mem_c.r $(BUILD_DIR)/printf_c.r $(BUILD_DIR)/str_c.r
 	mkdir -p "$(BUILD_DIR)" && touch "$(BUILD_DIR)/rof-d.stamp"
-$(BUILD_DIR)/rof-e.stamp: $(BUILD_DIR)/printf.r $(BUILD_DIR)/file.r $(BUILD_DIR)/str.r $(BUILD_DIR)/ctype.r $(BUILD_DIR)/mem.r $(BUILD_DIR)/iob.r $(BUILD_DIR)/os9call.r
+$(BUILD_DIR)/rof-e.stamp: $(BUILD_DIR)/printf.r $(BUILD_DIR)/file.r $(BUILD_DIR)/str.r $(BUILD_DIR)/ctype.r $(BUILD_DIR)/mem.r $(BUILD_DIR)/iob.r $(BUILD_DIR)/os9call.r $(BUILD_DIR)/extra_chgdir.r $(BUILD_DIR)/extra_time.r
 	mkdir -p "$(BUILD_DIR)" && touch "$(BUILD_DIR)/rof-e.stamp"
 $(BUILD_DIR)/qclib.l: $(BUILD_DIR)/rof-a.stamp $(BUILD_DIR)/rof-b.stamp $(BUILD_DIR)/rof-c.stamp $(BUILD_DIR)/rof-d.stamp $(BUILD_DIR)/rof-e.stamp q9makefile
 	mkdir -p "$(BUILD_DIR)" && rm -f "$(BUILD_DIR)/qclib.l"
 	cat "$(BUILD_DIR)/extra_abort.r" "$(BUILD_DIR)/extra_abs.r" "$(BUILD_DIR)/extra_atexit.r" "$(BUILD_DIR)/extra_atoi.r" "$(BUILD_DIR)/extra_bsearch.r" "$(BUILD_DIR)/extra_difftime.r" "$(BUILD_DIR)/extra_env.r" "$(BUILD_DIR)/extra_fabs.r" "$(BUILD_DIR)/extra_file.r" "$(BUILD_DIR)/extra_getc.r" "$(BUILD_DIR)/extra_gets.r" "$(BUILD_DIR)/extra_labs.r" > "$(BUILD_DIR)/qclib.l"
 	cat "$(BUILD_DIR)/extra_locale.r" "$(BUILD_DIR)/extra_mb.r" "$(BUILD_DIR)/extra_mbs.r" "$(BUILD_DIR)/extra_memchr.r" "$(BUILD_DIR)/extra_memcmp.r" "$(BUILD_DIR)/extra_memmove.r" "$(BUILD_DIR)/extra_perror.r" "$(BUILD_DIR)/extra_putc.r" "$(BUILD_DIR)/extra_qsort.r" "$(BUILD_DIR)/extra_rand.r" "$(BUILD_DIR)/extra_remove.r" "$(BUILD_DIR)/extra_rename.r" >> "$(BUILD_DIR)/qclib.l"
 	cat "$(BUILD_DIR)/extra_round.r" "$(BUILD_DIR)/extra_sqrt.r" "$(BUILD_DIR)/extra_stdio.r" "$(BUILD_DIR)/extra_strcoll.r" "$(BUILD_DIR)/extra_strcspn.r" "$(BUILD_DIR)/extra_strerror.r" "$(BUILD_DIR)/extra_strncat.r" "$(BUILD_DIR)/extra_strpbrk.r" "$(BUILD_DIR)/extra_strspn.r" "$(BUILD_DIR)/extra_strxfrm.r" "$(BUILD_DIR)/extra_system.r" "$(BUILD_DIR)/extra_unavailable.r" >> "$(BUILD_DIR)/qclib.l"
-	cat "$(BUILD_DIR)/extra_file_c.r" "$(BUILD_DIR)/extra_bsearch_c.r" "$(BUILD_DIR)/extra_qsort_c.r" "$(BUILD_DIR)/printf.r" "$(BUILD_DIR)/printf_c.r" "$(BUILD_DIR)/file.r" "$(BUILD_DIR)/file_c.r" "$(BUILD_DIR)/str.r" "$(BUILD_DIR)/str_c.r" "$(BUILD_DIR)/ctype.r" "$(BUILD_DIR)/ctype_c.r" "$(BUILD_DIR)/mem.r" "$(BUILD_DIR)/mem_c.r" "$(BUILD_DIR)/iob.r" "$(BUILD_DIR)/os9call.r" >> "$(BUILD_DIR)/qclib.l"
+	cat "$(BUILD_DIR)/extra_file_c.r" "$(BUILD_DIR)/extra_bsearch_c.r" "$(BUILD_DIR)/extra_qsort_c.r" "$(BUILD_DIR)/printf.r" "$(BUILD_DIR)/printf_c.r" "$(BUILD_DIR)/file.r" "$(BUILD_DIR)/file_c.r" "$(BUILD_DIR)/str.r" "$(BUILD_DIR)/str_c.r" "$(BUILD_DIR)/ctype.r" "$(BUILD_DIR)/ctype_c.r" "$(BUILD_DIR)/mem.r" "$(BUILD_DIR)/mem_c.r" "$(BUILD_DIR)/iob.r" "$(BUILD_DIR)/os9call.r" "$(BUILD_DIR)/extra_chgdir.r" "$(BUILD_DIR)/extra_time.r" >> "$(BUILD_DIR)/qclib.l"
 	test -s "$(BUILD_DIR)/qclib.l"
 $(BUILD_DIR)/extra_abort.r: src/extra_abort.a q9makefile $(QR68)
 	mkdir -p "$(BUILD_DIR)" && "$(QR68)" "src/extra_abort.a" -o="$(BUILD_DIR)/extra_abort.r"
@@ -143,6 +143,10 @@ $(BUILD_DIR)/iob.r: src/iob.a q9makefile $(QR68)
 	mkdir -p "$(BUILD_DIR)" && "$(QR68)" "src/iob.a" -o="$(BUILD_DIR)/iob.r"
 $(BUILD_DIR)/os9call.r: src/os9call.a q9makefile $(QR68)
 	mkdir -p "$(BUILD_DIR)" && "$(QR68)" "src/os9call.a" -o="$(BUILD_DIR)/os9call.r"
+$(BUILD_DIR)/extra_chgdir.r: src/extra_chgdir.a q9makefile $(QR68)
+	mkdir -p "$(BUILD_DIR)" && "$(QR68)" "src/extra_chgdir.a" -o="$(BUILD_DIR)/extra_chgdir.r"
+$(BUILD_DIR)/extra_time.r: src/extra_time.a q9makefile $(QR68)
+	mkdir -p "$(BUILD_DIR)" && "$(QR68)" "src/extra_time.a" -o="$(BUILD_DIR)/extra_time.r"
 $(BUILD_DIR)/ctype_c.r: src/ctype.c q9makefile $(QCPP) $(QCIR) $(QCCB) $(QR68)
 	mkdir -p "$(BUILD_DIR)" && "$(QCPP)" -I"$(QCPP_INCLUDE)" "src/ctype.c" "$(BUILD_DIR)/ctype.i"
 	"$(QCIR)" "@$(BUILD_DIR)/ctype.i" > "$(BUILD_DIR)/ctype.ir" 2> "$(BUILD_DIR)/ctype.err"

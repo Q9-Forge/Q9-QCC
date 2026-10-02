@@ -1,0 +1,29 @@
+* u_int32 _os_ticks(void)
+*
+* F$Time (Servicewort $15, 68k_tech.pdf): d0.w = Modus (Bit 0 gregorianisch/
+* julianisch, hier irrelevant; Bit 1 gesetzt = zusaetzlich Tick-Zaehler
+* liefern) -> d0.l gepackte Zeit, d1.l gepacktes Datum, d2.w Wochentag,
+* d3.l Tick-Zaehler (nur bei gesetztem Bit 1). Diese Funktion liefert
+* NUR den Tick-Zaehler zurueck -- qmake braucht keine Kalenderzeit,
+* sondern nur einen monoton steigenden Zaehler fuer Laufzeitanzeigen.
+*
+* Tickrate: in den qclib-C-Referenzen mit "typisch 100 Hz / ~10 ms" auf
+* 68k-Systemen angegeben (nicht hier verifiziert) -- der Aufrufer rechnet
+* das selbst in Sekunden um und behandelt diese Funktion entsprechend als
+* unkritisch fuer Korrektheit, nur fuer die menschenlesbare Laufzeitanzeige.
+
+Q9F_Time       equ     $15                      * F$Time, Systemzeit lesen
+
+         psect   qtime,0,0,0,0,0
+
+* Function: _os_ticks
+* Reads the kernel's running tick counter via F$Time.
+* Returns: Current tick count in d0 (d3 on return from the syscall).
+_os_ticks:
+         moveq   #2,d0                           * Bit 1: Tick-Zaehler mit zurueckgeben
+         trap    #0
+         dc.w    Q9F_Time
+         move.l  d3,d0                           * nur der Tick-Zaehler wird gebraucht
+         rts
+
+         ends
