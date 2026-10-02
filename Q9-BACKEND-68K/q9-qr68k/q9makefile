@@ -39,6 +39,20 @@ $(HOST_OUTPUT_DIR)/qcpp: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
 clean:
 	rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qr68k"
 
+[LQQ]
+all: linuxQCC
+linuxQCC: linux-qcpp-host xqcc $(HOST_OUTPUT_DIR)/qcc
+xqcc: $(Q9SDK)/Q9/68k/CMDS_XQCC/qr68k
+$(Q9SDK)/Q9/68k/CMDS_XQCC/qr68k: src/qr68.c $(TARGET_CC)
+	mkdir -p "$(TARGET_OUTPUT_DIR)" && Q9SDK="$(Q9SDK)" PATH="$(HOST_OUTPUT_DIR):$PATH" $(TARGET_CC) --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)/qr68k" src/qr68.c
+$(HOST_OUTPUT_DIR)/qcc: ../../Q9-QCC/src/qcc.c
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" ../../Q9-QCC/src/qcc.c
+linux-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+$(HOST_OUTPUT_DIR)/qcpp: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+clean:
+	rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qr68k"
+
 [QQQ]
 all: q9QCC
 q9QCC: q9

@@ -94,6 +94,30 @@ $(Q9SDK)/Q9/68k/CMDS_XQCC/qcir: check-sdk data/qcc_p.c $(TARGET_CC)
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcir"
 
+[LQQ]
+all: linuxQCC
+
+linuxQCC: linux-qcpp-host linux-qcir-host $(HOST_OUTPUT_DIR)/qcc $(Q9SDK)/Q9/68k/CMDS_XQCC/qcir
+
+# The host QCC pipeline needs native qcpp and qcir on PATH to compile qcir.
+linux-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+linux-qcir-host: $(HOST_OUTPUT_DIR)/qcir
+
+$(HOST_OUTPUT_DIR)/qcpp: check-sdk ../q9-qcpp/src/qcpp.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" ../q9-qcpp/src/qcpp.c
+
+$(HOST_OUTPUT_DIR)/qcir: check-sdk data/qcc_p.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcir" data/qcc_p.c
+
+$(HOST_OUTPUT_DIR)/qcc: ../../Q9-QCC/src/qcc.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" ../../Q9-QCC/src/qcc.c
+
+$(Q9SDK)/Q9/68k/CMDS_XQCC/qcir: check-sdk data/qcc_p.c $(TARGET_CC)
+	mkdir -p "$(TARGET_OUTPUT_DIR)" && Q9SDK="$(Q9SDK)" PATH="$(HOST_OUTPUT_DIR):$PATH" $(TARGET_CC) --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)/qcir" data/qcc_p.c
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcir"
+
 [QQQ]
 all: q9QCC
 

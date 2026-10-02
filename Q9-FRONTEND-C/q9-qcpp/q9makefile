@@ -92,6 +92,27 @@ $(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp: check-sdk src/qcpp.c $(TARGET_CC)
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp"
 
+[LQQ]
+all: linuxQCC
+
+linuxQCC: linux-qcpp-host $(HOST_OUTPUT_DIR)/qcc $(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp
+
+# The self-hosted QCC driver starts qcpp by command name via PATH. Recreate
+# its native helper after `clean` before asking QCC to build the 68k target.
+linux-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+
+$(HOST_OUTPUT_DIR)/qcpp: check-sdk src/qcpp.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" src/qcpp.c
+
+$(HOST_OUTPUT_DIR)/qcc: ../../Q9-QCC/src/qcc.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" ../../Q9-QCC/src/qcc.c
+
+$(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp: check-sdk src/qcpp.c $(TARGET_CC)
+	mkdir -p "$(Q9SDK)/Q9/68k/CMDS_XQCC" && Q9SDK="$(Q9SDK)" PATH="$(HOST_OUTPUT_DIR):$PATH" $(TARGET_CC) --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp" src/qcpp.c
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcpp"
+
 [QQQ]
 all: q9QCC
 

@@ -18,6 +18,11 @@ all: linux
 linux:
 clean:
 
+[LQQ]
+all: linuxQCC
+linuxQCC:
+clean:
+
 [AXQ]
 all:
 macXCC:

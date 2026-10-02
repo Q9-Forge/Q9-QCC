@@ -92,6 +92,12 @@ all: linux
 linux:
 clean:
 
+[LQQ]
+SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all: linuxQCC
+linuxQCC:
+clean:
+
 [AXQ]
 SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all:
