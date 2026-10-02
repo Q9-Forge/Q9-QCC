@@ -1,0 +1,104 @@
+# q9make targets for QCIR. Keep target names aligned with q9-qcpp so the
+# frontend components can be built together by their parent SUBDIRS target.
+[global]
+TOOLCHAIN_FILE = ../../Q9-Make/toolchains/qmake.conf
+
+help:
+	echo "\nqmake: QCIR - Q9 C-to-IR frontend"
+	echo "  macCla  build qcir on macOS with clang"
+	echo "  macX64  cross-build Intel macOS qcir with clang"
+	echo "  macXCC  build qcir on macOS with XCC for Q9/68K"
+	echo "  macQCC  build qcir on macOS with QCC for Q9/68K"
+	echo "  q9QCC   build qcir on Q9/68K with QCC"
+	echo "  q9CC    build qcir on Q9/68K with Microware CC"
+	echo "  all     build all qcir targets for available configurations"
+	echo "  test    run qcir frontend tests"
+	echo "  clean   clean all qcir builds\n"
+
+check-sdk:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }
+	test -d "$(Q9SDK)" || { echo "Q9SDK directory does not exist: $(Q9SDK)" >&2; exit 2; }
+
+[mac-clang]
+all: macCla
+
+macCla: $(Q9SDK)/macOS/ARM64/CMDS/qcir
+
+$(Q9SDK)/macOS/ARM64/CMDS/qcir: check-sdk data/qcc_p.c
+	mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) -std=c89 -O2 -Wall -Wextra -o "$(Q9SDK)/macOS/ARM64/CMDS/qcir" data/qcc_p.c
+
+test: macCla
+	make test
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qcir"
+
+[mac-clang-x86_64]
+all: macX64
+macX64: $(Q9SDK)/macOS/x86_64/CMDS/qcir
+
+$(Q9SDK)/macOS/x86_64/CMDS/qcir: check-sdk data/qcc_p.c
+	mkdir -p "$(Q9SDK)/macOS/x86_64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -o "$(Q9SDK)/macOS/x86_64/CMDS/qcir" data/qcc_p.c
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qcir"
+
+[mac-xcc-68k]
+all: macXCC
+
+macXCC: mac-qcpp-host $(Q9SDK)/Q9/68k/CMDS_XCC/qcir
+
+# build_xcc_sdk.sh uses the native qcpp while preparing qir68k.
+mac-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+
+$(HOST_OUTPUT_DIR)/qcpp: check-sdk ../q9-qcpp/src/qcpp.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" ../q9-qcpp/src/qcpp.c
+
+$(Q9SDK)/Q9/68k/CMDS_XCC/qcir: check-sdk data/qcc_p.c ../../tools/build_xcc_sdk.sh
+	bash ../../tools/build_xcc_sdk.sh qcir
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XCC/qcir"
+
+[mac-xqcc-68k]
+all: macQCC
+
+macQCC: mac-qcpp-host mac-qcir-host $(HOST_OUTPUT_DIR)/qcc $(Q9SDK)/Q9/68k/CMDS_XQCC/qcir
+
+# The host QCC pipeline needs native qcpp and qcir on PATH to compile qcir.
+mac-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+mac-qcir-host: $(HOST_OUTPUT_DIR)/qcir
+
+$(HOST_OUTPUT_DIR)/qcpp: check-sdk ../q9-qcpp/src/qcpp.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" ../q9-qcpp/src/qcpp.c
+
+$(HOST_OUTPUT_DIR)/qcir: check-sdk data/qcc_p.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcir" data/qcc_p.c
+
+$(HOST_OUTPUT_DIR)/qcc: ../../Q9-QCC/src/qcc.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" ../../Q9-QCC/src/qcc.c
+
+$(Q9SDK)/Q9/68k/CMDS_XQCC/qcir: check-sdk data/qcc_p.c $(TARGET_CC)
+	mkdir -p "$(TARGET_OUTPUT_DIR)" && Q9SDK="$(Q9SDK)" PATH="$(HOST_OUTPUT_DIR):$PATH" $(TARGET_CC) --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)/qcir" data/qcc_p.c
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qcir"
+
+[q9-qcc-68k]
+all: q9QCC
+
+q9QCC: /dd/CMDS_QCC/qcir
+
+/dd/CMDS_QCC/qcir: data/qcc_p.c
+	qcc --largedata --stack 512K -o /dd/CMDS_QCC/qcir data/qcc_p.c
+
+clean:
+	rm -f /dd/CMDS_QCC/qcir
+
+[q9-microware-cc-68k]
+all: q9CC
+
+q9CC: mwcc-status
+
+mwcc-status:
+	echo 'Microware CC build is not enabled: qcir currently requires an ISO C compiler'

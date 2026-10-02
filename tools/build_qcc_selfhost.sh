@@ -3,13 +3,13 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${Q9SDK:?Set Q9SDK to the SDK root (for example /Volumes/SSD1TB/Q9SDK)}"
+: "${Q9SDK:?Set Q9SDK to the SDK root (for example /Volumes/SSD1TB/projects/Q9-Forge/Q9-SDK)}"
 : "${MWOS_ENV:=/Volumes/SSD1TB/projects/MWOS/tools/macos/env/os9-toolchain.sh}"
 [ -f "$MWOS_ENV" ] || { echo "Missing OS-9 toolchain environment: $MWOS_ENV" >&2; exit 2; }
 # shellcheck disable=SC1090
 source "$MWOS_ENV"
 [ -x "$WINE_APP" ] || { echo "Wine is unavailable: $WINE_APP" >&2; exit 2; }
-[ -x "$Q9SDK/Mac/CMDS/qcc" ] || { echo "Build the Mac qcc first" >&2; exit 2; }
+[ -x "$Q9SDK/macOS/CMDS_CLANG/qcc" ] || { echo "Build the Mac qcc first" >&2; exit 2; }
 
 STAGE="$(mktemp -d /tmp/qcc-selfhost.XXXXXX)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -20,9 +20,9 @@ mkdir -p "$(dirname "$OUT")"
 
 # qcc_q9.c selects the native OS-9 process-launch branch while the Mac-hosted
 # QCC performs translation and emits a 68000 ROF.
-Q9SDK="$Q9SDK" QCC_CONFIG="$Q9SDK/Mac/SYS/qcc.conf" \
-PATH="$Q9SDK/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" \
-	"$Q9SDK/Mac/CMDS/qcc" --keep -c --tmpdir "$STAGE/work" \
+Q9SDK="$Q9SDK" QCC_CONFIG="$Q9SDK/macOS/SYS/qcc.conf" \
+PATH="$Q9SDK/macOS/CMDS_CLANG:/usr/bin:/bin:/usr/sbin:/sbin" \
+	"$Q9SDK/macOS/CMDS_CLANG/qcc" --keep -c --tmpdir "$STAGE/work" \
 	-o "$STAGE/qcc.r" "$REPO/Q9-QCC/src/qcc_q9.c"
 [ -s "$STAGE/qcc.r" ] || { echo "QCC did not produce qcc.r" >&2; exit 1; }
 

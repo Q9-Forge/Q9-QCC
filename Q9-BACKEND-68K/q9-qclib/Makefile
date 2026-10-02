@@ -24,6 +24,7 @@ ROFS = $(patsubst src/extra_%.a,build/extra_%.r,$(sort $(wildcard src/extra_*.a)
        build/extra_file_c.r \
        build/extra_bsearch_c.r \
        build/extra_qsort_c.r \
+       build/extra_chown_c.r \
        build/printf.r build/printf_c.r build/file.r build/file_c.r \
        build/str.r build/str_c.r build/ctype.r build/ctype_c.r \
        build/mem.r build/mem_c.r \
@@ -39,7 +40,7 @@ build/qclib.l: $(ROFS)
 # eigenes main) -> qr68. Jede Datei wird ein eigener psect und damit ein
 # eigener ROF -- so bindet der Linker nur ein, was wirklich gebraucht wird.
 build/%_c.r: src/%.c | build
-	$(QCPP) -I$(QCC)/Q9-FRONTEND-C/q9-qcpp/include $< build/$*.i
+	$(QCPP) -I$(QCC)/Q9-FRONTEND-C/q9-qcpp/include -I$(QCC)/Q9DEFS/include $< build/$*.i
 	$(QCCP) "@build/$*.i" > build/$*.ir 2> build/$*.err
 	@test "$$(tail -1 build/$*.ir)" = OK || { head -5 build/$*.err; exit 1; }
 	$(QCCB) build/$*.ir build/$*.s68 -os9 -part

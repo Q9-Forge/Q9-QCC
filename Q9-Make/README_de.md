@@ -16,7 +16,8 @@ für jede Plattform wird eine eigene Binary gebaut.
   und Ausgabeverzeichnis.
 - Compiler, Assembler, Optimierer und Linker bleiben über Konfiguration sowie
   Kommandozeilen- und Environment-Overrides austauschbar.
-- Standarddatei ist `q9makefile` ohne Endung. Ein unabhängiges `Makefile` kann
+- Standarddatei ist `q9makefile` ohne Endung; `-f DATEI` bzw. `--file DATEI`
+  waehlt eine andere Projektdatei. Ein unabhaengiges `Makefile` kann
   parallel von einer anderen Make-Implementierung verwendet werden.
 - Unterverzeichnisse werden nur dann traversiert, wenn sie ausdrücklich
   eingetragen sind. Erst werden Kindkomponenten gebaut, danach lokale
@@ -45,7 +46,11 @@ immer Vorrang.
 Der erste C89-Hostprototyp liest einfache Regeln der Form `ziel: abhaengigkeiten`
 und eingerueckte Shell-Rezepte aus `q9makefile`. Er baut Abhaengigkeiten zuerst,
 entscheidet anhand von Zeitstempeln ueber inkrementelles Bauen, erkennt Zyklen
-und unterstuetzt `-n`/`--dry-run`, `-v` und `-vv`. Regeln ohne Rezept dienen als
+und unterstuetzt `-n`/`--dry-run`, `-v` und `-vv`. Erfolgreiche Rezepte mit
+Ausgabedatei werden in einer Statuszeile zusammengefasst: Der Zielname erscheint
+beim Start, nach Abschluss folgen Laufzeit und Haken. Bereits aktuelle Ziele
+erhalten ohne Laufzeit einen gruenen Kreis. Die Tool-Ausgabe erscheint bei
+Fehlern oder mit `-vv`. Regeln ohne Rezept dienen als
 Sammel-/Phony-Regeln. Variablen werden als `NAME = wert` definiert und mit
 `$(NAME)` in Rezepten expandiert. Environmentwerte haben Vorrang vor
 Dateiwerten; `-DNAME=wert` hat die hoechste Prioritaet. `SUBDIRS = kind-a kind-b`
@@ -55,7 +60,8 @@ weitergereicht, sonst waehlt jede Ebene ihre erste Regel. POSIX ist
 implementiert; der Windows-CRT-Adapter muss noch unter Windows getestet werden.
 
 Build und Smoke-Tests: `make test` in diesem Verzeichnis. Das Repository-
-`Makefile` dient nur zum Bootstrap; Q9-Make selbst liest `q9makefile`.
+`Makefile` dient nur zum Bootstrap; Q9-Make selbst liest standardmaessig
+`q9makefile`, alternativ z. B. mit `qmake -f build.mk all`.
 
 Der Prototyp expandiert Variablen nur in Rezepten und liest Environmentwerte,
 aendert aber nicht die Prozessumgebung. `SUBDIRS` akzeptiert nur direkte
@@ -78,23 +84,42 @@ Zieldatei ersetzt; `$(VARIABLE)` wird anschließend wie in normalen Rezepten
 aufgelöst. Ohne diese Vorlagen gelten die obigen Standardbefehle.
 
 Das SDK trennt Entwicklungsplattform und Q9-Zielarchitektur: Host-Programme
-liegen beispielsweise in `Q9SDK/Mac/CMDS`, `Q9SDK/Linux/CMDS` und
-`Q9SDK/Windows/CMDS`. Q9-Zielprofile und Zielprogramme liegen unter
-`Q9SDK/Q9/68k/SYS` beziehungsweise `Q9SDK/Q9/68k/CMDS`. Der Q9-Emulatoradapter
-fehlt noch; sein vereinbarter Konfigurationsordner ist `/dd/SYS`.
+liegen beispielsweise in `Q9SDK/macOS/ARM64/CMDS`, `Q9SDK/macOS/x86_64/CMDS`, `Q9SDK/Linux/CMDS` und
+`Q9SDK/Windows/CMDS`. Die mit XCC gebauten Q9/68k-Module liegen unter
+`Q9SDK/Q9/68k/CMDS_XCC`; QCC-Ausgaben verbleiben unter
+`Q9SDK/Q9/68k/CMDS_QCC`; `Q9SDK/Q9/68k/CMDS_CC` ist fuer den nativen
+Microware-Compiler reserviert. Der Q9-Emulatoradapter fehlt noch; sein vereinbarter
+Konfigurationsordner ist `/dd/SYS`.
+
+Fuer Intel-Macs gibt es zusaetzlich das Profil `[mac-clang-x86_64]` und das
+Ziel `qmake macX64`. Es erzeugt x86_64-Mach-O-Hostwerkzeuge unter
+`Q9SDK/macOS/x86_64/CMDS` mit Mindestziel macOS 10.13. Die Binaries
+wurden auf Apple Silicon unter Rosetta gestartet; ein Test auf echter
+Intel-Hardware steht noch aus.
 
 Je Host/Compiler/Target-Kombination wird in **einer** `qmake.conf` ein benannter
-Abschnitt angelegt, z. B. `[mac-clang]`, `[mac-xcc-68k]` oder `[q9-qcc-68k]`.
+Abschnitt angelegt, z. B. `[mac-clang]`, `[mac-clang-x86_64]`,
+`[mac-xcc-68k]` oder `[q9-qcc-68k]`.
 Gemeinsame Toolchainwerte stehen in `[global]`; jeder Konfigurationsabschnitt
 enthaelt seine eigenen Compiler-/Target-Werte. Das Projekt-`q9makefile` hat
-dieselben Abschnittsnamen fuer seine Regeln. Ist `TARGET_ARCH` gesetzt, sucht
-qmake `qmake.conf` unter `$Q9SDK/Q9/<arch>/SYS` (sonst `$HOME/Q9SDK/...`), mit
-`-C /dd/SYS` direkt unter `/dd/SYS/qmake.conf`; ohne `-P` baut qmake ein Ziel in
+dieselben Abschnittsnamen fuer seine Regeln. Ist `Q9SDK` gesetzt, sucht qmake
+auf macOS zuerst das Hostprofil unter
+`$Q9SDK/macOS/ARM64/SYS/qmake.conf` oder
+`$Q9SDK/macOS/x86_64/SYS/qmake.conf`, passend zur Architektur, fuer die qmake
+gebaut wurde. Fehlt das Profil, gilt das lokale `TOOLCHAIN_FILE`, falls
+vorhanden. Ohne SDK und ohne Profil funktionieren einfache Projekte mit den
+eingebauten Vorgaben `cc` und `-std=c89`. Fuer Q9-Zielbuilds sucht qmake
+zusaetzlich unter `$Q9SDK/Q9/<arch>/SYS` (sonst `$HOME/Q9SDK/...`); `-C DIR`
+laedt explizit `DIR/qmake.conf`. Ohne `-P` baut qmake ein Ziel in
 allen Abschnitten, die dieses Ziel definieren. So kann `all` mehrfach vorkommen,
 waehrend etwa `all_q9` nur in Q9-Abschnitten steht. `-P <name>` waehlt einen
 einzelnen Abschnitt, `--list-configs` zeigt die Namen. Die Variablen bleiben je
 Aufruf getrennt; Ausgabepfade sollten daher pro Konfiguration eindeutig sein.
 Environment und `-DNAME=value` haben weiterhin Vorrang vor Projekt-/Profilwerten.
+Mit `HOST_PLATFORM` (macos, linux, windows oder q9) kann ein Profil auf das
+System beschraenkt werden, auf dem sein Compiler laeuft. Bei normalem Aufruf
+werden unpassende Abschnitte still uebersprungen; `-v` zeigt den Grund. Ein
+explizites `-P` fuer ein unpassendes System ist ein Fehler.
 Linkrezepte bleiben explizit. OS-9-Adapter und Image-Deployment fehlen noch.
 Details in [`STATUS.md`](STATUS.md).
 
@@ -121,9 +146,13 @@ all_q9:
 `qmake all` baut beide `all`-Regeln; `qmake all_q9` nur die Q9-Regel.
 
 Das gemeinsame Profil liegt unter [`toolchains/qmake.conf`](toolchains/qmake.conf)
-und enthaelt die Abschnitte `[mac-clang]`, `[linux-gcc]`, `[windows-clang]`
-und `[q9-qcc-68k]`. Die XCC-Profile folgen, sobald Programmname und
-Aufrufsyntax pro Host verifiziert sind. Dieselbe Datei liegt auf dem Q9-System
+und enthaelt die Abschnitte `[mac-clang]`, `[mac-clang-x86_64]`, `[linux-gcc]`, `[windows-clang]`
+und `[q9-qcc-68k]` sowie `[mac-xcc-68k]`. Das XCC-Profil nutzt Wine auf dem
+Mac. Die acht QCC-Werkzeuge `qcc`, `qcpp`, `qcir`, `qir68k`, `qo68k`, `qost`,
+`qr68k` und `ql68k` besitzen jeweils ein eigenes `q9makefile` mit Mac-Clang-
+und XCC-Abschnitt; `tools/build_xcc_sdk.sh <werkzeug>` baut einzelne
+Komponenten. Die XCC-Ausgaben werden lokal nach `Q9SDK/Q9/68k/CMDS_XCC` kopiert.
+Dieselbe Datei liegt auf dem Q9-System
 unter `/dd/SYS/qmake.conf`; dort waehlt `qmake -C /dd/SYS -P q9-qcc-68k` den
 Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
 
@@ -133,3 +162,73 @@ ausgeben. Erzeugt das Rezept keine gleichnamige Datei, wird es bei jedem Aufruf
 ausgefuehrt. Fuer abgeschlossene Buildschritte koennen Rezepte eine Markerdatei
 (z. B. mit `touch .built`) erstellen; deren Zeitstempel wird bei Folgelaeufen
 fuer die Aktualitaetspruefung verwendet.
+
+## Namensschema fuer Konfigurationen
+
+Jede Toolchain-Konfiguration (ein benannter Abschnitt in `qmake.conf` und in
+jedem `q9makefile`) wird durch einen festen Dreibuchstaben-Code identifiziert:
+`<Buildsystem><Compiler><Zielsystem>`. Der erste und der dritte Buchstabe
+stammen aus derselben Systemtabelle; Buildsystem und Zielsystem unterscheiden
+sich nur bei Cross-Konfigurationen.
+
+### Systemcodes (1. und 3. Stelle)
+
+| Code | System                        |
+|------|-------------------------------|
+| `A`  | macOS arm64 (Apple Silicon)   |
+| `I`  | macOS x86_64 (Intel)          |
+| `Q`  | Q9 / OS-9 68K                 |
+| `L`  | Linux (Debian) x86_64         |
+| `R`  | Linux (Raspberry OS) arm64    |
+| `W`  | Windows 11 x86_64             |
+
+### Compiler-Codes (2. Stelle)
+
+| Code | Compiler                                         |
+|------|---------------------------------------------------|
+| `C`  | Clang                                            |
+| `G`  | GNU GCC                                          |
+| `Q`  | QCC (der eigene Compiler dieses Projekts)        |
+| `X`  | Microware XCC (Cross, via Wine)                  |
+| `M`  | Microware CC (nativ, laeuft direkt auf OS-9)     |
+
+`X` und `M` sind beide Microware-Compiler: `X` fuer den Wine-gehosteten
+Cross-Build, `M` fuer den nativen, der direkt auf Q9 laeuft. Der Buchstabe
+`Q` wird in der System- und in der Compiler-Tabelle wiederverwendet; das ist
+eindeutig, weil die Bedeutung jedes Buchstabens allein von seiner Position
+im Dreibuchstaben-Code abhaengt, nicht vom Buchstaben selbst (dasselbe
+Prinzip wie bei ISO-Laender- gegenueber Waehrungscodes).
+
+### Build-Matrix
+
+| Buildsystem-OS         | Arch      | Compiler      | Zielsystem-OS           | Arch        | Cross | Code  |
+|-------------------------|-----------|---------------|---------------------------|-------------|:-----:|:-----:|
+| macOS                  | arm64     | Clang         | macOS                   | arm64       |   –   | `ACA` |
+| macOS                  | arm64     | Clang         | macOS                   | x86_64      |   X   | `ACI` |
+| macOS                  | arm64     | QCC           | Q9/OS-9                 | 68k         |   X   | `AQQ` |
+| macOS                  | arm64     | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `AXQ` |
+| macOS                  | x86_64    | Clang         | macOS                   | x86_64      |   –   | `ICI` |
+| macOS                  | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `IQQ` |
+| macOS                  | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `IXQ` |
+| Q9/OS-9                | 68k       | QCC           | Q9/OS-9                 | 68k         |   –   | `QQQ` |
+| Q9/OS-9                | 68k       | Microware CC  | Q9/OS-9                 | 68k         |   –   | `QMQ` |
+| Linux (Debian)         | x86_64    | GCC           | Linux (Debian)          | x86_64      |   –   | `LGL` |
+| Linux (Debian)         | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `LQQ` |
+| Linux (Debian)         | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `LXQ` |
+| Linux (Raspberry OS)   | arm64     | GCC           | Linux (Raspberry OS)    | arm64       |   –   | `RGR` |
+| Linux (Raspberry OS)   | arm64     | QCC           | Q9/OS-9                 | 68k         |   X   | `RQQ` |
+| Linux (Raspberry OS)   | arm64     | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `RXQ` |
+| Windows 11             | x86_64    | Clang         | Windows 11              | x86_64      |   –   | `WCW` |
+| Windows 11             | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `WXQ` |
+| Windows 11             | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `WQQ` |
+
+Begruendung der Compiler-Wahl je Host: Clang deckt alle drei Nicht-Linux-Hosts
+ab (macOS arm64, macOS x86_64, Windows) und teilt sich damit ein Frontend und
+eine Diagnoseausgabe; GCC bleibt der Linux-Familie (Debian und Raspberry OS)
+vorbehalten, wo es bereits vorinstalliert ist.
+
+Stand 2026-10-02 verwenden die bestehenden `qmake.conf`/`q9makefile`-Abschnitte
+noch die urspruenglichen beschreibenden Namen (`mac-clang`, `mac-clang-x86_64`,
+`mac-xcc-68k`, `mac-xqcc-68k`, `q9-qcc-68k`, `linux-gcc`, `windows-clang`);
+die Umbenennung auf diese Dreibuchstaben-Codes ist ein eigener, noch nicht
+abgeschlossener Schritt.

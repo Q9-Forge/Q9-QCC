@@ -54,8 +54,7 @@ marke2   MARKE   $66
 
 * KEIN rept hier: r68 V2.9.1 spult fuer jede Wiederholung um eine feste
 * Byteanzahl zurueck und landet dabei MITTEN in einer vorangehenden Zeile --
-* schon "delay35 / rept (35-5-9)/2 / nop / endr" (so steht es in
-* Herstellerquelle) ergibt neun "bad label"-Fehler. Die
+* schon "delay35 / rept (35-5-9)/2 / nop / endr" ergibt neun "bad label"-Fehler. Die
 * erzeugten Bytes stimmen dabei zwar, aber als Orakel taugt das nicht.
 * qr68 wiederholt genau den Rumpf zwischen rept und endr.
 

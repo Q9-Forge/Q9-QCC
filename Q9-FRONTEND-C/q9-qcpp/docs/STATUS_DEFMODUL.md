@@ -231,18 +231,14 @@ int main(void) {
 }
 ```
 
-**Referenz für den echten `MODHEADER`-Handler, gefunden 22.09.2026 in
-`runtime/os9/q9_cstart.a`** (das bereits produktive, real getestete
-Startmodul — keine Vermutung, sondern der laufende Code):
+**Referenz für den echten `MODHEADER`-Handler, am produktiven Startmodul
+`startup/q9_start.a` (Stand 02.10.2026):**
 
 ```asm
-Typ             equ     1                       * OS-9 program module
-Edition         equ     7                       * Q9 release edition
-        psect   q9_cstart_a,(Q9Prgrm<<8)!Q9Objct,(Q9ReEnt<<8)!1,Edition,StackSize,_cstart,trapinit
+        psect   q9_start,$0101,$8000,0,0,q9_entry
 ```
 
-mit (aus `runtime/os9/q9defs.d`): `Q9Prgrm`=1 (Programmmodul-Typ),
-`Q9Objct`=1 (Maschinencode-Sprache), `Q9ReEnt`=`$80` (Reentrant-Bit).
+Mit Programmmodul-Typ 1, Maschinencode-Sprache 1 und Reentrant-Bit `$80`.
 Daraus die reale Formel für die beiden `psect`-Felder, die `qir68k`
 aktuell nur mit `0,0` platzhält:
 - **tylan** (Feld 2) = `(typ<<8) | sprache` — für ein `PROG`-Modul
@@ -250,22 +246,19 @@ aktuell nur mit `0,0` platzhält:
 - **attrev** (Feld 3) = `(attr<<8) | revision` — z. B. `(0x80<<8)|1` =
   `$8001` für Reentrant + Revision 1. Wichtige Nuance: die Spec-Doku
   (`OS9_SYSTEM_INTERFACE.md`) nennt `ATTR 0x8000` als Default, aber
-  `q9_cstart.a` selbst nutzt Revision 1, nicht 0 (`!1` am Ende) — beim
-  Einbau klären, ob Revision Teil von `MODHEADER attr=` werden soll
-  oder ein eigenes Feld braucht.
-- Feld 6 ist ein **echtes Label** (`_cstart`), kein numerischer
+  `q9_start.a` nutzt `$8000` (Revision 0) — beim Einbau klären, ob
+  Revision Teil von `MODHEADER attr=` werden soll oder ein eigenes Feld braucht.
+- Feld 6 ist ein **echtes Label** (`q9_entry`), kein numerischer
   Platzhalter — der `ENTRY`-Name aus der IR muss hier als Symbolname
   eingesetzt werden, nicht als Zahl.
-- Ein 7. Feld (`trapinit`) existiert zusätzlich zu den in
-  `OS9_SYSTEM_INTERFACE.md` §7 genannten sechs `MODHEADER`-Werten —
-  Bedeutung noch zu klären, bevor der Handler das nachbildet.
+- Ein 7. psect-Feld (Trap-Einsprung) ist möglich; `q9_start.a` nutzt es nicht.
 - Die Modulnamen-Einbettung läuft separat über `Q9_M_ID`/`Q9_M_Name`
-  (Offset-Felder im Modulkopf, `q9_cstart.a` Zeile 80f.) — vermutlich
+  (Offset-Felder im Modulkopf) — vermutlich
   von `nam`/`psect` automatisch gesetzt, nicht selbst zu berechnen.
 
 Noch nicht umgesetzt — bewusst nicht spekulativ in `qcc_backend_c.cpp`
 eingebaut, bevor diese Formeln gegen ein echtes Assemblieren+Linken
-verifiziert sind (Golden-File-Vergleich gegen `q9_cstart.a` wäre ein
+verifiziert sind (Golden-File-Vergleich gegen `q9_start.a` wäre ein
 guter erster Test).
 
 | Teilschritt | Status |

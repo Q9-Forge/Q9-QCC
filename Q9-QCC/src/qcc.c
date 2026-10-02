@@ -268,15 +268,31 @@ static void load_config(void)
 	char config_path[512];
 	const char *config_env;
 	const char *sdk_env;
+	const char *host_arch;
 	f = NULL;
 	config_env = qcc_getenv("QCC_CONFIG");
 	if (config_env != NULL && config_env[0] != '\0')
 		f = fopen(config_env, "r");
 	if (f == NULL) {
 		sdk_env = qcc_getenv("Q9SDK");
-		if (sdk_env != NULL && sdk_env[0] != '\0' &&
-		    strlen(sdk_env) + 18 <= 512) {
-			sprintf(config_path, "%s/Mac/SYS/qcc.conf", sdk_env);
+#if defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))
+		host_arch = "ARM64";
+#elif defined(__APPLE__) && defined(__x86_64__)
+		host_arch = "x86_64";
+#else
+		host_arch = NULL;
+#endif
+		/* 2026-10-02: Der Host-SDK-Pfad braucht den Architekturordner wie
+		 * bei qmake (macOS/ARM64/SYS bzw. macOS/x86_64/SYS) -- die alte
+		 * Form "macOS/SYS/qcc.conf" existiert an keiner Stelle, die
+		 * stage_macos_sdk.sh je anlegt. load_config() fiel deshalb auf dem
+		 * Host IMMER auf die eingebauten relativen Entwicklungspfade
+		 * zurueck, sobald qcc nicht aus dem eigenen Quellverzeichnis heraus
+		 * gestartet wurde (SDK-Installation per CMDS-Verzeichnis, Aufruf
+		 * aus einem beliebigen Projektverzeichnis). */
+		if (sdk_env != NULL && sdk_env[0] != '\0' && host_arch != NULL &&
+		    strlen(sdk_env) + sizeof("/macOS//SYS/qcc.conf") + strlen(host_arch) <= sizeof(config_path)) {
+			sprintf(config_path, "%s/macOS/%s/SYS/qcc.conf", sdk_env, host_arch);
 			f = fopen(config_path, "r");
 		}
 	}

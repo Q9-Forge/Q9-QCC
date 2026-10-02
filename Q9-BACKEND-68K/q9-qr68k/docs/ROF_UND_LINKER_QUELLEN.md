@@ -18,7 +18,6 @@ Modulformat und den Linkeralgorithmus.
 | `REF/DOC/PDF/ultrac_use.pdf` | **Die Hauptquelle.** Kap. 6 „Assembler and Object Code Linker Overview" mit dem **ROF-Format** (S. 236–260), Kap. 9 „Object Code Linker" (S. 341–370) mit Algorithmus, **Bibliotheksformat** und Modulkopf-Überschreibungen, Kap. 10 die Werkzeuge |
 | `REF/DOC/PDF/68k_tech.pdf` | **Modulformat**: „Module Header Definitions", CRC, Kopfparität |
 | `REF/DOC/PDF/utils.pdf` | Werkzeugreferenz; zu `l68` nur der Debug-Bezug (`-g`, STB-Modul) |
-| `Herstellerquelle`, `module.a` | Modulkopf als Quelltext: `MODSYNC 0x4afc`, `CRCCON 0x800fe3` |
 | `REF/DOC/{Books,Microware,RadiSys}` | weitere Handbücher, nicht durchgesehen |
 
 Text herausziehen mit `/opt/homebrew/bin/pdftotext -layout` (liegt nicht im

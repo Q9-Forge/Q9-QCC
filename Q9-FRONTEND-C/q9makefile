@@ -1,0 +1,46 @@
+# Q9 C frontends; each child builds its own component when called directly.
+[global]
+TOOLCHAIN_FILE = ../Q9-Make/toolchains/qmake.conf
+SUBDIRS = q9-qcpp q9-qcir
+
+help:
+	echo "\nqmake: Q9 C Frontends (qcpp + qcir)"
+	echo "  macCla  build frontends on macOS with clang"
+	echo "  macX64  cross-build Intel macOS frontends with clang"
+	echo "  macXCC  build frontends on macOS with XCC for Q9/68K"
+	echo "  macQCC  build frontends on macOS with QCC for Q9/68K"
+	echo "  q9QCC   build frontends on Q9/68K with QCC"
+	echo "  q9CC    build frontends on Q9/68K with Microware CC"
+	echo "  all     build all frontends for available configurations"
+	echo "  test    run frontend test suites"
+	echo "  clean   clean all frontend builds\n"
+
+[mac-clang]
+all:
+macCla:
+test:
+clean:
+
+[mac-clang-x86_64]
+all: macX64
+macX64:
+
+[mac-xcc-68k]
+all:
+macXCC:
+clean:
+
+[mac-xqcc-68k]
+all:
+macQCC:
+clean:
+
+[q9-qcc-68k]
+all:
+q9QCC:
+clean:
+
+[q9-microware-cc-68k]
+all:
+q9CC:
+clean:

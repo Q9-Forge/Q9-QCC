@@ -2315,7 +2315,7 @@ if command -v python3 >/dev/null 2>&1; then
 		tc_check 'char ca=65; char cb=66; char *a, *b; int main(){ a=&ca; b=&cb; putchar(*a); putchar(*b); }' 'AB'
 		tc_check 'int x=5; int *a, b=3; int main(){ a=&x; putint(*a); putint(b); }' '5\n3'
 		# Gefundener und behobener Bug (2026-09-09, beim Q9-Tools-Uebersetzungsversuch
-		# gegen Microwares echten SDK-Header module.h entdeckt): derselbe Mehrfach-
+		# entdeckt): derselbe Mehrfach-
 		# deklaratoren-Fehler wie oben, aber in typedefDecl -- "typedef struct modhcom
 		# mh_com, *Mh_com;" scheiterte still, weil typedefTargetName nur EINEN Namen
 		# erlaubte. pointerDecl wanderte aus typedefType in eine neue typedefDeclarator

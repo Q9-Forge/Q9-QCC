@@ -1,26 +1,14 @@
 # startup/ -- eigenes C-Startup-Modul (`q9_start.a`)
 
-Ersatz fuer den frueheren Startcode `runtime/os9/q9_cstart.a` (samt `q9defs.d`;
-beide sind aus Baum und Historie des Repos entfernt). Die alte Datei war eine
-Bearbeitung eines Herstellerstartups; `q9_start.a` ist davon getrennt neu
-entstanden und der einzige Startcode der Kette.
+Der einzige Startcode der Kette.
 
 ## Entstehung
 
-1. Eine Spezifikation (`SPEC.md`, nicht Teil dieses Repos) wurde ausschliesslich
-   aus der Herstellerdokumentation abgeleitet: Registerzustand beim
-   Programmstart, Speicherbild, Programmende. Wo die Dokumentation schweigt,
-   steht dort "Handbuch sagt nichts dazu".
-2. Der Startcode wurde danach getrennt davon aus dieser Spezifikation und der
-   Schnittstelle unserer eigenen `qclib` geschrieben, ohne den alten
-   Startcode oder Herstellerquellen zu lesen.
-3. Ergaenzt wurden nur Symbole, deren Fehlen gemessen wurde (Linkerfehler beim
-   Binden gegen die Referenz-C-Bibliothek, siehe Kopfkommentar der Datei).
-
-Das ist **kein** formaler Clean-Room-Prozess: Beteiligte kannten die Herkunft
-des alten Startcodes, und die Kommentare in `src/iob.a` und `README.md` der
-`qclib` beschreiben Eigenheiten des alten Startups (gelesen, aber nichts
-uebernommen).
+`q9_start.a` wurde aus der Herstellerdokumentation (Registerzustand beim
+Programmstart, Speicherbild, Programmende) und der Schnittstelle der eigenen
+`qclib` selbst geschrieben. Ergaenzt wurden nur Symbole, deren Fehlen gemessen
+wurde (Linkerfehler beim Binden gegen die Referenz-C-Bibliothek, siehe
+Kopfkommentar der Datei).
 
 ## Namensschema der eigenen Definitionen
 

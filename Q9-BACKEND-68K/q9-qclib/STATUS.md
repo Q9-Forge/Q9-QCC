@@ -170,3 +170,81 @@ Korpuszahl priorisiert Nutzung, misst aber keine vollständige Konformität.
 aber derzeit auch die hier gepflegten Verhaltensbewertungen und Notizen. Vor
 einer Regeneration deshalb diese Bewertungen sichern bzw. das Skript mit der
 Statusliste abgleichen; nicht blind ausführen.
+
+## `os9call.a`-Syscall-Wrapper (2026-10-02, noch nicht ins Englische übertragen)
+
+Diese Tabelle oben deckt nur die `clib.l`-äquivalenten Standard-C-Symbole ab.
+Die rohen OS-9-Syscall-Wrapper in `src/os9call.a` (direkte `TRAP #0`-Hüllen,
+von Anwendungscode per `extern` genutzt, nicht Teil der 140-Symbol-C-Lib-
+Oberfläche) sind hier dokumentiert, solange es keinen passenderen eigenen
+Statusabschnitt dafür gibt:
+
+| Funktion | OS-9-Aufruf | Zweck | Status |
+| --- | --- | --- | --- |
+| `_os_sysdbg` | F$SysDbg ($52) | Systemdebugger aufrufen | ✅ kompiliert/linkt; Laufzeitverhalten im Q9-Flux-Emulator weicht ab (löst dort einen vollständigen Emulator-Neustart aus, da kein Debugger konfiguriert ist -- Emulatoreinschränkung, kein Compiler-/qclib-Bug) |
+| `_os_get_prtbl` | F$GPrDBT ($1f) | Prozesstabellen-Puffer lesen | ✅ verifiziert über Host-Pipeline |
+| `_os_ev_delete` | F$Event ($53), Subfunktion 3 | Event löschen | ✅ verifiziert über Host-Pipeline |
+| `_os_link` | F$Link ($00) | Modul-Link-Zähler erhöhen | ✅ verifiziert über Host-Pipeline (rettet a2/d2, Stack-Offsets +8 wegen zweier gesicherter Register) |
+| `_os_gprdsc` | F$GPrDsc ($18) | Prozessdeskriptor eines PID lesen | ✅ verifiziert über Host-Pipeline |
+
+Registerkonventionen stammen aus Microwares `68k_tech.pdf`
+("OS-9 for 68K Processors Technical Manual V3.3"). Alle 5 Wrapper wurden
+benötigt, um `break.c`/`events.c`/`link.c`/`procs.c` aus den Q9-Tools
+(zuvor an `ql68k` mit unresolved symbols gescheitert) linkfähig zu machen;
+siehe `../../docs/STATUS_de.md` Abschnitt "qclib-Syscall-Wrapper +
+MAX_STRUCT_FIELDS-Fix (2026-10-02)" für den vollen Kontext.
+
+### Fortsetzung selbe Nacht: 9 weitere Wrapper fuer die restlichen ql68k-Linkfehler
+
+| Funktion | OS-9-Aufruf | Zweck | Status |
+| --- | --- | --- | --- |
+| `_getsys` | F$SetSys ($27) | Systemglobale (D_xxx-Offsets) lesen | ✅ verifiziert über Host-Pipeline |
+| `attach` | I$Attach ($80) | Gerät am System anmelden | ✅ verifiziert über Host-Pipeline |
+| `detach` | I$Detach ($81) | Gerät vom System abmelden | ✅ verifiziert über Host-Pipeline |
+| `_os_gs_devnm` | I$GetStt SS_DevNm ($8d/$0e) | Gerätename eines Pfades lesen | ✅ verifiziert über Host-Pipeline |
+| `_gs_devn` | I$GetStt SS_DevNm ($8d/$0e) | wie `_os_gs_devnm`, zweiter Name (pd.c erwartet diesen) | ✅ verifiziert über Host-Pipeline |
+| `_os9_gs_free` | I$GetStt SS_Free ($8d/$43) | Freiraum auf Gerät lesen | ✅ verifiziert über Host-Pipeline |
+| `_os_gs_fd` | I$GetStt SS_FD ($8d/$0f) | FD-Sektor eines Pfades lesen | ✅ verifiziert über Host-Pipeline; siehe Caveat unten |
+| `_os_ss_fd` | I$SetStt SS_FD ($8e/$0f) | FD-Sektor eines Pfades zurückschreiben | ✅ verifiziert über Host-Pipeline |
+| `_os_seek` | I$Seek ($88, eigener Aufruf, NICHT GetStt/SetStt) | Dateizeiger versetzen | ✅ verifiziert über Host-Pipeline |
+| `q9_gblkmp` | F$GBlkMp ($19) | Freispeicher-Blockliste + Summenzähler kopieren | ✅ verifiziert über Host-Pipeline; Puffergröße 1024 Byte fest verdrahtet (passt zu `mfree.c`s `u_int32 block_map[256]`, einzigem Aufrufer) |
+| `_os_gs_pos` | I$GetStt SS_Pos ($8d/$05) | aktuelle Dateiposition lesen | ✅ verifiziert über Host-Pipeline |
+| `_os_gs_size` | I$GetStt SS_Size ($8d/$02) | aktuelle Dateigröße lesen | ✅ verifiziert über Host-Pipeline |
+
+Caveat `_os_gs_fd`: `touch.c` ruft dies mit Kopiergröße 0 auf
+(`_os_gs_fd(path, 0, &fd)`); laut Spezifikation kopiert der Kernel dann
+buchstäblich 0 Byte, der Rest von `fd` bleibt Stack-Müll bis auf das von
+`touch.c` selbst gesetzte `fd_date`. Kein Wrapper-Bug (exakt dokumentiertes
+Verhalten umgesetzt), aber ein mögliches `touch.c`-eigenes Problem -- nicht
+korrigiert, nur festgestellt.
+
+Diese 9 Wrapper lösten 9 von 12 zu Sitzungsbeginn verbliebenen
+`ql68k`-Linkfehlern im 46-Datei-Q9-Tools-Korpus (`attr.c` bis `what.c`).
+Bewusst zurückgestellt (Stand damals): `chown.c`, `hostname.c`
+(netzwerkabhängig), `printenv.c` (Compiler-Namensmangling-Bug, keine
+fehlende qclib-Funktion). Volles Bild inkl. Gesamtstand (22/46) und
+Umgebungs-Funde (Passwort, bash-Login, DHF-Verzeichnis-Bug) in
+`../../docs/STATUS_de.md`, Abschnitt "qclib-Syscall-Wrapper +
+MAX_STRUCT_FIELDS-Fix (2026-10-02)".
+
+### `chown(3)` nachgereicht (selber Morgen)
+
+Anders als die obigen 9 ist `chown` kein roher `os9call.a`-Trap-Wrapper,
+sondern ein `extra_*.c`/`.a`-Paar wie `bsearch`/`qsort` (siehe Tabelle
+oben): `src/extra_chown.c` (interne Logik `qf_chown`, nutzt die neuen
+`_os_gs_fd`/`_os_ss_fd`-Wrapper zum Lesen+Zurückschreiben des FD-Sektors)
+und `src/extra_chown.a` (Bridge-Stub, identisches Muster wie
+`extra_bsearch.a`/`extra_qsort.a`/`extra_file.a`). `owner` ist ein
+gepackter `group.user`-Int (hohes Byte Gruppe, niedriges Byte Nutzer, wie
+`ql68`s `-gu=`-Option). Dafür wurde `Q9DEFS/include/rbf.h`s `fd_stats`
+um benannte `fd_att`/`fd_own_group`/`fd_own_user` erweitert (vorher
+opaker `_filler_0[3]`-Block, gleiche Offsets). Host-Pipeline-verifiziert,
+`touch.c` unverändert (keine Regression). **Neuer Gesamtstand: 23 von 46
+Dateien komplett erfolgreich.**
+
+Echte Emulator-Bestätigung (für `chown` wie für die 9 Wrapper von oben)
+bleibt weiterhin offen -- ein zweiter Anlauf lief diesmal auf einen
+eigenständigen DHF-Verzeichnis-Bug (Details in `../../docs/STATUS_de.md`,
+Abschnitt "Fortsetzung, selber Morgen"), nicht auf ein Problem der
+Wrapper selbst. Host-Pipeline-Verifikation gilt weiterhin als
+ausreichender Nachweis für diese Sitzung.

@@ -1,59 +1,76 @@
-# Build and stage the native macOS toolchain into Q9SDK/Mac/CMDS.
+# Build and stage the native macOS toolchain in its architecture-specific SDK directory.
 # Invoke from this repository root with -C Q9-Make/toolchains.
+[global]
+TOOLCHAIN_FILE = Q9-Make/toolchains/qmake.conf
+
+help:
+	echo "\nqmake: Q9-QCC - Q9 C compiler toolchain"
+	echo "  macCla  build the toolchain on macOS with clang"
+	echo "  macX64  cross-build Intel macOS tools with clang"
+	echo "  macXCC  build Q9/68K tools on macOS with XCC"
+	echo "  macQCC  build Q9/68K tools on macOS with QCC"
+	echo "  q9QCC   build Q9/68K tools on Q9 with QCC"
+	echo "  q9CC    reserved for the Microware CC configuration"
+	echo "  all     build all tools for available configurations"
+	echo "  test    run available component test suites"
+	echo "  clean   clean all builds\n"
 
 [mac-clang]
-all: qmake qcc qcpp qcir qir68k qo68k qost qr68k ql68k
+SUBDIRS = Q9-Make Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all:
+macCla:
+clean:
 
-qmake: Q9-Make/src/qmake.c Q9-Make/src/platform_posix.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) -std=c89 -O2 -Wall -Wextra -IQ9-Make/src -o "$(Q9SDK)/Mac/CMDS/qmake" Q9-Make/src/qmake.c Q9-Make/src/platform_posix.c
+qmake: Q9-Make/src/qmake.c Q9-Make/src/platform_posix.c Q9-Make/src/platform.h
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) -std=c89 -O2 -Wall -Wextra -IQ9-Make/src -o "$(Q9SDK)/macOS/ARM64/CMDS/qmake" Q9-Make/src/qmake.c Q9-Make/src/platform_posix.c
 
 qcc: Q9-QCC/src/qcc.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qcc" Q9-QCC/src/qcc.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/macOS/ARM64/CMDS/qcc" Q9-QCC/src/qcc.c
 
 qcpp: Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/Mac/CMDS/qcpp" Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/macOS/ARM64/CMDS/qcpp" Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
 
 qcir: Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qcir" Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/macOS/ARM64/CMDS/qcir" Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
 
-qir68k: Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) -x c -std=c11 -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qir68k" Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
+qir68k: Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_peephole.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) -x c -std=c11 -O2 -Wall -Wextra -o "$(Q9SDK)/macOS/ARM64/CMDS/qir68k" Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
 
 qo68k: Q9-BACKEND-68K/q9-qo68k/src/main.c Q9-BACKEND-68K/q9-qo68k/src/qo68.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/Mac/CMDS/qo68k" Q9-BACKEND-68K/q9-qo68k/src/main.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(Q9SDK)/macOS/ARM64/CMDS/qo68k" Q9-BACKEND-68K/q9-qo68k/src/main.c
 
 qost: Q9-OPTIMIZER/q9-qost/src/qost.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Werror -o "$(Q9SDK)/Mac/CMDS/qost" Q9-OPTIMIZER/q9-qost/src/qost.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Werror -o "$(Q9SDK)/macOS/ARM64/CMDS/qost" Q9-OPTIMIZER/q9-qost/src/qost.c
 
 qr68k: Q9-BACKEND-68K/q9-qr68k/src/qr68.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/Mac/CMDS/qr68k" Q9-BACKEND-68K/q9-qr68k/src/qr68.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/macOS/ARM64/CMDS/qr68k" Q9-BACKEND-68K/q9-qr68k/src/qr68.c
 
 ql68k: Q9-BACKEND-68K/q9-ql68k/src/ql68.c
-	mkdir -p "$(Q9SDK)/Mac/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/Mac/CMDS/ql68k" Q9-BACKEND-68K/q9-ql68k/src/ql68.c
+	test -n "$(Q9SDK)" && mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(Q9SDK)/macOS/ARM64/CMDS/ql68k" Q9-BACKEND-68K/q9-ql68k/src/ql68.c
 
 sdk-support: Q9-QCC/config/qcc-macos-sdk.conf Q9-QCC/tools/stage_macos_sdk.sh
 	Q9SDK="$(Q9SDK)" ./Q9-QCC/tools/stage_macos_sdk.sh
 
 qcc-qcpp: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qcpp" Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qcpp" Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
 
 qcc-qost: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qost" Q9-OPTIMIZER/q9-qost/src/qost.c
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qost" Q9-OPTIMIZER/q9-qost/src/qost.c
 
 qcc-qcir: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qcir" Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qcir" Q9-FRONTEND-C/q9-qcir/data/qcc_p.c
 
 qcc-qir68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qir68k" Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qir68k" Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp
 
 qcc-qo68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qo68k" Q9-BACKEND-68K/q9-qo68k/src/main.c
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qo68k" Q9-BACKEND-68K/q9-qo68k/src/main.c
 
 qcc-ql68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/ql68k" Q9-BACKEND-68K/q9-ql68k/src/ql68.c
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/ql68k" Q9-BACKEND-68K/q9-ql68k/src/ql68.c
 
 qcc-qr68k: qcc qcpp qcir qir68k qo68k qr68k ql68k sdk-support
-	PATH="$(Q9SDK)/Mac/CMDS:/usr/bin:/bin:/usr/sbin:/sbin" Q9SDK="$(Q9SDK)" "$(Q9SDK)/Mac/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qr68k" Q9-BACKEND-68K/q9-qr68k/src/qr68.c
+	Q9SDK="$(Q9SDK)" "$(Q9SDK)/macOS/ARM64/CMDS/qcc" --largedata --stack 512K -o "$(Q9SDK)/Q9/68k/CMDS_QCC/qr68k" Q9-BACKEND-68K/q9-qr68k/src/qr68.c
 
 qcc-selfhost: qcc qcpp qcir qir68k qo68k qost qr68k ql68k sdk-support
 	Q9SDK="$(Q9SDK)" bash ./tools/build_qcc_selfhost.sh
@@ -62,3 +79,27 @@ all-qcc: qcc-qcpp qcc-qcir qcc-qir68k qcc-qo68k qcc-qost qcc-ql68k qcc-qr68k qcc
 
 all-xqcc: sdk-support
 	Q9SDK="$(Q9SDK)" bash ./tools/build_xcc_sdk.sh
+
+[mac-clang-x86_64]
+SUBDIRS = Q9-Make Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all: macX64
+macX64:
+clean:
+
+[mac-xcc-68k]
+SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all:
+macXCC:
+clean:
+
+[mac-xqcc-68k]
+SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all:
+macQCC:
+clean:
+
+[q9-qcc-68k]
+SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all:
+q9QCC:
+clean:

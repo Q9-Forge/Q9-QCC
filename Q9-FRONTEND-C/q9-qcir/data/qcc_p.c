@@ -88,8 +88,16 @@ typedef struct TCType {
    abgedeckt (siehe SELFHOSTING_LUECKENLISTE.md, je eigener Folgeschritt): Array-Felder,
    Pointer-Felder (unterschiedliche Groesse 68k/ARM64 wuerde das frontend-berechnete Layout
    architekturabhaengig machen) und verschachtelte structs. */
+/* 2026-10-02: MAX_STRUCT_FIELDS 16->32 -- Q9DEFS/include/module.h's
+ * vollstaendig spezifikationsgetreue mod_config/mod_driver/mod_dev
+ * (22/20/21 Felder je nach Zaehlweise, inklusive gemeinsamem Modulkopf)
+ * brauchen mehr als 16 Felder, UND qid.c (Q9-Tools/System) liest
+ * tatsaechlich JEDES einzelne benannte Feld aus allen dreien -- hier
+ * ist kein Feld entbehrlich,
+ * die uebliche "ungebrauchte Felder zu einem Reserve-Block falten"-Technik
+ * greift also nicht. 32 deckt alle drei genau ab. */
 #define MAX_STRUCTS 48
-#define MAX_STRUCT_FIELDS 16
+#define MAX_STRUCT_FIELDS 32
 static char tcStructNames[MAX_STRUCTS][32];
 static int  tcStructFieldCount[MAX_STRUCTS];
 static char tcStructFieldNames[MAX_STRUCTS][MAX_STRUCT_FIELDS][32];

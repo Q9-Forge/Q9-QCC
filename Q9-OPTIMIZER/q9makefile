@@ -1,0 +1,29 @@
+# Optimizer components are listed one level below their functional group.
+[global]
+TOOLCHAIN_FILE = ../Q9-Make/toolchains/qmake.conf
+SUBDIRS = q9-qost
+
+[mac-clang]
+all:
+macCla:
+clean:
+
+[mac-clang-x86_64]
+all: macX64
+macX64:
+clean:
+
+[mac-xcc-68k]
+all:
+macXCC:
+clean:
+
+[mac-xqcc-68k]
+all:
+macQCC:
+clean:
+
+[q9-qcc-68k]
+all:
+q9QCC:
+clean:

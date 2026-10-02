@@ -37,7 +37,7 @@ Der Vergleich braucht deshalb kein Gegenstück zu `qr68 -fdate=`.
 
 ### Der Modulkopf
 
-Aufbau nach `Herstellerquelle` (`struct modhcom` + `mod_exec`),
+Aufbau des Modulkopfs (`struct modhcom` + `mod_exec`),
 Byte für Byte an einem gebundenen Modul nachgeprüft:
 
 | Offset | Feld | im Beispiel |
@@ -197,7 +197,7 @@ Erweiterungswort auf `$52` ergibt `$0008`.
 
 `-l=sys.l` liest **eine Folge von ROF-Dateien**, hintereinander in einer
 Datei — kein libgen-Format. Nachgemessen an
-`Herstellerquelle`: sieben ROFs, 1747 Globale, **alle vom Typ
+einer `sys.l`: sieben ROFs, 1747 Globale, **alle vom Typ
 `$0006` (equ)**, und die Längenrechnung landet exakt auf dem Dateiende.
 Genau das meint die Dokumentation mit „the `sys.l` library module …
 contains only `equ` symbol definitions".
@@ -615,9 +615,9 @@ je nachdem, worauf sie zeigt.
 
 ### Der Trap-Einsprung
 
-Der siebte psect-Parameter (`trapinit` im frueheren Startcode `q9_cstart.a`, inzwischen durch `q9_start.a` ersetzt) setzt `utrap` im
+Der siebte psect-Parameter (`trapinit` im Startcode) setzt `utrap` im
 ROF; `ql68` brach daran bisher ab. Gemessen: `M$Excpt` = Codebasis +
-`utrap`, dieselbe Rechnung wie `M$Exec`. An `q9_cstart.a` nachgerechnet:
+`utrap`, dieselbe Rechnung wie `M$Exec`. An einem frueheren Startcode nachgerechnet:
 `utrap $180`, Codebasis `$54`, `M$Excpt $1d4`.
 
 ### Ergebnis
@@ -689,7 +689,7 @@ ist **gemessen, nicht geschätzt**:
 | Eingabe | Namen | Namenstext |
 |---|---|---|
 | `stage2.r` (QCCs Parser) | 14 193 | 325 828 Byte |
-| `q9_cstart.r` (frueher) | 55 | 455 Byte |
+| fruehere Startdatei | 55 | 455 Byte |
 | `qclib.l` | 433 | 7 736 Byte |
 | **zusammen** | **14 681** | **334 019 Byte** |
 

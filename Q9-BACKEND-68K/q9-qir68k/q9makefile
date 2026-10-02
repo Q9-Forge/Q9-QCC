@@ -1,0 +1,57 @@
+# QCC IR-to-68000 backend builds.
+[global]
+TOOLCHAIN_FILE = ../../Q9-Make/toolchains/qmake.conf
+
+[mac-clang]
+all: macCla
+macCla: mac
+mac: $(Q9SDK)/macOS/ARM64/CMDS/qir68k
+$(Q9SDK)/macOS/ARM64/CMDS/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
+	mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) -x c -std=c11 -O2 -Wall -Wextra -o "$(Q9SDK)/macOS/ARM64/CMDS/qir68k" src/qcc_backend_c.cpp
+clean:
+	rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qir68k"
+
+[mac-xcc-68k]
+all: macXCC
+macXCC: mac-qcpp-host xcc
+xcc: $(Q9SDK)/Q9/68k/CMDS_XCC/qir68k
+
+mac-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+$(HOST_OUTPUT_DIR)/qcpp: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+
+$(Q9SDK)/Q9/68k/CMDS_XCC/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c ../../tools/build_xcc_sdk.sh
+	bash ../../tools/build_xcc_sdk.sh qir68k
+clean:
+	rm -f "$(Q9SDK)/Q9/68k/CMDS_XCC/qir68k"
+
+[mac-xqcc-68k]
+all: macQCC
+macQCC: mac-qcpp-host xqcc $(HOST_OUTPUT_DIR)/qcc
+xqcc: $(Q9SDK)/Q9/68k/CMDS_XQCC/qir68k
+$(Q9SDK)/Q9/68k/CMDS_XQCC/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c $(TARGET_CC)
+	mkdir -p "$(TARGET_OUTPUT_DIR)" && Q9SDK="$(Q9SDK)" PATH="$(HOST_OUTPUT_DIR):$PATH" $(TARGET_CC) --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)/qir68k" src/qcc_backend_c.cpp
+$(HOST_OUTPUT_DIR)/qcc: ../../Q9-QCC/src/qcc.c
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" ../../Q9-QCC/src/qcc.c
+mac-qcpp-host: $(HOST_OUTPUT_DIR)/qcpp
+$(HOST_OUTPUT_DIR)/qcpp: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcpp" ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+clean:
+	rm -f "$(Q9SDK)/Q9/68k/CMDS_XQCC/qir68k"
+
+[q9-qcc-68k]
+all: q9QCC
+q9QCC: q9
+q9: /dd/CMDS_QCC/qir68k
+/dd/CMDS_QCC/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
+	qcc --largedata --stack 512K -o /dd/CMDS_QCC/qir68k src/qcc_backend_c.cpp
+clean:
+	rm -f /dd/CMDS_QCC/qir68k
+
+[mac-clang-x86_64]
+all: macX64
+macX64: $(Q9SDK)/macOS/x86_64/CMDS/qir68k
+$(Q9SDK)/macOS/x86_64/CMDS/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
+	mkdir -p "$(Q9SDK)/macOS/x86_64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -x c -std=c11 -o "$(Q9SDK)/macOS/x86_64/CMDS/qir68k" src/qcc_backend_c.cpp
+clean:
+	rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qir68k"

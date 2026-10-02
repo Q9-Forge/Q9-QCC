@@ -1346,8 +1346,8 @@ static int splitLine(void)
 		return 0;
 
 	/* Label field. It ends at whitespace OR a colon, including when the
-	   auch dann, wenn das Mnemonic OHNE Trennzeichen folgt: in
-	   SRC/DEFS/funcs.a:725 steht "DC_GetCluts:do.b 1", und r68 nimmt das
+	   auch dann, wenn das Mnemonic OHNE Trennzeichen folgt:
+	   "DC_GetCluts:do.b 1" kommt vor, und r68 nimmt das
 	   an (gemessen: "lab1:nop" ergibt $4e71 mit dem globalen Label lab1
 	   auf 0). Ohne diese Regel wurde "DC_GetCluts:do.b" zum Label und
 	   "1" zum Mnemonic. */
@@ -2825,9 +2825,8 @@ static void doCond(const char *base)
 	if (baseIs(base, "endc")) {
 		if (condN <= 0)
 			/* r68 silently ignores an extra "endc" --
-			   in Herstellerquelle steht genau
-			   eines (acht "if", neun "endc"), und die Datei
-			   uebersetzt dort. */
+			   kommt es vor (acht "if", neun "endc"),
+			   und r68 uebersetzt die Datei dort. */
 			return;
 		condN--;
 		if (!condActive[condN])
@@ -3040,8 +3039,8 @@ static int specialReg(const char *s)
 	if (n == 3 && a == 'c' && b == 'c' && c == 'r')
 		return 1;
 	/* r68 also accepts "cc" for the condition-code register (but not
-	   "c" oder "ccrx"). In Herstellerquelle:1074 steht
-	   genau das -- offenbar ein Tippfehler, den r68 klaglos uebersetzt. */
+	   "c" oder "ccrx"). Das kommt in vorhandenen Quellen vor
+	   -- offenbar ein Tippfehler, den r68 klaglos uebersetzt. */
 	if (n == 2 && a == 'c' && b == 'c')
 		return 1;
 	if (n == 2 && a == 's' && b == 'r')

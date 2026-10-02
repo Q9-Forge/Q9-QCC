@@ -1891,7 +1891,7 @@ static void emitIR(FILE* out) {
 	emitM68kCore(out);
 	if (os9Mode) {
 		/* Real output through the Microware clib.l function _os_write
-		   (Signatur laut OS9/SRC/DEFS/modes.h: error_code _os_write(path_id,
+		   (Signatur: error_code _os_write(path_id,
 		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
 		   = stdout, analog zu Unix-Filedeskriptoren). BEWUSST nicht ueber
 		   printf/clib-Formatierung: QCC hat noch keine String-Literale, und

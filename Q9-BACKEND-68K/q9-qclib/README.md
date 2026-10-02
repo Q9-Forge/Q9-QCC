@@ -135,10 +135,10 @@ erzeugt QCC von sich aus genau diese Konvention.
 
 ## `_iob` ist freier, als der Header vermuten lässt
 
-Der frühere Startcode (`q9_cstart.a`, inzwischen durch `startup/q9_start.a` ersetzt) las `_iob` **nicht** als FILE-Feld — es schreibt im
-Fehlerpfad eine Meldung als rohe Bytes hinein (`movea.l #_iob,a1` /
-`adda.l a6,a1` / `mover`), und `_fcbs` zeigt darauf. Weil nur eigener Code
-darauf zugreift, ist Microwares 13-Feld-Struktur (`_ptr/_base/_end/_flag/
+Der Startcode (`startup/q9_start.a`) liest `_iob` **nicht** als FILE-Feld — im
+Fehlerpfad wird eine Meldung als rohe Bytes hineingeschrieben, und `_fcbs`
+zeigt darauf. Weil nur eigener Code
+darauf zugreift, ist die 13-Feld-Struktur (`_ptr/_base/_end/_flag/
 _fd/…`, `FOPEN_MAX 32`) hier **nicht bindend**. `src/iob.a` stellt vorerst
 nur den Platz bereit; sobald `fopen` dazukommt, bekommt qclib ein eigenes,
 dann hier dokumentiertes Layout.
@@ -179,8 +179,8 @@ Servicewort dahinter. Alles daran ist gemessen, nichts geraten:
 | | Quelle |
 |---|---|
 | Trap-Muster | `Q9DEFS/q9sys.d` / Herstellerhandbuch: Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0 |
-| `I$Write` = `$8a`, `F$Exit` = `$06` | `Herstellerquelle` (dort ausgeschrieben; in `funcs.a` sind es `do.b`-Zähler) |
-| `d0` = Pfad, `d1` = Anzahl, `a0` = Puffer | aus laufendem Code abgelesen: `PrtMsg` im früheren Startcode `q9_cstart.a` (ersetzt) |
+| `I$Write` = `$8a`, `F$Exit` = `$06` | `Q9DEFS/q9sys.d` |
+| `d0` = Pfad, `d1` = Anzahl, `a0` = Puffer | auf 68030 bestätigt |
 
 Die Servicenummern stehen bewusst **in der Datei** und nicht in einem `use`
 auf die REF-Definitionen: qclib soll ohne fremden Baum übersetzbar sein.
@@ -261,10 +261,8 @@ und `%s` benutzt.
 `fopen`, `fclose`, `fread`, `fwrite` und `puts` — damit ist der gemessene
 Zielkorpus vollständig. Drei Dinge waren dafür zu klären:
 
-**Die Registerkonvention der Systemaufrufe steht in keinem der
-vorhandenen Handbücher.** Also am Original abgelesen: ein Testprogramm
-gegen `os_lib.l` gebunden und die eingebundenen Routinen mit
-`tools/dis.py` disassembliert.
+**Die Registerkonvention der Systemaufrufe** wurde mit einem Testprogramm
+auf dem 68030 gemessen.
 
 | Aufruf | | Register |
 |---|---|---|
@@ -293,8 +291,8 @@ Dieselbe Bauform wie bei printf.
 
 ### Was der Gegenlauf gefunden hat
 
-`puts` hängte `$0d` an statt `$0a`. Der Wert war aus dem früheren Startcode `q9_cstart.a`
-**abgeleitet** (`move.b #CR,-1(a1)`), nicht gemessen — und falsch: auf dem
+`puts` hängte `$0d` an statt `$0a`. Der Wert war aus einem früheren Startcode
+**abgeleitet**, nicht gemessen — und falsch: auf dem
 Terminal erschien `puts gehtgeschrieben 11` statt zweier Zeilen.
 
 Durchgerutscht war das, weil der eigene Test mit `grep -F` arbeitete und
@@ -481,12 +479,6 @@ Verdopplungsleiter des Parsers **keine einzige Kopie und keinen
 Spitzenbedarf**: 512 KB Eingabepuffer plus 6 MB Log, fertig. Das ist genau
 das Muster der Kette (ein fester Puffer, ein wachsender Block).
 
-Microwares clib macht es im Grundsatz genauso: ihr `memory.c` führt eine
-eigene Segmentverwaltung (`_cmem_base`, `_cmem_segs`, `_cmem_allocp`) über
-Systemspeicher, den es in großen Stücken holt — disassembliert sind dort
-`TRAP $5c` (`F$SRqCMem`) und `$29` (`F$SRtMem`), also **dieselbe Quelle**
-wie hier.
-
 Was diese Fassung **nicht** kann: Speicher wieder hergeben. Es gibt keine
 Freigabeliste, qclib hat kein `free` — die Kette ruft keines — und beim
 Prozessende gibt OS-9 die Arena ohnehin zurück.
@@ -498,9 +490,8 @@ Prozessende gibt OS-9 die Arena ohnehin zurück.
    Fehler über das Übertragsbit mit dem Code in `d1.w`. Mit **`-1`** in
    `d0.l` kommt der *größte freie Block* — damit lässt sich die Obergrenze
    der Maschine messen.
-2. **Microwares eigener Rumpf** in `os_lib.l`, disassembliert: derselbe
-   Registersatz, aber `TRAP $5c` (`F$SRqCMem`) mit der Farbe als drittem
-   Argument. Das Handbuch dazu: „F$SRqMem is equivalent to a F$SRqCMem
+2. **Die Farbvariante** `TRAP $5c` (`F$SRqCMem`): derselbe
+   Registersatz, mit der Farbe als drittem Argument. Das Handbuch dazu: „F$SRqMem is equivalent to a F$SRqCMem
    request with a color of 0."
 3. **Der eigene Kernel** (`Q9-OS/src/kernel/q9kernel_entry.a`) dokumentiert
    für `F$SRqMem` genau diese Belegung — und kennt `$28`, nicht `$5c`.

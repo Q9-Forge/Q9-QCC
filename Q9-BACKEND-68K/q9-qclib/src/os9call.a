@@ -6,7 +6,7 @@
 *   2026-09-11  Introduced the English source-header format.
 *
 * _os_write und _os_exit -- die beiden Systemaufrufe, die die Kette
-* braucht. Damit faellt Microwares os_lib.l weg.
+* braucht. Damit entfaellt die Abhaengigkeit von der Herstellerbibliothek os_lib.l.
 *
 * WARUM DAS HIER STEHT: os_lib.l ist wie clib.l ein libgen-Archiv
 * (Kennung $2d00d5bc) und damit fuer ql68 unlesbar. Solange die Kette
@@ -14,17 +14,16 @@
 * Aufrufe -- und ein Systemaufruf ist unter OS-9/68000 nichts weiter als
 * TRAP #0 mit dem Servicewort dahinter.
 *
-* GEMESSEN, nicht geraten:
-*   - Das Trap-Muster: im OS-9/68000-ABI folgt das Servicewort direkt auf
-*     TRAP #0 (Q9DEFS/q9sys.d, Herstellerhandbuch; auf 68030 bestaetigt).
-*   - Die Servicenummern stehen ausgeschrieben in
-*     Herstellerquelle: I_WRITE 0x8a, F_EXIT 0x06,
-*     F_SRQMEM 0x28, F_SRTMEM 0x29.
-*   - Die Registerbelegung ist aus laufendem Code abgelesen (fruehere
-*     Startcode-Routine PrtMsg, auf 68030 bestaetigt): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
+* Grundlagen:
+*   - Trap-Muster: im OS-9/68000-ABI folgt das Servicewort direkt auf
+*     TRAP #0 (siehe Q9DEFS/q9sys.d; auf 68030 bestaetigt).
+*   - Servicenummern: I$Write $8a, F$Exit $06, F$SRqMem $28, F$SRtMem $29
+*     (siehe Q9DEFS/q9sys.d).
+*   - Registerbelegung: d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer
+*     (auf 68030 bestaetigt).
 *
-* Die Konstanten stehen bewusst HIER und nicht in einem "use" auf die
-* REF-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
+* Die Konstanten stehen bewusst HIER und nicht in einem "use" auf eine
+* externe Definitionsdatei -- qclib soll ohne fremden Baum uebersetzbar sein.
 
 Q9I_Create     equ     $83                      * I$Create, Datei anlegen
 Q9I_Delete     equ     $87                      * I$Delete, Datei loeschen
@@ -46,6 +45,13 @@ Q9F_GPrDsc     equ     $18                      * F$GPrDsc, EINEN Prozessdeskrip
 Q9F_UnLink     equ     $02                      * F$UnLink, Modullink freigeben
 Q9F_Fork       equ     $03                      * F$Fork, Kindprozess starten
 Q9F_Wait       equ     $04                      * F$Wait, auf Kindprozess warten
+Q9I_Attach     equ     $80                      * I$Attach, Geraet am System anmelden
+Q9I_Detach     equ     $81                      * I$Detach, Geraet vom System abmelden
+Q9I_GetStt     equ     $8d                      * I$GetStt, Pfad-/Geraetestatus lesen
+Q9I_SetStt     equ     $8e                      * I$SetStt, Pfad-/Geraetestatus setzen
+Q9I_Seek       equ     $88                      * I$Seek, Dateizeiger versetzen
+Q9F_SetSys     equ     $27                      * F$SetSys, Systemglobale lesen/setzen
+Q9F_GBlkMp     equ     $19                      * F$GBlkMp, Kopie der freien Speicherblockliste
 
          psect   qos9,0,0,0,0,0
 
@@ -95,9 +101,8 @@ _os_exit:
 * error_code _os_open(const char *name, u_int32 mode, path_id *path)
 *
 * C-Seite: d0 = name, d1 = mode, 4(a7) = &path.
-* OS-9-Seite (am Original aus os_lib.l abgelesen): d0.w = Zugriffsmodus,
-* a0 = Pfadname; zurueck kommt die Pfadnummer in d0. Microwares Fassung
-* maskiert sie auf 16 Bit -- das tut diese auch, sonst stehen im oberen
+* OS-9-Seite: d0.w = Zugriffsmodus, a0 = Pfadname; zurueck kommt die
+* Pfadnummer in d0. Sie wird auf 16 Bit maskiert, sonst stehen im oberen
 * Wort Reste.
 
 * Function: _os_open
@@ -309,12 +314,9 @@ ocr_err
 *      Systemblockgroesse aufgerundet (derzeit 16), die Adresse ist
 *      immer gerade. Mit -1 in d0.l kommt der GROESSTE freie Block --
 *      damit laesst sich die Obergrenze der Maschine messen.
-*   2. Microwares eigener Rumpf in os_lib.l, disassembliert: derselbe
-*      Registersatz, aber TRAP $5c (F$SRqCMem, die Farbvariante) mit der
-*      Farbe als drittem Argument. Das Handbuch dazu: "F$SRqMem is
-*      equivalent to a F$SRqCMem request with a color of 0." Auch clibs
-*      eigene Speicherverwaltung nimmt $5c und $29 -- die Quelle des
-*      Speichers ist also dieselbe wie hier.
+*   2. Die Farbvariante TRAP $5c (F$SRqCMem) hat denselben Registersatz,
+*      mit der Farbe als drittem Argument. Das Handbuch dazu: "F$SRqMem is
+*      equivalent to a F$SRqCMem request with a color of 0."
 *   3. Der eigene Kernel (Q9-OS, q9kernel_entry.a) dokumentiert fuer
 *      F$SRqMem genau diese Belegung -- und er kennt $28, nicht $5c.
 *      Deshalb steht hier $28: qclib soll auch auf dem eigenen System
@@ -447,8 +449,8 @@ ogp_err
 * error_code _os_ev_delete(const char *name)
 *
 * F$Event (Servicewort $53) ist eine Sammelfunktion, die Unterfunktion
-* steht in d1.w -- Ev$Delet ist Nummer 3 (
-* Ev$Link=0, Ev$UnLnk=1, Ev$Creat=2, Ev$Delet=3, ...). (a0) traegt den
+* steht in d1.w -- Ev$Delet ist Nummer 3
+* (Ev$Link=0, Ev$UnLnk=1, Ev$Creat=2, Ev$Delet=3, ...). (a0) traegt den
 * Eventnamen (68k_tech.pdf S.411). d0 traegt den Namenszeiger schon
 * (einziges CALLEXT-Argument).
 
@@ -545,6 +547,315 @@ _os_gprdsc:
          moveq   #0,d0
          rts
 ogd_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+
+* error_code _getsys(int offset, int flags)
+*
+* F$SetSys (Servicewort $27): d1.l = Groesse der Variable in Byte, Bit 31
+* von d1 gesetzt = Lesezugriff ("examine"), Rueckgabewert in d2.l --
+* _getsys nimmt BEIDE Werte vom Aufrufer entgegen
+* (devs.c ruft z.B. _getsys(D_DevCnt, 0x80000002) fuer eine 2-Byte- und
+* _getsys(D_DevTbl, 0x80000004) fuer eine 4-Byte-Systemglobale auf) --
+* d0 traegt den Offset schon (erstes CALLEXT-Register), d1 das
+* Groessen-/Examine-Wort (zweites Register), beide unveraendert fuer den
+* Trap verwendbar.
+
+* Function: _getsys
+* Reads (examines) a system global variable by D_xxx offset.
+* Parameters: d0 offset, d1 size-with-examine-bit (bit 31 set).
+* Returns: the variable's value in d0 (no documented error path; matches
+*          the original Microware template, which does not check carry).
+_getsys:
+         move.l  d2,-(a7)                         * d2 traegt das Ergebnis, retten
+         trap    #0
+         dc.w    Q9F_SetSys
+         move.l  d2,d0                            * Ergebnis von F$SetSys
+         move.l  (a7)+,d2
+         rts
+
+* void *attach(const char *name, int mode)
+*
+* I$Attach (Servicewort $80, 68k_tech.pdf S.537-539): d0.b = Zugriffsmodus
+* (Read_/Write_/Updat_), (a0) = Geraetename. Rueckgabe: (a2) = Zeiger auf
+* den neuen Geraetetabelleneintrag. d0 traegt den Namenszeiger schon
+* (erstes CALLEXT-Register), d1 den Modus (zweites Register, nur das
+* niedrigste Byte zaehlt).
+
+* Function: attach
+* Attaches a named I/O device to the system (or verifies it is attached).
+* Parameters: d0 device name pointer, d1 access mode.
+* Returns: device table entry pointer in d0, or NULL on error.
+attach:
+         move.l  a2,-(a7)                         * a2 retten (Kernel liefert den Zeiger darin)
+         movea.l d0,a0                            * Geraetename
+         move.b  d1,d0                            * Zugriffsmodus
+         trap    #0
+         dc.w    Q9I_Attach
+         bcs.s   iat_err
+         move.l  a2,d0                            * Geraetetabellen-Zeiger als Rueckgabewert
+         movea.l (a7)+,a2
+         rts
+iat_err
+         moveq   #0,d0                            * NULL bei Fehler
+         movea.l (a7)+,a2
+         rts
+
+* error_code detach(void *device)
+*
+* I$Detach (Servicewort $81, 68k_tech.pdf S.549): (a2) = Geraetetabellen-
+* Zeiger (derselbe Wert, den attach() zurueckgegeben hat). d0 traegt ihn
+* schon (einziges CALLEXT-Argument).
+
+* Function: detach
+* Detaches a device previously attached with attach().
+* Parameters: d0 device table entry pointer (as returned by attach()).
+* Returns: OS-9 error code in d0.
+detach:
+         move.l  a2,-(a7)
+         movea.l d0,a2                            * Geraetetabellen-Zeiger
+         trap    #0
+         dc.w    Q9I_Detach
+         bcs.s   idt_err
+         moveq   #0,d0
+         movea.l (a7)+,a2
+         rts
+idt_err
+         moveq   #0,d0
+         move.w  d1,d0
+         movea.l (a7)+,a2
+         rts
+
+* error_code _os_gs_devnm(path_id path, char *name) -- 32-Byte-Puffer
+*
+* I$GetStt/SS_DevNm (Servicewort $8d, Funktionscode $0e, 68k_tech.pdf
+* S.557): d0.w = Pfadnummer, d1.w = SS_DevNm, (a0) = 32-Byte-Puffer. d0
+* traegt den Pfad schon, d1 den Namenspuffer (nach a0 verschoben).
+
+* Function: _os_gs_devnm
+* Reads the device name of an open path into a 32-byte buffer.
+* Parameters: d0 path number, d1 32-byte name buffer.
+* Returns: OS-9 error code in d0.
+_os_gs_devnm:
+         movea.l d1,a0                            * Namenspuffer
+         move.w  #$0e,d1                          * SS_DevNm-Funktionscode
+         trap    #0
+         dc.w    Q9I_GetStt
+         bcs.s   ogn_err
+         moveq   #0,d0
+         rts
+ogn_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* int _gs_devn(int path, char *name) -- identisch zu _os_gs_devnm, nur
+* unter dem Namen, den pd.c dafuer erwartet (zwei Namen fuer denselben
+* GetStt-Aufruf, kein eigenes Verhalten).
+
+* Function: _gs_devn
+* Reads the device name of an open path into a 32-byte buffer.
+* Parameters: d0 path number, d1 32-byte name buffer.
+* Returns: OS-9 error code in d0.
+_gs_devn:
+         movea.l d1,a0
+         move.w  #$0e,d1                          * SS_DevNm-Funktionscode
+         trap    #0
+         dc.w    Q9I_GetStt
+         bcs.s   ogd2_err
+         moveq   #0,d0
+         rts
+ogd2_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_gs_pos(path_id path, u_int32 *position)
+*
+* I$GetStt/SS_Pos (Servicewort $8d, Funktionscode $05, 68k_tech.pdf
+* S.563): d0.w = Pfadnummer, d1.w = SS_Pos. Rueckgabe: d2.l = aktuelle
+* Dateiposition (ANDERS als SS_DevNm/SS_FD -- kein Puffer, das Ergebnis
+* kommt in d2 zurueck).
+
+* Function: _os_gs_pos
+* Reads the current file position of an open path.
+* Parameters: d0 path number, d1 pointer to the position output.
+* Returns: OS-9 error code in d0.
+_os_gs_pos:
+         movea.l d1,a1                            * &position
+         move.w  #$05,d1                          * SS_Pos-Funktionscode
+         trap    #0
+         dc.w    Q9I_GetStt
+         bcs.s   ogpo_err
+         move.l  d2,(a1)                          * aktuelle Dateiposition
+         moveq   #0,d0
+         rts
+ogpo_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_gs_size(path_id path, u_int32 *size)
+*
+* I$GetStt/SS_Size (Servicewort $8d, Funktionscode $02, 68k_tech.pdf
+* S.565): d0.w = Pfadnummer, d1.w = SS_Size. Rueckgabe: d2.l = aktuelle
+* Dateigroesse -- gleiches Muster wie _os_gs_pos, nur anderer Code.
+
+* Function: _os_gs_size
+* Reads the current size of an open file.
+* Parameters: d0 path number, d1 pointer to the size output.
+* Returns: OS-9 error code in d0.
+_os_gs_size:
+         movea.l d1,a1                            * &size
+         move.w  #$02,d1                          * SS_Size-Funktionscode
+         trap    #0
+         dc.w    Q9I_GetStt
+         bcs.s   ogsz_err
+         move.l  d2,(a1)                          * aktuelle Dateigroesse
+         moveq   #0,d0
+         rts
+ogsz_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os9_gs_free(path_id path, u_int32 *free_space)
+*
+* I$GetStt/SS_Free (Servicewort $8d, Funktionscode $43, 68k_tech.pdf
+* S.561): d0.l = Pfadnummer, d1.w = SS_Free. Rueckgabe: d0.l = Freiraum
+* in Byte (ANDERS als die uebrigen GetStt-Codes -- hier kommt das
+* Ergebnis in d0 zurueck, nicht ueber einen Puffer). d1 wird deshalb vor
+* dem Trap auf den Zeiger NICHT mehr gebraucht und kann den Funktionscode
+* aufnehmen; der Zeiger wird vorher nach a1 gerettet.
+
+* Function: _os9_gs_free
+* Reads the free-space statistic of an open device path.
+* Parameters: d0 path number, d1 pointer to the free-space output.
+* Returns: OS-9 error code in d0.
+_os9_gs_free:
+         movea.l d1,a1                            * &free_space
+         move.w  #$43,d1                          * SS_Free-Funktionscode
+         trap    #0
+         dc.w    Q9I_GetStt
+         bcs.s   o9f_err
+         move.l  d0,(a1)                          * Freiraumgroesse
+         moveq   #0,d0
+         rts
+o9f_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_gs_fd(path_id path, u_int32 size, fd_stats *fdbuf)
+*
+* I$GetStt/SS_FD (Servicewort $8d, Funktionscode $0f, 68k_tech.pdf
+* S.559): d0.w = Pfadnummer, d1.w = SS_FD, d2.w = Byteanzahl (<=
+* logische Sektorgroesse), (a0) = Puffer. d0 traegt den Pfad schon, d1
+* die gewuenschte Byteanzahl (muss nach d2 wandern, bevor d1 den
+* Funktionscode bekommt), der Pufferzeiger steht auf dem Stapel (drittes
+* CALLEXT-Argument).
+*
+* ACHTUNG (touch.c): ruft dies mit size=0 auf -- dann kopiert der Kernel
+* laut Dokumentation buchstaeblich null Byte, *fdbuf bleibt bis auf das
+* von touch.c selbst gesetzte fd_date unveraendert (Stack-Inhalt). Keine
+* Besonderbehandlung hier ergaenzt, da dies kein dokumentiertes
+* GetStt-Verhalten waere -- siehe STATUS.md fuer die Einordnung.
+
+* Function: _os_gs_fd
+* Reads the file descriptor sector of an open path into a buffer.
+* Parameters: d0 path number, d1 byte count, stack argument points to buffer.
+* Returns: OS-9 error code in d0.
+_os_gs_fd:
+         movea.l 4(a7),a0                         * fdbuf-Zeiger vom Stapel
+         move.w  d1,d2                            * gewuenschte Byteanzahl nach d2
+         move.w  #$0f,d1                          * SS_FD-Funktionscode
+         trap    #0
+         dc.w    Q9I_GetStt
+         bcs.s   ogf_err
+         moveq   #0,d0
+         rts
+ogf_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_ss_fd(path_id path, fd_stats *fdinfo)
+*
+* I$SetStt/SS_FD (Servicewort $8e, Funktionscode $0f, 68k_tech.pdf
+* S.587): d0.w = Pfadnummer, d1.w = SS_FD, (a0) = FD-Sektorabbild. Nur
+* FD_ATT, FD_OWN und FD_Creat werden tatsaechlich zurueckgeschrieben (lt.
+* Dokumentation), den Zeitstempel (FD_DAT) eingeschlossen ueber
+* FD_Creat -- der Pfad muss zum Schreiben geoeffnet sein.
+
+* Function: _os_ss_fd
+* Writes back the file descriptor sector of an open path.
+* Parameters: d0 path number, d1 FD sector image pointer.
+* Returns: OS-9 error code in d0.
+_os_ss_fd:
+         movea.l d1,a0                            * FD-Sektorabbild
+         move.w  #$0f,d1                          * SS_FD-Funktionscode
+         trap    #0
+         dc.w    Q9I_SetStt
+         bcs.s   osf_err
+         moveq   #0,d0
+         rts
+osf_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code _os_seek(path_id path, u_int32 position)
+*
+* I$Seek (Servicewort $88, 68k_tech.pdf S.576): d0.w = Pfadnummer, d1.l =
+* neue Position. Beide CALLEXT-Register stimmen bereits unveraendert mit
+* der OS-9-Konvention ueberein, kein Umladen noetig.
+
+* Function: _os_seek
+* Repositions the logical file pointer of an open path.
+* Parameters: d0 path number, d1 new position.
+* Returns: OS-9 error code in d0.
+_os_seek:
+         trap    #0
+         dc.w    Q9I_Seek
+         bcs.s   osk_err
+         moveq   #0,d0
+         rts
+osk_err
+         moveq   #0,d0
+         move.w  d1,d0
+         rts
+
+* error_code q9_gblkmp(void *block_map, struct q9_gblkmp_info *info)
+*
+* F$GBlkMp (Servicewort $19, 68k_tech.pdf S.435-437): d0.l = Anfangs-
+* adresse (0 = von vorn berichten), d1.l = Puffergroesse in Byte, (a0) =
+* Puffer. Rueckgabe: d0.l = Mindestblockgroesse, d1.l = Fragmentanzahl,
+* d2.l = Gesamt-RAM beim Start, d3.l = aktuell freies RAM. Die
+* Puffergroesse 1024 ist FEST verdrahtet -- sie passt exakt zu
+* mfree.c's "u_int32 block_map[256]" (256 Langworte = 128 Adresse/Groesse-
+* Paare) und ist der einzige Aufrufer dieses Wrappers.
+
+* Function: q9_gblkmp
+* Copies the system's free-RAM block map and summary counters.
+* Parameters: d0 buffer (>=1024 bytes), d1 info struct (4 u_int32 fields).
+* Returns: OS-9 error code in d0.
+q9_gblkmp:
+         movea.l d0,a0                            * Puffer fuer die Fragmentliste
+         movea.l d1,a1                            * &info
+         moveq   #0,d0                            * ab Adresse 0 berichten
+         move.l  #1024,d1                         * Puffergroesse in Byte
+         trap    #0
+         dc.w    Q9F_GBlkMp
+         bcs.s   qgb_err
+         move.l  d0,(a1)+                         * minimum_block
+         move.l  d1,(a1)+                         * fragments
+         move.l  d2,(a1)+                         * total_ram
+         move.l  d3,(a1)                          * total_free
+         moveq   #0,d0
+         rts
+qgb_err
          moveq   #0,d0
          move.w  d1,d0
          rts

@@ -16,6 +16,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
+: "${QCLIB_BUILD_DIR:=$REPO/build}"
 : "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
@@ -24,7 +25,7 @@ REPO="$PWD"
 : "${IMG_SRC:=$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
-[ -f "$REPO/build/qclib.l" ] || die "build/qclib.l fehlt -- vorher 'make'"
+[ -f "$QCLIB_BUILD_DIR/qclib.l" ] || die "qclib.l fehlt -- vorher Build ausführen"
 [ -f "$IMG_SRC" ]            || die "Image fehlt: $IMG_SRC"
 [ -x "$FLUX/build/macos/q9.exe" ] || die "Emulator fehlt (in Q9-Flux 'make host')"
 
@@ -40,7 +41,7 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 MWOS="$MWOS_UNIX"
 
 echo "== 1/4 Modul binden (eigener Binder, nur gegen qclib) =="
-cp "$REPO/build/hello.r" "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/" ||
+cp "$QCLIB_BUILD_DIR/hello.r" "$QCLIB_BUILD_DIR/q9_start.r" "$QCLIB_BUILD_DIR/qclib.l" "$WORK/" ||
 	die "Eingaben fehlen -- vorher 'make'"
 # Gebunden wird mit dem EIGENEN Binder. Seit ql68 die Bibliothekssuche
 # beherrscht, braucht es dafuer kein l68 mehr -- und damit steckt in der

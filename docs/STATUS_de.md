@@ -23,6 +23,231 @@ Historischer Stand (2026-08-13): Q9-Runtime und Bootstrap-Pipeline waren für
 die damals gemessenen Ziele verifiziert; der XCC-gebaute Parser lief im
 Emulator, semantisches Selfhosting blieb noch offen.
 
+## qclib-Syscall-Wrapper + MAX_STRUCT_FIELDS-Fix (2026-10-02)
+
+Fortsetzung der Q9-Tools-Nachverifikation vom 2026-09-27. In der Zwischenzeit
+hat eine andere Sitzung `Q9DEFS/include/` als spezifikationsgetreuen Ersatz
+der alten `q9-qcpp/include/`-SDK-Header angelegt (siehe dortige `STATUS.md`);
+meine damaligen Header wurden dadurch ersetzt, meine `qcc_p.c`- und
+`os9call.a`-Änderungen blieben unberührt (per Commit-Historie bestätigt).
+
+**Neues host-seitiges Testverfahren etabliert**: `qcpp`, `qcc_p.c`
+(qcir-Frontend), `qir68k`, `qr68k` und `ql68` lassen sich alle mit einem
+gewöhnlichen Host-Compiler bauen (`clang -w -o /tmp/x datei.c`) und direkt
+auf dem Mac ausführen -- komplette Pipeline-Tests in Sekunden statt Minuten
+pro Testlauf im Emulator. Vorsicht beim Verketten: die qcir-Ausgabe endet mit
+einer Statuszeile (`OK`/`SEMERR`/`FAIL`); wird die volle stdout-Ausgabe
+ungefiltert als `.ir`-Datei an `qir68k` weitergereicht, erzeugt die
+Statuszeile einen irreführenden "Opcode ausserhalb einer Funktion"-Fehler,
+der wie ein echter Backend-Bug aussieht, aber keiner ist (zweimal in dieser
+Sitzung hereingefallen, beide Male per `tail -1`-Check aufgeklärt). Wichtig:
+Host-Erfolg ist schnelle Rückmeldung, aber KEIN Ersatz für die finale
+Verifikation im echten Emulator -- mehrere frühere Bugs (fehlendes `stdin`,
+`MAX_STRUCT_FIELDS`/`MAX_TYPEDEFS`-Kapazitätsgrenzen, `extern`-Effekte) waren
+nur dort sichtbar.
+
+**Gefundener und behobener Bug**: Fehlendes `extern` vor Funktionsdeklarationen
+in `process.h`/`rbf.h`/`events.h`/`sg_codes.h`/`module.h` liess das
+qcir-Frontend den Aufruf als INTERNEN `CALL` (erwartet `tc_`-Präfix-Symbol)
+statt als `CALLEXT` (erwartet Rohsymbolnamen) behandeln -- eine echte,
+unauffällige Bugklasse. Nach der Korrektur zeigte sich das eigentliche
+Problem: 5 Funktionen fehlten tatsächlich in `qclib`.
+
+**5 neue OS-9-Syscall-Wrapper in `Q9-BACKEND-68K/q9-qclib/src/os9call.a`**
+implementiert (Registerkonventionen aus Microwares `68k_tech.pdf` per
+Recherche-Subagent bestätigt): `_os_sysdbg` (F$SysDbg), `_os_get_prtbl`
+(F$GPrDBT), `_os_ev_delete` (F$Event, Subfunktion 3), `_os_link` (F$Link,
+mit Stack-Offset-Berechnung wegen zweier geretteter Register a2/d2),
+`_os_gprdsc` (F$GPrDsc). Neubau nur von `os9call.a` nötig (kein C-Neubau),
+nach `/dd/LIBS/Q9/qclib.l` deployed.
+
+**`MAX_STRUCT_FIELDS` 16→32** in `qcc_p.c`: `module.h`s `mod_config`/
+`mod_driver`/`mod_dev` (22/20/21 Felder) überschreiten die alte Grenze.
+Die sonst übliche "unbenutzte Felder zu einem Füllblock falten"-Technik
+greift hier NICHT, da `qid.c` (Q9-Tools/System) tatsächlich jedes einzelne
+benannte Feld aus allen drei Strukturen ausliest -- die einzig korrekte
+Lösung war die Kapazitätserhöhung. Mit echtem xcc/Wine-Toolchain neu gebaut
+und nach `/dd/CMDS_XCC/qcir` deployed.
+
+**Offen in `Q9DEFS/include/`:** `setsys.h` (`D_DevTbl`/`D_DevSiz`/`D_DevCnt`) und
+`process.h` (`struct pdsc`) sind weiterhin leer bzw. ohne Struktur und müssen
+aus der Dokumentation (`68k_tech.pdf`) neu abgeleitet werden; ohne sie
+übersetzen `devs.c` und `procs.c` der Q9-Tools nicht.
+
+Ergebnis (erster Durchgang, 4 Dateien): `break.c`/`events.c`/`link.c`/
+`procs.c` (vormals an `ql68k` gescheitert) kompilieren und linken sauber
+durch die GESAMTE Host-Pipeline (qcpp→qcir→qir68k→qr68k→ql68, exit 0 auf
+jeder Stufe).
+
+### Fortsetzung, selbe Nacht: 9 weitere Syscall-Wrapper, 22 von 46 komplett
+
+Nach dem ersten Durchgang wurde das komplette 46-Dateien-Korpus der
+Q9-Tools noch einmal sauber neu durch die Host-Pipeline getestet (eigenes
+Testskript `host_pipeline_test.sh`, ruft qcpp/qcir/qir68k/qr68k/ql68 exakt
+mit der Aufrufsyntax aus `Q9-QCC/src/qcc.c` auf). Befund: 12 von 46 liefen
+zu diesem Zeitpunkt bereits komplett durch; 12 scheiterten noch an
+`ql68k` mit fehlenden Symbolen (`chown`, `attach` x2, `_getsys`,
+`_os_seek`, `_os9_gs_free`, `gethostname`, `q9_gblkmp`, `_os_gs_devnm`/
+`_gs_devn`, `tc_g__environ`, `_os_gs_fd`); 22 scheiterten an qcir selbst.
+
+Für 9 der 12 Linkfehler wurden die zugrundeliegenden OS-9-Syscalls in
+`Q9DEFS/q9sys.d` und `68k_tech.pdf` nachgeschlagen und als neue Wrapper in `os9call.a`
+ergänzt:
+
+| Wrapper | OS-9-Aufruf | Für |
+| --- | --- | --- |
+| `_getsys` | F$SetSys ($27) | `devs.c` |
+| `attach` / `detach` | I$Attach ($80) / I$Detach ($81) | `iniz.c`, `deiniz.c` |
+| `_os_gs_devnm` / `_gs_devn` | I$GetStt SS_DevNm ($8d/$0e) | `paths.c` / `pd.c` (zwei Namen, ein Aufruf) |
+| `_os9_gs_free` | I$GetStt SS_Free ($8d/$43) | `free.c` |
+| `_os_gs_fd` / `_os_ss_fd` | I$GetStt/I$SetStt SS_FD ($8d|$8e/$0f) | `touch.c` |
+| `_os_seek` | I$Seek ($88, eigener Aufruf, NICHT SetStt) | `dump.c` |
+| `q9_gblkmp` | F$GBlkMp ($19) | `mfree.c` (Puffergröße 1024 Byte fest verdrahtet, passend zu `mfree.c`s `block_map[256]`) |
+| `_os_gs_pos` | I$GetStt SS_Pos ($8d/$05) | `paths.c` (zweiter, erst beim Nachtest sichtbarer Bedarf) |
+| `_os_gs_size` | I$GetStt SS_Size ($8d/$02) | `paths.c` (dritter Bedarf, gleiches Muster) |
+
+Nach jedem neuen Fund: `make` in `Q9-BACKEND-68K/q9-qclib/`, erneuter
+Host-Pipeline-Lauf, bis `paths.c` den letzten fehlenden Namen meldete.
+Alle drei fanden sich erst NACHEINANDER, weil `ql68k` nur den ersten
+unaufgelösten Namen pro Lauf meldet.
+
+**Zwischenfund, rein lesend, nicht korrigiert:** `_os_gs_fd(path, 0, &fd)`
+in `touch.c` übergibt buchstäblich 0 Byte Kopiergröße -- laut GetStt-SS_FD-
+Spezifikation kopiert der Kernel dann tatsächlich 0 Byte, `fd` bliebe bis
+auf das von `touch.c` selbst gesetzte `fd_date` Stack-Müll. Kein eigener
+Bug in unserem Wrapper (der setzt nur exakt das dokumentierte Verhalten
+um) -- das ist `touch.c`s eigene Sache, nicht heute Nacht angefasst.
+
+**Endergebnis nach allen 9 Wrappern: 22 von 46 Dateien kompilieren und
+linken komplett erfolgreich durch die Host-Pipeline** (vorher 6 am Ende
+der 09-27-Sitzung, 12 vor den neuen Wrappern heute Nacht). Bewusst
+zurückgestellt:
+- `chown.c` -- technisch machbar (FD_OWN/FD_DAT laut 68k_tech.pdf S.588 nur
+  per I$SetStt SS_FD änderbar, also über die NEUEN `_os_gs_fd`/`_os_ss_fd`-
+  Wrapper), aber braucht eine eigene kleine C-Funktion (read-modify-write
+  auf `fd_own.group`/`fd_own.user`), nicht heute Nacht umgesetzt.
+- `hostname.c` -- netzwerkabhängig, laut `Q9-Tools/System/PORT_STATUS.md`
+  ohnehin bewusst zurückgestellte Kategorie.
+- `printenv.c` -- `tc_g__environ`-Namensmangling ist ein Frontend-/Compiler-
+  Bug (qcc_p.c), keine fehlende qclib-Funktion, andere Fehlerklasse.
+- Die restlichen 23 scheitern schon bei qcir selbst (Grammatik-/Semantik-
+  Grenzen) -- eigenes, nicht heute Nacht begonnenes Arbeitspaket.
+
+### Korrektur: der vermeintliche Emulator-Blocker war kein Kernel-Bug
+
+Die ursprüngliche Einschätzung oben in diesem Abschnitt ("Config-Datei
+... nicht lesbar", vermutete Kernel-Regression in `q9boardrun.c`) war
+FALSCH und wird hiermit korrigiert. Tatsächliche Ursache: Seit der
+Q9-SDK-Konsolidierung (30.9.) ist `Q9-Forge/Q9-Flux` ein Symlink auf
+`Q9-Forge/Q9-SDK/SRC/SYSTEM/Q9-Flux`. Startet man `q9.exe` über den alten
+(symlink-)Pfad mit einem relativen Konfigurationspfad wie
+`../../Q9-Images/...`, loest der Kernel dies vom PHYSISCHEN (nicht dem
+von der Shell angezeigten logischen) Arbeitsverzeichnis aus auf --
+landet also unter `Q9-SDK/SRC/SYSTEM/Q9-Images/...`, was es nicht gibt.
+Mit einem ABSOLUTEN Konfigurationspfad bootet derselbe, unveränderte
+`q9.exe` (Stand 30.9. 20:34) sofort sauber durch bis "8 devices online".
+Kein Code-Bug, keine fremde Baustelle -- nur ein Pfadkonventions-Bruch
+durch die Konsolidierung. Jedes künftige Testskript muss ab sofort einen
+ABSOLUTEN Pfad an `q9.exe` übergeben.
+
+### Weitere neue Umgebungs-Funde (selbe Nacht, beim Versuch der echten Emulator-Bestätigung)
+
+- **Passwort geändert:** `/dd/SYS/password` (Klartext-Datei!) zeigt
+  `super,admin,...` -- das in [[q9-qcc-emulator-selfcompile-2026-09-27]]
+  dokumentierte `Al35uUbC` gilt für dieses Image nicht mehr.
+- **`bash`-Login aktuell kaputt:** alle Accounts in `/dd/SYS/password`
+  nutzen inzwischen `bash -l` oder `mshell -l` als Login-Shell (vorher
+  die klassische OS-9-Shell) -- offensichtlich Teil einer laufenden
+  Bash-Port-Arbeit einer anderen Sitzung (`Q9-Tools/System/bash_v1.12.10`).
+  Bei `super`/`bash -l` bricht das Login-Profil sofort mit "- : bad
+  option" ab, der Prozess loggt sich selbst aus. NICHT repariert (fremde
+  WIP). Workaround: Account `mshell`/Passwort `user` loggt sauber ein
+  (klarer `$`-Prompt).
+- **DHF-Verzeichnis-Bug bestätigt:** ein per `cp`/`mkdir` auf Host-Seite
+  angelegtes Verzeichnis (`/dd/T/build/qcc-tmp`, Nebenprodukt eines
+  gescheiterten `qcc`-Laufs) liess sich trotz vollständig gesetzter
+  OS-9-Attribute (`attr -e` zeigte alle Rechte an) mit `ident`/`makdir`
+  nicht öffnen (`E$FNA`) -- passt zum in [[q9-hostfs-manager-idee]]
+  dokumentierten offenen "dir bleibt offen"-Befund des DHF-Managers.
+  Host-seitiges Löschen half NICHT dauerhaft: `qcc`s eigenes `makdir
+  build/qcc-tmp` scheitert unter dem `mshell`-Login SYSTEMATISCH neu
+  (`Error #000:004` bei jedem Versuch), vermutlich weil `mshell`s eigene
+  Arbeitsverzeichnis-Verwaltung (Grund-/Exec-Verzeichnis) nicht wie die
+  klassische Shell beide OS-9-Verzeichniszeiger setzt. Keine Lösung
+  gefunden -- **die echte Emulator-Bestätigung der 9 neuen Wrapper bleibt
+  für heute Nacht offen**, die Host-Pipeline-Verifikation (22/46, siehe
+  oben) gilt als ausreichender Nachweis für diese Sitzung. Alles
+  Shell-/Build-Umgebungsbezogene hier ist erkennbar im Umbau durch eine
+  andere, aktuell laufende Sitzung -- nicht heute Nacht zu reparieren.
+
+### Fortsetzung, selber Morgen: `chown.c` fertiggestellt, 23 von 46
+
+Nach kurzer Pause auf Nutzerwunsch ("kleine schnelle Sachen noch machen")
+zwei Dinge weiterverfolgt: `chown.c` fertigstellen und die echte
+Emulator-Bestätigung nochmal versuchen.
+
+**`chown.c` implementiert.** Laut 68k_tech.pdf (S.588, I$SetStt/SS_FD)
+sind FD_OWN und FD_DAT die einzigen per SetStt änderbaren Felder des
+FD-Sektors -- also genau das, was die neuen `_os_gs_fd`/`_os_ss_fd`-
+Wrapper von heute Nacht schon können. Umgesetzt als neues
+`extra_chown.c`/`extra_chown.a`-Paar in `Q9-BACKEND-68K/q9-qclib/src/`,
+nach dem etablierten Muster von `extra_bsearch.c`/`.a` und
+`extra_qsort.c`/`.a` (die interne Logik heisst `qf_chown`, kompiliert zu
+`tc_qf_chown`; der handgeschriebene `.a`-Stub `chown:` packt die beiden
+CALLEXT-Register-Argumente auf den Stack und ruft `bsr tc_qf_chown` --
+exakt dieselbe, bei allen bestehenden `extra_*`-Paaren identische
+Bridge-Vorlage, unabhängig von der Argumentanzahl). `qf_chown` öffnet den
+Pfad, liest den FD-Sektor, setzt die beiden Owner-Bytes und schreibt
+zurück. `owner` wird als ein gepackter `group.user`-Int übergeben (hohes
+Byte Gruppe, niedriges Byte Nutzer -- dieselbe Reihenfolge wie `ql68`s
+eigene `-gu=<gruppe>.<nutzer>`-Option).
+
+Dafür musste `Q9DEFS/include/rbf.h`s `fd_stats` leicht erweitert werden:
+die bisher als ein opaker `_filler_0[3]`-Block geführten ersten drei Byte
+heissen jetzt `fd_att`/`fd_own_group`/`fd_own_user` (gleiche Offsets,
+gleiche Gesamtgrösse -- rein additiv, `touch.c` bleibt unberührt, erneut
+gegengetestet). Das generische C-Kompilierrezept im qclib-Makefile
+(`build/%_c.r`) bekam zusätzlich `-I$(QCC)/Q9DEFS/include` (nach dem
+bestehenden `q9-qcpp/include`, also ohne die `#include_next`-Falle),
+da `extra_chown.c` als erste qclib-C-Quelle OS-9-spezifische Header
+braucht.
+
+Host-Pipeline-Test: `chown.c` kompiliert/linkt jetzt sauber,
+`touch.c`/`attr.c` unverändert (keine Regression). **Neuer Gesamtstand:
+23 von 46 Dateien komplett erfolgreich** (Host-Pipeline, vorher 22).
+
+**Das `makdir build/qcc-tmp`-Rätsel von oben ist jetzt aufgeklärt -- kein
+Bug, sondern eine Verkettung von Altlasten:** Eine erneute, gezielte
+Fehlersuche (generisches `makdir testdir` funktioniert in `/dd/T` und
+`/dd` einwandfrei; `makdir build`/`makdir build/qcc-tmp` schlagen beide
+mit Error #000:218 = "existiert bereits" fehl) zeigte: `build/qcc-tmp`
+war schlicht ein Überbleibsel aus den vielen Testläufen dieser Nacht, und
+`qcc`s eigenes `makdir` behandelt "existiert bereits" als fatalen Fehler
+statt es zu tolerieren. Die Aufräumversuche per `del build/qcc-tmp; del
+build` in der Emulator-Shell *sahen* erfolgreich aus (`dir .` zeigte kein
+`build` mehr), **täuschten aber**: Eine Host-seitige Prüfung zeigte das
+Verzeichnis unverändert vorhanden (Zeitstempel von Stunden zuvor) --
+`del` auf ein per DHF angelegtes Verzeichnis entfernt es offenbar nur aus
+der (fehlerhaften) Listen-Ansicht, nicht wirklich vom Host. Nach
+ECHTEM host-seitigem `rm -rf .../T/build` lief der Batchtest dennoch
+IMMER NOCH mit demselben Fehler -- das schliesst "nur eine Altlast" als
+VOLLSTÄNDIGE Erklärung aus. Tatsächliche Ursache bleibt eine Kombination:
+mindestens EIN echter, noch ungeklärter DHF-Rechte-/Sichtbarkeits-Fehler
+beim Neuanlegen von Verzeichnissen innerhalb eines `qcc`-Laufs, zusätzlich
+zur bestätigten "del täuscht Erfolg vor"-Falle. **Beide Diagnoseversuche
+(mit `mshell` UND mit der klassisch per `shell`-Befehl gestarteten
+OS-9-Shell) scheiterten identisch** -- das schliesst die Shell-Wahl als
+Ursache endgültig aus.
+
+**Entscheidung:** Nicht weiter verfolgt -- das ist jetzt klar eine
+eigenständige DHF-Baustelle (Verzeichnis-Anlegen/-Löschen über die
+Host-Passthrough-Schicht), passend zum in [[q9-hostfs-manager-idee]]
+dokumentierten offenen "dir bleibt offen"-Befund, und verdient eine
+eigene, dedizierte Fehlersuche statt eines Nebenbei-Fixes. **Die echte
+Emulator-Bestätigung der neuen Wrapper (inkl. `chown`) bleibt offen**;
+die Host-Pipeline-Verifikation (23/46) gilt weiterhin als der für diese
+Sitzung ausreichende Nachweis.
+
 ## Blockgueltigkeitsbereiche lokaler Variablen (2026-08-20) -- Ursache des PMMU-Abbruchs
 
 Der beim Emulatorlauf des vollstaendigen Bootstrap-Parsers ab **Aktion 310**

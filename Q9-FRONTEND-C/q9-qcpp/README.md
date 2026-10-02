@@ -213,8 +213,8 @@ qmake verwendet werden:
 
 Das erzeugt `build/mac/qcpp`. Die Quelle benötigt derzeit keine
 plattformabhängigen `#ifdef`s; der bestehende `make`-Weg bleibt als einfacher
-Bootstrap erhalten. `copy-sdk` legt `qcpp` unter `$Q9SDK/Mac/CMDS/` ab,
-standardmäßig unter `~/Q9SDK/Mac/CMDS/`, falls `Q9SDK` nicht gesetzt ist. Ein
+Bootstrap erhalten. `copy-sdk` legt `qcpp` unter `$Q9SDK/macOS/ARM64/CMDS/` ab,
+standardmäßig unter `~/Q9SDK/macOS/ARM64/CMDS/`, falls `Q9SDK` nicht gesetzt ist. Ein
 bereits vorhandenes Ziel wird nicht überschrieben.
 
 Der Differenztest bindet jeden Header **zweimal** ein. Das ist keine

@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+unset Q9SDK
 program=$1
 source_root=$(pwd)
 test_root="${TMPDIR:-/tmp}/qmake-smoke-$$"
@@ -9,6 +10,11 @@ cp "$program" "$test_root/qmake"
 cd "$test_root"
 cp "$source_root/src/qmake.c" .
 cp "$source_root/src/platform.h" .
+./qmake -? > command-help.out
+grep -q 'Usage:.*target' command-help.out
+grep -q -- '-n --dry-run' command-help.out
+./qmake --help > long-command-help.out
+grep -q -- '-P NAME' long-command-help.out
 cat > q9makefile <<'EOF'
 all: result.txt
 
@@ -24,12 +30,47 @@ test -s qmake.o
 ./qmake -n all > dry-run.out
 test ! -e result.txt
 grep -q 'cat input.txt > result.txt' dry-run.out
-./qmake all
+./qmake all > build-status.out
+test "$(wc -l < build-status.out | tr -d ' ')" = 1
+grep -Eq 'result.txt \[global\].*[0-9]+\.[0-9][0-9] s ✓' build-status.out
 test "$(cat result.txt)" = 'qmake test'
+./qmake all > up-to-date-status.out
+test "$(wc -l < up-to-date-status.out | tr -d ' ')" = 1
+grep -q 'result.txt \[global\].*●' up-to-date-status.out
+if grep -q ' s ' up-to-date-status.out; then
+    echo 'up-to-date target unexpectedly has a build duration' >&2
+    exit 1
+fi
+cat > alternate.mk <<'EOF'
+alternate-target:
+	echo alternate > alternate-output
+EOF
+./qmake -f alternate.mk alternate-target
+test "$(cat alternate-output)" = alternate
+rm alternate-output
+./qmake --file alternate.mk alternate-target
+test "$(cat alternate-output)" = alternate
+rm alternate-output
+if ./qmake -f > missing-file-option.out 2>&1; then
+    echo 'missing -f argument was accepted' >&2
+    exit 1
+fi
+grep -q 'requires a makefile path' missing-file-option.out
 ./qmake -v all > up-to-date.out
-grep -q 'up to date' up-to-date.out
+grep -q '●' up-to-date.out
 ./qmake -vv all > verbose.out
 grep -q "checking prerequisite 'result.txt'" verbose.out
+mkdir -p sdk/bin
+cat > q9makefile <<'EOF'
+OUTPUT = $(Q9SDK)/bin/output.txt
+all: $(OUTPUT)
+$(OUTPUT): input.txt
+	cat input.txt > "$(OUTPUT)"
+EOF
+Q9SDK="$test_root/sdk" ./qmake all
+test "$(cat sdk/bin/output.txt)" = 'qmake test'
+Q9SDK="$test_root/sdk" ./qmake -v all > variable-target-up-to-date.out
+grep -q '●' variable-target-up-to-date.out
 cat > q9makefile <<'EOF'
 VALUE = echo from-file
 result.txt:
@@ -80,6 +121,50 @@ grep -q 'echo child > child-output' subdir-dry-run.out
 test "$(cat child/child-output)" = child
 test "$(cat parent-output)" = parent
 cat > q9makefile <<'EOF'
+[global]
+SUBDIRS = child
+help:
+	echo parent-help-1 >> parent-help.log
+	echo parent-help-2 >> parent-help.log
+	echo parent-help-3 >> parent-help.log
+	echo parent-help-4 >> parent-help.log
+	echo parent-help-5 >> parent-help.log
+	echo parent-help-6 >> parent-help.log
+	echo parent-help-7 >> parent-help.log
+	echo parent-help-8 >> parent-help.log
+	echo parent-help-9 >> parent-help.log
+	echo parent-help-10 >> parent-help.log
+	echo parent-help-11 >> parent-help.log
+	echo parent-help-12 >> parent-help.log
+	echo parent-help-13 >> parent-help.log
+	echo parent-help-14 >> parent-help.log
+	echo parent-help-15 >> parent-help.log
+	echo parent-help-16 >> parent-help.log
+	echo parent-help-17 >> parent-help.log
+	echo parent-help-18 >> parent-help.log
+	echo parent-help-19 >> parent-help.log
+	echo parent-help-20 >> parent-help.log
+EOF
+cat > child/q9makefile <<'EOF'
+help:
+	echo child-help >> child-help.log
+EOF
+./qmake > help-subdirs.out
+test "$(wc -l < parent-help.log | tr -d ' ')" = 20
+test ! -e child/child-help.log
+subdirs=
+i=1
+while [ "$i" -le 24 ]; do
+    child=$(printf 'many%02d' "$i")
+    mkdir "$child"
+    printf 'all:\n\techo child-build\n' > "$child/q9makefile"
+    subdirs="$subdirs $child"
+    i=$((i + 1))
+done
+printf 'SUBDIRS =%s\nall:\n' "$subdirs" > q9makefile
+./qmake -n all > many-subdirs.out
+test "$(grep -c '^echo child-build$' many-subdirs.out)" -eq 24
+cat > q9makefile <<'EOF'
 help:
 	echo help >> help.log
 all:
@@ -104,7 +189,7 @@ printf 'input\n' > source.in
 ./qmake build > marker-first.out
 ./qmake -v build > marker-second.out
 test "$(wc -l < marker.log | tr -d ' ')" = 1
-grep -q 'up to date' marker-second.out
+grep -q '●' marker-second.out
 cat > q9makefile <<'EOF'
 TOOLCHAIN_FILE = toolchains/test.conf
 HOST_CC = sh fake-cc.sh
@@ -174,6 +259,7 @@ HOST_CC = sh fake-cc.sh
 HOST_CFLAGS = --host-checked
 TARGET_CFLAGS = --project-checked
 EOF
+cp toolchains/test.conf toolchains/qmake.conf
 ./qmake -C toolchains -n code.r > config-dir.out
 grep -q 'fake-cc.sh -I/shared/defs --project-checked -c' config-dir.out
 cat > q9makefile <<'EOF'
@@ -190,7 +276,7 @@ printf 'sample: rts\n' > asm.a
 grep -q 'fake-as.sh --assembler-checked "asm.a" "asm.r"' template-asm.out
 ./qmake asm.r
 test "$(cat asm.r)" = 'assembly object'
-cp "$source_root/toolchains/qmake.conf" toolchains/qmake.conf
+sed '/^HOST_PLATFORM = /d' "$source_root/toolchains/qmake.conf" > toolchains/qmake.conf
 cat > q9makefile <<'EOF'
 [mac-clang]
 [linux-gcc]
@@ -215,7 +301,7 @@ EOF
 ./qmake code.r
 test "$(cat code.r)" = 'C object'
 ./qmake -v code.r > implicit-current.out
-grep -q 'up to date' implicit-current.out
+grep -q 'is up to date' implicit-current.out
 ./qmake -n code.o > implicit-host.out
 test ! -e code.o
 grep -q 'fake-cc.sh --host-checked -c' implicit-host.out
@@ -295,4 +381,103 @@ Q9SDK="$test_root/sdk" ./qmake -P q9-qcc-68k all
 test "$(cat q9.out)" = common-from-sdk-profile
 ./qmake -C profile-dir -P q9-qcc-68k all
 test "$(cat q9.out)" = common-from-config-dir
+cat > q9makefile <<'EOF'
+[global]
+help:
+	echo help >> global-help.log
+[mac-clang]
+all:
+	echo mac >> profile-builds.log
+qcpp_mac:
+	echo mac-only >> selected-profile.log
+[mac-xcc-68k]
+all:
+	echo xcc >> profile-builds.log
+qcpp_xcc:
+	echo xcc-only >> selected-profile.log
+EOF
+rm -f help
+./qmake
+test "$(wc -l < global-help.log | tr -d ' ')" = 1
+./qmake help
+test "$(wc -l < global-help.log | tr -d ' ')" = 2
+./qmake -n all > profile-all.out
+test ! -e profile-builds.log
+grep -q 'echo mac >> profile-builds.log' profile-all.out
+grep -q 'echo xcc >> profile-builds.log' profile-all.out
+./qmake all
+test "$(wc -l < profile-builds.log | tr -d ' ')" = 2
+./qmake qcpp_xcc
+test "$(wc -l < selected-profile.log | tr -d ' ')" = 1
+grep -q '^xcc-only$' selected-profile.log
+cat > q9makefile <<'EOF'
+[global]
+TOOLCHAIN_FILE = toolchains/test.conf
+[mac-clang]
+all:
+	echo mac >> profile-verbose.log
+[mac-xcc-68k]
+all:
+	echo xcc >> profile-verbose.log
+EOF
+./qmake -v -n all > profile-verbose.out
+test "$(grep -c "loading toolchain profile 'toolchains/test.conf'" profile-verbose.out)" = 1
+cat > toolchains/host.conf <<'EOF'
+[host-unavailable]
+HOST_PLATFORM = nowhere
+EOF
+cat > q9makefile <<'EOF'
+TOOLCHAIN_FILE = toolchains/host.conf
+[host-unavailable]
+all:
+	echo should-not-run > host-skip.log
+[host-neutral]
+all:
+	echo neutral >> host-skip.log
+EOF
+./qmake all > host-quiet.out
+test ! -s host-quiet.out
+test "$(cat host-skip.log)" = neutral
+rm host-skip.log
+./qmake -v all > host-verbose.out
+grep -q "skipping configuration 'host-unavailable'" host-verbose.out
+test "$(cat host-skip.log)" = neutral
+if ./qmake -P host-unavailable all > host-explicit.out 2>&1; then
+    echo 'explicit incompatible host configuration was accepted' >&2
+    exit 1
+fi
+grep -q 'requires host' host-explicit.out
+cat > q9makefile <<'EOF'
+broken:
+	echo intentional-build-diagnostic; false
+EOF
+if ./qmake broken > broken.out 2> broken.err; then
+    echo 'failing recipe was accepted' >&2
+    exit 1
+fi
+grep -q 'broken \[global\].*✗' broken.out
+grep -q 'intentional-build-diagnostic' broken.err
+grep -q 'recipe failed for .broken.' broken.err
+cat > toolchains/helper.conf <<'EOF'
+[mac-xqcc-68k]
+EOF
+cat > q9makefile <<'EOF'
+TOOLCHAIN_FILE = toolchains/helper.conf
+[mac-xqcc-68k]
+all: $(Q9SDK)/macOS/ARM64/CMDS/helper
+$(Q9SDK)/macOS/ARM64/CMDS/helper:
+	mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && echo helper > "$(Q9SDK)/macOS/ARM64/CMDS/helper"
+EOF
+Q9SDK="$test_root/sdk" ./qmake -P mac-xqcc-68k all > helper-first.out
+grep -q 'helper (host) \[mac-xqcc-68k\].*✓' helper-first.out
+Q9SDK="$test_root/sdk" ./qmake -P mac-xqcc-68k all > helper-current.out
+test ! -s helper-current.out
+i=1
+: > q9makefile
+while [ "$i" -le 48 ]; do
+    printf 'rule%02d:\n\techo rule%02d\n' "$i" "$i" >> q9makefile
+    i=$((i + 1))
+done
+./qmake -n rule48 > many-rules.out
+grep -q '^echo rule48$' many-rules.out
 echo 'qmake smoke test: OK'

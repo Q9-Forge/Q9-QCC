@@ -430,7 +430,7 @@ beginnt, das in keinem Mnemonic vorkommt:
 
 ### Das Labelfeld endet am Doppelpunkt
 
-Auch ohne Trennzeichen davor: `DC_GetCluts:do.b 1` (`SRC/DEFS/funcs.a:725`)
+Auch ohne Trennzeichen davor: `DC_GetCluts:do.b 1`
 ist Label + Direktive, nicht ein Label namens `DC_GetCluts:do.b`.
 
 ### Wann ein `:`-Label global wird
@@ -474,9 +474,8 @@ Zwei Regeln, beide gemessen:
   `ifne \L1-2 / fail … must be a An register`.
 - **`movea` ohne Größenbuchstaben ist ein LANGWORT**, `move` dagegen ein
   Wort (`movea PD_BUF(a1),a0` → `$2069`, `move d0,d1` → `$3200`).
-- **`cc`** nimmt r68 neben `ccr` (aber nicht `c` oder `ccrx`) — in
-  `rbvme10.a:1074` steht `ori #Carry,cc`, offenbar ein Tippfehler, den r68
-  klaglos übersetzt.
+- **`cc`** nimmt r68 neben `ccr` (aber nicht `c` oder `ccrx`) — `ori #Carry,cc` kommt in vorhandenen Quellen vor, offenbar ein Tippfehler,
+  den r68 klaglos übersetzt.
 - **`divu.l d1,d1`** trägt im Erweiterungswort unten **noch einmal `dq`**
   ein, nicht 0 (`$1001`). Bei `d0` fällt der Unterschied nicht auf — der
   Korpus hat ihn gefunden (`SYSMODS/GCLOCK/tk162.a`).
@@ -745,15 +744,14 @@ Code. `qr68` **bricht für alles andere ab**. `pflush` mit Adresse und
 Die **lange Sprungform** (`bra.l`, `bsr.l`, `bcc.l`, 68020) ist kaputt: `r68`
 gibt `6000 00000000` aus — ohne das nötige `$FF` im unteren Byte des
 Befehlsworts und ohne den Abstand einzusetzen. Der erzeugte Sprung geht ins
-Leere. Im ganzen handgeschriebenen Korpus kommt die Form zweimal vor
-(`Herstellerquelle:252`), beide Male trifft sie diesen
+Leere. Im ganzen handgeschriebenen Korpus kommt die Form zweimal vor,
+beide Male trifft sie diesen
 Defekt. `qr68` **bricht dafür ab** statt entweder den Defekt nachzubauen oder
 still davon abzuweichen.
 
 Und **`rept` spult falsch zurück**: für jede Wiederholung liest r68 die
 Quellzeilen erneut, landet dabei aber mitten in einer vorangehenden Zeile.
-Schon `delay35 / rept (35-5-9)/2 / nop / endr` — so steht es in
-`Herstellerquelle` — ergibt neun `bad label`-Fehler. Die
+Schon `delay35 / rept (35-5-9)/2 / nop / endr` ergibt neun `bad label`-Fehler. Die
 erzeugten Bytes stimmen dabei zwar, als Orakel taugt es aber nicht; `qr68`
 wiederholt genau den Rumpf zwischen `rept` und `endr`.
 

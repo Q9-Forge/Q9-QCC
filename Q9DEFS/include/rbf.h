@@ -24,9 +24,14 @@ typedef struct {
 	char          dd_name[32];     /* @31 volume name, bit 7 set on last character */
 } *Sector0;
 
-/* derived: file descriptor sector; layout from the disk format */
+/* derived: file descriptor sector; layout from the disk format.
+   fd_att/fd_own_group/fd_own_user were plain filler until chown(3) needed
+   named access to the owner bytes (2026-10-02); they are named flat here
+   -- same offsets, same total size. */
 typedef struct {
-	unsigned char _filler_0[3];    /* @0  attributes and owner */
+	unsigned char fd_att;          /* @0  file attributes */
+	unsigned char fd_own_group;    /* @1  owner group id */
+	unsigned char fd_own_user;     /* @2  owner user id */
 	unsigned char fd_date[5];      /* @3  year, month, day, hour, minute */
 	unsigned char _filler_8[248];  /* @8  .. @255, remaining descriptor members */
 } fd_stats;

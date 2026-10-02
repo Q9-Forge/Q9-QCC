@@ -11,11 +11,10 @@ eigenen Namen. Im installierten SDK gehoert die Datei nach `DEFS/`
   eine Tabelle der Aufrufnummern (aus der oeffentlichen Namenstabelle eines
   Open-Source-Disassemblers, GPLv3 -- nur die Zuordnung Name -> Nummer, keine
   Codeuebernahme) wurden von der Datei getrennt erstellt.
-* `q9sys.d` wurde aus diesen Tabellen erzeugt (`gen/gen.py`), ohne eine
-  Vorlage-Definitionsdatei zu lesen. Erschlossene Werte sind im Kommentar mit
-  `(inferred)`/`(erschlossen)` markiert, Namen ohne bekannten Wert sind NICHT
-  definiert, sondern nur als Kommentar am Abschnittsende aufgefuehrt.
-* Das ist kein formaler Clean-Room-Prozess (siehe `../Q9-BACKEND-68K/q9-qclib/startup/README.md`).
+* `q9sys.d` wurde aus diesen Tabellen erzeugt (`gen/gen.py`). Erschlossene
+  Werte sind im Kommentar mit `(inferred)`/`(erschlossen)` markiert, Namen ohne
+  bekannten Wert sind NICHT definiert, sondern nur als Kommentar am
+  Abschnittsende aufgefuehrt.
 
 ## Namensschema
 

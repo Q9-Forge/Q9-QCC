@@ -13,6 +13,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO="$PWD"
+: "${QCLIB_BUILD_DIR:=$REPO/build}"
 : "${FORGE:=$(cd ../../.. && pwd)}"
 : "${QCC:=$FORGE/Q9-QCC}"
 : "${FLUX:=$FORGE/Q9-Flux/Q9-Flux-68k}"
@@ -21,14 +22,14 @@ REPO="$PWD"
 : "${IMG_SRC:=$FLUX/local_images/OS9SYS.qcc-xcc-test.hda}"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
-[ -f "$REPO/build/qclib.l" ] || die "build/qclib.l fehlt -- vorher 'make'"
-[ -f "$REPO/build/hello.r" ] || die "build/hello.r fehlt -- vorher 'make build/hello.r'"
+[ -f "$QCLIB_BUILD_DIR/qclib.l" ] || die "qclib.l fehlt -- vorher Build ausführen"
+[ -f "$QCLIB_BUILD_DIR/hello.r" ] || die "hello.r fehlt -- vorher Build ausführen"
 [ -f "$IMG_SRC" ]            || die "Image fehlt: $IMG_SRC"
 
 WORK=/tmp/qclib-vs
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp -c "$IMG_SRC" "$WORK/img.hda" 2>/dev/null || cp "$IMG_SRC" "$WORK/img.hda"
-cp "$REPO/build/hello.r" "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+cp "$QCLIB_BUILD_DIR/hello.r" "$QCLIB_BUILD_DIR/q9_start.r" "$QCLIB_BUILD_DIR/qclib.l" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
