@@ -1,8 +1,9 @@
 # startup/ -- eigenes C-Startup-Modul (`q9_start.a`)
 
-Ersatz fuer den bisherigen Startcode `runtime/os9/q9_cstart.a`. Die alte Datei
-ist eine Bearbeitung eines Herstellerstartups; `q9_start.a` ist davon getrennt
-neu entstanden.
+Ersatz fuer den frueheren Startcode `runtime/os9/q9_cstart.a` (samt `q9defs.d`;
+beide sind aus Baum und Historie des Repos entfernt). Die alte Datei war eine
+Bearbeitung eines Herstellerstartups; `q9_start.a` ist davon getrennt neu
+entstanden und der einzige Startcode der Kette.
 
 ## Entstehung
 
@@ -46,7 +47,7 @@ uebernommen).
 
     make build/q9_start.r        # im Verzeichnis q9-qclib
 
-Binden wie bisher, nur mit `q9_start.r` statt `q9_cstart.r`:
+Binden wie bisher, mit `q9_start.r` (frueher `q9_cstart.r`):
 
     q9_ql68 -a build/q9_start.r prog.r -l=build/qclib.l -M=8K -O=prog
 

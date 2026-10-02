@@ -37,10 +37,10 @@ echo "== 1/3 uebersetzen (eigene Kette) und gegen clib binden =="
 [ "$(tail -1 "$WORK/le.ir")" = OK ] || { head -5 "$WORK/le.err"; die "qcir"; }
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/le.ir" "$WORK/le.s68" -os9 -largedata >/dev/null || die "Backend"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/le.s68" "-o=$WORK/le.r" || die "qr68"
-cp "$QCC/runtime/os9/q9_cstart.a" "$QCC/runtime/os9/q9defs.d" "$WORK/"
-( cd "$WORK" && "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" q9_cstart.a -o=q9_cstart.r ) || die "qr68 cstart"
+cp "$QCC/Q9-BACKEND-68K/q9-qclib/startup/q9_start.a" "$QCC/Q9DEFS/q9sys.d" "$WORK/"
+( cd "$WORK" && "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" q9_start.a -o=q9_start.r ) || die "qr68 cstart"
 arch -x86_64 "$WINE_BIN" cmd /c \
-	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\le.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_lineend" \
+	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_start.r $TW\\le.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_lineend" \
 	> "$WORK/link.log" 2>&1
 [ -f "$WORK/q9_lineend" ] || { grep -iE "error|unresolved" "$WORK/link.log" | head -6; die "l68 gegen clib"; }
 echo "  ok ($(wc -c < "$WORK/q9_lineend" | tr -d ' ') Byte)"

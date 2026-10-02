@@ -35,7 +35,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$QR68_ROF" "$WORK/qr68.r"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -54,7 +54,7 @@ echo "== 1/5 qr68 gegen qclib binden =="
 # Datenbezug, kein Sprung.
 QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/qr68.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/qr68.r" -l="$WORK/qclib.l" \
 	-M=512K "-O=$WORK/q9_qr68" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_qr68" ] || { sed s/^/ / "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_qr68" | tr -d " ") Byte, mit ql68 gegen qclib)"

@@ -55,8 +55,8 @@ tail -1 "$WORK/ptrtab.ir" | grep -q '^OK$' || { sed 's/^/    /' "$WORK/qcir.err"
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/ptrtab.ir" "$WORK/ptrtab.s68" -os9 -largedata -remotedata >/dev/null || die "qir68k"
 grep -q 'vsect' "$WORK/ptrtab.s68" || die "kein vsect im Assembler -- die Tabelle laege im psect"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/ptrtab.s68" -o="$WORK/ptrtab.r" >"$WORK/qr68.log" 2>&1 || { sed 's/^/    /' "$WORK/qr68.log"|head -5; die "qr68"; }
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/ptrtab.r" \
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/ptrtab.r" \
 	-l="$WORK/qclib.l" -M=8K "-O=$WORK/q9_ptrtab" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_ptrtab" ] || { sed 's/^/    /' "$WORK/link.log"|head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_ptrtab" | tr -d ' ') Byte)"

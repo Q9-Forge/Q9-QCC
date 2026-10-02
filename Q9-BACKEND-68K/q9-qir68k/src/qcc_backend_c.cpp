@@ -301,8 +301,8 @@ static int largeDataMode = 0;
    "vsect remote" instead of as dc.l 0 in the psect. OS-9 clears that data area
    itself (measured on 2026-09-07; not documented in the manual), so the module
    does not need to carry the zero bytes. Access is a full 32-bit a6-relative
-   operation (movea.l #sym,reg / adda.l a6,reg, the same pattern used in the
-   production runtime/os9/q9_cstart.a), avoiding both the 32 KB PC-relative
+   operation (movea.l #sym,reg / adda.l a6,reg, the same pattern used by the
+   production startup module), avoiding both the 32 KB PC-relative
    limit and the 64 KB limit of a non-remote vsect. See docs/FORTSCHRITT.md. */
 static int remoteDataMode = 0;
 /* Experimental long-call path; without -trampolines the tested table path
@@ -991,7 +991,7 @@ static void collectFunctions(void) {
 			   hier NOCH NICHT ausgewertet -- die bestehende os9Mode-psect-Zeile
 			   weiter unten (feste Werte "%s,0,0,%d,0,0") ist ungeklaert, ob sie
 			   ueberhaupt reale OS-9-Modulkopf-Felder traegt oder nur ein
-			   Platzhalter ist, den q9_cstart.a beim Linken ueberschreibt/ergaenzt
+			   Platzhalter ist, den das Startmodul beim Linken ueberschreibt/ergaenzt
 			   -- absichtlich nicht spekulativ veraendert, bevor das geklaert ist
 			   (s. STATUS_DEFMODUL.md Phase 3). Echte Verarbeitung folgt separat. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {

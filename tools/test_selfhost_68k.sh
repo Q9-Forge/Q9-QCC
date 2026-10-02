@@ -46,7 +46,7 @@ IMG="$FLUX/local_images/OS9SYS.qcc-selfhost.hda"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 cd "$WORK" || die "cd $WORK"
-cp "$REPO/runtime/os9/q9_cstart.a" "$REPO/runtime/os9/q9defs.d" .
+cp "$REPO/Q9-BACKEND-68K/q9-qclib/startup/q9_start.a" "$REPO/Q9DEFS/q9sys.d" .
 
 # shellcheck disable=SC1091
 source /Volumes/SSD1TB/projects/MWOS/tools/macos/env/os9-toolchain.sh >/dev/null 2>&1 \
@@ -75,13 +75,13 @@ echo "== 2/6 Backend (-os9 -largedata -remotedata) =="
 echo "  ok ($(wc -l < stage2.s68k | tr -d ' ') Assemblerzeilen)"
 
 echo "== 3/6 r68 + l68 =="
-w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
-[ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
+w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_start.a -o=q9_start.r'
+[ -f q9_start.r ] || die "r68 auf q9_start.a (liegt q9sys.d daneben?)"
 w 'Z: && cd \tmp\qcc-selfhost && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe stage2.s68k -o=stage2.r'
 [ -f stage2.r ] && [ -s stage2.r ] || { grep -iE "error|out of range" wine.log | head -10; die "r68 auf stage2.s68k"; }
 # -M=1024K: der Parser steigt rekursiv ab.  Mit dem Standard-Stack (3072 Byte)
 # bricht schon die Rauchprobe mit "**** Stack Overflow ****" ab.
-w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcc-selfhost\\q9_cstart.r Z:\\tmp\\qcc-selfhost\\stage2.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcc-selfhost\\q9_qcc_stage2"
+w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcc-selfhost\\q9_start.r Z:\\tmp\\qcc-selfhost\\stage2.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcc-selfhost\\q9_qcc_stage2"
 [ -f q9_qcc_stage2 ] || { grep -iE "error|unresolved" wine.log | head -20; die "l68"; }
 echo "  ok ($(wc -c < q9_qcc_stage2 | tr -d ' ') Byte Modul)"
 

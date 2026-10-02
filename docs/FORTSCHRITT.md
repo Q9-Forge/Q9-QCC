@@ -425,8 +425,7 @@ GINIT, Skalar mit Initialwert 0), wandert in einen `vsect remote` statt als
 mit sich. Der Zugriff ist a6-relativ mit vollen 32 Bit
 (`movea.l #sym,reg` / `adda.l a6,reg`), also weder von der 32-KB-Grenze der
 PC-relativen Adressierung noch von der 64-KB-Grenze eines nicht-remoten
-vsects betroffen -- dasselbe Muster, das `runtime/os9/q9_cstart.a` in
-Produktion schon nutzt.
+vsects betroffen -- dasselbe Muster, das das Produktions-Startmodul schon nutzt.
 
 **Zwei Tautologie-Hacks aufgeloest, die seit der `HANDOVER_2026-08-20.md`
 offen standen:** `hasData |= 1` und `if (g->isArray || !g->isArray)` waren

@@ -32,7 +32,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$QCPP_ROF" "$WORK/qcpp.r"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -46,7 +46,7 @@ echo "== 1/5 qcpp gegen qclib binden =="
 # ruft /dd/CMDS/qcpp.
 QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/qcpp.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/qcpp.r" -l="$WORK/qclib.l" \
 	-M=512K "-O=$WORK/qcpp" >"$WORK/link.log" 2>&1
 [ -f "$WORK/qcpp" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/qcpp" | tr -d ' ') Byte, mit ql68 gegen qclib)"

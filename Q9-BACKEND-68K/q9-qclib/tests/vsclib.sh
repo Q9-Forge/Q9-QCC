@@ -28,7 +28,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 WORK=/tmp/qclib-vs
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp -c "$IMG_SRC" "$WORK/img.hda" 2>/dev/null || cp "$IMG_SRC" "$WORK/img.hda"
-cp "$REPO/build/hello.r" "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
+cp "$REPO/build/hello.r" "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -43,13 +43,13 @@ echo "== 1/4 zwei Module binden =="
 # a) gegen qclib -- mit dem eigenen Binder.
 QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
 	-M=8K "-O=$WORK/q9_hq" >"$WORK/link_q.log" 2>&1
 [ -f "$WORK/q9_hq" ] || { sed 's/^/    /' "$WORK/link_q.log" | head -6; die "ql68"; }
 
 # b) gegen Microwares clib -- die ist ein libgen-Archiv, das nur l68 liest.
 arch -x86_64 "$WINE_BIN" cmd /c \
-	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_cstart.r $TW\\hello.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_hc" \
+	"set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a $TW\\q9_start.r $TW\\hello.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=8K -o=$TW\\q9_hc" \
 	>"$WORK/link_c.log" 2>&1
 [ -f "$WORK/q9_hc" ] || { sed 's/^/    /' "$WORK/link_c.log" | head -6; die "l68 gegen clib"; }
 echo "  qclib: $(wc -c < "$WORK/q9_hq" | tr -d ' ') Byte, clib: $(wc -c < "$WORK/q9_hc" | tr -d ' ') Byte"

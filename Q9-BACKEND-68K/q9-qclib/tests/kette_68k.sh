@@ -35,7 +35,7 @@ REPO="$PWD"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$REPO/build/qclib.l" ]     || die "build/qclib.l fehlt -- vorher make"
-[ -f "$REPO/build/q9_cstart.r" ] || die "build/q9_cstart.r fehlt -- vorher make"
+[ -f "$REPO/build/q9_start.r" ] || die "build/q9_start.r fehlt -- vorher make"
 [ -f "$IMG_SRC" ]                || die "Abbild fehlt: $IMG_SRC"
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
 	die "build/qcc_p.bootstrap.c fehlt (Q9-QCC/tools/build_xcc_bootstrap.sh)"
@@ -74,8 +74,8 @@ baue_modul() {
 	[ ! -s "$d/x.err" ] || { head -6 "$d/x.err"; die "$name: Semantikmeldungen"; }
 	"$QCCB" "$d/x.ir" "$d/x.s68" -os9 -largedata -remotedata >/dev/null || die "$name: Backend"
 	"$QR68" "$d/x.s68" "-o=$d/x.r" >/dev/null || die "$name: qr68"
-	cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$d/"
-	"$QL68" -a "$d/q9_cstart.r" "$d/x.r" -l="$d/qclib.l" -M="${stack}K" \
+	cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$d/"
+	"$QL68" -a "$d/q9_start.r" "$d/x.r" -l="$d/qclib.l" -M="${stack}K" \
 		"-O=$WORK/mod/$name.mod" >"$d/link.log" 2>&1
 	[ -f "$WORK/mod/$name.mod" ] || { head -6 "$d/link.log"; die "$name: ql68"; }
 	printf '  %-8s %9s Byte\n' "$name" "$(wc -c < "$WORK/mod/$name.mod" | tr -d ' ')"
@@ -109,14 +109,14 @@ fi
 echo "== 2/6 dieselbe Aufgabe am Host, als Vergleich =="
 # GLEICHE NAMEN wie auf dem Ziel: hello.i, hello.ir, hello.s68, hello.r, q9_hk.
 cp tests/hello.c "$WORK/host/hello.c"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/host/"
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/host/"
 ( cd "$WORK/host" &&
   "$QCPP_H" -I"$QCC/Q9-FRONTEND-C/q9-qcpp/include" hello.c hello.i &&
   "$QCCP" "@hello.i" > hello.ir 2> hello.err &&
   [ "$(tail -1 hello.ir)" = OK ] &&
   "$QCCB" hello.ir hello.s68 -os9 -largedata -remotedata >/dev/null &&
   "$QR68" hello.s68 -o=hello.r >/dev/null &&
-  "$QL68" -a q9_cstart.r hello.r -l=qclib.l -M=8K -O=q9_hk > link.log 2>&1
+  "$QL68" -a q9_start.r hello.r -l=qclib.l -M=8K -O=q9_hk > link.log 2>&1
 ) || die "Hostlauf"
 [ -f "$WORK/host/q9_hk" ] || die "Hostlauf hat kein Modul geschrieben"
 echo "  hello.i $(wc -c < "$WORK/host/hello.i" | tr -d ' ')  hello.ir $(wc -c < "$WORK/host/hello.ir" | tr -d ' ')  hello.s68 $(wc -c < "$WORK/host/hello.s68" | tr -d ' ')  hello.r $(wc -c < "$WORK/host/hello.r" | tr -d ' ')  Modul $(wc -c < "$WORK/host/q9_hk" | tr -d ' ')"
@@ -139,7 +139,7 @@ for h in "$QCC/Q9-FRONTEND-C/q9-qcpp/include"/*.h; do
 	"$OS9" copy -r "$h" "$WORK/img.hda,/HOME/ROOT/include/$(basename "$h")" >/dev/null 2>&1 ||
 		die "copy $(basename "$h")"
 done
-"$OS9" copy -r "$REPO/build/q9_cstart.r" "$WORK/img.hda,/HOME/ROOT/q9_cstart.r" >/dev/null 2>&1 || die "copy cstart"
+"$OS9" copy -r "$REPO/build/q9_start.r" "$WORK/img.hda,/HOME/ROOT/q9_start.r" >/dev/null 2>&1 || die "copy cstart"
 "$OS9" copy -r "$REPO/build/qclib.l" "$WORK/img.hda,/HOME/ROOT/qclib.l" >/dev/null 2>&1 || die "copy qclib"
 echo "  ok"
 
@@ -185,7 +185,7 @@ stufe 1 "/dd/CMDS/q9_qcpp -I/dd/HOME/ROOT/include hello.c hello.i"
 stufe 2 "/dd/CMDS/q9_qcc @hello.i >hello.ir"
 stufe 3 "/dd/CMDS/q9_qccb hello.ir hello.s68 -os9 -largedata -remotedata"
 stufe 4 "/dd/CMDS/q9_qr68 hello.s68 -o=hello.r"
-stufe 5 "/dd/CMDS/q9_ql68 -a q9_cstart.r hello.r -l=qclib.l -M=8K -O=q9_hk"
+stufe 5 "/dd/CMDS/q9_ql68 -a q9_start.r hello.r -l=qclib.l -M=8K -O=q9_hk"
 # Ein frisch geschriebenes Modul hat NUR Besitzer-Lesen/Schreiben -- OS-9
 # startet es so nicht. Die Form steht im Benutzerhandbuch (68k_use.pdf,
 # "Examining File Attributes with attr"): "attr <datei> -e -pe", und ein

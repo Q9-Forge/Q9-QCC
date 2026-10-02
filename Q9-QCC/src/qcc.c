@@ -703,10 +703,10 @@ int main(int argc, char **argv)
 		#if defined(_Q9OS) || defined(_OSK)
 		{
 			/* 2026-09-27: dieselbe Klasse Fehler wie qcir/qir68k/qo68k/qr68k oben --
-			 * "/dd/CMDS/{ql68k,q9_cstart.r,qclib.l,output.mod}" existieren dort nicht.
+			 * "/dd/CMDS/{ql68k,q9_start.r,qclib.l,output.mod}" existieren dort nicht.
 			 * `linker` ist bereits die konfigurierbare Variable (Default "ql68k") und wird
 			 * ueber os9exec's eigene Modulsuche (PATH/chx) gefunden -- das funktioniert nur
-			 * fuer AUSFUEHRBARE Module. q9_cstart.r und qclib.l sind aber reine Daten-
+			 * fuer AUSFUEHRBARE Module. q9_start.r und qclib.l sind aber reine Daten-
 			 * dateien, die ql68k selbst per fopen() oeffnet; fopen() loest bare/relative
 			 * Namen gegen das aktuelle DATENverzeichnis (chd) auf, nicht gegen die Exec-
 			 * Liste -- als bare Namen fanden sie sich dort so gut wie nie, und ql68k schlug
@@ -721,7 +721,7 @@ int main(int argc, char **argv)
 			const char *libdir;
 			libdir = qcc_getenv("QCC_LIBDIR");
 			if (libdir == NULL || libdir[0] == '\0') libdir = "/dd/LIBS/Q9";
-			sprintf(cstart_path, "%s/q9_cstart.r", libdir);
+			sprintf(cstart_path, "%s/q9_start.r", libdir);
 			sprintf(qclib_arg, "-l=%s/qclib.l", libdir);
 			sprintf(stage_in, "%s/output.r", tmpdir);
 			sprintf(stage_out, "-O=%s", output[0] != '\0' ? output : "output.mod");
@@ -762,9 +762,9 @@ int main(int argc, char **argv)
 				} else libdir = "../Q9-BACKEND-68K/q9-qclib/build";
 			}
 			if (stack_size[0] != '\0')
-				sprintf(command, "%s %s/q9_cstart.r %s/output.r -l=%s/qclib.l -a -M=%s -O=%s", linker, libdir, tmpdir, libdir, stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -M=%s -O=%s", linker, libdir, tmpdir, libdir, stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 			else
-				sprintf(command, "%s %s/q9_cstart.r %s/output.r -l=%s/qclib.l -a -O=%s", linker, libdir, tmpdir, libdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -O=%s", linker, libdir, tmpdir, libdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 		}
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
 		#endif

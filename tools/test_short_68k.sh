@@ -53,7 +53,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 cd "$WORK"
-cp "$REPO/runtime/os9/q9_cstart.a" "$REPO/runtime/os9/q9defs.d" .
+cp "$REPO/Q9-BACKEND-68K/q9-qclib/startup/q9_start.a" "$REPO/Q9DEFS/q9sys.d" .
 
 # shellcheck disable=SC1091
 source /Volumes/SSD1TB/projects/MWOS/tools/macos/env/os9-toolchain.sh >/dev/null 2>&1 \
@@ -75,11 +75,11 @@ echo "  ok ($(wc -l < t.ir | tr -d ' ') IR-Zeilen)"
 
 echo "== 2/5 Backend + Assembler + Linker =="
 "$REPO/build/qir68k" t.ir t.s68k -os9 >/dev/null || die "qir68k"
-w 'Z: && cd \tmp\qcc-short68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_cstart.a -o=q9_cstart.r'
-[ -f q9_cstart.r ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
+w 'Z: && cd \tmp\qcc-short68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe q9_start.a -o=q9_start.r'
+[ -f q9_start.r ] || die "r68 auf q9_start.a (liegt q9sys.d daneben?)"
 w 'Z: && cd \tmp\qcc-short68k && set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\r68.exe t.s68k -o=t.r'
 [ -f t.r ] || die "r68 auf t.s68k"
-w 'set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\l68.exe -a Z:\tmp\qcc-short68k\q9_cstart.r Z:\tmp\qcc-short68k\t.r -l=M:\OS9\68020\LIB\clib.l -l=M:\OS9\68020\LIB\os_lib.l -l=M:\OS9\68000\LIB\sys.l -M=64K -o=Z:\tmp\qcc-short68k\q9_shorttest'
+w 'set PATH=M:\DOS\BIN;%PATH% && M:\DOS\BIN\l68.exe -a Z:\tmp\qcc-short68k\q9_start.r Z:\tmp\qcc-short68k\t.r -l=M:\OS9\68020\LIB\clib.l -l=M:\OS9\68020\LIB\os_lib.l -l=M:\OS9\68000\LIB\sys.l -M=64K -o=Z:\tmp\qcc-short68k\q9_shorttest'
 [ -f q9_shorttest ] || die "l68"
 echo "  ok ($(wc -c < q9_shorttest | tr -d ' ') Byte Modul)"
 

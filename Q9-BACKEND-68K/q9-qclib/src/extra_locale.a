@@ -14,7 +14,7 @@
 * Zeichen) blieb das zufaellig unsichtbar, weil Packung und Byte fuer
 * ein einzelnes Zeichen identisch sind. Fix: doppelte Anfuehrungszeichen
 * (die bereits etablierte Konvention fuer echte Stringliterale, s.
-* Q9-QCC/runtime/os9/q9_cstart.a).
+* src/extra_strerror.a).
          psect qlocale,0,0,0,0,0
 setlocale:
          tst.l d1

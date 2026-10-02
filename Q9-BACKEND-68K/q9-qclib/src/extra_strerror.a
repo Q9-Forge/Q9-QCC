@@ -21,9 +21,8 @@
 * war also keiner -- die einfachen Anfuehrungszeichen erzeugten schlicht
 * nur je EIN Byte, nicht die ganze Zeichenkette. Die eigentliche,
 * bereits im Code etablierte Konvention fuer echte Stringliterale sind
-* DOPPELTE Anfuehrungszeichen (s. Q9-QCC/runtime/os9/q9_cstart.a:
-* "dc.b "**** Stack Overflow ****",CR,0" -- funktioniert bereits seit
-* jeher korrekt, sowie q9-qr68k/tests/mac.a, KETTE-Makro). Fix: doppelte
+* DOPPELTE Anfuehrungszeichen (s. q9-qr68k/tests/mac.a, KETTE-Makro; funktioniert
+* bereits seit jeher korrekt). Fix: doppelte
 * Anfuehrungszeichen statt einfacher; der vorherige Workaround
 * (numerische Byteliste) ist damit nicht mehr noetig.
          psect qstrerror,0,0,0,0,0

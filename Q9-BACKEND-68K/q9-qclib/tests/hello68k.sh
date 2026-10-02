@@ -40,14 +40,14 @@ source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
 MWOS="$MWOS_UNIX"
 
 echo "== 1/4 Modul binden (eigener Binder, nur gegen qclib) =="
-cp "$REPO/build/hello.r" "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/" ||
+cp "$REPO/build/hello.r" "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/" ||
 	die "Eingaben fehlen -- vorher 'make'"
 # Gebunden wird mit dem EIGENEN Binder. Seit ql68 die Bibliothekssuche
 # beherrscht, braucht es dafuer kein l68 mehr -- und damit steckt in der
 # Kette vom Praeprozessor bis zum Modul kein fremdes Werkzeug mehr.
 QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
 	-M=8K "-O=$WORK/q9_hello" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_hello" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_hello" | tr -d ' ') Byte, gebunden mit ql68)"

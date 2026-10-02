@@ -152,7 +152,7 @@ Die Kette dorthin kommt ohne Fremdcompiler aus, und Schritt 4 ist der Punkt:
 2  qcc_p       @qr68.i      -> qr68.ir     eigener Compiler
 3  qcc_backend qr68.ir      -> qr68.s68    eigene Codeerzeugung
 4  qr68        qr68.s68     -> qr68.r      SICH SELBST
-5  r68         q9_cstart.a  -> q9_cstart.r Laufzeiteinstieg
+5  r68         q9_start.a   -> q9_start.r  Laufzeiteinstieg
 6  l68         + clib       -> q9_qr68     Modul (1,18 MB)
 ```
 

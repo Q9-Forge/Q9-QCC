@@ -34,8 +34,8 @@ echo "== 1/3 Sonde bauen und binden =="
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/mp.ir" "$WORK/mp.s68" -os9 -largedata >/dev/null ||
 	die "Backend"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/mp.s68" "-o=$WORK/mp.r" || die "qr68"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/mp.r" \
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/mp.r" \
 	-l="$WORK/qclib.l" -M=64K "-O=$WORK/q9_memprobe" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_memprobe" ] || { head -6 "$WORK/link.log"; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_memprobe" | tr -d " ") Byte)"

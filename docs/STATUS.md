@@ -66,7 +66,8 @@ sibling blocks, shadowing, triple nesting and the real pointer case from
 
 ## Q9 C startup and first complete bootstrap pass (2026-08-13)
 
-The own runtime files `runtime/os9/q9_cstart.a` and `runtime/os9/q9defs.d`
+The former runtime files `runtime/os9/q9_cstart.a` and `runtime/os9/q9defs.d`
+(since replaced by `Q9-BACKEND-68K/q9-qclib/startup/q9_start.a` and `Q9DEFS/q9sys.d`)
 were assembled with `r68` and linked with the QCC test program against
 `clib.l`, `os_lib.l`, and `sys.l`. The test runs in the Q9-Flux emulator and
 correctly prints `1`; the previously observed PMMU fault does not recur with

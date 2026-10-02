@@ -1,13 +1,13 @@
 * q9-qclib I/O base
 *
-* Purpose: provide the minimal I/O symbols and storage required by q9_cstart.
+* Purpose: provide the minimal I/O symbols and storage required by the startup module (startup/q9_start.a).
 *
 * Edition history:
 *   2026-09-11  Introduced the English source-header format.
 *
-* _iob und die Anschluesse, die q9_cstart.a erwartet.
+* _iob und die Anschluesse, die startup/q9_start.a erwartet.
 *
-* GEMESSEN an q9_cstart.a (eigener Startcode, Q9-QCC/runtime/os9):
+* GEMESSEN am frueheren Startcode (inzwischen durch startup/q9_start.a ersetzt):
 *   _fcbs:  dc.l _iob            -- Zeiger auf die "CIO-Dateibloecke"
 *   iobinit: bsr _iobinit        -- einmalig beim Start
 *   _initarg                     -- Argumentaufbereitung
@@ -49,8 +49,7 @@ _utinit:
 
 * exit(status) -- Microware-Konvention: erstes Argument in d0.
 * _os_exit kehrt nicht zurueck; der zweite Aufruf ist die Sicherung fuer
-* den Fall, dass ein Debugger den ersten abfaengt (so macht es auch
-* q9_cstart.a).
+* den Fall, dass ein Debugger den ersten abfaengt.
 exit:
 * Function: exit
 * Terminates the current process through the Q9 OS-9 wrapper.

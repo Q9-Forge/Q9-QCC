@@ -39,7 +39,7 @@ IMAGE_NAME=OS9SYS.qcpp-self.hda
 IMAGE="$Q9FLUX/local_images/$IMAGE_NAME"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
-cp "$QCC/runtime/os9/q9_cstart.a" "$QCC/runtime/os9/q9defs.d" "$WORK/"
+cp "$QCC/Q9-BACKEND-68K/q9-qclib/startup/q9_start.a" "$QCC/Q9DEFS/q9sys.d" "$WORK/"
 
 # shellcheck disable=SC1091
 source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
@@ -71,14 +71,14 @@ echo "== 3/6 Backend (-os9 -largedata) =="
 echo "  $(wc -c < "$WORK/qcpp.s68k" | tr -d ' ') Byte Assembler"
 
 echo "== 4/6 r68 + l68 =="
-w "Z: && cd \\tmp\\qcpp-selfhost && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_cstart.a -o=q9_cstart.r"
-[ -f "$WORK/q9_cstart.r" ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
+w "Z: && cd \\tmp\\qcpp-selfhost && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_start.a -o=q9_start.r"
+[ -f "$WORK/q9_start.r" ] || die "r68 auf q9_start.a (liegt q9sys.d daneben?)"
 w "Z: && cd \\tmp\\qcpp-selfhost && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe qcpp.s68k -o=qcpp.r"
 [ -f "$WORK/qcpp.r" ] || {
 	grep -iE "error|out of range" "$WORK/wine.log" | head -10
 	die "r68 auf qcpp.s68k"
 }
-w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcpp-selfhost\\q9_cstart.r Z:\\tmp\\qcpp-selfhost\\qcpp.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcpp-selfhost\\q9_qcpp"
+w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:\\tmp\\qcpp-selfhost\\q9_start.r Z:\\tmp\\qcpp-selfhost\\qcpp.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:\\tmp\\qcpp-selfhost\\q9_qcpp"
 [ -f "$WORK/q9_qcpp" ] || {
 	grep -iE "error|unresolved|undefined" "$WORK/wine.log" | head -20
 	die "l68"

@@ -17,7 +17,7 @@
 # LEERES "int main(){ return 0; }" zum Absturz bringt (680x0 PMMU:
 # Unhandled Table A mode 0) -- nachweislich UNABHAENGIG von long long
 # (ein Programm ohne jeden qclib-Aufruf trifft es genauso) und
-# UNABHAENGIG von q9_cstart.r (byteidentisch zur Produktion). Ursache
+# UNABHAENGIG von q9_start.r (byteidentisch zur Produktion). Ursache
 # noch NICHT gefunden, nur eingegrenzt: liegt in mindestens einer der
 # acht C-uebersetzten qclib-Dateien selbst (str/ctype/mem/file/printf/
 # extra_*), nicht im Linker (ql68k) oder Cstart. Dieses Skript benutzt
@@ -38,7 +38,7 @@ REPO="$PWD"
 # abstuerzen laesst) -- LONGLONG68K_QCLIB/LONGLONG68K_CSTART zeigen auf ein
 # bekannt funktionierendes Paar, z.B. das der Produktions-Umgebung.
 : "${LONGLONG68K_QCLIB:=$REPO/build/qclib.l}"
-: "${LONGLONG68K_CSTART:=$REPO/build/q9_cstart.r}"
+: "${LONGLONG68K_CSTART:=$REPO/build/q9_start.r}"
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$LONGLONG68K_QCLIB" ] || die "$LONGLONG68K_QCLIB fehlt -- vorher 'make' oder LONGLONG68K_QCLIB setzen"
 [ -f "$LONGLONG68K_CSTART" ] || die "$LONGLONG68K_CSTART fehlt -- vorher 'make' oder LONGLONG68K_CSTART setzen"
@@ -60,9 +60,9 @@ tail -1 "$WORK/ll.ir" | grep -q '^OK$' || { sed 's/^/    /' "$WORK/qcir.err" | h
 grep -qE 'QMUL|Q64|tc_mul_i64|tc_div_i64' "$WORK/ll.s68" || echo "  warn: keine 64-Bit-Mul/Div-Hilfsroutine im Assembler gefunden -- pruefen, ob das Programm sie ueberhaupt braucht"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/ll.s68" -o="$WORK/ll.r" >"$WORK/qr68.log" 2>&1 \
 	|| { sed 's/^/    /' "$WORK/qr68.log" | head -5; die "qr68k"; }
-cp "$LONGLONG68K_CSTART" "$WORK/q9_cstart.r"
+cp "$LONGLONG68K_CSTART" "$WORK/q9_start.r"
 cp "$LONGLONG68K_QCLIB" "$WORK/qclib.l"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/ll.r" \
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/ll.r" \
 	-l="$WORK/qclib.l" -M=8K "-O=$WORK/q9_longlong" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_longlong" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68k"; }
 echo "  ok ($(wc -c < "$WORK/q9_longlong" | tr -d ' ') Byte)"

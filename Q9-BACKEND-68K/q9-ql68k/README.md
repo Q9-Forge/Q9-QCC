@@ -615,7 +615,7 @@ je nachdem, worauf sie zeigt.
 
 ### Der Trap-Einsprung
 
-Der siebte psect-Parameter (`trapinit` in `q9_cstart.a`) setzt `utrap` im
+Der siebte psect-Parameter (`trapinit` im frueheren Startcode `q9_cstart.a`, inzwischen durch `q9_start.a` ersetzt) setzt `utrap` im
 ROF; `ql68` brach daran bisher ab. Gemessen: `M$Excpt` = Codebasis +
 `utrap`, dieselbe Rechnung wie `M$Exec`. An `q9_cstart.a` nachgerechnet:
 `utrap $180`, Codebasis `$54`, `M$Excpt $1d4`.
@@ -689,7 +689,7 @@ ist **gemessen, nicht geschätzt**:
 | Eingabe | Namen | Namenstext |
 |---|---|---|
 | `stage2.r` (QCCs Parser) | 14 193 | 325 828 Byte |
-| `q9_cstart.r` | 55 | 455 Byte |
+| `q9_cstart.r` (frueher) | 55 | 455 Byte |
 | `qclib.l` | 433 | 7 736 Byte |
 | **zusammen** | **14 681** | **334 019 Byte** |
 

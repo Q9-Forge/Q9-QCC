@@ -34,8 +34,8 @@ tail -1 "$WORK/t.ir" | grep -q '^OK$' || { sed 's/^/    /' "$WORK/qcir.err" | he
 	|| { sed 's/^/    /' "$WORK/qr68_t.log" | head -10; die "qr68k (t.s68)"; }
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$REPO/tests/callext_double_mocks.a" -o="$WORK/mocks.r" >"$WORK/qr68_m.log" 2>&1 \
 	|| { sed 's/^/    /' "$WORK/qr68_m.log" | head -10; die "qr68k (mocks.a)"; }
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/t.r" "$WORK/mocks.r" \
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/t.r" "$WORK/mocks.r" \
 	-l="$WORK/qclib.l" -M=8K "-O=$WORK/q9_callext_dbl" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_callext_dbl" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_callext_dbl" | tr -d ' ') Byte)"

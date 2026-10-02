@@ -36,8 +36,8 @@ tail -1 "$WORK/fprun.ir" | grep -q '^OK$' || { sed 's/^/    /' "$WORK/qcir.err" 
 # Der Gleitkommateil -- von qr68 assembliert, das ist hier der Prueffall.
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$REPO/tests/fprun.a" -o="$WORK/fprun_a.r" >"$WORK/qr68a.log" 2>&1 \
 	|| { sed 's/^/    /' "$WORK/qr68a.log" | head -5; die "qr68 (Gleitkommateil)"; }
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/fprun_c.r" "$WORK/fprun_a.r" \
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/fprun_c.r" "$WORK/fprun_a.r" \
 	-l="$WORK/qclib.l" -M=8K "-O=$WORK/q9_fprun" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_fprun" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_fprun" | tr -d ' ') Byte)"

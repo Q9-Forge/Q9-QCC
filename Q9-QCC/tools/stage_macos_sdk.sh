@@ -11,6 +11,6 @@ mkdir -p "$sdk/Mac/SYS" "$target/SYS" "$target/DEFS" "$target/LIBS" \
 cp "$repo/Q9-QCC/config/qcc-macos-sdk.conf" "$sdk/Mac/SYS/qcc.conf"
 cp "$repo/Q9-QCC/config/qcc-macos-sdk.conf" "$target/SYS/qcc.conf"
 cp "$repo/Q9-FRONTEND-C/q9-qcpp/include/"*.h "$target/DEFS/"
-cp "$repo/Q9-BACKEND-68K/q9-qclib/build/q9_cstart.r" \
+cp "$repo/Q9-BACKEND-68K/q9-qclib/build/q9_start.r" \
 	"$repo/Q9-BACKEND-68K/q9-qclib/build/qclib.l" "$target/LIBS/"
 echo "QCC SDK support files staged in $target"

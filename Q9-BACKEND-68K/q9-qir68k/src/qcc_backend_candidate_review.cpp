@@ -254,7 +254,7 @@ static int largeDataMode = 0;
    selbst (2026-09-07 gemessen, im Handbuch steht es nicht), also braucht das
    Modul die Nullen nicht mitzuschleppen. Der Zugriff wird a6-relativ mit
    VOLLEN 32 Bit (movea.l #sym,reg / adda.l a6,reg -- dasselbe Muster, das
-   runtime/os9/q9_cstart.a in Produktion benutzt), kennt also weder die
+   das Produktions-Startmodul benutzt), kennt also weder die
    32-KB-Grenze der PC-relativen Adressierung noch die 64-KB-Grenze eines
    nicht-remoten vsects. Siehe docs/FORTSCHRITT.md. */
 static int remoteDataMode = 0;

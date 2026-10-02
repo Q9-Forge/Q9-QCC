@@ -44,7 +44,7 @@ IMAGE_NAME=OS9SYS.qcpp-chain.hda
 IMAGE="$Q9FLUX/local_images/$IMAGE_NAME"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
-cp "$QCC/runtime/os9/q9_cstart.a" "$QCC/runtime/os9/q9defs.d" "$WORK/"
+cp "$QCC/Q9-BACKEND-68K/q9-qclib/startup/q9_start.a" "$QCC/Q9DEFS/q9sys.d" "$WORK/"
 
 # shellcheck disable=SC1091
 source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
@@ -79,7 +79,7 @@ build_module() {
 		grep -iE "error|out of range" "$WORK/wine.log" | head -5
 		die "r68 fuer $name"
 	}
-	w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:$WORKWIN\\q9_cstart.r Z:$WORKWIN\\$name.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${stack}K -o=Z:$WORKWIN\\$name"
+	w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:$WORKWIN\\q9_start.r Z:$WORKWIN\\$name.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${stack}K -o=Z:$WORKWIN\\$name"
 	[ -f "$WORK/$name" ] || {
 		grep -iE "error|unresolved|undefined" "$WORK/wine.log" | head -10
 		die "l68 fuer $name"
@@ -97,8 +97,8 @@ echo "== 1/7 Hostlauf als Referenz =="
 echo "  vorverarbeitet $(wc -c < "$WORK/host.self.c" | tr -d ' ') Byte, IR $(wc -l < "$WORK/host.self.ir" | tr -d ' ') Zeilen"
 
 echo "== 2/7 Startcode assemblieren =="
-w "Z: && cd $WORKWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_cstart.a -o=q9_cstart.r"
-[ -f "$WORK/q9_cstart.r" ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
+w "Z: && cd $WORKWIN && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_start.a -o=q9_start.r"
+[ -f "$WORK/q9_start.r" ] || die "r68 auf q9_start.a (liegt q9sys.d daneben?)"
 
 echo "== 3/7 qcpp-Modul aus qcpps eigenem IR =="
 build_module "$WORK/host.self.ir" qcpp 512

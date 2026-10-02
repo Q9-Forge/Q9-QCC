@@ -15,13 +15,13 @@
 * TRAP #0 mit dem Servicewort dahinter.
 *
 * GEMESSEN, nicht geraten:
-*   - Das Trap-Muster steht in Q9-QCC/runtime/os9/q9defs.d
-*     ("Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0").
+*   - Das Trap-Muster: im OS-9/68000-ABI folgt das Servicewort direkt auf
+*     TRAP #0 (Q9DEFS/q9sys.d, Herstellerhandbuch; auf 68030 bestaetigt).
 *   - Die Servicenummern stehen ausgeschrieben in
 *     Herstellerquelle: I_WRITE 0x8a, F_EXIT 0x06,
 *     F_SRQMEM 0x28, F_SRTMEM 0x29.
-*   - Die Registerbelegung ist aus laufendem Code abgelesen (PrtMsg in
-*     q9_cstart.a): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
+*   - Die Registerbelegung ist aus laufendem Code abgelesen (fruehere
+*     Startcode-Routine PrtMsg, auf 68030 bestaetigt): d0 = Pfadnummer, d1 = Anzahl, a0 = Puffer.
 *
 * Die Konstanten stehen bewusst HIER und nicht in einem "use" auf die
 * REF-Definitionen -- qclib soll ohne fremden Baum uebersetzbar sein.
@@ -77,7 +77,7 @@ ow_err
 
 * void _os_exit(int status) -- kehrt nicht zurueck.
 * Der zweite Aufruf ist die Sicherung fuer den Fall, dass ein Debugger den
-* ersten abfaengt; genauso macht es q9_cstart.a.
+* ersten abfaengt.
 
 * Function: _os_exit
 * Terminates the current OS-9 process.

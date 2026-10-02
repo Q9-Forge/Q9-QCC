@@ -39,3 +39,7 @@ __pycache__/
 AGENTS.md
 PROJECT.md
 .aider*
+
+# Fremdwerkzeug, lokal aus den vasm-Quellen zu bauen (nicht im Repo)
+/tools/vasmm68k_mot
+/Q9-PARSEC/tools/vasmm68k_mot

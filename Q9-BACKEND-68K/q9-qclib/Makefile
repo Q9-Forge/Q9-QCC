@@ -29,7 +29,7 @@ ROFS = $(patsubst src/extra_%.a,build/extra_%.r,$(sort $(wildcard src/extra_*.a)
        build/mem.r build/mem_c.r \
        build/iob.r build/os9call.r
 
-all: build/qclib.l build/q9_cstart.r build/q9_start.r
+all: build/qclib.l build/q9_start.r
 
 build/qclib.l: $(ROFS)
 	cat $(ROFS) > $@
@@ -48,15 +48,8 @@ build/%_c.r: src/%.c | build
 build/%.r: src/%.a | build
 	$(QR68) $< -o=$@
 
-# Der C-Startcode gehoert zu Q9-QCC, wird aber hier gebraucht -- und muss
-# mitgebaut werden, sonst haengt der Ziellauf an einer Datei, die zufaellig
-# noch irgendwo herumliegt. "use q9defs.d" sucht relativ zum
+# Eigener C-Startcode (startup/README.md). "use q9sys.d" sucht relativ zum
 # ARBEITSverzeichnis, deshalb liegen beide Dateien nebeneinander in build/.
-build/q9_cstart.r: $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d | build
-	cp $(QCC)/runtime/os9/q9_cstart.a $(QCC)/runtime/os9/q9defs.d build/
-	cd build && $(abspath $(QR68)) q9_cstart.a -o=q9_cstart.r
-
-# Eigener C-Startcode (startup/README.md); ersetzt q9_cstart.r schrittweise.
 build/q9_start.r: startup/q9_start.a $(QCC)/Q9DEFS/q9sys.d | build
 	cp startup/q9_start.a $(QCC)/Q9DEFS/q9sys.d build/
 	cd build && $(abspath $(QR68)) q9_start.a -o=q9_start.r

@@ -30,7 +30,7 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$QL68_ROF" "$WORK/ql68.r"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/hello.r" "$REPO/build/qclib.l" "$WORK/"
+cp "$REPO/build/q9_start.r" "$REPO/build/hello.r" "$REPO/build/qclib.l" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -42,14 +42,14 @@ QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 (Host) fehlt"
 
 echo "== 1/5 ql68 selbst binden (mit sich selbst, gegen qclib) =="
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/ql68.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/ql68.r" -l="$WORK/qclib.l" \
 	-M=512K "-O=$WORK/q9_ql68" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_ql68" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_ql68" | tr -d ' ') Byte)"
 
 echo "== 2/5 Hostlauf: dieselbe Bindeaufgabe am Host =="
 # Derselbe Ausgabename wie auf dem Ziel -- der MODULNAME kommt aus -O=.
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/hello.r" -l="$WORK/qclib.l" \
 	-M=8K "-O=$WORK/hmod" >/dev/null 2>&1 || die "Hostlauf"
 echo "  $(wc -c < "$WORK/hmod" | tr -d ' ') Byte"
 
@@ -60,7 +60,7 @@ rm -f "$IMAGE"
 cp -c "$BASE" "$IMAGE" 2>/dev/null || cp "$BASE" "$IMAGE" || die "Abbild kopieren"
 "$OS9" copy -r "$WORK/q9_ql68" "$IMAGE,/CMDS/q9_ql68" >/dev/null || die "copy Modul"
 "$OS9" attr -e -w -r -pe -pr "$IMAGE,/CMDS/q9_ql68" >/dev/null || die "attr"
-for f in q9_cstart.r hello.r qclib.l; do
+for f in q9_start.r hello.r qclib.l; do
 	"$OS9" copy -r "$WORK/$f" "$IMAGE,/$f" >/dev/null || die "copy $f"
 done
 echo "  ok"
@@ -89,7 +89,7 @@ for {set i 0} {$i < 10 && !$li} {incr i} {
 if {!$li} { send_user "\n<<< LOGIN FEHLGESCHLAGEN >>>\n"; exit 1 }
 # Nicht auf den Prompt warten -- der steht noch im Puffer und traefe
 # sofort, bevor das 1,7-MB-Modul ueberhaupt geladen ist.
-send -s "/dd/CMDS/q9_ql68 -a /dd/q9_cstart.r /dd/hello.r -l=/dd/qclib.l -M=8K -O=/dd/hmod\r"
+send -s "/dd/CMDS/q9_ql68 -a /dd/q9_start.r /dd/hello.r -l=/dd/qclib.l -M=8K -O=/dd/hmod\r"
 expect {
     -re $prompt          { send_user "\n<<< QL68 LIEF AUF 68K DURCH >>>\n" }
     -re {Stack Overflow} { send_user "\n<<< STACK OVERFLOW >>>\n"; exit 1 }

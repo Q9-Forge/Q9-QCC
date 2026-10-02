@@ -40,7 +40,7 @@ WORK=/tmp/qclib-parsec
 die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -f "$REPO/build/qclib.l" ]     || die "build/qclib.l fehlt -- vorher make"
-[ -f "$REPO/build/q9_cstart.r" ] || die "build/q9_cstart.r fehlt -- vorher make"
+[ -f "$REPO/build/q9_start.r" ] || die "build/q9_start.r fehlt -- vorher make"
 [ -x "$PARSEC/build/parsec" ]    || die "parsec fehlt -- vorher bauen"
 [ -f "$IMG_SRC" ]                || die "Abbild fehlt: $IMG_SRC"
 QCIR="${QCIR:-$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir}"
@@ -52,7 +52,7 @@ for t in "$QCIR" "$QIR68K" "$QR68" "$QL68"; do
 done
 
 rm -rf "$WORK"; mkdir -p "$WORK/host" "$WORK/ziel"
-cp "$REPO/build/qclib.l" "$REPO/build/q9_cstart.r" "$WORK/"
+cp "$REPO/build/qclib.l" "$REPO/build/q9_start.r" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -81,7 +81,7 @@ echo "== 2/6 den Port mit der eigenen Kette zum 68k-Modul =="
 	die "qir68k auf codegen"
 "$QR68" "$WORK/ebnf.s68" "-o=$WORK/ebnf.r" >"$WORK/asm1.log" 2>&1 || { head -5 "$WORK/asm1.log"; die "qr68 auf ebnf"; }
 "$QR68" "$WORK/cgen.s68" "-o=$WORK/cgen.r" >"$WORK/asm2.log" 2>&1 || { head -5 "$WORK/asm2.log"; die "qr68 auf codegen"; }
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/ebnf.r" "$WORK/cgen.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/ebnf.r" "$WORK/cgen.r" -l="$WORK/qclib.l" \
 	-M="${STACK_KB}K" "-O=$WORK/q9_parsec" >"$WORK/link.log" 2>&1 ||
 	{ head -10 "$WORK/link.log"; die "ql68"; }
 [ -f "$WORK/q9_parsec" ] || die "ql68 hat kein Modul geschrieben"

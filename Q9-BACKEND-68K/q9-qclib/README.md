@@ -32,7 +32,7 @@ dokumentiert):
 | ROF | externe Namen |
 |---|---|
 | `qr68.r` | `printf fopen fclose fread fwrite exit _os_write` |
-| `q9_cstart.r` | `_initarg _iob _iobinit _utinit _os_exit exit main end` |
+| `q9_start.r` | `_initarg _iob _iobinit _utinit _os_exit exit main end` |
 
 `main` kommt aus dem Programm, `end` setzt der Binder, und
 `_os_write`/`_os_exit` sind Systemaufrufe aus `os_lib.l` — **nicht** aus
@@ -135,7 +135,7 @@ erzeugt QCC von sich aus genau diese Konvention.
 
 ## `_iob` ist freier, als der Header vermuten lässt
 
-`q9_cstart.a` liest `_iob` **nicht** als FILE-Feld — es schreibt im
+Der frühere Startcode (`q9_cstart.a`, inzwischen durch `startup/q9_start.a` ersetzt) las `_iob` **nicht** als FILE-Feld — es schreibt im
 Fehlerpfad eine Meldung als rohe Bytes hinein (`movea.l #_iob,a1` /
 `adda.l a6,a1` / `mover`), und `_fcbs` zeigt darauf. Weil nur eigener Code
 darauf zugreift, ist Microwares 13-Feld-Struktur (`_ptr/_base/_end/_flag/
@@ -178,9 +178,9 @@ Servicewort dahinter. Alles daran ist gemessen, nichts geraten:
 
 | | Quelle |
 |---|---|
-| Trap-Muster | `Q9-QCC/runtime/os9/q9defs.d`: „Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0" |
+| Trap-Muster | `Q9DEFS/q9sys.d` / Herstellerhandbuch: Das Servicewort folgt im OS-9/68000-ABI direkt auf TRAP #0 |
 | `I$Write` = `$8a`, `F$Exit` = `$06` | `Herstellerquelle` (dort ausgeschrieben; in `funcs.a` sind es `do.b`-Zähler) |
-| `d0` = Pfad, `d1` = Anzahl, `a0` = Puffer | aus laufendem Code abgelesen: `PrtMsg` in `q9_cstart.a` |
+| `d0` = Pfad, `d1` = Anzahl, `a0` = Puffer | aus laufendem Code abgelesen: `PrtMsg` im früheren Startcode `q9_cstart.a` (ersetzt) |
 
 Die Servicenummern stehen bewusst **in der Datei** und nicht in einem `use`
 auf die REF-Definitionen: qclib soll ohne fremden Baum übersetzbar sein.
@@ -293,7 +293,7 @@ Dieselbe Bauform wie bei printf.
 
 ### Was der Gegenlauf gefunden hat
 
-`puts` hängte `$0d` an statt `$0a`. Der Wert war aus `q9_cstart.a`
+`puts` hängte `$0d` an statt `$0a`. Der Wert war aus dem früheren Startcode `q9_cstart.a`
 **abgeleitet** (`move.b #CR,-1(a1)`), nicht gemessen — und falsch: auf dem
 Terminal erschien `puts gehtgeschrieben 11` statt zweier Zeilen.
 
@@ -632,7 +632,7 @@ zwischendurch etwas am Host passiert:
 | 2 | `q9_qcc @hello.i >hello.ir` | 868 396 |
 | 3 | `q9_qccb hello.ir hello.s68 -os9 -largedata` | 9 608 244 |
 | 4 | `q9_qr68 hello.s68 -o=hello.r` | 1 204 644 |
-| 5 | `q9_ql68 -a q9_cstart.r hello.r -l=qclib.l -M=8K -O=q9_hk` | 1 709 620 |
+| 5 | `q9_ql68 -a q9_start.r hello.r -l=qclib.l -M=8K -O=q9_hk` | 1 709 620 |
 | 6 | `attr q9_hk -e -pe` | |
 | 7 | `/dd/HOME/ROOT/q9_hk` | 12 von 12 Ausgabezeilen richtig |
 

@@ -32,7 +32,7 @@ REPO="$PWD"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$REPO/build/qclib.l" ]     || die "build/qclib.l fehlt -- vorher make"
-[ -f "$REPO/build/q9_cstart.r" ] || die "build/q9_cstart.r fehlt -- vorher make"
+[ -f "$REPO/build/q9_start.r" ] || die "build/q9_start.r fehlt -- vorher make"
 [ -f "$IR" ]                     || die "IR-Eingang fehlt: $IR"
 [ -f "$IMG_SRC" ]                || die "Abbild fehlt: $IMG_SRC"
 
@@ -56,10 +56,10 @@ echo "== 1/5 das Backend mit der eigenen Kette zum 68k-Modul =="
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/b.ir" "$WORK/qccb.s68" -os9 -largedata -remotedata >/dev/null ||
 	die "Backend uebersetzt sich selbst nicht"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/qccb.s68" "-o=$WORK/qccb.r" || die "qr68k"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
 # Der MODULNAME kommt aus -O= und muss q9_qccb lauten -- der Emulatorlauf
 # ruft /dd/CMDS/q9_qccb.
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/qccb.r" -l="$WORK/qclib.l" \
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/qccb.r" -l="$WORK/qclib.l" \
 	-M=64K "-O=$WORK/q9_qccb" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_qccb" ] || { head -8 "$WORK/link.log"; die "ql68"; }
 echo "  ok ($(wc -l < "$WORK/qccb.s68" | tr -d ' ') Assemblerzeilen -> $(wc -c < "$WORK/qccb.r" | tr -d ' ') Byte ROF -> $(wc -c < "$WORK/q9_qccb" | tr -d ' ') Byte Modul)"

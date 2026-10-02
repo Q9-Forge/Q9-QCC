@@ -23,7 +23,7 @@ QR="$REPO/Q9-BACKEND-68K/q9-qr68k/build/qr68k"
 QL="$REPO/Q9-BACKEND-68K/q9-ql68k/build/ql68k"
 LIB="$REPO/Q9-BACKEND-68K/q9-qclib/build"
 
-for t in "$QCPP" "$QCIR" "$QIR" "$QR" "$QL" "$LIB/qclib.l" "$LIB/q9_cstart.r"; do
+for t in "$QCPP" "$QCIR" "$QIR" "$QR" "$QL" "$LIB/qclib.l" "$LIB/q9_start.r"; do
 	[ -e "$t" ] || { echo "fehlt: $t (vorher make)" >&2; exit 2; }
 done
 mkdir -p "$OUT"
@@ -47,8 +47,8 @@ baue() {
 	if ! "$QR" "$d/x.s68" -o="$d/x.r" >"$d/qr.log" 2>&1; then
 		echo "FEHLER $name: qr68k"; tail -3 "$d/qr.log"; fail=1; return
 	fi
-	cp "$LIB/q9_cstart.r" "$LIB/qclib.l" "$d/"
-	"$QL" -a "$d/q9_cstart.r" "$d/x.r" -l="$d/qclib.l" -M="${stack}K" -O="$OUT/$name" >"$d/ql.log" 2>&1
+	cp "$LIB/q9_start.r" "$LIB/qclib.l" "$d/"
+	"$QL" -a "$d/q9_start.r" "$d/x.r" -l="$d/qclib.l" -M="${stack}K" -O="$OUT/$name" >"$d/ql.log" 2>&1
 	if [ ! -f "$OUT/$name" ]; then
 		echo "FEHLER $name: ql68k"; head -5 "$d/ql.log"; fail=1; return
 	fi

@@ -24,7 +24,7 @@ Q9-QCC/
 Der Mac-Treiber `qcc` orchestriert qcpp, qcir, qir68k, qo68k, qr68k und ql68k.
 Die Host-Binaries liegen in `$Q9SDK/Mac/CMDS`; ausführbare 68k-Module werden
 getrennt nach ihrer Buildkette unter `Q9/68k/CMDS_QCC` beziehungsweise
-`Q9/68k/CMDS_XQCC` abgelegt. Header, `q9_cstart.r` und `qclib.l` liegen unter
+`Q9/68k/CMDS_XQCC` abgelegt. Header, `q9_start.r` und `qclib.l` liegen unter
 `Q9/68k/DEFS` und `Q9/68k/LIBS`.
 
 Im Repository-Root baut und staged qmake die Mac-Werkzeuge sowie die derzeit

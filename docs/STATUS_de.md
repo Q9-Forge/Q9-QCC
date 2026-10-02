@@ -70,7 +70,8 @@ Pointer-Fall aus `tcGlobalOne`.
 
 ## Q9-C-Startmodul und erster kompletter Bootstrap-Lauf (2026-08-13)
 
-Die eigene Runtime-Datei `runtime/os9/q9_cstart.a` und `runtime/os9/q9defs.d`
+Die früheren Runtime-Dateien `runtime/os9/q9_cstart.a` und `runtime/os9/q9defs.d`
+(inzwischen ersetzt durch `Q9-BACKEND-68K/q9-qclib/startup/q9_start.a` und `Q9DEFS/q9sys.d`)
 wurden mit `r68` assembliert und mit dem QCC-Testprogramm gegen `clib.l`,
 `os_lib.l` und `sys.l` gelinkt. Der Test läuft im Q9-Flux-Emulator und gibt
 korrekt `1` aus; der zuvor beobachtete PMMU-Fehler tritt mit der korrigierten

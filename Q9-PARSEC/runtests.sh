@@ -366,8 +366,8 @@ else
 fi
 
 # 10) Echter Assembler: alle erzeugten .s68 muessen mit vasm (Motorola-Syntax,
-#     68000) fehlerfrei assemblieren. tools/vasmm68k_mot wurde aus den Original-
-#     Quellen (sun.hasenbraten.de/vasm) gebaut; fehlt das Binary (z.B. andere
+#     68000) fehlerfrei assemblieren. tools/vasmm68k_mot ist lokal aus den Original-
+#     Quellen (sun.hasenbraten.de/vasm) zu bauen und nicht im Repo; fehlt es (z.B. andere
 #     Plattform), wird der Check uebersprungen.
 if [ -x tools/vasmm68k_mot ]; then
 	vfail=0; vcnt=0

@@ -33,7 +33,7 @@ WORK=/tmp/qclib-qcc
 die() { echo "FEHLER: $*" >&2; exit 2; }
 
 [ -f "$REPO/build/qclib.l" ]      || die "build/qclib.l fehlt -- vorher make"
-[ -f "$REPO/build/q9_cstart.r" ]  || die "build/q9_cstart.r fehlt -- vorher make"
+[ -f "$REPO/build/q9_start.r" ]  || die "build/q9_start.r fehlt -- vorher make"
 [ -x "$QCC/Q9-FRONTEND-C/q9-qcir/build/qcir" ]         || die "qcir fehlt"
 [ -x "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" ]   || die "qir_68k fehlt"
 [ -f "$QCC/build/qcc_p.bootstrap.c" ] ||
@@ -46,7 +46,7 @@ QL68="${QL68:-$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k}"
 [ -x "$QL68" ] || die "ql68 fehlt: $QL68"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
-cp "$REPO/build/qclib.l" "$REPO/build/q9_cstart.r" "$WORK/"
+cp "$REPO/build/qclib.l" "$REPO/build/q9_start.r" "$WORK/"
 
 MWOS_UNIX="$MWOS"
 # shellcheck disable=SC1091
@@ -72,7 +72,7 @@ echo "== 2/6 die eigene Kette: Backend, qr68, ql68 =="
 	head -10 "$WORK/asm.log"; die "qr68"; }
 # -M=1024K: der Parser steigt rekursiv ab; mit dem Standardstack
 # (3072 Byte) bricht schon die Rauchprobe mit Stack Overflow ab.
-"$QL68" -a "$WORK/q9_cstart.r" "$WORK/stage2.r" -l="$WORK/qclib.l" \
+"$QL68" -a "$WORK/q9_start.r" "$WORK/stage2.r" -l="$WORK/qclib.l" \
 	-M="${STACK_KB}K" "-O=$WORK/q9_qcc_qclib" >"$WORK/link.log" 2>&1 || {
 	head -10 "$WORK/link.log"; die "ql68"; }
 [ -f "$WORK/q9_qcc_qclib" ] || die "ql68 hat kein Modul geschrieben"

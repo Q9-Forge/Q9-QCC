@@ -5,7 +5,7 @@
 #   2  qcir        @qr68.i               -> qr68.ir     (compiler)
 #   3  qir_68k     qr68.ir               -> qr68.s68    (code generation)
 #   4  qr68        qr68.s68              -> qr68.r      (ITSELF)
-#   5  r68         q9_cstart.a           -> q9_cstart.r (runtime entry)
+#   5  r68         q9_start.a           -> q9_start.r (runtime entry)
 #   6  l68         + clib/os_lib/sys.l  -> q9_qr68     (module)
 #
 # Step 4 is the key point: qr68 assembles its own module source. Only l68 and
@@ -39,8 +39,8 @@ die() { echo "FEHLER: $*" >&2; exit 2; }
 
 MWOS_UNIX="$MWOS"
 rm -rf "$WORK"; mkdir -p "$WORK"
-cp "$QCC/runtime/os9/q9_cstart.a" "$QCC/runtime/os9/q9defs.d" "$WORK/" ||
-	die "q9_cstart.a/q9defs.d nicht gefunden"
+cp "$QCC/Q9-BACKEND-68K/q9-qclib/startup/q9_start.a" "$QCC/Q9DEFS/q9sys.d" "$WORK/" ||
+	die "q9_start.a/q9sys.d nicht gefunden"
 
 # shellcheck disable=SC1091
 source "$MWOS/tools/macos/env/os9-toolchain.sh" >/dev/null 2>&1 ||
@@ -76,12 +76,12 @@ echo "== 4/6 qr68 assembliert sich selbst =="
 "$REPO/build/qr68k" "$WORK/qr68.s68" "$WORK/qr68.r" || die "qr68 auf sich selbst"
 echo "  $(wc -c < "$WORK/qr68.r" | tr -d ' ') Byte ROF"
 
-echo "== 5/6 r68 auf q9_cstart.a =="
-w "Z: && cd $WWORK && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_cstart.a -o=q9_cstart.r"
-[ -f "$WORK/q9_cstart.r" ] || die "r68 auf q9_cstart.a (liegt q9defs.d daneben?)"
+echo "== 5/6 r68 auf q9_start.a =="
+w "Z: && cd $WWORK && set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\r68.exe q9_start.a -o=q9_start.r"
+[ -f "$WORK/q9_start.r" ] || die "r68 auf q9_start.a (liegt q9sys.d daneben?)"
 
 echo "== 6/6 l68 =="
-w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:$WWORK\\q9_cstart.r Z:$WWORK\\qr68.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:$WWORK\\q9_qr68"
+w "set PATH=M:\\DOS\\BIN;%PATH% && M:\\DOS\\BIN\\l68.exe -a Z:$WWORK\\q9_start.r Z:$WWORK\\qr68.r -l=M:\\OS9\\68020\\LIB\\clib.l -l=M:\\OS9\\68020\\LIB\\os_lib.l -l=M:\\OS9\\68000\\LIB\\sys.l -M=${STACK_KB}K -o=Z:$WWORK\\q9_qr68"
 [ -f "$WORK/q9_qr68" ] || {
 	grep -iE "error|unresolved|undefined" "$WORK/wine.log" | head -20
 	die "l68"

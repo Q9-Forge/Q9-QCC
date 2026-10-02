@@ -21,7 +21,7 @@
 * plain "dc.l" lines inside the psect, no vsect, verified on real 68030
 * hardware across the whole C89 test history). Referenced via PC-relative
 * addressing, now valid since they live in the SAME section as the code
-* that reads them. This intentionally does NOT touch q9_cstart.a's own
+* that reads them. This intentionally does NOT touch the startup module's own
 * vsect (that one is legitimately cross-module, per-process OS-9 storage
 * reached via the Microware a6-relative convention) or the several other
 * qclib leaf modules (rand/getc/perror/putc/locale/strerror/round) that

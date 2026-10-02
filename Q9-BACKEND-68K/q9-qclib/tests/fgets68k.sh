@@ -23,7 +23,7 @@ REPO="$PWD"
 
 die() { echo "FEHLER: $*" >&2; exit 2; }
 [ -f "$REPO/build/qclib.l" ]     || die "build/qclib.l fehlt -- vorher make"
-[ -f "$REPO/build/q9_cstart.r" ] || die "build/q9_cstart.r fehlt -- vorher make"
+[ -f "$REPO/build/q9_start.r" ] || die "build/q9_start.r fehlt -- vorher make"
 [ -f "$IMG_SRC" ]                || die "Abbild fehlt: $IMG_SRC"
 
 WORK=/tmp/qclib-fgets
@@ -48,8 +48,8 @@ echo "== 2/4 gegen qclib binden (eigene Kette) =="
 [ "$(tail -1 "$WORK/fg.ir")" = OK ] || { head -5 "$WORK/fg.err"; die "qcir"; }
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/fg.ir" "$WORK/fg.s68" -os9 -largedata >/dev/null || die "Backend"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/fg.s68" "-o=$WORK/fg.r" || die "qr68"
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/fg.r" -l="$WORK/qclib.l" \
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/fg.r" -l="$WORK/qclib.l" \
 	-M=64K "-O=$WORK/q9_fgtest" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_fgtest" ] || { head -6 "$WORK/link.log"; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_fgtest" | tr -d ' ') Byte)"

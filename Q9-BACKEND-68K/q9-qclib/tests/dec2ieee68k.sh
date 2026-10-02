@@ -36,8 +36,8 @@ tail -1 "$WORK/d2i.ir" | grep -q '^OK$' || { sed 's/^/    /' "$WORK/qcir.err" | 
 "$QCC/Q9-BACKEND-68K/q9-qir68k/build/qir68k" "$WORK/d2i.ir" "$WORK/d2i.s68" -os9 -largedata -remotedata >/dev/null || die "qir68k"
 "$QCC/Q9-BACKEND-68K/q9-qr68k/build/qr68k" "$WORK/d2i.s68" -o="$WORK/d2i.r" >"$WORK/qr68.log" 2>&1 \
 	|| { sed 's/^/    /' "$WORK/qr68.log" | head -5; die "qr68"; }
-cp "$REPO/build/q9_cstart.r" "$REPO/build/qclib.l" "$WORK/"
-"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_cstart.r" "$WORK/d2i.r" \
+cp "$REPO/build/q9_start.r" "$REPO/build/qclib.l" "$WORK/"
+"$QCC/Q9-BACKEND-68K/q9-ql68k/build/ql68k" -a "$WORK/q9_start.r" "$WORK/d2i.r" \
 	-l="$WORK/qclib.l" -M=32K "-O=$WORK/q9_d2i" >"$WORK/link.log" 2>&1
 [ -f "$WORK/q9_d2i" ] || { sed 's/^/    /' "$WORK/link.log" | head -10; die "ql68"; }
 echo "  ok ($(wc -c < "$WORK/q9_d2i" | tr -d ' ') Byte)"
