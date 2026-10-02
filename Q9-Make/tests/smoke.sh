@@ -278,19 +278,19 @@ grep -q 'fake-as.sh --assembler-checked "asm.a" "asm.r"' template-asm.out
 test "$(cat asm.r)" = 'assembly object'
 sed '/^HOST_PLATFORM = /d' "$source_root/toolchains/qmake.conf" > toolchains/qmake.conf
 cat > q9makefile <<'EOF'
-[mac-clang]
-[linux-gcc]
-[windows-clang]
-[q9-qcc-68k]
+[ACA]
+[LGL]
+[WCW]
+[QQQ]
 EOF
 rm code.r
-./qmake -n -P q9-qcc-68k code.r > q9-profile.out
+./qmake -n -P QQQ code.r > q9-profile.out
 grep -q 'qcc .*--no-optimizer -c -o "code.r" "code.c"' q9-profile.out
-./qmake -n -P mac-clang code.o > mac-profile.out
+./qmake -n -P ACA code.o > mac-profile.out
 grep -q 'clang -std=c89 -c -o "code.o" "code.c"' mac-profile.out
-./qmake -n -P linux-gcc code.o > linux-profile.out
+./qmake -n -P LGL code.o > linux-profile.out
 grep -q 'gcc -std=c89 -c -o "code.o" "code.c"' linux-profile.out
-./qmake -n -P windows-clang code.o > windows-profile.out
+./qmake -n -P WCW code.o > windows-profile.out
 grep -q 'clang -std=c89 -c -o "code.o" "code.c"' windows-profile.out
 cat > q9makefile <<'EOF'
 TOOLCHAIN_FILE = toolchains/test.conf
