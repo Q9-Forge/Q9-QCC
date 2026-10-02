@@ -43,6 +43,16 @@ $(Q9SDK)/macOS/x86_64/CMDS/qcir: check-sdk data/qcc_p.c
 clean:
 	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qcir"
 
+[LGL]
+all: linux
+linux: $(HOST_OUTPUT_DIR)/qcir
+
+$(HOST_OUTPUT_DIR)/qcir: check-sdk data/qcc_p.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qcir" data/qcc_p.c
+
+clean:
+	test -n "$(Q9SDK)" || { echo 'Set Q9SDK to the SDK root first' >&2; exit 2; }; rm -f "$(HOST_OUTPUT_DIR)/qcir"
+
 [AXQ]
 all: macXCC
 

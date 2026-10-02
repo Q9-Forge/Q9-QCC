@@ -86,6 +86,12 @@ all: macX64
 macX64:
 clean:
 
+[LGL]
+SUBDIRS = Q9-Make Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
+all: linux
+linux:
+clean:
+
 [AXQ]
 SUBDIRS = Q9-FRONTEND-C Q9-BACKEND-68K Q9-OPTIMIZER Q9-QCC
 all:

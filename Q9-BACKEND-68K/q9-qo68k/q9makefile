@@ -55,3 +55,11 @@ $(Q9SDK)/macOS/x86_64/CMDS/qo68k: src/main.c src/qo68.c
 	mkdir -p "$(Q9SDK)/macOS/x86_64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -o "$(Q9SDK)/macOS/x86_64/CMDS/qo68k" src/main.c
 clean:
 	rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qo68k"
+
+[LGL]
+all: linux
+linux: $(HOST_OUTPUT_DIR)/qo68k
+$(HOST_OUTPUT_DIR)/qo68k: src/main.c src/qo68.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qo68k" src/main.c
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qo68k"

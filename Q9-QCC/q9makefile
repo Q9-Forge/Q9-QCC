@@ -19,6 +19,14 @@ $(Q9SDK)/macOS/x86_64/CMDS/qcc: src/qcc.c
 clean:
 	rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qcc"
 
+[LGL]
+all: linux
+linux: $(HOST_OUTPUT_DIR)/qcc
+$(HOST_OUTPUT_DIR)/qcc: src/qcc.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" src/qcc.c
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qcc"
+
 [AXQ]
 all: macXCC
 macXCC: mac-qcpp-host xcc

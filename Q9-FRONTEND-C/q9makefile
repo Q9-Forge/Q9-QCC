@@ -25,6 +25,11 @@ clean:
 all: macX64
 macX64:
 
+[LGL]
+all: linux
+linux:
+clean:
+
 [AXQ]
 all:
 macXCC:

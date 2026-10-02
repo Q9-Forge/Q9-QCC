@@ -55,3 +55,11 @@ $(Q9SDK)/macOS/x86_64/CMDS/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephol
 	mkdir -p "$(Q9SDK)/macOS/x86_64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -x c -std=c11 -o "$(Q9SDK)/macOS/x86_64/CMDS/qir68k" src/qcc_backend_c.cpp
 clean:
 	rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qir68k"
+
+[LGL]
+all: linux
+linux: $(HOST_OUTPUT_DIR)/qir68k
+$(HOST_OUTPUT_DIR)/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -x c -std=c11 -o "$(HOST_OUTPUT_DIR)/qir68k" src/qcc_backend_c.cpp
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qir68k"

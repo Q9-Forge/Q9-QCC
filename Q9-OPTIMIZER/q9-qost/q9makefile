@@ -21,6 +21,14 @@ $(Q9SDK)/macOS/x86_64/CMDS/qost: src/qost.c
 clean:
 	rm -f "$(Q9SDK)/macOS/x86_64/CMDS/qost"
 
+[LGL]
+all: linux
+linux: $(HOST_OUTPUT_DIR)/qost
+$(HOST_OUTPUT_DIR)/qost: src/qost.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -Werror -o "$(HOST_OUTPUT_DIR)/qost" src/qost.c
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qost"
+
 [AXQ]
 all: macXCC
 macXCC: mac-qcpp-host xcc
