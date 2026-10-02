@@ -41,10 +41,18 @@ case "$(uname -s)" in
 esac
 
 if [ ! -x "$real" ]; then
-	echo "qmake: not found at $real yet, bootstrapping via 'make' in $qmake_src ..." >&2
-	make -C "$qmake_src" >&2
+	# Q9-Make/build is a path on the SHARED Q9SDK filesystem -- the plain
+	# Makefile's default BUILD=build would be reused (and its up-to-date
+	# check fooled) by whichever OTHER host platform last bootstrapped
+	# here, since source timestamps alone can't tell two platforms' object
+	# code apart (hit live: a macOS Mach-O qmake got copied onto Linux and
+	# failed "Exec format error"). A platform-namespaced BUILD directory
+	# keeps every host's bootstrap build separate.
+	build_dir="build/host-$(uname -s)"
+	echo "qmake: not found at $real yet, bootstrapping via 'make' in $qmake_src ($build_dir) ..." >&2
+	make -C "$qmake_src" BUILD="$build_dir" >&2
 	mkdir -p "$(dirname "$real")"
-	cp "$qmake_src/build/qmake" "$real"
+	cp "$qmake_src/$build_dir/qmake" "$real"
 	echo "qmake: installed at $real" >&2
 fi
 
