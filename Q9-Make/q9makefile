@@ -3,7 +3,8 @@
 TOOLCHAIN_FILE = toolchains/qmake.conf
 
 clean:
-	if test -n "$(Q9SDK)"; then rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qmake" "$(Q9SDK)/macOS/x86_64/CMDS/qmake" "$(Q9SDK)/Linux/CMDS/qmake" "$(Q9SDK)/Windows/CMDS/qmake.exe"; fi
+	if test -n "$(Q9SDK)"; then rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qmake" "$(Q9SDK)/macOS/x86_64/CMDS/qmake" "$(Q9SDK)/Linux/CMDS/qmake" "$(Q9SDK)/Windows/CMDS/qmake.exe" "$(Q9SDK)/Q9/68k/CMDS_XCC/qmake"; fi
+	rm -f build/qmake.68k
 
 [ACA]
 all: mac
@@ -28,3 +29,17 @@ all: windows
 windows: $(Q9SDK)/Windows/CMDS/qmake.exe
 $(Q9SDK)/Windows/CMDS/qmake.exe: src/qmake.c src/platform_windows.c src/platform.h
 	mkdir -p "$(Q9SDK)/Windows/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -Isrc -o "$(Q9SDK)/Windows/CMDS/qmake.exe" src/qmake.c src/platform_windows.c
+
+[AXQ]
+# qmake.c and platform_posix.c compile UNCHANGED via Microware's own XCC and
+# its UNIX-compatibility libraries (unix.l + sys_clib.l) -- see
+# tools/build_qmake_xcc.sh. This does not go through $(TARGET_CC)/qcc like
+# the other components' AXQ sections: XCC here is invoked directly, because
+# it needs its own stack-size default (qmake's recipe/variable tables are
+# larger than a single QCC tool) and the three os9-xcc-include/ bridge
+# headers, neither of which fits the shared C_TO_R_COMMAND template.
+all: macXCC
+macXCC: $(Q9SDK)/Q9/68k/CMDS_XCC/qmake
+$(Q9SDK)/Q9/68k/CMDS_XCC/qmake: src/qmake.c src/platform_posix.c src/platform.h src/os9-xcc-include/unistd.h src/os9-xcc-include/sys/stat.h src/os9-xcc-include/sys/time.h tools/build_qmake_xcc.sh
+	bash tools/build_qmake_xcc.sh
+	mkdir -p "$(Q9SDK)/Q9/68k/CMDS_XCC" && cp build/qmake.68k "$(Q9SDK)/Q9/68k/CMDS_XCC/qmake"
