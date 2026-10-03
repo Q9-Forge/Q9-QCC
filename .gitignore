@@ -2,6 +2,10 @@
 /.archive/
 /build/
 **/build/
+# Pro-Host gecachte qmake-Binaries (Lebensversicherung fuer den
+# PATH-Fallback, siehe Q9-Make/tools/path-bootstrap/qmake) -- generiert,
+# nicht versioniert, genau wie build/.
+Q9-Make/tools/path-bootstrap/cache/
 *.o
 *.a
 !Q9-BACKEND-68K/q9-qclib/src/*.a

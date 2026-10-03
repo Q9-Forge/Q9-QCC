@@ -11,24 +11,28 @@ all: mac
 mac: $(Q9SDK)/macOS/ARM64/CMDS/qmake
 $(Q9SDK)/macOS/ARM64/CMDS/qmake: src/qmake.c src/platform_posix.c src/platform.h
 	mkdir -p "$(Q9SDK)/macOS/ARM64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -Isrc -o "$(Q9SDK)/macOS/ARM64/CMDS/qmake" src/qmake.c src/platform_posix.c
+	mkdir -p tools/path-bootstrap/cache && cp "$(Q9SDK)/macOS/ARM64/CMDS/qmake" tools/path-bootstrap/cache/qmake-Darwin-arm64
 
 [ACI]
 all: macX64
 macX64: $(Q9SDK)/macOS/x86_64/CMDS/qmake
 $(Q9SDK)/macOS/x86_64/CMDS/qmake: src/qmake.c src/platform_posix.c src/platform.h
 	mkdir -p "$(Q9SDK)/macOS/x86_64/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -Isrc -o "$(Q9SDK)/macOS/x86_64/CMDS/qmake" src/qmake.c src/platform_posix.c
+	mkdir -p tools/path-bootstrap/cache && cp "$(Q9SDK)/macOS/x86_64/CMDS/qmake" tools/path-bootstrap/cache/qmake-Darwin-x86_64
 
 [LGL]
 all: linux
 linux: $(Q9SDK)/Linux/CMDS/qmake
 $(Q9SDK)/Linux/CMDS/qmake: src/qmake.c src/platform_posix.c src/platform.h
 	mkdir -p "$(Q9SDK)/Linux/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -Isrc -o "$(Q9SDK)/Linux/CMDS/qmake" src/qmake.c src/platform_posix.c
+	mkdir -p tools/path-bootstrap/cache && cp "$(Q9SDK)/Linux/CMDS/qmake" tools/path-bootstrap/cache/qmake-Linux-x86_64
 
 [WCW]
 all: windows
 windows: $(Q9SDK)/Windows/CMDS/qmake.exe
 $(Q9SDK)/Windows/CMDS/qmake.exe: src/qmake.c src/platform_windows.c src/platform.h
 	mkdir -p "$(Q9SDK)/Windows/CMDS" && $(HOST_CC) $(HOST_CFLAGS) -Isrc -o "$(Q9SDK)/Windows/CMDS/qmake.exe" src/qmake.c src/platform_windows.c
+	mkdir -p tools/path-bootstrap/cache && cp "$(Q9SDK)/Windows/CMDS/qmake.exe" tools/path-bootstrap/cache/qmake-Windows-x86_64.exe
 
 [AXQ]
 # qmake.c and platform_posix.c compile UNCHANGED via Microware's own XCC and

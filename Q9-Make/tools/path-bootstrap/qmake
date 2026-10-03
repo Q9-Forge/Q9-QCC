@@ -8,13 +8,19 @@
 # removes that binary along with everything else it built (qmake is one
 # of the files its own clean rule deletes) -- the next plain "qmake" call
 # then falls through PATH to here instead of failing with "command not
-# found". This script rebuilds the real binary via Q9-Make's plain
-# bootstrap Makefile (the same one-liner used the very first time, no
-# q9makefile/qmake.conf needed), installs it back at the real location,
-# and execs it with the original arguments, so even that first "broken"
-# invocation still completes. Nothing here is a permanent replacement:
-# the moment the real binary exists again, this script is bypassed exactly
-# as before.
+# found". Two fallback stages, fastest first:
+#   1. A cached binary from a previous build on this same platform+arch
+#      (tools/path-bootstrap/cache/qmake-<uname-s>-<uname-m>, kept fresh by
+#      every normal self-build -- see the ACA/ACI/LGL sections of
+#      Q9-Make/q9makefile) is just copied into place: instant, no compiler
+#      needed.
+#   2. Only if that cache entry is also missing (a genuinely new
+#      platform/arch never built here before) does this script fall back
+#      to a real rebuild via Q9-Make's plain bootstrap Makefile.
+# Either way it installs the result at the real location and execs it with
+# the original arguments, so even that first "broken" invocation still
+# completes. Nothing here is a permanent replacement: the moment the real
+# binary exists again, this script is bypassed exactly as before.
 set -eu
 
 self_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -23,6 +29,14 @@ self_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 qmake_src=$(CDPATH= cd -- "$self_dir/../.." && pwd)
 
 : "${Q9SDK:?Set Q9SDK to the SDK root before calling qmake}"
+
+# uname -m here reflects the real running hardware, which is exactly what
+# this script (never cross-compiling, always restoring/building for itself)
+# needs. Contrast Q9-Make/q9makefile's ACI section, which runs ON arm64 but
+# produces x86_64 output -- its cache key must be the fixed string
+# "Darwin-x86_64", not a dynamic uname -m, for exactly that reason.
+cache_key="$(uname -s)-$(uname -m)"
+cache_bin="$self_dir/cache/qmake-$cache_key"
 
 case "$(uname -s)" in
 	Darwin)
@@ -41,18 +55,26 @@ case "$(uname -s)" in
 esac
 
 if [ ! -x "$real" ]; then
-	# Q9-Make/build is a path on the SHARED Q9SDK filesystem -- the plain
-	# Makefile's default BUILD=build would be reused (and its up-to-date
-	# check fooled) by whichever OTHER host platform last bootstrapped
-	# here, since source timestamps alone can't tell two platforms' object
-	# code apart (hit live: a macOS Mach-O qmake got copied onto Linux and
-	# failed "Exec format error"). A platform-namespaced BUILD directory
-	# keeps every host's bootstrap build separate.
-	build_dir="build/host-$(uname -s)"
-	echo "qmake: not found at $real yet, bootstrapping via 'make' in $qmake_src ($build_dir) ..." >&2
-	make -C "$qmake_src" BUILD="$build_dir" >&2
-	mkdir -p "$(dirname "$real")"
-	cp "$qmake_src/$build_dir/qmake" "$real"
+	if [ -x "$cache_bin" ]; then
+		echo "qmake: not found at $real, restoring cached $cache_key binary ..." >&2
+		mkdir -p "$(dirname "$real")"
+		cp "$cache_bin" "$real"
+	else
+		# Q9-Make/build is a path on the SHARED Q9SDK filesystem -- the
+		# plain Makefile's default BUILD=build would be reused (and its
+		# up-to-date check fooled) by whichever OTHER host platform last
+		# bootstrapped here, since source timestamps alone can't tell two
+		# platforms' object code apart (hit live: a macOS Mach-O qmake got
+		# copied onto Linux and failed "Exec format error"). A platform-
+		# namespaced BUILD directory keeps every host's bootstrap build
+		# separate.
+		build_dir="build/host-$(uname -s)"
+		echo "qmake: not found at $real and no cached $cache_key binary yet, bootstrapping via 'make' in $qmake_src ($build_dir) ..." >&2
+		make -C "$qmake_src" BUILD="$build_dir" >&2
+		mkdir -p "$(dirname "$real")" "$self_dir/cache"
+		cp "$qmake_src/$build_dir/qmake" "$real"
+		cp "$qmake_src/$build_dir/qmake" "$cache_bin"
+	fi
 	echo "qmake: installed at $real" >&2
 fi
 
