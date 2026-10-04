@@ -54,3 +54,18 @@ clean:
 all:
 q9CC:
 clean:
+
+[WCW]
+all: windows
+windows:
+clean:
+
+[WQQ]
+all: windowsQCC
+windowsQCC:
+clean:
+
+[WXQ]
+all: windowsXCC
+windowsXCC:
+clean:

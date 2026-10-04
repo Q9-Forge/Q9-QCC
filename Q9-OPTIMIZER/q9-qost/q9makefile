@@ -77,3 +77,38 @@ q9: /dd/CMDS_QCC/qost
 	qcc --largedata --stack 512K -o /dd/CMDS_QCC/qost src/qost.c
 clean:
 	rm -f /dd/CMDS_QCC/qost
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qost.exe
+$(HOST_OUTPUT_DIR)\qost.exe: src/qost.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Werror -o "$(HOST_OUTPUT_DIR)\qost.exe" src\qost.c
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qost.exe" del "$(HOST_OUTPUT_DIR)\qost.exe"
+
+[WQQ]
+all: windowsQCC
+windowsQCC: win-qcpp-host xqcc $(HOST_OUTPUT_DIR)\qcc.exe
+xqcc: $(TARGET_OUTPUT_DIR)\qost
+$(TARGET_OUTPUT_DIR)\qost: src/qost.c $(TARGET_CC)
+	if not exist "$(TARGET_OUTPUT_DIR)" mkdir "$(TARGET_OUTPUT_DIR)"
+	set "PATH=$(HOST_OUTPUT_DIR);%PATH%" && "$(TARGET_CC)" --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)\qost" src\qost.c
+win-qcpp-host: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" ..\..\Q9-FRONTEND-C\q9-qcpp\src\qcpp.c
+$(HOST_OUTPUT_DIR)\qcc.exe: ../../Q9-QCC/src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" ..\..\Q9-QCC\src\qcc.c
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qost" del "$(TARGET_OUTPUT_DIR)\qost"
+
+[WXQ]
+all: windowsXCC
+windowsXCC: xcc
+xcc: $(TARGET_OUTPUT_DIR)\qost
+$(TARGET_OUTPUT_DIR)\qost: src/qost.c ../../tools/build_xcc_win.cmd
+	..\..\tools\build_xcc_win.cmd qost "$(TARGET_OUTPUT_DIR)" "%CD%\src\qost.c" "-olM=512K"
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qost" del "$(TARGET_OUTPUT_DIR)\qost"

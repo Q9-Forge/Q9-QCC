@@ -62,3 +62,30 @@ q9QCC: /dd/CMDS_QCC/qcc
 	qcc --largedata --stack 512K -o /dd/CMDS_QCC/qcc src/qcc_q9.c
 clean:
 	rm -f /dd/CMDS_QCC/qcc
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qcc.exe
+$(HOST_OUTPUT_DIR)\qcc.exe: src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" src\qcc.c
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qcc.exe" del "$(HOST_OUTPUT_DIR)\qcc.exe"
+
+[WQQ]
+all: windowsQCC
+windowsQCC: $(HOST_OUTPUT_DIR)\qcc.exe
+$(HOST_OUTPUT_DIR)\qcc.exe: src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" src\qcc.c
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qcc.exe" del "$(HOST_OUTPUT_DIR)\qcc.exe"
+
+[WXQ]
+all: windowsXCC
+windowsXCC: xcc
+xcc: $(TARGET_OUTPUT_DIR)\qcc
+$(TARGET_OUTPUT_DIR)\qcc: src/qcc.c src/qcc_os9_bridge.c ../tools/build_xcc_win.cmd
+	..\tools\build_xcc_win.cmd qcc "$(TARGET_OUTPUT_DIR)" "%CD%\src\qcc.c" "-olM=512K -l=$(MWOS_ROOT)\OS9\68020\LIB\sys_clib.l" "%CD%\src\qcc_os9_bridge.c"
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qcc" del "$(TARGET_OUTPUT_DIR)\qcc"

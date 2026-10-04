@@ -77,3 +77,38 @@ $(HOST_OUTPUT_DIR)/qo68k: src/main.c src/qo68.c
 	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$(HOST_OUTPUT_DIR)/qo68k" src/main.c
 clean:
 	rm -f "$(HOST_OUTPUT_DIR)/qo68k"
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qo68k.exe
+$(HOST_OUTPUT_DIR)\qo68k.exe: src/main.c src/qo68.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qo68k.exe" src\main.c
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qo68k.exe" del "$(HOST_OUTPUT_DIR)\qo68k.exe"
+
+[WQQ]
+all: windowsQCC
+windowsQCC: win-qcpp-host xqcc $(HOST_OUTPUT_DIR)\qcc.exe
+xqcc: $(TARGET_OUTPUT_DIR)\qo68k
+$(TARGET_OUTPUT_DIR)\qo68k: src/main.c src/qo68.c $(TARGET_CC)
+	if not exist "$(TARGET_OUTPUT_DIR)" mkdir "$(TARGET_OUTPUT_DIR)"
+	set "PATH=$(HOST_OUTPUT_DIR);%PATH%" && "$(TARGET_CC)" --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)\qo68k" src\main.c
+win-qcpp-host: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" ..\..\Q9-FRONTEND-C\q9-qcpp\src\qcpp.c
+$(HOST_OUTPUT_DIR)\qcc.exe: ../../Q9-QCC/src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" ..\..\Q9-QCC\src\qcc.c
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qo68k" del "$(TARGET_OUTPUT_DIR)\qo68k"
+
+[WXQ]
+all: windowsXCC
+windowsXCC: xcc
+xcc: $(TARGET_OUTPUT_DIR)\qo68k
+$(TARGET_OUTPUT_DIR)\qo68k: src/main.c src/qo68.c ../../tools/build_xcc_win.cmd
+	..\..\tools\build_xcc_win.cmd qo68k "$(TARGET_OUTPUT_DIR)" "%CD%\src\main.c" "-olM=512K"
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qo68k" del "$(TARGET_OUTPUT_DIR)\qo68k"

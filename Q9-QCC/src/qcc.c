@@ -13,7 +13,15 @@
 #include <stdlib.h>
 
 #define QCC_VERSION "0.2.0-dev"
+#if defined(_WIN32) || defined(_WIN64)
+/* Windows paths run up to 260 characters (MAX_PATH); the command line that
+ * chains them needs a correspondingly larger buffer. */
+#define TEXT 260
+#define COMMAND_SIZE 2048
+#else
 #define TEXT 128
+#define COMMAND_SIZE 512
+#endif
 
 /* Host and OS-9 use different command names for the small file operations
  * needed by the pipeline.  Keep this translation at the driver boundary so
@@ -66,7 +74,28 @@ static int object_only;
  * Returns: Command status returned by the runtime. */
 static int q9_system(const char *command)
 {
+#if defined(_WIN32) || defined(_WIN64)
+	/* cmd.exe knows neither "mkdir -p", "cp" nor "rm -f" and reads "/x" as a
+	 * switch.  Translate the three file operations and use backslashes. */
+	char win[COMMAND_SIZE];
+	char out[2 * COMMAND_SIZE + 64];
+	char *p;
+	if (strlen(command) >= COMMAND_SIZE - 32) return system(command);
+	if (strncmp(command, "mkdir -p ", 9) != 0 && strncmp(command, "cp ", 3) != 0 &&
+	    strncmp(command, "rm -f ", 6) != 0)
+		return system(command);
+	strcpy(win, command);
+	for (p = win; *p != '\0'; ++p) if (*p == '/') *p = '\\';
+	if (strncmp(win, "mkdir -p ", 9) == 0)
+		sprintf(out, "if not exist \"%s\" mkdir \"%s\"", win + 9, win + 9);
+	else if (strncmp(win, "cp ", 3) == 0)
+		sprintf(out, "copy /Y %s >nul", win + 3);
+	else
+		sprintf(out, "del /Q %s 2>nul", win + 6);
+	return system(out);
+#else
 	return system(command);
+#endif
 }
 #endif
 #if defined(_Q9OS) || defined(_OSK)
@@ -172,11 +201,27 @@ static char *qcc_getenv(const char *name)
 #endif
 static int keep_files;
 static int large_data;
-static char stack_size[TEXT] = "";
+/* OS-9 needs stack space even for a small C program. 8K is the default;
+ * --stack can override it for larger tools. */
+static char stack_size[TEXT] = "8K";
 static char tmpdir[TEXT] = "build/qcc-tmp";
 static char output[TEXT] = "";
 static int tmpdir_set;
 static char config_section[TEXT] = "global";
+
+/* Function: fwd_slashes
+ * Windows accepts "/" in every path, but the pipeline stages derive names
+ * from the path text and only know "/" as separator.  No-op on other hosts.
+ * Parameters: s Path text, changed in place.
+ * Returns: Nothing. */
+static void fwd_slashes(char *s)
+{
+#if defined(_WIN32) || defined(_WIN64)
+	for (; *s != '\0'; ++s) if (*s == '\\') *s = '/';
+#else
+	(void)s;
+#endif
+}
 
 /* Function: copy_text
  * Copies bounded configuration text and always terminates it.
@@ -195,7 +240,7 @@ static void usage(const char *name)
 	printf("  --dry-run        Pipeline nur anzeigen\n  --print-config   Konfiguration anzeigen\n");
 	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  --tmpdir DIR     Zwischenverzeichnis\n");
 	printf("  --keep           Zwischendateien behalten\n  -o FILE           Ausgabedatei\n");
-	printf("  --stack SIZE     OS-9-Modulstack, z. B. 512K\n");
+	printf("  --stack SIZE     OS-9-Modulstack (Standard: 8K), z. B. 512K\n");
 	printf("  -E               nur vorverarbeiten\n  -S               nur Assembler erzeugen\n  -c               nur Objektdatei erzeugen\n");
 	printf("  --no-optimizer   Optimierer ueberspringen\n");
 	printf("  --help, --version\n");
@@ -324,6 +369,7 @@ static void resolve_tmpdir(void)
 	if (base == NULL || base[0] == '\0') base = qcc_getenv("TEMP");
 	if (base != NULL && base[0] != '\0') {
 		sprintf(tmpdir, "%s/qcc", base);
+		fwd_slashes(tmpdir);
 	}
 }
 /* Function: show_config
@@ -372,8 +418,8 @@ int main(int argc, char **argv)
 		if (strcmp(argv[i], "--print-config") == 0) { print_config = 1; continue; }
 		if (strcmp(argv[i], "--tmpdir") == 0 || strcmp(argv[i], "-o") == 0) {
 			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
-			if (strcmp(argv[i], "--tmpdir") == 0) { copy_text(tmpdir, argv[++i]); tmpdir_set = 1; }
-			else copy_text(output, argv[++i]);
+			if (strcmp(argv[i], "--tmpdir") == 0) { copy_text(tmpdir, argv[++i]); fwd_slashes(tmpdir); tmpdir_set = 1; }
+			else { copy_text(output, argv[++i]); fwd_slashes(output); }
 			continue;
 		}
 		if (strcmp(argv[i], "--target") == 0 || strcmp(argv[i], "--frontend") == 0 || strcmp(argv[i], "--cpu") == 0) {
@@ -402,7 +448,7 @@ int main(int argc, char **argv)
 		return 3;
 	}
 	{
-		char command[512];
+		char command[COMMAND_SIZE];
 		const char *input = argv[argc - 1];
 		#if defined(_Q9OS) || defined(_OSK)
 		{

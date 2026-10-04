@@ -77,3 +77,43 @@ $(HOST_OUTPUT_DIR)/qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
 	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -x c -std=c11 -o "$(HOST_OUTPUT_DIR)/qir68k" src/qcc_backend_c.cpp
 clean:
 	rm -f "$(HOST_OUTPUT_DIR)/qir68k"
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qir68k.exe
+$(HOST_OUTPUT_DIR)\qir68k.exe: src/qcc_backend_c.cpp src/qcc_backend_peephole.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -x c -std=c11 -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qir68k.exe" src\qcc_backend_c.cpp
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qir68k.exe" del "$(HOST_OUTPUT_DIR)\qir68k.exe"
+
+[WQQ]
+all: windowsQCC
+windowsQCC: win-qcpp-host xqcc $(HOST_OUTPUT_DIR)\qcc.exe
+xqcc: $(TARGET_OUTPUT_DIR)\qir68k
+$(TARGET_OUTPUT_DIR)\qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c $(TARGET_CC)
+	if not exist "$(TARGET_OUTPUT_DIR)" mkdir "$(TARGET_OUTPUT_DIR)"
+	set "PATH=$(HOST_OUTPUT_DIR);%PATH%" && "$(TARGET_CC)" --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)\qir68k" src\qcc_backend_c.cpp
+win-qcpp-host: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" ..\..\Q9-FRONTEND-C\q9-qcpp\src\qcpp.c
+$(HOST_OUTPUT_DIR)\qcc.exe: ../../Q9-QCC/src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" ..\..\Q9-QCC\src\qcc.c
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qir68k" del "$(TARGET_OUTPUT_DIR)\qir68k"
+
+[WXQ]
+all: windowsXCC
+windowsXCC: win-qcpp-host xcc
+xcc: $(TARGET_OUTPUT_DIR)\qir68k
+win-qcpp-host: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: ../../Q9-FRONTEND-C/q9-qcpp/src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" ..\..\Q9-FRONTEND-C\q9-qcpp\src\qcpp.c
+$(TARGET_OUTPUT_DIR)\qir68k: src/qcc_backend_c.cpp src/qcc_backend_peephole.c ../../tools/build_xcc_win.cmd
+	call "$(HOST_OUTPUT_DIR)\qcpp.exe" "-I$(DEFS)" src\qcc_backend_c.cpp "%TEMP%\q9xcc-qir68k-pre.c"
+	..\..\tools\build_xcc_win.cmd qir68k "$(TARGET_OUTPUT_DIR)" "%TEMP%\q9xcc-qir68k-pre.c" "-olM=512K"
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qir68k" del "$(TARGET_OUTPUT_DIR)\qir68k"

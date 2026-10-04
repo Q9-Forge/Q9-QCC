@@ -136,3 +136,42 @@ q9CC: mwcc-status
 
 mwcc-status:
 	echo 'Microware CC build is not enabled: qcir currently requires an ISO C compiler'
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qcir.exe
+$(HOST_OUTPUT_DIR)\qcir.exe: data/qcc_p.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcir.exe" data\qcc_p.c
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qcir.exe" del "$(HOST_OUTPUT_DIR)\qcir.exe"
+
+[WQQ]
+all: windowsQCC
+windowsQCC: win-qcpp-host win-qcir-host xqcc $(HOST_OUTPUT_DIR)\qcc.exe
+xqcc: $(TARGET_OUTPUT_DIR)\qcir
+$(TARGET_OUTPUT_DIR)\qcir: data/qcc_p.c $(TARGET_CC)
+	if not exist "$(TARGET_OUTPUT_DIR)" mkdir "$(TARGET_OUTPUT_DIR)"
+	set "PATH=$(HOST_OUTPUT_DIR);%PATH%" && "$(TARGET_CC)" --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)\qcir" data\qcc_p.c
+win-qcpp-host: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: ../q9-qcpp/src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" ..\q9-qcpp\src\qcpp.c
+win-qcir-host: $(HOST_OUTPUT_DIR)\qcir.exe
+$(HOST_OUTPUT_DIR)\qcir.exe: data/qcc_p.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcir.exe" data\qcc_p.c
+$(HOST_OUTPUT_DIR)\qcc.exe: ../../Q9-QCC/src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" ..\..\Q9-QCC\src\qcc.c
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qcir" del "$(TARGET_OUTPUT_DIR)\qcir"
+
+[WXQ]
+all: windowsXCC
+windowsXCC: xcc
+xcc: $(TARGET_OUTPUT_DIR)\qcir
+$(TARGET_OUTPUT_DIR)\qcir: data/qcc_p.c ../../tools/build_xcc_win.cmd
+	..\..\tools\build_xcc_win.cmd qcir "$(TARGET_OUTPUT_DIR)" "%CD%\data\qcc_p.c" "-DQCC_BUFFERED_OUTPUT -olM=1024K"
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qcir" del "$(TARGET_OUTPUT_DIR)\qcir"

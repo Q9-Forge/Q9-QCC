@@ -129,3 +129,38 @@ MWCC_STATUS = requires a verified ISO-to-K&R converter on Q9
 
 mwcc-status:
 	echo 'MWCC build not enabled: iso2kr currently depends on clang-format and is not verified on Q9'
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" src\qcpp.c
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qcpp.exe" del "$(HOST_OUTPUT_DIR)\qcpp.exe"
+
+[WQQ]
+all: windowsQCC
+windowsQCC: win-qcpp-host xqcc $(HOST_OUTPUT_DIR)\qcc.exe
+xqcc: $(TARGET_OUTPUT_DIR)\qcpp
+$(TARGET_OUTPUT_DIR)\qcpp: src/qcpp.c $(TARGET_CC)
+	if not exist "$(TARGET_OUTPUT_DIR)" mkdir "$(TARGET_OUTPUT_DIR)"
+	set "PATH=$(HOST_OUTPUT_DIR);%PATH%" && "$(TARGET_CC)" --largedata --stack 512K -o "$(TARGET_OUTPUT_DIR)\qcpp" src\qcpp.c
+win-qcpp-host: $(HOST_OUTPUT_DIR)\qcpp.exe
+$(HOST_OUTPUT_DIR)\qcpp.exe: src/qcpp.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)\qcpp.exe" src\qcpp.c
+$(HOST_OUTPUT_DIR)\qcc.exe: ../../Q9-QCC/src/qcc.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)\qcc.exe" ..\..\Q9-QCC\src\qcc.c
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qcpp" del "$(TARGET_OUTPUT_DIR)\qcpp"
+
+[WXQ]
+all: windowsXCC
+windowsXCC: xcc
+xcc: $(TARGET_OUTPUT_DIR)\qcpp
+$(TARGET_OUTPUT_DIR)\qcpp: src/qcpp.c ../../tools/build_xcc_win.cmd
+	..\..\tools\build_xcc_win.cmd qcpp "$(TARGET_OUTPUT_DIR)" "%CD%\src\qcpp.c" "-olM=512K"
+clean:
+	if exist "$(TARGET_OUTPUT_DIR)\qcpp" del "$(TARGET_OUTPUT_DIR)\qcpp"
