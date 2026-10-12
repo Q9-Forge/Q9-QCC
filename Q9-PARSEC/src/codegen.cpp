@@ -1073,6 +1073,9 @@ int genParserC(const char* path) {
 		emitCString(fp, lexWs);
 		fprintf(fp, ";\n");
 		fprintf(fp, "static void ws(void) {\n\tfor (;;) {\n");
+		/* Accept qcpp -lines markers; sourceLocAt() reads their locations during replay. */
+		fprintf(fp, R"Q9SRC(		if (strncmp(p, "#line ", 6) == 0) { while (*p && *p != '\n') p++; if (*p) p++; continue; }
+)Q9SRC");
 		fprintf(fp, "\t\tif (*p && strchr(wsSet, *p)) { p++; continue; }\n");
 		for (r = 0; r < lexLineCommentCnt; r++) {
 			fprintf(fp, "\t\tif (strncmp(p, ");
@@ -1133,6 +1136,8 @@ int genParserC(const char* path) {
 		   on the self-hosted 68k path.  Keep a stable routine ID instead and
 		   dispatch directly after parsing has completed. */
 		fprintf(fp, "typedef struct { int id; const char* start; const char* end; } ActionLogEntry;\n");
+		fprintf(fp, R"Q9SRC(static int sourceLocAt(const char* at, int* lineOut, char* fileOut, int fileCap) { const char* q = parserInputStart; int line = 1, marked = 0; fileOut[0] = 0; while (q < at && *q) { if ((q == parserInputStart || q[-1] == '\n') && strncmp(q, "#line ", 6) == 0) { int n = 0; q += 6; while (*q == ' ' || *q == '\t') q++; while (*q >= '0' && *q <= '9') { if (n < 214748364) n = n * 10 + (*q - '0'); q++; } while (*q == ' ' || *q == '\t') q++; if (*q == '"') { int k = 0; q++; while (*q && *q != '"' && *q != '\n') { char c = *q++; if (c == '\\' && *q) c = *q++; if (k + 1 < fileCap) fileOut[k++] = c; } fileOut[k] = 0; if (*q == '"') q++; marked = 1; } while (*q && *q != '\n') q++; if (*q) q++; if (n > 0) line = n; continue; } if (*q++ == '\n') line++; } *lineOut = line; return marked; }
+)Q9SRC");
 		fprintf(fp, "static ActionLogEntry* actionLog;\nstatic int actionLogCap;\n");
 		fprintf(fp, "static void actionLogDispatch(int id, const char* start, const char* end);\n");
 		fprintf(fp, "static void actionLogPush(int id, const char* start, const char* end) {\n");
@@ -1142,7 +1147,11 @@ int genParserC(const char* path) {
 		fprintf(fp, "\tactionLog[actionLogLen].end = end;\n");
 		fprintf(fp, "\tactionLogLen++;\n}\n");
 		fprintf(fp, "static void actionLogReplay(void) {\n");
-		fprintf(fp, "\tint i;\n\tfor (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);\n}\n\n");
+		fprintf(fp, R"Q9SRC(	int i, line, j; char file[512]; int marked;
+	for (i = 0; i < actionLogLen; i++) { marked = sourceLocAt(actionLog[i].start, &line, file, sizeof(file)); if (marked) { printf(";@Q9SRC %%d ", line); for (j = 0; file[j]; j++) printf("%%02x", (unsigned char)file[j]); printf("\n"); } actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end); }
+}
+
+)Q9SRC");
 		fprintf(fp, "/* ACTION routines from [USER-CODE] (copied verbatim) */\n");
 		for (r = 0; r < routinesCCnt; r++) {
 			fprintf(fp, "%s\n", routinesC[r].text);

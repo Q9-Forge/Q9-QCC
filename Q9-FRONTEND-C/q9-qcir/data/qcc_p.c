@@ -39,6 +39,7 @@ static int idch(int c) {
 static const char wsSet[] = " \x09\x0d\x0a";
 static void ws(void) {
 	for (;;) {
+		if (strncmp(p, "#line ", 6) == 0) { while (*p && *p != '\n') p++; if (*p) p++; continue; }
 		if (*p && strchr(wsSet, *p)) { p++; continue; }
 		if (strncmp(p, "//", 2) == 0) { while (*p && *p != '\n') p++; continue; }
 		if (strncmp(p, "/*", 2) == 0) { p += 2; while (*p && strncmp(p, "*/", 2) != 0) p++; if (*p) p += 2; continue; }
@@ -48,6 +49,23 @@ static void ws(void) {
 
 extern void exit(int);
 typedef struct { int id; const char* start; const char* end; } ActionLogEntry;
+static int sourceLocAt(const char* at, int* lineOut, char* fileOut, int fileCap) {
+	const char* q = parserInputStart;
+	int line = 1, marked = 0;
+	fileOut[0] = 0;
+	while (q < at && *q) {
+		if ((q == parserInputStart || q[-1] == '\n') && strncmp(q, "#line ", 6) == 0) {
+			int n = 0; q += 6;
+			while (*q == ' ' || *q == '\t') q++;
+			while (*q >= '0' && *q <= '9') { if (n < 214748364) n = n * 10 + (*q - '0'); q++; }
+			while (*q == ' ' || *q == '\t') q++;
+			if (*q == '"') { int k = 0; q++; while (*q && *q != '"' && *q != '\n') { char c = *q++; if (c == '\\' && *q) c = *q++; if (k + 1 < fileCap) fileOut[k++] = c; } fileOut[k] = 0; if (*q == '"') q++; marked = 1; }
+			while (*q && *q != '\n') q++; if (*q) q++; if (n > 0) line = n; continue;
+		}
+		if (*q++ == '\n') line++;
+	}
+	*lineOut = line; return marked;
+}
 static ActionLogEntry* actionLog;
 static int actionLogCap;
 static void actionLogDispatch(int id, const char* start, const char* end);
@@ -59,8 +77,12 @@ static void actionLogPush(int id, const char* start, const char* end) {
 	actionLogLen++;
 }
 static void actionLogReplay(void) {
-	int i;
-	for (i = 0; i < actionLogLen; i++) actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);
+	int i, line, j, marked; char file[512];
+	for (i = 0; i < actionLogLen; i++) {
+		marked = sourceLocAt(actionLog[i].start, &line, file, sizeof(file));
+		if (marked) { printf(";@Q9SRC %d ", line); for (j = 0; file[j]; j++) printf("%02x", (unsigned char)file[j]); printf("\n"); }
+		actionLogDispatch(actionLog[i].id, actionLog[i].start, actionLog[i].end);
+	}
 }
 
 /* ACTION-Routinen aus [NUTZER-CODE] (roh uebernommen) */
