@@ -1728,6 +1728,11 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 	return 1;
 }
 
+static void emitSourceMarker(FILE* out, const Instr* insP) {
+	if (insP->argc == 2)
+		fprintf(out, "%s@Q9SRC %s %s\n", fullCommentPrefix(), insP->args[0], insP->args[1]);
+}
+
 static void emitIR(FILE* out) {
 	int serial = 0;
 	int fi, k;
@@ -2032,6 +2037,12 @@ static void emitIR(FILE* out) {
 		fi = order[oi];
 		fn = &funcs[fi];
 		if (fn->declOnly) continue; /* defined in ANOTHER file; no body here */
+		{
+			int sm = fn->first - 2;
+			while (sm >= 0 && strcmp(ir[sm].op, "Q9SRC") == 0) sm--;
+			for (sm++; sm < fn->first - 1; sm++)
+				if (strcmp(ir[sm].op, "Q9SRC") == 0) emitSourceMarker(out, &ir[sm]);
+		}
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
 			/* cstart.r calls the exported entry point according to the Microware C ABI:
@@ -2154,7 +2165,7 @@ static void emitIR(FILE* out) {
 			const char* op = insP->op;
 
 			if (strcmp(op, "Q9SRC") == 0) {
-				if (insP->argc == 2) fprintf(out, "%s@Q9SRC %s %s\n", fullCommentPrefix(), insP->args[0], insP->args[1]);
+				emitSourceMarker(out, insP);
 			} else if (emitDataOp(out, op, insP, fn, &serial)) {
 				/* See emitDataOp(): PUSH..PDIFF were moved out because of branch
 				   distance (2026-09-09). */
