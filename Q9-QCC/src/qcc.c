@@ -52,6 +52,7 @@ static char qcir[TEXT] = "../Q9-FRONTEND-C/q9-qcir/build/qcir";
 static int dry_run;
 static int print_config;
 static int emit_ir;
+static int source_debug;
 static int preprocess_only;
 static int assembly_only;
 static int object_only;
@@ -193,7 +194,7 @@ static void usage(const char *name)
 	printf("  --target NAME    Zielprofil\n  --frontend NAME  Frontend (Standard: c)\n");
 	printf("  --cpu TYPE       CPU an passende Werkzeuge weiterreichen\n");
 	printf("  --dry-run        Pipeline nur anzeigen\n  --print-config   Konfiguration anzeigen\n");
-	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  --tmpdir DIR     Zwischenverzeichnis\n");
+	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  -g               Quellzeilen in ROF-Debugtabelle aufnehmen\n  --tmpdir DIR     Zwischenverzeichnis\n");
 	printf("  --keep           Zwischendateien behalten\n  -o FILE           Ausgabedatei\n");
 	printf("  --stack SIZE     OS-9-Modulstack, z. B. 512K\n");
 	printf("  -E               nur vorverarbeiten\n  -S               nur Assembler erzeugen\n  -c               nur Objektdatei erzeugen\n");
@@ -353,6 +354,7 @@ int main(int argc, char **argv)
 		if (strcmp(argv[i], "--version") == 0) { printf("qcc %s\n", QCC_VERSION); return 0; }
 		if (strcmp(argv[i], "--dry-run") == 0) { dry_run = 1; continue; }
 		if (strcmp(argv[i], "--emit-ir") == 0) { emit_ir = 1; continue; }
+		if (strcmp(argv[i], "-g") == 0) { source_debug = 1; continue; }
 		if (strcmp(argv[i], "-E") == 0) { preprocess_only = 1; continue; }
 		if (strcmp(argv[i], "-S") == 0) { assembly_only = 1; continue; }
 		if (strcmp(argv[i], "-c") == 0) { object_only = 1; continue; }
@@ -455,7 +457,7 @@ int main(int argc, char **argv)
 		}
 		#if defined(_Q9OS) || defined(_OSK)
 		{
-			char *qcpp_argv[6];
+			char *qcpp_argv[7];
 			char qcpp_output[TEXT];
 			char qcpp_include[TEXT];
 			const char *qcpp_module = qcpp;
@@ -474,10 +476,18 @@ int main(int argc, char **argv)
 			sprintf(qcpp_output, "%s/input.i", tmpdir);
 			qcpp_argv[0] = (char *)qcpp_module;
 			qcpp_argv[1] = "-v";
-			qcpp_argv[2] = qcpp_include;
-			qcpp_argv[3] = (char *)input;
-			qcpp_argv[4] = qcpp_output;
-			qcpp_argv[5] = NULL;
+			if (source_debug) {
+				qcpp_argv[2] = "-lines";
+				qcpp_argv[3] = qcpp_include;
+				qcpp_argv[4] = (char *)input;
+				qcpp_argv[5] = qcpp_output;
+				qcpp_argv[6] = NULL;
+			} else {
+				qcpp_argv[2] = qcpp_include;
+				qcpp_argv[3] = (char *)input;
+				qcpp_argv[4] = qcpp_output;
+				qcpp_argv[5] = NULL;
+			}
 			if (q9_exec_argv(qcpp_module, qcpp_argv) != 0) {
 				fprintf(stderr, "qcc: qcpp fehlgeschlagen\n");
 				return 4;
@@ -496,7 +506,8 @@ int main(int argc, char **argv)
 					inc_base = include_arg;
 				} else inc_base = "../Q9-FRONTEND-C/q9-qcpp/include";
 			}
-			sprintf(command, "%s -I%s %s %s/input.i", qcpp, inc_base, input, tmpdir);
+			sprintf(command, "%s %s -I%s %s %s/input.i", qcpp,
+				source_debug ? "-lines" : "", inc_base, input, tmpdir);
 		}
 		#endif
 		#if !defined(_Q9OS) && !defined(_OSK)

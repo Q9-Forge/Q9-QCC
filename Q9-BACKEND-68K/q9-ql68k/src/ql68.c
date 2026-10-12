@@ -268,6 +268,7 @@ static int rofParse(int at0)
 	int at;
 	int i;
 	int k;
+	int debugSize;
 
 	if (rofN >= QL_ROF)
 		fatal("zu viele ROFs (QL_ROF)", "");
@@ -298,8 +299,7 @@ static int rofParse(int at0)
 	rRem[k] = be32(at0 + 44);
 	if (be32(at0 + 48) != 0)
 		fatal("remote INITIALISIERTE Daten sind noch nicht gemessen", "");
-	if (be32(at0 + 52) != 0)
-		fatal("Debuginformationen sind noch nicht gemessen", "");
+	debugSize = be32(at0 + 52);
 
 	at = at0 + 56;
 	rNameAt[k] = at;
@@ -330,9 +330,17 @@ static int rofParse(int at0)
 	rLocalAt[k] = at + 4;
 	at = rLocalAt[k] + rLocalN[k] * 6;
 
-	/* Four trailing longwords; all observed objects contain zero here. They
-	   are part of the object length and therefore matter when scanning libs. */
-	return at + 16;
+	/* Four trailing longwords precede the optional Microware-compatible
+	   debug section. QCC stores STABS type-2 source names and type-1 line
+	   records there; the linker does not need them to resolve code/data refs. */
+	at += 16;
+	if (debugSize > 0) {
+		if (at + debugSize > inLen) fatal("ROF-Debugabschnitt abgeschnitten", "");
+		if ((inBuf[at] & 255) != 0 || (inBuf[at + 1] & 255) != 0 ||
+		    (inBuf[at + 2] & 255) != 1 || (inBuf[at + 3] & 255) != 6)
+			fatal("unbekanntes ROF-Debugformat", "");
+	}
+	return at + debugSize;
 }
 
 /* A library is simply a sequence of ROFs, not a special format. The length
@@ -349,7 +357,9 @@ static int rofSkip(int at)
 	int i;
 	int cods;
 	int idat;
+	int debugSize;
 
+	debugSize = be32(at + 52);
 	idat = be32(at + 24);
 	cods = be32(at + 28);
 	at = skipName(at + 56);
@@ -367,7 +377,7 @@ static int rofSkip(int at)
 		at = at + 4 + be32(at) * 6;
 	}
 	n = be32(at);
-	return at + 4 + n * 6 + 16;
+	return at + 4 + n * 6 + 16 + debugSize;
 }
 
 /* Is a name referenced by an included ROF but not defined there? In that
