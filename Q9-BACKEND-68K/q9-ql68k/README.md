@@ -760,3 +760,12 @@ Aufrufer, und qr68 erzeugt sie nicht.
 `test/remotetest.sh` hält vier Fälle gegen l68, darunter einen 70-KB-
 Fernblock (ohne `remote` unmöglich) und einen Fall **ohne** Ferndaten, der
 unverändert byteidentisch bleiben muss. Alle vier gleich.
+
+
+## Q9-Flux-Quellzeilen
+
+Der Binder akzeptiert ROFs mit Microware-kompatiblen STABS-Zeilenrecords. Mit
+`-g` schreibt er neben dem Modul eine `<Modulname>.lines`-Datei für
+`Q9_LINE_DIR`; die Zeilenadressen enthalten die durch Linker und weitere
+ROF-Abschnitte verschobenen Codeoffsets. Ohne `-g` bleibt eine vorhandene
+Karte unverändert.
