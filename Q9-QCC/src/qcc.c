@@ -194,7 +194,7 @@ static void usage(const char *name)
 	printf("  --target NAME    Zielprofil\n  --frontend NAME  Frontend (Standard: c)\n");
 	printf("  --cpu TYPE       CPU an passende Werkzeuge weiterreichen\n");
 	printf("  --dry-run        Pipeline nur anzeigen\n  --print-config   Konfiguration anzeigen\n");
-	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  -g               Quellzeilen in ROF-Debugtabelle aufnehmen\n  --tmpdir DIR     Zwischenverzeichnis\n");
+	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  -g               Quellzeilenkarte fuer Q9-Flux erzeugen\n  --tmpdir DIR     Zwischenverzeichnis\n");
 	printf("  --keep           Zwischendateien behalten\n  -o FILE           Ausgabedatei\n");
 	printf("  --stack SIZE     OS-9-Modulstack, z. B. 512K\n");
 	printf("  -E               nur vorverarbeiten\n  -S               nur Assembler erzeugen\n  -c               nur Objektdatei erzeugen\n");
@@ -752,7 +752,8 @@ int main(int argc, char **argv)
 			 * selben Tag): Standardpfad auf die neue, projektunabhaengige SDK-Ablage
 			 * "/dd/LIBS/Q9" umgestellt (Nutzerwunsch), vorher "/dd/CMDS_XCC" (dort
 			 * lagen Werkzeuge und Bibliotheken gemischt durcheinander). */
-			char *stage_argv[8]; char stage_in[TEXT]; char stage_out[TEXT]; char stack_arg[TEXT];
+			char *stage_argv[9]; char stage_in[TEXT]; char stage_out[TEXT]; char stack_arg[TEXT];
+			int la;
 			char cstart_path[TEXT]; char qclib_arg[TEXT];
 			const char *libdir;
 			libdir = qcc_getenv("QCC_LIBDIR");
@@ -772,13 +773,13 @@ int main(int argc, char **argv)
 			 * -help) -- ohne erkennbaren Nachteil fuer kleine Module, also immer
 			 * mitgeben statt erst ab einer gemessenen Groesse. */
 			stage_argv[5] = "-a";
+			la = 6;
+			if (source_debug) stage_argv[la++] = "-g";
 			if (stack_size[0] != '\0') {
 				sprintf(stack_arg, "-M=%s", stack_size);
-				stage_argv[6] = stack_arg;
-				stage_argv[7] = NULL;
-			} else {
-				stage_argv[6] = NULL; stage_argv[7] = NULL;
+				stage_argv[la++] = stack_arg;
 			}
+			stage_argv[la] = NULL;
 			if (q9_exec_argv(linker, stage_argv) != 0) {
 				fprintf(stderr, "qcc: ql68k fehlgeschlagen\n");
 				return 4;
@@ -798,9 +799,9 @@ int main(int argc, char **argv)
 				} else libdir = "../Q9-BACKEND-68K/q9-qclib/build";
 			}
 			if (stack_size[0] != '\0')
-				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -M=%s -O=%s", linker, libdir, tmpdir, libdir, stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a %s -M=%s -O=%s", linker, libdir, tmpdir, libdir, source_debug ? "-g" : "", stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 			else
-				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -O=%s", linker, libdir, tmpdir, libdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a %s -O=%s", linker, libdir, tmpdir, libdir, source_debug ? "-g" : "", output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
 		}
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
 		#endif
