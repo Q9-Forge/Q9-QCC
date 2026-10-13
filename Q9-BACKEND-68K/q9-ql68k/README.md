@@ -765,7 +765,7 @@ unverändert byteidentisch bleiben muss. Alle vier gleich.
 ## Q9-Flux-Quellzeilen
 
 Der Binder akzeptiert ROFs mit Microware-kompatiblen STABS-Zeilenrecords. Mit
-`-g` schreibt er neben dem Modul eine `<Modulname>.lines`-Datei für
-`Q9_LINE_DIR`; die Zeilenadressen enthalten die durch Linker und weitere
-ROF-Abschnitte verschobenen Codeoffsets. Ohne `-g` bleibt eine vorhandene
-Karte unverändert.
+`-g` schreibt er neben dem Modul eine `<modulname-klein>.lines`-Datei für
+`Q9_LINE_DIR`; der Dateiname ist wie beim Flux-Resolver kleingeschrieben. Die
+Zeilenadressen enthalten die durch Linker und weitere ROF-Abschnitte
+verschobenen Codeoffsets. Ohne `-g` bleibt eine vorhandene Karte unverändert.

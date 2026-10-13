@@ -81,8 +81,8 @@ make test
 ROF-Debugdaten weiter. Beim vollständigen Linken schreibt `ql68` zusätzlich
 `<Modulpfad>.lines` im von Q9-Flux verwendeten Format. Für die Anzeige im
 Debugger muss `Q9_LINE_DIR` auf das Verzeichnis dieser Datei zeigen. Der
-Dateiname folgt dem Modulnamen: Wird das Modul als `build/demo.mod` erzeugt,
-heißt die Karte `build/demo.mod.lines`.
+Dateiname folgt dem kleingeschriebenen Modulnamen: Wird das Modul als
+`build/demo.mod` erzeugt, heißt die Karte `build/demo.mod.lines`.
 
 ```sh
 qcc -g -o build/demo.mod demo.c

@@ -1403,7 +1403,10 @@ static void writeLineMap(const char *outPath, int requested)
 	pathLen = dirLen + strLen(modName) + 7;
 	if (pathLen >= (int)sizeof(path)) fatal("Ausgabepfad fuer .lines zu lang", outPath);
 	for (i = 0; i < dirLen; i++) path[i] = outPath[i];
-	for (k = 0; modName[k]; k++) path[i++] = modName[k];
+	for (k = 0; modName[k]; k++) {
+		char ch = modName[k];
+		path[i++] = (ch >= 'A' && ch <= 'Z') ? (char)(ch + ('a' - 'A')) : ch;
+	}
 	path[i++] = '.'; path[i++] = 'l'; path[i++] = 'i'; path[i++] = 'n'; path[i++] = 'e'; path[i++] = 's'; path[i] = 0;
 	fp = fopen(path, "wb");
 	if (!fp) fatal("Quellzeilenkarte nicht schreibbar: ", path);
