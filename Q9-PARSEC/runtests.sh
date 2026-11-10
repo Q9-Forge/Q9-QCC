@@ -5012,6 +5012,37 @@ int drv_init(void){ return 0; }' 2>&1)
 	else
 		echo "ok    qcc-defmodul 17o: expliziter DRIVER-trap-0-Slot wird akzeptiert"
 	fi
+
+	# 17p) Phase 4: DRIVER-Modul bis in den Assembler -- psect mit Typ Drivr/Objct,
+	# Sprungtabelle mit sieben Slots als Einsprung, keine main-Pflicht, kein I/O-Anker.
+	if cc -std=c11 -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
+		build/qcc_p_dm '#defmodul NAME qdrv
+#defmodul TYPE DRIVER rbf
+#defmodul ENTRY init d_init
+#defmodul ENTRY read d_read
+#defmodul ENTRY write d_write
+#defmodul ENTRY getstat d_getstat
+#defmodul ENTRY setstat d_setstat
+#defmodul ENTRY term d_term
+#defmodul ENTRY trap 0
+int d_init(void){ return 0; }
+int d_read(void){ return 0; }
+int d_write(void){ return 0; }
+int d_getstat(void){ return 0; }
+int d_setstat(void){ return 0; }
+int d_term(void){ return 0; }' > build/qcc_dm_drv.ir 2>/dev/null
+		if ! build/qcc_backend_dm build/qcc_dm_drv.ir build/qcc_dm_drv.s68 -os9 >/dev/null 2>&1; then
+			echo "FAIL  qcc-defmodul 17p: 68k-Backend scheitert am DRIVER-Modul"; dmfail=1
+		elif ! grep -q 'psect	qdrv,(14<<8)!1,\$8000,1,0,tc_dispatch' build/qcc_dm_drv.s68; then
+			echo "FAIL  qcc-defmodul 17p: DRIVER-psect-Zeile falsch"; dmfail=1
+		elif [ "$(grep -c '^	dc\.w	' build/qcc_dm_drv.s68)" -ne 7 ] || grep -q '_os_write' build/qcc_dm_drv.s68; then
+			echo "FAIL  qcc-defmodul 17p: Sprungtabelle (7 Slots) oder I/O-Anker falsch"; dmfail=1
+		else
+			echo "ok    qcc-defmodul 17p: DRIVER-Modul mit Sprungtabelle, ohne main und ohne I/O-Anker"
+		fi
+	else
+		echo "FAIL  qcc-defmodul 17p: qcc_backend_dm baut nicht"; dmfail=1
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
