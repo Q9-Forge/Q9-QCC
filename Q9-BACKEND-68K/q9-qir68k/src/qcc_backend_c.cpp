@@ -23,6 +23,7 @@
 #define FUNC_ATTR_CONV_INTERRUPT 2
 #define FUNC_ATTR_CONV_TRAP 4
 #define FUNC_ATTR_CONV_NAKED 6
+#define FUNC_ATTR_DRIVER 8 /* modul driver: Register-ABI (a1,a2,d0,d2), Carry-Rueckgabe */
 #define LINE_LEN        512
 #define MAX_ARGS        8  /* DISPATCHTAB traegt sieben Slots (Treiber) */
 /* 2026-07-25: increased from 8192; the -largedata function-call mode
@@ -945,6 +946,28 @@ static void collectGlobals(void) {
 	}
 }
 
+/* Phase 4 (2026-11-10): Register-ABI-Einsprung fuer "modul driver". OS-9 ruft die
+   Treiberroutinen mit a1 (Path-Descriptor bzw. Geraetedeskriptor), a2 (Static
+   Storage), d0 und d2 (RBF: Sektoranzahl, LSN) auf (68k_techio.pdf). Die C-Funktion
+   erhaelt sie in dieser Reihenfolge als Parameter 1..4; nicht deklarierte werden
+   nicht uebergeben. Rueckgabe: 0 -> Carry geloescht, sonst Carry gesetzt und der
+   Fehlercode in d1.w. d2-d7/a2-a4 bleiben erhalten (a5/a6 sichert die Funktion bzw.
+   fasst sie nicht an). Der Einsprung ist ein erzeugter Stub vor der Funktion. */
+static void emitDriverEntry(FILE* out, const Function* fn, const char* asmName) {
+	static const char* const src[4] = { "a1", "a2", "d0", "d2" };
+	char stub[NAME_LEN + 40];
+	int k;
+	if (fn->nargs > 4) fatal("modul driver: hoechstens vier Parameter (a1, a2, d0, d2)");
+	mangledName(stub, "tc_drv_", fn->name, fn->isStatic);
+	fprintf(out, "%s:\tmovem.l\td2-d7/a2-a4,-(a7)\n", stub);
+	for (k = 0; k < fn->nargs; k++) fprintf(out, "\tmove.l\t%s,-(a7)\n", src[k]);
+	fprintf(out, "\tbsr\t%s\n", asmName);
+	if (fn->nargs > 0) fprintf(out, "\tlea\t%d(a7),a7\n", fn->nargs * 4);
+	fputs("\tmove.w\td0,d1\n\tmovem.l\t(a7)+,d2-d7/a2-a4\n\ttst.l\td0\n", out);
+	fprintf(out, "\tbne.s\t%s_err\n\tandi\t#$fe,ccr\n\trts\n", stub);
+	fprintf(out, "%s_err:\n\tori\t#1,ccr\n\trts\n\n", stub);
+}
+
 /* Phase 5 (2026-09-24): Emit function prolog based on calling convention */
 static void emitPrologByConvention(FILE* out, const char* asmName, const char* convention,
                                    int frameBytes, const char* framePtrReg) {
@@ -1048,13 +1071,14 @@ static void collectFunctions(void) {
 				else if (strcmp(attr, "naked") == 0) conv = FUNC_ATTR_CONV_NAKED;
 				else if (strcmp(attr, "driver") != 0) {
 					attrs = number(attr, insP->line);
-					if (attrs < 0 || attrs > 7) fatal("ungueltige FUNC-Attribute");
+					if (attrs < 0 || attrs > 15) fatal("ungueltige FUNC-Attribute");
 					conv = attrs & FUNC_ATTR_CONV_MASK;
 					current.isVariadic = (attrs & FUNC_ATTR_VARIADIC) != 0;
 				}
 				if (conv == FUNC_ATTR_CONV_INTERRUPT) strcpy(current.convention, "interrupt");
 				else if (conv == FUNC_ATTR_CONV_TRAP) strcpy(current.convention, "trap");
 				else if (conv == FUNC_ATTR_CONV_NAKED) strcpy(current.convention, "naked");
+				else if (attrs & FUNC_ATTR_DRIVER) strcpy(current.convention, "driver");
 			}
 			open = 1;
 			seenFunction = 1;
@@ -1788,7 +1812,9 @@ static void emitIR(FILE* out) {
 						int fi = findFunction(sym);
 						char an[NAME_LEN + 40];
 						if (fi < 0) { char m[200]; sprintf(m, "IR: DISPATCHTAB-Funktion %s nicht definiert", sym); fatal(m); }
-						mangledName(an, "tc_", sym, funcs[fi].isStatic);
+						/* driver-Funktionen werden ueber ihren Register-ABI-Einsprung
+						   (tc_drv_<name>) angesprungen, alle anderen direkt. */
+						mangledName(an, strcmp(funcs[fi].convention, "driver") == 0 ? "tc_drv_" : "tc_", sym, funcs[fi].isStatic);
 						fprintf(out, "\tdc.w\t%s\n", an);
 					}
 				}
@@ -2107,6 +2133,7 @@ static void emitIR(FILE* out) {
 			}
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
+		if (modIsDriver && strcmp(fn->convention, "driver") == 0) emitDriverEntry(out, fn, asmName);
 		emitPrologByConvention(out, asmName, fn->convention, fn->frameBytes, framePtr());
 		if (largeDataMode && os9Mode && strcmp(fn->name, "main") == 0) {
 			/* OS-9 cstart enters main directly; establish the one shared table

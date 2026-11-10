@@ -5043,6 +5043,35 @@ int d_term(void){ return 0; }' > build/qcc_dm_drv.ir 2>/dev/null
 	else
 		echo "FAIL  qcc-defmodul 17p: qcc_backend_dm baut nicht"; dmfail=1
 	fi
+
+	# 17q) Phase 4: "modul driver" -- IR-Attribut 8, Register-ABI-Einsprung (a1,a2,d0,d2 als
+	# Parameter 1..4, Carry/d1.w als Rueckgabe) und Sprungtabelle auf den Einsprung.
+	if build/qcc_p_dm '#defmodul NAME qdrv2
+#defmodul TYPE DRIVER rbf
+#defmodul ENTRY init d_init
+#defmodul ENTRY read d_read
+#defmodul ENTRY write d_read
+#defmodul ENTRY getstat d_init
+#defmodul ENTRY setstat d_init
+#defmodul ENTRY term d_init
+#defmodul ENTRY trap 0
+modul driver int d_init(void *dd, void *st){ return 0; }
+modul driver int d_read(void *pd, void *st, int count, int lsn){ return count - lsn; }' > build/qcc_dm_drv2.ir 2>/dev/null \
+	   && build/qcc_backend_dm build/qcc_dm_drv2.ir build/qcc_dm_drv2.s68 -os9 >/dev/null 2>&1; then
+		if ! grep -q '^FUNC d_read 4 0 8$' build/qcc_dm_drv2.ir; then
+			echo "FAIL  qcc-defmodul 17q: FUNC-Attribut 8 (driver) fehlt"; dmfail=1
+		elif ! grep -q 'dc\.w	tc_drv_d_read' build/qcc_dm_drv2.s68; then
+			echo "FAIL  qcc-defmodul 17q: Sprungtabelle zeigt nicht auf den Treiber-Einsprung"; dmfail=1
+		elif [ "$(sed -n '/^tc_drv_d_read:/,/^tc_drv_d_read_err:/p' build/qcc_dm_drv2.s68 | grep -c 'move.l	\(a1\|a2\|d0\|d2\),-(a7)')" -ne 4 ]; then
+			echo "FAIL  qcc-defmodul 17q: Registerparameter a1,a2,d0,d2 werden nicht uebergeben"; dmfail=1
+		elif ! grep -q 'ori	#1,ccr' build/qcc_dm_drv2.s68; then
+			echo "FAIL  qcc-defmodul 17q: Carry-Rueckgabe fehlt"; dmfail=1
+		else
+			echo "ok    qcc-defmodul 17q: modul driver mit Register-ABI und Carry-Rueckgabe"
+		fi
+	else
+		echo "FAIL  qcc-defmodul 17q: modul driver laesst sich nicht uebersetzen"; dmfail=1
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi

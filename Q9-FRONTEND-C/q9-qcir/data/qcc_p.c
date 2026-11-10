@@ -427,6 +427,7 @@ static int tcFunctionIsVariadic[MAX_FUNCTIONS];  /* 1 = "..." am Ende der Parame
 #define TC_FUNC_ATTR_CONV_INTERRUPT 2
 #define TC_FUNC_ATTR_CONV_TRAP 4
 #define TC_FUNC_ATTR_CONV_NAKED 6
+#define TC_FUNC_ATTR_DRIVER 8 /* modul driver: Register-ABI-Einsprung (Phase 4) */
 static char tcPendingConvention[64] = "";
 static char tcFunctionConvention[MAX_FUNCTIONS][64];
 /* Sammelzustand waehrend eine einzelne externDecl geparst wird (analog zu
@@ -3148,6 +3149,7 @@ void tc_funcbodybegin(const char* start, const char* end) {
 			if (strcmp(tcFunctionConvention[tcCurrentFuncIndex], "interrupt") == 0) attrs |= TC_FUNC_ATTR_CONV_INTERRUPT;
 			else if (strcmp(tcFunctionConvention[tcCurrentFuncIndex], "trap") == 0) attrs |= TC_FUNC_ATTR_CONV_TRAP;
 			else if (strcmp(tcFunctionConvention[tcCurrentFuncIndex], "naked") == 0) attrs |= TC_FUNC_ATTR_CONV_NAKED;
+			else if (strcmp(tcFunctionConvention[tcCurrentFuncIndex], "driver") == 0) attrs |= TC_FUNC_ATTR_DRIVER;
 		}
 		tcEmitModHeaderIfNeeded();
 		printf("FUNC %s %d %d %d\n", tcFuncName, tcLocalCount,
