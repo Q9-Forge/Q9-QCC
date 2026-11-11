@@ -1795,12 +1795,16 @@ static void emitIR(FILE* out) {
 	if (os9Mode) {
 		if (modIsDriver) {
 			/* Typ/Sprache: Drivr (14) <<8 + Objct (1); Attr/Rev aus attr=; die
-			   "stack"-Angabe ist bei Treibern die Groesse des Device-Static-Storage
-			   (psect-Parameter 5, wie in Q9-DHF-68k/driver/dhfdrv_68k.a). Der
-			   Einsprung ist die Sprungtabelle, die direkt hinter dem Kopf steht. */
+			   "stack"-Angabe ist bei Treibern die Groesse des Device-Static-Storage.
+			   ql68 setzt M$Mem (_mdata) aus dem reservierten Datenbereich (vsect, ds),
+			   NICHT aus dem psect-Parameter 5 -- der blieb sonst ohne Wirkung und der
+			   Dateimanager haette keinen Treiberspeicher angelegt. Der Einsprung ist
+			   die Sprungtabelle, die direkt hinter dem Kopf steht. */
 			const char* nm = modName[0] ? modName : psectName;
 			fprintf(out, "\tnam\t%s\n", nm);
-			fprintf(out, "\tpsect\t%s,(14<<8)!1,%s,%d,%ld,tc_dispatch\n\n", nm, modAttr, modEdition, modStack);
+			fprintf(out, "\tpsect\t%s,(14<<8)!1,%s,%d,0,tc_dispatch\n\n", nm, modAttr, modEdition);
+			if (modStack > 0)
+				fprintf(out, "\tvsect\ntc_static_storage:\tds.b\t%ld\n\tends\n\n", modStack);
 			fputs("tc_dispatch:\n", out);
 			{
 				int di;

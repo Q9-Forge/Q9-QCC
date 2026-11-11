@@ -5072,6 +5072,38 @@ modul driver int d_read(void *pd, void *st, int count, int lsn){ return count - 
 	else
 		echo "FAIL  qcc-defmodul 17q: modul driver laesst sich nicht uebersetzen"; dmfail=1
 	fi
+
+	# 17r) Treiber-Static-Storage: "#defmodul STACK n" wird bei DRIVER als vsect-ds reserviert
+	# (ql68 leitet M$Mem aus dem Datenbereich ab, nicht aus dem psect-Stackparameter).
+	if build/qcc_p_dm '#defmodul NAME qdrv3
+#defmodul STACK 576
+#defmodul TYPE DRIVER rbf
+#defmodul ENTRY init d_init
+#defmodul ENTRY read d_init
+#defmodul ENTRY write d_init
+#defmodul ENTRY getstat d_init
+#defmodul ENTRY setstat d_init
+#defmodul ENTRY term d_init
+#defmodul ENTRY trap 0
+modul driver int d_init(void *dd, void *st){ return 0; }' > build/qcc_dm_drv3.ir 2>/dev/null \
+	   && build/qcc_backend_dm build/qcc_dm_drv3.ir build/qcc_dm_drv3.s68 -os9 >/dev/null 2>&1; then
+		if ! grep -q 'ds\.b	576' build/qcc_dm_drv3.s68 || ! grep -q '^	vsect$' build/qcc_dm_drv3.s68; then
+			echo "FAIL  qcc-defmodul 17r: Static-Storage (vsect ds.b 576) fehlt"; dmfail=1
+		else
+			echo "ok    qcc-defmodul 17r: Treiber-Static-Storage als vsect reserviert"
+		fi
+	else
+		echo "FAIL  qcc-defmodul 17r: Treiber mit STACK laesst sich nicht uebersetzen"; dmfail=1
+	fi
+
+	# 17s) Cast mit volatile/const: "(volatile unsigned char *)addr" muss parsen und den Zeigertyp tragen.
+	out=$(build/qcc_p_dm 'int rd(unsigned long a){ volatile unsigned char *p; p = (volatile unsigned char *)a; return *p; }
+int rc(unsigned long a){ const unsigned char *q = (const volatile unsigned char *)a; return *q; }' 2>&1)
+	if [ "$(echo "$out" | tail -1)" != "OK" ]; then
+		echo "FAIL  qcc-defmodul 17s: Cast mit volatile/const wird nicht akzeptiert: $(echo "$out" | tail -2 | tr '\n' ' ')"; dmfail=1
+	else
+		echo "ok    qcc-defmodul 17s: Cast mit volatile/const-Qualifizierer"
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
