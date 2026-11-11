@@ -8,35 +8,35 @@
 #================================================================================
 
 [EBNF-QUELLTEXT]
- <program>                        = { <globalDecl>
-                                  | <structDecl>
-                                  | <unionDecl>
-                                  | <typedefDecl>
-                                  | <enumDecl>
-                                  | <externDecl>
-                                  | <funcdef>
-                                  | <defosDecl>
-                                  | <defmodulEntryDecl>
+ <program>                        = { <globalDecl> 
+                                  | <structDecl> 
+                                  | <unionDecl> 
+                                  | <typedefDecl> 
+                                  | <enumDecl> 
+                                  | <externDecl> 
+                                  | <funcdef> 
+                                  | <defosDecl> 
+                                  | <defmodulEntryDecl> 
                                   | <defmodulDecl> } .
 
- <defmodulDecl>                   = "#defmodul" ( <defmodulName>
-                                  | <defmodulEdition>
-                                  | <defmodulStack>
-                                  | <defmodulAttr>
-                                  | <defmodulType>
-                                  | <defmodulNotImpl>
+ <defmodulDecl>                   = "#defmodul" ( <defmodulName> 
+                                  | <defmodulEdition> 
+                                  | <defmodulStack> 
+                                  | <defmodulAttr> 
+                                  | <defmodulType> 
+                                  | <defmodulNotImpl> 
                                   | <defmodulUnknown> ) .
 
  <defmodulEntryDecl>              = "#defmodul" "ENTRY" <ident> <defmodulEntryTarget> .
 
- <defmodulEntryTarget>            = <ident>
+ <defmodulEntryTarget>            = <ident> 
                                   | <defmodulNumber> .
 
  <defmodulName>                   = "NAME" <defmodulNameArg> .
 
  <defmodulNameArg>                = <ident> .
 
- <defmodulNumber>                 = ( <hexNumber>
+ <defmodulNumber>                 = ( <hexNumber> 
                                   | <decNumber> ) [ <integerSuffix> ] .
 
  <defmodulEdition>                = "EDITION" <defmodulEditionArg> .
@@ -51,11 +51,11 @@
 
  <defmodulAttrArg>                = <defmodulNumber> .
 
- <defmodulType>                   = <defmodulTypeKw> ( <defmodulTypeProg>
-                                  | <defmodulTypeSystem>
-                                  | <defmodulTypeNoos>
-                                  | <defmodulTypeDriver>
-                                  | <defmodulTypeManager>
+ <defmodulType>                   = <defmodulTypeKw> ( <defmodulTypeProg> 
+                                  | <defmodulTypeSystem> 
+                                  | <defmodulTypeNoos> 
+                                  | <defmodulTypeDriver> 
+                                  | <defmodulTypeManager> 
                                   | <defmodulTypeTraphandler> ) .
 
  <defmodulTypeKw>                 = "TYPE" .
@@ -64,7 +64,7 @@
 
  <defmodulTypeSystem>             = "SYSTEM" .
 
- <defmodulTypeNoos>               = ( "NOOS"
+ <defmodulTypeNoos>               = ( "NOOS" 
                                   | "BAREMETAL" ) <defmodulEntryArg> .
 
  <defmodulTypeDriver>             = "DRIVER" <ident> .
@@ -75,7 +75,7 @@
 
  <defmodulEntryArg>               = <ident> .
 
- <defmodulNotImpl>                = ( "ORG"
+ <defmodulNotImpl>                = ( "ORG" 
                                   | "ALIGN" ) <defmodulNumber> .
 
  <defmodulUnknown>                = <ident> .
@@ -86,25 +86,25 @@
 
  <modulKw>                        = "modul" <moduleKind> .
 
- <moduleKind>                     = <modulConvention>
+ <moduleKind>                     = <modulConvention> 
                                   | <modulSyscall> .
 
- <modulConvention>                = "driver"
-                                  | "interrupt"
-                                  | "trap"
+ <modulConvention>                = "driver" 
+                                  | "interrupt" 
+                                  | "trap" 
                                   | "naked" .
 
  <modulSyscall>                   = "syscall" "(" <defmodulNumber> "," <syscallArchetype> ")" .
 
- <syscallArchetype>               = "CALL_D"
-                                  | "CALL_DA"
+ <syscallArchetype>               = "CALL_D" 
+                                  | "CALL_DA" 
                                   | "CALL_FORK" .
 
  <externDecl>                     = "extern" <type> <pointerDecl> <externName> <externParams> ";" .
 
  <externName>                     = <ident> .
 
- <externParams>                   = <voidParams>
+ <externParams>                   = <voidParams> 
                                   | <externRealParams> .
 
  <externRealParams>               = "(" <externParamList> ")" .
@@ -119,12 +119,12 @@
 
  <enumItem>                       = <ident> [ "=" <enumValue> ] .
 
- <enumValue>                      = <globalNeg>
+ <enumValue>                      = <globalNeg> 
                                   | <globalNumber> .
 
  <structDecl>                     = "struct" <structName> <structTail> .
 
- <structTail>                     = <structBodyOpen> <structField> { <structField> } "}" ";"
+ <structTail>                     = <structBodyOpen> <structField> { <structField> } "}" ";" 
                                   | ";" .
 
  <structBodyOpen>                 = "{" .
@@ -145,23 +145,23 @@
 
  <fieldName>                      = <ident> .
 
- <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";"
+ <typedefDecl>                    = "typedef" <typedefType> <typedefDeclarator> { "," <typedefDeclarator> } ";" 
                                   | <fnPtrTypedef> .
 
  <typedefDeclarator>              = <pointerDecl> <typedefTargetName> .
 
  <fnPtrTypedef>                   = "typedef" <type> <pointerDecl> <fnPtrOpen> "*" { <pointerStar> } <fnPtrName> ")" <fnPtrParams> ";" .
 
- <fnPtrParams>                    = <voidParams>
+ <fnPtrParams>                    = <voidParams> 
                                   | <externRealParams> .
 
  <fnPtrOpen>                      = "(" .
 
  <fnPtrName>                      = <ident> .
 
- <typedefType>                    = <anonStructType>
-                                  | <anonUnionType>
-                                  | <anonEnumType>
+ <typedefType>                    = <anonStructType> 
+                                  | <anonUnionType> 
+                                  | <anonEnumType> 
                                   | <type> .
 
  <anonEnumType>                   = "enum" [ <enumTagName> ] <anonEnumOpen> <enumItem> { "," <enumItem> } "}" .
@@ -184,7 +184,7 @@
 
  <typedefTargetName>              = <ident> .
 
- <globalDecl>                     = <externGlobalDecl>
+ <globalDecl>                     = <externGlobalDecl> 
                                   | <plainGlobalDecl> .
 
  <externGlobalDecl>               = "extern" <type> <pointerDecl> <globalName> ";" .
@@ -199,8 +199,8 @@
 
  <staticKw>                       = "static" .
 
- <globalInit>                     = <globalValue>
-                                  | <initList>
+ <globalInit>                     = <globalValue> 
+                                  | <initList> 
                                   | <globalStringInit> .
 
  <globalStringInit>               = "\042" { <character> } "\042" .
@@ -211,27 +211,27 @@
 
  <constSize>                      = <globalNumber> { <constSizeOp> <globalNumber> } .
 
- <constSizeOp>                    = "+"
-                                  | "-"
+ <constSizeOp>                    = "+" 
+                                  | "-" 
                                   | "*" .
 
- <globalValue>                    = <globalFloat>
-                                  | <globalNumber>
-                                  | <globalNeg>
+ <globalValue>                    = <globalFloat> 
+                                  | <globalNumber> 
+                                  | <globalNeg> 
                                   | <globalBool> .
 
  <globalFloat>                    = <digit> { <digit> } <floatTail> .
 
- <globalBool>                     = "true"
+ <globalBool>                     = "true" 
                                   | "false" .
 
- <globalNeg>                      = "-" ( <globalFloat>
+ <globalNeg>                      = "-" ( <globalFloat> 
                                   | <globalNumber> ) .
 
- <globalNumber>                   = ( <hexNumber>
+ <globalNumber>                   = ( <hexNumber> 
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <funcdef>                        = <funcHead> ( <funcBody>
+ <funcdef>                        = <funcHead> ( <funcBody> 
                                   | <protoEnd> ) .
 
  <funcBody>                       = <funcBodyOpen> { <statement> } "}" .
@@ -244,8 +244,8 @@
 
  <retConstKw>                     = "const" .
 
- <funcParams>                     = <voidParams>
-                                  | <krParams>
+ <funcParams>                     = <voidParams> 
+                                  | <krParams> 
                                   | <normalParams> .
 
  <krParams>                       = <krOpen> <krName> { "," <krName> } ")" <krDecl> { <krDecl> } .
@@ -270,8 +270,8 @@
 
  <funcEllipsis>                   = "..." .
 
- <param>                          = <fnPtrParam>
-                                  | <ptrArrayParam>
+ <param>                          = <fnPtrParam> 
+                                  | <ptrArrayParam> 
                                   | [ <registerKw> ] [ <constKw> ] [ <volatileKw> ] <type> <pointerDecl> [ <paramDecl> ] .
 
  <ptrArrayParam>                  = <type> "(" "*" <fnPtrParamName> ")" <arraySizeN> { <arraySizeN> } .
@@ -290,27 +290,27 @@
 
  <blockOpen>                      = "{" .
 
- <statement>                      = <labelStmt>
+ <statement>                      = <labelStmt> 
                                   | <unlabeledStmt> .
 
- <unlabeledStmt>                  = <ifStmt>
-                                  | <whileStmt>
-                                  | <forStmt>
-                                  | <doStmt>
-                                  | <switchStmt>
-                                  | <breakStmt>
-                                  | <continueStmt>
-                                  | <gotoStmt>
-                                  | <returnStmt>
-                                  | <block>
-                                  | <emptyStmt>
-                                  | <voidCastStmt>
-                                  | <vaStmt>
-                                  | <callStmt>
-                                  | <incDecStmt>
-                                  | <assignStmt>
-                                  | <fnPtrVarDecl>
-                                  | <staticVarDecl>
+ <unlabeledStmt>                  = <ifStmt> 
+                                  | <whileStmt> 
+                                  | <forStmt> 
+                                  | <doStmt> 
+                                  | <switchStmt> 
+                                  | <breakStmt> 
+                                  | <continueStmt> 
+                                  | <gotoStmt> 
+                                  | <returnStmt> 
+                                  | <block> 
+                                  | <emptyStmt> 
+                                  | <voidCastStmt> 
+                                  | <vaStmt> 
+                                  | <callStmt> 
+                                  | <incDecStmt> 
+                                  | <assignStmt> 
+                                  | <fnPtrVarDecl> 
+                                  | <staticVarDecl> 
                                   | <varDecl> .
 
  <fnPtrVarDecl>                   = <type> <pointerDecl> <fnPtrOpen> "*" { <pointerStar> } <fnPtrVarName> ")" <fnPtrParams> ";" .
@@ -323,7 +323,7 @@
 
  <staticArrayDim>                 = "[" <initNumber> "]" .
 
- <staticInit>                     = <globalValue>
+ <staticInit>                     = <globalValue> 
                                   | <staticRuntimeInit> .
 
  <staticRuntimeInit>              = <expr> .
@@ -342,8 +342,8 @@
 
  <caseLabel>                      = "case" <caseValue> ":" .
 
- <caseValue>                      = <ident>
-                                  | <caseNeg>
+ <caseValue>                      = <ident> 
+                                  | <caseNeg> 
                                   | <caseNumber> .
 
  <caseNeg>                        = "-" <caseNumber> .
@@ -360,7 +360,7 @@
 
  <registerKw>                     = "register" .
 
- <varDeclarator>                  = <ptrArrayDecl>
+ <varDeclarator>                  = <ptrArrayDecl> 
                                   | <plainVarDeclarator> .
 
  <plainVarDeclarator>             = <pointerDecl> <localDecl> [ "=" <varInit> ] .
@@ -369,55 +369,55 @@
 
  <localDecl>                      = <localName> [ <arraySize> { <arraySizeN> } ] .
 
- <varInit>                        = <arrayStringInit>
-                                  | <expr>
+ <varInit>                        = <arrayStringInit> 
+                                  | <expr> 
                                   | <initList> .
 
  <arrayStringInit>                = <stringLit> .
 
  <initList>                       = "{" [ <initValue> { "," <initValue> } ] "}" .
 
- <initValue>                      = <initFloat>
-                                  | <initNumber>
-                                  | <initNeg>
-                                  | <initBool>
-                                  | <initString>
+ <initValue>                      = <initFloat> 
+                                  | <initNumber> 
+                                  | <initNeg> 
+                                  | <initBool> 
+                                  | <initString> 
                                   | <initList> .
 
  <initString>                     = "\042" { <character> } "\042" .
 
- <initBool>                       = "true"
+ <initBool>                       = "true" 
                                   | "false" .
 
- <initNeg>                        = "-" ( <initFloat>
+ <initNeg>                        = "-" ( <initFloat> 
                                   | <initNumber> ) .
 
  <initFloat>                      = <digit> { <digit> } <floatTail> .
 
- <initNumber>                     = ( <hexNumber>
+ <initNumber>                     = ( <hexNumber> 
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <assignStmt>                     = <chainAssign>
+ <assignStmt>                     = <chainAssign> 
                                   | <target> <assignop> <expr> ";" .
 
  <chainAssign>                    = <target> <assignop> <target> <assignop> <expr> ";" .
 
- <assignop>                       = "="
-                                  | "+="
-                                  | "-="
-                                  | "*="
-                                  | "/="
-                                  | "%="
-                                  | "<<="
-                                  | ">>="
-                                  | "&="
-                                  | "^="
+ <assignop>                       = "=" 
+                                  | "+=" 
+                                  | "-=" 
+                                  | "*=" 
+                                  | "/=" 
+                                  | "%=" 
+                                  | "<<=" 
+                                  | ">>=" 
+                                  | "&=" 
+                                  | "^=" 
                                   | "|=" .
 
- <callStmt>                       = <call> ";"
+ <callStmt>                       = <call> ";" 
                                   | <indirectCall> ";" .
 
- <vaStmt>                         = <vaStartCall> ";"
+ <vaStmt>                         = <vaStartCall> ";" 
                                   | <vaEndCall> ";" .
 
  <vaStartCall>                    = "va_start" "(" <vaApRef> "," <vaLastName> ")" .
@@ -480,8 +480,8 @@
 
  <forStep>                        = <forStepItem> { <forComma> <forStepItem> } .
 
- <forStepItem>                    = <target> <assignop> <expr>
-                                  | <postIncDec>
+ <forStepItem>                    = <target> <assignop> <expr> 
+                                  | <postIncDec> 
                                   | <preIncDec> .
 
  <forBody>                        = <statement> .
@@ -518,7 +518,7 @@
 
  <commaTok>                       = "," .
 
- <commaItem>                      = <commaAssign>
+ <commaItem>                      = <commaAssign> 
                                   | <commaValue> .
 
  <commaAssign>                    = <target> <assignop> <expr> .
@@ -559,44 +559,44 @@
 
  <shiftRhs>                       = <addExpr> .
 
- <shiftop>                        = "<<"
+ <shiftop>                        = "<<" 
                                   | ">>" .
 
- <relop>                          = "<="
-                                  | ">="
-                                  | "=="
-                                  | "!="
-                                  | "<"
+ <relop>                          = "<=" 
+                                  | ">=" 
+                                  | "==" 
+                                  | "!=" 
+                                  | "<" 
                                   | ">" .
 
  <addExpr>                        = <term> { <addop> <term> } .
 
- <addop>                          = "+"
+ <addop>                          = "+" 
                                   | "-" .
 
  <term>                           = <factor> { <mulop> <factor> } .
 
- <mulop>                          = "*"
-                                  | "/"
+ <mulop>                          = "*" 
+                                  | "/" 
                                   | "%" .
 
- <factor>                         = <sizeofExpr>
-                                  | <vaArgExpr>
-                                  | <castExpr>
-                                  | <preIncDec>
-                                  | <postIncDec>
-                                  | <parenOpen> <commaExpr> <parenClose> [ <postfixIndex> ]
-                                  | <call> [ <postfixIndex> ] [ <callMember> ]
-                                  | <indirectCall>
-                                  | <boolLit>
-                                  | <addressRef>
-                                  | <derefRef>
-                                  | <varRef>
-                                  | <charLit>
-                                  | <floatLit>
-                                  | <number>
-                                  | <stringLit> [ <postfixIndex> ]
-                                  | <posFactor>
+ <factor>                         = <sizeofExpr> 
+                                  | <vaArgExpr> 
+                                  | <castExpr> 
+                                  | <preIncDec> 
+                                  | <postIncDec> 
+                                  | <parenOpen> <commaExpr> <parenClose> [ <postfixIndex> ] 
+                                  | <call> [ <postfixIndex> ] [ <callMember> ] 
+                                  | <indirectCall> 
+                                  | <boolLit> 
+                                  | <addressRef> 
+                                  | <derefRef> 
+                                  | <varRef> 
+                                  | <charLit> 
+                                  | <floatLit> 
+                                  | <number> 
+                                  | <stringLit> [ <postfixIndex> ] 
+                                  | <posFactor> 
                                   | <negFactor> .
 
  <postfixIndex>                   = <index> .
@@ -607,75 +607,75 @@
 
  <stringSep>                      = { <stringSpace> } .
 
- <stringSpace>                    = "\040"
-                                  | "\011"
-                                  | "\015"
+ <stringSpace>                    = "\040" 
+                                  | "\011" 
+                                  | "\015" 
                                   | "\012" .
 
  <charLit>                        = "\047" <charLitBody> "\047" .
 
- <charLitBody>                    = <charLitEscape>
+ <charLitBody>                    = <charLitEscape> 
                                   | <charLitPlain> .
 
  <charLitEscape>                  = "\134" <charLitEscChar> .
 
- <charLitEscChar>                 = <octEscape>
-                                  | <hexEscape>
-                                  | "n"
-                                  | "t"
-                                  | "r"
+ <charLitEscChar>                 = <octEscape> 
+                                  | <hexEscape> 
+                                  | "n" 
+                                  | "t" 
+                                  | "r" 
                                   | "\134" .
 
  <octEscape>                      = ( "0"~"7" ) [ ( "0"~"7" ) [ ( "0"~"7" ) ] ] .
 
- <hexEscape>                      = ( "x"
-                                  | "X" ) ( "0"~"9"
-                                  | "a"~"f"
-                                  | "A"~"F" ) [ ( "0"~"9"
-                                  | "a"~"f"
+ <hexEscape>                      = ( "x" 
+                                  | "X" ) ( "0"~"9" 
+                                  | "a"~"f" 
+                                  | "A"~"F" ) [ ( "0"~"9" 
+                                  | "a"~"f" 
                                   | "A"~"F" ) ] .
 
- <charLitPlain>                   = " "~"&"
-                                  | "("~"["
+ <charLitPlain>                   = " "~"&" 
+                                  | "("~"[" 
                                   | "]"~"~" .
 
- <character>                      = <strEscape>
-                                  | " "~"!"
+ <character>                      = <strEscape> 
+                                  | " "~"!" 
                                   | "#"~"~" .
 
  <strEscape>                      = "\134" <strEscChar> .
 
  <strEscChar>                     = " "~"~" .
 
- <negFactor>                      = ( "-"
-                                  | "!"
+ <negFactor>                      = ( "-" 
+                                  | "!" 
                                   | "~" ) <factor> .
 
  <posFactor>                      = "+" <factor> .
 
  <addressRef>                     = "&" <ident> [ <index> ] .
 
- <sizeofExpr>                     = "sizeof" ( "(" <sizeofArg> ")"
+ <sizeofExpr>                     = "sizeof" ( "(" <sizeofArg> ")" 
                                   | <sizeofVarName> ) .
 
- <sizeofArg>                      = <sizeofType>
-                                  | <sizeofVarName>
+ <sizeofArg>                      = <sizeofType> 
+                                  | <sizeofVarName> 
                                   | <sizeofStringLit> .
 
  <sizeofType>                     = <sizeofBaseType> <pointerDecl> .
 
- <sizeofBaseType>                 = "unsigned" <unsignedInt>
-                                  | "int"
-                                  | <longLongType>
-                                  | "long"
-                                  | "char"
-                                  | "short"
-                                  | "bool"
-                                  | "double"
-                                  | "float"
-                                  | "struct" <structTypeRef>
-                                  | "union" <unionTypeRef>
-                                  | "enum" <enumTypeRef>
+ <sizeofBaseType>                 = "unsigned" <unsignedInt> 
+                                  | "int" 
+                                  | <longLongType> 
+                                  | "long" 
+                                  | "char" 
+                                  | "short" 
+                                  | "bool" 
+                                  | "double" 
+                                  | "float" 
+                                  | "struct" <structTypeRef> 
+                                  | "union" <unionTypeRef> 
+                                  | "enum" <enumTypeRef> 
                                   | "void" .
 
  <sizeofVarName>                  = <ident> .
@@ -689,32 +689,32 @@
  <castQualKw>                     = "const" 
                                   | "volatile" .
 
- <castOperand>                    = <sizeofExpr>
-                                  | <vaArgExpr>
-                                  | <castExpr>
-                                  | <preIncDec>
-                                  | <postIncDec>
-                                  | <parenOpen> <commaExpr> <parenClose>
-                                  | <call> [ <postfixIndex> ] [ <callMember> ]
-                                  | <indirectCall>
-                                  | <boolLit>
-                                  | <addressRef>
-                                  | <derefRef>
-                                  | <varRef>
-                                  | <charLit>
-                                  | <floatLit>
-                                  | <number>
-                                  | <stringLit> [ <postfixIndex> ]
+ <castOperand>                    = <sizeofExpr> 
+                                  | <vaArgExpr> 
+                                  | <castExpr> 
+                                  | <preIncDec> 
+                                  | <postIncDec> 
+                                  | <parenOpen> <commaExpr> <parenClose> 
+                                  | <call> [ <postfixIndex> ] [ <callMember> ] 
+                                  | <indirectCall> 
+                                  | <boolLit> 
+                                  | <addressRef> 
+                                  | <derefRef> 
+                                  | <varRef> 
+                                  | <charLit> 
+                                  | <floatLit> 
+                                  | <number> 
+                                  | <stringLit> [ <postfixIndex> ] 
                                   | <negFactor> .
 
- <preIncDec>                      = <incdecOp> <derefIncTarget>
-                                  | <incdecOp> <memberIncTarget>
-                                  | <incdecOp> <indexIncTarget>
+ <preIncDec>                      = <incdecOp> <derefIncTarget> 
+                                  | <incdecOp> <memberIncTarget> 
+                                  | <incdecOp> <indexIncTarget> 
                                   | <incdecOp> <ident> .
 
- <postIncDec>                     = <derefIncTarget> <incdecOp>
-                                  | <memberIncTarget> <incdecOp>
-                                  | <indexIncTarget> <incdecOp>
+ <postIncDec>                     = <derefIncTarget> <incdecOp> 
+                                  | <memberIncTarget> <incdecOp> 
+                                  | <indexIncTarget> <incdecOp> 
                                   | <ident> <incdecOp> .
 
  <memberIncTarget>                = <ident> <member> [ <index> ] .
@@ -723,10 +723,10 @@
 
  <derefIncTarget>                 = "(" "*" <ident> ")" .
 
- <incdecOp>                       = "++"
+ <incdecOp>                       = "++" 
                                   | "--" .
 
- <incDecStmt>                     = <preIncDec> ";"
+ <incDecStmt>                     = <preIncDec> ";" 
                                   | <postIncDec> ";" .
 
  <derefRef>                       = "*" <factor> .
@@ -743,7 +743,7 @@
 
  <arg>                            = <expr> .
 
- <target>                         = <directTarget>
+ <target>                         = <directTarget> 
                                   | <indirectTarget> .
 
  <directTarget>                   = <ident> [ <index> { <index> } ] [ <member> [ <index> { <index> } ] { <member> [ <index> { <index> } ] } ] .
@@ -756,7 +756,7 @@
 
  <indexOpen>                      = "[" .
 
- <member>                         = "." <fieldName>
+ <member>                         = "." <fieldName> 
                                   | "->" <fieldName> .
 
  <defName>                        = <ident> .
@@ -769,22 +769,22 @@
 
  <funcName>                       = <ident> .
 
- <type>                           = "unsigned" <unsignedInt>
-                                  | "signed" <unsignedInt>
-                                  | "int"
-                                  | <longLongType>
-                                  | <longDoubleType>
-                                  | "long"
-                                  | "short"
-                                  | "char"
-                                  | "bool"
-                                  | "double"
-                                  | "float"
-                                  | "va_list"
-                                  | "struct" <structTypeRef>
-                                  | "union" <unionTypeRef>
-                                  | "enum" <enumTypeRef>
-                                  | "void"
+ <type>                           = "unsigned" <unsignedInt> 
+                                  | "signed" <unsignedInt> 
+                                  | "int" 
+                                  | <longLongType> 
+                                  | <longDoubleType> 
+                                  | "long" 
+                                  | "short" 
+                                  | "char" 
+                                  | "bool" 
+                                  | "double" 
+                                  | "float" 
+                                  | "va_list" 
+                                  | "struct" <structTypeRef> 
+                                  | "union" <unionTypeRef> 
+                                  | "enum" <enumTypeRef> 
+                                  | "void" 
                                   | <typedefRef> .
 
  <longDoubleType>                 = "long" "double" .
@@ -803,59 +803,1167 @@
 
  <pointerStar>                    = "*" .
 
- <unsignedInt>                    = "int"
-                                  | "char"
-                                  | "long"
+ <unsignedInt>                    = "int" 
+                                  | "char" 
+                                  | "long" 
                                   | "short" .
 
- <boolLit>                        = "true"
+ <boolLit>                        = "true" 
                                   | "false" .
 
- <ident>                          = <letter> { <letter>
+ <ident>                          = <letter> { <letter> 
                                   | <digit> } .
 
- <number>                         = ( <hexNumber>
+ <number>                         = ( <hexNumber> 
                                   | <decNumber> ) [ <integerSuffix> ] .
 
- <integerSuffix>                  = "u" "l"
-                                  | "U" "L"
-                                  | "l" "u"
-                                  | "L" "U"
-                                  | "u"
-                                  | "U"
-                                  | "l"
+ <integerSuffix>                  = "u" "l" 
+                                  | "U" "L" 
+                                  | "l" "u" 
+                                  | "L" "U" 
+                                  | "u" 
+                                  | "U" 
+                                  | "l" 
                                   | "L" .
 
  <hexNumber>                      = "0" <hexMark> <hexDigit> { <hexDigit> } .
 
- <hexMark>                        = "x"
+ <hexMark>                        = "x" 
                                   | "X" .
 
- <hexDigit>                       = <digit>
-                                  | "a"~"f"
+ <hexDigit>                       = <digit> 
+                                  | "a"~"f" 
                                   | "A"~"F" .
 
  <decNumber>                      = <digit> { <digit> } .
 
  <floatLit>                       = <digit> { <digit> } <floatTail> .
 
- <floatTail>                      = <floatDotTail>
+ <floatTail>                      = <floatDotTail> 
                                   | <floatExp> .
 
  <floatDotTail>                   = "." { <digit> } [ <floatExp> ] .
 
- <floatExp>                       = ( "e"
+ <floatExp>                       = ( "e" 
                                   | "E" ) [ <floatExpSign> ] <digit> { <digit> } .
 
- <floatExpSign>                   = "+"
+ <floatExpSign>                   = "+" 
                                   | "-" .
 
- <letter>                         = "a"~"z"
-                                  | "A"~"Z"
+ <letter>                         = "a"~"z" 
+                                  | "A"~"Z" 
                                   | "_" .
 
  <digit>                          = "0"~"9" .
 
+[ENDE]
+
+[EBNF-ROHQUELLTEXT]
+/* Beliebige Reihenfolge von Deklarationen und Funktionen (C-Regel). Vorher
+   waren es ZWEI getrennte Wiederholungen -- erst alle Deklarationen, dann
+   alle Funktionen -- wodurch eine Vorwaertsdeklaration ZWISCHEN globalen
+   Variablen ("static void fatal(const char* msg);" mitten im
+   Deklarationsblock, so in Source/qcc_backend_c.cpp) unparsbar war.
+   funcdef steht ZULETZT: bei "static void fatal(...)" scheitert
+   plainGlobalDecl erst am "(" nach dem Namen und die geordnete Auswahl
+   faellt korrekt hierher zurueck. */
+program   = { globalDecl | structDecl | unionDecl | typedefDecl | enumDecl | externDecl | funcdef | defosDecl | defmodulEntryDecl | defmodulDecl } .
+
+/* Moduldefinition (siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 2/3,
+   Branch QCC-DEFMODUL). Dieser Schritt deckt nur NAME/EDITION/STACK/ATTR
+   und TYPE PROG/SYSTEM/NOOS ab -- reines Registrieren wie bei defosDecl,
+   noch keine MODHEADER-IR-Emission. TYPE DRIVER/MANAGER/TRAPHANDLER (mit
+   variabler Einsprungliste, braucht DISPATCHTAB) kommt separat mit
+   Phase 4, ebenso ORG/ALIGN (Phase 6) -- absichtlich nicht Teil dieser
+   Regel, ein #DEFMODUL mit einem dieser Subkommandos scheitert also noch
+   mit FAIL, wie jedes andere noch nicht angebundene Subkommando auch. */
+defmodulDecl    = "#defmodul" ( defmodulName | defmodulEdition | defmodulStack | defmodulAttr | defmodulType | defmodulNotImpl | defmodulUnknown ) .
+
+/* Dispatch-Eintrag bewusst als eigene Direktive mit genau zwei Pflicht-
+   Bezeichnern: die scannerlose Grammatik kennt keine Zeilengrenzen, daher
+   darf hier keine optionale oder wiederholte Bezeichnerliste stehen. Die
+   Form ist für DRIVER, MANAGER und TRAPHANDLER identisch und wird später
+   anhand des Modultyps in DISPATCHTAB umgesetzt. */
+defmodulEntryDecl = "#defmodul" "ENTRY" ident defmodulEntryTarget .
+defmodulEntryTarget = ident | defmodulNumber .
+
+defmodulName    = "NAME" defmodulNameArg .
+defmodulNameArg = ident .
+
+/* EIGENE Zahl-Regel statt der bestehenden "number" -- number traegt
+   schon "ACTION AFTER number CALL tc_number" fuer echte Ausdruecke
+   (emittiert PUSH <wert>). Ein Direktiv-Argument ist kein Ausdruck, das
+   wuerde ungewollten IR-Code erzeugen (gemessen: "#defmodul EDITION 55"
+   emittierte vor der Korrektur ein PUSH 55 mitten im IR-Strom). hexNumber/
+   decNumber/integerSuffix selbst tragen KEINE eigene ACTION. */
+defmodulNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
+
+defmodulEdition    = "EDITION" defmodulEditionArg .
+defmodulEditionArg = defmodulNumber .
+
+defmodulStack    = "STACK" defmodulStackArg .
+defmodulStackArg = defmodulNumber .
+
+defmodulAttr    = "ATTR" defmodulAttrArg .
+defmodulAttrArg = defmodulNumber .
+
+/* defmodulTypeKw als eigene Regel, NUR damit sie eine eigene ACTION tragen
+   kann (ein Literal allein traegt keine ACTION, gleiches Muster wie
+   funcBodyOpen/blockOpen) -- die Regel feuert VOR PROG/SYSTEM/NOOS.
+   WICHTIG (gemessen, nicht nur vermutet): der Einsprungname ist hier
+   bewusst NICHT optional, anders als in der urspruenglichen Spec
+   ("PROG [entry]"). Diese Grammatik kennt keine Zeilengrenzen -- ws()
+   behandelt Zeilenumbrueche wie gewoehnlichen Leerraum. Ein optionaler
+   Einsprung wuerde bei "#DEFMODUL TYPE PROG" (ohne Namen), gefolgt von
+   "int main(void)...", GIERIG das naechste echte Token "int" als
+   vermeintlichen Einsprungnamen verschlucken -- der Rest der Datei
+   scheitert dann mit FAIL, ohne erkennbaren Grund. Reproduziert und
+   verifiziert vor dieser Korrektur. Die "Default main, wenn weggelassen"-
+   Regel aus der Spec muss auf Ebene der spaeteren Default-Anwendung
+   (MODHEADER-Emission) geloest werden, nicht hier auf Grammatikebene --
+   siehe Notiz in STATUS_DEFMODUL.md. Betrifft KUENFTIG auch die
+   Dispatch-Einsprunglisten aus Phase 4 (DRIVER/MANAGER/TRAPHANDLER),
+   dort staerker (wiederholte Liste statt einzelner optionaler Wert). */
+defmodulType      = defmodulTypeKw ( defmodulTypeProg | defmodulTypeSystem | defmodulTypeNoos | defmodulTypeDriver | defmodulTypeManager | defmodulTypeTraphandler ) .
+defmodulTypeKw    = "TYPE" .
+defmodulTypeProg  = "PROG" defmodulEntryArg .
+defmodulTypeSystem = "SYSTEM" .
+defmodulTypeNoos  = ( "NOOS" | "BAREMETAL" ) defmodulEntryArg .
+defmodulTypeDriver = "DRIVER" ident .
+defmodulTypeManager = "MANAGER" ident .
+defmodulTypeTraphandler = "TRAPHANDLER" ident .
+defmodulEntryArg  = ident .
+
+/* IR-Validierung (22.09.2026, STATUS_DEFMODUL.md Testsatz-Punkte 7/9):
+   zwei Auffangregeln, MUESSEN in der program-Alternation nach defmodulDecl
+   in dieser Reihenfolge geprueft werden (geordnete Auswahl -- erst die
+   bekannten Subkommandos oben, dann "bekannt aber noch nicht
+   implementiert", zuletzt "wirklich unbekannt"). Ohne diese Regeln
+   scheitert #DEFMODUL mit einem falschen Subkommando nur am generischen
+   FAIL der ganzen Datei, ohne Diagnose (gemessen an "TYPE PROG" ohne
+   Einsprungnamen, s. Testfall 17e in Q9-PARSEC/runtests.sh) -- diese
+   beiden Regeln machen den Zeichenstrom-Parser an dieser einen Stelle
+   diagnosefaehig, indem sie selbst erfolgreich matchen (also kein FAIL
+   der Gesamtdatei mehr ausloesen) und ihre ACTION dann gezielt SEMERR
+   meldet (actionErrors++), statt eines harten Parserfehlers. */
+defmodulNotImpl   = ( "ORG" | "ALIGN" ) defmodulNumber .
+defmodulUnknown   = ident .
+
+/* Ziel-Betriebssystem-Direktive (siehe docs/OS9_SYSTEM_INTERFACE.md
+   Abschnitt 2, Branch QCC-DEFMODUL). Q9-QCC-eigene Erweiterung, kein
+   C89-Standardkonstrukt -- deshalb "#defos" als eigenes Literal statt einer
+   echten Praeprozessor-Direktive (dieselbe Microware-Tradition wie #asm).
+   Erster Ausbauschritt: nur registrieren (ACTION legt den Namen ab), noch
+   keine IR-Emission -- die folgt zusammen mit #defmodul in einem spaeteren
+   Schritt. Kein Terminator noetig, ws() behandelt den Zeilenumbruch wie
+   gewoehnlichen Leerraum, genau wie qcpp es beim Durchreichen schon tut. */
+defosDecl = "#defos" defosArg .
+defosArg  = ident .
+
+/* Calling-Convention-Praefix fuer Funktionen (Phase 5, Branch QCC-DEFMODUL,
+   siehe docs/OS9_SYSTEM_INTERFACE.md Abschnitt 4). Vier Conventions plus
+   Syscall-Deklaration, alle unter dem einzigen Schluesselwort "modul",
+   um Namensraum-Kollisionen mit gewoehnlichen Bezeichnern zu vermeiden
+   (z.B. eine normale Funktion "int driver();" bleibt unberuehrt).
+   Das Keyword steht nach static/extern (falls vorhanden), vor dem Rueckgabetyp. */
+modulKw = "modul" moduleKind .
+moduleKind = modulConvention | modulSyscall .
+modulConvention = "driver" | "interrupt" | "trap" | "naked" .
+
+modulSyscall = "syscall" "(" defmodulNumber "," syscallArchetype ")" .
+syscallArchetype = "CALL_D" | "CALL_DA" | "CALL_FORK" .
+
+/* Deklaration einer NICHT in QCC definierten Funktion (z.B. einer echten
+   OS-9/Microware-clib-Funktion wie strcmp/printf/malloc) -- kein Rumpf, nur
+   Signatur. Parameter brauchen keinen Namen (nur Typen fuer die Aufrufpruefung).
+   "..." markiert eine variadische Funktion (wie printf) -- siehe tc_call/
+   CALLEXT in docs/FORTSCHRITT.md fuer die Aufrufkonvention (Microware-ABI:
+   1./2. Argument in d0/d1, Rest auf dem Stack; bei variadisch ALLES auf dem
+   Stack). Erfordert mindestens einen benannten Parameter vor "...", wie in
+   echtem ISO C. */
+externDecl      = "extern" type pointerDecl externName externParams ";" .
+externName      = ident .
+/* "(void)" braucht dieselbe Zwei-Alternativen-Form wie funcParams
+   (siehe dort) -- eine Alternation, deren zweiter Zweig mit einer
+   optionalen Gruppe beginnt, backtrackt nicht: stuende hier nur
+   "void" gegen externParamList, wuerde die erste Alternative bei
+   "extern int f(void* p);" das "void" schlucken. voidParams wird
+   bewusst WIEDERVERWENDET (dieselbe NTS wie bei funcParams), ihre
+   Aktion ist ohnehin leer -- keine Parameter heisst schlicht: die
+   Aktion von externParam feuert nie. */
+externParams    = voidParams | externRealParams .
+externRealParams = "(" externParamList ")" .
+externParamList = [ externParam { "," externParam } [ "," ellipsisTok ] ] .
+/* optionaler Parametername wird NUR geparst und verworfen (rein dokumentarisch,
+   wie in echten C-Prototypen "int strcmp(const char *a, const char *b);") --
+   fuer die Aufrufpruefung zaehlen nur die Typen. "const" ebenso rein
+   dokumentarisch: eine extern-Deklaration hat keinen QCC-Rumpf, in dem eine
+   Schreibpruefung greifen koennte. */
+externParam     = [ constKw ] [ volatileKw ] type pointerDecl [ ident ] .
+ellipsisTok     = "..." .
+
+/* EXPLIZITE WERTE (C89 3.5.2.2): "enum E { A = 5, B };" -- B ist dann 6.
+   Die Konstanten selbst werden wie bisher als ROHTEXT ausgewertet
+   (tc_enumdecl), die Grammatik muss die Form nur lesen koennen. */
+enumDecl  = "enum" ident "{" enumItem { "," enumItem } "}" ";" .
+enumItem  = ident [ "=" enumValue ] .
+enumValue = globalNeg | globalNumber .
+
+structDecl  = "struct" structName structTail .
+/* GETRENNTE VORWAERTSDEKLARATION (2026-09-16): "struct N;" ohne Rumpf ist
+   gueltiges C89 und scheiterte STUMM. Sie meldet nur den NAMEN an -- genau
+   das tut tc_structbegin ohnehin schon (tcStructPredeclare, seit den
+   selbstreferenziellen structs). Ein Zeiger auf den unvollstaendigen Typ
+   braucht nur die Zeigergroesse, also genuegt der leere Eintrag.
+   structTail teilt sich mit unionDecl: die Rumpfsyntax ist dieselbe, nur das
+   Layout unterscheidet sich. structBodyOpen existiert, damit tc_structend
+   einen leeren RUMPF ("struct S { };", in C ungueltig) von einer
+   Vorwaertsdeklaration unterscheiden kann -- ohne die Marke saehen beide
+   gleich aus. */
+structTail  = structBodyOpen structField { structField } "}" ";" | ";" .
+structBodyOpen = "{" .
+/* UNION (2026-09-15). Dieselbe Feldsyntax wie eine struct -- der
+   Unterschied steckt allein im LAYOUT (alle Felder auf Offset 0, Groesse
+   gleich dem groessten Feld), und das entscheidet tcRegisterStruct.
+   Deshalb wird eine union auch als struct REGISTRIERT: damit erbt sie
+   die gesamte vorhandene Maschinerie -- Feldzugriff, "->", Ganzkopie,
+   Parameter, Rueckgabe, Arrays -- statt sie ein zweites Mal zu bauen. */
+unionDecl   = "union" unionName structTail .
+unionName   = ident .
+structName  = ident .
+/* Pointer-Felder in struct (2026-07-25, Selfhosting L2): Skalar-Pointer
+   (z.B. "char* text;" oder "struct Node* next;"). Ein struct-WERT als Feld
+   bleibt ausgeschlossen; ein Pointer darauf ist jedoch ein normaler Pointer
+   und benoetigt weder das Layout noch eine rekursive Einbettung. Layout siehe
+   tcRegisterStruct: Pointer-Felder werden
+   IMMER mit 8 Byte Groesse/Ausrichtung reserviert (nicht 4 wie beim 68k-
+   Backend selbst), damit dasselbe frontend-berechnete Byte-Layout fuer
+   BEIDE Architekturen gueltig bleibt (68k-Pointer sind 4 Byte, ARM64-Pointer
+   8 Byte -- ein einzelnes IR-Offset muesste sonst je nach Ziel-Architektur
+   unterschiedlich sein). Der 68k-Backend nutzt von diesem 8-Byte-Slot nur
+   die ersten 4 Byte (identisch zum Layout einer lokalen Pointer-Variable). */
+/* Mehrere Felder gleichen Typs in einer Zeile ("int nargs, first, last;").
+   Die Aktion haengt an structDeclarator, NICHT an structField: sie muss
+   einmal PRO Feld feuern, nicht einmal pro Zeile. tc_structfield sucht den
+   Namen rueckwaerts in seiner Spanne und nimmt den Typ aus tcCurrentType --
+   beides funktioniert unveraendert, wenn die Spanne nur noch den Deklarator
+   umfasst statt der ganzen Zeile. */
+/* fieldConstKw war bis 2026-09-07 eine AKTIONSLOSE Kopie von constKw (wie
+   retConstKw bei funcHead): ein "const" am Feldtyp wurde geparst und
+   VERWORFEN. Der Grund war richtig -- ein Verweis auf constKw selbst wuerde
+   tc_const ausloesen, dessen tcPendingConst erst beim naechsten Parameter
+   oder Lokalen konsumiert wird und dort faelschlich Konstantheit erzwaenge.
+   Die FOLGE war es nicht: "struct P { const char *cp; }" mit
+   "p.cp[0] = ..." lief STILL durch, und "const int n" mit "s.n = 1" auch,
+   waehrend beides bei einer VARIABLEN korrekt gemeldet wird.
+   Jetzt hat fieldConstKw eine EIGENE Aktion mit einer EIGENEN Flagge, die
+   nur Felder betrifft: tc_fieldconst setzt sie, die Deklaratoren der Zeile
+   verbrauchen sie ("const int a, b;" trifft beide), und tc_fieldconstend
+   loescht sie nach der ganzen structField-Zeile. tcPendingConst bleibt
+   davon unberuehrt. */
+structField = [ fieldConstKw ] [ volatileKw ] type structDeclarator { "," structDeclarator } ";" .
+fieldConstKw = "const" .
+/* Zweite Dimension ("char args[6][64];"). Ein Zugriff "x.args[i]" liefert
+   dann den ZEIGER auf Zeile i (base + i*Zeilenlaenge), nicht ein Element --
+   siehe tcStructFieldRowLen. Echte 2D-Zugriffe "x.args[i][j]" sind bewusst
+   NICHT umgesetzt (kommen im Bootstrap-Ziel nicht vor) und werden
+   diagnostiziert statt still falsch gerechnet. */
+/* NACHTRAG 2026-09-09 -- Zeiger-Bugfix: pointerDecl stand bis eben VOR der
+   ganzen Deklaratorliste (einmal fuer die gesamte Zeile), nicht pro
+   Deklarator. "char *a, *b;" scheiterte damit still ("*" nach dem Komma
+   passte auf keine Regel), und ein gemischtes "char* a, b;" haette (waere
+   es ueberhaupt geparst worden) faelschlich BEIDE zu Zeigern gemacht --
+   in echtem C ist bei mehreren Deklaratoren pro Zeile jeder Stern SEIN
+   EIGENER, nicht ein gemeinsames Typ-Merkmal. Jetzt bei jedem Deklarator
+   einzeln, siehe tc_pointerdecl (Data/qcc.lextab) fuer die dazugehoerige
+   Aktionsaenderung (Zeigergrad wird pro Aufruf neu gesetzt, nicht
+   aufaddiert). */
+/* Die Bitbreite wird GELESEN, damit sie abgelehnt werden kann: ohne sie in
+   der Grammatik bricht "unsigned a:3;" im Parser ab -- FAIL ohne Meldung
+   und ohne Zeilenangabe, die teuerste Sorte Grenze. Umgesetzt sind
+   Bitfelder NICHT: sie brauchen Bitpacking im Layout UND maskierten
+   Zugriff an jeder Feldzugriffsstelle, und sie kommen in 5 von 4109
+   Microware-Quellen vor -- das Verhaeltnis traegt den Umbau nicht. */
+structDeclarator = pointerDecl fieldName [ bitFieldWidth ] [ arraySize [ arraySizeN ] ] .
+bitFieldWidth = ":" globalNumber .
+fieldName   = ident .
+
+/* NACHTRAG 2026-09-09 -- derselbe Mehrfachdeklaratoren-Fix wie bei
+   varDecl/structField/plainGlobalDecl (s. oben): "typedef struct modhcom
+   mh_com, *Mh_com;" (Microwares echter Referenz-Toolchain-Header module.h) scheiterte
+   still, weil typedefTargetName nur EINEN Namen erlaubte. pointerDecl
+   wandert dafuer aus typedefType HERAUS in die neue typedefDeclarator --
+   pro Deklarator sein EIGENER Zeigergrad, wie ueberall sonst. */
+typedefDecl = "typedef" typedefType typedefDeclarator { "," typedefDeclarator } ";"
+            | fnPtrTypedef .
+typedefDeclarator = pointerDecl typedefTargetName .
+
+/* Funktionszeiger-typedef: "typedef void (*ActionFn)(const char*, const char*);"
+   Steht als ZWEITE Alternative, damit der bisherige Fall unveraendert der
+   schnelle Weg bleibt -- bei einem Funktionszeiger scheitert er an
+   typedefTargetName (dort steht "(" statt eines Bezeichners) und die
+   geordnete Auswahl faellt hierher zurueck.
+   externParamList wird bewusst WIEDERVERWENDET statt nachgebaut: die Regel
+   parst bereits genau das Gebrauchte (Typen mit optionalem "const" und
+   optionalem Parameternamen), und ihre Aktion tc_externparam sammelt die
+   Typen im gemeinsamen Puffer, den tc_fnptrbegin vorher zuruecksetzt
+   (Deklarationen schachteln nicht). */
+fnPtrTypedef = "typedef" type pointerDecl fnPtrOpen "*" { pointerStar } fnPtrName ")" fnPtrParams ";" .
+/* Dieselbe (void)-Falle wie bei externDecl -- und dieselbe Loesung:
+   voidParams/externRealParams sind bereits genau das Gebrauchte. */
+fnPtrParams  = voidParams | externRealParams .
+fnPtrOpen    = "(" .
+fnPtrName    = ident .
+/* pointerDecl steht NICHT mehr hier (s. NACHTRAG oben bei typedefDecl),
+   sondern in typedefDeclarator -- sonst wuerde ein Zeigergrad hier UND
+   dort gleichzeitig gezaehlt. */
+typedefType = anonStructType | anonUnionType | anonEnumType | type .
+/* "typedef enum { A, B } Flags;" -- und mit Tag, der wie beim struct
+   GEPARST UND VERWORFEN wird (enumTagName ist aktionslos): als interner
+   Name dient der typedef-Zielname. Ein enum ist in QCC ein int, die
+   Aktion setzt den Typ entsprechend und traegt die Konstanten ein. */
+anonEnumType = "enum" [ enumTagName ] anonEnumOpen enumItem { "," enumItem } "}" .
+enumTagName  = ident .
+anonEnumOpen = "{" .
+/* Optionaler Struct-Tag im typedef ("typedef struct TCType { ... } TCType;").
+   structTagName ist AKTIONSLOS: der Tag wird geparst und verworfen, als
+   interner Tag dient wie bisher der ERSTE typedef-Zielname (siehe
+   tc_anonstructbegin/tc_typedeftarget). Damit ist "struct TCType" NICHT als
+   eigenstaendiger Typname nutzbar -- im Bootstrap-Ziel wird ohnehin
+   ausschliesslich der typedef-Name verwendet. */
+anonStructType = "struct" [ structTagName ] anonStructOpen structField { structField } "}" .
+structTagName = ident .
+anonStructOpen = "{" .
+/* Anonyme union-Typen benoetigen denselben Aufbaupfad wie anonyme structs;
+   nur tc_anonunionbegin setzt das gemeinsame Layout-Flag auf Union. */
+anonUnionType = "union" [ unionTagName ] anonUnionOpen structField { structField } "}" .
+unionTagName = ident .
+anonUnionOpen = "{" .
+typedefTargetName = ident .
+
+/* beliebig viele weitere Dimensionen (2026-07-24) NUR bei globalDecl/localDecl
+   (nicht bei structField/paramArray -- siehe Kommentar bei localDecl weiter
+   unten fuer den Umfang dieser Version). arraySizeN wiederholt sich beliebig
+   oft (TC_MAXDIMS in qcc.lextab begrenzt die tatsaechlich unterstuetzte
+   Anzahl zur Uebersetzungszeit, kein Grammatik-Limit). */
+/* Mehrdatei-Uebersetzung (2026-07-25): externGlobalDecl deklariert eine
+   globale Variable OHNE Speicherallokation ("definiert in einer anderen
+   QCC-Datei") -- kein Konflikt mit dem bestehenden extern bei FUNKTIONEN
+   (das bleibt Microware-ABI/clib.l-spezifisch, siehe externDecl oben): bei
+   globalen Variablen gab es bisher UEBERHAUPT keine extern-Bedeutung. Kein
+   Backtracking noetig, da "extern" ein eindeutiger erster Token ist. */
+globalDecl       = externGlobalDecl | plainGlobalDecl .
+externGlobalDecl = "extern" type pointerDecl globalName ";" .
+/* Mehrere Deklaratoren pro Zeile ("static TCType a[512], b[512][64];").
+   Die Aufteilung macht tc_globalend selbst am Rohtext -- siehe dort. */
+/* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei varDeclarator/
+   structDeclarator: pointerDecl gehoert VOR jeden einzelnen Deklarator.
+   Anders als dort haengt hier KEINE eigene Aktion an globalDeclarator --
+   tc_globalend (an plainGlobalDecl) liest die ganze Zeile ohnehin aus dem
+   Rohtext neu (s. dort, tcGlobalOne); die Aktion an pointerDecl feuert bei
+   jedem Vorkommen trotzdem mit (tcCurrentType.pointers wird dabei
+   mitgepflegt, aber fuer Globale nirgends gelesen -- unschaedlich). Ohne
+   diese Grammatikaenderung waere "char *a, *b;" schon hier ein Parse-Fehler
+   gewesen, BEVOR tc_globalend je zum Zug kaeme. */
+plainGlobalDecl  = [ staticKw ] [ constKw ] [ volatileKw ] type globalDeclarator { "," globalDeclarator } ";" .
+globalDeclarator = pointerDecl globalName [ arraySize { arraySizeN } ] [ "=" globalInit ] .
+constKw   = "const" .
+/* volatileKw hat ABSICHTLICH KEINE Aktion -- und das ist hier, anders als
+   beim damaligen fieldConstKw (2026-09-07), kein stiller Fehler, sondern
+   nachgerechnet richtig. C verlangt von volatile, dass JEDER Zugriff
+   tatsaechlich stattfindet und keiner wegoptimiert oder zusammengefasst
+   wird. QCC erfuellt das ohnehin an zwei Stellen:
+     1. Der Codegen haelt KEINE Werte in Registern ueber Anweisungsgrenzen
+        hinweg -- jeder Lese- und Schreibzugriff geht ueber den Speicher.
+     2. Der Peephole-Optimierer faltet ausschliesslich Verkehr auf dem
+        AUSWERTUNGSSTAPEL (A7, "push X / pop X"), also compilereigene
+        Zwischenwerte. Er fasst keine Variablenzugriffe zusammen und
+        entfernt keine.
+   Es gibt also nichts zu unterdruecken. Das ist KEINE Annahme: die Suite
+   prueft am erzeugten ASSEMBLER nach, dass zwei aufeinanderfolgende
+   Zugriffe auf eine volatile Variable auch zwei Speicherzugriffe ergeben,
+   mit UND ohne -peephole. Wer den Optimierer um ein Muster erweitert, das
+   Variablenzugriffe anfasst, muss volatile dort ausnehmen -- und der Test
+   schlaegt dann an. */
+volatileKw = "volatile" .
+staticKw  = "static" .
+/* globalStringInit (2026-07-24): String-Literal als Array-Initialisierer
+   (char msg[6] = "hallo";). Duplizierte, AKTIONSLOSE Kopie von stringLit
+   OHNE eigene ACTION -- ein direkter Verweis auf stringLit wuerde dessen
+   ACTION (tc_string: anonyme GARRAY-Konstante + Typ-Stack-Push) unwiderruflich
+   mitausloesen, was fuer den globalen Kontext (tc_globalend liest die GANZE
+   Deklaration ohnehin als Rohtext, wie bei Zahlen/Bools) nur unbenutzten Muell
+   erzeugen wuerde. tc_globalend erkennt/dekodiert das Literal selbst per
+   Rohtext-Scan (siehe dort), genau wie bei globalNumber/globalBool. */
+globalInit = globalValue | initList | globalStringInit .
+globalStringInit = "\042" { character } "\042" .
+/* Arraygroesse als konstanter Ausdruck ("char buf[64 + 40];") -- in C
+   ueblich und im Bootstrap-Ziel 16-mal verwendet. Ausgewertet wird der
+   Ausdruck von tcConstArrayLen aus dem Rohtext (die Deklarations-Aktionen
+   lesen die Groesse ohnehin dort ab, nicht ueber den Wertestapel). */
+/* Groessenangabe optional: "char wsSet[] = \"...\";" leitet die Laenge aus
+   dem Initialisierer ab (Stringlaenge + Nullbyte). */
+arraySize  = "[" [ constSize ] "]" .
+arraySizeN = "[" constSize "]" .
+constSize  = globalNumber { constSizeOp globalNumber } .
+constSizeOp = "+" | "-" | "*" .
+/* HEX, SUFFIXE UND GLEITKOMMA IM GLOBALEN INITIALISIERER (2026-09-16):
+   globalNumber las wie initNumber nur Dezimalziffern -- "int g = 0x10;"
+   scheiterte damit STILL, obwohl dieselbe Zahl in jedem Ausdruck gelesen
+   wird. globalFloat ist eine ABSICHTLICH AKTIONSLOSE Kopie von floatLit:
+   in einer Datendefinition gibt es keinen Auswertungsstapel, auf den
+   tc_floatlit ein PUSHD legen koennte. Die Form muss hier nur GELESEN
+   werden, damit tcGlobalOne sie melden kann statt still abzubrechen. */
+globalValue = globalFloat | globalNumber | globalNeg | globalBool .
+globalFloat = digit { digit } floatTail .
+globalBool  = "true" | "false" .
+globalNeg   = "-" ( globalFloat | globalNumber ) .
+globalNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
+
+/* Mehrdatei-Uebersetzung (2026-07-25): funcdef erlaubt jetzt statt eines
+   IMMER vorhandenen Rumpfs entweder einen echten Rumpf (funcBody) ODER eine
+   reine Prototyp-Deklaration ohne Rumpf (protoEnd) = "definiert in einer
+   anderen QCC-Datei", normale interne bsr/bl-Aufrufkonvention. Bewusst
+   NICHT das bestehende extern-Schluesselwort dafuer verwendet -- das ist fest
+   mit der Microware-ABI/CALLEXT-Semantik verdrahtet (siehe externDecl oben).
+   Kein Backtracking noetig: nach funcHead folgt entweder disjunkt "{" oder
+   ";" -- klassische LL(1)-Alternation. */
+funcdef       = funcHead ( funcBody | protoEnd ) .
+funcBody      = funcBodyOpen { statement } "}" .
+funcBodyOpen  = "{" .
+protoEnd      = ";" .
+/* "f(void)" ist in C die ausdrueckliche LEERE Parameterliste. Die Klammern
+   gehoeren bewusst IN die beiden Alternativen: stuende dort nur "void" gegen
+   die Parameterliste, wuerde die erste Alternative bei "f(void* p)" das
+   "void" schlucken und der Parser kaeme nicht mehr zurueck -- die optionale
+   Gruppe im zweiten Zweig verhindert das Backtracking an dieser Stelle. So
+   ist es dagegen dasselbe Muster wie call/varRef in factor: zwei echte
+   NTS-Alternativen, von denen die erste als GANZES scheitert (an ")") und
+   sauber verworfen wird. Keine Aktion noetig -- keine Parameter heisst
+   schlicht: tc_param feuert nie. */
+/* retConstKw ist eine AKTIONSLOSE Kopie von constKw: ein "const" am
+   Rueckgabetyp ("static const char* f(...)") wird geparst und verworfen.
+   Ein Verweis auf constKw selbst wuerde dessen Aktion tc_const ausloesen,
+   die tcPendingConst setzt -- das Flag wird erst beim naechsten Parameter
+   oder Lokalen konsumiert und wuerde dort faelschlich Konstantheit
+   erzwingen. Rueckgabe-Constness hat in QCC ohnehin keine Bedeutung. */
+funcHead  = [ staticKw ] [ modulKw ] [ retConstKw ] type pointerDecl defName funcParams .
+retConstKw = "const" .
+/* K&R-Definitionen (C89 6.7.1, "alte" Form):  int f(a, b) int a; char *b; { }
+   Dritte Alternative NEBEN voidParams/normalParams -- also genau dort, wo das
+   Zuruecksetzen zwischen Alternativen schon nachweislich traegt (s.o.).
+   Die DEKLARATIONEN gehoeren bewusst MIT in krParams: damit faellt die
+   Entscheidung "K&R oder ANSI" komplett innerhalb EINER Alternative, und der
+   Generator muss nie ueber eine bereits gewaehlte Alternative hinaus zurueck.
+   Reihenfolge: krParams MUSS vor normalParams stehen. Stuende es dahinter,
+   haette normalParams bei "f(a, b)" schon "a" als Typnamen gedeutet und
+   tc_type wuerde "unknown type name" melden, BEVOR krParams drankommt --
+   dieselbe Falle wie beim unaeren Plus (s. KNOWN_BUGS_C89).
+   Umgekehrt ist krParams-zuerst harmlos: bei "f(int a)" matcht krName zwar
+   "int", aber schon das naechste Token (") oder ,") passt nicht, krParams
+   scheitert als Ganzes und normalParams uebernimmt. Die krName-Aktion hat
+   dann zwar in den Puffer geschrieben -- das ist folgenlos, weil tc_kropen
+   den Zaehler bei JEDEM neuen Versuch nullt und nur tc_krend ihn liest.
+   Mindestens EINE Deklaration ist Pflicht (krDecl { krDecl }, nicht
+   { krDecl }). Sonst wuerde "f(x) { }" mit typedef-Typ x faelschlich als
+   K&R mit implizit-int-Parameter durchgehen. Der Preis: K&R MIT implizitem
+   int ("f(x) { }" ohne jede Deklaration) bleibt ungeparst -- in den 355
+   gemessenen MWOS-Faellen kommt das nicht vor. */
+funcParams = voidParams | krParams | normalParams .
+krParams   = krOpen krName { "," krName } ")" krDecl { krDecl } .
+krOpen     = "(" .
+krName     = ident .
+/* Aufbau Zeichen fuer Zeichen wie varDecl/varDeclarator -- dadurch setzt
+   tc_pointerdecl den Zeigergrad pro Deklarator aus tcBasePointers neu und
+   "char *a, b;" traegt b korrekt OHNE Stern ein. */
+krDecl     = [ registerKw ] [ constKw ] type krDeclarator { "," krDeclarator } ";" .
+krDeclarator = pointerDecl krDeclName [ krArray ] .
+krDeclName = ident .
+krArray    = "[" "]" .
+voidParams = "(" "void" ")" .
+normalParams = "(" paramList ")" .
+/* EIGENE VARIADISCHE FUNKTIONSDEFINITION (2026-09-23): "int f(int a, ...)
+   { ... }" -- anders als externDecl (das schon lange "..." kennt) bekommt
+   hier ein echter QCC-Rumpf einen Aufrufweg per bsr/CALL, keine Microware-
+   ABI. Eigener Token funcEllipsis statt des bei externParamList schon
+   vorhandenen ellipsisTok: dessen Aktion setzt tcExternIsVariadic, ein
+   Zustand, der NUR fuer die extern-Registrierung gilt -- Wiederverwendung
+   haette den echten Funktionsrumpf-Pfad mit dem externen verwechselt.
+   Mindestens EIN benannter Parameter vor "..." Pflicht, wie in echtem C89
+   und wie bei externParamList. */
+paramList = [ param { "," param } [ "," funcEllipsis ] ] .
+funcEllipsis = "..." .
+/* Funktionszeiger ALS PARAMETER: "int f(int (*fp)(int))". Steht als ERSTE
+   Alternative -- der gewoehnliche Zweig scheitert sonst an der
+   Zeigerklammer, ohne etwas Brauchbares zu melden.
+   Die beiden Parameterlisten schachteln hier ineinander, das geht aber
+   gut: die AEUSSERE sammelt ueber tc_param in tcLocalTypes (daraus baut
+   tc_funcend die Aufrufsignatur), die INNERE ueber tc_externparam in
+   tcExternBuildParamTypes. Zwei getrennte Puffer, keine Ueberschneidung. */
+param     = fnPtrParam | ptrArrayParam | [ registerKw ] [ constKw ] [ volatileKw ] type pointerDecl [ paramDecl ] .
+/* Zeiger auf Array ALS PARAMETER (2026-09-17): "int f(int (*p)[3])" --
+   dieselbe Form wie bei einer lokalen Variable (ptrArrayDecl), nur ohne
+   const/register/volatile-Praefix (fnPtrParam hat das aus demselben Grund
+   auch nicht). MUSS vor der einfachen Form stehen, sonst scheitert die
+   Zeigerklammer dort ohne brauchbare Meldung -- exakt der Grund, aus dem
+   fnPtrParam schon vorn steht (s. Kommentar dort). Teilt sich das Praefix
+   "type ( *" mit fnPtrParam; die beiden unterscheiden sich erst NACH dem
+   Namen (")" gefolgt von "(" bei fnPtrParam, von "[" hier) -- der Generator
+   probiert bei Fehlschlag die naechste Alternative, das Aktionsprotokoll
+   rollt fnPtrParams eigene Aktionen (tc_fnptrbegin) dabei sauber zurueck. */
+ptrArrayParam = type "(" "*" fnPtrParamName ")" arraySizeN { arraySizeN } .
+/* Der Parametername ist OPTIONAL (2026-09-16). "int f(int);" ist die uebliche
+   Schreibweise in Header-Dateien und scheiterte bis dahin STUMM -- Exit 1,
+   "FAIL", kein Wort auf stderr. Die Aktion haengt an paramDecl, also am
+   NAMEN; ohne ihn feuerte sie nicht und der Parameter fehlte in der Signatur.
+   Deshalb zusaetzlich eine Abschlussaktion an param (tc_paramend), die einen
+   namenlosen Parameter mit leerem Namen nachtraegt. Ein leerer Name wird von
+   tcLookupLocal nie gefunden -- genau richtig: ansprechen laesst sich so ein
+   Parameter ohnehin nicht. */
+fnPtrParam = type pointerDecl fnPtrOpen "*" { pointerStar } fnPtrParamName ")" fnPtrParams .
+fnPtrParamName = ident .
+paramDecl = paramName [ paramArray ] .
+/* Mehrdimensionales Array als PARAMETER (2026-09-17): "int f(int m[2][3])".
+   Die ERSTE Dimension ist in C bedeutungslos (der Parameter ist ohnehin ein
+   Zeiger) und darf deshalb leer bleiben -- "int m[][3]" ist dieselbe
+   Deklaration. Die FOLGENDEN Dimensionen sind dagegen Pflicht und tragen die
+   Zeilenlaenge, aus der die Indexrechnung i*zeilenlaenge+j entsteht; genau
+   daran ist der erste Anlauf am 16.09.2026 gescheitert (die Indizes wurden
+   nicht kombiniert und der Zugriff rechnete STILL falsch). */
+paramArray = "[" [ constSize ] "]" { paramArrayN } .
+/* Eigene Regel statt arraySizeN: dort ist die Groesse PFLICHT, und
+   "int m[2][]" waere damit ein stummer Parse-Fehler. Hier wird die Klammer
+   auch leer geparst, damit tc_param sie MELDEN kann -- ab der zweiten
+   Dimension braucht die Indexrechnung die Zeilenlaenge zwingend. */
+paramArrayN = "[" [ constSize ] "]" .
+
+/* blockOpen (2026-08-20): eigene Regel fuer die oeffnende Klammer, damit eine
+   ACTION beim BETRETEN des Blocks feuern kann -- dasselbe Muster wie
+   funcBodyOpen (ein Literal "{" traegt keine ACTION). Gebraucht fuer echte
+   Blockgueltigkeitsbereiche lokaler Variablen: ohne Einstiegs-Hook konnte
+   tcLookupLocal eine in einem FRUEHEREN, schon geschlossenen Block
+   deklarierte Variable gleichen Namens nicht von der aktuellen unterscheiden
+   (siehe tc_blockopen/tc_blockend). */
+block     = blockOpen { statement } "}" .
+blockOpen = "{" .
+
+statement = labelStmt
+          | unlabeledStmt .
+
+/* Alles AUSSER labelStmt. Grund: caseBody ist "{ unlabeledStmt }", darf also
+   keine Sprungmarke erkennen -- sonst wuerde die Wiederholung das "default:"
+   des switch als Marke verschlucken ("labelStmt = ident ':'" passt darauf)
+   und defaultGroup kaeme nie zum Zug. Der EBNF-Dialekt hat keinen Except-/
+   Negationsoperator (ISO 14977's "-" ist bewusst nicht implementiert, siehe
+   Kopfkommentar in Q9-Parsec/Source/parsec.cpp), "ident ausser Schluesselwort"
+   ist also nicht direkt ausdrueckbar -- deshalb diese Aufteilung.
+   BEWUSSTE, DOKUMENTIERTE GRENZE: eine Sprungmarke direkt auf der Ebene eines
+   case-/default-Rumpfes ist damit nicht moeglich. In einem geschachtelten
+   Block innerhalb des Rumpfes schon ("{ weiter: ... }"), denn block benutzt
+   wieder statement. Im Bootstrap-Ziel Data/qcc_p.c kommt der Fall nicht vor
+   (nachgezaehlt: 0 Marken innerhalb von switch-Ruempfen). */
+unlabeledStmt = ifStmt
+          | whileStmt
+          | forStmt
+          | doStmt
+          | switchStmt
+          | breakStmt
+          | continueStmt
+          | gotoStmt
+          | returnStmt
+          | block
+          | emptyStmt
+          | voidCastStmt
+          | vaStmt
+          | callStmt
+          | incDecStmt
+          | assignStmt
+          | fnPtrVarDecl
+          | staticVarDecl
+          | varDecl .
+/* FUNKTIONSZEIGER ALS VARIABLE: "int (*fp)(int);" -- bis 2026-09-15 ging
+   das nur ueber den Umweg eines typedef. Dieselbe Form wie fnPtrTypedef,
+   nur ohne das "typedef" davor, und sie steht VOR varDecl: varDecl wuerde
+   an der Zeigerklammer scheitern und der Fehler kaeme ohne Zeilenangabe.
+   Die Signatur wird wie beim typedef registriert; die Variable selbst
+   legt dieselbe Routine an wie jede andere Lokale (tc_local), damit
+   Slotvergabe, const-Behandlung und Aufrufpruefung unveraendert gelten. */
+fnPtrVarDecl = type pointerDecl fnPtrOpen "*" { pointerStar } fnPtrVarName ")" fnPtrParams ";" .
+fnPtrVarName = ident .
+
+/* "static" lokale Variablen: konstanter Initialisierer (globalValue, dieselbe
+   seiteneffektfreie Regel wie bei globalen Variablen -- kein Durchlauf durch die
+   normale expr-Grammatik, also auch keine Laufzeit-Emission dafuer, siehe
+   tc_staticlocal) ODER seit 2026-07-24 ein beliebiger Laufzeitausdruck
+   (staticRuntimeInit = expr). staticInit ist eine GEORDNETE Alternation: "static
+   int x = 5;" matched globalValue vollstaendig (Fastpath, unveraendert seit
+   jeher) UND wird von der Grammatik direkt als Ganzes akzeptiert (danach folgt
+   ";"); erst wenn dieser Versuch scheitert (z.B. "static int x = 5+3;" -- 5
+   allein passt, aber danach kommt "+" statt ";"), backtracked der Generator auf
+   staticRuntimeInit (dasselbe Backtracking-Prinzip wie "call vor varRef" in
+   factor). Der Laufzeitausdruck wird bei JEDEM Funktionsaufruf neu ausgewertet
+   (bewusste Vereinfachung -- bei einem Initialisierer mit Seiteneffekten, z.B.
+   einem Funktionsaufruf, weicht das von echtem ISO C ab, das den Ausdruck nur
+   EINMAL auswertet), aber nur beim ERSTEN Aufruf tatsaechlich in die
+   static-Variable geschrieben (Runs-once-Guard mit einem versteckten
+   bool-Flag-Global, siehe tc_staticruntimeinit/tc_staticlocal) -- dadurch bleibt
+   der einmal gesetzte Wert ueber alle nachfolgenden Aufrufe hinweg erhalten,
+   entspricht also dem BEOBACHTBAREN Verhalten (Persistenz), solange der
+   Ausdruck selbst keine Seiteneffekte hat. */
+/* ARRAY ALS STATIC-LOKALE (2026-09-16): "static int a[4];" in einer
+   Funktion passte auf gar keine Regel und scheiterte damit STILL --
+   gefunden, weil der Gleitkomma-Konverter genau so einen Puffer
+   brauchte. Die Laengenangabe verweist auf initNumber, das schon die
+   aktionslose Zahl ist; eine eigene Regel waere eine dritte Zahlregel
+   im Sprachkern und damit die naechste Quelle stiller Abweichungen. */
+staticVarDecl   = staticKw [ constKw ] [ volatileKw ] type pointerDecl staticLocalName [ staticArrayDim ] [ "=" staticInit ] ";" .
+staticLocalName = ident .
+staticArrayDim  = "[" initNumber "]" .
+staticInit      = globalValue | staticRuntimeInit .
+staticRuntimeInit = expr .
+
+switchStmt   = switchKw "(" switchCond ")" "{" { caseGroup } [ defaultGroup ] switchClose .
+switchKw     = "switch" .
+switchCond   = expr .
+switchClose  = "}" .
+caseGroup    = caseLabelRun caseBody .
+caseLabelRun = caseLabel { caseLabel } .
+caseLabel    = "case" caseValue ":" .
+caseValue    = ident | caseNeg | caseNumber .
+caseNeg      = "-" caseNumber .
+caseNumber   = digit { digit } .
+caseBody     = { unlabeledStmt } .
+defaultGroup = defaultLabel caseBody .
+defaultLabel = "default" ":" .
+
+/* Mehrere Deklaratoren in einer Anweisung ("int i, k;"). Ein etwaiger
+   Initialisierer gehoert wie in C zum LETZTEN Deklarator ("int slot,
+   global = -1;") -- genau das ergibt sich hier automatisch, weil varInit
+   dem zuletzt angelegten lokalen Slot zugewiesen wird. */
+/* Jeder Deklarator darf einen EIGENEN Initialisierer haben ("int round = 0,
+   square = 0;") -- das ist die C-Regel; die vorherige Fassung erlaubte ihn
+   nur beim letzten. varDeclarator buendelt Name und Initialisierer, damit
+   die Wiederholung beide zusammen erfasst. */
+/* NACHTRAG 2026-09-09 -- derselbe Zeiger-Bugfix wie bei structDeclarator
+   oben: pointerDecl gehoert VOR jeden einzelnen Deklarator, nicht einmal
+   vor die ganze Liste ("char *a, *b;" war ein stiller Parse-Fehler). */
+varDecl   = [ registerKw ] [ constKw ] [ volatileKw ] type varDeclarator { "," varDeclarator } ";" .
+/* "register" (2026-09-16) ist in C89 nur ein HINWEIS an den Uebersetzer und
+   darf folgenlos ignoriert werden -- genau das passiert hier. Vorher
+   scheiterte die Deklaration stumm. */
+registerKw = "register" .
+varDeclarator = ptrArrayDecl | plainVarDeclarator .
+/* Zeiger auf Array (2026-09-17), z.B. "int (*p)[3];": eine EIGENE
+   Alternative statt einer Erweiterung von localDecl -- die Klammer aendert
+   die Bindung ("(*p)[3]" = Zeiger auf ein 3er-int-Array, waehrend "*p[3]"
+   ohne Klammer ein 3er-Array von Zeigern waere, siehe pointerDecl/localDecl
+   weiter unten). Nur EIN Stern (kein "Zeiger auf Zeiger auf Array" in dieser
+   Version). Wiederverwendet arraySizeN (Groesse PFLICHT) fuer die
+   Zeilenlaengen -- dieselbe Regel, die schon paramArrayN benutzt. */
+plainVarDeclarator = pointerDecl localDecl [ "=" varInit ] .
+ptrArrayDecl = "(" "*" localName ")" arraySizeN { arraySizeN } .
+/* mehrdimensionale Arrays (2026-07-24: beliebig viele Dimensionen, urspruenglich
+   2026-07-24 nur 2D): NUR bei lokalen/globalen Variablen, bewusst NICHT bei
+   struct-Feldern (structField behaelt [ arraySize ] einstufig -- ein
+   mehrdimensionales struct-Feld ist damit ein sauberer Parse-Fehler statt eines
+   still falsch geschnittenen Feldes, siehe tc_structfield) und NICHT bei Parametern
+   (paramArray bleibt "[" "]"). Layout: Groesse = dim1*dim2*...*dimN (zeilenweise/
+   "row-major" wie in echtem C), dim2..dimN werden fuers Indizieren gebraucht
+   (siehe tc_localdecl/tc_globalend/tc_varref/tc_target, TC_MAXDIMS begrenzt N
+   zur Uebersetzungszeit) -- KEIN Initialisierer mit verschachtelten Klammern in
+   dieser Version (flache Initialisierer `{1,2,3,4,5,6}` funktionieren weiterhin
+   mit, siehe docs/FORTSCHRITT.md). */
+localDecl = localName [ arraySize { arraySizeN } ] .
+/* arrayStringInit (2026-07-24, String-Literale als Array-Initialisierer,
+   char msg[6] = "hallo";): MUSS vor expr probiert werden, sonst wuerde expr
+   (via factor/stringLit) das Literal zuerst konsumieren. Referenziert
+   stringLit bewusst DIREKT (anders als globalStringInit) -- dessen ACTION
+   tc_string (anonyme GARRAY-Konstante + char*-Adresse auf den Stack) wird
+   fuer den SKALAREN Fall (char* p = "..";) ohnehin gebraucht; tc_arrayinitstring
+   verwirft die Adresse per DROP nur, wenn das Ziel tatsaechlich ein Array ist. */
+varInit   = arrayStringInit | expr | initList .
+arrayStringInit = stringLit .
+initList  = "{" [ initValue { "," initValue } ] "}" .
+/* initString ist eine ABSICHTLICH AKTIONSLOSE Kopie von stringLit -- anders
+   als bei fieldConstKw (2026-09-07) ist das hier richtig und nicht der
+   Anfang eines stillen Fehlers: eine Initialisiererliste wird NICHT ueber
+   Aktionen ausgewertet, sondern als ROHTEXT von tc_globalend/tcGlobalOne
+   (tcInitList). Ein Verweis auf stringLit wuerde tc_string ausloesen und
+   ein ADDRG auf den STAPEL legen -- in einer Datendefinition gibt es aber
+   keinen Stapel; die Adresse gehoert als GINITADDR in die Daten. Die
+   Grammatik muss die Form hier also nur LESEN koennen. */
+/* initList als initValue: "{{1,2},{3,4}}". Das ist indirekte Rekursion ueber
+   das Terminal "{" -- keine Linksrekursion, der rekursive Abstieg kommt
+   damit zurecht. Ausgewertet wird die Liste ohnehin als ROHTEXT
+   (tcInitList), die Grammatik muss die Form nur lesen koennen; dort wird
+   auch die Zeilenlaenge beachtet und eine zu tiefe Schachtelung gemeldet. */
+initValue = initFloat | initNumber | initNeg | initBool | initString | initList .
+initString = "\042" { character } "\042" .
+initBool  = "true" | "false" .
+initNeg   = "-" ( initFloat | initNumber ) .
+/* Wie globalFloat eine ABSICHTLICH AKTIONSLOSE Kopie: eine Liste wird nicht
+   ueber Aktionen ausgewertet, sondern als Rohtext von tcInitList gelesen.
+   Die Form muss hier nur LESBAR sein, damit "double t[3] = {1.0, 2.0};"
+   eine Meldung bekommt statt still am Parser zu scheitern -- umgesetzt ist
+   der Fall noch nicht (s. tcGlobalOne). */
+initFloat = digit { digit } floatTail .
+/* HEX UND SUFFIXE IN INITIALISIERERN (2026-09-16): initNumber las nur
+   Dezimalziffern -- "unsigned long t[] = { 0x7FF00000UL };" scheiterte
+   damit STILL, obwohl dieselbe Zahl in jedem Ausdruck gelesen wird.
+   Die Regel verweist jetzt auf dieselben aktionslosen Bausteine wie
+   number; ausgewertet wird die Liste weiterhin als Rohtext in
+   tcInitList, das die beiden Formen ebenfalls kennen muss. */
+initNumber = ( hexNumber | decNumber ) [ integerSuffix ] .
+/* Kettenzuweisung "a = b = 0;". Steht als ERSTE Alternative; bei einer
+   einfachen Zuweisung scheitert sie am zweiten target und die geordnete
+   Auswahl faellt zurueck. Das ist gefahrlos, weil Aktionen nicht sofort
+   ausgefuehrt, sondern protokolliert und beim Zurueckrollen verworfen
+   werden (actionLog, siehe Data/qcc_p.c). */
+assignStmt = chainAssign | target assignop expr ";" .
+chainAssign = target assignop target assignop expr ";" .
+assignop   = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+           | "<<=" | ">>=" | "&=" | "^=" | "|=" .
+callStmt  = call ";" | indirectCall ";" .
+
+/* va_start/va_arg/va_end (2026-09-23, C89 4.8 "Variable arguments"):
+   EIGENE Sonderformen statt normaler Funktionsaufrufe -- das zweite
+   Argument von va_start ist der NAME des letzten benannten Parameters
+   (dessen SLOT wird gebraucht, nicht sein Wert; ein normaler Aufruf
+   wuerde ihn stattdessen auswerten und pushen), und va_arg braucht einen
+   TYPNAMEN als drittes Token, keinen Ausdruck. ap wird intern als
+   SLOT-INDEX gefuehrt (siehe tc_vastart/tc_vaargend) -- fuer den Anwender
+   bleibt va_list trotzdem undurchsichtig (C89 3.7), er sieht diesen Wert
+   nie direkt.
+   va_end ist bewusst ein reines No-op (kein Aufraeumen im vereinfachten
+   Modell dieses Compilers noetig) -- dennoch als eigene Form gefuehrt,
+   damit "va_end(ap);" syntaktisch gueltig bleibt UND ap als benutzt
+   erkannt wird (kein "unused variable"-artiger Nebenschauplatz). */
+vaStmt      = vaStartCall ";" | vaEndCall ";" .
+vaStartCall = "va_start" "(" vaApRef "," vaLastName ")" .
+vaEndCall   = "va_end" "(" vaApRef ")" .
+vaApRef     = ident .
+vaLastName  = ident .
+/* vaArgExpr steht in factor UND castOperand -- anders als bei posFactor
+   gibt es hier KEINE Mehrdeutigkeit mit castExpr ("va_arg" ist ein festes
+   Schluesselwort, kein Bezeichner, der als Typname gelesen werden
+   koennte), also keine Randfall-Einschraenkung wie dort noetig. */
+vaArgExpr   = "va_arg" "(" vaApRef "," type pointerDecl ")" .
+
+/* "(void)ausdruck;" -- wertet aus und verwirft. In C das uebliche Mittel,
+   einen absichtlich unbenutzten Parameter stillzulegen; qcc_p.c benutzt es
+   genau dafuer ("(void)start; (void)end;"). Kein anderes Statement beginnt
+   mit "(", die Einordnung in der Alternation ist also unkritisch. */
+/* Leere Anweisung. In C muss auf eine Sprungmarke eine Anweisung folgen;
+   der generierte Parser Data/qcc_p.c schreibt deshalb ueberall "L19: ;". */
+emptyStmt = ";" .
+
+voidCastStmt = voidCastOpen expr ";" .
+voidCastOpen = "(" "void" ")" .
+returnStmt = "return" [ retVal ] ";" .
+retVal    = expr .
+
+ifStmt    = ifKw "(" ifCond ")" thenPart [ elseKw elsePart ] .
+ifKw      = "if" .
+elseKw    = "else" .
+ifCond    = expr .
+thenPart  = statement .
+elsePart  = statement .
+
+whileStmt = whileKw "(" whileCond ")" whileBody .
+whileKw   = "while" .
+whileCond = expr .
+whileBody = statement .
+
+forStmt   = forKw "(" [ forInit ] forSep1 [ forCond ] forSep2 [ forStep ] forClose forBody .
+forKw     = "for" .
+forSep1   = ";" .
+forSep2   = ";" .
+forClose  = ")" .
+/* KOMMA IM for-KOPF (2026-09-15): "for (i = 0, j = n; ...; i++, j--)".
+   Anders als im allgemeinen Ausdruck ist das Komma HIER eindeutig der
+   Operator -- zwischen "(" und ";" bzw. ";" und ")" gibt es keine
+   Argument- oder Initialisiererliste, die ihr eigenes Komma mitbraechte
+   (s. den Kommentar bei commaExpr, der genau deshalb auf die geklammerte
+   Form beschraenkt ist). Die Aktion haengt an den ITEMS, nicht an der
+   Liste: sonst liefe tc_assign/tc_forstep einmal fuer beide Ausdruecke.
+   Die Reihenfolge stimmt von selbst -- der Schritt wird an Ort und Stelle
+   emittiert und per Sprung an die richtige Stelle gezogen (tc_forsep2). */
+forInit   = forInitItem { forComma forInitItem } .
+forInitItem = target assignop expr .
+forComma  = "," .
+forCond   = expr .
+forStep   = forStepItem { forComma forStepItem } .
+forStepItem = target assignop expr | postIncDec | preIncDec .
+forBody   = statement .
+
+doStmt    = doKw doBody doWhileTok "(" doCond ")" doClose .
+doKw      = "do" .
+doWhileTok = "while" .
+doCond    = expr .
+doClose   = ";" .
+doBody    = statement .
+
+breakStmt    = "break" ";" .
+continueStmt = "continue" ";" .
+
+/* goto + Sprungmarken. Beide Aktionen haengen bewusst an der VOLLSTAENDIGEN
+   Regel, nicht an einer Unterregel fuer den blossen Namen: labelStmt beginnt
+   mit einem ident und wird deshalb bei JEDEM ident-Statement ("foo();",
+   "x = 1;") zuerst probiert und danach zurueckgerollt. Eine Aktion an einer
+   Namens-Unterregel wuerde in genau diesen Faellen spekulativ feuern; an der
+   Gesamtregel feuert sie erst, wenn das Statement vollstaendig erkannt ist.
+   Den Bezeichner holt sich die Aktion selbst aus dem erkannten Textbereich
+   (tcIdentFromSpan). Deshalb steht labelStmt in der Alternation auch VOR
+   callStmt/assignStmt -- die geordnete Auswahl probiert es zuerst, das
+   Backtracking faengt die Fehlversuche ab. */
+gotoStmt  = "goto" ident ";" .
+labelStmt = ident ":" .
+
+expr       = conditionalExpr .
+conditionalExpr = orExpr [ qmark conditionalTrue colon conditionalFalse ] .
+/* Eigene Regeln fuer die Klammern eines geklammerten Ausdrucks, damit die
+   VERZOEGERTEN Operatoren darum herum gerettet werden koennen (siehe
+   tc_parenbegin). Ohne das wendet der erste INNERE Faktor ein noch
+   ausstehendes "*" des UMSCHLIESSENDEN Ausdrucks an -- "x * (a + b)"
+   rechnete dadurch (x*a)+b. */
+parenOpen  = "(" .
+parenClose = ")" .
+/* KOMMA-OPERATOR (2026-08-11), bewusst NUR innerhalb eines geklammerten
+   Ausdrucks. In C unterscheidet die Grammatik "expression" (mit Komma) von
+   "assignment-expression" (ohne); Argumentlisten und Initialisierer benutzen
+   letztere. Diese Trennung hier nachzubauen haette jede Regel angefasst, die
+   expr verwendet -- und ein Komma in argList bzw. initList als Operator
+   fehlzudeuten waere ein stiller Fehler. Die geklammerte Form ist eindeutig
+   (argList/initList haben ihre eigenen Kommas in eigenen Regeln) und deckt
+   den Bedarf: "return p == e ? (*value = v, 1) : 0;".
+   commaAssign steht VOR commaValue, weil die geordnete Auswahl sonst bei
+   "*p = 1" den Teilausdruck "*p" als commaValue annimmt und die Zuweisung
+   danach nicht mehr erreichbar ist. Der fehlgeschlagene Versuch ist
+   nebenwirkungsfrei: Aktionen laufen erst beim Replay, ein verworfener
+   Parse-Pfad wird aus dem Aktionsprotokoll zurueckgerollt. */
+commaExpr   = commaItem { commaTok commaItem } .
+commaTok    = "," .
+commaItem   = commaAssign | commaValue .
+commaAssign = target assignop expr .
+commaValue  = expr .
+qmark      = "?" .
+conditionalTrue = expr .
+colon      = ":" .
+conditionalFalse = conditionalExpr .
+orExpr     = andExpr [ orop orExpr ] .
+orop       = "||" .
+andExpr    = bitOrExpr [ andop andExpr ] .
+andop      = "&&" .
+bitOrExpr  = bitXorExpr [ bitorop bitOrExpr ] .
+bitorop    = "|" .
+bitXorExpr = bitAndExpr [ bitxorop bitXorExpr ] .
+bitxorop   = "^" .
+bitAndExpr = comparison [ bitandop bitAndExpr ] .
+bitandop   = "&" .
+comparison = shiftExpr [ relop shiftExpr ] .
+shiftExpr  = addExpr { shiftop shiftRhs } .
+shiftRhs   = addExpr .
+shiftop    = "<<" | ">>" .
+relop     = "<=" | ">=" | "==" | "!=" | "<" | ">" .
+addExpr   = term { addop term } .
+addop     = "+" | "-" .
+term      = factor { mulop factor } .
+mulop     = "*" | "/" | "%" .
+/* vaArgExpr steht VORNE, VOR call -- "va_arg(ap,int)" matcht sonst
+   syntaktisch bereits als GEWOEHNLICHER Funktionsaufruf (funcName "("
+   argList ")"; "int" darin waere fuer die Grammatik einfach ein Bezeichner,
+   da es hier keinen Ausschluss-Operator fuer reservierte Woerter gibt --
+   dieselbe Ursache wie beim typedefRef/castExpr-Problem bei posFactor),
+   und der Generator kaeme dann NIE mehr bis zu dieser Alternative zurueck.
+   Anders als bei posFactor reicht hier einfaches VORZIEHEN, weil "va_arg"
+   selbst ein festes Schluesselwort ist -- keine Rueckwirkung auf andere
+   Formen wie dort (s. Kommentar bei posFactor unten). */
+factor    = sizeofExpr
+          | vaArgExpr
+          | castExpr
+          | preIncDec
+          | postIncDec
+          | parenOpen commaExpr parenClose [ postfixIndex ]
+          | call [ postfixIndex ] [ callMember ]
+          | indirectCall
+          | boolLit
+          | addressRef
+          | derefRef
+          | varRef
+          | charLit
+          | floatLit
+          | number
+          | stringLit [ postfixIndex ]
+          | posFactor
+          | negFactor .
+
+/* Direkte Indizierung ohne Zwischenvariable (2026-07-24): "func()[i]" und
+   "hallo"[i]" duerfen jetzt DIREKT indiziert werden, ohne den Rueckgabewert
+   erst in eine Pointer-Variable zu schreiben. postfixIndex ist bewusst
+   NUR eine Huellregel um die bereits bestehende index-Regel (KEINE eigene
+   Klammersyntax, KEIN neues Bracket-Handling) -- dadurch feuern indexOpen/
+   tc_callname (rettet/setzt tcPendingAdd/tcPendingMul zurueck) und die
+   bestehende ACTION AFTER index CALL tc_arg (prueft den Indextyp, stellt
+   tcPendingAdd/tcPendingMul wieder her) GENAUSO wie bei "arr[i]", nur die
+   neue ACTION AFTER postfixIndex CALL tc_postfixindex kommt hinzu. Bewusst
+   NICHT Teil dieser Version: verkettete Postfix-Indizierung (mehr als ein
+   Klammernpaar direkt hintereinander, z.B. "f()[0][1]"), Indizierung als
+   Zuweisungsziel (foo()[0] = 5;), Indizierung auf "(" expr ")". */
+postfixIndex = index .
+
+/* String-Literal (2026-07-24): erzeugt zur Uebersetzungszeit einen anonymen globalen
+   char-Array-Konstant (GARRAY/GINIT, siehe tc_string) und liefert dessen Adresse als
+   Wert vom Typ char* -- exakt dieselben IR-Opcodes wie ein initialisiertes globales
+   char-Array, kein neuer Opcode und keine Backend-Aenderung noetig (analog 2D-Arrays).
+   Vorbild fuer die Grammatik: Data/oberon07.ebnf ("\042" ist der Oktal-Escape des
+   EBNF-Tools fuer ein woertliches Anfuehrungszeichen, siehe Source/parsec.cpp). character
+   deckt den druckbaren ASCII-Bereich OHNE das Anfuehrungszeichen selbst ab (0x20-0x21,
+   0x23-0x7E) -- Escapesequenzen wie \n werden ueber das ebenfalls im Bereich enthaltene
+   "\" erkannt und in tc_string dekodiert, nicht in der Grammatik. Bewusst NICHT
+   Teil dieser Version: String-Literale als Array-Initialisierer (char msg[6] = "hallo";)
+   und String-Verkettung/-Vergleich als eigene Operatoren. */
+/* MEHRERE LITERALE HINTEREINANDER sind EIN String (C89 3.1.4). Die Aktion
+   bleibt an stringLit und bekommt damit die Spanne ueber ALLE Teile;
+   tcDecodeStringLit haengt sie aneinander. stringPiece traegt bewusst
+   keine eigene Aktion -- es gibt nichts je Teil zu tun. */
+stringLit = stringPiece { stringSep stringPiece } .
+stringPiece = "\042" { character } "\042" .
+/* stringLit steht in der TOKEN-Liste, und TOKEN-Regeln ueberspringen
+   KEINEN Leerraum -- deshalb muss der Zwischenraum zwischen zwei
+   Literalen hier ausdruecklich stehen. Er darf leer sein ("ab""cd"
+   ist gueltiges C), und er umfasst auch Zeilenumbrueche: gerade der
+   Fall, um den es geht, ist ein langer Meldungstext ueber mehrere
+   Zeilen. */
+stringSep = { stringSpace } .
+stringSpace = "\040" | "\011" | "\015" | "\012" .
+
+/* Zeichenliteral 'x'. Wie in echtem C hat es den Typ int (nicht char) --
+   dadurch funktionieren Vergleiche mit int-Variablen ohne Konvertierung,
+   genau das Muster in Data/qcc_p.c ("c >= '0' && c <= '9'" mit int c).
+   Die Zeichenklassen sind ausgeschriebene Bereiche, weil der EBNF-Dialekt
+   keinen Ausschluss-Operator hat: 0x20-0x26, 0x28-0x5B und 0x5D-0x7E lassen
+   genau das Hochkomma (0x27) und den Backslash (0x5C) aus, die beide nur
+   ueber die Escape-Form vorkommen duerfen. Unterstuetzte Escapes sind die
+   in der Praxis benutzten -- \n \t \r \0 und der Backslash selbst. */
+charLit       = "\047" charLitBody "\047" .
+charLitBody   = charLitEscape | charLitPlain .
+charLitEscape = "\134" charLitEscChar .
+charLitEscChar = octEscape | hexEscape | "n" | "t" | "r" | "\134" .
+octEscape = ("0"~"7") [ ("0"~"7") [ ("0"~"7") ] ] .
+hexEscape = ("x" | "X") ("0"~"9" | "a"~"f" | "A"~"F") [ ("0"~"9" | "a"~"f" | "A"~"F") ] .
+charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
+/* strEscape steht VORNE, damit ein Backslash mitsamt dem Folgezeichen als
+   EINHEIT konsumiert wird -- sonst beendet das "\\\"" das Literal vorzeitig.
+   Die Dekodierung selbst kann tcDecodeStringLit laengst, nur die Grammatik
+   kam bisher nie so weit. */
+character = strEscape | " "~"!" | "#"~"~" .
+strEscape = "\134" strEscChar .
+strEscChar = " "~"~" .
+negFactor = ( "-" | "!" | "~" ) factor .
+/* UNAERES PLUS (2026-09-23): "i = +5;" war 2026-09-16 versucht und
+   zurueckgenommen worden, weil "+" naiv in factor aufzunehmen "(x)+1"
+   (x kein Typ) zum CAST macht -- castExpr steht in factor VOR parenOpen,
+   und ein Cast auf einen beliebigen Bezeichner "x" matcht syntaktisch
+   IMMER (typedefRef = ident laesst jeden Namen durch), unabhaengig davon,
+   ob x wirklich ein Typ ist. Sobald "+1" ein gueltiger castOperand ist,
+   gewinnt castExpr die LAENGERE syntaktische Deckung gegen parenOpen und
+   der Generator backtrackt nie mehr zur Klammer-Alternative -- das ist
+   keine Frage der Aktions-REIHENFOLGE (Aktionen werden ohnehin erst per
+   actionLogReplay nach dem Parsen abgespielt), sondern eine ECHTE
+   syntaktische Mehrdeutigkeit: beide Lesarten sind grammatisch gueltig,
+   nur eine ist semantisch sinnvoll, und die Grammatik hat keinen
+   Ausschluss-Operator, um "ident, der KEIN Typ ist" auszudruecken.
+   LOESUNG OHNE GENERATOR-EINGRIFF: posFactor (das neue "+") wird NUR der
+   allgemeinen factor-Alternative hinzugefuegt, NICHT aber castOperand --
+   castOperand bekommt stattdessen eine EIGENE Kopie der alten
+   factor-Liste (ohne posFactor). Dadurch matcht "(x)+1" als castOperand
+   weiterhin NICHT (weder positiv factor noch die alten negFactor-Faelle
+   decken ein fuehrendes "+" ab), castExpr scheitert also am Operanden und
+   der Generator faellt wie vorher auf parenOpen zurueck -- "x + 1" bleibt
+   korrekt. Das kostet einen Randfall, der beim Minus SEIT JEHER ebenso
+   besteht und dort seit jeher akzeptiert ist (Kommentar oben): ein
+   ECHTER Cast auf einen Typ-SCHLUESSELWORT mit unmittelbar folgendem
+   unaerem Plus als Operand, z.B. "(int)+5", parst nicht mehr als Cast
+   (castOperand liesse "+5" nicht mehr durch) -- ein seltenes Konstrukt,
+   das sich durch doppelte Klammern ("(int)(+5)") jederzeit umschreiben
+   laesst. Im Wert ist "+x" ohnehin ein No-op; nur der Typ wird wie bei
+   "-x" auf int erweitert (char/short -> int), s. tc_pos. */
+posFactor = "+" factor .
+addressRef = "&" ident [ index ] .
+
+sizeofExpr = "sizeof" ( "(" sizeofArg ")" | sizeofVarName ) .
+/* "sizeof x" OHNE Klammern (2026-09-16) ist in C89 gueltig und scheiterte
+   stumm. Nur die Variablenform -- "sizeof int" ohne Klammern gibt es in C
+   nicht, ein Typname braucht sie immer. */
+sizeofArg  = sizeofType | sizeofVarName | sizeofStringLit .
+/* ECHTER BUG GEFUNDEN + GEFIXT (2026-09-01, gemessen): sizeofType lief frueher
+   ueber die volle Typregel `type`, und die endet auf `typedefRef = ident`.
+   Damit matchte der TYPZWEIG JEDEN BEZEICHNER und gewann die geordnete Auswahl
+   immer -- sizeofVarName/tc_sizeofvar wurde nie erreicht. Folge: sizeof(v)
+   meldete "unknown type name 'v'" (zweimal, weil tc_sizeof tc_type selbst noch
+   einmal aufruft) und lieferte den Default 4; bei `char line[80]` also 4 statt
+   80. Deshalb steht hier jetzt nur noch sizeofBaseType -- die Typformen, die
+   mit einem Schluesselwort beginnen. Der nackte Bezeichner geht an
+   sizeofVarName, das Variable UND typedef-Namen aufloest; sizeof(ActionLogEntry)
+   bleibt also moeglich (der Bootstrap braucht genau das). */
+sizeofType = sizeofBaseType pointerDecl .
+/* NACHTRAG 2026-09-09 -- "short" dazu (s. type/unsignedInt weiter unten):
+   dieselbe Erweiterung, damit sizeof(short)/sizeof(unsigned short) nicht an
+   dieser eigenen Kopie der Typliste vorbeilaeuft.
+   NACHTRAG 2026-09-23 -- longLongType dazu, VOR "long" (dieselbe Reihenfolge-
+   Notwendigkeit wie in der Haupt-"type"-Regel: die geordnete Auswahl naehme
+   sonst "long" allein und liesse das zweite "long" unverarbeitet stehen).
+   OHNE diesen Zweig scheiterte sizeof(long long) komplett, waehrend
+   "(long long)x" als Cast schon ueber die volle "type"-Regel lief -- zwei
+   unabhaengige Kopien derselben Typliste, dieselbe Fehlerklasse wie beim
+   double-Einbau ("der Typtext wird an mehreren Stellen gelesen"). */
+sizeofBaseType = "unsigned" unsignedInt | "int" | longLongType | "long" | "char" | "short" | "bool" | "double" | "float" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
+sizeofVarName = ident .
+/* sizeof auf einem Stringliteral ist ein konstanter char-Arrayumfang inklusive
+   abschliessendem Nullbyte. Eigene aktionstragende Regel statt stringLit:
+   dessen Aktion wuerde im sizeof-Kontext unnoetig ein globales Array emittieren. */
+sizeofStringLit = stringPiece { stringSep stringPiece } .
+
+castExpr   = "(" castType ")" castOperand .
+/* Ein Cast verwendet dieselbe Typgrammatik wie eine Deklaration. Damit sind
+   typedef-Namen und beliebig viele Zeigersterne moeglich, z.B. (ActionFn*)p. */
+castType   = { castQualKw } type pointerDecl .
+/* castQualKw: AKTIONSLOSES "const" oder "volatile" im Cast, z.B. "(volatile unsigned char *)addr".
+   Hardwarezugriffe (Treiber) brauchen den volatile-Cast; die Semantik ist wie bei volatileKw
+   bewusst leer (kein Codegen-Unterschied). */
+castQualKw = "const" | "volatile" .
+/* castOperand ist BEWUSST eine eigene Kopie der alten factor-Liste, KEIN
+   Verweis auf factor selbst -- s. ausfuehrliche Begruendung beim
+   posFactor-Kommentar oben (negFactor). Wird factor spaeter um eine
+   weitere Form erweitert, die vor einem echten Typnamen in Klammern
+   nicht als Cast-Operand stehen darf, gehoert sie NICHT automatisch
+   hierher, sondern nur nach bewusster Pruefung wie bei posFactor. */
+castOperand = sizeofExpr
+          | vaArgExpr
+          | castExpr
+          | preIncDec
+          | postIncDec
+          | parenOpen commaExpr parenClose
+          | call [ postfixIndex ] [ callMember ]
+          | indirectCall
+          | boolLit
+          | addressRef
+          | derefRef
+          | varRef
+          | charLit
+          | floatLit
+          | number
+          | stringLit [ postfixIndex ]
+          | negFactor .
+
+/* "(*p)++" -- Inkrement DURCH einen Zeiger. Eigene Alternative, weil der
+   Operand hier kein blosser Bezeichner ist. Die Aktionen erkennen die Form
+   am fuehrenden "(" ihrer Spanne. */
+/* "a[i]++" -- Inkrement eines Arrayelements. Der Indexausdruck darf nur
+   EINMAL ausgewertet werden (Seiteneffekte!), sein Wert liegt beim Feuern
+   der Aktion bereits auf dem Stack und wird dort per DUP/SWAP
+   weiterverwendet statt neu berechnet. */
+/* "x.feld++" und "p->feld++". member deckt beide Schreibweisen ab. */
+preIncDec  = incdecOp derefIncTarget | incdecOp memberIncTarget | incdecOp indexIncTarget | incdecOp ident .
+postIncDec = derefIncTarget incdecOp | memberIncTarget incdecOp | indexIncTarget incdecOp | ident incdecOp .
+/* Includes both x.field and x.field[i].  The latter is needed for normal
+   C89 idioms such as vm->state[i]++ (and is not the same as x[i].field). */
+memberIncTarget = ident member [ index ] .
+indexIncTarget = ident index .
+derefIncTarget = "(" "*" ident ")" .
+incdecOp   = "++" | "--" .
+incDecStmt = preIncDec ";" | postIncDec ";" .
+derefRef  = "*" factor .
+call      = funcName "(" argList ")" .
+/* Memberzugriff auf den Wert eines direkten Aufrufs, z.B. get()->field oder
+   make().field. Der Aufruf wird zuerst durch tc_call abgeschlossen; dadurch
+   liegt sein Rueckgabetyp bereits auf dem Typstack, wenn tc_callmember den
+   Feldzugriff prueft und die Adresse berechnet. */
+callMember = member [ index ] .
+/* Aufruf ueber einen Funktionszeiger-Ausdruck, z.B. "actionLog[i].fn(a, b)".
+   varRef deckt "ident [index...] [.member]" bereits ab und legt den Zeiger als
+   Wert auf den Stack; indCallOpen uebernimmt ihn dann als Callee (siehe
+   tc_indcallbegin). Ein blosser Name faellt NICHT hierher -- den faengt die
+   vorangehende call-Regel ab. */
+indirectCall = varRef indCallOpen argList ")" .
+indCallOpen  = "(" .
+argList   = [ arg { "," arg } ] .
+arg       = expr .
+
+target    = directTarget | indirectTarget .
+/* wiederholter index-Verweis auf dieselbe Regel deckt "arr[i][j][k]..." ab
+   (beliebig viele AUFEINANDERFOLGENDE, nicht verschachtelte Klammerpaare) --
+   kein Grammatik-/Aktions-Zusatz noetig, ACTION AFTER index feuert einfach
+   einmal pro Klammerpaar (die tcIndexDepth-Buchfuehrung ist bereits
+   stapelbasiert, siehe tc_callname/tc_arg). Die eigentliche Zusammenfuehrung
+   zu einem flachen Index passiert in tc_target/tc_varref (per Rohtext-
+   Zaehlung der Top-Level-"["-Vorkommen, TC_MAXDIMS begrenzt N).
+   direkte p.field[i]-Indizierung von Array-Feldern (2026-07-24): member
+   bekommt einen eigenen optionalen index-Anschluss (KEIN zweiter, ineinander
+   verschachtelter -- Array-Felder in struct sind wie arraySize bewusst
+   einstufig, siehe structField). Die ACTION AFTER index CALL tc_arg feuert
+   fuer diesen Index GENAUSO wie bei "arr[i]" (rettet/restauriert
+   tcPendingAdd/tcPendingMul, prueft den Indextyp) -- tc_varref/tc_target
+   erkennen per Rohtext-Scan (erstes Zeichen nach dem Feldnamen == '[') ob
+   ein Index folgt und haengen dann ein zweites IPADD+LOADIND (lesend) bzw.
+   IPADD (schreibend) an das bereits vorhandene Feldadress-IPADD an -- der
+   Stack traegt an dieser Stelle bereits [Indexwert, Feldadresse] (Feldadresse
+   zuletzt gepusht, da tc_varref/tc_target erst am ENDE der ganzen Regel
+   feuern), exakt dieselbe Reihenfolge wie beim bestehenden IPADD-Aufruf fuer
+   die Feldadresse selbst -- kein neuer Opcode, kein Backend-Change. */
+/* arr[i].feld (2026-07-25, Selfhosting L2): ein ARRAY von structs, per
+   Laufzeit-Index adressiert, DANN Feldzugriff -- braucht die Index-Kette
+   UND den Member-Anschluss NACHEINANDER (nicht nur alternativ wie bisher).
+   Verkettete Indizierung NACH dem Feld (arr[i].feld[j]) bleibt bewusst
+   ausgeschlossen (wie bei p.field[i], siehe member oben) -- tc_varref/
+   tc_target diagnostizieren das explizit. Neuer IR-Opcode IPADDN (siehe
+   Backends/qccvm.py): skaliert einen Pointer um eine LAUFZEIT-Byte-Groesse
+   (hier: tcStructByteSizeK des Element-Structs), waehrend das bestehende
+   IPADD nur feste Typtag-Groessen (i/c/p) kennt -- die Elementgroesse eines
+   struct-Arrays ist aber beliebig. */
+/* member bekommt "{ index }" dazu (2026-09-07): NICHT um verkettete
+   Indizierung zu koennen, sondern um sie MELDEN zu koennen. Vorher nahm die
+   Grammatik "s.t[i][j]" gar nicht an, und ein Parse-Abbruch hat keine
+   Meldung -- bei einem 2D-Feld im struct ("char t[4][8]") war die
+   natuerlichste Zugriffsform damit ein stilles FAIL. Jetzt liest die
+   Grammatik es und tc_varref/tc_target lehnen es benannt ab. */
+directTarget = ident [ index { index } ] [ member [ index { index } ] { member [ index { index } ] } ] .
+/* Die Kette auch auf der ZIELSEITE lesen (2026-09-16): "p->n->v = 7". Ohne
+   sie brach der Parser stumm ab, waehrend die Leseseite die Kette laengst
+   kann -- ein halber Zustand waere verwirrender als gar keiner. */
+indirectTarget = "*" factor .
+varRef    = ident [ index { index } ] [ member [ index { index } ] { member [ index { index } ] } ] .
+/* VERKETTETE MEMBER-ZUGRIFFE (2026-09-16): "p->n->v" und "a.b->c" scheiterten
+   bis dahin STUMM -- die Regel liess nur EIN member zu, der Parser brach mit
+   "FAIL" ab, ohne ein Wort. Das trifft ausgerechnet das Idiom, fuer das man
+   verkettete Listen baut.
+   Die Wiederholung hier laesst die Form LESEN; emittiert wird sie (noch)
+   nicht, tc_varref meldet sie stattdessen mit dem Hinweis auf die
+   Zwischenvariable. Das ist bewusst der kleine Schritt: tc_varref ist die
+   verzweigteste Routine des Frontends und warnt an dieser Stelle selbst
+   davor, Kombinationen ohne Codegen still durchzulassen. */
+index     = indexOpen expr "]" .
+indexOpen = "[" .
+/* "->" ist in C nur Kurzschreibweise: "p->f" == "(*p).f". Die Aktionen
+   unterscheiden die beiden Formen selbst am Rohtext (tcNameEnd haelt jetzt
+   auch am "-" an), die Grammatik muss sie nur zulassen. */
+member    = "." fieldName | "->" fieldName .
+defName   = ident .
+paramName = ident .
+localName = ident .
+globalName = ident .
+funcName  = ident .
+/* "long" ist auf dem 68k-Ziel wortgleich mit "int" (beide 32 Bit) und wird
+   in tc_type auch so abgebildet -- eigener Typ waere ohne 64-Bit-Arithmetik
+   bedeutungslos. Steht VOR typedefRef, damit es nicht als Typedefname gilt.
+   NACHTRAG 2026-09-09 -- "short" ECHTER 16-Bit-Basistyp (Q9-Tools/REF-
+   Header brauchen ihn: module.h definiert u_int16 selbst als "unsigned
+   short" und hat etliche blanke "short"-Structfelder). Anders als long/int
+   NICHT auf einen bestehenden Typ abgebildet -- der 68k-Codegen legt short
+   echt als 2 Byte an (s. tcTypeTag/qcc_backend_c.cpp). */
+/* longLongType steht VOR "long", sonst nimmt die geordnete Auswahl das
+   erste "long" und das zweite wird zum Variablennamen -- die Deklaration
+   bricht dann still ab. Die Form wird also nur GELESEN, um sie melden
 [ENDE]
 
 [TS-SYMBOLTABELLE]
