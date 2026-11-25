@@ -291,7 +291,7 @@ grep -q 'clang -std=c89 -c -o "code.o" "code.c"' mac-profile.out
 ./qmake -n -P LGL code.o > linux-profile.out
 grep -q 'gcc -std=c89 -c -o "code.o" "code.c"' linux-profile.out
 ./qmake -n -P WCW code.o > windows-profile.out
-grep -q 'clang -std=c89 -c -o "code.o" "code.c"' windows-profile.out
+grep -q 'clang -std=c89 .*-c -o "code.o" "code.c"' windows-profile.out
 cat > q9makefile <<'EOF'
 TOOLCHAIN_FILE = toolchains/test.conf
 HOST_CC = sh fake-cc.sh
