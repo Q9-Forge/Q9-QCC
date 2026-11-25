@@ -29,10 +29,9 @@ extern int _os_gs_fd(int path, int size, char *fdbuf);
 extern int _os_chgdir(char *path, int mode);
 extern unsigned long _os_ticks(void);
 
-/* qmake never needs an SDK auto-discovery on Q9 itself: the documented,
- * agreed configuration directory is the fixed /dd/SYS (see Q9-Make's
- * README), not an environment-driven search like on the development
- * hosts. Both functions therefore simply report "not available". */
+/* On Q9 itself the configuration directory is the fixed /dd/SYS (see Q9-Make's
+ * README): the image build places the shared qmake.conf of the SDK there. There is
+ * no environment-driven SDK search like on the development hosts. */
 int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity)
 {
 	(void)target_arch;
@@ -43,9 +42,10 @@ int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity
 
 int qmake_default_host_config_dir(char *out, size_t capacity)
 {
-	(void)out;
-	(void)capacity;
-	return 0;
+	if (capacity < sizeof("/dd/SYS"))
+		return 0;
+	strcpy(out, "/dd/SYS");
+	return 1;
 }
 
 /* No ANSI escape handling on the Q9 console for this first port; always

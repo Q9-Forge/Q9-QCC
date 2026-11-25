@@ -74,9 +74,19 @@ int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity
     return 1;
 }
 
+/* Host configuration directory: %Q9SDK%\Q9\SYS when it holds a qmake.conf (the shared
+ * configuration of the Q9 SDK). Returns 1 when out was set. */
 int qmake_default_host_config_dir(char *out, size_t capacity)
 {
-    (void)out;
-    (void)capacity;
-    return 0;
+    const char *root = getenv("Q9SDK");
+    long modified;
+
+    if (root == (const char *)0 || *root == '\0' ||
+        strlen(root) + sizeof("\\Q9\\SYS\\qmake.conf") > capacity)
+        return 0;
+    sprintf(out, "%s\\Q9\\SYS\\qmake.conf", root);
+    if (!qmake_file_info(out, &modified))
+        return 0;
+    sprintf(out, "%s\\Q9\\SYS", root);
+    return 1;
 }
