@@ -13,8 +13,8 @@ mkdir -p build
 QIR68K_SRC="${QIR68K_SRC:-../Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp}"
 QIRARM64_SRC="${QIRARM64_SRC:-../Q9-BACKEND-ARM64/q9-qirarm64/src/qcc_arm64_backend_c.cpp}"
 
-clang++ -std=c++17 -Wall -Wno-format-security -o build/parsec src/parsec.cpp src/codegen.cpp || exit 1
-cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend "$QIR68K_SRC" || exit 1
+clang++ -std=c++17 -Wall -Wextra -Werror -o build/parsec src/parsec.cpp src/codegen.cpp || exit 1
+cc -std=c11 -Wall -Wextra -Werror -x c -o build/qcc_backend "$QIR68K_SRC" || exit 1
 
 fail=0
 
@@ -2490,7 +2490,7 @@ fi
 #     Gebaut wird die reine-C-Fassung (qcc_backend_c.cpp, siehe
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (qcc_backend.cpp)
 #     bleibt als Referenz liegen -- Ruecksetzen = hier wieder die .cpp bauen.
-cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend "$QIR68K_SRC" 2>/dev/null
+cc -std=c11 -Wall -Wextra -Werror -x c -o build/qcc_backend "$QIR68K_SRC" 2>/dev/null
 if [ -x tools/vasmm68k_mot ]; then
 	if [ -x build/qcc_backend ] && \
 		build/qcc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/qcc_m4.ir && \
@@ -4879,7 +4879,7 @@ int main(void){ return 0; }' 2>&1)
 
 	# 17f) Kompletter End-to-End-Pfad bis zum 68k-Backend: MODHEADER/ENTRY
 	# duerfen dort nicht mehr "Opcode ausserhalb einer Funktion" ausloesen.
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
+	if cc -std=c11 -Wall -Wextra -Werror -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
 		build/qcc_p_dm '#defmodul NAME cfide
 #defmodul TYPE PROG main
 int main(void){ return 0; }' > build/qcc_dm.ir 2>/dev/null

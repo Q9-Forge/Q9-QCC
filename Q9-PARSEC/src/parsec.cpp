@@ -430,14 +430,14 @@ void printLexTab() {
 	char tsDisp[IDENT_LEN + 3];
 	int i, stat;
 
-	printf(head0);
-	printf(head1);
-	fprintf(fpLst, head0);
-	fprintf(fpLst, head1);
+	printf("%s", head0);
+	printf("%s", head1);
+	fprintf(fpLst, "%s", head0);
+	fprintf(fpLst, "%s", head1);
 	for (i = 0; i < aktTabIndex; i++) {
 		if (strlen(lexTab[i].ident)) {
-			printf(head0);
-			fprintf(fpLst, head0);
+			printf("%s", head0);
+			fprintf(fpLst, "%s", head0);
 		}
 		stat = lexTab[i].trueAction;
 		if (stat < 0) {
@@ -485,8 +485,8 @@ void printLexTab() {
 		// fpOut (.lextab) is no longer written here: the old raw CSV format was
 		// replaced by the structured workfile; see writeWorkfile().
 	}
-	printf(head0);
-	fprintf(fpLst, head0);
+	printf("%s", head0);
+	fprintf(fpLst, "%s", head0);
 }
 
 //------------------------------------------------------------------------------------------------

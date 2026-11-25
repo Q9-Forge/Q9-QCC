@@ -1006,19 +1006,8 @@ static void emitPrologByConvention(FILE* out, const char* asmName, const char* c
 	}
 }
 
-/* Phase 5 (2026-09-24): Emit function epilog based on calling convention */
-static void emitEpilogByConvention(FILE* out, const char* convention, const char* framePtrReg) {
-	if (convention[0] == '\0' || strcmp(convention, "driver") == 0) {
-		fprintf(out, "\tunlk\t%s\n\trts\n", framePtrReg);
-	} else if (strcmp(convention, "interrupt") == 0) {
-		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
-	} else if (strcmp(convention, "trap") == 0) {
-		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
-	}
-}
-
 static void collectFunctions(void) {
-	int i, open = 0, seenFunction = 0;
+	int i, open = 0;
 	Function current;
 	char msg[300];
 	funcCount = 0;
@@ -1097,7 +1086,6 @@ static void collectFunctions(void) {
 				else if (attrs & FUNC_ATTR_DRIVER) strcpy(current.convention, "driver");
 			}
 			open = 1;
-			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {
 			if (!open) { sprintf(msg, "IR Zeile %d: ENDFUNC ohne FUNC", insP->line); fatal(msg); }
 			current.last = i;
@@ -1794,7 +1782,6 @@ static void emitIR(FILE* out) {
 	int serial = 0;
 	int fi, k;
 	char msg[300];
-	char addrBuf[64];
 	int order[MAX_FUNCS];
 	int oi;
 	int gi;

@@ -82,13 +82,13 @@ inline int fopen_s(FILE** fp, const char* name, const char* mode) {
 // Only base 10 is used by the project; support other bases for completeness.
 inline int _itoa_s(int value, char* dst, size_t dstSize, int radix) {
 	if (radix == 10) {
-		sprintf(dst, "%d", value);
+		snprintf(dst, dstSize, "%d", value);
 	}
 	else if (radix == 16) {
-		sprintf(dst, "%x", value);
+		snprintf(dst, dstSize, "%x", value);
 	}
 	else if (radix == 8) {
-		sprintf(dst, "%o", value);
+		snprintf(dst, dstSize, "%o", value);
 	}
 	else {
 		return 1;
