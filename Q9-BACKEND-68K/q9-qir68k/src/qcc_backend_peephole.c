@@ -10,19 +10,18 @@
  * 2026-09-11  0.1  Introduced the English source-header format.
  */
 
-#define PH_CHUNK 65536          /* read granularity while the text buffer grows */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define PH_CHUNK 65536          /* Read granularity while the text buffer grows. */
 
 static char* phText = 0;
-/* OHNE const: QCC uebersetzt einen Cast auf "const char**" nicht (der Cast auf
-   "char**" dagegen schon). Die Fold-Funktionen nehmen ihre Zeile weiterhin als
-   "const char*" entgegen, das passt ohne Cast. */
+/* Keep entries mutable to match the frontend type system. */
 static char** phLines = 0;
 static int* phRemoved = 0;
 static int phLineCount = 0;
-/* Die Schrittweite eines Zeigers OHNE sizeof: QCC lehnt "sizeof(char*)" mit
-   einer Meldung ab. Gemessen wird die Schrittweite, mit der der jeweilige
-   Compiler ein Zeigerarray indiziert -- Allokation und Zugriff koennen damit
-   nicht auseinanderlaufen, egal ob 4 oder 8 Byte. */
+/* Derive pointer spacing from compiler layout. */
 static char* phStride[2];
 
 static char* phSynth = 0;
@@ -34,14 +33,14 @@ static void phLoad(const char* path) {
 	int size, cap, got, i, lines, ptrStride;
 	char* grown;
 	fp = fopen(path, "r");
-	if (!fp) fatal("peephole: kann Assemblerdatei nicht lesen");
+	if (!fp) fatal("peephole: unable to read assembly input");
 	size = 0;
 	cap = 0;
 	for (;;) {
 		if (size + PH_CHUNK + 1 > cap) {
 			cap = cap == 0 ? PH_CHUNK * 4 : cap * 2;
 			grown = (char*) realloc(phText, cap);
-			if (!grown) fatal("peephole: kein Speicher fuer die Assemblerausgabe");
+			if (!grown) fatal("peephole: unable to allocate assembly buffer");
 			phText = grown;
 		}
 		got = fread(phText + size, 1, PH_CHUNK, fp);
@@ -50,8 +49,7 @@ static void phLoad(const char* path) {
 	}
 	fclose(fp);
 	phText[size] = 0;
-	/* Zeilen zaehlen, BEVOR die Trenner durch NUL ersetzt werden -- danach
-	   stehen Tabellengroesse und Synthesepuffer fest und wachsen nicht mehr. */
+	/* Count lines before replacing separators; buffer sizes depend on this count. */
 	lines = 1;
 	for (i = 0; i < size; i++)
 		if (phText[i] == '\n' && i + 1 < size) lines++;
@@ -61,7 +59,7 @@ static void phLoad(const char* path) {
 	phSynthCap = size + 1;
 	phSynth = (char*) realloc(0, phSynthCap);
 	if (!phLines || !phRemoved || !phSynth)
-		fatal("peephole: kein Speicher fuer die Zeilentabellen");
+		fatal("peephole: unable to allocate line tables");
 	phSynthUsed = 0;
 	phLineCount = 0;
 	phLines[phLineCount++] = phText;
@@ -397,13 +395,13 @@ static void phWrite(const char* path) {
 	FILE* fp;
 	int i;
 	fp = fopen(path, "w");
-	if (!fp) fatal("peephole: kann Ausgabedatei nicht neu schreiben");
+	if (!fp) fatal("peephole: unable to open assembly output");
 	for (i = 0; i < phLineCount; i++) {
 		if (phRemoved[i]) continue;
 		fputs(phLines[i], fp);
 		fputc('\n', fp);
 	}
-	if (ferror(fp)) fatal("peephole: Schreibfehler");
+	if (ferror(fp)) fatal("peephole: output write failed");
 	fclose(fp);
 }
 
