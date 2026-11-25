@@ -59,17 +59,19 @@ Host tools belong below the matching host directory; target profiles and target
 binaries belong below `Q9/<architecture>`; `CMDS_CC` is reserved for modules
 built with the native Microware compiler. All toolchain profiles live in one
 sectioned `qmake.conf`: the `[global]` section holds shared defaults and a
-section named `NAME` holds that compiler/target combination. With `Q9SDK` set,
-macOS qmake first looks for the host profile at
+section named `NAME` holds that compiler/target combination. The shared file of
+the Q9 SDK is `$Q9SDK/Q9/SYS/qmake.conf`, one file for every development
+system; with `Q9SDK` set, qmake on macOS, Linux and Windows loads it first, and
+on Q9 itself qmake loads `/dd/SYS/qmake.conf`, where the image build places the
+same file. If it is absent, macOS qmake looks for the older host profile at
 `$Q9SDK/macOS/ARM64/SYS/qmake.conf` or `$Q9SDK/macOS/x86_64/SYS/qmake.conf`,
-selected by the architecture qmake was built for. If it is absent, qmake uses
+selected by the architecture qmake was built for. Otherwise qmake uses
 the project-local `TOOLCHAIN_FILE` when provided; simple projects need neither
 an SDK nor a profile and use the built-in `cc`/`-std=c89` defaults. For Q9
 target builds, qmake also searches `$Q9SDK/Q9/<TARGET_ARCH>/SYS/qmake.conf`
 (falling back to `$HOME/Q9SDK/...`). `-C DIR` explicitly loads
-`DIR/qmake.conf`. The Q9
-emulator adapter is not implemented yet; its agreed configuration directory is
-`/dd/SYS`, without host-SDK discovery.
+`DIR/qmake.conf`. On Q9 there is no host-SDK discovery; the configuration
+directory is `/dd/SYS`.
 
 Use one named section per host/compiler/target combination. Shared variables
 belong in `[global]`; each build configuration gets its own section and may
@@ -135,8 +137,8 @@ open.
 Each of the eight QCC command-line components has a local `q9makefile` with
 Mac-Clang and Mac/Wine-XCC sections. XCC builds were verified and stage to
 `Q9SDK/Q9/68k/CMDS_XCC`; see the German README for the component invocation.
-Install the shared file as `/dd/SYS/qmake.conf` and select the Q9 profile with
-`qmake -C /dd/SYS -P QQQ`.
+On Q9 the shared file is `/dd/SYS/qmake.conf`; qmake loads it without further
+options, so `qmake -P QQQ` selects the Q9 profile.
 
 ## Initial platform scope
 
@@ -194,6 +196,7 @@ cross-compiling configurations.
 | `A`  | macOS arm64 (Apple Silicon)   |
 | `I`  | macOS x86_64 (Intel)          |
 | `Q`  | Q9 / OS-9 68K                 |
+| `P`  | Q9 x86 (PC)                   |
 | `L`  | Linux (Debian) x86_64         |
 | `R`  | Linux (Raspberry OS) arm64    |
 | `W`  | Windows 11 x86_64             |
@@ -237,6 +240,14 @@ codes).
 | Windows 11             | x86_64    | Clang         | Windows 11              | x86_64      |   –   | `WCW` |
 | Windows 11             | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `WXQ` |
 | Windows 11             | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `WQQ` |
+| macOS                  | arm64     | QCC           | Q9 x86                  | x86         |   X   | `AQP` |
+| macOS                  | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `IQP` |
+| Linux (Debian)         | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `LQP` |
+| Linux (Raspberry OS)   | arm64     | QCC           | Q9 x86                  | x86         |   X   | `RQP` |
+| Windows 11             | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `WQP` |
+| Q9/OS-9                | 68k       | QCC           | Q9 x86                  | x86         |   X   | `QQP` |
+| Q9 x86                 | x86       | QCC           | Q9 x86                  | x86         |   –   | `PQP` |
+| Q9 x86                 | x86       | QCC           | Q9/OS-9                 | 68k         |   X   | `PQQ` |
 
 Compiler choice per host: Clang covers all three non-Linux hosts (macOS
 arm64, macOS x86_64, Windows), so they share one frontend and one set of
@@ -253,4 +264,7 @@ but are still unverified (no Linux/Windows test host, and `QMQ` additionally
 needs a working ISO-to-K&R converter). `ICI` (a true native build on Intel
 Mac hardware, as opposed to `ACI`'s Apple-Silicon-hosted cross build) and the
 remaining matrix rows (`IQQ`, `IXQ`, `LQQ`, `LXQ`, `RGR`, `RQQ`, `RXQ`,
-`WXQ`, `WQQ`) are not defined as configuration sections yet.
+`WXQ`, `WQQ`) are not defined as configuration sections yet. The same holds
+for every configuration with the system `P` (Q9 x86): QCC's x86 back end is
+still in development, so `AQP` … `PQQ` get their sections once its options
+are settled.

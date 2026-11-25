@@ -88,8 +88,8 @@ liegen beispielsweise in `Q9SDK/macOS/ARM64/CMDS`, `Q9SDK/macOS/x86_64/CMDS`, `Q
 `Q9SDK/Windows/CMDS`. Die mit XCC gebauten Q9/68k-Module liegen unter
 `Q9SDK/Q9/68k/CMDS_XCC`; QCC-Ausgaben verbleiben unter
 `Q9SDK/Q9/68k/CMDS_QCC`; `Q9SDK/Q9/68k/CMDS_CC` ist fuer den nativen
-Microware-Compiler reserviert. Der Q9-Emulatoradapter fehlt noch; sein vereinbarter
-Konfigurationsordner ist `/dd/SYS`.
+Microware-Compiler reserviert. Auf Q9 selbst ist der Konfigurationsordner
+`/dd/SYS`.
 
 Fuer Intel-Macs gibt es zusaetzlich das Profil `[ACI]` und das
 Ziel `qmake macX64`. Es erzeugt x86_64-Mach-O-Hostwerkzeuge unter
@@ -102,11 +102,14 @@ Abschnitt angelegt, z. B. `[ACA]`, `[ACI]`,
 `[AXQ]` oder `[QQQ]`.
 Gemeinsame Toolchainwerte stehen in `[global]`; jeder Konfigurationsabschnitt
 enthaelt seine eigenen Compiler-/Target-Werte. Das Projekt-`q9makefile` hat
-dieselben Abschnittsnamen fuer seine Regeln. Ist `Q9SDK` gesetzt, sucht qmake
-auf macOS zuerst das Hostprofil unter
+dieselben Abschnittsnamen fuer seine Regeln. Die gemeinsame Datei des Q9-SDK
+ist `$Q9SDK/Q9/SYS/qmake.conf`, eine Datei für alle Entwicklungssysteme. Ist
+`Q9SDK` gesetzt, lädt qmake auf macOS, Linux und Windows zuerst diese Datei;
+auf Q9 selbst lädt es `/dd/SYS/qmake.conf`, wohin der Image-Bau dieselbe Datei
+legt. Fehlt sie, sucht qmake auf macOS das ältere Hostprofil unter
 `$Q9SDK/macOS/ARM64/SYS/qmake.conf` oder
 `$Q9SDK/macOS/x86_64/SYS/qmake.conf`, passend zur Architektur, fuer die qmake
-gebaut wurde. Fehlt das Profil, gilt das lokale `TOOLCHAIN_FILE`, falls
+gebaut wurde. Fehlt auch das, gilt das lokale `TOOLCHAIN_FILE`, falls
 vorhanden. Ohne SDK und ohne Profil funktionieren einfache Projekte mit den
 eingebauten Vorgaben `cc` und `-std=c89`. Fuer Q9-Zielbuilds sucht qmake
 zusaetzlich unter `$Q9SDK/Q9/<arch>/SYS` (sonst `$HOME/Q9SDK/...`); `-C DIR`
@@ -153,8 +156,8 @@ Mac. Die acht QCC-Werkzeuge `qcc`, `qcpp`, `qcir`, `qir68k`, `qo68k`, `qost`,
 und XCC-Abschnitt; `tools/build_xcc_sdk.sh <werkzeug>` baut einzelne
 Komponenten. Die XCC-Ausgaben werden lokal nach `Q9SDK/Q9/68k/CMDS_XCC` kopiert.
 Dieselbe Datei liegt auf dem Q9-System
-unter `/dd/SYS/qmake.conf`; dort waehlt `qmake -C /dd/SYS -P QQQ` den
-Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
+unter `/dd/SYS/qmake.conf`; qmake liest sie dort ohne weitere Option, und
+`qmake -P QQQ` wählt den Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
 
 Ohne Zielargument nimmt `qmake` in jedem Konfigurationsabschnitt dessen erste
 lokale Regel. Ein erstes `help:`-Ziel kann also je Konfiguration eine Hilfe
@@ -178,6 +181,7 @@ sich nur bei Cross-Konfigurationen.
 | `A`  | macOS arm64 (Apple Silicon)   |
 | `I`  | macOS x86_64 (Intel)          |
 | `Q`  | Q9 / OS-9 68K                 |
+| `P`  | Q9 x86 (PC)                   |
 | `L`  | Linux (Debian) x86_64         |
 | `R`  | Linux (Raspberry OS) arm64    |
 | `W`  | Windows 11 x86_64             |
@@ -221,6 +225,14 @@ Prinzip wie bei ISO-Laender- gegenueber Waehrungscodes).
 | Windows 11             | x86_64    | Clang         | Windows 11              | x86_64      |   –   | `WCW` |
 | Windows 11             | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `WXQ` |
 | Windows 11             | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `WQQ` |
+| macOS                  | arm64     | QCC           | Q9 x86                  | x86         |   X   | `AQP` |
+| macOS                  | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `IQP` |
+| Linux (Debian)         | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `LQP` |
+| Linux (Raspberry OS)   | arm64     | QCC           | Q9 x86                  | x86         |   X   | `RQP` |
+| Windows 11             | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `WQP` |
+| Q9/OS-9                | 68k       | QCC           | Q9 x86                  | x86         |   X   | `QQP` |
+| Q9 x86                 | x86       | QCC           | Q9 x86                  | x86         |   –   | `PQP` |
+| Q9 x86                 | x86       | QCC           | Q9/OS-9                 | 68k         |   X   | `PQQ` |
 
 Begruendung der Compiler-Wahl je Host: Clang deckt alle drei Nicht-Linux-Hosts
 ab (macOS arm64, macOS x86_64, Windows) und teilt sich damit ein Frontend und
@@ -239,4 +251,6 @@ funktionierenden ISO-zu-K&R-Konverter). `ICI` (ein echter nativer Build auf
 Intel-Mac-Hardware, im Unterschied zum Apple-Silicon-gehosteten Cross-Build
 `ACI`) und die restlichen Matrixzeilen (`IQQ`, `IXQ`, `LQQ`, `LXQ`, `RGR`,
 `RQQ`, `RXQ`, `WXQ`, `WQQ`) sind noch nicht als Konfigurationsabschnitt
-angelegt.
+angelegt. Dasselbe gilt für alle Konfigurationen mit dem System `P` (Q9
+x86): Das x86-Backend von QCC ist noch in Arbeit, `AQP` … `PQQ` bekommen ihre
+Abschnitte, sobald seine Optionen feststehen.

@@ -75,11 +75,25 @@ int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity
     return 1;
 }
 
+/* Host configuration directory: $Q9SDK/Q9/SYS when it holds a qmake.conf (the shared
+ * configuration of the Q9 SDK, one file for every development system); otherwise, on macOS,
+ * the older per-host directory $Q9SDK/macOS/<arch>/SYS. Returns 1 when out was set. */
 int qmake_default_host_config_dir(char *out, size_t capacity)
 {
     const char *arch;
     const char *root;
     size_t needed;
+    long modified;
+
+    root = getenv("Q9SDK");
+    if (root != (const char *)0 && *root != '\0' &&
+        strlen(root) + sizeof("/Q9/SYS/qmake.conf") <= capacity) {
+        sprintf(out, "%s/Q9/SYS/qmake.conf", root);
+        if (qmake_file_info(out, &modified)) {
+            sprintf(out, "%s/Q9/SYS", root);
+            return 1;
+        }
+    }
 #if defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))
     arch = "ARM64";
 #elif defined(__APPLE__) && defined(__x86_64__)

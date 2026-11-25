@@ -7,8 +7,8 @@
 | C-Sprachbaseline | 🟡 | Host-Build mit strengem C89 erfolgreich; QCC-Probe/Binary fehlt in diesem Checkout |
 | Makefile-Syntax | ✅ | `[global]` und benannte Host/Compiler/Target-Abschnitte, wiederholte Ziele, `-f`/`--file`, `-P`-Auswahl, SDK-/`-C`-Profile und `--list-configs` per Smoke-Test abgedeckt; Gastprüfung separat offen |
 | Buildgraph | ✅ | Abhängigkeiten, Zyklen, Zeitstempel/`touch`-Marker, Kind-vor-Eltern-Rekursion und Erstziel-ohne-Argument getestet |
-| Native Hosts | 🟡 | macOS-Profil wird per Compilezeit-Architektur aus `Q9SDK/macOS/{ARM64,x86_64}/SYS/qmake.conf` geladen; POSIX/Q9SDK-/HOME-Auflösung getestet; Windows-Adapter geschrieben, Windows-Test offen |
-| OS-9/68k | 🔴 | Plattformadapter fehlt; `/dd/SYS`-Standard, Prozessstart und Dateisystemzugriff im Emulator umsetzen/verifizieren |
+| Native Hosts | 🟡 | Gemeinsame Datei `Q9SDK/Q9/SYS/qmake.conf` wird auf macOS/Linux zuerst geladen (getestet), auf Windows geschrieben; danach macOS-Profil per Compilezeit-Architektur aus `Q9SDK/macOS/{ARM64,x86_64}/SYS/qmake.conf`; POSIX/Q9SDK-/HOME-Auflösung getestet; Windows-Adapter geschrieben, Windows-Test offen |
+| OS-9/68k | 🔴 | Plattformadapter fehlt; `/dd/SYS` ist als Standard eingetragen (im Emulator unverifiziert), Prozessstart und Dateisystemzugriff im Emulator umsetzen/verifizieren |
 | Toolchainprofile | 🟡 | Zentrale Profile für macOS arm64/Host, macOS x86_64, Mac-XCC/68k, Linux-GCC, Windows-Clang und Q9-QCC/68k; x86_64-Hosttools gebaut und unter Rosetta gestartet (Intel-Hardwaretest offen); Windows-Lauftest und Q9-SYS-Profilladen im Emulator offen |
 | Implizite Regeln | 🟡 | `.c`→`.o` via HOST_CC sowie `.c`/`.a`→`.r` via TARGET_CC/TARGET_AS; Standard und XCC-artige Befehlsvorlagen mit Fake-Tools getestet; qmake im Emulator offen |
 | Diagnose | 🟡 | `-v`, `-vv`, `--dry-run`, `-C`/`--config-dir` implementiert; `--show-config`/Abfragen offen |
