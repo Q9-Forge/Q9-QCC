@@ -103,10 +103,10 @@ Abschnitt angelegt, z. B. `[ACA]`, `[ACI]`,
 Gemeinsame Toolchainwerte stehen in `[global]`; jeder Konfigurationsabschnitt
 enthaelt seine eigenen Compiler-/Target-Werte. Das Projekt-`q9makefile` hat
 dieselben Abschnittsnamen fuer seine Regeln. Die gemeinsame Datei des Q9-SDK
-ist `$Q9SDK/Q9/SYS/qmake.conf`, eine Datei fuer alle Entwicklungssysteme. Ist
-`Q9SDK` gesetzt, laedt qmake auf macOS, Linux und Windows zuerst diese Datei;
-auf Q9 selbst laedt es `/dd/SYS/qmake.conf`, wohin der Image-Bau dieselbe Datei
-legt. Fehlt sie, sucht qmake auf macOS das aeltere Hostprofil unter
+ist `$Q9SDK/Q9/SYS/qmake.conf`, eine Datei für alle Entwicklungssysteme. Ist
+`Q9SDK` gesetzt, lädt qmake auf macOS, Linux und Windows zuerst diese Datei;
+auf Q9 selbst lädt es `/dd/SYS/qmake.conf`, wohin der Image-Bau dieselbe Datei
+legt. Fehlt sie, sucht qmake auf macOS das ältere Hostprofil unter
 `$Q9SDK/macOS/ARM64/SYS/qmake.conf` oder
 `$Q9SDK/macOS/x86_64/SYS/qmake.conf`, passend zur Architektur, fuer die qmake
 gebaut wurde. Fehlt auch das, gilt das lokale `TOOLCHAIN_FILE`, falls
@@ -157,7 +157,7 @@ und XCC-Abschnitt; `tools/build_xcc_sdk.sh <werkzeug>` baut einzelne
 Komponenten. Die XCC-Ausgaben werden lokal nach `Q9SDK/Q9/68k/CMDS_XCC` kopiert.
 Dieselbe Datei liegt auf dem Q9-System
 unter `/dd/SYS/qmake.conf`; qmake liest sie dort ohne weitere Option, und
-`qmake -P QQQ` waehlt den Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
+`qmake -P QQQ` wählt den Q9-Abschnitt. Es gibt keine einzelne Profil-Datei pro Kombination.
 
 Ohne Zielargument nimmt `qmake` in jedem Konfigurationsabschnitt dessen erste
 lokale Regel. Ein erstes `help:`-Ziel kann also je Konfiguration eine Hilfe
@@ -251,6 +251,6 @@ funktionierenden ISO-zu-K&R-Konverter). `ICI` (ein echter nativer Build auf
 Intel-Mac-Hardware, im Unterschied zum Apple-Silicon-gehosteten Cross-Build
 `ACI`) und die restlichen Matrixzeilen (`IQQ`, `IXQ`, `LQQ`, `LXQ`, `RGR`,
 `RQQ`, `RXQ`, `WXQ`, `WQQ`) sind noch nicht als Konfigurationsabschnitt
-angelegt. Dasselbe gilt fuer alle Konfigurationen mit dem System `P` (Q9
+angelegt. Dasselbe gilt für alle Konfigurationen mit dem System `P` (Q9
 x86): Das x86-Backend von QCC ist noch in Arbeit, `AQP` … `PQQ` bekommen ihre
 Abschnitte, sobald seine Optionen feststehen.
