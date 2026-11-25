@@ -1,14 +1,14 @@
-//=============================================================================
-// qcc_backend_c.cpp -- Q9 Stack-IR to position-independent 68k assembly
-//
-// Purpose:
-//   Translate Q9 Stack-IR into OS-9-compatible 68k assembly using fixed tables
-//   and C-compatible runtime helpers so the backend can participate in QCC
-//   self-hosting.
-//
-// Edition history:
-//   2026-09-11  Introduced the English source-header format.
-//=============================================================================
+/*
+ * File: qcc_backend_c.cpp
+ * Description: Translate Q9 Stack-IR into position-independent 68k assembly.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
+ *
+ * Edition History
+ * 2026-11-25  0.2  Added Q9 module dispatch support and strict-build cleanup.
+ * 2026-09-11  0.1  Introduced the English source-header format.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -17,7 +17,7 @@
 #define OP_LEN          24
 #define ARG_LEN         64
 #define NAME_LEN        64
-#define CONV_LEN        64  /* Function.convention -- QCC kennt kein sizeof auf ein Feld */
+#define CONV_LEN        64  /* Function.convention -- the compiler has no field-size operator */
 #define FUNC_ATTR_VARIADIC 1
 #define FUNC_ATTR_CONV_MASK 6
 #define FUNC_ATTR_CONV_INTERRUPT 2

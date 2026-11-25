@@ -1,12 +1,13 @@
 /*
- * qcc -- universal Q9 compiler driver
+ * File: qcc.c
+ * Description: Drive the Q9 compiler frontend, backend, optimizer and linker.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * Purpose:
- *   Loads the selected target configuration and executes the frontend,
- *   backend, optimizer, assembler and linker stages.
- *
- * Edition history:
- *   2026-09-11  Introduced the English source-header format.
+ * Edition History
+ * 2026-11-25  0.2  Added standalone-module linker selection.
+ * 2026-09-11  0.1  Introduced the English source-header format.
  */
 #include <stdio.h>
 #include <string.h>

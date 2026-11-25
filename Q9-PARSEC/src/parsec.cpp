@@ -15,11 +15,12 @@
 //         Case B: no .ebnf -> load the grammar directly from <base>.lextab.
 //         Then execute TESTS; optionally test <teststring> against the start rule.
 //
+// Repository: Q9-Forge/Q9-QCC
 // Edition History
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
 // Date    │ Ver. │ Description                                                             │ By
 //─────────┼──────┼─────────────────────────────────────────────────────────────────────────┼──────
-// 20-04-28│ 1.00 │ Original version (Visual Studio, Windows): EBNF parser +                │ AF
+// 20-04-28│ 1.00 │ Initial parser and table generator: EBNF parser +                │ AF
 //         │      │ table generation as CSV (.lextab) and listing (.lexlst)                 │
 // 26-07-19│ 1.10 │ Address resolution for NTS references (resolveCallAddresses) +          │ CF
 //         │      │ left-recursion detection through firstPos graph (checkLeftRecursion)   │

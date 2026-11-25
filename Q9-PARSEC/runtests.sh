@@ -1,15 +1,17 @@
 #!/bin/sh
-#================================================================================
-# runtests.sh -- komplette Regressionssuite fuer das ebnf-Projekt
-# Aufruf: ./runtests.sh   (baut zuerst, dann alle Grammatiken + TESTS-Bloecke)
-#================================================================================
+# File: runtests.sh
+# Description: Build the Q9 parser and run the compiler regression suite.
+# Owner: cla / afoe
+# Version: 0.2
+# Repository: Q9-Forge/Q9-QCC
+#
+# Edition History
+# 2026-11-25  0.2  Enforced strict warning diagnostics for test builds.
+# 2026-09-11  0.1  Introduced the English source-header format.
 cd "$(dirname "$0")" || exit 1
 mkdir -p build
-# Die Backends gehoeren den Backend-Teilprojekten, nicht dieser Suite. Bis zum
-# 2026-09-14 lag hier je eine EIGENE Kopie -- und die 68k-Kopie war die einzige
-# mit dem -peephole-Nachlauf, waehrend die ausgelieferte Fassung ihn nicht
-# hatte. Seither wird direkt die Produktionsquelle uebersetzt; damit kann diese
-# Klasse von Abweichung nicht wieder entstehen.
+# The test suite builds the production backend source directly.
+# Keeping one source avoids divergence between test and production builds.
 QIR68K_SRC="${QIR68K_SRC:-../Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp}"
 QIRARM64_SRC="${QIRARM64_SRC:-../Q9-BACKEND-ARM64/q9-qirarm64/src/qcc_arm64_backend_c.cpp}"
 
