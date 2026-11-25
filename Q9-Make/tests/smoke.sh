@@ -120,6 +120,35 @@ grep -q 'echo child > child-output' subdir-dry-run.out
 ./qmake
 test "$(cat child/child-output)" = child
 test "$(cat parent-output)" = parent
+# EXPORT: the parent sets the output directory for all SUBDIRS, nested ones too.
+mkdir -p export/tool/sub
+cat > export/q9makefile <<'EOF'
+BASE = /sdk
+OUT_DIR = $(BASE)/CMDS
+EXPORT = OUT_DIR
+SUBDIRS = tool
+all:
+	echo parent-out=$(OUT_DIR)
+EOF
+cat > export/tool/q9makefile <<'EOF'
+OUT_DIR = tool-local
+SUBDIRS = sub
+all:
+	echo tool-out=$(OUT_DIR)
+EOF
+cat > export/tool/sub/q9makefile <<'EOF'
+all:
+	echo sub-out=$(OUT_DIR)
+EOF
+(cd export && ../qmake -n all) > export.out
+grep -q '^echo tool-out=/sdk/CMDS$' export.out
+grep -q '^echo sub-out=/sdk/CMDS$' export.out
+grep -q '^echo parent-out=/sdk/CMDS$' export.out
+(cd export && ../qmake -n -DOUT_DIR=/cmdline all) > export-override.out
+grep -q '^echo tool-out=/cmdline$' export-override.out
+(cd export/tool && ../../qmake -n all) > export-standalone.out
+grep -q '^echo tool-out=tool-local$' export-standalone.out
+grep -q '^echo sub-out=$' export-standalone.out
 cat > q9makefile <<'EOF'
 [global]
 SUBDIRS = child

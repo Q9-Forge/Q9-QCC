@@ -31,7 +31,8 @@
   damit noch nicht definiert.
 - Variablen werden nur in Rezeptzeilen expandiert. Profil (falls ausgewaehlt)
   wird vor `q9makefile` geladen. Prioritaet: `-D`-Override, Environment,
-  Projektdatei, Profil, eingebaute Vorgabe. Environment wird nicht veraendert/
+  per `EXPORT` vom Elternverzeichnis uebergebener Wert, Projektdatei, Profil,
+  eingebaute Vorgabe. Environment wird nicht veraendert/
   exportiert.
 - `SUBDIRS` akzeptiert nur direkte Kindnamen (keine Pfade, `/` oder `..`),
   maximal 16 Ebenen; Builds gehen rekursiv zuerst in die Kinder.
