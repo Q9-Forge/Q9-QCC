@@ -1,6 +1,6 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   parsec.cpp                                                                      Ver. 2.30
-// Owner:  AF
+// Version: 2.30
 // Desc.:  EBNF translator (Wirth dialect): parses a .ebnf grammar, generates a
 //         call/return jump table (stack machine), executes it against test input
 //         executes it and manages a structured workfile (<base>.lextab) with the blocks

@@ -1,101 +1,14 @@
-/*================================================================================
- * qcc_backend_peephole.c -- peephole optimizer for 68k output (-peephole)
+/*
+ * File: qcc_backend_peephole.c
+ * Description: Optimize safe adjacent operations in generated 68k assembly.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * Operates on generated assembly text rather than IR --
- * This is the stage where Microware's o68 optimizer sits in the classic chain
- * (cc -> cpp -> c68 -> o68 -> r68 -> l68, measured on a real OS-9/68k binary
- * on 2026-09-08). Waste appears only when abstract stack IR becomes real 68k
- * memory accesses, not in the IR itself: a PUSH/POP pair is part of opcode
- * semantics, and callers rely on the operand being on the stack. Only after
- * the backend emits "move.l X,-(a7)" followed by "move.l (a7)+,Y" is the
- * removable memory round trip visible.
- *
- * FIRST PATTERN: "move.l SRC,-(a7)" immediately followed by "move.l (a7)+,DST"
- * becomes "move.l SRC,DST". This is always safe here: a push immediately
- * followed exclusively by its own pop changes A7 temporarily, but nothing else
- * observes it. The value moves unchanged from SRC to DST in one step.
- *
- * SECOND PATTERN (08.09.2026, found in the measured qr68 output distribution
- * -- 2064 occurrences, by far the largest individual finding): "move.l SRC,Dn"
- * immediately followed by "tst.l Dn" (the SAME number, a DATA register d0-d7).
- * MOVE.L sets N/Z on 68000 hardware exactly as TST.L would for the same value
- * (V/C are both cleared), so TST is only a repetition and can be removed.
- * Deliberately limit this to d0-d7, never a0-a6: "move.l SRC,An" is assembled
- * by r68/qr68 as MOVEA, the only opcode form for an address-register target,
- * and MOVEA does not set flags, so TST would be required there.
- *
- * THIRD PATTERN (same frequency list): "move.l SRC,Dn" immediately followed by
- * "move.l Dn,DST" using the same data register becomes "move.l SRC,DST".
- * This is safe for the same reason as pattern one: nothing else observes the
- * register between the two lines. DST and SRC may use any supported addressing
- * form; 68k permits memory-to-memory MOVE, and post-/pre-decrement addressing
- * evaluates its effective address exactly once in either form. The fusion does
- * not change that behavior. qr68 output was checked to contain exactly one
- * comma in each move.l line, so the rightmost comma safely separates SRC/DST.
- *
- * FOURTH PATTERN (same frequency list, 867 occurrences): "move.l
- * Dn,-(a7)" immediately followed by "addq.l #4,a7" (or "lea 4(a7),a7").
- * The IR opcode DROP emits exactly this addq.l line (compute an expression
- * and discard its result, for example a statement "f();" whose return value
- * is unused). A push immediately followed by its own discard has no net effect
- * on A7 and its value is never read. Unlike the first three patterns, nothing
- * is replaced: both lines disappear. Limit this to SRC without parentheses
- * (no "(a0)", "(a0)+", etc.); post-/pre-decrement side effects still need to
- * execute even when the value is discarded. Only a plain register or immediate
- * value can be removed safely.
- *
- * REFINEMENT of patterns one/three (08.09.2026, 776 occurrences measured in
- * the output of the first four patterns): when SRC equals DST
- * ("move.l d0,-(a7)" followed by "move.l (a7)+,d0", the same number both
- * times), fusion would produce the real but useless "move.l d0,d0". Safer and
- * smaller: remove BOTH lines, as in pattern four. This is allowed only when
- * the first line has no label, otherwise the branch target would be lost. In
- * the rare labeled case, retain the harmless but non-ideal fusion
- * "label:\tmove.l\tDn,Dn".
- *
- * FIFTH PATTERN (09.09.2026, selected by frequency versus effort, not guessed):
- * "move.l #IMM,Dn" with IMM in the range -128..127 becomes "moveq #IMM,Dn".
- * This occurred 1,928 times in qr68's output. MOVEQ is the only opcode form
- * for an immediate MOVE.L into a data register with the same flag behavior,
- * but uses 2 bytes instead of 6. Limit this to Dn (never An) and to plain
- * decimal values, so symbols or expressions are never misinterpreted.
- *
- * MUST run LAST, not in the convergence pass with the other four patterns:
- * vier: phMatchMoveIntoDataReg (Muster zwei/drei) sucht wortwoertlich den
- * text "move.l\t" as its trigger. If MOVEQ conversion ran first, a following
- * "tst.l Dn" or "move.l Dn,DST" would no longer match and the fold opportunity
- * would be lost. MOVEQ lines themselves create no new fold opportunity because
- * their source is an immediate value and never textually equals a destination
- * register, so one final pass is sufficient.
- *
- * MULTIPLE PASSES: removing one line often exposes the next opportunity --
- * "PUSH x / POP d0 / TST d0" first folds to "move.l x,d0", and only then is
- * "tst.l d0" adjacent. peepholeRun() therefore repeats the three patterns
- * until a pass makes no changes, as expected from a classic peephole pass.
- * Fold functions must not rely on physical adjacency (phLines[i+1]): removed
- * lines remain in the array and phNextKept() skips them.
- *
- * ARCHITECTURE for additional patterns (o68 lesson): read original lines only
- * (no mutation); replacements go into a dedicated synthesis buffer, and a
- * line is marked removed instead of physically moved (the o68s remins idea).
- * New patterns should be added as additional phFold* functions, not as special
- * cases in an existing one.
- *
- * THE BUFFERS ARE ALLOCATED FROM THE INPUT, NOT FIXED (2026-09-14). They used
- * to be static arrays sized for qr68's output (75,273 lines / 1.59 MB), which
- * had two consequences: QCC's own assembler output (235,248 lines / 4.74 MB)
- * simply did not fit, and every module that includes this file carried the
- * 4.8 MB of tables in its data area even when -peephole was never passed --
- * measurably so once the shipped backend picked the file up (its data area
- * went from 9.7 MB to 14.5 MB). Everything is sized from the file that is
- * actually being processed now, so nothing is reserved for an unused switch
- * and the only ceiling left is the memory the machine can hand out.
- *
- * The synthesis buffer must NOT move once lines point into it, so it is
- * allocated ONCE at the input size: a replacement line is never longer than
- * the two original lines together, so the sum of all replacements fits within
- * the original text budget.
- *================================================================================*/
+ * Edition History
+ * 2026-11-25  0.2  Normalized the source header for the module audit.
+ * 2026-09-11  0.1  Introduced the English source-header format.
+ */
 
 #define PH_CHUNK 65536          /* read granularity while the text buffer grows */
 

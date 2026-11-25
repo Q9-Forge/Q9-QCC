@@ -479,7 +479,9 @@ int main(int argc, char **argv)
 		return 3;
 	}
 	{
+		#if !defined(_Q9OS) && !defined(_OSK)
 		char command[COMMAND_SIZE];
+		#endif
 		const char *input = argv[argc - 1];
 		#if defined(_Q9OS) || defined(_OSK)
 		{

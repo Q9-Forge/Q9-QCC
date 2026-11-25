@@ -1,13 +1,14 @@
-//=============================================================================
-// qcc_backend.cpp -- Q9 Stack-IR to position-independent 68k assembly
-//
-// Purpose:
-//   Reference C++ implementation of the Q9 68k backend. The generated output
-//   uses position-independent calls and stack-frame-relative data access.
-//
-// Edition history:
-//   2026-09-11  Introduced the English source-header format.
-//=============================================================================
+/*
+ * File: qcc_backend.cpp
+ * Description: Reference C++ implementation of the Q9 68k backend.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
+ *
+ * Edition History
+ * 2026-11-25  0.2  Normalized the source header for the module audit.
+ * 2026-09-11  0.1  Introduced the English source-header format.
+ */
 #include <fstream>
 #include <iostream>
 #include <map>

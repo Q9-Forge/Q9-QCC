@@ -1,6 +1,7 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   codegen.h                                                                      Ver. 1.00
-// Owner:  AF
+// Repository: Q9-Forge/Q9-QCC
+// Version: 1.00
 // Desc.:  AST construction and code-generation interface (see docs/ARCHITEKTUR.md).
 //         parsec.cpp builds an AST through astPush*/astGroup* calls during normal parsing;
 //         genParserC()/genParser68k() then generate a backtracking recursive-descent parser

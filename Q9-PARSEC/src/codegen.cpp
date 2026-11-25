@@ -1,6 +1,7 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   codegen.cpp                                                                    Ver. 1.50
-// Owner:  AF
+// Repository: Q9-Forge/Q9-QCC
+// Version: 1.50
 // Desc.:  AST construction and code generation for the EBNF translator
 //         (docs/ARCHITEKTUR.md). parsec.cpp builds the AST additively during
 //         normal parsing; table generation remains unchanged. The AST produces
