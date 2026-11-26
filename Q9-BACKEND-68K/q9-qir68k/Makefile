@@ -1,5 +1,5 @@
 CC ?= cc
-CFLAGS ?= -std=c11 -O2 -Wall -Wextra
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror
 BUILD ?= build
 
 .PHONY: all clean

@@ -1,0 +1,24 @@
+# q9-qir68k – 68k-Backend
+
+[English](README.md)
+
+`qir68k` übersetzt Q9 Stack-IR (`.ir`) in Motorola-68000-Assemblertext
+(`.s68k`).
+
+Die Optimierung, Assemblierung und das Linken sind separate Werkzeuge:
+
+```text
+.ir -> qir68k -> .s68k -> qo68k -> qr68k -> .r -> ql68k -> Modul
+```
+
+Die produktiven Quellen liegen unter `src/`.
+
+Host-Build:
+
+```sh
+make -C Q9-BACKEND-68K/q9-qir68k
+```
+
+`src/qcc_backend_candidate_review.cpp` ist eine Prüffassung
+und kein Bestandteil des Builds. Sie wird erst nach
+einem separaten Inhaltsvergleich bewertet.
