@@ -1,11 +1,12 @@
-# Q9-qclib-Header
+# Q9-qclib headers
 
-Q9-eigene Bibliotheksheader liegen direkt unter diesem Include-Root oder in
-thematischen bzw. architekturabhängigen Unterverzeichnissen:
+[Deutsch](README_de.md)
+
+Q9 library headers belong directly under this include root or in subject- or
+architecture-specific subdirectories:
 
 ```text
 -Iq9-qclib/DEFS/Q9
 ```
 
-Beispiele für spätere Bereiche sind `68k/`, `x86/`, `devs/`, `os9/` und
-`compiler/`.
+Examples of planned areas include `68k/`, `x86/`, `devs/`, and `compiler/`.
