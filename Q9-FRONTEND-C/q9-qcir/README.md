@@ -1,29 +1,36 @@
-# q9-qcir – C-Frontend
+# q9-qcir – C frontend
 
-`qcir` übersetzt vorverarbeitetes C (`.i`) in Q9 Stack-IR (`.ir`).
+[Deutsch](README_de.md)
+
+`qcir` translates C source, including preprocessed C, into Q9 Stack-IR (`.ir`).
+A typical preprocessing pipeline is:
 
 ```text
 qcpp  *.c  -> *.i
 qcir  *.i  -> *.ir
 ```
 
-## Struktur
+## Structure
 
-- `src/` – Bootstrap-Quellen des Frontends
-- `data/` – Grammatik, Lexertabelle und generierter Parserstand
-- `tests/` – Frontend- und Bootstrap-Tests
-- `docs/` – frontendbezogene Dokumentation
+- `src/` – frontend bootstrap sources
+- `data/` – grammar, lexer table and generated parser
+- `tools/` – frontend support tools
+- `Makefile` – host build and smoke tests
 
-## Bauen und testen
+## Build and test
 
-Der generierte Parser wird als eigenständiges Frontend-Binary `qcir` gebaut:
+The generated parser builds as the standalone `qcir` program:
 
 ```sh
 make
 make test
 ```
 
-`qcir` liest C- bzw. vorverarbeiteten C-Quelltext von stdin oder über eine
-`@datei`-Angabe und schreibt Q9 Stack-IR (`.ir`) nach stdout. Der Name
-`qcc_p.c` bleibt als historischer/generated Source-Dateiname erhalten; das
-ausführbare Werkzeug heißt verbindlich `qcir`.
+Pass source text as the first command-line argument, or use `@file` to read
+it from a file. The program writes Stack-IR to standard output. The generated
+source retains the historical filename `qcc_p.c`; the executable is `qcir`.
+
+The generated parser currently fails a Clang build with
+`-Wall -Wextra -Werror` because of warnings in generated code and embedded actions. Correct
+the generator and grammar sources and regenerate the parser before enabling
+that strict build by default.
