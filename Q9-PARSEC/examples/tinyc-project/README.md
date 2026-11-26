@@ -1,49 +1,32 @@
-# Tiny-C Mehrdatei-Projekt
+# Tiny-C multi-file example
 
-Dieses kleine Beispiel prüft den ersten praktischen Workflow:
+[Deutsch](README_de.md)
 
-```text
-main.tc + math.tc
-        ↓ tinyc_p
-        IR pro Datei
-        ↓ tinyc_merge.py
-        project.ir
-        ↓ tinyc_backend -os9
-        project.s68
-        ↓ r68 + l68
-        project.out
-```
+This historical example describes a multi-file pipeline: `main.tc` and
+`math.tc` are compiled separately, their IR is merged, and a backend,
+assembler and linker produce a module. The sample program is intended to
+print `42`.
 
-Auf dem Mac genügt:
-
-```sh
-./build.sh
-```
-
-Das erzeugte OS‑9-Modul bekommt standardmäßig den Namen der ersten Quelldatei,
-also hier `build/main.out`. Existiert die Datei bereits, wird automatisch
-`main.1.out`, `main.2.out` usw. verwendet. Mit `-o` kann der Name vorgegeben
-werden; ein vorhandenes Ziel wird dann überschrieben:
-
-```sh
-./build.sh -o demo
-```
-
-Wenn nur bis zum Assembler getestet werden soll:
+The scripts still refer to the earlier tool names `tinyc_p`, `tinyc_backend`
+and `tinyc_merge.py`. These tools are not supplied at the default paths in
+this checkout, so the example is not currently a verified build recipe. The
+host script also expects a configured cross-toolchain for the link step.
 
 ```sh
 ./build.sh --no-link
+./build.sh -o demo
 ```
 
-## Direkter OS-9-Build
+`--no-link` stops after backend assembly generation. With `-o`, the named
+output may be overwritten. The host script removes and recreates its
+`build/.work` directory on each run. Without an explicit output name, it picks
+an available numbered name.
 
-Der OS-9-Bashtreiber `q9build` führt denselben Ablauf direkt im Q9 aus:
+The separate `q9build` script describes a native Q9 workflow using commands in
+`/dd/CMDS` and libraries in `/dd/LIB`. Its prerequisites and target execution
+also require verification. Its pipeline invokes `tinyc_p`, `merge`,
+`tinyc_backend`, `r68`, and `l68`:
 
-```text
+```sh
 q9build main.tc math.tc
 ```
-
-Er verwendet `merge`, `tinyc_backend`, `r68` und `l68` aus `/dd/CMDS` sowie
-die Libraries aus `/dd/LIB`.
-
-Das Programm gibt beim Ausführen `42` mit CR/LF aus.
