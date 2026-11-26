@@ -2,13 +2,14 @@
  * File:        platform_os9.c
  * Description: Native Q9/68k platform services for Q9-Make.
  * Owner:       cla / afoe
- * Version:     0.01
+ * Version:     0.02
  *
  * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
  * Edition History
  * Date    | Ver. | Description                                               | By
  * 26-11-26| 0.01 | Add file and function headers; revise comments.           | cla
+ * 26-11-26| 0.02 | Reject overlong command parameters and release modules.   | cla
  *--------------------------------------------------------------------------------------*/
 
 #include <stdio.h>
@@ -121,6 +122,9 @@ int qmake_file_info(const char *path, long *modified)
 
 #define Q9_MAX_WORDS 64
 #define Q9_MAX_PARAMS 480
+#define Q9_ARG_HEADER_BYTES 4  /* Reserved prefix in the structured argument table. */
+#define Q9_ARG_OFFSET_BYTES 4  /* Bytes per structured argument offset. */
+#define Q9_ARG_TRAILER_BYTES 8 /* Reserved suffix in the structured argument table. */
 
 /*--------------------------------------------------------------------------------------
  * Function:    q9_split_words
@@ -186,7 +190,9 @@ static int q9_exec_words(char **argv, int argc)
 	int rc;
 	int legacy_params;
 
-	if (argc < 1) return -1;
+	if (argc < 1 || strlen(argv[0]) >= sizeof(load_path)) return -1;
+	if (argv[0][0] != '/' &&
+	    strlen(argv[0]) + sizeof("/dd/CMDS_QCC/") > sizeof(load_path)) return -1;
 	used = 0;
 	j = 0;
 	while (argv[0][j] != '\0' && used < 254) {
@@ -231,20 +237,24 @@ static int q9_exec_words(char **argv, int argc)
 		used = 0;
 		arg_count = 0;
 		for (i = 1; i < argc; ++i) {
-			if (arg_count >= 32 || used >= Q9_MAX_PARAMS) return -1;
+			if (arg_count >= 32 || used >= Q9_MAX_PARAMS) goto parameter_error;
 			arg_offsets[arg_count++] = used;
 			for (j = 0; argv[i][j] != '\0'; ++j) {
-				if (used >= Q9_MAX_PARAMS) return -1;
+				if (used >= Q9_MAX_PARAMS) goto parameter_error;
 				parameters[used++] = argv[i][j];
 			}
-			if (used >= Q9_MAX_PARAMS) return -1;
+			if (used >= Q9_MAX_PARAMS) goto parameter_error;
 			parameters[used++] = '\0';
 		}
 		if (used & 1) parameters[used++] = '\0';
+		if ((size_t)used + Q9_ARG_HEADER_BYTES +
+		    (size_t)arg_count * Q9_ARG_OFFSET_BYTES + Q9_ARG_TRAILER_BYTES >
+		    sizeof(parameters))
+			goto parameter_error;
 		for (j = 0; j < 4; ++j) parameters[used++] = '\0';
 		for (i = 0; i < arg_count; ++i) {
-			if (used > Q9_MAX_PARAMS + 24 || arg_offsets[i] < 0 ||
-			    arg_offsets[i] > 65535) return -1;
+			if (arg_offsets[i] < 0 || arg_offsets[i] > 65535)
+				goto parameter_error;
 			parameters[used++] = 0;
 			parameters[used++] = 0;
 			parameters[used++] = (char) ((arg_offsets[i] >> 8) & 255);
@@ -255,9 +265,14 @@ static int q9_exec_words(char **argv, int argc)
 	} else {
 		used = 0;
 		for (i = 1; i < argc; ++i) {
-			if (i != 1) parameters[used++] = ' ';
-			for (j = 0; argv[i][j] != '\0'; ++j)
+			if (i != 1) {
+				if ((size_t)used >= sizeof(parameters) - 1) goto parameter_error;
+				parameters[used++] = ' ';
+			}
+			for (j = 0; argv[i][j] != '\0'; ++j) {
+				if ((size_t)used >= sizeof(parameters) - 1) goto parameter_error;
 				parameters[used++] = argv[i][j];
+			}
 		}
 		parameters[used++] = 13;
 		param_size = used;
@@ -273,6 +288,10 @@ static int q9_exec_words(char **argv, int argc)
 	_os_unlink(header);
 	if (pid < 0) return -1;
 	return status;
+
+parameter_error:
+	_os_unlink(header);
+	return -1;
 }
 
 /*--------------------------------------------------------------------------------------
@@ -291,6 +310,7 @@ int qmake_run(const char *command)
 	int end;
 	int status;
 
+	if (strlen(command) >= sizeof(buffer)) return -1;
 	i = 0;
 	while (command[i] != '\0' && i < 1023) {
 		buffer[i] = command[i];
