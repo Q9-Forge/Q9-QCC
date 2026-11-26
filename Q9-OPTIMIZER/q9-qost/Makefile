@@ -14,6 +14,9 @@ test: all
 	@diff -u tests/constants.expected.ir $(BUILD)/constants.opt.ir
 	@$(BUILD)/qost tests/overflow.ir $(BUILD)/overflow.opt.ir
 	@diff -u tests/overflow.ir $(BUILD)/overflow.opt.ir
+	@printf 'FUNC main 0\nPUSH 3   \nUNKNOWN   \nPUSH 0\nRET\nENDFUNC\n' > $(BUILD)/whitespace.ir
+	@$(BUILD)/qost $(BUILD)/whitespace.ir $(BUILD)/whitespace.opt.ir
+	@diff -u $(BUILD)/whitespace.ir $(BUILD)/whitespace.opt.ir
 	@$(BUILD)/qost tests/neg_overflow.ir $(BUILD)/neg_overflow.opt.ir
 	@diff -u tests/neg_overflow.ir $(BUILD)/neg_overflow.opt.ir
 	@$(BUILD)/qost tests/operators.ir $(BUILD)/operators.opt.ir

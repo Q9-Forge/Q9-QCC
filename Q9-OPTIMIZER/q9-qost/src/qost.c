@@ -2,7 +2,7 @@
  * File:        qost.c
  * Description: Conservative optimizer for Q9 Stack-IR.
  * Owner:       cla / afoe
- * Version:     0.02
+ * Version:     0.03
  *
  * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
@@ -10,6 +10,7 @@
  * Date    | Ver. | Description                                               | By
  * 26-11-26| 0.01 | Document functions, name line endings and translate status.      | cla
  * 26-11-26| 0.02 | Preserve negation that would overflow.                    | cla
+ * 26-11-26| 0.03 | Preserve whitespace on unchanged lines.                   | cla
  *--------------------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -167,18 +168,27 @@ static char *line_text(int index)
 
 /*--------------------------------------------------------------------------------------
  * Function:    trim
- * Description: Trim leading and trailing spaces and tabs in place.
- * Parameter:   char *text: Mutable IR text.
- * Return:      Pointer to the trimmed text.
+ * Description: Copy text without leading or trailing spaces and tabs.
+ * Parameter:   const char *text: IR text to copy.
+ * Return:      Pointer to a reusable trimmed buffer.
  *--------------------------------------------------------------------------------------*/
-static char *trim(char *text)
+static char *trim(const char *text)
 {
-	char *end;
+	static char *buffer;
+	static size_t capacity;
+	const char *end;
+	size_t length;
 	while (*text == ' ' || *text == '\t') ++text;
 	end = text + strlen(text);
 	while (end > text && (end[-1] == ' ' || end[-1] == '\t')) --end;
-	*end = 0;
-	return text;
+	length = (size_t)(end - text);
+	if (length >= capacity) {
+		buffer = (char *)grow(buffer, length + 1);
+		capacity = length + 1;
+	}
+	memcpy(buffer, text, length);
+	buffer[length] = 0;
+	return buffer;
 }
 
 /*--------------------------------------------------------------------------------------
