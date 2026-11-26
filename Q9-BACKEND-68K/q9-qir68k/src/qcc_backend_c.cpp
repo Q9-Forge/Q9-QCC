@@ -1,14 +1,14 @@
-//=============================================================================
-// qcc_backend_c.cpp -- Q9 Stack-IR to position-independent 68k assembly
-//
-// Purpose:
-//   Translate Q9 Stack-IR into OS-9-compatible 68k assembly using fixed tables
-//   and C-compatible runtime helpers so the backend can participate in QCC
-//   self-hosting.
-//
-// Edition history:
-//   2026-09-11  Introduced the English source-header format.
-//=============================================================================
+/*
+ * File: qcc_backend_c.cpp
+ * Description: Translate Q9 Stack-IR into position-independent 68k assembly.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
+ *
+ * Edition History
+ * 2026-11-25  0.2  Added Q9 module dispatch support and strict-build cleanup.
+ * 2026-09-11  0.1  Introduced the English source-header format.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -17,7 +17,7 @@
 #define OP_LEN          24
 #define ARG_LEN         64
 #define NAME_LEN        64
-#define CONV_LEN        64  /* Function.convention -- QCC kennt kein sizeof auf ein Feld */
+#define CONV_LEN        64  /* Function.convention -- the compiler has no field-size operator */
 #define FUNC_ATTR_VARIADIC 1
 #define FUNC_ATTR_CONV_MASK 6
 #define FUNC_ATTR_CONV_INTERRUPT 2
@@ -315,8 +315,9 @@ static int trampolineMode = 0;
 static int peepholeMode = 0;
 /* QCC-DEFMODUL Phase 4 (2026-11-10): Treiber-/Manager-Module. MODHEADER und
    DISPATCHTAB werden ausgewertet; nur im -os9-Format (Microware-psect) umgesetzt. */
-#define DISPATCH_SLOTS 7
+#define DISPATCH_SLOTS 32
 static int  modIsDriver = 0;                       /* MODHEADER type=DRIVER */
+static int  modIsManager = 0;                      /* MODHEADER type=MANAGER */
 static char modName[NAME_LEN] = "";
 static char modAttr[24] = "0x8000";
 static int  modEdition = 1;
@@ -707,6 +708,27 @@ static void readIR(const char* path) {
 		if (!tok || tok[0] == ';' || tok[0] == '#') continue;
 		if (strcmp(tok, "OK") == 0 || strcmp(tok, "FAIL") == 0) continue;
 		if (irCount >= MAX_IR_LINES) fatal("IR: zu viele Zeilen");
+		if (strcmp(tok, "DISPATCHTAB") == 0) {
+			int slot = 0;
+			insP = &ir[irCount++];
+			strncpy(insP->op, tok, OP_LEN - 1); insP->op[OP_LEN - 1] = '\0';
+			insP->line = line;
+			insP->argc = 0;
+			for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
+			while ((tok = strtok(NULL, " \t\r\n")) != NULL) {
+				if (slot < DISPATCH_SLOTS) {
+					const char* v = strchr(tok, '=');
+					v = v ? v + 1 : tok;
+					if (!*v) { sprintf(msg, "IR Zeile %d: leerer DISPATCHTAB-Slot", line); fatal(msg); }
+					strncpy(dispatchSym[slot], v, NAME_LEN - 1);
+					dispatchSym[slot][NAME_LEN - 1] = '\0';
+					slot++;
+				}
+				insP->argc++;
+			}
+			dispatchCount = slot;
+			continue;
+		}
 		insP = &ir[irCount++];
 		strncpy(insP->op, tok, OP_LEN - 1); insP->op[OP_LEN - 1] = '\0';
 		insP->line = line;
@@ -984,19 +1006,8 @@ static void emitPrologByConvention(FILE* out, const char* asmName, const char* c
 	}
 }
 
-/* Phase 5 (2026-09-24): Emit function epilog based on calling convention */
-static void emitEpilogByConvention(FILE* out, const char* convention, const char* framePtrReg) {
-	if (convention[0] == '\0' || strcmp(convention, "driver") == 0) {
-		fprintf(out, "\tunlk\t%s\n\trts\n", framePtrReg);
-	} else if (strcmp(convention, "interrupt") == 0) {
-		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
-	} else if (strcmp(convention, "trap") == 0) {
-		fprintf(out, "\tunlk\t%s\n\tmovem.l\t(a7)+,d0-d7/a0-a6\n\trte\n", framePtrReg);
-	}
-}
-
 static void collectFunctions(void) {
-	int i, open = 0, seenFunction = 0;
+	int i, open = 0;
 	Function current;
 	char msg[300];
 	funcCount = 0;
@@ -1017,23 +1028,17 @@ static void collectFunctions(void) {
 			   is allowed outside every FUNC span, like GLOBAL/GARRAY. FUNCDECL is
 			   registered in a separate pass because it opens no FUNC/ENDFUNC span. */
 		} else if (strcmp(insP->op, "DISPATCHTAB") == 0) {
-			/* Phase 4: Slots in fester Reihenfolge (init read write getstat setstat
-			   term trap). Zulaessig sind "slot=sym" (Frontend-Ausgabe) und "sym". */
-			int ai;
-			if (insP->argc < 1 || insP->argc > DISPATCH_SLOTS) { sprintf(msg, "IR Zeile %d: ungueltige DISPATCHTAB", insP->line); fatal(msg); }
-			for (ai = 0; ai < insP->argc; ai++) {
-				const char* v = strchr(insP->args[ai], '=');
-				v = v ? v + 1 : insP->args[ai];
-				if (!*v) { sprintf(msg, "IR Zeile %d: leerer DISPATCHTAB-Slot", insP->line); fatal(msg); }
-				strncpy(dispatchSym[ai], v, NAME_LEN - 1);
-			}
-			dispatchCount = insP->argc;
+			/* Phase 4: Slots in fester Reihenfolge. Wurden bereits in readIR() eingelesen. */
+			if (dispatchCount < 1 || dispatchCount > DISPATCH_SLOTS) { sprintf(msg, "IR Zeile %d: ungueltige DISPATCHTAB", insP->line); fatal(msg); }
 		} else if (strcmp(insP->op, "MODHEADER") == 0) {
 			int ai;
 			for (ai = 0; ai < insP->argc; ai++) {
 				const char* a = insP->args[ai];
 				if (strncmp(a, "name=", 5) == 0) strncpy(modName, a + 5, NAME_LEN - 1);
-				else if (strncmp(a, "type=", 5) == 0) modIsDriver = (strcmp(a + 5, "DRIVER") == 0 || strcmp(a + 5, "driver") == 0);
+				else if (strncmp(a, "type=", 5) == 0) {
+					modIsDriver = (strcmp(a + 5, "DRIVER") == 0 || strcmp(a + 5, "driver") == 0);
+					modIsManager = (strcmp(a + 5, "MANAGER") == 0 || strcmp(a + 5, "manager") == 0);
+				}
 				else if (strncmp(a, "attr=", 5) == 0) {
 					/* r68 schreibt Hex mit "$", die IR mit "0x" */
 					if (strncmp(a + 5, "0x", 2) == 0) { modAttr[0] = '$'; strncpy(modAttr + 1, a + 7, sizeof(modAttr) - 2); }
@@ -1081,7 +1086,6 @@ static void collectFunctions(void) {
 				else if (attrs & FUNC_ATTR_DRIVER) strcpy(current.convention, "driver");
 			}
 			open = 1;
-			seenFunction = 1;
 		} else if (strcmp(insP->op, "ENDFUNC") == 0) {
 			if (!open) { sprintf(msg, "IR Zeile %d: ENDFUNC ohne FUNC", insP->line); fatal(msg); }
 			current.last = i;
@@ -1778,7 +1782,6 @@ static void emitIR(FILE* out) {
 	int serial = 0;
 	int fi, k;
 	char msg[300];
-	char addrBuf[64];
 	int order[MAX_FUNCS];
 	int oi;
 	int gi;
@@ -1786,29 +1789,31 @@ static void emitIR(FILE* out) {
 	/* -part (2026-07-25): main may reside in another file of a multi-file
 	   program; the real linker (l68) reports an error if none of the linked
 	   files provides it. */
-	if (modIsDriver && !os9Mode) fatal("IR: type=DRIVER wird nur mit -os9 unterstuetzt");
-	if (modIsDriver && dispatchCount == 0) fatal("IR: type=DRIVER ohne DISPATCHTAB");
-	if (!partMode && !modIsDriver && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
+	if ((modIsDriver || modIsManager) && !os9Mode) fatal("IR: type=DRIVER/MANAGER wird nur mit -os9 unterstuetzt");
+	if ((modIsDriver || modIsManager) && dispatchCount == 0) fatal("IR: type=DRIVER/MANAGER ohne DISPATCHTAB");
+	if (!partMode && !modIsDriver && !modIsManager && findFunction("main") < 0) fatal("IR: Funktion main fehlt");
 
 	fprintf(out, "%s QCC 68k backend -- PIC single module, generated from stack IR\n", fullCommentPrefix());
 	fprintf(out, "%s a7: operand stack, %s: current frame, d0/d1: scratch/return value\n\n", fullCommentPrefix(), framePtr());
 	if (os9Mode) {
-		if (modIsDriver) {
-			/* Typ/Sprache: Drivr (14) <<8 + Objct (1); Attr/Rev aus attr=; die
-			   "stack"-Angabe ist bei Treibern die Groesse des Device-Static-Storage.
+		if (modIsDriver || modIsManager) {
+			/* Typ/Sprache: Drivr (14) bzw. FlMgr (13) <<8 + Objct (1); Attr/Rev aus attr=;
+			   die "stack"-Angabe ist bei Treibern/Managern die Groesse des Static-Storage.
 			   ql68 setzt M$Mem (_mdata) aus dem reservierten Datenbereich (vsect, ds),
 			   NICHT aus dem psect-Parameter 5 -- der blieb sonst ohne Wirkung und der
 			   Dateimanager haette keinen Treiberspeicher angelegt. Der Einsprung ist
 			   die Sprungtabelle, die direkt hinter dem Kopf steht. */
+			int typeCode = modIsDriver ? 14 : 13;
 			const char* nm = modName[0] ? modName : psectName;
 			fprintf(out, "\tnam\t%s\n", nm);
-			fprintf(out, "\tpsect\t%s,(14<<8)!1,%s,%d,0,tc_dispatch\n\n", nm, modAttr, modEdition);
+			fprintf(out, "\tpsect\t%s,(%d<<8)!1,%s,%d,0,tc_dispatch\n\n", nm, typeCode, modAttr, modEdition);
 			if (modStack > 0)
 				fprintf(out, "\tvsect\ntc_static_storage:\tds.b\t%ld\n\tends\n\n", modStack);
 			fputs("tc_dispatch:\n", out);
 			{
 				int di;
-				for (di = 0; di < DISPATCH_SLOTS; di++) {
+				int numSlots = modIsDriver ? (dispatchCount < 7 ? 7 : dispatchCount) : dispatchCount;
+				for (di = 0; di < numSlots; di++) {
 					const char* sym = di < dispatchCount ? dispatchSym[di] : "0";
 					if (strcmp(sym, "0") == 0) {
 						fputs("\tdc.w\t0\n", out);
@@ -1984,9 +1989,9 @@ static void emitIR(FILE* out) {
 	   immer emittiert (Vollprogramm). */
 	if (!partMode || runtimeMode) {
 	emitM68kCore(out);
-	/* Treiber (Phase 4): kein Konsolen-I/O-Anker -- er ruft _os_write aus clib.l,
+	/* Treiber/Manager (Phase 4): kein Konsolen-I/O-Anker -- er ruft _os_write aus clib.l,
 	   das es im Systemkontext nicht gibt. */
-	if (os9Mode && !modIsDriver) {
+	if (os9Mode && !modIsDriver && !modIsManager) {
 		/* Real output through the Microware clib.l function _os_write
 		   (Signatur: error_code _os_write(path_id,
 		   const void*, u_int32 *count) -- count ist ein IN/OUT-Zeiger, path 1
@@ -2078,7 +2083,7 @@ static void emitIR(FILE* out) {
 	   (frei, bevor der naechste CALLEXTD-Aufruf ihn braucht) -- derselbe
 	   Ansatz wie bei __dblRet/__llRet im Frontend. */
 	fputs(os9Mode ? "tc_extretd_tmp:\tdc.l\t0,0\n" : "tc_extretd_tmp:\tds.l\t2\n", out);
-	if (os9Mode && !modIsDriver) {
+	if (os9Mode && !modIsDriver && !modIsManager) {
 		/* tc_io_buf: digit buffer for tc_putint/tc_putuint (maximum
 		   "-2147483648\r" = 12 bytes, filled backwards) and single-byte buffer
 		   for tc_putchar (uses only the first byte). tc_io_cnt is the IN/OUT count
@@ -2137,7 +2142,7 @@ static void emitIR(FILE* out) {
 			}
 		}
 		mangledName(asmName, "tc_", fn->name, fn->isStatic);
-		if (modIsDriver && strcmp(fn->convention, "driver") == 0) emitDriverEntry(out, fn, asmName);
+		if ((modIsDriver || modIsManager) && strcmp(fn->convention, "driver") == 0) emitDriverEntry(out, fn, asmName);
 		emitPrologByConvention(out, asmName, fn->convention, fn->frameBytes, framePtr());
 		if (largeDataMode && os9Mode && strcmp(fn->name, "main") == 0) {
 			/* OS-9 cstart enters main directly; establish the one shared table

@@ -1,6 +1,6 @@
 //═════════════════════════════════════════════════════════════════════════════════════════════════
 // File:   parsec.cpp                                                                      Ver. 2.30
-// Owner:  AF
+// Version: 2.30
 // Desc.:  EBNF translator (Wirth dialect): parses a .ebnf grammar, generates a
 //         call/return jump table (stack machine), executes it against test input
 //         executes it and manages a structured workfile (<base>.lextab) with the blocks
@@ -15,11 +15,12 @@
 //         Case B: no .ebnf -> load the grammar directly from <base>.lextab.
 //         Then execute TESTS; optionally test <teststring> against the start rule.
 //
+// Repository: Q9-Forge/Q9-QCC
 // Edition History
 //─────────┬──────┬─────────────────────────────────────────────────────────────────────────┬──────
 // Date    │ Ver. │ Description                                                             │ By
 //─────────┼──────┼─────────────────────────────────────────────────────────────────────────┼──────
-// 20-04-28│ 1.00 │ Original version (Visual Studio, Windows): EBNF parser +                │ AF
+// 20-04-28│ 1.00 │ Initial parser and table generator: EBNF parser +                │ AF
 //         │      │ table generation as CSV (.lextab) and listing (.lexlst)                 │
 // 26-07-19│ 1.10 │ Address resolution for NTS references (resolveCallAddresses) +          │ CF
 //         │      │ left-recursion detection through firstPos graph (checkLeftRecursion)   │
@@ -430,14 +431,14 @@ void printLexTab() {
 	char tsDisp[IDENT_LEN + 3];
 	int i, stat;
 
-	printf(head0);
-	printf(head1);
-	fprintf(fpLst, head0);
-	fprintf(fpLst, head1);
+	printf("%s", head0);
+	printf("%s", head1);
+	fprintf(fpLst, "%s", head0);
+	fprintf(fpLst, "%s", head1);
 	for (i = 0; i < aktTabIndex; i++) {
 		if (strlen(lexTab[i].ident)) {
-			printf(head0);
-			fprintf(fpLst, head0);
+			printf("%s", head0);
+			fprintf(fpLst, "%s", head0);
 		}
 		stat = lexTab[i].trueAction;
 		if (stat < 0) {
@@ -485,8 +486,8 @@ void printLexTab() {
 		// fpOut (.lextab) is no longer written here: the old raw CSV format was
 		// replaced by the structured workfile; see writeWorkfile().
 	}
-	printf(head0);
-	fprintf(fpLst, head0);
+	printf("%s", head0);
+	fprintf(fpLst, "%s", head0);
 }
 
 //------------------------------------------------------------------------------------------------

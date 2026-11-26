@@ -1,19 +1,22 @@
 #!/bin/sh
-#================================================================================
-# runtests.sh -- komplette Regressionssuite fuer das ebnf-Projekt
-# Aufruf: ./runtests.sh   (baut zuerst, dann alle Grammatiken + TESTS-Bloecke)
-#================================================================================
+# File: runtests.sh
+# Description: Build the Q9 parser and run the compiler regression suite.
+# Owner: cla / afoe
+# Version: 0.2
+# Repository: Q9-Forge/Q9-QCC
+#
+# Edition History
+# 2026-11-25  0.2  Enforced strict warning diagnostics for test builds.
+# 2026-09-11  0.1  Introduced the English source-header format.
 cd "$(dirname "$0")" || exit 1
 mkdir -p build
-# Die Backends gehoeren den Backend-Teilprojekten, nicht dieser Suite. Bis zum
-# 2026-09-14 lag hier je eine EIGENE Kopie -- und die 68k-Kopie war die einzige
-# mit dem -peephole-Nachlauf, waehrend die ausgelieferte Fassung ihn nicht
-# hatte. Seither wird direkt die Produktionsquelle uebersetzt; damit kann diese
-# Klasse von Abweichung nicht wieder entstehen.
+# The test suite builds the production backend source directly.
+# Keeping one source avoids divergence between test and production builds.
 QIR68K_SRC="${QIR68K_SRC:-../Q9-BACKEND-68K/q9-qir68k/src/qcc_backend_c.cpp}"
 QIRARM64_SRC="${QIRARM64_SRC:-../Q9-BACKEND-ARM64/q9-qirarm64/src/qcc_arm64_backend_c.cpp}"
 
-clang++ -std=c++17 -Wall -Wno-format-security -o build/parsec src/parsec.cpp src/codegen.cpp || exit 1
+clang++ -std=c++17 -Wall -Wextra -Werror -o build/parsec src/parsec.cpp src/codegen.cpp || exit 1
+cc -std=c11 -Wall -Wextra -Werror -x c -o build/qcc_backend "$QIR68K_SRC" || exit 1
 
 fail=0
 
@@ -2489,8 +2492,9 @@ fi
 #     Gebaut wird die reine-C-Fassung (qcc_backend_c.cpp, siehe
 #     docs/SELFHOSTING_LUECKENLISTE.md); das C++-Original (qcc_backend.cpp)
 #     bleibt als Referenz liegen -- Ruecksetzen = hier wieder die .cpp bauen.
+cc -std=c11 -Wall -Wextra -Werror -x c -o build/qcc_backend "$QIR68K_SRC" 2>/dev/null
 if [ -x tools/vasmm68k_mot ]; then
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend "$QIR68K_SRC" 2>/dev/null && \
+	if [ -x build/qcc_backend ] && \
 		build/qcc_p 'int add(int a, int b){ return a + b; } int main(){ putint(add(19, 23)); }' > build/qcc_m4.ir && \
 		build/qcc_backend build/qcc_m4.ir build/qcc_m4.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_m4.bin build/qcc_m4.s68 2>/dev/null && \
@@ -3773,7 +3777,7 @@ fi
 #     nicht Teil der auszuliefernden Toolchain. Er fuehrt die von M4a erzeugte 68k-
 #     Schablonen-Ausgabe inklusive Frame/Call/RET und der ECHTEN 68k-Core-
 #     Schablonen fuer signed int32 MUL/DIV aus. Nur PRINT bleibt ein Plattform-Hook.
-if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ]; then
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/qcc_p 'unsigned int high=-1; int fact(int n){ if(n <= 1) return 1; else return n * fact(n - 1); } int main(){ putint(fact(5)); putint(-7 * 6); putint(20 / 3); putint(-20 / 3); putint(high > 1); putint(high / 2); putuint(high); putint(20 % 6); putint(-20 % 6); putuint(high % 10); }' > build/qcc_m4b.ir && \
 		build/qcc_backend build/qcc_m4b.ir build/qcc_m4b.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_m4b.bin build/qcc_m4b.s68 2>/dev/null && \
@@ -3784,13 +3788,13 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ]; then
 		echo "FAIL  qcc M4c-1: 68k-Core-Lauf stimmt nicht mit qccvm ueberein"; fail=1
 	fi
 else
-	echo "warn  qcc M4c-1: python3 oder Backend fehlt -- Ausfuehrungstest uebersprungen"
+	echo "warn  qcc M4c-1: Backend, vasm oder python3 fehlt -- Ausfuehrungstest uebersprungen"
 fi
 
 # 15) QCC M4c-2: Globale int32-Variablen besitzen eine eigene, dauerhafte
 #     Namens-Tabelle im Frontend und werden im 68k-Code PC-relativ als LOADG/
 #     STOREG auf das nullinitialisierte Daten-/BSS-Aequivalent angesprochen.
-if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ]; then
+if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ] && [ -x tools/vasmm68k_mot ]; then
 	if build/qcc_p 'int limit = 10; char mark = 346; int counter; char next(char c){ return c + 1; } int bump(){ counter = counter + limit; return counter; } int main(){ char copy; copy = mark; putchar(copy); putchar(next(334)); putchar(10); putint(bump()); putint(bump()); }' > build/qcc_globals.ir && \
 		build/qcc_backend build/qcc_globals.ir build/qcc_globals.s68 && \
 		tools/vasmm68k_mot -Fbin -quiet -m68000 -o build/qcc_globals.bin build/qcc_globals.s68 2>/dev/null && \
@@ -3801,7 +3805,7 @@ if command -v python3 >/dev/null 2>&1 && [ -x build/qcc_backend ]; then
 		echo "FAIL  qcc M4c-4: globale Variablen/putchar im 68k-Pfad fehlerhaft"; fail=1
 	fi
 else
-	echo "warn  qcc M4c-4: python3 oder Backend fehlt -- Globals-Test uebersprungen"
+	echo "warn  qcc M4c-4: Backend, vasm oder python3 fehlt -- Globals-Test uebersprungen"
 fi
 
 # 15b) Pointer-End-to-End auf dem 68000-Pfad: echte Adressen, char/int-Skalierung,
@@ -4877,7 +4881,7 @@ int main(void){ return 0; }' 2>&1)
 
 	# 17f) Kompletter End-to-End-Pfad bis zum 68k-Backend: MODHEADER/ENTRY
 	# duerfen dort nicht mehr "Opcode ausserhalb einer Funktion" ausloesen.
-	if cc -std=c11 -Wall -Wextra -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
+	if cc -std=c11 -Wall -Wextra -Werror -x c -o build/qcc_backend_dm "$QIR68K_SRC" 2>/dev/null; then
 		build/qcc_p_dm '#defmodul NAME cfide
 #defmodul TYPE PROG main
 int main(void){ return 0; }' > build/qcc_dm.ir 2>/dev/null
@@ -5104,6 +5108,30 @@ int rc(unsigned long a){ const unsigned char *q = (const volatile unsigned char 
 	else
 		echo "ok    qcc-defmodul 17s: Cast mit volatile/const-Qualifizierer"
 	fi
+
+	# 17t) MANAGER-Modul bis in den Assembler: psect mit Typ FlMgr (13<<8)!1,
+	# variable Sprungtabelle (hier 4 Slots) als Einsprung, keine main-Pflicht, kein I/O-Anker.
+	if build/qcc_p_dm '#defmodul NAME qmgr
+#defmodul TYPE MANAGER fscs
+#defmodul ENTRY open m_open
+#defmodul ENTRY read m_read
+#defmodul ENTRY write m_write
+#defmodul ENTRY close m_close
+int m_open(void){ return 0; }
+int m_read(void){ return 0; }
+int m_write(void){ return 0; }
+int m_close(void){ return 0; }' > build/qcc_dm_mgr.ir 2>/dev/null \
+	   && build/qcc_backend_dm build/qcc_dm_mgr.ir build/qcc_dm_mgr.s68 -os9 >/dev/null 2>&1; then
+		if ! grep -q 'psect	qmgr,(13<<8)!1,\$8000,1,0,tc_dispatch' build/qcc_dm_mgr.s68; then
+			echo "FAIL  qcc-defmodul 17t: MANAGER-psect-Zeile falsch"; dmfail=1
+		elif [ "$(grep -c '^	dc\.w	' build/qcc_dm_mgr.s68)" -ne 4 ] || grep -q '_os_write' build/qcc_dm_mgr.s68; then
+			echo "FAIL  qcc-defmodul 17t: Sprungtabelle (4 Slots) oder I/O-Anker falsch"; dmfail=1
+		else
+			echo "ok    qcc-defmodul 17t: MANAGER-Modul mit Sprungtabelle (Typ 13), ohne main und ohne I/O-Anker"
+		fi
+	else
+		echo "FAIL  qcc-defmodul 17t: MANAGER-Modul laesst sich nicht uebersetzen"; dmfail=1
+	fi
 else
 	echo "FAIL  qcc-defmodul: build/qcc_p_dm baut nicht"; dmfail=1
 fi
@@ -5180,7 +5208,9 @@ check_dup tools/qccvm.py      ../Q9-RUN/tools/qccvm.py
 check_dup tools/qcc_merge.py  ../tools/qcc_merge.py
 check_dup tools/qcc_merge.py  ../Q9-RUN/tools/qcc_merge.py
 check_dup tools/qcc68sim.py   ../tools/qcc68sim.py
-check_dup tools/vasmm68k_mot  ../tools/vasmm68k_mot
+if [ -f tools/vasmm68k_mot ] && [ -f ../tools/vasmm68k_mot ]; then
+	check_dup tools/vasmm68k_mot  ../tools/vasmm68k_mot
+fi
 if [ $dupfail -eq 0 ]; then
 	echo "ok    Doppeldateien: alle $dupcount Paare inhaltsgleich"
 else

@@ -1,7 +1,12 @@
-/* Native Q9 process bridge for the QCC driver.
+/*
+ * File: qcc_os9_bridge_q9.c
+ * Description: Provide the native Q9 process bridge for the compiler driver.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * This unit is compiled by QCC and uses the small F$/I$ wrappers in qclib;
- * it deliberately has no Microware/XCC headers or runtime dependencies.
+ * Edition History
+ * 2026-11-25  0.2  Normalized the source header for the module audit.
  */
 extern int _os_load(char *name, int mode, int color, void **module);
 extern int _os_unlink(void *module);

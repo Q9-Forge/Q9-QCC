@@ -1,12 +1,13 @@
 /*
- * qcc -- universal Q9 compiler driver
+ * File: qcc.c
+ * Description: Drive the Q9 compiler frontend, backend, optimizer and linker.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * Purpose:
- *   Loads the selected target configuration and executes the frontend,
- *   backend, optimizer, assembler and linker stages.
- *
- * Edition history:
- *   2026-09-11  Introduced the English source-header format.
+ * Edition History
+ * 2026-11-25  0.2  Added standalone-module linker selection.
+ * 2026-09-11  0.1  Introduced the English source-header format.
  */
 #include <stdio.h>
 #include <string.h>
@@ -270,6 +271,36 @@ static void fwd_slashes(char *s)
  * Parameters: dst Destination buffer; src Source string.
  * Returns: Nothing. */
 static void copy_text(char *dst, const char *src) { strncpy(dst, src, TEXT - 1); dst[TEXT - 1] = '\0'; }
+
+/* Function: is_standalone_module
+ * Checks whether the generated IR defines a standalone module (such as a
+ * device driver or file manager) that has its own root psect and must not
+ * be linked with the standard application startup module (q9_start.r).
+ * Parameters: dir Temporary directory where output.ir was written.
+ * Returns: 1 if standalone module (DRIVER or MANAGER), 0 otherwise. */
+static int is_standalone_module(const char *dir)
+{
+	char path[TEXT * 2];
+	FILE *fp;
+	char line[256];
+	sprintf(path, "%s/output.ir", dir);
+	fp = fopen(path, "r");
+	if (!fp) return 0;
+	while (fgets(line, sizeof(line), fp)) {
+		if (strncmp(line, "MODHEADER", 9) == 0) {
+			if (strstr(line, "type=DRIVER") || strstr(line, "type=driver") ||
+			    strstr(line, "type=MANAGER") || strstr(line, "type=manager")) {
+				fclose(fp);
+				return 1;
+			}
+			break;
+		}
+		if (line[0] != ';' && line[0] != '#' && line[0] != '\n' && line[0] != '\r')
+			break;
+	}
+	fclose(fp);
+	return 0;
+}
 /* Function: usage
  * Prints qcc command-line usage information.
  * Parameters: name Program name.
@@ -528,7 +559,9 @@ int main(int argc, char **argv)
 		return 3;
 	}
 	{
+		#if !defined(_Q9OS) && !defined(_OSK)
 		char command[COMMAND_SIZE];
+		#endif
 		const char *input = argv[argc - 1];
 		#if defined(_Q9OS) || defined(_OSK)
 		{
@@ -875,15 +908,19 @@ int main(int argc, char **argv)
 			char *stage_argv[8]; char stage_in[TEXT]; char stage_out[TEXT]; char stack_arg[TEXT];
 			char cstart_path[TEXT]; char qclib_arg[TEXT];
 			const char *libdir;
+			int standalone = is_standalone_module(tmpdir);
+			int sidx = 0;
 			libdir = qcc_getenv("QCC_LIBDIR");
 			if (libdir == NULL || libdir[0] == '\0') libdir = "/dd/LIBS/Q9";
 			sprintf(cstart_path, "%s/q9_start.r", libdir);
 			sprintf(qclib_arg, "-l=%s/qclib.l", libdir);
 			sprintf(stage_in, "%s/output.r", tmpdir);
 			sprintf(stage_out, "-O=%s", output[0] != '\0' ? output : "output.mod");
-			stage_argv[0] = (char *)linker; stage_argv[1] = cstart_path;
-			stage_argv[2] = stage_in; stage_argv[3] = qclib_arg;
-			stage_argv[4] = stage_out;
+			stage_argv[sidx++] = (char *)linker;
+			if (!standalone) stage_argv[sidx++] = cstart_path;
+			stage_argv[sidx++] = stage_in;
+			stage_argv[sidx++] = qclib_arg;
+			stage_argv[sidx++] = stage_out;
 			/* 2026-09-27: "ql68: Bezug zu weit fuer ein Wort, l68 braucht dafuer
 			 * -a: tc_div_i32" -- sobald ein Programm gross genug wird (gemessen an
 			 * q9-qclib/tests/hello.c), reicht ein 16-Bit-Wort fuer den BSR zu den
@@ -891,14 +928,12 @@ int main(int argc, char **argv)
 			 * schaltet ql68ks Sprungtabelle fuer genau diesen Fall ein (s. ql68
 			 * -help) -- ohne erkennbaren Nachteil fuer kleine Module, also immer
 			 * mitgeben statt erst ab einer gemessenen Groesse. */
-			stage_argv[5] = "-a";
+			stage_argv[sidx++] = "-a";
 			if (stack_size[0] != '\0') {
 				sprintf(stack_arg, "-M=%s", stack_size);
-				stage_argv[6] = stack_arg;
-				stage_argv[7] = NULL;
-			} else {
-				stage_argv[6] = NULL; stage_argv[7] = NULL;
+				stage_argv[sidx++] = stack_arg;
 			}
+			stage_argv[sidx] = NULL;
 			if (q9_exec_argv(linker, stage_argv) != 0) {
 				fprintf(stderr, "qcc: ql68k fehlgeschlagen\n");
 				return 4;
@@ -909,6 +944,7 @@ int main(int argc, char **argv)
 			const char *libdir;
 			const char *sdk_base;
 			char libdir_default[TEXT * 2];
+			int standalone = is_standalone_module(tmpdir);
 			libdir = qcc_getenv("QCC_LIBDIR");
 			if (libdir == NULL || libdir[0] == '\0') {
 				sdk_base = qcc_getenv("Q9SDK");
@@ -917,10 +953,17 @@ int main(int argc, char **argv)
 					libdir = libdir_default;
 				} else libdir = "../Q9-BACKEND-68K/q9-qclib/build";
 			}
-			if (stack_size[0] != '\0')
-				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -M=%s -O=%s", linker, libdir, tmpdir, libdir, stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
-			else
-				sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -O=%s", linker, libdir, tmpdir, libdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+			if (standalone) {
+				if (stack_size[0] != '\0')
+					sprintf(command, "%s %s/output.r -l=%s/qclib.l -a -M=%s -O=%s", linker, tmpdir, libdir, stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+				else
+					sprintf(command, "%s %s/output.r -l=%s/qclib.l -a -O=%s", linker, tmpdir, libdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+			} else {
+				if (stack_size[0] != '\0')
+					sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -M=%s -O=%s", linker, libdir, tmpdir, libdir, stack_size, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+				else
+					sprintf(command, "%s %s/q9_start.r %s/output.r -l=%s/qclib.l -a -O=%s", linker, libdir, tmpdir, libdir, output[0] != '\0' ? output : "build/qcc-tmp/output.mod");
+			}
 		}
 		if (q9_system(command) != 0) { fprintf(stderr, "qcc: ql68k fehlgeschlagen\n"); return 4; }
 		#endif

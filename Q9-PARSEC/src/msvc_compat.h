@@ -1,21 +1,20 @@
-//------------------------------------------------------------------------------------------------
-// msvc_compat.h -- portability layer for MSVC "secure" CRT functions
-//------------------------------------------------------------------------------------------------
-// The source originated as a Visual Studio project and consistently uses
-// MSVC-eigenen *_s-Funktionen (strcpy_s, strncpy_s, strcat_s, sprintf_s, fopen_s, _itoa_s).
-// These are unavailable on macOS/Linux (glibc/BSD libc do not provide Annex K).
-// This header supplies compatible implementations on non-Windows platforms.
+/*
+ * File: msvc_compat.h
+ * Description: Provide the small portability layer required by the Q9 parser tools.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
+ *
+ * Edition History
+ * 2026-11-25  0.2  Replaced unbounded formatting calls with bounded calls.
+ * 2026-09-11  0.1  Introduced the English source-header format.
+ */
+// This header maps the secure-CRT subset used by the Q9 parser tools.
+// The implementation is available on non-Windows hosts; Windows uses its
+// native runtime support.
 //
-// Deliberately WITHOUT C++ templates (as of 2026-07-23): the original version had
-// Funktion zusaetzlich eine Template-Ueberladung, die die Zielgroesse aus dem Array-Typ
-// ableitet (kein "sizeof(dst)" an der Aufrufstelle noetig). Microwares "xcc"-Compiler
-// (Ultra C/C++ 2.5, Baujahr 2001) stuerzt bei dieser Deduktion mit einem internen Fehler
-// ab ("get_integer_size_and_alignment: bad integer kind"). Da Templates im ganzen Projekt
-// sonst nirgends vorkommen, wurden alle rund 75 Aufrufstellen auf die explizite Form
-// (Zielgroesse per sizeof() als eigenes Argument) umgestellt -- funktioniert unveraendert
-// auf allen Plattformen, keine Bedingungs-Kompilierung noetig.
-//
-// On Windows (_WIN32) this header is a no-op; the MSVC CRT supplies everything.
+// The interface stays explicit so the same source remains portable across
+// supported build hosts.
 //------------------------------------------------------------------------------------------------
 #ifndef MSVC_COMPAT_H
 #define MSVC_COMPAT_H
@@ -82,13 +81,13 @@ inline int fopen_s(FILE** fp, const char* name, const char* mode) {
 // Only base 10 is used by the project; support other bases for completeness.
 inline int _itoa_s(int value, char* dst, size_t dstSize, int radix) {
 	if (radix == 10) {
-		sprintf(dst, "%d", value);
+		snprintf(dst, dstSize, "%d", value);
 	}
 	else if (radix == 16) {
-		sprintf(dst, "%x", value);
+		snprintf(dst, dstSize, "%x", value);
 	}
 	else if (radix == 8) {
-		sprintf(dst, "%o", value);
+		snprintf(dst, dstSize, "%o", value);
 	}
 	else {
 		return 1;

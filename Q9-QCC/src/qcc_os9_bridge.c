@@ -1,8 +1,12 @@
-/* OS-9 process-launch bridge compiled with Microware XCC.
+/*
+ * File: qcc_os9_bridge.c
+ * Description: Provide the Q9 process-launch bridge for the native target build.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * QCC's generated callback ABI is not compatible with os9exec's callback
- * contract. Keep both the callback and OS-9 runtime globals in this XCC-built
- * translation unit so self-hosted QCC modules can link this relocatable file.
+ * Edition History
+ * 2026-11-25  0.2  Normalized the source header for the module audit.
  */
 #if defined(_Q9OS) || defined(_OSK)
 #include <stdio.h>
