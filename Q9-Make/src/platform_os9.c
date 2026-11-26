@@ -1,19 +1,16 @@
-/* qmake platform adapter for native OS-9/68K.
+/*--------------------------------------------------------------------------------------
+ * File:        platform_os9.c
+ * Description: Native Q9/68k platform services for Q9-Make.
+ * Owner:       cla / afoe
+ * Version:     0.01
  *
- * Purpose:
- *   Implements platform.h's contract using only the small F$/I$ wrappers
- *   already proven in this repository (Q9-QCC/src/qcc_os9_bridge_q9.c),
- *   not Microware's own runtime. Microware's system() is deliberately NOT
- *   used here: live measurement (see the os9-dev skill's c/os9-clib-
- *   reference.md, "system() may launch nothing, and the return value will
- *   not tell you") shows it can silently launch nothing at all depending on
- *   the account's default shell, while still reporting success. Recipes are
- *   therefore split and forked directly, the same way qcc_os9_bridge_q9.c
- *   already does for the QCC driver's own pipeline.
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
- * Edition history:
- *   2026-10-02  First version, written for the qmake Q9/68K port.
- */
+ * Edition History
+ * Date    | Ver. | Description                                               | By
+ * 26-11-26| 0.01 | Add file and function headers; revise comments.           | cla
+ *--------------------------------------------------------------------------------------*/
+
 #include <stdio.h>
 #include <string.h>
 #include "platform.h"
@@ -29,9 +26,14 @@ extern int _os_gs_fd(int path, int size, char *fdbuf);
 extern int _os_chgdir(char *path, int mode);
 extern unsigned long _os_ticks(void);
 
-/* On Q9 itself the configuration directory is the fixed /dd/SYS (see Q9-Make's
- * README): the image build places the shared qmake.conf of the SDK there. There is
- * no environment-driven SDK search like on the development hosts. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_default_config_dir
+ * Description: Report that no target-specific directory is available.
+ * Parameter:   const char * target_arch: Target architecture, unused.
+ *              char * out: Destination buffer, unused.
+ *              size_t capacity: Buffer size, unused.
+ * Return:      int: Always 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity)
 {
 	(void)target_arch;
@@ -40,6 +42,13 @@ int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity
 	return 0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_default_host_config_dir
+ * Description: Return the native shared configuration directory.
+ * Parameter:   char * out: Receives the directory path.
+ *              size_t capacity: Size of the destination buffer.
+ * Return:      int: 1 if a path was written, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_default_host_config_dir(char *out, size_t capacity)
 {
 	if (capacity < sizeof("/dd/SYS"))
@@ -48,36 +57,48 @@ int qmake_default_host_config_dir(char *out, size_t capacity)
 	return 1;
 }
 
-/* No ANSI escape handling on the Q9 console for this first port; always
- * report a plain, non-terminal stream so qmake skips color codes. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_stdout_is_terminal
+ * Description: Disable terminal escape sequences for the native console.
+ * Parameter:   void: No parameters.
+ * Return:      int: Always 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_stdout_is_terminal(void)
 {
 	return 0;
 }
 
-/* F$Time's tick counter, divided by the commonly documented 68k tick rate
- * (100 Hz). Only used for human-readable build-duration output, never for
- * build correctness, so an unconfirmed tick rate is an accepted risk. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_time_seconds
+ * Description: Read the native tick counter using the assumed 100 Hz rate.
+ * Parameter:   void: No parameters.
+ * Return:      double: Elapsed time in seconds.
+ *--------------------------------------------------------------------------------------*/
 double qmake_time_seconds(void)
 {
 	return (double) _os_ticks() / 100.0;
 }
 
-/* qmake only ever needs its own data directory (chd), never the execution
- * directory (chx); mode 0 selects chd. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_change_directory
+ * Description: Change the current data directory.
+ * Parameter:   const char * path: Destination directory.
+ * Return:      int: 1 on success, 0 on failure.
+ *--------------------------------------------------------------------------------------*/
 int qmake_change_directory(const char *path)
 {
 	return _os_chgdir((char *) path, 0) == 0;
 }
 
-/* Equivalent of POSIX stat(): does the file exist, and (if so) a value that
- * only needs to compare correctly against another call's result, not decode
- * into a real calendar date. Built from the RBF file-descriptor sector's
- * fd_date field (year-1900/month/day/hour/minute, 5 bytes at offset 3) via
- * I$GetStt/SS_FD -- already wired and documented in qclib (rbf.h, os9call.a)
- * for chown(3); reused here read-only. Generous per-field radixes avoid any
- * chance of two different dates folding to the same value; absolute
- * magnitude is never interpreted. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_file_info
+ * Description: Read a file timestamp for comparison with other timestamps.
+ *              The encoded value is not a calendar date; a status read failure
+ *              leaves the timestamp at zero.
+ * Parameter:   const char * path: File path.
+ *              long * modified: Receives the encoded timestamp.
+ * Return:      int: 1 if the file could be opened, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_file_info(const char *path, long *modified)
 {
 	int p;
@@ -101,12 +122,13 @@ int qmake_file_info(const char *path, long *modified)
 #define Q9_MAX_WORDS 64
 #define Q9_MAX_PARAMS 480
 
-/* Splits one recipe line into words in place, NUL-terminating each one.
- * Handles a single level of "double quoted" words (no escapes, no nesting
- * -- the only quoting style q9makefile recipes actually use) and leaves
- * "&&" as an ordinary word so the caller can treat it as a chain
- * separator. Returns the word count, or -1 if there are more than
- * Q9_MAX_WORDS. */
+/*--------------------------------------------------------------------------------------
+ * Function:    q9_split_words
+ * Description: Split a command into words in place; quoted words are supported.
+ * Parameter:   char * command: Mutable command line.
+ *              char ** words: Receives pointers to the resulting words.
+ * Return:      int: Word count, or -1 if the limit is exceeded.
+ *--------------------------------------------------------------------------------------*/
 static int q9_split_words(char *command, char **words)
 {
 	int n;
@@ -138,25 +160,16 @@ static int q9_split_words(char *command, char **words)
 	return n;
 }
 
-/* Loads and forks one already-split command (argv[0] is the module name,
- * argv[1..n-1] its parameters), waits for it, and returns its exit status.
- *
- * Two module kinds need two different parameter encodings, and nothing in
- * a module's header tells them apart -- it depends on which startup code
- * the target was linked against:
- *   - this project's own QCC-built tools (qcc, qcpp, qcir, ...), linked
- *     against q9_start.a, expect the structured argv/offset table q9_start.a
- *     itself parses (see qcc_os9_bridge_q9.c, which this logic mirrors);
- *     they are staged under /dd/CMDS_QCC.
- *   - traditional OS-9 utilities (mkdir, rm, cp, ...), linked against
- *     Microware's own startup code, expect a single CR-terminated
- *     blank-separated parameter line instead; they live under /dd/CMDS.
- * Resolving the bare name under /dd/CMDS_QCC first, falling back to
- * /dd/CMDS, is the same proven heuristic qcc_os9_bridge_q9.c already uses
- * for exactly this reason. An explicit absolute path (argv[0][0] == '/')
- * is trusted as given and always uses the legacy encoding, since every
- * q9makefile recipe written so far only ever gives an absolute path for a
- * plain OS-9 utility, never for one of this project's own tools. */
+/*--------------------------------------------------------------------------------------
+ * Function:    q9_exec_words
+ * Description: Load and execute a command, then wait for its completion.
+ *              Commands in /dd/CMDS_QCC use structured arguments; other commands
+ *              use a carriage-return-terminated parameter line. Absolute paths use
+ *              the latter form.
+ * Parameter:   char ** argv: Command name and arguments.
+ *              int argc: Number of command words.
+ * Return:      int: Command status, or -1 on failure.
+ *--------------------------------------------------------------------------------------*/
 static int q9_exec_words(char **argv, int argc)
 {
 	char load_path[256];
@@ -262,11 +275,12 @@ static int q9_exec_words(char **argv, int argc)
 	return status;
 }
 
-/* Runs one q9makefile recipe line. Only "&&" chaining is understood (no
- * pipes, no redirection, no ';' or '&background') -- every Q9-target
- * recipe written so far is either a single command or an "a && b" chain of
- * plain commands, and this project's own system() measurement (see the
- * file header) rules out handing the line to a shell instead. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_run
+ * Description: Run one recipe with optional && command chaining.
+ * Parameter:   const char * command: Recipe to run.
+ * Return:      int: Command status, or -1 on failure.
+ *--------------------------------------------------------------------------------------*/
 int qmake_run(const char *command)
 {
 	char buffer[1024];
@@ -300,11 +314,14 @@ int qmake_run(const char *command)
 	return 0;
 }
 
-/* qclib's tmpfile() is a documented stub that always returns null (no
- * temporary-file service exposed yet; see qclib/STATUS.md), so qmake.c's
- * own run_command() never actually reaches this function -- it already
- * falls back to qmake_run() whenever tmpfile() fails. Kept as a safe
- * equivalent rather than left undefined, in case that changes later. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_run_capture
+ * Description: Run a recipe without capturing its output. The caller currently
+ *              falls back to qmake_run when temporary files are unavailable.
+ * Parameter:   const char * command: Recipe to run.
+ *              FILE * output: Output stream, unused.
+ * Return:      int: Command status, or -1 on failure.
+ *--------------------------------------------------------------------------------------*/
 int qmake_run_capture(const char *command, FILE *output)
 {
 	(void) output;
