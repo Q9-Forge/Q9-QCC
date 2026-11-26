@@ -1,3 +1,18 @@
+/*
+ *-------------------------------------------------------------------------------------------------
+ * File:        platform.h
+ * Description: Platform interfaces used by Q9-Make.
+ * Owner:       cla / afoe
+ * Version:     0.01
+ *
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
+ *
+ * Edition History
+ * Date    | Ver. | Description                                                  | By
+ * 26-11-26| 0.01 | Add file header for the platform interface.                   | cla
+ *-------------------------------------------------------------------------------------------------
+ */
+
 #ifndef QMAKE_PLATFORM_H
 #define QMAKE_PLATFORM_H
 #include <stddef.h>
