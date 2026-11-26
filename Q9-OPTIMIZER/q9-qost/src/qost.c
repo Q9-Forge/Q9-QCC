@@ -2,7 +2,7 @@
  * File:        qost.c
  * Description: Conservative optimizer for Q9 Stack-IR.
  * Owner:       cla / afoe
- * Version:     0.03
+ * Version:     0.04
  *
  * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
@@ -11,6 +11,7 @@
  * 26-11-26| 0.01 | Document functions, name line endings and translate status.      | cla
  * 26-11-26| 0.02 | Preserve negation that would overflow.                    | cla
  * 26-11-26| 0.03 | Preserve whitespace on unchanged lines.                   | cla
+ * 26-11-26| 0.04 | Release superseded constant-fold replacements.           | cla
  *--------------------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -339,6 +340,7 @@ static void set_push(int index, unsigned long value)
 	} while (magnitude != 0);
 	while (ndigits > 0) *out++ = digits[--ndigits];
 	*out = 0;
+	free(lines[index].replacement);
 	lines[index].replacement = (char *)grow(0, strlen(text) + 1);
 	strcpy(lines[index].replacement, text);
 }
