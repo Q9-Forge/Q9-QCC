@@ -1,55 +1,59 @@
 # Q9-Make Status
 
-**Phase:** C89-Prototyp mit benannten Host/Compiler/Target-Konfigurationsabschnitten implementiert; Konfigurationen tragen seit 2026-10-02 feste Dreibuchstaben-Codes (siehe `README.md`/`README_de.md`, Abschnitt „Configuration naming scheme"). Host-Build und Selfhost-Cross-Build sind Ende-zu-Ende von Null verifiziert; qmake-Build für das Q9-Zielsystem selbst und Emulator-Gastlauf bleiben offen.
+Q9-Make ist ein C89-Prototyp mit benannten Konfigurationsabschnitten und
+Dreibuchstaben-Codes. Die Anleitungen beschreiben die Profile in
+[Englisch](README.md) und [Deutsch](README_de.md).
 
-| Bereich | Status | Nächster Nachweis |
+| Bereich | Status | Nachweis und offene Arbeit |
 |---|---|---|
-| C-Sprachbaseline | 🟡 | Host-Build mit strengem C89 erfolgreich; QCC-Probe/Binary fehlt in diesem Checkout |
-| Makefile-Syntax | ✅ | `[global]` und benannte Host/Compiler/Target-Abschnitte, wiederholte Ziele, `-f`/`--file`, `-P`-Auswahl, SDK-/`-C`-Profile und `--list-configs` per Smoke-Test abgedeckt; Gastprüfung separat offen |
-| Buildgraph | ✅ | Abhängigkeiten, Zyklen, Zeitstempel/`touch`-Marker, Kind-vor-Eltern-Rekursion und Erstziel-ohne-Argument getestet |
-| Native Hosts | 🟡 | Gemeinsame Datei `Q9SDK/Q9/SYS/qmake.conf` wird auf macOS/Linux zuerst geladen (getestet), auf Windows geschrieben; danach macOS-Profil per Compilezeit-Architektur aus `Q9SDK/macOS/{ARM64,x86_64}/SYS/qmake.conf`; POSIX/Q9SDK-/HOME-Auflösung getestet; Windows-Adapter geschrieben, Windows-Test offen |
-| OS-9/68k | 🔴 | Plattformadapter fehlt; `/dd/SYS` ist als Standard eingetragen (im Emulator unverifiziert), Prozessstart und Dateisystemzugriff im Emulator umsetzen/verifizieren |
-| Toolchainprofile | 🟡 | Zentrale Profile für macOS arm64/Host, macOS x86_64, Mac-XCC/68k, Linux-GCC, Windows-Clang und Q9-QCC/68k; x86_64-Hosttools gebaut und unter Rosetta gestartet (Intel-Hardwaretest offen); Windows-Lauftest und Q9-SYS-Profilladen im Emulator offen |
-| Implizite Regeln | 🟡 | `.c`→`.o` via HOST_CC sowie `.c`/`.a`→`.r` via TARGET_CC/TARGET_AS; Standard und XCC-artige Befehlsvorlagen mit Fake-Tools getestet; qmake im Emulator offen |
-| Diagnose | 🟡 | `-v`, `-vv`, `--dry-run`, `-C`/`--config-dir` implementiert; `--show-config`/Abfragen offen |
-| Arbeitsimage-Deploy | 🔴 | Explizites, nicht-destruktives Installziel für benannte Arbeitsimageprofile entwerfen |
-| Selbstbau-Abnahme | 🟡 | 2026-10-02: `ACA` (Host-Build, clang/ARM64) und `AQQ` (Cross-Build mit dem per `ACA` selbstgebauten QCC nach Q9/68K) jeweils von Null neu gebaut und verifiziert -- alle sieben QCC-Werkzeuge entstehen als gültige OS9/68K-Module; `AXQ` (Microware-XCC/Wine) ebenfalls durchgelaufen. Offen: qmake baut seine eigene OS-9/68k-Binary noch nicht selbst, und kein Schritt lief bisher im echten Q9-Emulator |
+| Host-Build | 🟡 | Der POSIX-Build und die Smoke-Tests bestehen mit Warnungen als Fehler. Der Windows-Build und -Lauf sind hier nicht geprüft. |
+| Q9/68k | 🟡 | Ein nativer Plattformadapter ist vorhanden. Grenzfälle der Befehlsverarbeitung sind mit Host-Stubs getestet; Build und Lauf auf dem Zielsystem sind offen. |
+| Projektdatei | 🟡 | Konfigurationsabschnitte, Profile, Variablen, Abhängigkeiten, Rekursion und die Auswahl per Kommandozeile sind durch Smoke-Tests abgedeckt. Ein Gastlauf steht aus. |
+| Toolchains | 🟡 | Profile für mehrere Hosts und Ziele sind vorhanden. Die Prüfung aller Compiler und Laufzeitumgebungen steht aus. |
+| Implizite Regeln | 🟡 | `.c` nach `.o` und `.c`/`.a` nach `.r` sind implementiert und mit Testwerkzeugen geprüft. Die Zielumgebung ist separat zu prüfen. |
+| Diagnose | 🟡 | `-v`, `-vv`, `--dry-run`, `-C` und `--config-dir` sind implementiert. Weitere Konfigurationsabfragen stehen aus. |
+| Arbeitsimage-Deploy | 🔴 | Ein explizites Installziel für benannte Arbeitsimageprofile steht aus. |
+| Selbstbau | 🟡 | Frühere Cross-Build-Ergebnisse sind dokumentiert. Ein reproduzierbarer Selbstbau und Gastlauf von Q9-Make selbst stehen aus. |
 
-## Prototypumfang / bekannte Grenzen
+## Bisherige Build-Ergebnisse
 
-- Feste Kapazitaeten: 32 Regeln, 12 Abhaengigkeiten und 32 Variablen; Namen
-  maximal 127 Zeichen, einzelne Rezeptzeilen maximal 1023 Zeichen. Die Zahl
-  der Rezeptzeilen ist dynamisch und durch den verfuegbaren Speicher begrenzt.
-- Genau ein Zielargument; ohne `-P` wird es in allen Abschnitten ausgefuehrt,
-  die es definieren. Ohne Ziel gilt die erste lokale Regel jedes Abschnitts.
-- Maximal 16 Konfigurationsabschnitte pro `q9makefile`; `[global]`-Werte und
-  Regeln gelten in jedem Abschnitt. Konfigurationswerte stehen im passenden
-  Abschnitt von `toolchains/qmake.conf` oder einer Datei aus `-C`.
-- Standardmaessig wird `q9makefile` aus dem aktuellen Arbeitsverzeichnis
-  gelesen; `-f DATEI`/`--file DATEI` waehlt eine alternative Datei.
-- Rezepte laufen ueber die Shell des Hostsystems; portable Rezeptsyntax ist
-  damit noch nicht definiert.
-- Variablen werden nur in Rezeptzeilen expandiert. Profil (falls ausgewaehlt)
-  wird vor `q9makefile` geladen. Prioritaet: `-D`-Override, Environment,
-  per `EXPORT` vom Elternverzeichnis uebergebener Wert, Projektdatei, Profil,
-  eingebaute Vorgabe. Environment wird nicht veraendert/
-  exportiert.
-- `SUBDIRS` akzeptiert nur direkte Kindnamen (keine Pfade, `/` oder `..`),
-  maximal 16 Ebenen; Builds gehen rekursiv zuerst in die Kinder.
-- Keine automatische Abhaengigkeitserzeugung, Patternregeln, frei definierbaren
-  Format-Uebergangsketten oder parallelen Builds. Die derzeitigen impliziten
-  `.c`/`.a`-Regeln sind fest in qmake und verwenden konfigurierbare Variablen.
-- Dry-run fuehrt keine Rezepte aus; seine Statusentscheidungen beruhen auf
-  demselben vorhandenen Dateisystem wie ein normaler Lauf.
+Am 2026-10-02 wurden laut dem bisherigen Bericht die Profile `ACA` und `AQQ`
+von Grund auf gebaut und sieben QCC-Werkzeuge erzeugt. Das Cross-Build-Profil
+`AXQ` wurde ebenfalls ausgeführt. Diese historischen Ergebnisse wurden bei der
+aktuellen Prüfung nicht wiederholt; sie ersetzen keinen Gastlauf von Q9-Make.
 
-## Abnahmereihenfolge
+## Umfang und Grenzen
 
-1. Übersetzen derselben C89-Quellen mit QCC, Clang/GCC und dem ausgewählten
-   Windows-Hostcompiler.
-2. Host-`qmake` baut die OS-9/68k-`qmake`-Binary mit dem gewählten
-   Targetcompiler.
-3. `qmake` baut seine eigene Komponente reproduzierbar; ein unveränderter
-   Folgelauf führt keine Rezepte aus.
-4. OS-9-`qmake` führt denselben komponentenlokalen Build im Emulator aus.
-5. Dry-run und Diagnosemodi weisen nach, dass kein Image ohne explizites
-   Deployziel verändert wird.
+- Die Projektdatei kann bis zu 96 Regeln, 12 Abhängigkeiten je Regel,
+  32 Variablen und 16 Konfigurationsabschnitte enthalten. Namen und einzelne
+  Rezeptzeilen unterliegen festen Längengrenzen; Rezeptzeilen werden dynamisch
+  gespeichert.
+- Genau ein Zielargument ist möglich. Ohne `-P` wird es in den passenden
+  Abschnitten ausgeführt. Ohne Ziel wird eine Vorgaberegel gewählt.
+- `[global]`-Werte und Regeln gelten zusammen mit dem gewählten Abschnitt.
+  Profile stehen in `toolchains/qmake.conf` oder in einer Datei aus `-C`.
+- Standardmäßig wird `q9makefile` aus dem aktuellen Verzeichnis gelesen;
+  `-f DATEI` und `--file DATEI` wählen eine andere Datei.
+- Host-Rezepte laufen über die Host-Shell. Der native Adapter unterstützt
+  einfache Befehle und `&&`-Verkettung; die Zielausführung ist noch zu prüfen.
+- Variablen werden unter anderem in Rezepten, Zielnamen, exportierten Werten
+  und ausgewählten Konfigurationswerten expandiert. Die Priorität ist
+  `-D`-Override, Environment, vom Elternverzeichnis mit `EXPORT` übergebener
+  Wert, Projektdatei, Profil und eingebaute Vorgabe. Das Environment wird nicht
+  verändert oder exportiert.
+- `SUBDIRS` akzeptiert nur direkte Kindnamen ohne Pfadtrenner oder `..` und
+  höchstens 16 Ebenen. Kinder werden vor dem lokalen Ziel gebaut.
+- Automatische Abhängigkeitserzeugung, Patternregeln, frei definierbare
+  Format-Übergangsketten und parallele Builds sind nicht implementiert.
+- Dry-run führt keine Rezepte aus. Seine Entscheidungen beruhen auf dem
+  vorhandenen Dateisystem.
+
+## Weitere Prüfung
+
+1. Die C89-Quellen mit QCC sowie den vorgesehenen Hostcompilern bauen.
+2. Die native Q9/68k-Version bauen und ihre Prozess- und Dateizugriffe auf der
+   Zielumgebung prüfen.
+3. Einen reproduzierbaren Selbstbau prüfen; ein unveränderter Folgelauf soll
+   keine Rezepte ausführen.
+4. Dry-run und Diagnosen prüfen. Ein Arbeitsimage darf nur durch ein explizites
+   Deployziel verändert werden.
