@@ -1,5 +1,7 @@
 # Q9-Make
 
+[Deutsch](README_de.md)
+
 Q9-Make is the planned small, portable build tool for Q9 projects. Its
 executable is named `qmake`. One source base and one `q9makefile` format will
 serve native development hosts and Q9 target systems; each platform receives
@@ -35,7 +37,7 @@ $(TARGET_CPPFLAGS) $(TARGET_CFLAGS) -c -o target.r source.c`; if no C source exi
 `.a` assembler source is passed to `$(TARGET_AS) $(TARGET_ASFLAGS) source.a
 target.r`. Target tools must be configured explicitly; qmake does not guess
 between QCC (native on Q9) and XCC (host/Wine cross-toolchain). Thus a host
-build and an OS-9 cross-build can coexist in one q9makefile, using separate
+build and an Q9-System cross-build can coexist in one q9makefile, using separate
 outputs such as `.o` and `.r`. Existing outputs are rebuilt only if the source
 is newer. Linking `.r` files into a module remains explicit because module
 metadata and entry settings are target/project-specific. Explicit rules always
@@ -52,12 +54,12 @@ Q9SDK/Linux/CMDS/      # tools that run on Linux
 Q9SDK/Windows/CMDS/    # tools that run on Windows
 Q9SDK/Q9/68k/CMDS_XCC/ # XCC-built Q9/68k modules
 Q9SDK/Q9/68k/CMDS_QCC/ # QCC-built Q9/68k modules
-Q9SDK/Q9/68k/CMDS_CC/  # native Microware compiler outputs
+Q9SDK/Q9/68k/CMDS_CC/  # native external compiler outputs
 ```
 
 Host tools belong below the matching host directory; target profiles and target
 binaries belong below `Q9/<architecture>`; `CMDS_CC` is reserved for modules
-built with the native Microware compiler. All toolchain profiles live in one
+built with the native external compiler. All toolchain profiles live in one
 sectioned `qmake.conf`: the `[global]` section holds shared defaults and a
 section named `NAME` holds that compiler/target combination. The shared file of
 the Q9 SDK is `$Q9SDK/Q9/SYS/qmake.conf`, one file for every development
@@ -110,7 +112,8 @@ incompatible sections are silently skipped; `-v` explains each skip. An
 explicit incompatible `-P NAME` is an error.
 
 The profile uses the same simple `NAME = value` syntax and is loaded before the
-makefile's global and selected-section values. It can define `TARGET_CC`, `TARGET_CPPFLAGS`, `TARGET_CFLAGS`,
+makefile's global and selected-section values. It can define `TARGET_CC`,
+`TARGET_CPPFLAGS`, `TARGET_CFLAGS`,
 `TARGET_OPT`/`TARGET_OPTFLAGS`, `TARGET_AS`/`TARGET_ASFLAGS`, `TARGET_LD`,
 `TARGET_LDFLAGS`, `TARGET_ARCH`, `TARGET_CPU`, `TARGET_ABI`, `DEFS`, `LIBS`,
 and `STARTUP`. These values are available to explicit
@@ -143,7 +146,7 @@ options, so `qmake -P QQQ` selects the Q9 profile.
 ## Initial platform scope
 
 - Native qmake binaries: macOS, Linux, Windows.
-- First Q9 target binary: OS-9/68k.
+- First Q9 target binary: Q9-System/68k.
 - Later targets may add their own platform adapter and toolchain profile.
 
 ## First prototype
@@ -178,9 +181,11 @@ extensionless `q9makefile` by default; `qmake -f build.mk target` selects a
 different file.
 
 This is deliberately an early prototype, not yet the agreed complete system:
-variables expand only inside recipes; configurations are selected by named
-sections and use fixed implicit format rules, not arbitrary format-transition
-pipelines. There is no OS-9 adapter or image deployment. `SUBDIRS` entries must
+variables expand in recipes, target names and selected configuration values;
+configurations are selected by named sections and use fixed implicit format
+rules, not arbitrary format-transition pipelines. The native Q9-System adapter
+requires further runtime verification;
+image deployment is not included. `SUBDIRS` entries must
 be simple direct-child names, and recursion is limited to 16 levels. qmake
 reads but does not modify the process environment. See
 [`STATUS.md`](STATUS.md) for verified versus pending work.
@@ -199,7 +204,7 @@ cross-compiling configurations.
 |------|-------------------------------|
 | `A`  | macOS arm64 (Apple Silicon)   |
 | `I`  | macOS x86_64 (Intel)          |
-| `Q`  | Q9 / OS-9 68K                 |
+| `Q`  | Q9-System 68K                 |
 | `P`  | Q9 x86 (PC)                   |
 | `L`  | Linux (Debian) x86_64         |
 | `R`  | Linux (Raspberry OS) arm64    |
@@ -212,10 +217,10 @@ cross-compiling configurations.
 | `C`  | Clang                                          |
 | `G`  | GNU GCC                                        |
 | `Q`  | QCC (this project's own compiler)              |
-| `X`  | Microware XCC (cross, via Wine)                |
-| `M`  | Microware CC (native, running on OS-9 itself)  |
+| `X`  | external XCC (cross, via Wine)                |
+| `M`  | external CC (native, running on Q9-System itself)  |
 
-`X` and `M` are both Microware compilers: `X` for the Wine-hosted cross
+`X` and `M` are both external compilers: `X` for the Wine-hosted cross
 build, `M` for the native one running on Q9 itself. The letter `Q` is reused
 between the system table and the compiler table; this is unambiguous because
 each letter's meaning is fixed by its position in the three-letter code, not
@@ -228,30 +233,30 @@ codes).
 |------------------------|-----------|---------------|-------------------------|-------------|:-----:|:-----:|
 | macOS                  | arm64     | Clang         | macOS                   | arm64       |   –   | `ACA` |
 | macOS                  | arm64     | Clang         | macOS                   | x86_64      |   X   | `ACI` |
-| macOS                  | arm64     | QCC           | Q9/OS-9                 | 68k         |   X   | `AQQ` |
-| macOS                  | arm64     | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `AXQ` |
+| macOS                  | arm64     | QCC           | Q9-System                 | 68k         |   X   | `AQQ` |
+| macOS                  | arm64     | XCC/Wine      | Q9-System                 | 68k         |   X   | `AXQ` |
 | macOS                  | x86_64    | Clang         | macOS                   | x86_64      |   –   | `ICI` |
-| macOS                  | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `IQQ` |
-| macOS                  | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `IXQ` |
-| Q9/OS-9                | 68k       | QCC           | Q9/OS-9                 | 68k         |   –   | `QQQ` |
-| Q9/OS-9                | 68k       | Microware CC  | Q9/OS-9                 | 68k         |   –   | `QMQ` |
+| macOS                  | x86_64    | QCC           | Q9-System                 | 68k         |   X   | `IQQ` |
+| macOS                  | x86_64    | XCC/Wine      | Q9-System                 | 68k         |   X   | `IXQ` |
+| Q9-System                | 68k       | QCC           | Q9-System                 | 68k         |   –   | `QQQ` |
+| Q9-System                | 68k       | external CC  | Q9-System                 | 68k         |   –   | `QMQ` |
 | Linux (Debian)         | x86_64    | GCC           | Linux (Debian)          | x86_64      |   –   | `LGL` |
-| Linux (Debian)         | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `LQQ` |
-| Linux (Debian)         | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `LXQ` |
+| Linux (Debian)         | x86_64    | QCC           | Q9-System                 | 68k         |   X   | `LQQ` |
+| Linux (Debian)         | x86_64    | XCC/Wine      | Q9-System                 | 68k         |   X   | `LXQ` |
 | Linux (Raspberry OS)   | arm64     | GCC           | Linux (Raspberry OS)    | arm64       |   –   | `RGR` |
-| Linux (Raspberry OS)   | arm64     | QCC           | Q9/OS-9                 | 68k         |   X   | `RQQ` |
-| Linux (Raspberry OS)   | arm64     | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `RXQ` |
+| Linux (Raspberry OS)   | arm64     | QCC           | Q9-System                 | 68k         |   X   | `RQQ` |
+| Linux (Raspberry OS)   | arm64     | XCC/Wine      | Q9-System                 | 68k         |   X   | `RXQ` |
 | Windows 11             | x86_64    | Clang         | Windows 11              | x86_64      |   –   | `WCW` |
-| Windows 11             | x86_64    | XCC/Wine      | Q9/OS-9                 | 68k         |   X   | `WXQ` |
-| Windows 11             | x86_64    | QCC           | Q9/OS-9                 | 68k         |   X   | `WQQ` |
+| Windows 11             | x86_64    | XCC/Wine      | Q9-System                 | 68k         |   X   | `WXQ` |
+| Windows 11             | x86_64    | QCC           | Q9-System                 | 68k         |   X   | `WQQ` |
 | macOS                  | arm64     | QCC           | Q9 x86                  | x86         |   X   | `AQP` |
 | macOS                  | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `IQP` |
 | Linux (Debian)         | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `LQP` |
 | Linux (Raspberry OS)   | arm64     | QCC           | Q9 x86                  | x86         |   X   | `RQP` |
 | Windows 11             | x86_64    | QCC           | Q9 x86                  | x86         |   X   | `WQP` |
-| Q9/OS-9                | 68k       | QCC           | Q9 x86                  | x86         |   X   | `QQP` |
+| Q9-System                | 68k       | QCC           | Q9 x86                  | x86         |   X   | `QQP` |
 | Q9 x86                 | x86       | QCC           | Q9 x86                  | x86         |   –   | `PQP` |
-| Q9 x86                 | x86       | QCC           | Q9/OS-9                 | 68k         |   X   | `PQQ` |
+| Q9 x86                 | x86       | QCC           | Q9-System                 | 68k         |   X   | `PQQ` |
 
 Compiler choice per host: Clang covers all three non-Linux hosts (macOS
 arm64, macOS x86_64, Windows), so they share one frontend and one set of
