@@ -19,5 +19,10 @@ $(TARGET): $(SOURCES) src/platform.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -Isrc -o $@ $(SOURCES)
 
-test: $(TARGET)
+$(BUILD)/native_platform_test: tests/native_platform_test.c src/platform_os9.c src/platform.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Isrc -o $@ tests/native_platform_test.c
+
+test: $(TARGET) $(BUILD)/native_platform_test
 	sh tests/smoke.sh $(TARGET)
+	$(BUILD)/native_platform_test
