@@ -1,18 +1,22 @@
 # Q9-Parsec
 
-EBNF-Parser-/Scanner-Generator: liest eine EBNF-Grammatik und erzeugt daraus
-Parserquelltext (C-Referenzimplementierung + 68k-Assembler).
+[Deutsch](README_de.md)
 
-Der darauf aufbauende QCC (Sprachkern, IR, 68000-/ARM64-Backends,
-der seinen eigenen Parser mit diesem Tool aus `Data/qcc.ebnf` erzeugt) lebt
-seit 2026-07-31 als eigenständiges Repo:
-[Q9-QCC](https://github.com/Q9-Forge/Q9-QCC) (volle Historie extrahiert).
+Q9-Parsec is an EBNF parser and scanner generator. It reads a grammar and
+produces parser source, including a C reference implementation and 68k
+assembly output. The Q9-QCC tree includes this component alongside the
+compiler, which uses generated parser source.
 
-Die Dokumentation ist nach Zweck getrennt:
+The following guides are available:
 
-- [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md)
-- [Entwicklerhandbuch](docs/ENTWICKLERHANDBUCH.md)
-- [Ausführliche Architektur](docs/ARCHITEKTUR.md)
+- [User guide](docs/BENUTZERHANDBUCH.md)
+- [Developer guide](docs/ENTWICKLERHANDBUCH.md)
+- [Architecture](docs/ARCHITEKTUR.md)
+- [Documentation index](docs/README.md)
 
-QCC-spezifischer Status/Fortschritt/ISO-C-Lückenliste etc. steht jetzt in
-[Q9-QCC](https://github.com/Q9-Forge/Q9-QCC).
+The previous project notes record the extraction of Q9-QCC into its own
+repository on 2026-07-31.
+
+Some guides describe earlier directory layouts or components. Check their
+commands and paths against this checkout before running them. The surrounding
+compiler project is [Q9-QCC](https://github.com/Q9-Forge/Q9-QCC).

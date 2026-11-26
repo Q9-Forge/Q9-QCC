@@ -1,22 +1,17 @@
-# Dokumentation
+# Documentation
 
-Diese Dateien sind bewusst nach Zweck getrennt. Für eine neue Arbeitssitzung genügt
-normalerweise `STATUS.md` und der passende Abschnitt aus `FORTSCHRITT.md`.
+[Deutsch](README_de.md)
 
-| Datei | Zweck |
+The documents in this directory cover separate aspects of Q9-Parsec:
+
+| File | Purpose |
 |---|---|
-| `STATUS.md` | Kompakter, aktueller Arbeitsstand und nächster Schritt |
-| `FORTSCHRITT.md` | Meilensteine, erledigte Funktionen und offene Roadmap |
-| `ISO_C_LUECKENLISTE.md` | Fehlende ISO-C17/C23-Bereiche und Ausbauplan |
-| `ISO_C_ARBEITSEINHEITEN.md` | Kleine, testbare Einheiten mit ISO-Zuordnung |
-| `TEILPROJEKTE.md` | Abgrenzung von Sprachkern, Präprozessor, Bibliothek und Backends |
-| `BENUTZERHANDBUCH.md` | Nutzung des Generators, QCC und Testabläufe |
-| `ARBEITSWEISE.md` | Wiederaufnahme, Kontextpflege und Abschlusskriterien |
-| `ENTWICKLERHANDBUCH.md` | Interna, Datenfluss, IR, Backends und Änderungsregeln |
-| `ARCHITEKTUR.md` | Ausführliche technische Entscheidungen und historische Begründungen |
+| [BENUTZERHANDBUCH.md](BENUTZERHANDBUCH.md) | Generator use and test workflows |
+| [ENTWICKLERHANDBUCH.md](ENTWICKLERHANDBUCH.md) | Internals, data flow and development rules |
+| [ARCHITEKTUR.md](ARCHITEKTUR.md) | Architectural decisions and historical rationale |
+| [ARBEITSWEISE.md](ARBEITSWEISE.md) | Work resumption and completion criteria |
 
-## Dokumentationsregel
-
-Nach jeder größeren Änderung werden `STATUS.md` und der passende Abschnitt in
-`FORTSCHRITT.md` aktualisiert. Architekturentscheidungen gehören zusätzlich in
-`ARCHITEKTUR.md`; Bedienhinweise gehören ausschließlich ins Benutzerhandbuch.
+Older documentation also references `STATUS.md`, `FORTSCHRITT.md`,
+`ISO_C_LUECKENLISTE.md`, `ISO_C_ARBEITSEINHEITEN.md`, and `TEILPROJEKTE.md`;
+these files are not present in this directory. Some existing guides describe
+older project layouts, so check their commands and paths against this checkout.
