@@ -1,13 +1,16 @@
-/* Bridges platform_posix.c's #include <unistd.h> to the Microware SDK's
- * own declarations for isatty/chdir/popen/pclose, spread across modes.h
- * and DEFS/UNIX/os9def.h on this SDK (there is no unistd.h here at all).
+/*--------------------------------------------------------------------------------------
+ * File:        unistd.h
+ * Description: Expose target SDK declarations required by the POSIX adapter.
+ * Owner:       cla / afoe
+ * Version:     0.01
  *
- * _OPT_PROTOS gates every prototype in os9def.h (including popen's, which
- * must return FILE* -- without it the declarations disappear entirely and
- * popen silently falls back to an implicit int return, a link-time type
- * mismatch against platform_posix.c's "pipe = popen(...)"). FILE itself
- * must already be known when os9def.h is read, so <stdio.h> comes first.
- */
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
+ *
+ * Edition History
+ * Date    | Ver. | Description                                               | By
+ * 26-11-26| 0.01 | Add file header and revise comments.                      | cla
+ *--------------------------------------------------------------------------------------*/
+/* Enable prototypes and define FILE before the target declarations are included. */
 #define _OPT_PROTOS
 #include <stdio.h>
 #include <modes.h>

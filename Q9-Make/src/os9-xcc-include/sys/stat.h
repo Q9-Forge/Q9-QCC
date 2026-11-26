@@ -1,5 +1,13 @@
-/* Bridges platform_posix.c's #include <sys/stat.h> to the Microware SDK's
- * own location for the same declarations (DEFS/UNIX/stat.h, no "sys/"
- * prefix on this SDK). The struct stat it declares has a real st_mtime,
- * so platform_posix.c's qmake_file_info() works unmodified against XCC. */
+/*--------------------------------------------------------------------------------------
+ * File:        stat.h
+ * Description: Map the host file status include to the target SDK declaration.
+ * Owner:       cla / afoe
+ * Version:     0.01
+ *
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
+ *
+ * Edition History
+ * Date    | Ver. | Description                                               | By
+ * 26-11-26| 0.01 | Add file header and revise comments.                      | cla
+ *--------------------------------------------------------------------------------------*/
 #include <UNIX/stat.h>
