@@ -1,31 +1,31 @@
-# qost — Q9 Stack-IR Optimierer
+# qost — Q9 Stack-IR optimizer
 
-`qost` ist ein eigenständiger, backend-neutraler Optimierungsschritt für Q9
-Stack-IR (`.ir`). Aufruf:
+[Deutsch](README_de.md)
+
+`qost` is a standalone, backend-independent optimization pass for Q9
+Stack-IR (`.ir`). To build and run it:
 
 ```sh
 make -C Q9-OPTIMIZER/q9-qost
 Q9-OPTIMIZER/q9-qost/build/qost input.ir output.opt.ir
 ```
 
-Der erste Pass faltet konstante 32-Bit-Integer-Ausdrücke, wenn die Operanden
-unmittelbar als `PUSH` vorliegen. Unterstützt werden Addition, Subtraktion,
-Multiplikation (nur ohne signed Überlauf), Bitoperationen, Vergleiche,
-`NEG`, `NOT`, `NOTBIT` und `NARROWC`. Da `PUSH` kein Vorzeichen-/Typattribut
-trägt, lässt der Optimierer positive Konstanten oberhalb `INT32_MAX` stehen,
-statt signed oder unsigned zu erraten. Arithmetische Überläufe bleiben
-unverändert; dadurch wird keine Annahme über C-Overflow-Verhalten in die IR
-eingeführt. Pointer-Opcodes, Speicherzugriffe, Aufrufe, Division durch null,
-Labels und Kontrollfluss werden nicht umgeschrieben. Unbekannte oder
-fehlerhafte Zeilen bleiben unverändert.
+The first pass folds constant 32-bit integer expressions when the operands
+are adjacent `PUSH` instructions. It supports addition, subtraction,
+multiplication without signed overflow, bitwise operations, comparisons,
+`NEG`, `NOT`, `NOTBIT`, and `NARROWC`. Because `PUSH` carries no signedness
+or type attribute, the optimizer leaves positive constants above `INT32_MAX`
+unchanged instead of guessing whether they are signed or unsigned. Arithmetic
+overflow is also left unchanged, avoiding assumptions about C overflow
+semantics in the IR. Pointer operations, memory accesses, calls, division by
+zero, labels, and control flow are not rewritten. Unknown or malformed lines
+are preserved.
 
-Die Eingabe bleibt zeilenweise strukturell erhalten: Kommentare und
-Zeilenenden dienen als Barrieren und werden nicht in Optimierungen
-übersprungen. Die Ausgabedatei ist wieder gültige Stack-IR. `make test`
-vergleicht die erwartete Faltung und führt das QCCVM vor und nach der
-Optimierung aus.
+The input remains structured by line: comments and line endings act as
+barriers and are not skipped during optimization. The output is valid Stack-IR.
+`make test` compares expected folds and runs QCCVM before and after optimization.
 
-Noch nicht enthalten sind Kontrollfluss-/Datenflussanalysen, Variablen-
-Konstantenpropagation, tote Codeabschnitte, mehrere Optimierungsstufen und
-die Einbindung in den `qcc`-Treiber. `qost` wird zunächst explizit aufgerufen,
-damit der Optimierer isoliert geprüft werden kann.
+Control-flow and data-flow analysis, variable constant propagation, dead-code
+elimination, multiple optimization levels, and integration with the `qcc`
+driver are not implemented yet. Invoke `qost` explicitly to test it in
+isolation.
