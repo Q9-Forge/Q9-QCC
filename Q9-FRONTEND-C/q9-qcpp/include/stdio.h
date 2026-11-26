@@ -5,11 +5,21 @@
 #include <stddef.h>
 
 #define EOF (-1)
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
 
 /* FILE remains opaque: the subset never accesses its fields, and QCC can read
    typedef int FILE. On 68k, FILE* is therefore a 32-bit pointer like Microware's. */
 typedef int FILE;
 
+#ifdef __Q9_X86__
+/* x86 runtime owns the process-local standard path table. */
+extern FILE* q9_standard_stream(int);
+#define stdin  q9_standard_stream(0)
+#define stdout q9_standard_stream(1)
+#define stderr q9_standard_stream(2)
+#else
 /* stderr is a macro for (&_niob[2]) in Microware, not a linkable
    Symbol -- am Host ist es __stderrp. Beides ist fuer diese Teilmenge
    bedeutungslos. Ein eigener Nullstrom haelt den erfolgreichen Weg des
@@ -34,6 +44,8 @@ static FILE* stdout;
  * kannte den Namen bisher gar nicht ("unknown variable 'stdin'"). */
 static FILE* stdin;
 
+#endif
+
 extern FILE* fopen(const char*, const char*);
 extern size_t fread(void*, size_t, size_t, FILE*);
 extern size_t fwrite(const void*, size_t, size_t, FILE*);
@@ -48,6 +60,7 @@ extern int sprintf(char*, const char*, ...);
    ferror checks the result after writing. */
 extern char* fgets(char*, int, FILE*);
 extern int ferror(FILE*);
+extern int feof(FILE*);
 extern void clearerr(FILE*);
 extern int fflush(FILE*);
 extern int getchar(void);

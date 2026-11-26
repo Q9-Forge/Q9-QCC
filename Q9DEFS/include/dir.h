@@ -7,6 +7,9 @@
 #ifndef Q9_DIR_H
 #define Q9_DIR_H
 
+/* RBF directory transfer block size documented by the SDK dir interface. */
+#define DIRBLKSIZ 256
+
 #include <types.h>
 
 /* derived: on-disk directory entry, 32 bytes: 28 name bytes (bit 7 set on
@@ -18,13 +21,17 @@ struct dirent {
 	u_int32       dir_addr;      /* @28 zero byte + 3-byte LSN of the file descriptor */
 };
 
-/* derived: entry returned by readdir(); only the name is documented, its
-   capacity is not, so it is declared with the variable-length idiom */
+/* Library directory entry; distinct from the 32-byte on-disk dirent. */
+#define MAXNAMLEN 32
 struct direct {
-	char d_name[1];              /* derived: NUL-terminated entry name, capacity not documented */
+    long d_addr;
+    short d_reclen;
+    short d_namlen;
+    char d_name[33];
 };
 
 /* derived: opaque directory stream, internals are not documented */
+struct q9_dir_stream;
 typedef struct q9_dir_stream DIR;
 
 extern DIR *opendir(const char *filename);
@@ -32,8 +39,3 @@ extern struct direct *readdir(DIR *dirp);
 extern void closedir(DIR *dirp);
 
 #endif /* Q9_DIR_H */
-
-/* not defined (no documented value):
- *   DIRBLKSIZ
- *   struct direct: member d_addr
- */

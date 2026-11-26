@@ -6,7 +6,11 @@
 #ifndef Q9_SETSYS_H
 #define Q9_SETSYS_H
 
-/* intentionally empty */
+#include <types.h>
+#ifdef __Q9_X86__
+/* I$GetDL returns a kernel address; callers must not dereference it. */
+extern error_code q9_x86_device_list(u_int32 *address);
+#endif
 
 #endif /* Q9_SETSYS_H */
 

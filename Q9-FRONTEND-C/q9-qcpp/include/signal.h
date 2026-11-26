@@ -7,6 +7,9 @@
 #ifndef Q9_SIGNAL_H
 #define Q9_SIGNAL_H
 
+#include <types.h>
+
+extern error_code _os9_sleep(u_int32 *ticks);
 extern int signal(int, int);
 extern int raise(int);
 

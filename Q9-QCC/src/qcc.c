@@ -11,9 +11,42 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#if !defined(_Q9OS) && !defined(_OSK)
+#if defined(_WIN32) || defined(_WIN64)
+#include <process.h>
+#else
+#include <unistd.h>
+#include <sys/wait.h>
+#include <errno.h>
+#endif
+static int q9_host_exec(const char *module, char **args)
+{
+#if defined(_WIN32) || defined(_WIN64)
+    return (int)_spawnvp(_P_WAIT, module, (const char * const *)args);
+#else
+    pid_t child, waited;
+    int status;
+    child = fork();
+    if (child < 0) return -1;
+    if (child == 0) { execvp(module, args); _exit(127); }
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    if (waited < 0 || !WIFEXITED(status)) return -1;
+    return WEXITSTATUS(status);
+#endif
+}
+#endif
+
 
 #define QCC_VERSION "0.2.0-dev"
+#if defined(_WIN32) || defined(_WIN64)
+/* Windows paths run up to 260 characters (MAX_PATH); the command line that
+ * chains them needs a correspondingly larger buffer. */
+#define TEXT 260
+#define COMMAND_SIZE 2048
+#else
 #define TEXT 128
+#define COMMAND_SIZE 512
+#endif
 
 /* Host and OS-9 use different command names for the small file operations
  * needed by the pipeline.  Keep this translation at the driver boundary so
@@ -66,7 +99,28 @@ static int object_only;
  * Returns: Command status returned by the runtime. */
 static int q9_system(const char *command)
 {
+#if defined(_WIN32) || defined(_WIN64)
+	/* cmd.exe knows neither "mkdir -p", "cp" nor "rm -f" and reads "/x" as a
+	 * switch.  Translate the three file operations and use backslashes. */
+	char win[COMMAND_SIZE];
+	char out[2 * COMMAND_SIZE + 64];
+	char *p;
+	if (strlen(command) >= COMMAND_SIZE - 32) return system(command);
+	if (strncmp(command, "mkdir -p ", 9) != 0 && strncmp(command, "cp ", 3) != 0 &&
+	    strncmp(command, "rm -f ", 6) != 0)
+		return system(command);
+	strcpy(win, command);
+	for (p = win; *p != '\0'; ++p) if (*p == '/') *p = '\\';
+	if (strncmp(win, "mkdir -p ", 9) == 0)
+		sprintf(out, "if not exist \"%s\" mkdir \"%s\"", win + 9, win + 9);
+	else if (strncmp(win, "cp ", 3) == 0)
+		sprintf(out, "copy /Y %s >nul", win + 3);
+	else
+		sprintf(out, "del /Q %s 2>nul", win + 6);
+	return system(out);
+#else
 	return system(command);
+#endif
 }
 #endif
 #if defined(_Q9OS) || defined(_OSK)
@@ -172,11 +226,30 @@ static char *qcc_getenv(const char *name)
 #endif
 static int keep_files;
 static int large_data;
-static char stack_size[TEXT] = "";
+/* OS-9 needs stack space even for a small C program. 8K is the default;
+ * --stack can override it for larger tools. */
+static char stack_size[TEXT] = "8K";
 static char tmpdir[TEXT] = "build/qcc-tmp";
 static char output[TEXT] = "";
 static int tmpdir_set;
 static char config_section[TEXT] = "global";
+/* Set during the early option scan so [global] cannot overwrite an explicit
+ * --target before its matching [target.NAME] section is loaded. */
+static int target_requested;
+
+/* Function: fwd_slashes
+ * Windows accepts "/" in every path, but the pipeline stages derive names
+ * from the path text and only know "/" as separator.  No-op on other hosts.
+ * Parameters: s Path text, changed in place.
+ * Returns: Nothing. */
+static void fwd_slashes(char *s)
+{
+#if defined(_WIN32) || defined(_WIN64)
+	for (; *s != '\0'; ++s) if (*s == '\\') *s = '/';
+#else
+	(void)s;
+#endif
+}
 
 /* Function: copy_text
  * Copies bounded configuration text and always terminates it.
@@ -195,7 +268,7 @@ static void usage(const char *name)
 	printf("  --dry-run        Pipeline nur anzeigen\n  --print-config   Konfiguration anzeigen\n");
 	printf("  --emit-ir        nach Q9 Stack-IR stoppen\n  --tmpdir DIR     Zwischenverzeichnis\n");
 	printf("  --keep           Zwischendateien behalten\n  -o FILE           Ausgabedatei\n");
-	printf("  --stack SIZE     OS-9-Modulstack, z. B. 512K\n");
+	printf("  --stack SIZE     OS-9-Modulstack (Standard: 8K), z. B. 512K\n");
 	printf("  -E               nur vorverarbeiten\n  -S               nur Assembler erzeugen\n  -c               nur Objektdatei erzeugen\n");
 	printf("  --no-optimizer   Optimierer ueberspringen\n");
 	printf("  --help, --version\n");
@@ -245,12 +318,21 @@ static void config_line(char *line)
 		value[n++] = *p++;
 	value[n] = '\0';
 	if (key[0] == '\0' || value[0] == '\0') return;
-	if (strcmp(config_section, "global") != 0 && strcmp(config_section, "target.OS9-68K") != 0) return;
-	if (strcmp(key, "target") == 0) copy_text(target, value);
+	if (strcmp(config_section, "global") != 0) {
+		char target_section[TEXT + 8];
+		sprintf(target_section, "target.%s", target);
+		if (strcmp(config_section, target_section) != 0) return;
+	}
+	if (strcmp(key, "target") == 0) {
+		if (!target_requested) copy_text(target, value);
+	}
 	else if (strcmp(key, "frontend") == 0) copy_text(frontend, value);
 	else if (strcmp(key, "cpu") == 0) copy_text(cpu, value);
 	else if (strcmp(key, "backend") == 0) copy_text(backend, value);
-	else if (strcmp(key, "optimizer") == 0) copy_text(optimizer, value);
+	else if (strcmp(key, "optimizer") == 0) {
+		if (strcmp(value, "none") == 0) optimizer[0] = '\0';
+		else copy_text(optimizer, value);
+	}
 	else if (strcmp(key, "assembler") == 0) copy_text(assembler, value);
 	else if (strcmp(key, "linker") == 0) copy_text(linker, value);
 	else if (strcmp(key, "startup") == 0) copy_text(startup, value);
@@ -273,6 +355,12 @@ static void load_config(void)
 	config_env = qcc_getenv("QCC_CONFIG");
 	if (config_env != NULL && config_env[0] != '\0')
 		f = fopen(config_env, "r");
+	/* A configuration checked into the current source tree must win over an
+	 * installed SDK selected through Q9SDK.  This makes target profiles under
+	 * active development reproducible without changing the caller's
+	 * environment. */
+	if (f == NULL) f = fopen("config/qcc.conf", "r");
+	if (f == NULL) f = fopen("Q9-QCC/config/qcc.conf", "r");
 	if (f == NULL) {
 		sdk_env = qcc_getenv("Q9SDK");
 #if defined(__APPLE__) && (defined(__arm64__) || defined(__aarch64__))
@@ -305,8 +393,10 @@ static void load_config(void)
 			f = fopen(config_path, "r");
 		}
 	}
-	if (f == NULL) f = fopen("config/qcc.conf", "r");
-	if (f == NULL) f = fopen("Q9-QCC/config/qcc.conf", "r");
+	/* Source-tree invocation from Q9-QCC/Q9-QCC: the shared configuration
+	 * lives one directory above the driver source and its relative tool paths
+	 * are deliberately based on this working directory. */
+	if (f == NULL) f = fopen("../Q9-QCC/config/qcc.conf", "r");
 	if (f == NULL) f = fopen("/dd/SYS/qcc.conf", "r");
 	if (f == NULL) return;
 	while (fgets(line, 256, f) != NULL) config_line(line);
@@ -324,6 +414,7 @@ static void resolve_tmpdir(void)
 	if (base == NULL || base[0] == '\0') base = qcc_getenv("TEMP");
 	if (base != NULL && base[0] != '\0') {
 		sprintf(tmpdir, "%s/qcc", base);
+		fwd_slashes(tmpdir);
 	}
 }
 /* Function: show_config
@@ -342,13 +433,34 @@ static void show_config(void)
 int main(int argc, char **argv)
 {
 	int i, inputs = 0;
+    char *cpp_options[64];
+    int cpp_count = 0;
 	#if defined(_Q9OS) || defined(_OSK)
 	q9_os9_path_env[0] = q9_os9_path;
 	q9_os9_path_env[1] = NULL;
 	_environ = q9_os9_path_env;
 	#endif
+	/* Select the target before reading configuration: the target block is
+	 * applied while the file is parsed.  The normal option loop below still
+	 * validates all command-line options. */
+	for (i = 1; i + 1 < argc; ++i) {
+		if (strcmp(argv[i], "--target") == 0) {
+			copy_text(target, argv[i + 1]);
+			target_requested = 1;
+			break;
+		}
+	}
 	load_config();
 	for (i = 1; i < argc; ++i) {
+        if (strncmp(argv[i], "-I", 2) == 0 || strncmp(argv[i], "-D", 2) == 0 || strncmp(argv[i], "-U", 2) == 0) {
+            if (cpp_count >= 62) { fprintf(stderr, "qcc: too many preprocessor options\n"); return 2; }
+            cpp_options[cpp_count++] = argv[i];
+            if (argv[i][2] == 0) {
+                if (i + 1 >= argc) { fprintf(stderr, "qcc: preprocessor option needs a value\n"); return 2; }
+                cpp_options[cpp_count++] = argv[++i];
+            }
+            continue;
+        }
 		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(argv[0]); return 0; }
 		if (strcmp(argv[i], "--version") == 0) { printf("qcc %s\n", QCC_VERSION); return 0; }
 		if (strcmp(argv[i], "--dry-run") == 0) { dry_run = 1; continue; }
@@ -372,8 +484,8 @@ int main(int argc, char **argv)
 		if (strcmp(argv[i], "--print-config") == 0) { print_config = 1; continue; }
 		if (strcmp(argv[i], "--tmpdir") == 0 || strcmp(argv[i], "-o") == 0) {
 			if (i + 1 >= argc) { fprintf(stderr, "qcc: Option erwartet einen Wert\n"); return 2; }
-			if (strcmp(argv[i], "--tmpdir") == 0) { copy_text(tmpdir, argv[++i]); tmpdir_set = 1; }
-			else copy_text(output, argv[++i]);
+			if (strcmp(argv[i], "--tmpdir") == 0) { copy_text(tmpdir, argv[++i]); fwd_slashes(tmpdir); tmpdir_set = 1; }
+			else { copy_text(output, argv[++i]); fwd_slashes(output); }
 			continue;
 		}
 		if (strcmp(argv[i], "--target") == 0 || strcmp(argv[i], "--frontend") == 0 || strcmp(argv[i], "--cpu") == 0) {
@@ -402,7 +514,7 @@ int main(int argc, char **argv)
 		return 3;
 	}
 	{
-		char command[512];
+		char command[COMMAND_SIZE];
 		const char *input = argv[argc - 1];
 		#if defined(_Q9OS) || defined(_OSK)
 		{
@@ -455,7 +567,8 @@ int main(int argc, char **argv)
 		}
 		#if defined(_Q9OS) || defined(_OSK)
 		{
-			char *qcpp_argv[6];
+			char *qcpp_argv[72];
+            int cpp_i, cpp_n;
 			char qcpp_output[TEXT];
 			char qcpp_include[TEXT];
 			const char *qcpp_module = qcpp;
@@ -475,33 +588,37 @@ int main(int argc, char **argv)
 			qcpp_argv[0] = (char *)qcpp_module;
 			qcpp_argv[1] = "-v";
 			qcpp_argv[2] = qcpp_include;
-			qcpp_argv[3] = (char *)input;
-			qcpp_argv[4] = qcpp_output;
-			qcpp_argv[5] = NULL;
+            cpp_n = 3;
+            for (cpp_i = 0; cpp_i < cpp_count; cpp_i++) qcpp_argv[cpp_n++] = cpp_options[cpp_i];
+            qcpp_argv[cpp_n++] = (char *)input;
+            qcpp_argv[cpp_n++] = qcpp_output;
+            qcpp_argv[cpp_n] = NULL;
 			if (q9_exec_argv(qcpp_module, qcpp_argv) != 0) {
 				fprintf(stderr, "qcc: qcpp fehlgeschlagen\n");
 				return 4;
 			}
 		}
-		#else
-		{
-			const char *inc_base;
-			const char *sdk_base;
-			char include_arg[TEXT * 2];
-				inc_base = qcc_getenv("QCC_INCLUDE");
-			if (inc_base == NULL || inc_base[0] == '\0') {
-				sdk_base = qcc_getenv("Q9SDK");
-				if (sdk_base != NULL && sdk_base[0] != '\0') {
-					sprintf(include_arg, "%s/Q9/68k/DEFS", sdk_base);
-					inc_base = include_arg;
-				} else inc_base = "../Q9-FRONTEND-C/q9-qcpp/include";
-			}
-			sprintf(command, "%s -I%s %s %s/input.i", qcpp, inc_base, input, tmpdir);
-		}
-		#endif
-		#if !defined(_Q9OS) && !defined(_OSK)
-		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
-		#endif
+        #else
+        {
+            const char *inc_base = qcc_getenv("QCC_INCLUDE");
+            char *cpp_argv[72];
+            char cpp_include[2 * TEXT], cpp_output[2 * TEXT];
+            int cpp_i, cpp_n = 0;
+            if (!inc_base || !inc_base[0]) inc_base = "../Q9-FRONTEND-C/q9-qcpp/include";
+            if (strlen(inc_base) >= sizeof(cpp_include) - 3) { fprintf(stderr, "qcc: include path too long\n"); return 2; }
+            sprintf(cpp_include, "-I%s", inc_base);
+            sprintf(cpp_output, "%s/input.i", tmpdir);
+            cpp_argv[cpp_n++] = qcpp;
+            for (cpp_i = 0; cpp_i < cpp_count; cpp_i++) cpp_argv[cpp_n++] = cpp_options[cpp_i];
+            cpp_argv[cpp_n++] = cpp_include;
+            cpp_argv[cpp_n++] = "-I../Q9DEFS/include";
+            if (strcmp(target, "OS9-x86") == 0) cpp_argv[cpp_n++] = "-D__Q9_X86__=1";
+            cpp_argv[cpp_n++] = (char *)input;
+            cpp_argv[cpp_n++] = cpp_output;
+            cpp_argv[cpp_n] = NULL;
+            if (q9_host_exec(qcpp, cpp_argv) != 0) { fprintf(stderr, "qcc: qcpp fehlgeschlagen\n"); return 4; }
+        }
+        #endif
 		if (preprocess_only) {
 			if (output[0] != '\0') {
 				#if defined(_Q9OS) || defined(_OSK)
@@ -609,11 +726,11 @@ int main(int argc, char **argv)
 					stage_argv[sa++] = "-remotedata";
 				}
 				stage_argv[sa] = NULL;
-				if (q9_exec_argv(backend, stage_argv) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+				if (q9_exec_argv(backend, stage_argv) != 0) { fprintf(stderr, "qcc: Backend fehlgeschlagen\n"); return 4; }
 			}
 			#else
 			sprintf(command, "%s %s/output.ir %s/output.s68k -os9%s", backend, tmpdir, tmpdir, large_data ? " -largedata -remotedata" : "");
-			if (q9_system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+			if (q9_system(command) != 0) { fprintf(stderr, "qcc: Backend fehlgeschlagen\n"); return 4; }
 			#endif
 			if (optimizer[0] != '\0') {
 				#if defined(_Q9OS) || defined(_OSK)
@@ -695,11 +812,11 @@ int main(int argc, char **argv)
 				stage_argv[sa++] = "-remotedata";
 			}
 			stage_argv[sa] = NULL;
-			if (q9_exec_argv(backend, stage_argv) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+			if (q9_exec_argv(backend, stage_argv) != 0) { fprintf(stderr, "qcc: Backend fehlgeschlagen\n"); return 4; }
 		}
 		#else
 		sprintf(command, "%s %s/output.ir %s/output.s68k -os9%s", backend, tmpdir, tmpdir, large_data ? " -largedata -remotedata" : "");
-		if (q9_system(command) != 0) { fprintf(stderr, "qcc: qir68k fehlgeschlagen\n"); return 4; }
+		if (q9_system(command) != 0) { fprintf(stderr, "qcc: Backend fehlgeschlagen\n"); return 4; }
 		#endif
 		if (optimizer[0] != '\0') {
 			#if defined(_Q9OS) || defined(_OSK)

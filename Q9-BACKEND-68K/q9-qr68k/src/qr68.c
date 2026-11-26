@@ -6526,7 +6526,7 @@ int main(int argc, char **argv)
 	if (!psSeen)
 		fatal("kein psect in der Quelle", "");
 
-	outFp = fopen(outPath, "w");
+	outFp = fopen(outPath, "wb");
 	if (outFp == 0) {
 		printf("qr68: Ausgabe nicht schreibbar: %s\n", outPath);
 		exit(1);

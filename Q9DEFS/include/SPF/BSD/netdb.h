@@ -14,6 +14,20 @@
 #include <SPF/BSD/sys/socket.h>
 #include <SPF/BSD/netinet/in.h>   /* struct in_addr is used with h_addr */
 
+/* Database-entry layouts used by the read-only tools. */
+struct hostconfent { char *key; char *value; };
+struct inetdent {
+    char *service_name;
+    int socket_type;
+    char *protocol;
+    int wait_status;
+    u_int32 uid;
+    char **argv;
+};
+extern struct hostconfent *gethostconfent(void);
+extern error_code endhostconfent(void);
+extern struct inetdent *getinetdent(void);
+
 struct hostent {
 	char  *h_name;        /* @0  */
 	char **h_aliases;     /* @4  */
@@ -63,9 +77,3 @@ extern error_code putroutent(struct rtreq *route_ptr);
 extern struct rtreq *getroutent(void);
 
 #endif /* Q9_SPF_BSD_NETDB_H */
-
-/* not defined (no documented value):
- *   struct hostconfent (members key, value), gethostconfent, endhostconfent
- *   struct inetdent (members protocol, service_name, socket_type,
- *   wait_status); getinetdent, whose return type is that struct
- */

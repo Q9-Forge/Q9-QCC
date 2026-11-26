@@ -37,3 +37,23 @@ clean:
 all:
 q9QCC:
 clean:
+
+[WCW]
+all: windows
+windows:
+clean:
+
+[WQQ]
+all: windowsQCC
+windowsQCC:
+clean:
+
+[WXQ]
+all: windowsXCC
+windowsXCC:
+clean:
+
+[R32]
+all: raspberry32
+raspberry32:
+clean:

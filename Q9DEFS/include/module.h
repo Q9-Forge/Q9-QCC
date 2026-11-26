@@ -20,6 +20,7 @@
 #define MODSYNC     0x4AFC   /* derived: sync bytes in the module header */
 
 /* attribute byte */
+#define MA_GHOST   0x40     /* keep a ghost copy when the link count reaches zero */
 #define MA_REENT    0x80     /* derived: bit 7, reentrant */
 #define MA_SUPER    0x20     /* derived: bit 5, system state module */
 
@@ -43,6 +44,7 @@
 #define ML_PCODE    3        /* derived: Pascal P-code */
 #define ML_CCODE    4        /* derived: C I-code */
 #define ML_CBLCODE  5        /* derived: Cobol I-code */
+#define ML_JAVACODE 7
 #define ML_FRTNCODE 6        /* derived: Fortran I-code */
 
 /* ---- standard module header (48 bytes) ---------------------------------- */
@@ -160,6 +162,33 @@ typedef struct {
 	u_int16       _msysconf;     /* @122 system configuration flags */
 } mod_config;
 
+/* The OS-9000 F$GModDr record is a 96-byte directory node. Its module
+ * pointer is at +12, unlike the 16-byte legacy 68k record. Field names used
+ * by the tools are retained, with explicit padding for the unused tail. */
+#ifdef __Q9_X86__
+struct mod_dir {
+    char *md_name;
+    u_int32 md_owner;
+    u_int16 md_access;
+    u_int16 md_link;
+    mh_com *md_mptr;
+    mh_com *md_group;
+    u_int32 md_static;
+    u_int16 md_mchk;
+    u_int16 md_usecnt;
+    unsigned char md_reserved[68];
+};
+#else
+struct mod_dir {
+    mh_com *md_mptr;
+    mh_com *md_group;
+    u_int32 md_static;
+    u_int16 md_link;
+    u_int16 md_mchk;
+};
+#endif
+typedef struct mod_dir mod_dir;
+
 /* ---- calls --------------------------------------------------------------- */
 
 extern error_code _os_link(char **mod_name, mh_com **mod_head, void **mod_entry,
@@ -167,14 +196,11 @@ extern error_code _os_link(char **mod_name, mh_com **mod_head, void **mod_entry,
 extern error_code _os_load(const char *mod_name, mh_com **mod_head, void **mod_entry,
                            u_int32 mode, u_int16 *type_lang, u_int16 *attr_rev,
                            u_int32 color);
+extern error_code _os_unlink(mh_com *mod_head);
 extern error_code _os_get_moddir(void *buffer, u_int32 *count);
 extern error_code _os_setcrc(mh_com *mod_head);
 
 #endif /* Q9_MODULE_H */
 
 /* not defined (no documented value):
- *   mod_dir / struct mod_dir (module directory entry) and its members
- *   md_group, md_link, md_mchk, md_mptr, md_static
- *   MA_GHOST
- *   ML_JAVACODE
  */

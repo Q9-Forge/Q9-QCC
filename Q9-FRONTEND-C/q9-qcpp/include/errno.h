@@ -8,4 +8,6 @@
 #ifndef Q9_ERRNO_H
 #define Q9_ERRNO_H
 
+extern int errno;
+
 #endif

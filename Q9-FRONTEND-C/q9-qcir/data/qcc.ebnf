@@ -568,9 +568,10 @@ switchClose  = "}" .
 caseGroup    = caseLabelRun caseBody .
 caseLabelRun = caseLabel { caseLabel } .
 caseLabel    = "case" caseValue ":" .
-caseValue    = ident | caseNeg | caseNumber .
+caseValue    = ident | caseNeg | caseNumber | caseChar .
+caseChar     = "\047" charLitBody "\047" .
 caseNeg      = "-" caseNumber .
-caseNumber   = digit { digit } .
+caseNumber   = ( hexNumber | decNumber ) [ integerSuffix ] .
 caseBody     = { unlabeledStmt } .
 defaultGroup = defaultLabel caseBody .
 defaultLabel = "default" ":" .
@@ -887,7 +888,7 @@ stringSpace = "\040" | "\011" | "\015" | "\012" .
 charLit       = "\047" charLitBody "\047" .
 charLitBody   = charLitEscape | charLitPlain .
 charLitEscape = "\134" charLitEscChar .
-charLitEscChar = octEscape | hexEscape | "n" | "t" | "r" | "\134" .
+charLitEscChar = octEscape | hexEscape | "n" | "t" | "r" | "a" | "b" | "f" | "v" | "\047" | "\042" | "?" | "\134" .
 octEscape = ("0"~"7") [ ("0"~"7") [ ("0"~"7") ] ] .
 hexEscape = ("x" | "X") ("0"~"9" | "a"~"f" | "A"~"F") [ ("0"~"9" | "a"~"f" | "A"~"F") ] .
 charLitPlain  = " "~"&" | "("~"[" | "]"~"~" .
@@ -928,7 +929,7 @@ negFactor = ( "-" | "!" | "~" ) factor .
    laesst. Im Wert ist "+x" ohnehin ein No-op; nur der Typ wird wie bei
    "-x" auf int erweitert (char/short -> int), s. tc_pos. */
 posFactor = "+" factor .
-addressRef = "&" ident [ index ] .
+addressRef = "&" ident [ index ] [ member { member } ] .
 
 sizeofExpr = "sizeof" ( "(" sizeofArg ")" | sizeofVarName ) .
 /* "sizeof x" OHNE Klammern (2026-09-16) ist in C89 gueltig und scheiterte
@@ -957,7 +958,7 @@ sizeofType = sizeofBaseType pointerDecl .
    unabhaengige Kopien derselben Typliste, dieselbe Fehlerklasse wie beim
    double-Einbau ("der Typtext wird an mehreren Stellen gelesen"). */
 sizeofBaseType = "unsigned" unsignedInt | "int" | longLongType | "long" | "char" | "short" | "bool" | "double" | "float" | "struct" structTypeRef | "union" unionTypeRef | "enum" enumTypeRef | "void" .
-sizeofVarName = ident .
+sizeofVarName = { "*" } ident .
 /* sizeof auf einem Stringliteral ist ein konstanter char-Arrayumfang inklusive
    abschliessendem Nullbyte. Eigene aktionstragende Regel statt stringLit:
    dessen Aktion wuerde im sizeof-Kontext unnoetig ein globales Array emittieren. */

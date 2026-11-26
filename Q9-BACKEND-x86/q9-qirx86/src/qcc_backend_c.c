@@ -101,6 +101,14 @@ static const char* poolArg(const char* arg) {
 static int number(const char* s, int lineNum) {
 	char* end;
 	long val = strtol(s, &end, 10);
+	/* qcir preserves offsets containing pointer-sized struct fields as
+	 * k+nP.  Resolve that symbolic part for the i386 backend (P = 4). */
+	if (*end == '+') {
+		char *pointer_end;
+		long pointers = strtol(end + 1, &pointer_end, 10);
+		if (*pointer_end == 'P' && pointer_end[1] == '\0')
+			return (int)(val + pointers * 4);
+	}
 	if (*end != '\0') {
 		fprintf(stderr, "ERROR line %d: not a number: %s\n", lineNum, s);
 		exit(1);
@@ -361,7 +369,7 @@ static void collectFunctions(void) {
 			if ((strcmp(x->op, "LOADL") == 0 || strcmp(x->op, "STOREL") == 0 || 
 			     strcmp(x->op, "LOADC") == 0 || strcmp(x->op, "STOREC") == 0 ||
 			     strcmp(x->op, "LOADP") == 0 || strcmp(x->op, "STOREP") == 0 ||
-			     strcmp(x->op, "ADDRL") == 0) && x->argc > 0) {
+			     strcmp(x->op, "ADDRL") == 0 || strcmp(x->op, "LARRAY") == 0 || strcmp(x->op, "LOADLH") == 0 || strcmp(x->op, "STORELH") == 0) && x->argc > 0) {
 				slotN = number(x->args[0], x->line);
 				if (slotN < 0) {
 					sprintf(msg, "line %d: negative local slot", x->line);
@@ -373,6 +381,13 @@ static void collectFunctions(void) {
 		
 		fn->locals = highest >= fn->nargs ? highest - fn->nargs + 1 : 0;
 		fn->frameBytes = fn->locals * 4;
+        for (k = fn->first; k < fn->last; k++) {
+            if (strcmp(ir[k].op, "LARRAY") == 0) {
+                int len = number(ir[k].args[2], ir[k].line);
+                if (len <= 0 || len > 1048576) fatal("invalid local array length");
+                fn->frameBytes += (len * tagSize(ir[k].args[1]) + 3) & ~3;
+            }
+        }
 	}
 }
 
@@ -400,13 +415,18 @@ static void emitPsectStart(FILE* out, const char* name) {
 }
 
 /* Emit function prologue (x86 standard) */
-static void emitFunctionPrologue(FILE* out, const char* funcName, int frameBytes) {
-	fprintf(out, "%s:\n", funcName);
-	fprintf(out, "\tpush\tebp\n");
-	fprintf(out, "\tmov\tebp, esp\n");
-	if (frameBytes > 0) {
-		fprintf(out, "\tsub\tesp, %d\n", frameBytes);
-	}
+static void emitFunctionPrologue(FILE* out, const char* funcName, int frameBytes, int isStatic, int nargs) {
+    int i;
+    if (!isStatic) fprintf(out, "\tglobal\ttc_%s,%s\n%s:\n", funcName, funcName, funcName);
+    /* All function pointers use cdecl, including static callbacks. Internal
+     * direct calls continue to use the source-order tc_ entry. */
+    fprintf(out, "__cdecl_%s:\n\tpush\tebp\n\tmov\tebp, esp\n", funcName);
+    for (i = 0; i < nargs; i++) fprintf(out, "\tpush\tdword [ebp + %d]\n", 8 + i * 4);
+    fprintf(out, "\tcall\ttc_%s\n", funcName);
+    if (nargs) fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
+    fprintf(out, "\tleave\n\tret\n");
+    fprintf(out, "tc_%s:\n\tpush\tebp\n\tmov\tebp, esp\n", funcName);
+    if (frameBytes > 0) fprintf(out, "\tsub\tesp, %d\n", frameBytes);
 }
 
 /* Emit function epilogue (x86 standard) */
@@ -566,17 +586,19 @@ static void emitStoreIdx(FILE* out, const char* type) {
 }
 
 /* Emit PADD: pointer arithmetic (pop offset, pop ptr, push ptr + offset) */
-static void emitPAdd(FILE* out) {
+static void emitPAdd(FILE* out, const char *type) {
 	fprintf(out, "\tpop\tecx\n");  /* offset */
 	fprintf(out, "\tpop\teax\n");  /* pointer */
+    if (tagSize(type) > 1) fprintf(out, "\tshl\tecx, %d\n", tagSize(type) == 2 ? 1 : 2);
 	fprintf(out, "\tadd\teax, ecx\n");
 	fprintf(out, "\tpush\teax\n");
 }
 
 /* Emit PSUB: pointer arithmetic (pop offset, pop ptr, push ptr - offset) */
-static void emitPSub(FILE* out) {
+static void emitPSub(FILE* out, const char *type) {
 	fprintf(out, "\tpop\tecx\n");  /* offset */
 	fprintf(out, "\tpop\teax\n");  /* pointer */
+    if (tagSize(type) > 1) fprintf(out, "\tshl\tecx, %d\n", tagSize(type) == 2 ? 1 : 2);
 	fprintf(out, "\tsub\teax, ecx\n");
 	fprintf(out, "\tpush\teax\n");
 }
@@ -598,8 +620,8 @@ static void emitStoreP(FILE* out) {
 /* Emit PTRINDEX: pointer index calculation (pop index, pop ptr, push ptr + index*elemSize)
    Note: This is similar to LOADIDX but doesn't dereference - just calculates address */
 static void emitPtrIndex(FILE* out, const char* type) {
-	fprintf(out, "\tpop\tecx\n");  /* index */
-	fprintf(out, "\tpop\teax\n");  /* pointer */
+	fprintf(out, "\tpop\teax\n");  /* index */
+	fprintf(out, "\tpop\tecx\n");  /* pointer */
 	int elemSize = tagSize(type);
 	if (elemSize == 1) {
 		fprintf(out, "\tadd\teax, ecx\n");
@@ -618,14 +640,17 @@ static void emitPtrIndex(FILE* out, const char* type) {
 /* Emit IPADD: integer pointer add (pop offset, pop ptr, push ptr + offset*elemSize)
    Similar to PTRINDEX but name suggests it's for pointer arithmetic with integer scaling */
 static void emitIPAdd(FILE* out, const char* type) {
-	emitPtrIndex(out, type);  /* Same implementation */
+	fprintf(out, "\tpop\teax\n\tpop\tecx\n");
+    if (tagSize(type) > 1) fprintf(out, "\tshl\tecx, %d\n", tagSize(type) == 2 ? 1 : 2);
+    fprintf(out, "\tadd\teax, ecx\n\tpush\teax\n");
 }
 
 /* Emit PDIFF: pointer difference (pop ptr2, pop ptr1, push ptr1 - ptr2) */
-static void emitPDiff(FILE* out) {
+static void emitPDiff(FILE* out, const char *type) {
 	fprintf(out, "\tpop\tecx\n");  /* ptr2 */
 	fprintf(out, "\tpop\teax\n");  /* ptr1 */
 	fprintf(out, "\tsub\teax, ecx\n");
+    if (tagSize(type) > 1) fprintf(out, "\tsar\teax, %d\n", tagSize(type) == 2 ? 1 : 2);
 	fprintf(out, "\tpush\teax\n");
 }
 
@@ -634,54 +659,51 @@ static void emitPDiff(FILE* out) {
 static void emitPCompare(FILE* out, const char* op) {
 	const char* mnem = NULL;
 	
-	if (strcmp(op, "PCMPEQ") == 0) mnem = "je";
-	else if (strcmp(op, "PCMPNE") == 0) mnem = "jne";
-	else if (strcmp(op, "PCMPLT") == 0) mnem = "jl";
-	else if (strcmp(op, "PCMPLE") == 0) mnem = "jle";
-	else if (strcmp(op, "PCMPGT") == 0) mnem = "jg";
-	else if (strcmp(op, "PCMPGE") == 0) mnem = "jge";
+	if (strcmp(op, "PCMPEQ") == 0) mnem = "sete";
+	else if (strcmp(op, "PCMPNE") == 0) mnem = "setne";
+	else if (strcmp(op, "PCMPLT") == 0) mnem = "setb";
+	else if (strcmp(op, "PCMPLE") == 0) mnem = "setbe";
+	else if (strcmp(op, "PCMPGT") == 0) mnem = "seta";
+	else if (strcmp(op, "PCMPGE") == 0) mnem = "setae";
 	
 	if (!mnem) return;
 	
 	fprintf(out, "\tpop\tecx\n");
 	fprintf(out, "\tpop\teax\n");
 	fprintf(out, "\tcmp\teax, ecx\n");
-	fprintf(out, "\txor\teax, eax\n");
-	fprintf(out, "\t%s $+2\n", mnem);
-	fprintf(out, "\tmov\teax, 1\n");
+	fprintf(out, "\t%s\tal\n", mnem);
+	fprintf(out, "\tmovzx\teax, al\n");
 	fprintf(out, "\tpush\teax\n");
 }
 
 /* Emit PRINTC: print character */
 static void emitPrintC(FILE* out) {
-	fprintf(out, "\tpop\teax\n");
-	fprintf(out, "\t; TODO: implement debug char output (char in AL)\n");
+	fprintf(out, "\tcall\tputchar\n\tadd\tesp, 4\n");
 }
 
 /* Emit comparison opcodes (result is 0 or 1 on stack) */
 static void emitCompare(FILE* out, const char* op) {
 	const char* mnem = NULL;
 	
-	if (strcmp(op, "CMPEQ") == 0) mnem = "je";
-	else if (strcmp(op, "CMPNE") == 0) mnem = "jne";
-	else if (strcmp(op, "CMPLT") == 0) mnem = "jl";
-	else if (strcmp(op, "CMPLE") == 0) mnem = "jle";
-	else if (strcmp(op, "CMPGT") == 0) mnem = "jg";
-	else if (strcmp(op, "CMPGE") == 0) mnem = "jge";
-	else if (strcmp(op, "CMPULT") == 0) mnem = "jb";
-	else if (strcmp(op, "CMPULE") == 0) mnem = "jbe";
-	else if (strcmp(op, "CMPUGT") == 0) mnem = "ja";
-	else if (strcmp(op, "CMPUGE") == 0) mnem = "jae";
+	if (strcmp(op, "CMPEQ") == 0) mnem = "sete";
+	else if (strcmp(op, "CMPNE") == 0) mnem = "setne";
+	else if (strcmp(op, "CMPLT") == 0) mnem = "setl";
+	else if (strcmp(op, "CMPLE") == 0) mnem = "setle";
+	else if (strcmp(op, "CMPGT") == 0) mnem = "setg";
+	else if (strcmp(op, "CMPGE") == 0) mnem = "setge";
+	else if (strcmp(op, "CMPULT") == 0) mnem = "setb";
+	else if (strcmp(op, "CMPULE") == 0) mnem = "setbe";
+	else if (strcmp(op, "CMPUGT") == 0) mnem = "seta";
+	else if (strcmp(op, "CMPUGE") == 0) mnem = "setae";
 	
 	if (!mnem) return;  /* Unknown comparison */
 	
-	/* Pop two values, compare, set EAX to 0 or 1 */
+	/* Pop two values and materialize the condition as 0 or 1. */
 	fprintf(out, "\tpop\tecx\n");           /* right operand */
 	fprintf(out, "\tpop\teax\n");           /* left operand */
 	fprintf(out, "\tcmp\teax, ecx\n");
-	fprintf(out, "\txor\teax, eax\n");      /* EAX = 0 */
-	fprintf(out, "\t%s $+2\n", mnem);       /* skip next instruction if false */
-	fprintf(out, "\tmov\teax, 1\n");        /* EAX = 1 if true */
+	fprintf(out, "\t%s\tal\n", mnem);
+	fprintf(out, "\tmovzx\teax, al\n");
 	fprintf(out, "\tpush\teax\n");
 }
 
@@ -689,7 +711,6 @@ static void emitCompare(FILE* out, const char* op) {
 static void emitNot(FILE* out) {
 	fprintf(out, "\tpop\teax\n");
 	fprintf(out, "\ttest\teax, eax\n");
-	fprintf(out, "\txor\teax, eax\n");
 	fprintf(out, "\tsete\tal\n");           /* AL = 1 if zero, else 0 */
 	fprintf(out, "\tmovzx\teax, al\n");     /* Zero-extend to 32-bit */
 	fprintf(out, "\tpush\teax\n");
@@ -765,7 +786,7 @@ static void emitIR(FILE* out) {
 			continue;
 		}
 		
-		emitFunctionPrologue(out, fn->name, fn->frameBytes);
+		emitFunctionPrologue(out, fn->name, fn->frameBytes, fn->isStatic, fn->nargs);
 		fprintf(out, "\n");
 		
 		/* Emit function body: process IR instructions */
@@ -788,10 +809,34 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\t; STOREL %d\n", slot);
 				emitStoreL(out, slot, fn->nargs);
 			}
-			else if (strcmp(op, "LOADG") == 0) {
+			else if (strcmp(op, "LOADG") == 0 || strcmp(op, "LOADGP") == 0) {
 				fprintf(out, "\t; LOADG %s\n", insP->args[0]);
 				emitLoadG(out, insP->args[0], findGlobal(insP->args[0]));
 			}
+            else if (strcmp(op, "STOREG") == 0 || strcmp(op, "STOREGP") == 0) {
+                emitLoadGlobalAddress(out, insP->args[0], findGlobal(insP->args[0]));
+                fprintf(out, "\tpop\tecx\n\tmov\t[eax], ecx\n");
+            }
+            else if (strcmp(op, "LOADLH") == 0 || strcmp(op, "STORELH") == 0 ||
+                     strcmp(op, "LOADC") == 0 || strcmp(op, "STOREC") == 0) {
+                int slot = number(insP->args[0], insP->line);
+                int offset = slot < fn->nargs ? 8 + (fn->nargs-1-slot)*4 : -4*(slot-fn->nargs+1);
+                int byte = strcmp(op, "LOADC") == 0 || strcmp(op, "STOREC") == 0;
+                if (strncmp(op, "LOAD", 4) == 0)
+                    fprintf(out, "\tmovzx\teax, %s [ebp + %d]\n\tpush\teax\n", byte ? "byte" : "word", offset);
+                else fprintf(out, "\tpop\teax\n\tmov\t[ebp + %d], %s\n", offset, byte ? "al" : "ax");
+            }
+            else if (strcmp(op, "LOADGC") == 0 || strcmp(op, "LOADGH") == 0 ||
+                     strcmp(op, "STOREGC") == 0 || strcmp(op, "STOREGH") == 0) {
+                int byte = op[strlen(op)-1] == 'C';
+                emitLoadGlobalAddress(out, insP->args[0], findGlobal(insP->args[0]));
+                if (strncmp(op, "LOAD", 4) == 0)
+                    fprintf(out, "\tmovzx\teax, %s [eax]\n\tpush\teax\n", byte ? "byte" : "word");
+                else fprintf(out, "\tpop\tecx\n\tmov\t[eax], %s\n", byte ? "cl" : "cx");
+            }
+            else if (strcmp(op, "NARROWH") == 0 || strcmp(op, "NARROWC") == 0) {
+                fprintf(out, "\tpop\teax\n\tand\teax, %d\n\tpush\teax\n", strcmp(op, "NARROWC") == 0 ? 255 : 65535);
+            }
 			else if (strcmp(op, "ADD") == 0) {
 				fprintf(out, "\t; ADD\n");
 				fprintf(out, "\tpop\teax\n");
@@ -919,12 +964,12 @@ static void emitIR(FILE* out) {
 			else if (strcmp(op, "PRINT") == 0) {
 				fprintf(out, "\t; PRINT (debug)\n");
 				fprintf(out, "\tpop\teax\n");
-				fprintf(out, "\t; TODO: implement debug output\n");
+				fatal("PRINT integer debug output is not implemented for x86");
 			}
 			else if (strcmp(op, "PRINTU") == 0) {
 				fprintf(out, "\t; PRINTU (debug unsigned)\n");
 				fprintf(out, "\tpop\teax\n");
-				fprintf(out, "\t; TODO: implement debug output\n");
+				fatal("PRINT integer debug output is not implemented for x86");
 			}
 			else if (strcmp(op, "SWAP") == 0) {
 				fprintf(out, "\t; SWAP\n");
@@ -933,7 +978,7 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tpush\teax\n");
 				fprintf(out, "\tpush\tecx\n");
 			}
-			else if (strcmp(op, "DUP") == 0) {
+			else if ((strcmp(op, "DUP") == 0 || strcmp(op, "DUPP") == 0)) {
 				fprintf(out, "\t; DUP\n");
 				fprintf(out, "\tpop\teax\n");
 				fprintf(out, "\tpush\teax\n");
@@ -947,27 +992,24 @@ static void emitIR(FILE* out) {
 				int nargs = number(insP->args[1], insP->line);
 				fprintf(out, "\t; CALL %s (%d args)\n", fname, nargs);
 				fprintf(out, "\tcall\ttc_%s\n", fname);
-				fprintf(out, "\tpush\teax\n");
-				if (nargs > 0) {
-					fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
-				}
+                if (nargs > 0) fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
+                fprintf(out, "\tpush\teax\n");
 			}
 			else if (strcmp(op, "CALLP") == 0) {
-				int nargs = number(insP->args[0], insP->line);
-				fprintf(out, "\t; CALLP (%d args via function pointer)\n", nargs);
-				fprintf(out, "\tpop\teax\n");
-				fprintf(out, "\tcall\teax\n");
-				fprintf(out, "\tpush\teax\n");
-				if (nargs > 0) {
-					fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
-				}
-			}
-			else if (strcmp(op, "PUSHFN") == 0) {
+				/* CALLP denotes a direct QCC function whose result is a pointer.
+				 * Its IR layout is the same as CALL: <name> <nargs>. */
 				const char* fname = insP->args[0];
-				fprintf(out, "\t; PUSHFN %s\n", fname);
-				fprintf(out, "\tlea\teax, [tc_%s]\n", fname);
+				int nargs = number(insP->args[1], insP->line);
+				fprintf(out, "\t; CALLP %s (%d args)\n", fname, nargs);
+				fprintf(out, "\tcall\ttc_%s\n", fname);
+				if (nargs > 0) fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
 				fprintf(out, "\tpush\teax\n");
 			}
+            else if (strcmp(op, "PUSHFN") == 0 || strcmp(op, "PUSHFNEXT") == 0) {
+                char symbol[NAME_LEN + 16];
+                snprintf(symbol, sizeof(symbol), "%s%s", strcmp(op, "PUSHFN") == 0 ? "__cdecl_" : "", insP->args[0]);
+                emitAddrG(out, symbol, -1);
+            }
 			else if (strcmp(op, "RET") == 0 || strcmp(op, "RETP") == 0) {
 				fprintf(out, "\t; %s\n", op);
 				fprintf(out, "\tpop\teax\n");
@@ -975,16 +1017,17 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\tpop\tebp\n");
 				fprintf(out, "\tret\n");
 			}
-			else if (strcmp(op, "CALLIND") == 0) {
-				int nargs = number(insP->args[0], insP->line);
-				fprintf(out, "\t; CALLIND (%d args)\n", nargs);
-				fprintf(out, "\tpop\teax\n");
-				fprintf(out, "\tcall\teax\n");
-				fprintf(out, "\tpush\teax\n");
-				if (nargs > 0) {
-					fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
-				}
-			}
+            else if (strcmp(op, "CALLIND") == 0 || strcmp(op, "CALLINDP") == 0) {
+                int nargs = number(insP->args[0], insP->line), ai;
+                /* IR pushes the callee before its arguments. Keep it below
+                 * them while reversing argument words into cdecl order. */
+                fprintf(out, "\tmov\tedx, [esp + %d]\n", nargs * 4);
+                for (ai = 0; ai < nargs / 2; ai++) {
+                    fprintf(out, "\tmov\teax, [esp + %d]\n\tmov\tecx, [esp + %d]\n", ai*4, (nargs-1-ai)*4);
+                    fprintf(out, "\tmov\t[esp + %d], ecx\n\tmov\t[esp + %d], eax\n", ai*4, (nargs-1-ai)*4);
+                }
+                fprintf(out, "\tcall\tedx\n\tadd\tesp, %d\n\tpush\teax\n", (nargs+1)*4);
+            }
 			else if (strcmp(op, "ADDRL") == 0) {
 				int slot = number(insP->args[0], insP->line);
 				fprintf(out, "\t; ADDRL %d\n", slot);
@@ -998,41 +1041,71 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\t; LOADIND %s\n", insP->args[0]);
 				emitLoadInd(out, insP->args[0]);
 			}
-			else if (strcmp(op, "STOREIND") == 0) {
+			else if (strcmp(op, "STOREIND") == 0 || strcmp(op, "STOREINDKEEP") == 0) {
 				fprintf(out, "\t; STOREIND %s\n", insP->args[0]);
 				emitStoreInd(out, insP->args[0]);
+                if (strcmp(op, "STOREINDKEEP") == 0) fprintf(out, "\tpush\teax\n");
 			}
-			else if (strcmp(op, "LOADIDX") == 0) {
-				fprintf(out, "\t; LOADIDX %s\n", insP->args[0]);
-				emitLoadIdx(out, insP->args[0]);
-			}
-			else if (strcmp(op, "STOREIDX") == 0) {
-				fprintf(out, "\t; STOREIDX %s\n", insP->args[0]);
-				emitStoreIdx(out, insP->args[0]);
-			}
+            else if (strcmp(op, "LOADIDX") == 0 || strcmp(op, "STOREIDX") == 0) {
+                int store = strcmp(op, "STOREIDX") == 0;
+                if (insP->argc == 3) {
+                    int ak, offset = fn->locals * 4, found = 0;
+                    if (store) fprintf(out, "\tpop\teax\n");
+                    fprintf(out, "\tpop\tecx\n");
+                    if (strcmp(insP->args[0], "L") == 0) {
+                        int slot = number(insP->args[1], insP->line);
+                        for (ak = fn->first; ak < fn->last; ak++) {
+                            if (strcmp(ir[ak].op, "LARRAY") != 0) continue;
+                            offset += (number(ir[ak].args[2], ir[ak].line) * tagSize(ir[ak].args[1]) + 3) & ~3;
+                            if (number(ir[ak].args[0], ir[ak].line) == slot) { found = 1; break; }
+                        }
+                        if (!found) fatal("indexed local is not an array");
+                        fprintf(out, "\tlea\tedx, [ebp + %d]\n", -offset);
+                    } else if (strcmp(insP->args[0], "G") == 0) {
+                        if (store) fprintf(out, "\tpush\teax\n");
+                        fprintf(out, "\tpush\tecx\n");
+                        emitLoadGlobalAddress(out, insP->args[1], findGlobal(insP->args[1]));
+                        fprintf(out, "\tmov\tedx, eax\n\tpop\tecx\n");
+                        if (store) fprintf(out, "\tpop\teax\n");
+                    } else fatal("unsupported indexed storage class");
+                    fprintf(out, "\tpush\tedx\n\tpush\tecx\n");
+                    if (store) fprintf(out, "\tpush\teax\n");
+                    if (store) emitStoreIdx(out, insP->args[2]);
+                    else emitLoadIdx(out, insP->args[2]);
+                } else if (insP->argc == 1) {
+                    if (store) emitStoreIdx(out, insP->args[0]);
+                    else emitLoadIdx(out, insP->args[0]);
+                } else fatal("invalid indexed operation");
+            }
 			else if (strcmp(op, "PADD") == 0) {
 				fprintf(out, "\t; PADD\n");
-				emitPAdd(out);
+				emitPAdd(out, insP->args[0]);
 			}
 			else if (strcmp(op, "PSUB") == 0) {
 				fprintf(out, "\t; PSUB\n");
-				emitPSub(out);
+				emitPSub(out, insP->args[0]);
 			}
 			else if (strcmp(op, "LOADP") == 0) {
 				fprintf(out, "\t; LOADP\n");
-				emitLoadP(out);
+				emitLoadL(out, number(insP->args[0], insP->line), fn->nargs);
 			}
 			else if (strcmp(op, "STOREP") == 0) {
 				fprintf(out, "\t; STOREP\n");
-				emitStoreP(out);
+				emitStoreL(out, number(insP->args[0], insP->line), fn->nargs);
 			}
 			else if (strcmp(op, "PUSHADDR") == 0) {
 				/* PUSHADDR can be either PUSHADDR L <slot> or PUSHADDR G <name> */
 				if (insP->argc >= 2) {
 					if (strcmp(insP->args[0], "L") == 0) {
 						int slot = number(insP->args[1], insP->line);
-						fprintf(out, "\t; PUSHADDR L %d\n", slot);
-						emitAddrL(out, slot, fn->nargs);
+                        int ak, offset = fn->locals * 4, found = 0;
+                        for (ak = fn->first; ak < fn->last; ak++) {
+                            if (strcmp(ir[ak].op, "LARRAY") != 0) continue;
+                            offset += (number(ir[ak].args[2], ir[ak].line) * tagSize(ir[ak].args[1]) + 3) & ~3;
+                            if (number(ir[ak].args[0], ir[ak].line) == slot) { found = 1; break; }
+                        }
+                        if (found) fprintf(out, "\tlea\teax, [ebp + %d]\n\tpush\teax\n", -offset);
+                        else emitAddrL(out, slot, fn->nargs);
 					} else if (strcmp(insP->args[0], "G") == 0) {
 						fprintf(out, "\t; PUSHADDR G %s\n", insP->args[1]);
 						emitAddrG(out, insP->args[1], findGlobal(insP->args[1]));
@@ -1043,6 +1116,11 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\t; PTRINDEX %s\n", insP->args[0]);
 				emitPtrIndex(out, insP->args[0]);
 			}
+            else if (strcmp(op, "IPADDN") == 0) {
+                int bytes = number(insP->args[0], insP->line);
+                if (bytes <= 0) fatal("invalid struct/array pointer stride");
+                fprintf(out, "\tpop\teax\n\tpop\tecx\n\tmov\tedx, %d\n\timul\tecx, edx\n\tadd\teax, ecx\n\tpush\teax\n", bytes);
+            }
 			else if (strcmp(op, "IPADD") == 0) {
 				fprintf(out, "\t; IPADD %s\n", insP->args[0]);
 				emitIPAdd(out, insP->args[0]);
@@ -1059,7 +1137,7 @@ static void emitIR(FILE* out) {
 				fprintf(out, "\t; LARRAY %s %s %s (space pre-allocated)\n", 
 					insP->args[0], insP->args[1], insP->args[2]);
 			}
-			else if (strcmp(op, "GARRAY") == 0) {
+			else if (strcmp(op, "GARRAY") == 0 || strcmp(op, "GLOBAL") == 0) {
 				/* GARRAY can appear as IR directive at function level
 				   Format: GARRAY <name> <type> <length> [<static>]
 				   This is similar to top-level GARRAY but inside function
@@ -1074,39 +1152,42 @@ static void emitIR(FILE* out) {
 				   Can appear at function level or module level
 				   For now: just comment it (linker/loader will handle)
 				*/
-				fprintf(out, "\t; GINIT %s[%s] = %s (handled by linker)\n",
+				fprintf(out, "\t; GINIT %s[%s] = %s (emitted in data section)\n",
 					insP->args[0], insP->args[1], insP->args[2]);
 			}
 			else if (strcmp(op, "CALLEXT") == 0 || strcmp(op, "CALLEXTP") == 0) {
-				/* CALLEXT <name> <nargs>
-				   CALLEXTP <nargs>
-				   External C library function call
-				   For now: emit as regular CALL with external symbol
-				*/
-				if (strcmp(op, "CALLEXT") == 0) {
-					const char* fname = insP->args[0];
-					int nargs = number(insP->args[1], insP->line);
-					fprintf(out, "\t; CALLEXT %s (%d args)\n", fname, nargs);
-					fprintf(out, "\tcall\t%s\n", fname);  /* No name mangling for external */
-					fprintf(out, "\tpush\teax\n");
-					if (nargs > 0) {
-						fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
-					}
-				} else {
-					/* CALLEXTP: indirect external call */
-					int nargs = number(insP->args[0], insP->line);
-					fprintf(out, "\t; CALLEXTP (%d args)\n", nargs);
-					fprintf(out, "\tpop\teax\n");
-					fprintf(out, "\tcall\teax\n");
-					fprintf(out, "\tpush\teax\n");
-					if (nargs > 0) {
-						fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
-					}
+				/* The frontend uses CALLEXTP for an external call that returns a
+				 * pointer, not for an indirect call.  Both forms have the same IR
+				 * fields: <name> <nargs> <fixed-count> [argument-widths]. */
+				const char* fname = insP->args[0];
+				int nargs;
+				if (insP->argc < 3 || insP->argc > 4) {
+					fprintf(stderr, "qirx86: line %d: invalid %s\n", insP->line, op);
+					exit(1);
 				}
+				nargs = number(insP->args[1], insP->line);
+                if (insP->argc == 4 && strchr(insP->args[3], '8')) fatal("x86 external 8-byte arguments are not implemented");
+				fprintf(out, "\t; %s %s (%d args)\n", op, fname, nargs);
+				/* Reverse the source-order IR stack into i386 cdecl order. */
+                {
+                    int ai;
+                    for (ai = 0; ai < nargs / 2; ai++) {
+                        fprintf(out, "\tmov\teax, [esp + %d]\n", ai * 4);
+                        fprintf(out, "\tmov\tecx, [esp + %d]\n", (nargs - 1 - ai) * 4);
+                        fprintf(out, "\tmov\t[esp + %d], ecx\n", ai * 4);
+                        fprintf(out, "\tmov\t[esp + %d], eax\n", (nargs - 1 - ai) * 4);
+                    }
+                }
+                fprintf(out, "\tcall\t%s\n", fname);  /* cdecl external */
+				/* Arguments occupy the IR operand stack, which is the x86 stack
+				 * in this backend.  Remove them before preserving EAX as the IR
+				 * result; the old order discarded the return value. */
+				if (nargs > 0) fprintf(out, "\tadd\tesp, %d\n", nargs * 4);
+				fprintf(out, "\tpush\teax\n");
 			}
 			else if (strcmp(op, "PDIFF") == 0) {
 				fprintf(out, "\t; PDIFF\n");
-				emitPDiff(out);
+				emitPDiff(out, insP->args[0]);
 			}
 			else if (strcmp(op, "PCMPEQ") == 0 || strcmp(op, "PCMPNE") == 0 ||
 					 strcmp(op, "PCMPLT") == 0 || strcmp(op, "PCMPLE") == 0 ||
@@ -1118,7 +1199,8 @@ static void emitIR(FILE* out) {
 				break;  /* end of function */
 			}
 			else {
-				fprintf(out, "\t; TODO: %s\n", op);
+				fprintf(stderr, "qirx86: line %d: unsupported IR opcode %s\n", insP->line, op);
+                exit(1);
 			}
 		}
 		
@@ -1141,13 +1223,31 @@ static void emitIR(FILE* out) {
 				continue;
 			}
 			
+			if (!g->isStatic)
+				fprintf(out, "\tglobal\ttc_g_%s,__offset_%s\n", g->name, g->name);
 			fprintf(out, "tc_g_%s:\n", g->name);
-			if (g->isArray) {
-				fprintf(out, "\tds.l\t%d  ; array of %d elements, %d bytes each\n", 
-					g->length, g->length, g->elemSize);
-			} else {
-				fprintf(out, "\tdc.l\t%d\n", g->initialValue);
-			}
+			fprintf(out, "__offset_%s:\n", g->name);
+            if (g->isArray) {
+                int k, j, hasInit = 0;
+                for (k = 0; k < irCount; k++)
+                    if (strcmp(ir[k].op, "GINIT") == 0 && strcmp(ir[k].args[0], g->name) == 0) hasInit = 1;
+                if (!hasInit) fprintf(out, "\tds.b\t%d\n", g->length * g->elemSize);
+                else {
+                    unsigned int *values = calloc(g->length, sizeof(unsigned int));
+                    if (!values) fatal("array initializer allocation failed");
+                    for (k = 0; k < irCount; k++) {
+                        if (strcmp(ir[k].op, "GINIT") == 0 && strcmp(ir[k].args[0], g->name) == 0) {
+                            j = number(ir[k].args[1], ir[k].line);
+                            if (j < 0 || j >= g->length) fatal("array initializer outside bounds");
+                            values[j] = (unsigned int)number(ir[k].args[2], ir[k].line);
+                        }
+                    }
+                    for (k = 0; k < g->length; k++)
+                        for (j = 0; j < g->elemSize; j++)
+                            fprintf(out, "\tdc.b\t%u\n", (values[k] >> (8*j)) & 255U);
+                    free(values);
+                }
+            } else fprintf(out, "\tdc.l\t%d\n", g->initialValue);
 		}
 		
 		fprintf(out, "\tends\n");

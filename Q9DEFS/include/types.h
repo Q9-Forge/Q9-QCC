@@ -18,8 +18,13 @@ typedef unsigned short u_int16;
 /* derived: 32-bit unsigned integer, unsigned int is 32 bit */
 typedef unsigned int u_int32;
 
-/* derived: path numbers are one word (16 bit); underlying type not documented */
+/* OS-9000/x86 service blocks carry a 32-bit path identifier. Keep the
+ * existing 68k declaration until its public runtime interface is audited. */
+#ifdef __Q9_X86__
+typedef u_int32 path_id;
+#else
 typedef u_int16 path_id;
+#endif
 
 /* derived: 0 means success, any other value is an error code; the exact
    underlying type is not documented, a plain int is used */

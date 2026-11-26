@@ -8,6 +8,8 @@
 
 #include <SPF/BSD/sys/types.h>
 
+extern u_long  ntohl(u_long networklong);
+extern u_short ntohs(u_short networkshort);
 extern u_long  htonl(u_long hostlong);
 extern u_short htons(u_short hostshort);
 
