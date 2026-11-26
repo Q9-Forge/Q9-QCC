@@ -12,6 +12,8 @@
 #include <SPF/BSD/sys/types.h>
 #include <sys/endian.h>
 
+#define IP_ADD_MEMBERSHIP 12
+
 #define IPPROTO_IP    0    /* derived: protocol level IP */
 #define IPPROTO_ICMP  1
 #define IPPROTO_TCP   6
@@ -42,5 +44,4 @@ extern char *inet_ntoa(struct in_addr in);
 #endif /* Q9_SPF_BSD_NETINET_IN_H */
 
 /* not defined (no documented value):
- *   IP_ADD_MEMBERSHIP
  */

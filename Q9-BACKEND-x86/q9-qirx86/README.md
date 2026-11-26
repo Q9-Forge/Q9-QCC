@@ -19,6 +19,11 @@ make -C Q9-BACKEND-x86/q9-qirx86
 ## Architektur
 
 - **Assembler-Output**: Intel-Syntax x86-32
+- **Assembler symbols**: defined functions are exported as `tc_<name>`;
+  global data uses `tc_g_<name>` and the PIC alias `__offset_<name>`.
+- **Comparison lowering**: comparisons and logical NOT use `setcc` followed by
+  `movzx`, so the result flags are captured before another instruction changes
+  them.
 - **Stack-basiertes Modell**: IR-Stack wird via EAX/Stack emuliert (wie 68k, nur x86)
 - **Position-Independent Code (PIC)**: CALL-$+5 + POP + LEA Trick für Datenzugriffe
 - **Relocation**: Handled by Linker (qo/ql), not by backend

@@ -1,0 +1,41 @@
+# Q9 x86-32 backend tools.  These are host utilities; generated OS-9000/x86
+# modules are written by the driver into the selected target CMDS tree.
+[global]
+TOOLCHAIN_FILE = ../Q9-Make/toolchains/qmake.conf
+
+[LGL]
+all: linux
+linux: $(HOST_OUTPUT_DIR)/qirx86 $(HOST_OUTPUT_DIR)/qox86 $(HOST_OUTPUT_DIR)/qlx86
+
+$(HOST_OUTPUT_DIR)/qirx86: q9-qirx86/src/qcc_backend_c.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$@" "$<"
+
+$(HOST_OUTPUT_DIR)/qox86: q9-qox86/src/qox86.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$@" "$<"
+
+$(HOST_OUTPUT_DIR)/qlx86: q9-qlx86/src/qlx86.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$@" "$<"
+
+clean:
+	if test -n "$(Q9SDK)"; then rm -f "$(HOST_OUTPUT_DIR)/qirx86" "$(HOST_OUTPUT_DIR)/qox86" "$(HOST_OUTPUT_DIR)/qlx86"; fi
+
+[WCW]
+all: windows
+windows: $(HOST_OUTPUT_DIR)\qirx86.exe $(HOST_OUTPUT_DIR)\qox86.exe $(HOST_OUTPUT_DIR)\qlx86.exe
+
+$(HOST_OUTPUT_DIR)\qirx86.exe: q9-qirx86/src/qcc_backend_c.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -o "$@" q9-qirx86\src\qcc_backend_c.c
+
+$(HOST_OUTPUT_DIR)\qox86.exe: q9-qox86/src/qox86.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -o "$@" q9-qox86\src\qox86.c
+
+$(HOST_OUTPUT_DIR)\qlx86.exe: q9-qlx86/src/qlx86.c
+	if not exist "$(HOST_OUTPUT_DIR)" mkdir "$(HOST_OUTPUT_DIR)"
+	$(HOST_CC) $(HOST_CFLAGS) -o "$@" q9-qlx86\src\qlx86.c
+
+clean:
+	if exist "$(HOST_OUTPUT_DIR)\qirx86.exe" del "$(HOST_OUTPUT_DIR)\qirx86.exe"
+	if exist "$(HOST_OUTPUT_DIR)\qox86.exe" del "$(HOST_OUTPUT_DIR)\qox86.exe"
+	if exist "$(HOST_OUTPUT_DIR)\qlx86.exe" del "$(HOST_OUTPUT_DIR)\qlx86.exe"

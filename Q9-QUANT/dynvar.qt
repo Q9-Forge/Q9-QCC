@@ -1,0 +1,63 @@
+// Basistypen
+//
+//    
+//
+//     Alle Typen werden komplett gross geschrieben
+77
+//     Basistypen
+//         Name                  Konstante 
+//         CHARACTER             `C`  oder    0-255
+//         STRING                "Hello World"             null Terminierter String
+//         INTEGER               numerische Werte 63Bit mit Vorzeichen
+//         POINTER TO <TYPE>
+//         ARRAY TO <Type>
+//         STRUCT { ... }
+//         UNION  { ... }
+//         CLASS
+//
+//     Variant Typen
+//         <NewVariantType> = INTEGER[minIndex .. maxIndex]         Wertebereich
+//         <NewVariantType> = INTERGER:8 
+//
+//     Neue Typen
+//         <newTyoe> = typedef <INNTBEREICH> = 
+//
+//
+
+
+//         numerische Konstanten Literale    Innterger 64 Bit   -2000000000 - 2000000000
+//         Numerische Beriche                [min .. max] 
+//         CONST 
+//     BIT
+//     CHAR
+//     INT8
+//     INT16
+//     INT32
+//     INT64
+//     UINT8
+//     UINT16
+//     UINT32
+//     UINT64
+
+
+
+
+
+typedef STRING = class string extend base {
+
+}
+
+
+typedef DYNVAR = class dynVar extend basisVar {
+
+    privat 
+
+    public
+        STRING name
+
+
+
+
+    public function ( ) : INT16
+
+}

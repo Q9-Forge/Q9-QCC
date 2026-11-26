@@ -37,6 +37,9 @@ static Variable variables[MAX_VARS];
 static int variable_count;
 static Variable overrides[MAX_VARS];
 static int override_count;
+/* Values a parent q9makefile passes to its SUBDIRS through EXPORT. */
+static Variable inherited[MAX_VARS];
+static int inherited_count;
 static char config_dir_override[MAX_COMMAND];
 static char project_file[MAX_COMMAND] = "q9makefile";
 static int config_dir_is_set;
@@ -230,13 +233,26 @@ static int set_variable(const char *name, const char *value, int command_line)
     return 1;
 }
 
+/* Search from the newest entry; an outer export already fixed the value
+   that an inner directory exports again, so the outermost one decides. */
+static Variable *find_inherited(const char *name)
+{
+    int i;
+    for (i = inherited_count - 1; i >= 0; --i)
+        if (strcmp(inherited[i].name, name) == 0) return &inherited[i];
+    return (Variable *)0;
+}
+
+/* Precedence: -D, environment, value exported by a parent, this file. */
 static const char *variable_value(const char *name)
 {
     Variable *var = find_variable(name);
     Variable *override = find_override(name);
+    Variable *parent = find_inherited(name);
     const char *environment = getenv(name);
     if (override != (Variable *)0) return override->value;
     if (environment != (const char *)0) return environment;
+    if (parent != (Variable *)0) return parent->value;
     return var == (Variable *)0 ? "" : var->value;
 }
 
@@ -883,8 +899,49 @@ static int implicit_source_exists(const char *target)
     return qmake_file_info(source, &ignored_time);
 }
 
+/* Pass the variables named in EXPORT, expanded here, down to SUBDIRS. */
+static int export_variables(void)
+{
+    char names[MAX_COMMAND];
+    char *cursor;
+    if (variable_value("EXPORT")[0] == '\0') return 1;
+    if (!expand_text(variable_value("EXPORT"), names, sizeof(names), 0)) {
+        fprintf(stderr, "qmake: EXPORT expansion failed\n");
+        return 0;
+    }
+    cursor = names;
+    while (*cursor != '\0') {
+        char *end;
+        Variable *var;
+        while (*cursor == ' ' || *cursor == '\t') ++cursor;
+        if (*cursor == '\0') break;
+        end = cursor;
+        while (*end != '\0' && *end != ' ' && *end != '\t') ++end;
+        if (*end != '\0') *end++ = '\0';
+        if (!valid_name(cursor) || strlen(cursor) >= MAX_VAR_NAME) {
+            fprintf(stderr, "qmake: invalid EXPORT name '%s'\n", cursor);
+            return 0;
+        }
+        if (inherited_count >= MAX_VARS) {
+            fprintf(stderr, "qmake: too many exported variables\n");
+            return 0;
+        }
+        var = &inherited[inherited_count];
+        memset(var, 0, sizeof(*var));
+        strcpy(var->name, cursor);
+        if (!expand_text(variable_value(cursor), var->value, sizeof(var->value), 0)) {
+            fprintf(stderr, "qmake: cannot expand exported variable '%s'\n", cursor);
+            return 0;
+        }
+        ++inherited_count;
+        cursor = end;
+    }
+    return 1;
+}
+
 static int process_directory(const char *requested_target, int depth)
 {
+    int saved_inherited;
     char target[MAX_NAME];
     char subdirs[MAX_COMMAND];
     char *cursor;
@@ -929,6 +986,11 @@ static int process_directory(const char *requested_target, int depth)
         fprintf(stderr, "qmake: SUBDIRS expansion failed\n");
         return 0;
     }
+    saved_inherited = inherited_count;
+    if (subdirs[0] != '\0' && !export_variables()) {
+        inherited_count = saved_inherited;
+        return 0;
+    }
     cursor = subdirs;
     while (*cursor != '\0') {
         char child[MAX_NAME];
@@ -946,6 +1008,7 @@ static int process_directory(const char *requested_target, int depth)
             memchr(cursor, '/', length) != (void *)0 ||
             memchr(cursor, '\\', length) != (void *)0) {
             fprintf(stderr, "qmake: SUBDIRS entries must be direct child directory names\n");
+            inherited_count = saved_inherited;
             return 0;
         }
         memcpy(child, cursor, length);
@@ -954,15 +1017,21 @@ static int process_directory(const char *requested_target, int depth)
         if (verbosity > 0) printf("qmake: entering subdirectory '%s'\n", child);
         if (!qmake_change_directory(child)) {
             fprintf(stderr, "qmake: cannot enter subdirectory '%s'\n", child);
+            inherited_count = saved_inherited;
             return 0;
         }
         child_ok = process_directory(has_target ? target : (const char *)0, depth + 1);
         if (!qmake_change_directory("..")) {
             fprintf(stderr, "qmake: cannot return from subdirectory '%s'\n", child);
+            inherited_count = saved_inherited;
             return 0;
         }
-        if (!child_ok) return 0;
+        if (!child_ok) {
+            inherited_count = saved_inherited;
+            return 0;
+        }
     }
+    inherited_count = saved_inherited;
     if (!load_project_description()) return 0;
     if (!has_target) {
         if (rule_count == 0) {

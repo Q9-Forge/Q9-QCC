@@ -55,7 +55,11 @@ Sammel-/Phony-Regeln. Variablen werden als `NAME = wert` definiert und mit
 `$(NAME)` in Rezepten expandiert. Environmentwerte haben Vorrang vor
 Dateiwerten; `-DNAME=wert` hat die hoechste Prioritaet. `SUBDIRS = kind-a kind-b`
 listet direkte Unterverzeichnisse explizit auf; diese werden rekursiv vor dem
-lokalen Ziel gebaut. Ein explizit angegebenes Ziel wird an Kinder
+lokalen Ziel gebaut. `EXPORT = NAME ANDERER` gibt die genannten Variablen,
+im Elternverzeichnis expandiert, an alle Verzeichnisse darunter weiter (etwa
+ein `TARGET_OUTPUT_DIR` fuer alle Tools); dort haben sie Vorrang vor Datei- und
+Profilwerten des Kindes, Environment und `-D` gehen weiterhin vor. Ein
+explizit angegebenes Ziel wird an Kinder
 weitergereicht, sonst waehlt jede Ebene ihre erste Regel. POSIX ist
 implementiert; der Windows-CRT-Adapter muss noch unter Windows getestet werden.
 

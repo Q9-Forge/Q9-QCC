@@ -53,6 +53,14 @@ linuxQCC: $(HOST_OUTPUT_DIR)/qcc
 $(HOST_OUTPUT_DIR)/qcc: src/qcc.c
 	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" src/qcc.c
 clean:
+	 rm -f "$(HOST_OUTPUT_DIR)/qcc"
+
+[R32]
+all: raspberry32
+raspberry32: $(HOST_OUTPUT_DIR)/qcc
+$(HOST_OUTPUT_DIR)/qcc: src/qcc.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcc" src/qcc.c
+clean:
 	rm -f "$(HOST_OUTPUT_DIR)/qcc"
 
 [QQQ]

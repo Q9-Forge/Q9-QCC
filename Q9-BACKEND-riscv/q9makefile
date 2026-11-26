@@ -1,0 +1,19 @@
+# Q9 RISC-V backend tools.  The checked-in implementation is RISC-V32.
+[global]
+TOOLCHAIN_FILE = ../Q9-Make/toolchains/qmake.conf
+
+[LVR]
+all: riscv32
+riscv32: $(HOST_OUTPUT_DIR)/qirv32 $(HOST_OUTPUT_DIR)/qov32 $(HOST_OUTPUT_DIR)/qlv32
+
+$(HOST_OUTPUT_DIR)/qirv32: q9-qirv32/src/qcc_backend_riscv.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$@" "$<"
+
+$(HOST_OUTPUT_DIR)/qov32: q9-qov32/src/qov32.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$@" "$<"
+
+$(HOST_OUTPUT_DIR)/qlv32: q9-qlv32/src/qlv32.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -o "$@" "$<"
+
+clean:
+	if test -n "$(Q9SDK)"; then rm -f "$(HOST_OUTPUT_DIR)/qirv32" "$(HOST_OUTPUT_DIR)/qov32" "$(HOST_OUTPUT_DIR)/qlv32"; fi

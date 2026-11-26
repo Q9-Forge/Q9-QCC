@@ -28,6 +28,27 @@ typedef struct {
    fd_att/fd_own_group/fd_own_user were plain filler until chown(3) needed
    named access to the owner bytes (2026-10-02); they are named flat here
    -- same offsets, same total size. */
+#ifdef __Q9_X86__
+/* OS-9000 descriptor prefix (48 bytes), SDK OS9000/SRC/DEFS/rbf.h.
+ * This is a native GetStat result, distinct from the legacy disk sector. */
+typedef struct {
+    u_int32 fd_sync;
+    u_int32 fd_parity;
+    u_int32 fd_flag;
+    u_int16 fd_host;
+    u_int16 fd_group;
+    u_int16 fd_owner;
+    u_int16 fd_links;
+    u_int32 fd_size;
+    u_int32 fd_ctime;
+    u_int32 fd_atime;
+    u_int32 fd_mtime;
+    u_int32 fd_utime;
+    u_int32 fd_btime;
+    u_int16 fd_rev;
+    u_int16 fd_unused;
+} fd_stats;
+#else
 typedef struct {
 	unsigned char fd_att;          /* @0  file attributes */
 	unsigned char fd_own_group;    /* @1  owner group id */
@@ -35,8 +56,12 @@ typedef struct {
 	unsigned char fd_date[5];      /* @3  year, month, day, hour, minute */
 	unsigned char _filler_8[248];  /* @8  .. @255, remaining descriptor members */
 } fd_stats;
+#endif
 
 extern error_code _os_gs_fd(path_id path, u_int32 size, fd_stats *fdbuf);
+#ifdef __Q9_X86__
+extern error_code _os_gs_fdaddr(path_id path,u_int32 *address);
+#endif
 extern error_code _os_ss_fd(path_id path, fd_stats *fdinfo);
 
 #endif /* Q9_RBF_H */

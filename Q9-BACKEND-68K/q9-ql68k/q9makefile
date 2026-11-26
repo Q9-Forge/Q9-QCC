@@ -112,3 +112,11 @@ $(TARGET_OUTPUT_DIR)\ql68k: src/ql68.c ../../tools/build_xcc_win.cmd
 	..\..\tools\build_xcc_win.cmd ql68k "$(TARGET_OUTPUT_DIR)" "%CD%\src\ql68.c" "-D_Q9OS -olM=512K"
 clean:
 	if exist "$(TARGET_OUTPUT_DIR)\ql68k" del "$(TARGET_OUTPUT_DIR)\ql68k"
+
+[R32]
+all: raspberry32
+raspberry32: $(HOST_OUTPUT_DIR)/ql68k
+$(HOST_OUTPUT_DIR)/ql68k: src/ql68.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -Wno-builtin-requires-header -o "$(HOST_OUTPUT_DIR)/ql68k" src/ql68.c
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/ql68k"

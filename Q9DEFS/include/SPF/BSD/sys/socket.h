@@ -10,6 +10,10 @@
 #include <SPF/BSD/sys/types.h>
 #include <UNIX/os9time.h>   /* derived: struct timeval is used with socket timeouts */
 
+#define SOL_SOCKET   0xffff
+#define SO_BROADCAST 0x0020
+#define SO_RCVTIMEO  0x1006
+
 #define AF_INET      2   /* derived: BSD numbering */
 
 #define SOCK_STREAM  1   /* derived: BSD numbering */
@@ -36,5 +40,4 @@ extern int socket(int af, int type, int protocol);
 #endif /* Q9_SPF_BSD_SYS_SOCKET_H */
 
 /* not defined (no documented value):
- *   SOL_SOCKET, SO_BROADCAST, SO_RCVTIMEO
  */

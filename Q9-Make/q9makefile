@@ -35,6 +35,15 @@ clean:
 	if test -n "$(Q9SDK)"; then rm -f "$(Q9SDK)/macOS/ARM64/CMDS/qmake" "$(Q9SDK)/macOS/x86_64/CMDS/qmake" "$(Q9SDK)/Linux/CMDS/qmake" "$(Q9SDK)/Windows/CMDS/qmake.exe" "$(Q9SDK)/Q9/68k/CMDS_XCC/qmake"; fi
 	rm -f build/qmake.68k
 
+[R32]
+all: raspberry32
+raspberry32: $(HOST_OUTPUT_DIR)/qmake
+$(HOST_OUTPUT_DIR)/qmake: src/qmake.c src/platform_posix.c src/platform.h
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -Isrc -o "$(HOST_OUTPUT_DIR)/qmake" src/qmake.c src/platform_posix.c
+clean:
+	if test -n "$(Q9SDK)"; then rm -f "$(HOST_OUTPUT_DIR)/qmake"; fi
+
+
 [WCW]
 all: windows
 windows: $(Q9SDK)/Windows/CMDS/qmake.exe

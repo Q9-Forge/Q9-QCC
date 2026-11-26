@@ -8,6 +8,7 @@
 #define Q9_UNIX_STAT_H
 
 #include <time.h>
+#include <modes.h>
 
 /* derived: member order documented, the list may not be complete */
 struct stat {

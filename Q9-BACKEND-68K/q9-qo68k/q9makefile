@@ -112,3 +112,11 @@ $(TARGET_OUTPUT_DIR)\qo68k: src/main.c src/qo68.c ../../tools/build_xcc_win.cmd
 	..\..\tools\build_xcc_win.cmd qo68k "$(TARGET_OUTPUT_DIR)" "%CD%\src\main.c" "-olM=512K"
 clean:
 	if exist "$(TARGET_OUTPUT_DIR)\qo68k" del "$(TARGET_OUTPUT_DIR)\qo68k"
+
+[R32]
+all: raspberry32
+raspberry32: $(HOST_OUTPUT_DIR)/qo68k
+$(HOST_OUTPUT_DIR)/qo68k: src/main.c src/qo68.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qo68k" src/main.c src/qo68.c
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qo68k"

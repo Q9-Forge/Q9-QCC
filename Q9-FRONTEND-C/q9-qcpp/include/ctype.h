@@ -9,6 +9,9 @@
 #define Q9_CTYPE_H
 
 extern int tolower(int c);
+extern int isalpha(int c);
+extern int isalnum(int c);
+extern int isspace(int c);
 
 /* Added 2026-09-18 for the qclib STATUS.md gap-closing test (tests/hello.c
    compares these against Microware clib). */

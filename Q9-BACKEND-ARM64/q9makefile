@@ -1,0 +1,24 @@
+# ARM64 IR backend.  This is the backend used for native Raspberry Pi 64-bit
+# output and for ARM64 host-side tests.
+[global]
+TOOLCHAIN_FILE = ../Q9-Make/toolchains/qmake.conf
+
+[ACA]
+all: mac
+mac: $(HOST_OUTPUT_DIR)/qirarm64
+
+$(HOST_OUTPUT_DIR)/qirarm64: q9-qirarm64/src/qcc_arm64_backend_c.cpp
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$@" "$<"
+
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qirarm64"
+
+[RGR]
+all: raspberry64
+raspberry64: $(HOST_OUTPUT_DIR)/qirarm64
+
+$(HOST_OUTPUT_DIR)/qirarm64: q9-qirarm64/src/qcc_arm64_backend_c.cpp
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$@" "$<"
+
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qirarm64"

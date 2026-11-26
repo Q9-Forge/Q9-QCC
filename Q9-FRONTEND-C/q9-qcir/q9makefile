@@ -175,3 +175,11 @@ $(TARGET_OUTPUT_DIR)\qcir: data/qcc_p.c ../../tools/build_xcc_win.cmd
 	..\..\tools\build_xcc_win.cmd qcir "$(TARGET_OUTPUT_DIR)" "%CD%\data\qcc_p.c" "-DQCC_BUFFERED_OUTPUT -olM=1024K"
 clean:
 	if exist "$(TARGET_OUTPUT_DIR)\qcir" del "$(TARGET_OUTPUT_DIR)\qcir"
+
+[R32]
+all: raspberry32
+raspberry32: $(HOST_OUTPUT_DIR)/qcir
+$(HOST_OUTPUT_DIR)/qcir: check-sdk data/qcc_p.c
+	mkdir -p "$(HOST_OUTPUT_DIR)" && $(HOST_CC) $(HOST_CFLAGS) -O2 -Wall -Wextra -o "$(HOST_OUTPUT_DIR)/qcir" data/qcc_p.c
+clean:
+	rm -f "$(HOST_OUTPUT_DIR)/qcir"

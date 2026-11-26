@@ -2723,6 +2723,13 @@ static int findInclude(const char *name, int isAngle, int fromDir)
 	const char *d;
 	int k;
 
+    /* A rooted include already names its file. Prefixing the including
+     * directory (or every -I directory) made all absolute includes fail. */
+    if (name[0] == '/') {
+        if (onceSeen(name)) return -2;
+        return fileLoad(name);
+    }
+
 	/* Search "..." first in the including file's directory (C89 3.8.2). */
 	if (!isAngle) {
 		n = 0;

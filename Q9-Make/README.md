@@ -159,7 +159,11 @@ shown on failure or with `-vv`. Recipe variables use
 `NAME = value` and `$(NAME)`; environment variables override file values, and
 `-DNAME=value` overrides both. `SUBDIRS = child-a child-b` explicitly lists
 direct child directories; each child is built recursively before the local
-target. An explicitly requested target is forwarded to children; otherwise,
+target. `EXPORT = NAME OTHER` passes the named variables, expanded in the
+parent, to every directory below it (for example one `TARGET_OUTPUT_DIR` for
+all tools); there they override the child's own file and profile values, while
+the environment and `-D` still win. An explicitly requested target is
+forwarded to children; otherwise,
 each directory selects its own first rule. A rule with no recipe acts as an
 aggregate rule. With no command-line target, the first rule is selected; a
 first `help:` rule can therefore print a target summary. A recipe with no
