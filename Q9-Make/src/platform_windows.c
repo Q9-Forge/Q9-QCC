@@ -1,3 +1,16 @@
+/*--------------------------------------------------------------------------------------
+ * File:        platform_windows.c
+ * Description: Windows platform services for Q9-Make.
+ * Owner:       cla / afoe
+ * Version:     0.01
+ *
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
+ *
+ * Edition History
+ * Date    | Ver. | Description                                               | By
+ * 26-11-26| 0.01 | Add file and function headers.                            | cla
+ *--------------------------------------------------------------------------------------*/
+
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <direct.h>
@@ -7,6 +20,13 @@
 #include <string.h>
 #include "platform.h"
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_file_info
+ * Description: Read a file modification time.
+ * Parameter:   const char * path: File path.
+ *              long * modified: Receives the modification time.
+ * Return:      int: 1 on success, 0 on failure.
+ *--------------------------------------------------------------------------------------*/
 int qmake_file_info(const char *path, long *modified)
 {
     struct _stat info;
@@ -15,11 +35,24 @@ int qmake_file_info(const char *path, long *modified)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_run
+ * Description: Run a command using the host shell.
+ * Parameter:   const char * command: Command to run.
+ * Return:      int: Host shell status.
+ *--------------------------------------------------------------------------------------*/
 int qmake_run(const char *command)
 {
     return system(command);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_run_capture
+ * Description: Run a command and copy its standard output to a stream.
+ * Parameter:   const char * command: Command to run.
+ *              FILE * output: Destination stream.
+ * Return:      int: Host command status, or -1 on a capture failure.
+ *--------------------------------------------------------------------------------------*/
 int qmake_run_capture(const char *command, FILE *output)
 {
     FILE *pipe;
@@ -37,21 +70,47 @@ int qmake_run_capture(const char *command, FILE *output)
     return status;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_stdout_is_terminal
+ * Description: Determine whether standard output is a terminal.
+ * Parameter:   void: No parameters.
+ * Return:      int: Nonzero if standard output is a terminal, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_stdout_is_terminal(void)
 {
     return _isatty(_fileno(stdout));
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_time_seconds
+ * Description: Read the elapsed host uptime in seconds.
+ * Parameter:   void: No parameters.
+ * Return:      double: Elapsed uptime in seconds.
+ *--------------------------------------------------------------------------------------*/
 double qmake_time_seconds(void)
 {
     return (double)GetTickCount() / 1000.0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_change_directory
+ * Description: Change the current working directory.
+ * Parameter:   const char * path: Destination directory.
+ * Return:      int: 1 on success, 0 on failure.
+ *--------------------------------------------------------------------------------------*/
 int qmake_change_directory(const char *path)
 {
     return _chdir(path) == 0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_default_config_dir
+ * Description: Find the default configuration directory for a target.
+ * Parameter:   const char * target_arch: Target architecture name.
+ *              char * out: Receives the directory path.
+ *              size_t capacity: Size of the destination buffer.
+ * Return:      int: 1 if a path was written, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity)
 {
     const char *root = getenv("Q9SDK");
@@ -74,8 +133,13 @@ int qmake_default_config_dir(const char *target_arch, char *out, size_t capacity
     return 1;
 }
 
-/* Host configuration directory: %Q9SDK%\Q9\SYS when it holds a qmake.conf (the shared
- * configuration of the Q9 SDK). Returns 1 when out was set. */
+/*--------------------------------------------------------------------------------------
+ * Function:    qmake_default_host_config_dir
+ * Description: Find the shared host configuration directory.
+ * Parameter:   char * out: Receives the directory path.
+ *              size_t capacity: Size of the destination buffer.
+ * Return:      int: 1 if a path was written, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 int qmake_default_host_config_dir(char *out, size_t capacity)
 {
     const char *root = getenv("Q9SDK");
