@@ -2,13 +2,14 @@
  * File:        qost.c
  * Description: Conservative optimizer for Q9 Stack-IR.
  * Owner:       cla / afoe
- * Version:     0.01
+ * Version:     0.02
  *
  * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
  * Edition History
  * Date    | Ver. | Description                                               | By
  * 26-11-26| 0.01 | Document functions, name line endings and translate status.      | cla
+ * 26-11-26| 0.02 | Preserve negation that would overflow.                    | cla
  *--------------------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -291,7 +292,10 @@ static int binary_result(const char *op, unsigned long a, unsigned long b, unsig
  *--------------------------------------------------------------------------------------*/
 static int unary_result(const char *op, unsigned long a, unsigned long *result)
 {
-	if (strcmp(op, "NEG") == 0) *result = (0UL - a) & U32_MASK;
+	if (strcmp(op, "NEG") == 0) {
+		if (a == U32_SIGN) return 0;
+		*result = (0UL - a) & U32_MASK;
+	}
 	else if (strcmp(op, "NOT") == 0) *result = a == 0;
 	else if (strcmp(op, "NOTBIT") == 0) *result = (~a) & U32_MASK;
 	else if (strcmp(op, "NARROWC") == 0) *result = a & 0xffUL;
