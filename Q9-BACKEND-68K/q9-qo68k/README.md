@@ -1,32 +1,32 @@
-# q9-qo68k – 68k-Peephole-Optimierer
+# q9-qo68k – 68k peephole optimizer
 
-`qo68k` optimiert erzeugten 68k-Assemblertext. Die Architekturendung bleibt
-erhalten: `.s68k` wird zu `.opt.s68k`.
+[Deutsch](README_de.md)
 
-Der Optimierer arbeitet unabhängig vom C-Frontend auf der Assemblerausgabe des
-68k-Backends.
+`qo68k` optimizes generated 68k assembly text. It preserves the architecture
+suffix: `.s68k` becomes `.opt.s68k`.
 
-Er wird als eigenes Programm gebaut und aufgerufen:
+The optimizer processes the 68k backend's assembly output independently of the
+C frontend. Build and invoke it as a standalone program:
 
 ```sh
 make -C Q9-BACKEND-68K/q9-qo68k
 qo68k input.s68k output.opt.s68k
 ```
 
-## Große Eingaben und Zeilenenden
+## Large inputs and line endings
 
-Eingabe, Zeilentabelle und Synthesetext werden dynamisch angelegt; die frühere
-feste 2-MiB-Grenze ist damit beseitigt. Der Leser verarbeitet OS-9-Text mit
-CR-Zeilenenden ebenso wie LF und CRLF. Das Ausgabeformat übernimmt den
-Zeilenendstil der Eingabe. Synthesezeilen liegen in stabilen Speicherblöcken,
-damit ein späteres Wachstum keine bereits gespeicherten Zeiger ungültig macht.
+The input, line table, and synthesized text are allocated dynamically, removing
+an earlier fixed 2 MiB limit. The reader handles Q9-System text with CR line
+endings as well as LF and CRLF. Output retains the input's line-ending style.
+Synthesized lines reside in stable storage blocks so later growth does not
+invalidate saved pointers.
 
-Verifiziert mit der im Emulator erzeugten `qcp.s68` (6.247.987 Byte,
-323.050 Zeilen): Host- und 68030-Optimierer erzeugten byteidentische Ausgaben
-(5.129.673 Byte; 52.831 Optimierungen in zwei Durchläufen). Die optimierte
-Hostausgabe wurde anschließend mit `qr68k` erfolgreich zu ROF assembliert.
-Auch `qom.s68` wurde auf Host und Ziel byteidentisch optimiert.
+A previous verification used `qcp.s68` generated in an emulator (6,247,987
+bytes, 323,050 lines). The host and 68030 optimizers produced byte-identical
+output (5,129,673 bytes; 52,831 optimizations over two passes). The optimized
+host output was then assembled successfully to ROF with `qr68k`. Host and
+target also produced byte-identical optimized output for `qom.s68`.
 
-Der Optimierer hält weiterhin die gesamte Eingabe und seine Zeilentabelle im
-Speicher. Die große Probe lief erfolgreich, ersetzt aber keinen systematischen
-Speichergrenz- und Fehlerpfadtest auf jedem Zielsystem.
+The optimizer still holds the entire input and its line table in memory. The
+large test does not replace systematic memory-limit and error-path tests on
+each target.

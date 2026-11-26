@@ -1,5 +1,7 @@
-# q9-qclib – ARM64-Variante
+# q9-qclib – ARM64 variant
 
-Architekturabhängige ARM64-Bestandteile der Q9-C-Bibliothek. Gemeinsame
-Header werden aus `DEFS/Q9` übernommen; ARM64-spezifische Header liegen unter
+[Deutsch](README_de.md)
+
+Architecture-specific ARM64 components of the Q9 C library. Shared headers
+are provided by `DEFS/Q9`; ARM64-specific headers belong under
 `DEFS/Q9/arm64/`.
