@@ -1,4 +1,15 @@
-/* qmake - small C89 build driver; initial host prototype. */
+/*--------------------------------------------------------------------------------------
+ * File:        qmake.c
+ * Description: Q9-Make build driver.
+ * Owner:       cla / afoe
+ * Version:     0.01
+ *
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
+ *
+ * Edition History
+ * Date    | Ver. | Description                                               | By
+ * 26-11-26| 0.01 | Add file and function headers.                            | cla
+ *--------------------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,11 +77,19 @@ static void report_target_finish(int success, int up_to_date, double elapsed);
 static void report_recipe_failure(const char *target);
 static void replay_output(FILE *input, FILE *output);
 
+/*--------------------------------------------------------------------------------------
+ * Function:    usage
+ * Description: Print command-line usage.
+ * Parameter:   const char *program: Program name.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void usage(const char *program)
 {
-    printf("Usage: %s [-n] [-v|-vv] [-f makefile] [-C profile-dir] [-P configuration] [-DNAME=value] [target]\n", program);
+    printf("Usage: %s [-n] [-v|-vv] [-f makefile] [-C profile-dir] "
+           "[-P configuration] [-DNAME=value] [target]\n", program);
     printf("Build targets from ./q9makefile, or from the file selected with -f.\n");
-    printf("With no target, qmake runs the global default target, or each profile's first target.\n");
+    printf("With no target, qmake runs the global default target, "
+           "or each profile's first target.\n");
     printf("  -? -h --help       show this command-line help\n");
     printf("  -n --dry-run       print commands without running them\n");
     printf("  -v / -vv           show target status / commands and detailed checks\n");
@@ -81,11 +100,23 @@ static void usage(const char *program)
     printf("  --list-configs      list configuration sections in the project file\n");
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    section_matches
+ * Description: Check whether a configuration section applies.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      Nonzero if the section applies.
+ *--------------------------------------------------------------------------------------*/
 static int section_matches(const char *name)
 {
     return strcmp(name, "global") == 0 || strcmp(name, active_section) == 0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    add_configuration
+ * Description: Add a validated configuration name if absent.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int add_configuration(const char *name)
 {
     int i;
@@ -97,6 +128,12 @@ static int add_configuration(const char *name)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    discover_configurations
+ * Description: Read configuration section names from the project file.
+ * Parameter:   void: No parameters.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int discover_configurations(void)
 {
     FILE *file;
@@ -124,6 +161,12 @@ static int discover_configurations(void)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    trim
+ * Description: Remove surrounding whitespace from a string in place.
+ * Parameter:   char *s: Mutable text to trim.
+ * Return:      Pointer to the first non-whitespace character.
+ *--------------------------------------------------------------------------------------*/
 static char *trim(char *s)
 {
     char *end;
@@ -135,6 +178,12 @@ static char *trim(char *s)
     return s;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    host_platform
+ * Description: Identify the current build host.
+ * Parameter:   void: No parameters.
+ * Return:      Host platform name.
+ *--------------------------------------------------------------------------------------*/
 static const char *host_platform(void)
 {
 #if defined(_Q9OS) || defined(_OSK)
@@ -150,6 +199,12 @@ static const char *host_platform(void)
 #endif
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    find_rule
+ * Description: Find an exact target rule.
+ * Parameter:   const char *target: Target name.
+ * Return:      Matching rule, or null if absent.
+ *--------------------------------------------------------------------------------------*/
 static Rule *find_rule(const char *target)
 {
     int i;
@@ -158,6 +213,12 @@ static Rule *find_rule(const char *target)
     return (Rule *)0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    valid_name
+ * Description: Check the syntax of a variable name.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      Nonzero if the name is valid.
+ *--------------------------------------------------------------------------------------*/
 static int valid_name(const char *name)
 {
     const char *p = name;
@@ -171,6 +232,12 @@ static int valid_name(const char *name)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    valid_path_component
+ * Description: Check the syntax of one path component.
+ * Parameter:   const char *component: Path component to validate.
+ * Return:      Nonzero if the component is valid.
+ *--------------------------------------------------------------------------------------*/
 static int valid_path_component(const char *component)
 {
     const char *p = component;
@@ -183,6 +250,12 @@ static int valid_path_component(const char *component)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    find_variable
+ * Description: Find a project variable.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      Matching variable, or null if absent.
+ *--------------------------------------------------------------------------------------*/
 static Variable *find_variable(const char *name)
 {
     int i;
@@ -191,6 +264,12 @@ static Variable *find_variable(const char *name)
     return (Variable *)0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    find_override
+ * Description: Find a command-line variable override.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      Matching override, or null if absent.
+ *--------------------------------------------------------------------------------------*/
 static Variable *find_override(const char *name)
 {
     int i;
@@ -199,6 +278,13 @@ static Variable *find_override(const char *name)
     return (Variable *)0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    set_override
+ * Description: Set a command-line variable override.
+ * Parameter:   const char *name: Name to examine or set.
+ *              const char *value: Variable value.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int set_override(const char *name, const char *value)
 {
     Variable *var = find_override(name);
@@ -215,6 +301,14 @@ static int set_override(const char *name, const char *value)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    set_variable
+ * Description: Set a project variable subject to override precedence.
+ * Parameter:   const char *name: Name to examine or set.
+ *              const char *value: Variable value.
+ *              int command_line: Whether the value is a command-line override.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int set_variable(const char *name, const char *value, int command_line)
 {
     Variable *var = find_variable(name);
@@ -235,6 +329,12 @@ static int set_variable(const char *name, const char *value, int command_line)
 
 /* Search from the newest entry; an outer export already fixed the value
    that an inner directory exports again, so the outermost one decides. */
+/*--------------------------------------------------------------------------------------
+ * Function:    find_inherited
+ * Description: Find the most recent inherited variable.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      Matching variable, or null if absent.
+ *--------------------------------------------------------------------------------------*/
 static Variable *find_inherited(const char *name)
 {
     int i;
@@ -244,6 +344,12 @@ static Variable *find_inherited(const char *name)
 }
 
 /* Precedence: -D, environment, value exported by a parent, this file. */
+/*--------------------------------------------------------------------------------------
+ * Function:    variable_value
+ * Description: Resolve a variable using command-line, environment, inherited and project values.
+ * Parameter:   const char *name: Name to examine or set.
+ * Return:      Resolved value, or an empty string.
+ *--------------------------------------------------------------------------------------*/
 static const char *variable_value(const char *name)
 {
     Variable *var = find_variable(name);
@@ -256,6 +362,15 @@ static const char *variable_value(const char *name)
     return var == (Variable *)0 ? "" : var->value;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    append_text
+ * Description: Append text to a bounded output buffer.
+ * Parameter:   char *out: Destination buffer.
+ *              size_t capacity: Destination buffer size.
+ *              size_t *used: Current output length, updated on success.
+ *              const char *text: Text to append.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int append_text(char *out, size_t capacity, size_t *used, const char *text)
 {
     size_t length = strlen(text);
@@ -266,6 +381,16 @@ static int append_text(char *out, size_t capacity, size_t *used, const char *tex
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    expand_implicit_fields
+ * Description: Expand source and target fields in a command template.
+ * Parameter:   const char *input: Input text or stream.
+ *              const char *source: Source file name.
+ *              const char *target: Target name.
+ *              char *out: Destination buffer.
+ *              size_t capacity: Destination buffer size.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int expand_implicit_fields(const char *input, const char *source,
                                   const char *target, char *out, size_t capacity)
 {
@@ -292,6 +417,15 @@ static int expand_implicit_fields(const char *input, const char *source,
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    expand_text
+ * Description: Expand variable references recursively into a bounded buffer.
+ * Parameter:   const char *input: Input text or stream.
+ *              char *out: Destination buffer.
+ *              size_t capacity: Destination buffer size.
+ *              int depth: Current recursion depth.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int expand_text(const char *input, char *out, size_t capacity, int depth)
 {
     size_t used = 0;
@@ -322,6 +456,14 @@ static int expand_text(const char *input, char *out, size_t capacity, int depth)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    find_expanded_rule
+ * Description: Find a rule whose expanded target matches.
+ * Parameter:   const char *target: Target name.
+ *              char *resolved_target: Receives the expanded target name.
+ *              size_t capacity: Destination buffer size.
+ * Return:      Matching rule, or null if absent.
+ *--------------------------------------------------------------------------------------*/
 static Rule *find_expanded_rule(const char *target, char *resolved_target,
                                 size_t capacity)
 {
@@ -339,6 +481,13 @@ static Rule *find_expanded_rule(const char *target, char *resolved_target,
     return (Rule *)0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    add_dependency
+ * Description: Append a prerequisite to a rule.
+ * Parameter:   Rule *rule: Rule to update.
+ *              const char *name: Name to examine or set.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int add_dependency(Rule *rule, const char *name)
 {
     if (rule->dep_count >= MAX_DEPS || strlen(name) >= MAX_NAME) return 0;
@@ -346,6 +495,13 @@ static int add_dependency(Rule *rule, const char *name)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    add_recipe
+ * Description: Append a recipe to a rule.
+ * Parameter:   Rule *rule: Rule to update.
+ *              const char *command: Recipe command.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int add_recipe(Rule *rule, const char *command)
 {
     size_t length = strlen(command);
@@ -364,6 +520,12 @@ static int add_recipe(Rule *rule, const char *command)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    load_description
+ * Description: Load variables and rules from a project description.
+ * Parameter:   const char *path: Description file path.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int load_description(const char *path)
 {
     FILE *file;
@@ -485,6 +647,12 @@ static int load_description(const char *path)
 }
 
 /* Load the selected toolchain first, then let the project override its defaults. */
+/*--------------------------------------------------------------------------------------
+ * Function:    load_project_description
+ * Description: Load toolchain defaults and the current project description.
+ * Parameter:   void: No parameters.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int load_project_description(void)
 {
     char toolchain_file[MAX_COMMAND];
@@ -581,6 +749,12 @@ static int load_project_description(void)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    build
+ * Description: Build a target and its prerequisites when needed.
+ * Parameter:   const char *target: Target name.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int build(const char *target)
 {
     char resolved_target[MAX_COMMAND];
@@ -662,6 +836,12 @@ static int build(const char *target)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    reset_description
+ * Description: Release recipes and reset rules and default variables.
+ * Parameter:   void: No parameters.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void reset_description(void)
 {
     int i;
@@ -693,6 +873,12 @@ static void reset_description(void)
     set_variable("TARGET_CPU", "", 0);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    should_report_target
+ * Description: Determine whether a target gets a status line.
+ * Parameter:   const char *target: Target name.
+ * Return:      Nonzero if a status line is shown.
+ *--------------------------------------------------------------------------------------*/
 static int should_report_target(const char *target)
 {
     const char *base = target;
@@ -712,6 +898,12 @@ static int should_report_target(const char *target)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    is_cross_profile_host_helper
+ * Description: Identify host helper targets in cross profiles.
+ * Parameter:   const char *target: Target name.
+ * Return:      Nonzero if the target is a host helper.
+ *--------------------------------------------------------------------------------------*/
 static int is_cross_profile_host_helper(const char *target)
 {
     int cross_profile = strcmp(active_section, "mac-xcc-68k") == 0 ||
@@ -721,6 +913,12 @@ static int is_cross_profile_host_helper(const char *target)
             strstr(target, "/macOS/x86_64/CMDS/") != (const char *)0);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    report_target_start
+ * Description: Print and flush the target status label.
+ * Parameter:   const char *target: Target name.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void report_target_start(const char *target)
 {
     const char *base = target;
@@ -737,6 +935,14 @@ static void report_target_start(const char *target)
     fflush(stdout);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    report_target_finish
+ * Description: Print the target result and elapsed time.
+ * Parameter:   int success: Whether the build succeeded.
+ *              int up_to_date: Whether the target was already up to date.
+ *              double elapsed: Elapsed build time in seconds.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void report_target_finish(int success, int up_to_date, double elapsed)
 {
     const char *mark = success ?
@@ -753,6 +959,12 @@ static void report_target_finish(int success, int up_to_date, double elapsed)
     fflush(stdout);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    report_recipe_failure
+ * Description: Report a failed command and its captured output.
+ * Parameter:   const char *target: Target name.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void report_recipe_failure(const char *target)
 {
     if (failed_command_output != (FILE *)0) {
@@ -765,6 +977,13 @@ static void report_recipe_failure(const char *target)
                 target, failed_command_status);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    replay_output
+ * Description: Copy captured output to a destination stream.
+ * Parameter:   FILE *input: Input text or stream.
+ *              FILE *output: Destination stream.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void replay_output(FILE *input, FILE *output)
 {
     char buffer[512];
@@ -777,6 +996,13 @@ static void replay_output(FILE *input, FILE *output)
     fflush(output);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    run_command
+ * Description: Expand and execute a recipe command.
+ * Parameter:   const char *raw_command: Recipe command before expansion.
+ *              const char *target: Target name.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int run_command(const char *raw_command, const char *target)
 {
     char command[MAX_LINE];
@@ -818,6 +1044,12 @@ static int run_command(const char *raw_command, const char *target)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    implicit_object
+ * Description: Build an object using an implicit source rule if applicable.
+ * Parameter:   const char *target: Target name.
+ * Return:      1 on success, 0 if inapplicable, -1 on failure.
+ *--------------------------------------------------------------------------------------*/
 static int implicit_object(const char *target)
 {
     const char *suffix = strrchr(target, '.');
@@ -859,7 +1091,8 @@ static int implicit_object(const char *target)
                 return -1;
             }
         } else {
-            sprintf(command, "$(TARGET_CC) $(TARGET_CPPFLAGS) $(TARGET_CFLAGS) -c -o \"%s\" \"%s\"", target, source);
+            sprintf(command, "$(TARGET_CC) $(TARGET_CPPFLAGS) $(TARGET_CFLAGS) "
+                    "-c -o \"%s\" \"%s\"", target, source);
         }
     } else {
         const char *template = variable_value("ASM_TO_R_COMMAND");
@@ -879,6 +1112,12 @@ static int implicit_object(const char *target)
     return run_command(command, target) ? 1 : -1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    implicit_source_exists
+ * Description: Check for a source matching an implicit object target.
+ * Parameter:   const char *target: Target name.
+ * Return:      Nonzero if a source exists.
+ *--------------------------------------------------------------------------------------*/
 static int implicit_source_exists(const char *target)
 {
     const char *suffix = strrchr(target, '.');
@@ -900,6 +1139,12 @@ static int implicit_source_exists(const char *target)
 }
 
 /* Pass the variables named in EXPORT, expanded here, down to SUBDIRS. */
+/*--------------------------------------------------------------------------------------
+ * Function:    export_variables
+ * Description: Expand and pass selected variables to child directories.
+ * Parameter:   void: No parameters.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int export_variables(void)
 {
     char names[MAX_COMMAND];
@@ -939,6 +1184,13 @@ static int export_variables(void)
     return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    process_directory
+ * Description: Build a target in the current directory and selected subdirectories.
+ * Parameter:   const char *requested_target: Requested target, or null for the default.
+ *              int depth: Current recursion depth.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int process_directory(const char *requested_target, int depth)
 {
     int saved_inherited;
@@ -1061,6 +1313,13 @@ static int process_directory(const char *requested_target, int depth)
     return build(target);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    main
+ * Description: Parse command-line options and process selected configurations.
+ * Parameter:   int argc: Number of command-line arguments.
+ *              char **argv: Command-line argument vector.
+ * Return:      Process exit status.
+ *--------------------------------------------------------------------------------------*/
 int main(int argc, char **argv)
 {
     const char *target = (const char *)0;
