@@ -1,12 +1,13 @@
 /*
- * q9-qclib string and memory functions
+ * File: str.c
+ * Description: Implement string and memory functions for the Q9 68k runtime.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * Purpose:
- *   Implements the C string and byte-memory operations required by the Q9
- *   compiler tools on the 68k target.
- *
- * Edition history:
- *   2026-09-11  Introduced the English source-header format.
+ * Edition History
+ * 2026-11-26  0.2  Preserve the first unconverted character in strtol.
+ * 2026-09-11  0.1  Introduced the English source-header format.
  */
 /* qclib string and memory functions.
  *
@@ -263,14 +264,14 @@ char *qs_tok(int *a)
 /* ---------------------------------------------------------------- strtol */
 /* Accept bases 2..36 and 0 (prefix selects hexadecimal for 0x, octal for 0,
    decimal otherwise). Skip leading whitespace and an optional sign. end is
-   set to the first unused character, or to the original input when no digit
+   set to the first unused character, or to the initial input when no digit
    was consumed, as required by C89.
  *
  * Clamp overflow to 2147483647 or -2147483648 while still consuming all
  * valid digits so end is correct. C89 also requires errno = ERANGE; qclib has
  * no errno, so this limitation is documented explicitly. */
 /* Function: qs_tol
- * Converts a decimal string to a signed long value.
+ * Converts a string using the requested base to a signed long value.
  * Parameters: a Runtime argument frame containing string, end pointer and base.
  * Returns: Converted value. */
 int qs_tol(int *a)
@@ -344,19 +345,9 @@ int qs_tol(int *a)
 			*endp = s;
 		return 0;
 	}
-	/* Microware's clib places the end pointer one past the last consumed
-	   digit for some inputs; to match the test-suite output we keep p as-is.
-	   No change to pointer reported here. */
-	if (endp != 0) {
-		char *q = p;
-		if (*q != 0 && (((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z')))) {
-			while (*q != 0 && (((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z'))))
-				q++;
-			*endp = q;
-		} else {
-			*endp = p;
-		}
-	}
+	/* The first unconverted character begins at p. */
+	if (endp != 0)
+		*endp = p;
 
 	if (ueber != 0) {
 		if (neg != 0)

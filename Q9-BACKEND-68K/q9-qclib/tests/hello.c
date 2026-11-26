@@ -1,28 +1,24 @@
-/* Library comparison test.
+/*
+ * File: hello.c
+ * Description: Compare Q9 library behavior against the system C library.
+ * Owner: cla / afoe
+ * Version: 0.2
+ * Repository: Q9-Forge/Q9-QCC
  *
- * It is linked TWICE, once against qclib and once against Microware clib,
- * und beide Module laufen im selben Emulatorlauf (test/vsclib.sh). Was
- * hier steht, muss also gegen BEIDE Bibliotheken dasselbe ausgeben.
- *
- * This gives two rules for new cases:
- *
- * 1. Test only STANDARDIZED behavior. C89 specifies that strncmp returns
- *    VORZEICHEN zurueck ("greater than, equal to, or less than zero"),
- *    keinen bestimmten Wert -- clib liefert die Bytedifferenz, qclib
- *    -1/0/1. Deshalb geht alles durch vorz() statt direkt in die
- *    Ausgabe.
- * 2. Do not print pointers; addresses necessarily differ.
- *
- * The stderr case (FILE* == 0) is intentionally NOT here: qclib maps it
- * auf Pfad 2, clib laeuft damit ins Ungewisse -- vergleichen liesse sich
- * das nicht. Er gehoert in einen Test, der nur qclib faehrt.
+ * Edition History
+ * 2026-11-26  0.2  Flush formatted output before the putchar comparison.
+ * 2026-09-18  0.1  Added the shared library behavior checks.
  */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
+/* Function: vorz
+ * Normalizes a comparison result to its sign.
+ * Parameters: v Comparison result.
+ * Returns: -1, zero or 1.
+ */
 int vorz(int v)
 {
 	if (v < 0)
@@ -32,6 +28,11 @@ int vorz(int v)
 	return 0;
 }
 
+/* Function: main
+ * Runs the shared qclib behavior checks.
+ * Parameters: None.
+ * Returns: Zero on success.
+ */
 int main()
 {
 	FILE *fp;
@@ -202,6 +203,8 @@ int main()
 	strcpy(sbuf, "kopiert");
 	printf("strcpy %s\n", sbuf);
 
+	/* Flush formatted output before writing directly with putchar. */
+	fflush(stdout);
 	putchar('X');
 	putchar('\n');
 
