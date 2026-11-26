@@ -1,4 +1,15 @@
-/* qost -- conservative optimizer for Q9 Stack-IR (C89). */
+/*--------------------------------------------------------------------------------------
+ * File:        qost.c
+ * Description: Conservative optimizer for Q9 Stack-IR.
+ * Owner:       cla / afoe
+ * Version:     0.01
+ *
+ * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
+ *
+ * Edition History
+ * Date    | Ver. | Description                                               | By
+ * 26-11-26| 0.01 | Document functions, name line endings and translate status.      | cla
+ *--------------------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +18,10 @@
 #define READ_CHUNK 8192
 #define U32_MASK 0xffffffffUL
 #define U32_SIGN 0x80000000UL
+#define Q9_EOL_NONE 0 /* No line ending. */
+#define Q9_EOL_LF 1   /* Line feed. */
+#define Q9_EOL_CRLF 2 /* Carriage return followed by line feed. */
+#define Q9_EOL_CR 3   /* Carriage return. */
 
 typedef struct {
 	char *text;
@@ -22,12 +37,25 @@ static IrLine *lines;
 static int line_count;
 static int optimizations;
 
+/*--------------------------------------------------------------------------------------
+ * Function:    fail
+ * Description: Report an error and terminate the process.
+ * Parameter:   const char *message: Error message.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void fail(const char *message)
 {
 	fprintf(stderr, "qost: %s\n", message);
 	exit(1);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    grow
+ * Description: Allocate or resize a buffer.
+ * Parameter:   void *old: Existing allocation, or null.
+ *              size_t size: Requested allocation size.
+ * Return:      Pointer to the allocated buffer.
+ *--------------------------------------------------------------------------------------*/
 static void *grow(void *old, size_t size)
 {
 	void *next = realloc(old, size);
@@ -35,6 +63,12 @@ static void *grow(void *old, size_t size)
 	return next;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    load_file
+ * Description: Read the input file into the source buffer.
+ * Parameter:   const char *path: Input or output path.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void load_file(const char *path)
 {
 	FILE *fp = fopen(path, "rb");
@@ -64,6 +98,12 @@ static void load_file(const char *path)
 	source[source_size] = 0;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    split_lines
+ * Description: Split the source buffer into IR lines and record line endings.
+ * Parameter:   void: No parameters.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void split_lines(void)
 {
 	int i, count = 1, paired;
@@ -79,13 +119,13 @@ static void split_lines(void)
 	line_count = 0;
 	lines[line_count].text = source;
 	lines[line_count].replacement = 0;
-	lines[line_count].eol = 0;
+	lines[line_count].eol = Q9_EOL_NONE;
 	lines[line_count++].removed = 0;
 	for (i = 0; i < source_size; ++i) {
 		if (source[i] != '\r' && source[i] != '\n') continue;
 		paired = source[i] == '\r' && i + 1 < source_size && source[i + 1] == '\n';
-		if (paired) lines[line_count - 1].eol = 2;
-		else lines[line_count - 1].eol = source[i] == '\r' ? 3 : 1;
+		if (paired) lines[line_count - 1].eol = Q9_EOL_CRLF;
+		else lines[line_count - 1].eol = source[i] == '\r' ? Q9_EOL_CR : Q9_EOL_LF;
 		source[i] = 0;
 		if (paired) {
 			source[i + 1] = 0;
@@ -94,12 +134,18 @@ static void split_lines(void)
 		if (i + 1 < source_size) {
 			lines[line_count].text = source + i + 1;
 			lines[line_count].replacement = 0;
-			lines[line_count].eol = 0;
+			lines[line_count].eol = Q9_EOL_NONE;
 			lines[line_count++].removed = 0;
 		}
 	}
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    next_live
+ * Description: Find the next line that has not been removed.
+ * Parameter:   int index: IR line index.
+ * Return:      Line index, or -1 if no line remains.
+ *--------------------------------------------------------------------------------------*/
 static int next_live(int index)
 {
 	++index;
@@ -107,11 +153,23 @@ static int next_live(int index)
 	return index < line_count ? index : -1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    line_text
+ * Description: Get the replacement or source text for a line.
+ * Parameter:   int index: IR line index.
+ * Return:      Pointer to the line text.
+ *--------------------------------------------------------------------------------------*/
 static char *line_text(int index)
 {
 	return lines[index].replacement != 0 ? lines[index].replacement : lines[index].text;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    trim
+ * Description: Trim leading and trailing spaces and tabs in place.
+ * Parameter:   char *text: Mutable IR text.
+ * Return:      Pointer to the trimmed text.
+ *--------------------------------------------------------------------------------------*/
 static char *trim(char *text)
 {
 	char *end;
@@ -122,6 +180,13 @@ static char *trim(char *text)
 	return text;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    parse_push
+ * Description: Parse a signed 32-bit PUSH operand.
+ * Parameter:   char *text: Mutable IR text.
+ *              unsigned long *value: Operand value or destination for the parsed value.
+ * Return:      1 on success, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int parse_push(char *text, unsigned long *value)
 {
 	char token[64], *p, *end;
@@ -151,6 +216,12 @@ static int parse_push(char *text, unsigned long *value)
 	return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    signed32
+ * Description: Interpret the low 32 bits as a signed value.
+ * Parameter:   unsigned long value: Operand value or destination for the parsed value.
+ * Return:      Signed value.
+ *--------------------------------------------------------------------------------------*/
 static long signed32(unsigned long value)
 {
 	value &= U32_MASK;
@@ -158,6 +229,15 @@ static long signed32(unsigned long value)
 	return (long)value;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    binary_result
+ * Description: Evaluate a supported binary operation without signed overflow.
+ * Parameter:   const char *op: IR operation name.
+ *              unsigned long a: First operand.
+ *              unsigned long b: Second operand.
+ *              unsigned long *result: Receives the evaluated value.
+ * Return:      1 if evaluated, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int binary_result(const char *op, unsigned long a, unsigned long b, unsigned long *result)
 {
 	long sa = signed32(a), sb = signed32(b);
@@ -201,6 +281,14 @@ static int binary_result(const char *op, unsigned long a, unsigned long b, unsig
 	return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    unary_result
+ * Description: Evaluate a supported unary operation.
+ * Parameter:   const char *op: IR operation name.
+ *              unsigned long a: First operand.
+ *              unsigned long *result: Receives the evaluated value.
+ * Return:      1 if evaluated, otherwise 0.
+ *--------------------------------------------------------------------------------------*/
 static int unary_result(const char *op, unsigned long a, unsigned long *result)
 {
 	if (strcmp(op, "NEG") == 0) *result = (0UL - a) & U32_MASK;
@@ -211,6 +299,13 @@ static int unary_result(const char *op, unsigned long a, unsigned long *result)
 	return 1;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    set_push
+ * Description: Replace a line with a PUSH of the given value.
+ * Parameter:   int index: IR line index.
+ *              unsigned long value: Operand value or destination for the parsed value.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void set_push(int index, unsigned long value)
 {
 	char text[48], digits[16];
@@ -234,6 +329,12 @@ static void set_push(int index, unsigned long value)
 	strcpy(lines[index].replacement, text);
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    optimize
+ * Description: Fold supported constant expressions in one pass.
+ * Parameter:   void: No parameters.
+ * Return:      Nonzero if the pass changed any lines.
+ *--------------------------------------------------------------------------------------*/
 static int optimize(void)
 {
 	int i, j, k, changed = 0;
@@ -263,6 +364,12 @@ static int optimize(void)
 	return changed;
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    write_file
+ * Description: Write remaining IR lines to an output file.
+ * Parameter:   const char *path: Input or output path.
+ * Return:      No return value.
+ *--------------------------------------------------------------------------------------*/
 static void write_file(const char *path)
 {
 	FILE *fp = fopen(path, "wb");
@@ -273,13 +380,21 @@ static void write_file(const char *path)
 		if (lines[i].removed) continue;
 		text = line_text(i);
 		if (fwrite(text, 1, strlen(text), fp) != strlen(text)) fail("error writing output file");
-		if (lines[i].eol == 1 && fputc('\n', fp) == EOF) fail("error writing output file");
-		if (lines[i].eol == 2 && (fputc('\r', fp) == EOF || fputc('\n', fp) == EOF)) fail("error writing output file");
-		if (lines[i].eol == 3 && fputc('\r', fp) == EOF) fail("error writing output file");
+		if (lines[i].eol == Q9_EOL_LF && fputc('\n', fp) == EOF) fail("error writing output file");
+		if (lines[i].eol == Q9_EOL_CRLF && (fputc('\r', fp) == EOF || fputc('\n', fp) == EOF))
+			fail("error writing output file");
+		if (lines[i].eol == Q9_EOL_CR && fputc('\r', fp) == EOF) fail("error writing output file");
 	}
 	if (fclose(fp) != 0) fail("error closing output file");
 }
 
+/*--------------------------------------------------------------------------------------
+ * Function:    main
+ * Description: Read, optimize and write the IR file.
+ * Parameter:   int argc: Number of command-line arguments.
+ *              char **argv: Command-line argument vector.
+ * Return:      Process exit status.
+ *--------------------------------------------------------------------------------------*/
 int main(int argc, char **argv)
 {
 	if (argc != 3) {
@@ -290,6 +405,6 @@ int main(int argc, char **argv)
 	split_lines();
 	while (optimize()) { /* Fold newly exposed constant expressions. */ }
 	write_file(argv[2]);
-	fprintf(stderr, "qost: %d konstante Faltungen\n", optimizations);
+	fprintf(stderr, "qost: %d constant folds\n", optimizations);
 	return 0;
 }
