@@ -2,7 +2,7 @@
  * File:        platform_os9.c
  * Description: Native Q9/68k platform services for Q9-Make.
  * Owner:       cla / afoe
- * Version:     0.02
+ * Version:     0.03
  *
  * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
@@ -10,6 +10,7 @@
  * Date    | Ver. | Description                                               | By
  * 26-11-26| 0.01 | Add file and function headers; revise comments.           | cla
  * 26-11-26| 0.02 | Reject overlong command parameters and release modules.   | cla
+ * 26-11-26| 0.03 | Preserve module names at the path length limit.          | cla
  *--------------------------------------------------------------------------------------*/
 
 #include <stdio.h>
@@ -195,7 +196,7 @@ static int q9_exec_words(char **argv, int argc)
 	    strlen(argv[0]) + sizeof("/dd/CMDS_QCC/") > sizeof(load_path)) return -1;
 	used = 0;
 	j = 0;
-	while (argv[0][j] != '\0' && used < 254) {
+	while (argv[0][j] != '\0' && (size_t)used < sizeof(load_path) - 1) {
 		load_path[used++] = argv[0][j];
 		j++;
 	}
@@ -207,7 +208,7 @@ static int q9_exec_words(char **argv, int argc)
 		strcpy(load_path, "/dd/CMDS_QCC/");
 		j = 0;
 		used = (int) strlen(load_path);
-		while (argv[0][j] != '\0' && used < 254) {
+		while (argv[0][j] != '\0' && (size_t)used < sizeof(load_path) - 1) {
 			load_path[used++] = argv[0][j];
 			j++;
 		}
@@ -222,7 +223,7 @@ static int q9_exec_words(char **argv, int argc)
 			strcpy(load_path, "/dd/CMDS/");
 			j = 0;
 			used = (int) strlen(load_path);
-			while (argv[0][j] != '\0' && used < 254) {
+			while (argv[0][j] != '\0' && (size_t)used < sizeof(load_path) - 1) {
 				load_path[used++] = argv[0][j];
 				j++;
 			}

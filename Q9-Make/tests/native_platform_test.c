@@ -2,19 +2,21 @@
  * File:        native_platform_test.c
  * Description: Check native command argument bounds and module cleanup.
  * Owner:       cla / afoe
- * Version:     0.01
+ * Version:     0.02
  *
  * This file is part of the Q9-Forge repository. See https://github.com/Q9-Forge.
  *
  * Edition History
  * Date    | Ver. | Description                                               | By
  * 26-11-26| 0.01 | Add native command bounds regression checks.             | cla
+ * 26-11-26| 0.02 | Test the maximum supported module name.                   | cla
  *--------------------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "../src/platform_os9.c"
 static int loads, unlinks, forks, legacy;
+static char loaded_name[256];
 /*--------------------------------------------------------------------------------------
  * Function:    _os_load
  * Description: Simulate loading a command module.
@@ -26,7 +28,8 @@ static int loads, unlinks, forks, legacy;
  *--------------------------------------------------------------------------------------*/
 int _os_load(char *n, int m, int c, void **p)
 {
-    (void)n; (void)m; (void)c;
+    (void)m; (void)c;
+    strcpy(loaded_name, n);
     ++loads;
     if (legacy && loads % 2) return -1;
     *p = (void *)1;
@@ -111,7 +114,7 @@ unsigned long _os_ticks(void) { return 0; }
  * Return:      Process exit status.
  *--------------------------------------------------------------------------------------*/
 int main(void) {
- char huge[1100]; char *args[3]; int before;
+ char huge[1100]; char max_name[243]; char *args[3]; int before;
  memset(huge,'x',sizeof(huge)-1); huge[sizeof(huge)-1]=0;
  args[0]="tool"; args[1]="ok"; args[2]=0;
  if(q9_exec_words(args,2)!=0 || forks!=1 || unlinks!=1) return 1;
@@ -122,5 +125,9 @@ int main(void) {
  args[0]=huge; before=loads;
  if(q9_exec_words(args,1)!=-1 || loads!=before) return 4;
  if(qmake_run(huge)!=-1 || loads!=before) return 5;
+ legacy=0;
+ memset(max_name, 'n', sizeof(max_name)-1); max_name[sizeof(max_name)-1]=0;
+ args[0]=max_name; args[1]=0;
+ if(q9_exec_words(args,1)!=0 || strlen(loaded_name)!=255) return 6;
  puts("native bounds checks passed");return 0;
 }
