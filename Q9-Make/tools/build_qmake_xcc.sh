@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build qmake as an OS-9/68030 module with the Microware XCC toolchain.
+# Build qmake as a Q9/68030 module with the XCC toolchain.
 #
-# qmake.c and platform_posix.c compile UNCHANGED here: Microware's own
+# qmake.c and platform_posix.c compile here with the SDK
 # UNIX-compatibility layer (unix.l + sys_clib.l) provides a real
 # struct-stat-based stat()/chdir()/popen(), so the same host platform
 # adapter used on macOS/Linux applies on Q9/68K too, through XCC's C89

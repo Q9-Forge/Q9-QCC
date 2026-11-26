@@ -58,7 +58,7 @@ clean:
 	if exist "build\qmake.68k" del "build\qmake.68k"
 
 [AXQ]
-# qmake.c and platform_posix.c compile UNCHANGED via Microware's own XCC and
+# qmake.c and platform_posix.c compile with XCC and
 # its UNIX-compatibility libraries (unix.l + sys_clib.l) -- see
 # tools/build_qmake_xcc.sh. This does not go through $(TARGET_CC)/qcc like
 # the other components' AXQ sections: XCC here is invoked directly, because
