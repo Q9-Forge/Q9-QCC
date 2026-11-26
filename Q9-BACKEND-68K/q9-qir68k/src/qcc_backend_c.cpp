@@ -15,7 +15,7 @@
 #include <string.h>
 
 #define OP_LEN          24
-#define ARG_LEN         64
+#define ARG_LEN         512
 #define NAME_LEN        64
 #define CONV_LEN        64  /* Function.convention -- the compiler has no field-size operator */
 #define FUNC_ATTR_VARIADIC 1
@@ -705,7 +705,8 @@ static void readIR(const char* path) {
 	while (fgets(raw, sizeof(raw), fp)) {
 		line++;
 		tok = strtok(raw, " \t\r\n");
-		if (!tok || tok[0] == ';' || tok[0] == '#') continue;
+		if (!tok || tok[0] == '#') continue;
+		if (tok[0] == ';' && strncmp(tok, ";@Q9SRC", 7) != 0) continue;
 		if (strcmp(tok, "OK") == 0 || strcmp(tok, "FAIL") == 0) continue;
 		if (irCount >= MAX_IR_LINES) fatal("IR: zu viele Zeilen");
 		if (strcmp(tok, "DISPATCHTAB") == 0) {
@@ -730,6 +731,16 @@ static void readIR(const char* path) {
 			continue;
 		}
 		insP = &ir[irCount++];
+		if (strcmp(tok, ";@Q9SRC") == 0) {
+			char* sourceLine = strtok(NULL, " \t\r\n");
+			char* sourceFile = strtok(NULL, " \t\r\n");
+			strcpy(insP->op, "Q9SRC"); insP->line = line; insP->argc = 0;
+			for (ai = 0; ai < MAX_ARGS; ai++) insP->args[ai] = argEmpty;
+			if (sourceLine && sourceFile) {
+				insP->args[0] = argIntern(sourceLine, line); insP->args[1] = argIntern(sourceFile, line); insP->argc = 2;
+			}
+			continue;
+		}
 		strncpy(insP->op, tok, OP_LEN - 1); insP->op[OP_LEN - 1] = '\0';
 		insP->line = line;
 		insP->argc = 0;
@@ -1014,6 +1025,7 @@ static void collectFunctions(void) {
 	memset(&current, 0, sizeof(current));
 	for (i = 0; i < irCount; i++) {
 		Instr* insP = &ir[i];
+		if (strcmp(insP->op, "Q9SRC") == 0) continue;
 		if (strcmp(insP->op, "GLOBAL") == 0 || strcmp(insP->op, "GARRAY") == 0 || strcmp(insP->op, "GINIT") == 0 || strcmp(insP->op, "GINITD") == 0 || strcmp(insP->op, "GINITQ") == 0 || strcmp(insP->op, "GINITAT") == 0 || strcmp(insP->op, "GINITADDR") == 0) {
 			/* Allowed before the first function (true globals), inside an open
 			   function (static locals), and between functions since 2026-08-10.
@@ -1058,6 +1070,8 @@ static void collectFunctions(void) {
 			   Platzhalter ist, den das Startmodul beim Linken ueberschreibt/ergaenzt
 			   -- absichtlich nicht spekulativ veraendert, bevor das geklaert ist
 			   (s. STATUS_DEFMODUL.md Phase 3). Echte Verarbeitung folgt separat. */
+		} else if (strcmp(insP->op, "Q9SRC") == 0) {
+			/* Source markers are metadata and may also precede the first function. */
 		} else if (strcmp(insP->op, "FUNC") == 0) {
 			/* Third argument is isStatic; fourth is the attribute word. Legacy
 			   textual calling-convention values are still accepted for old IR. */
@@ -1778,6 +1792,11 @@ static int emitDataOp(FILE* out, const char* op, Instr* insP, const Function* fn
 	return 1;
 }
 
+static void emitSourceMarker(FILE* out, const Instr* insP) {
+	if (insP->argc == 2)
+		fprintf(out, "%s@Q9SRC %s %s\n", fullCommentPrefix(), insP->args[0], insP->args[1]);
+}
+
 static void emitIR(FILE* out) {
 	int serial = 0;
 	int fi, k;
@@ -2120,6 +2139,12 @@ static void emitIR(FILE* out) {
 		fi = order[oi];
 		fn = &funcs[fi];
 		if (fn->declOnly) continue; /* defined in ANOTHER file; no body here */
+		{
+			int sm = fn->first - 2;
+			while (sm >= 0 && strcmp(ir[sm].op, "Q9SRC") == 0) sm--;
+			for (sm++; sm < fn->first - 1; sm++)
+				if (strcmp(ir[sm].op, "Q9SRC") == 0) emitSourceMarker(out, &ir[sm]);
+		}
 		if (os9Mode && strcmp(fn->name, "main") == 0) {
 			fputs("main:\n", out);
 			/* cstart.r calls the exported entry point according to the Microware C ABI:
@@ -2242,7 +2267,9 @@ static void emitIR(FILE* out) {
 			Instr* insP = &ir[k];
 			const char* op = insP->op;
 
-			if (emitDataOp(out, op, insP, fn, &serial)) {
+			if (strcmp(op, "Q9SRC") == 0) {
+				emitSourceMarker(out, insP);
+			} else if (emitDataOp(out, op, insP, fn, &serial)) {
 				/* See emitDataOp(): PUSH..PDIFF were moved out because of branch
 				   distance (2026-09-09). */
 			} else if (strcmp(op, "ADD") == 0) {

@@ -295,6 +295,13 @@ static int curFile;
 static int curLine;
 static int curSect;
 static int curPC;              /* Offset within the current section. */
+#define Q9_LINE_MAX 32768
+static int q9SourceLine;
+static int q9SourceName;
+static int q9LineN;
+static int q9LineOffset[Q9_LINE_MAX];
+static int q9LineNumber[Q9_LINE_MAX];
+static int q9LineSource[Q9_LINE_MAX];
 /* Location where the CURRENT statement starts. This is exactly what "*"
    returns for the entire statement: "dc.w *,*,*" at offset 2 produces three
    values of $0002 (measured). Using the advancing location would be wrong
@@ -417,6 +424,45 @@ static int internN(const char *s, int n)
 static int intern(const char *s)
 {
 	return internN(s, strLen(s));
+}
+
+/* Consume the QCC comment transport emitted by qir68k. The filename is
+   hex-encoded so spaces and assembler comment syntax cannot corrupt it. */
+static int q9SourceMarker(void)
+{
+	const char *p = lxTmp;
+	char file[512];
+	int line = 0, n = 0, hi, lo;
+	if (*p == '*' || *p == ';') p++;
+	if (p[0] != '@' || p[1] != 'Q' || p[2] != '9' || p[3] != 'S' ||
+	    p[4] != 'R' || p[5] != 'C' || p[6] != ' ') return 0;
+	p += 7;
+	if (*p < '0' || *p > '9') return 0;
+	while (*p >= '0' && *p <= '9') { if (line < 1000000) line = line * 10 + (*p - '0'); p++; }
+	if (*p++ != ' ') return 0;
+	while (p[0] && p[1] && n + 1 < (int)sizeof(file)) {
+		hi = p[0] >= '0' && p[0] <= '9' ? p[0] - '0' : p[0] >= 'a' && p[0] <= 'f' ? p[0] - 'a' + 10 : p[0] >= 'A' && p[0] <= 'F' ? p[0] - 'A' + 10 : -1;
+		lo = p[1] >= '0' && p[1] <= '9' ? p[1] - '0' : p[1] >= 'a' && p[1] <= 'f' ? p[1] - 'a' + 10 : p[1] >= 'A' && p[1] <= 'F' ? p[1] - 'A' + 10 : -1;
+		if (hi < 0 || lo < 0) return 0;
+		file[n++] = (char)(hi * 16 + lo); p += 2;
+	}
+	file[n] = 0;
+	if (line <= 0 || n == 0) return 0;
+	q9SourceLine = line;
+	q9SourceName = intern(file);
+	return 1;
+}
+
+static void q9LineAdd(int offset, int line, int source)
+{
+	if (q9LineN > 0 && q9LineOffset[q9LineN - 1] == offset &&
+	    q9LineNumber[q9LineN - 1] == line && q9LineSource[q9LineN - 1] == source)
+		return;
+	if (q9LineN >= Q9_LINE_MAX) fatal("QCC-Zeilentabelle voll (Q9_LINE_MAX)", "");
+	q9LineOffset[q9LineN] = offset;
+	q9LineNumber[q9LineN] = line;
+	q9LineSource[q9LineN] = source;
+	q9LineN++;
 }
 
 /* ============================================================ Diagnosen === */
@@ -5609,6 +5655,9 @@ static void runPass(void)
 	codeN = 0;
 	idataN = 0;
 	refN = 0;
+	q9SourceLine = 0;
+	q9SourceName = -1;
+	q9LineN = 0;
 	/* Also reset state SET by the source, not only state that is
 	   fortschreibt -- sonst schlaegt im zweiten Durchlauf die Wache gegen
 	   a second psect. */
@@ -5643,6 +5692,7 @@ static void runPass(void)
 	symMoved = 0;
 
 	while (readLine()) {
+		if (q9SourceMarker()) continue;
 		if (!splitLine())
 			continue;
 
@@ -5758,6 +5808,9 @@ static void runPass(void)
 
 		/* From here the statement location is fixed; this is "*". */
 		stmtPC = curPC;
+		if (emitting && q9SourceLine > 0 && q9SourceName >= 0 &&
+		    curSect == SECT_CODE && lnOp[0] != 0)
+			q9LineAdd(stmtPC, q9SourceLine, q9SourceName);
 
 		/* A colon label becomes GLOBAL only when it is INSIDE the psect.
 		   A probe with labels before, inside, and after "ends" showed that only
@@ -5990,6 +6043,46 @@ static int nameLess(int a, int b)
 	}
 }
 
+static int q9DebugSize(void)
+{
+	int i, size, lastSource;
+	size = q9LineN ? 4 : 0;
+	lastSource = -1;
+	for (i = 0; i < q9LineN; i++) {
+		if (q9LineSource[i] != lastSource) {
+			const char *path = poolAt(q9LineSource[i]);
+			size += 7 + strLen(path) + 6; /* type/value + :SC:Q9 + NUL */
+			lastSource = q9LineSource[i];
+		}
+		size += 10; /* type 1, code offset, packed line/column */
+	}
+	return size;
+}
+
+static void q9WriteDebug(void)
+{
+	int i, lastSource;
+	char stab[512];
+	if (q9LineN == 0) return;
+	outLong(0x00000106);
+	lastSource = -1;
+	for (i = 0; i < q9LineN; i++) {
+		if (q9LineSource[i] != lastSource) {
+			const char *path = poolAt(q9LineSource[i]);
+			int j, n = strLen(path);
+			if (n + 7 >= (int)sizeof(stab)) fatal("QCC-Quelldateiname zu lang", "");
+			for (j = 0; j < n; j++) stab[j] = path[j];
+			stab[n++] = ':'; stab[n++] = 'S'; stab[n++] = 'C'; stab[n++] = ':';
+			stab[n++] = 'Q'; stab[n++] = '9'; stab[n] = 0;
+			outWord(2); outLong(0); outStrZ(stab);
+			lastSource = q9LineSource[i];
+		}
+		outWord(1);
+		outLong(q9LineOffset[i]);
+		outLong(q9LineNumber[i] << 12);
+	}
+}
+
 /* ============================================================ Write ROF ==== */
 static void writeRof(void)
 {
@@ -6062,7 +6155,7 @@ static void writeRof(void)
 	outLong(psTrap);
 	outLong(remoteStatStorage);    /* remotestatsiz */
 	outLong(0);                    /* remoteidatsiz -- no caller */
-	outLong(0);                    /* debugsiz */
+	outLong(q9DebugSize());       /* debugsiz */
 	outStrZ(poolAt(psName));
 
 	/* Global definitions, sorted ALPHABETICALLY. This is not
@@ -6232,6 +6325,7 @@ static void writeRof(void)
 	outLong(0);
 	outLong(0);
 	outLong(0);
+	q9WriteDebug();
 	outFlush();
 }
 

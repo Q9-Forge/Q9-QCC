@@ -19,6 +19,7 @@
  */
 
 extern int printf(const char *fmt, ...);
+extern int sprintf(char *dst, const char *fmt, ...);
 extern int puts(const char *s);
 extern void exit(int code);
 extern char *fopen(const char *path, const char *mode);
@@ -76,6 +77,8 @@ static int rExtAt[QL_ROF];
 static int rExtN[QL_ROF];
 static int rLocalAt[QL_ROF];
 static int rLocalN[QL_ROF];
+static int rDebugAt[QL_ROF];
+static int rDebugN[QL_ROF];
 
 /* Psect locations after layout in the module and data areas. */
 static int bCode[QL_ROF];    /* Code module offset. */
@@ -153,6 +156,7 @@ static int irefDataN;
    The table does not move CODE because it resides in data, so two passes
    are sufficient: one counts and one writes. */
 static int optJumpTab;         /* -a. */
+static int optSourceLines;      /* -g: write a .lines sidecar. */
 static int jtPlan;             /* 1 = counting pass. */
 static int jtSym[QL_JT];       /* One entry per symbol, not per call. */
 static int jtN;
@@ -268,6 +272,7 @@ static int rofParse(int at0)
 	int at;
 	int i;
 	int k;
+	int debugSize;
 
 	if (rofN >= QL_ROF)
 		fatal("zu viele ROFs (QL_ROF)", "");
@@ -298,8 +303,8 @@ static int rofParse(int at0)
 	rRem[k] = be32(at0 + 44);
 	if (be32(at0 + 48) != 0)
 		fatal("remote INITIALISIERTE Daten sind noch nicht gemessen", "");
-	if (be32(at0 + 52) != 0)
-		fatal("Debuginformationen sind noch nicht gemessen", "");
+	debugSize = be32(at0 + 52);
+	rDebugN[k] = debugSize;
 
 	at = at0 + 56;
 	rNameAt[k] = at;
@@ -330,9 +335,18 @@ static int rofParse(int at0)
 	rLocalAt[k] = at + 4;
 	at = rLocalAt[k] + rLocalN[k] * 6;
 
-	/* Four trailing longwords; all observed objects contain zero here. They
-	   are part of the object length and therefore matter when scanning libs. */
-	return at + 16;
+	/* Four trailing longwords precede the optional Microware-compatible
+	   debug section. QCC stores STABS type-2 source names and type-1 line
+	   records there; the linker does not need them to resolve code/data refs. */
+	at += 16;
+	rDebugAt[k] = at;
+	if (debugSize > 0) {
+		if (at + debugSize > inLen) fatal("ROF-Debugabschnitt abgeschnitten", "");
+		if ((inBuf[at] & 255) != 0 || (inBuf[at + 1] & 255) != 0 ||
+		    (inBuf[at + 2] & 255) != 1 || (inBuf[at + 3] & 255) != 6)
+			fatal("unbekanntes ROF-Debugformat", "");
+	}
+	return at + debugSize;
 }
 
 /* A library is simply a sequence of ROFs, not a special format. The length
@@ -349,7 +363,9 @@ static int rofSkip(int at)
 	int i;
 	int cods;
 	int idat;
+	int debugSize;
 
+	debugSize = be32(at + 52);
 	idat = be32(at + 24);
 	cods = be32(at + 28);
 	at = skipName(at + 56);
@@ -367,7 +383,7 @@ static int rofSkip(int at)
 		at = at + 4 + be32(at) * 6;
 	}
 	n = be32(at);
-	return at + 4 + n * 6 + 16;
+	return at + 4 + n * 6 + 16 + debugSize;
 }
 
 /* Is a name referenced by an included ROF but not defined there? In that
@@ -1331,6 +1347,112 @@ static void emit(void)
 	put8(crc);
 }
 
+/* Write the Q9-Flux sidecar map. STABS source-name records (type 2) select
+   the current filename; type-1 records carry code offset and line/column. */
+static void writeLineMap(const char *outPath, int requested)
+{
+	int k, pos, end, kind, offset, lineCol, line, col, i, srcEnd, sourceTag, dirLen, pathLen;
+	int haveSource, lineCount;
+	char path[512], text[256], source[128];
+	char *fp;
+	const char *src;
+	source[0] = 0;
+	haveSource = 0;
+	lineCount = 0;
+	for (k = 0; k < rofN; k++) {
+		haveSource = 0;
+		if (rDebugN[k] < 4) continue;
+		pos = rDebugAt[k] + 4;
+		end = rDebugAt[k] + rDebugN[k];
+		while (pos + 2 <= end) {
+			if (pos + 2 < end && inBuf[pos] == 0 && inBuf[pos + 1] == 0 &&
+			    (inBuf[pos + 2] == 1 || inBuf[pos + 2] == 2 || inBuf[pos + 2] == 3 || inBuf[pos + 2] == 4)) pos++;
+			kind = be16(pos); pos += 2;
+			if (kind == 2) {
+				if (pos + 4 > end) break;
+				pos += 4;
+				src = &inBuf[pos];
+				srcEnd = pos;
+				while (srcEnd < end && inBuf[srcEnd] != 0) srcEnd++;
+				if (srcEnd >= end) break;
+				sourceTag = -1;
+				for (i = 0; i + 3 < srcEnd - pos; i++) {
+					if (src[i] == ':' && src[i + 1] == 'S' && src[i + 2] == 'C' && src[i + 3] == ':') { sourceTag = i; break; }
+				}
+				if (sourceTag >= 0) {
+					if (sourceTag >= (int)sizeof(source)) sourceTag = (int)sizeof(source) - 1;
+					for (i = 0; i < sourceTag; i++) source[i] = src[i];
+					source[sourceTag] = 0;
+					haveSource = source[0] != 0;
+				}
+				pos = srcEnd + 1;
+			} else if (kind == 1) {
+				if (pos + 8 > end) break;
+				offset = be32(pos); lineCol = be32(pos + 4); pos += 8;
+				line = (unsigned int)lineCol >> 12; col = lineCol & 0xFFF;
+				if (line && haveSource) lineCount++;
+			} else if (kind == 3 || kind == 4) {
+				if (pos + 4 > end) break;
+				pos += 4;
+			} else break;
+		}
+	}
+	if (lineCount == 0 && !requested) return;
+	dirLen = 0;
+	for (i = 0; outPath[i]; i++) if (outPath[i] == '/' || outPath[i] == '\\') dirLen = i + 1;
+	pathLen = dirLen + strLen(modName) + 7;
+	if (pathLen >= (int)sizeof(path)) fatal("Ausgabepfad fuer .lines zu lang", outPath);
+	for (i = 0; i < dirLen; i++) path[i] = outPath[i];
+	for (k = 0; modName[k]; k++) {
+		char ch = modName[k];
+		path[i++] = (ch >= 'A' && ch <= 'Z') ? (char)(ch + ('a' - 'A')) : ch;
+	}
+	path[i++] = '.'; path[i++] = 'l'; path[i++] = 'i'; path[i++] = 'n'; path[i++] = 'e'; path[i++] = 's'; path[i] = 0;
+	fp = fopen(path, "wb");
+	if (!fp) fatal("Quellzeilenkarte nicht schreibbar: ", path);
+	if (lineCount == 0) { fclose(fp); return; }
+	for (k = 0; k < rofN; k++) {
+		if (rDebugN[k] < 4) continue;
+		pos = rDebugAt[k] + 4;
+		end = rDebugAt[k] + rDebugN[k];
+		haveSource = 0;
+		while (pos + 2 <= end) {
+			if (pos + 2 < end && inBuf[pos] == 0 && inBuf[pos + 1] == 0 &&
+			    (inBuf[pos + 2] == 1 || inBuf[pos + 2] == 2 || inBuf[pos + 2] == 3 || inBuf[pos + 2] == 4)) pos++;
+			kind = be16(pos); pos += 2;
+			if (kind == 2) {
+				if (pos + 4 > end) break;
+				pos += 4; src = &inBuf[pos]; srcEnd = pos;
+				while (srcEnd < end && inBuf[srcEnd] != 0) srcEnd++;
+				if (srcEnd >= end) break;
+				sourceTag = -1;
+				for (i = 0; i + 3 < srcEnd - pos; i++) {
+					if (src[i] == ':' && src[i + 1] == 'S' && src[i + 2] == 'C' && src[i + 3] == ':') { sourceTag = i; break; }
+				}
+				if (sourceTag >= 0) {
+					if (sourceTag >= (int)sizeof(source)) sourceTag = (int)sizeof(source) - 1;
+					for (i = 0; i < sourceTag; i++) source[i] = src[i];
+					source[sourceTag] = 0;
+					haveSource = source[0] != 0;
+				}
+				pos = srcEnd + 1;
+			} else if (kind == 1) {
+				if (pos + 8 > end) break;
+				offset = be32(pos); lineCol = be32(pos + 4); pos += 8;
+				line = (unsigned int)lineCol >> 12; col = lineCol & 0xFFF;
+				if (line && haveSource) {
+					sprintf(text, "0x%08x %s:%u:%u\n", (unsigned)(bCode[k] + offset), source, (unsigned)line, (unsigned)col);
+					fwrite(text, 1, strLen(text), fp);
+				}
+			} else if (kind == 3 || kind == 4) {
+				if (pos + 4 > end) break;
+				pos += 4;
+			} else break;
+		}
+	}
+	fclose(fp);
+}
+
 /* ---------------------------------------------------------------- main */
 static void usage(void)
 {
@@ -1348,6 +1470,7 @@ static void usage(void)
 	puts("  -b=<n>                  Code und Daten auf n ausrichten (2/4/8/16)");
 	puts("  -x=<n>                  nur den Codeanfang ausrichten (2/4/8/16)");
 	puts("  -a                      Sprungtabelle fuer zu weite Aufrufe");
+	puts("  -g                      Flux-Quellzeilenkarte <modul>.lines erzeugen");
 	puts("  -S                      Modul bleibt im Speicher (sticky)");
 	puts("  -R=<n>                  Revisionsnummer (unter 256)");
 	exit(2);
@@ -1691,6 +1814,10 @@ int main(int argc, char **argv)
 			optSticky = 1;
 			continue;
 		}
+		if (a[0] == '-' && a[1] == 'g' && a[2] == 0) {
+			optSourceLines = 1;
+			continue;
+		}
 		if (a[0] == '-' && harmlessOpt(a)) {
 			/* -a enables the jump table, including when it appears as a
 			   Buchstabe in einem Buendel ("-swam"). Nur bei den
@@ -1791,5 +1918,6 @@ int main(int argc, char **argv)
 		fatal("Ausgabe nicht schreibbar: ", outPath);
 	fwrite(outBuf, 1, outLen, fp);
 	fclose(fp);
+	writeLineMap(outPath, optSourceLines);
 	return 0;
 }
