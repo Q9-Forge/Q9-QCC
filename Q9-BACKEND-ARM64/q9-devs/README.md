@@ -1,4 +1,6 @@
-# q9-devs – ARM64-Variante
+# q9-devs – ARM64 variant
 
-ARM64-spezifische Device-Definitionen und Ergänzungen. Gemeinsame Device-APIs
-werden aus dem zentralen `q9-devs`-Bestand übernommen.
+[Deutsch](README_de.md)
+
+ARM64-specific device definitions and additions. Shared device APIs are
+provided by the central `q9-devs` collection.

@@ -1,4 +1,6 @@
-# q9-devs – x86-Variante
+# q9-devs – x86 variant
 
-x86-spezifische Device-Definitionen und Ergänzungen. Gemeinsame Device-APIs
-werden aus dem zentralen `q9-devs`-Bestand übernommen.
+[Deutsch](README_de.md)
+
+x86-specific device definitions and additions. Shared device APIs are
+provided by the central `q9-devs` collection.
